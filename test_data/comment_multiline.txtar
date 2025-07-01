@@ -1,0 +1,10 @@
+-- input.html --
+<p><!--
+A comment
+that stretches
+over several
+lines --></p>
+-- tokens.txt --
+StartTag(p) [] 1:1-1:4
+Comment 1:4-5:10
+EndTag(p) 5:10-5:14

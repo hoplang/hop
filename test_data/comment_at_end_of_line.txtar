@@ -1,0 +1,8 @@
+-- input.html --
+<p><!-- -->
+</p>
+-- tokens.txt --
+StartTag(p) [] 1:1-1:4
+Comment 1:4-1:12
+Text 1:12-2:1
+EndTag(p) 2:1-2:5

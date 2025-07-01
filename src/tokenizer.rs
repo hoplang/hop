@@ -1,4 +1,4 @@
-use crate::common::{Token, TokenType, Attribute, Position, Range};
+use crate::common::{Attribute, Position, Range, Token, TokenType};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum TokenizerState {
@@ -73,13 +73,13 @@ impl Cursor {
         if self.position + chars.len() > self.input.len() {
             return false;
         }
-        
+
         for (i, &ch) in chars.iter().enumerate() {
             if self.input[self.position + i] != ch {
                 return false;
             }
         }
-        
+
         self.advance_n(chars.len());
         true
     }
@@ -187,6 +187,22 @@ fn is_alnum(ch: char) -> bool {
     ch.is_ascii_alphanumeric()
 }
 
+use std::fmt;
+
+impl fmt::Display for TokenType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TokenType::Doctype => write!(f, "Doctype"),
+            TokenType::StartTag => write!(f, "StartTag"),
+            TokenType::EndTag => write!(f, "EndTag"),
+            TokenType::SelfClosingTag => write!(f, "SelfClosingTag"),
+            TokenType::Text => write!(f, "Text"),
+            TokenType::Comment => write!(f, "Comment"),
+            TokenType::Error => write!(f, "Error"),
+        }
+    }
+}
+
 pub fn tokenize(input: &str) -> Vec<Token> {
     let mut cursor = Cursor::new(input);
     let mut builder = TokenBuilder::new();
@@ -196,7 +212,7 @@ pub fn tokenize(input: &str) -> Vec<Token> {
 
     while !cursor.is_at_end() {
         let ch = cursor.peek();
-        
+
         match state {
             TokenizerState::Text => {
                 if ch == '<' {
@@ -409,7 +425,10 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     state = TokenizerState::SelfClosingStartTag;
                 } else {
                     cursor.advance();
-                    builder.push_error_token("Invalid character after quoted attribute value", &cursor);
+                    builder.push_error_token(
+                        "Invalid character after quoted attribute value",
+                        &cursor,
+                    );
                     state = TokenizerState::Text;
                 }
             }
@@ -493,4 +512,111 @@ pub fn tokenize(input: &str) -> Vec<Token> {
     }
 
     builder.get_tokens()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+    use simple_txtar::Archive;
+    use std::fs;
+    use std::path::Path;
+
+    fn format_attr(attr: &Attribute) -> String {
+        format!(
+            "{}=[{}] {}:{}-{}:{}",
+            attr.name,
+            attr.value,
+            attr.range.start.line,
+            attr.range.start.column,
+            attr.range.end.line,
+            attr.range.end.column
+        )
+    }
+
+    fn format_token(token: &Token) -> String {
+        let start = &token.range.start;
+        let end = &token.range.end;
+
+        match token.token_type {
+            TokenType::Text | TokenType::Doctype | TokenType::Comment => {
+                format!(
+                    "{} {}:{}-{}:{}",
+                    token.token_type, start.line, start.column, end.line, end.column
+                )
+            }
+            TokenType::EndTag => {
+                format!(
+                    "{}({}) {}:{}-{}:{}",
+                    token.token_type, token.value, start.line, start.column, end.line, end.column
+                )
+            }
+            TokenType::StartTag | TokenType::SelfClosingTag => {
+                let attrs = token
+                    .attributes
+                    .iter()
+                    .map(format_attr)
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                format!(
+                    "{}({}) [{}] {}:{}-{}:{}",
+                    token.token_type,
+                    token.value,
+                    attrs,
+                    start.line,
+                    start.column,
+                    end.line,
+                    end.column
+                )
+            }
+            TokenType::Error => {
+                format!("{}", token.token_type)
+            }
+        }
+    }
+
+    #[test]
+    fn test_tokenizer_with_txtar_files() {
+        let test_data_dir = Path::new("test_data");
+
+        if !test_data_dir.exists() {
+            panic!("test_data directory not found");
+        }
+
+        let entries = fs::read_dir(test_data_dir).expect("Failed to read test_data directory");
+
+        for entry in entries {
+            let entry = entry.expect("Failed to read directory entry");
+            let path = entry.path();
+
+            if path.extension().map_or(false, |ext| ext == "txtar") {
+                let file_name = path.file_name().unwrap().to_string_lossy();
+
+                println!("Running test for: {}", file_name);
+
+                let content = fs::read_to_string(&path)
+                    .expect(&format!("Failed to read file: {}", path.display()));
+
+                let archive = Archive::from(&content);
+
+                let input_html = archive.get("input.html").unwrap().content.clone();
+                let expected_tokens: Vec<&str> = archive
+                    .get("tokens.txt")
+                    .unwrap()
+                    .content
+                    .trim()
+                    .split('\n')
+                    .collect();
+
+                let tokens = tokenize(&input_html);
+                let actual_tokens: Vec<String> = tokens.iter().map(format_token).collect();
+
+                assert_eq!(
+                    actual_tokens, expected_tokens,
+                    "Mismatch in file: {}",
+                    file_name
+                );
+            }
+        }
+    }
 }

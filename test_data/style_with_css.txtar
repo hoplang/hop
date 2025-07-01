@@ -1,0 +1,9 @@
+-- input.html --
+<style>
+  body { color: red; }
+  .class { font-size: 12px; }
+</style>
+-- tokens.txt --
+StartTag(style) [] 1:1-1:8
+Text 1:8-4:1
+EndTag(style) 4:1-4:9

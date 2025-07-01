@@ -1,10 +1,12 @@
 [package]
-name = "hop-cli"
+name = "hop_rs"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "hop-cli"
+name = "hop_rs"
 path = "src/main.rs"
 
-[dependencies]
+[dev-dependencies]
+simple_txtar = "1.1.0"
+pretty_assertions = "1.4.1"

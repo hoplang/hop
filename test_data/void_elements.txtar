@@ -1,0 +1,21 @@
+-- input.html --
+<component name="main">
+	<form id="form">
+		<input type="text" required>
+		<button type="submit">Send</button>
+	</form>
+</component>
+-- tokens.txt --
+StartTag(component) [name=[main] 1:12-1:23] 1:1-1:24
+Text 1:24-2:2
+StartTag(form) [id=[form] 2:8-2:17] 2:2-2:18
+Text 2:18-3:3
+StartTag(input) [type=[text] 3:10-3:21 required=[] 3:22-3:30] 3:3-3:31
+Text 3:31-4:3
+StartTag(button) [type=[submit] 4:11-4:24] 4:3-4:25
+Text 4:25-4:29
+EndTag(button) 4:29-4:38
+Text 4:38-5:2
+EndTag(form) 5:2-5:9
+Text 5:9-6:1
+EndTag(component) 6:1-6:13

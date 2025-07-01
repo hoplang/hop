@@ -61,10 +61,10 @@ impl Range {
     }
 
     pub fn contains_position(&self, position: Position) -> bool {
-        (position.line > self.start.line || 
-         (position.line == self.start.line && position.column >= self.start.column)) &&
-        (position.line < self.end.line || 
-         (position.line == self.end.line && position.column < self.end.column))
+        (position.line > self.start.line
+            || (position.line == self.start.line && position.column >= self.start.column))
+            && (position.line < self.end.line
+                || (position.line == self.end.line && position.column < self.end.column))
     }
 }
 
@@ -116,7 +116,12 @@ pub struct Token {
 }
 
 impl Token {
-    pub fn new(token_type: TokenType, value: String, attributes: Vec<Attribute>, range: Range) -> Self {
+    pub fn new(
+        token_type: TokenType,
+        value: String,
+        attributes: Vec<Attribute>,
+        range: Range,
+    ) -> Self {
         Self {
             token_type,
             value,
@@ -188,7 +193,6 @@ impl Node {
             .filter(|child| child.node_type == node_type)
             .collect()
     }
-
 }
 
 // Utility functions
@@ -208,23 +212,34 @@ pub fn escape_html(text: &str) -> String {
 pub fn format_range_errors(message: &str, errors: &[RangeError]) -> String {
     let mut result = message.to_string();
     result.push('\n');
-    
+
     for error in errors {
         result.push_str(&format!(
             "  {}:{}:{} - {}\n",
-            error.range.start.line,
-            error.range.start.column,
-            error.range.end.column,
-            error.message
+            error.range.start.line, error.range.start.column, error.range.end.column, error.message
         ));
     }
-    
+
     result
 }
 
 pub fn is_void_element(el: &str) -> bool {
     matches!(
         el,
-        "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input" | "link" | "meta" | "param" | "source" | "track" | "wbr" | "import"
+        "area"
+            | "base"
+            | "br"
+            | "col"
+            | "embed"
+            | "hr"
+            | "img"
+            | "input"
+            | "link"
+            | "meta"
+            | "param"
+            | "source"
+            | "track"
+            | "wbr"
+            | "import"
     )
 }

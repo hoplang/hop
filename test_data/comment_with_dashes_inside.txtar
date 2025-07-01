@@ -1,0 +1,4 @@
+-- input.html --
+<!-- Comment with -- dashes -- inside -->
+-- tokens.txt --
+Comment 1:1-1:42

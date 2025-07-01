@@ -1,0 +1,4 @@
+-- input.html --
+<h1/>
+-- tokens.txt --
+SelfClosingTag(h1) [] 1:1-1:6

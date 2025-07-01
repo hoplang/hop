@@ -1,0 +1,4 @@
+-- input.html --
+<input type="" value="" disabled="">
+-- tokens.txt --
+StartTag(input) [type=[] 1:8-1:15 value=[] 1:16-1:24 disabled=[] 1:25-1:36] 1:1-1:37
