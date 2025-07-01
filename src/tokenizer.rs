@@ -1,4 +1,4 @@
-use crate::common::{Attribute, Position, Range, Token, TokenType};
+use crate::common::{Token, TokenType, Position, Range, Attribute};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum TokenizerState {
@@ -25,13 +25,13 @@ enum TokenizerState {
 struct Cursor {
     input: Vec<char>,
     position: usize,
-    line: i32,
-    column: i32,
+    line: usize,
+    column: usize,
 }
 
 impl Cursor {
-    fn new(input: &str) -> Self {
-        Cursor {
+    fn new(input: String) -> Self {
+        Self {
             input: input.chars().collect(),
             position: 0,
             line: 1,
@@ -66,26 +66,24 @@ impl Cursor {
     }
 
     fn get_position(&self) -> Position {
-        Position::new(self.line, self.column)
+        Position::new(self.line as i32, self.column as i32)
     }
 
     fn is_at_end(&self) -> bool {
         self.position >= self.input.len()
     }
 
-    fn match_str(&mut self, s: &str) -> bool {
+    fn match_str(&self, s: &str) -> bool {
         let chars: Vec<char> = s.chars().collect();
         if self.position + chars.len() > self.input.len() {
             return false;
         }
-
+        
         for (i, &ch) in chars.iter().enumerate() {
             if self.input[self.position + i] != ch {
                 return false;
             }
         }
-
-        self.advance_n(chars.len());
         true
     }
 }
@@ -103,7 +101,7 @@ struct TokenBuilder {
 
 impl TokenBuilder {
     fn new() -> Self {
-        TokenBuilder {
+        Self {
             token_value: String::new(),
             token_type: TokenType::Text,
             token_start: Position::new(1, 1),
@@ -159,8 +157,8 @@ impl TokenBuilder {
         &self.token_value
     }
 
-    fn set_current_token_type(&mut self, t: TokenType) {
-        self.token_type = t;
+    fn set_current_token_type(&mut self, token_type: TokenType) {
+        self.token_type = token_type;
     }
 
     fn push_error_token(&mut self, message: &str, cursor: &Cursor) {
@@ -172,32 +170,25 @@ impl TokenBuilder {
     fn get_tokens(self) -> Vec<Token> {
         self.tokens
     }
-
-    fn initialize_current_token(&mut self, cursor: &Cursor) {
-        self.token_value.clear();
-        self.token_type = TokenType::StartTag;
-        self.token_start = cursor.get_position();
-        self.token_attributes.clear();
-    }
 }
 
-fn is_special_tag(tag_name: &str) -> bool {
-    matches!(tag_name.to_lowercase().as_str(), "textarea" | "title" | "script" | "style" | "template")
+fn is_special_tag_name(name: &str) -> bool {
+    matches!(name, "textarea" | "title" | "script" | "style" | "template")
 }
 
-fn is_alpha(c: char) -> bool {
-    c.is_ascii_alphabetic()
+fn is_alphabetic(ch: char) -> bool {
+    ch.is_ascii_alphabetic()
 }
 
-fn is_alphanumeric_or_dash(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '-'
+fn is_alphanumeric_or_dash(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || ch == '-'
 }
 
-fn is_whitespace(c: char) -> bool {
-    c == ' ' || c == '\t' || c == '\n' || c == '\r'
+fn is_whitespace(ch: char) -> bool {
+    ch.is_whitespace()
 }
 
-pub fn tokenize(input: &str) -> Vec<Token> {
+pub fn tokenize(input: String) -> Vec<Token> {
     let mut cursor = Cursor::new(input);
     let mut builder = TokenBuilder::new();
     let mut state = TokenizerState::Text;
@@ -206,24 +197,25 @@ pub fn tokenize(input: &str) -> Vec<Token> {
 
     while !cursor.is_at_end() {
         let ch = cursor.peek();
-
+        
         match state {
             TokenizerState::Text => {
                 if ch == '<' {
                     if !builder.get_current_token_value().is_empty() {
                         builder.push_current_token(&cursor);
                     }
-                    builder.initialize_current_token(&cursor);
                     cursor.advance();
                     state = TokenizerState::TagOpen;
                 } else {
                     builder.append_to_current_token_value(&ch.to_string());
                     cursor.advance();
+                    state = TokenizerState::Text;
                 }
-            }
+            },
 
             TokenizerState::TagOpen => {
-                if is_alpha(ch) {
+                if is_alphabetic(ch) {
+                    builder.set_current_token_type(TokenType::StartTag);
                     builder.append_to_current_token_value(&ch.to_string());
                     cursor.advance();
                     state = TokenizerState::StartTagName;
@@ -239,17 +231,18 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     builder.push_error_token("Invalid character after '<'", &cursor);
                     state = TokenizerState::Text;
                 }
-            }
+            },
 
             TokenizerState::StartTagName => {
                 if is_alphanumeric_or_dash(ch) {
                     builder.append_to_current_token_value(&ch.to_string());
                     cursor.advance();
+                    state = TokenizerState::StartTagName;
                 } else if is_whitespace(ch) {
                     cursor.advance();
                     state = TokenizerState::BeforeAttrName;
                 } else if ch == '>' {
-                    if is_special_tag(builder.get_current_token_value()) {
+                    if is_special_tag_name(builder.get_current_token_value()) {
                         stored_tag_name = builder.get_current_token_value().to_string();
                         cursor.advance();
                         builder.push_current_token(&cursor);
@@ -265,13 +258,13 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     state = TokenizerState::SelfClosing;
                 } else {
                     cursor.advance();
-                    builder.push_error_token("Invalid character in start tag name", &cursor);
+                    builder.push_error_token("Invalid character in tag name", &cursor);
                     state = TokenizerState::Text;
                 }
-            }
+            },
 
             TokenizerState::EndTagOpen => {
-                if is_alpha(ch) {
+                if is_alphabetic(ch) {
                     builder.append_to_current_token_value(&ch.to_string());
                     cursor.advance();
                     state = TokenizerState::EndTagName;
@@ -280,12 +273,13 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     builder.push_error_token("Invalid character after '</'", &cursor);
                     state = TokenizerState::Text;
                 }
-            }
+            },
 
             TokenizerState::EndTagName => {
                 if is_alphanumeric_or_dash(ch) {
                     builder.append_to_current_token_value(&ch.to_string());
                     cursor.advance();
+                    state = TokenizerState::EndTagName;
                 } else if ch == '>' {
                     cursor.advance();
                     builder.push_current_token(&cursor);
@@ -298,11 +292,12 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     builder.push_error_token("Invalid character in end tag name", &cursor);
                     state = TokenizerState::Text;
                 }
-            }
+            },
 
             TokenizerState::AfterEndTagName => {
                 if is_whitespace(ch) {
                     cursor.advance();
+                    state = TokenizerState::AfterEndTagName;
                 } else if ch == '>' {
                     cursor.advance();
                     builder.push_current_token(&cursor);
@@ -312,12 +307,13 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     builder.push_error_token("Invalid character after end tag name", &cursor);
                     state = TokenizerState::Text;
                 }
-            }
+            },
 
             TokenizerState::BeforeAttrName => {
                 if is_whitespace(ch) {
                     cursor.advance();
-                } else if is_alpha(ch) {
+                    state = TokenizerState::BeforeAttrName;
+                } else if is_alphabetic(ch) {
                     builder.set_current_attribute_start(cursor.get_position());
                     builder.append_to_current_attribute_name(&ch.to_string());
                     cursor.advance();
@@ -327,7 +323,7 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     cursor.advance();
                     state = TokenizerState::SelfClosing;
                 } else if ch == '>' {
-                    if is_special_tag(builder.get_current_token_value()) {
+                    if is_special_tag_name(builder.get_current_token_value()) {
                         stored_tag_name = builder.get_current_token_value().to_string();
                         cursor.advance();
                         builder.push_current_token(&cursor);
@@ -342,12 +338,13 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     builder.push_error_token("Invalid character before attribute name", &cursor);
                     state = TokenizerState::Text;
                 }
-            }
+            },
 
             TokenizerState::AttrName => {
-                if is_alpha(ch) || ch == '-' {
+                if is_alphabetic(ch) || ch == '-' {
                     builder.append_to_current_attribute_name(&ch.to_string());
                     cursor.advance();
+                    state = TokenizerState::AttrName;
                 } else if ch == '=' {
                     cursor.advance();
                     state = TokenizerState::BeforeAttrValue;
@@ -357,7 +354,7 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     state = TokenizerState::BeforeAttrName;
                 } else if ch == '>' {
                     builder.push_current_attribute(&cursor);
-                    if is_special_tag(builder.get_current_token_value()) {
+                    if is_special_tag_name(builder.get_current_token_value()) {
                         stored_tag_name = builder.get_current_token_value().to_string();
                         cursor.advance();
                         builder.push_current_token(&cursor);
@@ -377,7 +374,7 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     builder.push_error_token("Invalid character in attribute name", &cursor);
                     state = TokenizerState::Text;
                 }
-            }
+            },
 
             TokenizerState::BeforeAttrValue => {
                 if ch == '"' {
@@ -391,7 +388,7 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     builder.push_error_token("Expected quoted attribute value", &cursor);
                     state = TokenizerState::Text;
                 }
-            }
+            },
 
             TokenizerState::AttrValueDoubleQuote => {
                 if ch == '"' {
@@ -401,8 +398,9 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                 } else {
                     builder.append_to_current_attribute_value(&ch.to_string());
                     cursor.advance();
+                    state = TokenizerState::AttrValueDoubleQuote;
                 }
-            }
+            },
 
             TokenizerState::AttrValueSingleQuote => {
                 if ch == '\'' {
@@ -412,8 +410,9 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                 } else {
                     builder.append_to_current_attribute_value(&ch.to_string());
                     cursor.advance();
+                    state = TokenizerState::AttrValueSingleQuote;
                 }
-            }
+            },
 
             TokenizerState::SelfClosing => {
                 if ch == '>' {
@@ -422,34 +421,38 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     state = TokenizerState::Text;
                 } else {
                     cursor.advance();
-                    builder.push_error_token("Expected '>' after '/' in self-closing tag", &cursor);
+                    builder.push_error_token("Expected '>' after '/'", &cursor);
                     state = TokenizerState::Text;
                 }
-            }
+            },
 
             TokenizerState::MarkupDeclaration => {
                 if cursor.match_str("--") {
                     builder.set_current_token_type(TokenType::Comment);
+                    cursor.advance_n(2);
                     state = TokenizerState::Comment;
                 } else if cursor.match_str("DOCTYPE") {
                     builder.set_current_token_type(TokenType::Doctype);
+                    cursor.advance_n(7);
                     state = TokenizerState::Doctype;
                 } else {
                     cursor.advance();
                     builder.push_error_token("Invalid markup declaration", &cursor);
                     state = TokenizerState::Text;
                 }
-            }
+            },
 
             TokenizerState::Comment => {
                 if cursor.match_str("-->") {
+                    cursor.advance_n(3);
                     builder.push_current_token(&cursor);
                     state = TokenizerState::Text;
                 } else {
                     builder.append_to_current_token_value(&ch.to_string());
                     cursor.advance();
+                    state = TokenizerState::Comment;
                 }
-            }
+            },
 
             TokenizerState::Doctype => {
                 if is_whitespace(ch) {
@@ -460,12 +463,13 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     builder.push_error_token("Expected whitespace after DOCTYPE", &cursor);
                     state = TokenizerState::Text;
                 }
-            }
+            },
 
             TokenizerState::BeforeDoctypeName => {
                 if is_whitespace(ch) {
                     cursor.advance();
-                } else if is_alpha(ch) {
+                    state = TokenizerState::BeforeDoctypeName;
+                } else if is_alphabetic(ch) {
                     doctype_name_buffer.clear();
                     doctype_name_buffer.push(ch);
                     cursor.advance();
@@ -475,12 +479,13 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     builder.push_error_token("Expected DOCTYPE name", &cursor);
                     state = TokenizerState::Text;
                 }
-            }
+            },
 
             TokenizerState::DoctypeName => {
-                if is_alpha(ch) {
+                if is_alphabetic(ch) {
                     doctype_name_buffer.push(ch);
                     cursor.advance();
+                    state = TokenizerState::DoctypeName;
                 } else if ch == '>' {
                     if doctype_name_buffer.to_lowercase() == "html" {
                         builder.append_to_current_token_value(&doctype_name_buffer);
@@ -497,7 +502,7 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     builder.push_error_token("Invalid character in DOCTYPE name", &cursor);
                     state = TokenizerState::Text;
                 }
-            }
+            },
 
             TokenizerState::RawtextData => {
                 let end_tag = format!("</{}>", stored_tag_name);
@@ -505,27 +510,21 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     if !builder.get_current_token_value().is_empty() {
                         builder.push_current_token(&cursor);
                     }
-                    
-                    // Create and push end tag token
-                    let mut end_token = TokenBuilder::new();
-                    end_token.set_current_token_type(TokenType::EndTag);
-                    end_token.append_to_current_token_value(&stored_tag_name);
-                    let start_pos = Position::new(cursor.line - 1, cursor.column - end_tag.len() as i32);
-                    end_token.token_start = start_pos;
-                    end_token.push_current_token(&cursor);
-                    builder.tokens.extend(end_token.get_tokens());
-                    
-                    builder.initialize_current_token(&cursor);
+                    builder.set_current_token_type(TokenType::EndTag);
+                    builder.append_to_current_token_value(&stored_tag_name);
+                    cursor.advance_n(end_tag.len());
+                    builder.push_current_token(&cursor);
                     state = TokenizerState::Text;
                 } else {
                     builder.append_to_current_token_value(&ch.to_string());
                     cursor.advance();
+                    state = TokenizerState::RawtextData;
                 }
-            }
+            },
         }
     }
 
-    // Push final token if there's content
+    // Handle any remaining token
     if !builder.get_current_token_value().is_empty() {
         builder.push_current_token(&cursor);
     }
@@ -627,7 +626,7 @@ mod tests {
                     .split('\n')
                     .collect();
 
-                let tokens = tokenize(&input_html);
+                let tokens = tokenize(input_html.to_string());
                 let actual_tokens: Vec<String> = tokens.iter().map(format_token).collect();
 
                 assert_eq!(

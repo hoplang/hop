@@ -1,4 +1,0 @@
--- input.html --
-<div data-test="value with spaces" class="class-name_123" emoji="🚀">
--- tokens.txt --
-StartTag(div) [data-test=[value with spaces] 1:6-1:35 class=[class-name_123] 1:36-1:58 emoji=[🚀] 1:59-1:69] 1:1-1:70

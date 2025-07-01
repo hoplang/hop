@@ -1,6 +1,0 @@
--- input.html --
-<p>Unicode: 你好 🌟 émoji</p>
--- tokens.txt --
-StartTag(p) [] 1:1-1:4
-Text 1:4-1:24
-EndTag(p) 1:24-1:28

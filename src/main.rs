@@ -4,5 +4,5 @@ mod tokenizer;
 use tokenizer::tokenize;
 
 fn main() {
-    println!("{:#?}", tokenize("<div>foo"));
+    println!("{:#?}", tokenize("<div>foo".to_string()));
 }

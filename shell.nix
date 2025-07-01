@@ -7,5 +7,6 @@ pkgs.mkShell {
 		pkgs.rust-analyzer
 		pkgs.rustfmt
 		pkgs.just
+		pkgs.nodejs
 	];
 }
