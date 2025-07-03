@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
 
-// Type system
+// Type enum with Display implementation
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Object(HashMap<String, Type>),
@@ -31,12 +31,12 @@ impl fmt::Display for Type {
             Type::Bool => write!(f, "boolean"),
             Type::String => write!(f, "string"),
             Type::Void => write!(f, "void"),
-            Type::TypeVar(id) => write!(f, "?{}", id),
+            Type::TypeVar(id) => write!(f, "?t{}", id),
         }
     }
 }
 
-// Position and Range
+// Position struct
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Position {
     pub line: i32,
@@ -45,10 +45,11 @@ pub struct Position {
 
 impl Position {
     pub fn new(line: i32, column: i32) -> Self {
-        Self { line, column }
+        Position { line, column }
     }
 }
 
+// Range struct
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Range {
     pub start: Position,
@@ -57,18 +58,25 @@ pub struct Range {
 
 impl Range {
     pub fn new(start: Position, end: Position) -> Self {
-        Self { start, end }
+        Range { start, end }
     }
 
     pub fn contains_position(&self, position: Position) -> bool {
-        (position.line > self.start.line
-            || (position.line == self.start.line && position.column >= self.start.column))
-            && (position.line < self.end.line
-                || (position.line == self.end.line && position.column < self.end.column))
+        // start is inclusive, end is exclusive
+        if position.line < self.start.line || position.line > self.end.line {
+            return false;
+        }
+        if position.line == self.start.line && position.column < self.start.column {
+            return false;
+        }
+        if position.line == self.end.line && position.column >= self.end.column {
+            return false;
+        }
+        true
     }
 }
 
-// Error types
+// RangeError struct
 #[derive(Debug, Clone, PartialEq)]
 pub struct RangeError {
     pub message: String,
@@ -77,11 +85,11 @@ pub struct RangeError {
 
 impl RangeError {
     pub fn new(message: String, range: Range) -> Self {
-        Self { message, range }
+        RangeError { message, range }
     }
 }
 
-// Attribute
+// Attribute struct
 #[derive(Debug, Clone, PartialEq)]
 pub struct Attribute {
     pub name: String,
@@ -91,11 +99,11 @@ pub struct Attribute {
 
 impl Attribute {
     pub fn new(name: String, value: String, range: Range) -> Self {
-        Self { name, value, range }
+        Attribute { name, value, range }
     }
 }
 
-// Token types
+// TokenType enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TokenType {
     Doctype,
@@ -107,6 +115,7 @@ pub enum TokenType {
     Error,
 }
 
+// Token struct
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub token_type: TokenType,
@@ -116,22 +125,20 @@ pub struct Token {
 }
 
 impl Token {
-    pub fn new(
-        token_type: TokenType,
-        value: String,
-        attributes: Vec<Attribute>,
-        range: Range,
-    ) -> Self {
-        Self {
+    pub fn new(token_type: TokenType, value: String, attributes: Vec<Attribute>, range: Range) -> Self {
+        Token {
             token_type,
             value,
             attributes,
             range,
         }
     }
+    pub fn has_attribute(&self, name: &str) -> bool {
+        self.attributes.iter().any(|attr| attr.name == name)
+    }
 }
 
-// Node types
+// NodeType enum
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeType {
     RootNode,
@@ -146,6 +153,7 @@ pub enum NodeType {
     NativeHTMLNode,
 }
 
+// Node struct
 #[derive(Debug, Clone, PartialEq)]
 pub struct Node {
     pub node_type: NodeType,
@@ -163,7 +171,7 @@ impl Node {
         range: Range,
         children: Vec<Node>,
     ) -> Self {
-        Self {
+        Node {
             node_type,
             value,
             attributes,
@@ -195,51 +203,94 @@ impl Node {
     }
 }
 
+// ImmutableMap implementation
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImmutableMap<K, V>
+where
+    K: Clone + std::hash::Hash + Eq,
+    V: Clone,
+{
+    map: HashMap<K, V>,
+}
+
+impl<K, V> ImmutableMap<K, V>
+where
+    K: Clone + std::hash::Hash + Eq,
+    V: Clone,
+{
+    pub fn new() -> Self {
+        ImmutableMap {
+            map: HashMap::new(),
+        }
+    }
+
+    pub fn set(&self, key: K, value: V) -> ImmutableMap<K, V> {
+        let mut new_map = self.map.clone();
+        new_map.insert(key, value);
+        ImmutableMap { map: new_map }
+    }
+
+    pub fn get(&self, key: &K) -> &V {
+        self.map
+            .get(key)
+            .unwrap_or_else(|| panic!("Key not found in ImmutableMap"))
+    }
+
+    pub fn has(&self, key: &K) -> bool {
+        self.map.contains_key(key)
+    }
+}
+
+impl<K, V> Default for ImmutableMap<K, V>
+where
+    K: Clone + std::hash::Hash + Eq,
+    V: Clone,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // Utility functions
+
 pub fn escape_html(text: &str) -> String {
-    text.chars()
-        .map(|c| match c {
-            '&' => "&amp;".to_string(),
-            '<' => "&lt;".to_string(),
-            '>' => "&gt;".to_string(),
-            '"' => "&quot;".to_string(),
-            '\'' => "&#39;".to_string(),
-            _ => c.to_string(),
-        })
-        .collect()
+    let mut result = String::new();
+    for ch in text.chars() {
+        match ch {
+            '&' => result.push_str("&amp;"),
+            '<' => result.push_str("&lt;"),
+            '>' => result.push_str("&gt;"),
+            '"' => result.push_str("&quot;"),
+            '\'' => result.push_str("&#39;"),
+            _ => result.push(ch),
+        }
+    }
+    result
 }
 
 pub fn format_range_errors(message: &str, errors: &[RangeError]) -> String {
-    let mut result = message.to_string();
+    let mut result = String::new();
+    result.push_str(message);
     result.push('\n');
-
+    
     for error in errors {
         result.push_str(&format!(
-            "  {}:{}:{} - {}\n",
-            error.range.start.line, error.range.start.column, error.range.end.column, error.message
+            "  {}:{} - {}:{}: {}\n",
+            error.range.start.line,
+            error.range.start.column,
+            error.range.end.line,
+            error.range.end.column,
+            error.message
         ));
     }
-
+    
     result
 }
 
 pub fn is_void_element(el: &str) -> bool {
     matches!(
         el,
-        "area"
-            | "base"
-            | "br"
-            | "col"
-            | "embed"
-            | "hr"
-            | "img"
-            | "input"
-            | "link"
-            | "meta"
-            | "param"
-            | "source"
-            | "track"
-            | "wbr"
-            | "import"
+        "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input" | "link" | "meta" | "param" | "source" | "track" | "wbr" | "import"
     )
 }
+

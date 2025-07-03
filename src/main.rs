@@ -1,5 +1,6 @@
 mod common;
 mod tokenizer;
+mod parser;
 
 use tokenizer::tokenize;
 
