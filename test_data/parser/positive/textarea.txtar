@@ -1,0 +1,10 @@
+The content of textareas should be parsed as raw text.
+-- main.hop --
+<component name="main">
+	<textarea>
+		<div></div>
+	</textarea>
+</component>
+-- output.txt --
+component
+	textarea

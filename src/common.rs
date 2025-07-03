@@ -125,7 +125,12 @@ pub struct Token {
 }
 
 impl Token {
-    pub fn new(token_type: TokenType, value: String, attributes: Vec<Attribute>, range: Range) -> Self {
+    pub fn new(
+        token_type: TokenType,
+        value: String,
+        attributes: Vec<Attribute>,
+        range: Range,
+    ) -> Self {
         Token {
             token_type,
             value,
@@ -272,7 +277,7 @@ pub fn format_range_errors(message: &str, errors: &[RangeError]) -> String {
     let mut result = String::new();
     result.push_str(message);
     result.push('\n');
-    
+
     for error in errors {
         result.push_str(&format!(
             "  {}:{} - {}:{}: {}\n",
@@ -283,14 +288,27 @@ pub fn format_range_errors(message: &str, errors: &[RangeError]) -> String {
             error.message
         ));
     }
-    
+
     result
 }
 
 pub fn is_void_element(el: &str) -> bool {
     matches!(
         el,
-        "area" | "base" | "br" | "col" | "embed" | "hr" | "img" | "input" | "link" | "meta" | "param" | "source" | "track" | "wbr" | "import"
+        "area"
+            | "base"
+            | "br"
+            | "col"
+            | "embed"
+            | "hr"
+            | "img"
+            | "input"
+            | "link"
+            | "meta"
+            | "param"
+            | "source"
+            | "track"
+            | "wbr"
+            | "import"
     )
 }
-

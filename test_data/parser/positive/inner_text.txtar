@@ -1,0 +1,10 @@
+-- main.hop --
+<component name="main" params-as="foo">
+	<for each="foo" as="v">
+		<div inner-text="v"></div>
+	</for>
+</component>
+-- output.txt --
+component
+	for
+		div

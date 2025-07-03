@@ -1,0 +1,11 @@
+-- main.hop --
+<component name="main" params-as="data">
+	<cond if="data">
+		<for each="data" as="d">
+		</for>
+	</cond>
+</component>
+-- output.txt --
+component
+	cond
+		for

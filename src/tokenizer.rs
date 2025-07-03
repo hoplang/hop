@@ -1,4 +1,4 @@
-use crate::common::{Token, TokenType, Position, Range, Attribute};
+use crate::common::{Attribute, Position, Range, Token, TokenType};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum TokenizerState {
@@ -78,7 +78,7 @@ impl Cursor {
         if self.position + chars.len() > self.input.len() {
             return false;
         }
-        
+
         for (i, &ch) in chars.iter().enumerate() {
             if self.input[self.position + i] != ch {
                 return false;
@@ -197,7 +197,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
 
     while !cursor.is_at_end() {
         let ch = cursor.peek();
-        
+
         match state {
             TokenizerState::Text => {
                 if ch == '<' {
@@ -211,7 +211,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     cursor.advance();
                     state = TokenizerState::Text;
                 }
-            },
+            }
 
             TokenizerState::TagOpen => {
                 if is_alphabetic(ch) {
@@ -231,7 +231,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     builder.push_error_token("Invalid character after '<'", &cursor);
                     state = TokenizerState::Text;
                 }
-            },
+            }
 
             TokenizerState::StartTagName => {
                 if is_alphanumeric_or_dash(ch) {
@@ -261,7 +261,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     builder.push_error_token("Invalid character in tag name", &cursor);
                     state = TokenizerState::Text;
                 }
-            },
+            }
 
             TokenizerState::EndTagOpen => {
                 if is_alphabetic(ch) {
@@ -273,7 +273,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     builder.push_error_token("Invalid character after '</'", &cursor);
                     state = TokenizerState::Text;
                 }
-            },
+            }
 
             TokenizerState::EndTagName => {
                 if is_alphanumeric_or_dash(ch) {
@@ -292,7 +292,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     builder.push_error_token("Invalid character in end tag name", &cursor);
                     state = TokenizerState::Text;
                 }
-            },
+            }
 
             TokenizerState::AfterEndTagName => {
                 if is_whitespace(ch) {
@@ -307,7 +307,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     builder.push_error_token("Invalid character after end tag name", &cursor);
                     state = TokenizerState::Text;
                 }
-            },
+            }
 
             TokenizerState::BeforeAttrName => {
                 if is_whitespace(ch) {
@@ -338,7 +338,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     builder.push_error_token("Invalid character before attribute name", &cursor);
                     state = TokenizerState::Text;
                 }
-            },
+            }
 
             TokenizerState::AttrName => {
                 if is_alphabetic(ch) || ch == '-' {
@@ -374,7 +374,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     builder.push_error_token("Invalid character in attribute name", &cursor);
                     state = TokenizerState::Text;
                 }
-            },
+            }
 
             TokenizerState::BeforeAttrValue => {
                 if ch == '"' {
@@ -388,7 +388,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     builder.push_error_token("Expected quoted attribute value", &cursor);
                     state = TokenizerState::Text;
                 }
-            },
+            }
 
             TokenizerState::AttrValueDoubleQuote => {
                 if ch == '"' {
@@ -400,7 +400,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     cursor.advance();
                     state = TokenizerState::AttrValueDoubleQuote;
                 }
-            },
+            }
 
             TokenizerState::AttrValueSingleQuote => {
                 if ch == '\'' {
@@ -412,7 +412,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     cursor.advance();
                     state = TokenizerState::AttrValueSingleQuote;
                 }
-            },
+            }
 
             TokenizerState::SelfClosing => {
                 if ch == '>' {
@@ -424,7 +424,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     builder.push_error_token("Expected '>' after '/'", &cursor);
                     state = TokenizerState::Text;
                 }
-            },
+            }
 
             TokenizerState::MarkupDeclaration => {
                 if cursor.match_str("--") {
@@ -440,7 +440,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     builder.push_error_token("Invalid markup declaration", &cursor);
                     state = TokenizerState::Text;
                 }
-            },
+            }
 
             TokenizerState::Comment => {
                 if cursor.match_str("-->") {
@@ -452,7 +452,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     cursor.advance();
                     state = TokenizerState::Comment;
                 }
-            },
+            }
 
             TokenizerState::Doctype => {
                 if is_whitespace(ch) {
@@ -463,7 +463,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     builder.push_error_token("Expected whitespace after DOCTYPE", &cursor);
                     state = TokenizerState::Text;
                 }
-            },
+            }
 
             TokenizerState::BeforeDoctypeName => {
                 if is_whitespace(ch) {
@@ -479,7 +479,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     builder.push_error_token("Expected DOCTYPE name", &cursor);
                     state = TokenizerState::Text;
                 }
-            },
+            }
 
             TokenizerState::DoctypeName => {
                 if is_alphabetic(ch) {
@@ -502,7 +502,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     builder.push_error_token("Invalid character in DOCTYPE name", &cursor);
                     state = TokenizerState::Text;
                 }
-            },
+            }
 
             TokenizerState::RawtextData => {
                 let end_tag = format!("</{}>", stored_tag_name);
@@ -520,7 +520,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     cursor.advance();
                     state = TokenizerState::RawtextData;
                 }
-            },
+            }
         }
     }
 
@@ -597,44 +597,38 @@ mod tests {
     fn test_tokenizer_with_txtar_files() {
         let test_data_dir = Path::new("test_data/tokenizer");
 
-        if !test_data_dir.exists() {
-            panic!("test_data directory not found");
-        }
-
         let entries = fs::read_dir(test_data_dir).expect("Failed to read test_data directory");
 
         for entry in entries {
             let entry = entry.expect("Failed to read directory entry");
             let path = entry.path();
 
-            if path.extension().map_or(false, |ext| ext == "txtar") {
-                let file_name = path.file_name().unwrap().to_string_lossy();
+            let file_name = path.file_name().unwrap().to_string_lossy();
 
-                println!("Running test for: {}", file_name);
+            println!("Running test for: {}", file_name);
 
-                let content = fs::read_to_string(&path)
-                    .expect(&format!("Failed to read file: {}", path.display()));
+            let content = fs::read_to_string(&path)
+                .expect(&format!("Failed to read file: {}", path.display()));
 
-                let archive = Archive::from(&content);
+            let archive = Archive::from(&content);
 
-                let input_html = archive.get("input.html").unwrap().content.trim();
-                let expected_tokens: Vec<&str> = archive
-                    .get("tokens.txt")
-                    .unwrap()
-                    .content
-                    .trim()
-                    .split('\n')
-                    .collect();
+            let input_html = archive.get("input.html").unwrap().content.trim();
+            let expected_tokens: Vec<&str> = archive
+                .get("tokens.txt")
+                .unwrap()
+                .content
+                .trim()
+                .split('\n')
+                .collect();
 
-                let tokens = tokenize(input_html.to_string());
-                let actual_tokens: Vec<String> = tokens.iter().map(format_token).collect();
+            let tokens = tokenize(input_html.to_string());
+            let actual_tokens: Vec<String> = tokens.iter().map(format_token).collect();
 
-                assert_eq!(
-                    actual_tokens, expected_tokens,
-                    "Mismatch in file: {}",
-                    file_name
-                );
-            }
+            assert_eq!(
+                actual_tokens, expected_tokens,
+                "Mismatch in file: {}",
+                file_name
+            );
         }
     }
 }

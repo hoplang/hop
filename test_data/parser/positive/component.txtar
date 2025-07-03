@@ -1,0 +1,21 @@
+-- main.hop --
+<component name="main" params-as="sections">
+	<div>
+		<for each="sections" as="section">
+			<div>
+				<h2 inner-text="section.title"></h2>
+				<for each="section.items" as="item">
+					<p inner-text="item"></p>
+				</for>
+			</div>
+		</for>
+	</div>
+</component>
+-- output.txt --
+component
+	div
+		for
+			div
+				h2
+				for
+					p

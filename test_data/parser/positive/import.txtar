@@ -1,0 +1,9 @@
+-- main.hop --
+<component name="main" params-as="p">
+	<render component="foo"></render>
+	<render component="foo"></render>
+</component>
+-- output.txt --
+component
+	render
+	render

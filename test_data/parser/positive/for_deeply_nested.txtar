@@ -1,0 +1,23 @@
+-- main.hop --
+<component name="main" params-as="i">
+	<for each="i" as="j">
+		<for each="j.s.t" as="k">
+			<cond if="k">
+			</cond>
+		</for>
+	</for>
+	<for each="i" as="p">
+		<for each="p.s.t" as="k">
+			<for each="k">
+			</for>
+		</for>
+	</for>
+</component>
+-- output.txt --
+component
+	for
+		for
+			cond
+	for
+		for
+			for

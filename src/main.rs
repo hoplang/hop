@@ -1,9 +1,10 @@
 mod common;
-mod tokenizer;
 mod parser;
+mod tokenizer;
 
+use parser::parse;
 use tokenizer::tokenize;
 
 fn main() {
-    println!("{:#?}", tokenize("<div>foo".to_string()));
+    println!("{:#?}", parse(tokenize("<div>foo".to_string())));
 }
