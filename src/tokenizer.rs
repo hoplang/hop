@@ -595,7 +595,7 @@ mod tests {
 
     #[test]
     fn test_tokenizer_with_txtar_files() {
-        let test_data_dir = Path::new("test_data");
+        let test_data_dir = Path::new("test_data/tokenizer");
 
         if !test_data_dir.exists() {
             panic!("test_data directory not found");
