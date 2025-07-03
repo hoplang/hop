@@ -9,7 +9,7 @@ pub enum Type {
     Bool,
     String,
     Void,
-    TypeVar(String),
+    TypeVar(i32),
 }
 
 impl fmt::Display for Type {
