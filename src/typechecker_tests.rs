@@ -103,7 +103,7 @@ mod tests {
 
             let result = parse(tokenize(input_html.to_string()));
 
-            let type_result = typecheck(&result.root, &HashMap::new());
+            let type_result = typecheck(&result.root, HashMap::new());
 
             let output = type_result
                 .parameter_types
