@@ -51,14 +51,11 @@ pub fn typecheck(root: &Node, import_types: &HashMap<String, Type>) -> TypeResul
 
         let mut component_annotations = Vec::new();
         let mut env = Environment::new();
-        let t1 = unifier.new_type_var();
+        let t1 = Type::TypeVar(unifier.next_type_var());
         let params_as_attr = node.get_attribute("params-as");
 
         env.push(params_as_attr.value.clone(), t1.clone());
-        component_annotations.push(TypeAnnotation::new(
-            params_as_attr.range.clone(),
-            t1.clone(),
-        ));
+        component_annotations.push(TypeAnnotation::new(params_as_attr.range, t1.clone()));
 
         typecheck_nodes(
             &mut component_annotations,
@@ -72,11 +69,8 @@ pub fn typecheck(root: &Node, import_types: &HashMap<String, Type>) -> TypeResul
 
         parameter_types.insert(component_name.to_string(), unifier.query(&t1));
 
-        for annotation in component_annotations {
-            annotations.push(TypeAnnotation::new(
-                annotation.range,
-                unifier.query(&annotation.type_),
-            ));
+        for a in component_annotations {
+            annotations.push(TypeAnnotation::new(a.range, unifier.query(&a.type_)));
         }
     }
 
@@ -98,110 +92,100 @@ fn typecheck_nodes(
         match node.node_type {
             NodeType::ForNode => {
                 let each_attr = node.get_attribute("each");
+                let t1 = Type::TypeVar(unifier.next_type_var());
 
-                match typecheck_expr(&each_attr.value, env, unifier) {
-                    Ok(t1) => {
-                        let t2 = unifier.new_type_var();
-
-                        match unifier.unify(&t1, &Type::Array(Box::new(t2.clone()))) {
-                            None => {
-                                annotations.push(TypeAnnotation::new(each_attr.range.clone(), t1));
-
-                                if node.has_attribute("as") {
-                                    let as_attr = node.get_attribute("as");
-                                    annotations.push(TypeAnnotation::new(
-                                        as_attr.range.clone(),
-                                        t2.clone(),
-                                    ));
-                                    env.push(as_attr.value.clone(), t2);
-                                    did_push = true;
-                                }
-                            }
-                            Some(err) => {
-                                errors.push(RangeError::new(err.message, each_attr.range.clone()));
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        errors.push(RangeError::new(err, each_attr.range.clone()));
-                    }
+                if let Some(err) = typecheck_expr(&t1, &each_attr.value, env, unifier) {
+                    errors.push(RangeError::new(err, each_attr.range));
+                    continue;
                 }
+
+                let t2 = Type::TypeVar(unifier.next_type_var());
+                if let Some(err) = unifier.unify(&t1, &Type::Array(Box::new(t2.clone()))) {
+                    errors.push(RangeError::new(err.message, each_attr.range));
+                    continue;
+                }
+
+                annotations.push(TypeAnnotation::new(each_attr.range, t1));
+
+                if !node.has_attribute("as") {
+                    continue;
+                }
+
+                let as_attr = node.get_attribute("as");
+                annotations.push(TypeAnnotation::new(as_attr.range, t2.clone()));
+                env.push(as_attr.value.clone(), t2);
+                did_push = true;
             }
 
             NodeType::CondNode => {
                 let if_attr = node.get_attribute("if");
+                let t1 = Type::TypeVar(unifier.next_type_var());
 
-                match typecheck_expr(&if_attr.value, env, unifier) {
-                    Ok(t1) => match unifier.unify(&t1, &Type::Bool) {
-                        None => {
-                            annotations.push(TypeAnnotation::new(if_attr.range.clone(), t1));
-                        }
-                        Some(err) => {
-                            errors.push(RangeError::new(err.message, if_attr.range.clone()));
-                        }
-                    },
-                    Err(err) => {
-                        errors.push(RangeError::new(err, if_attr.range.clone()));
-                    }
+                if let Some(err) = typecheck_expr(&t1, &if_attr.value, env, unifier) {
+                    errors.push(RangeError::new(err, if_attr.range));
+                    continue;
                 }
+
+                if let Some(err) = unifier.unify(&t1, &Type::Bool) {
+                    errors.push(RangeError::new(err.message, if_attr.range));
+                    continue;
+                }
+
+                annotations.push(TypeAnnotation::new(if_attr.range, t1));
             }
 
             NodeType::RenderNode => {
                 let component_attr = node.get_attribute("component");
                 let params_attr = node.get_attribute("params");
 
-                let t1 = if let Some(t) = import_types.get(&component_attr.value) {
-                    t.clone()
-                } else if let Some(t) = parameter_types.get(&component_attr.value) {
-                    t.clone()
+                let t1 = if let Some(imported_type) = import_types.get(&component_attr.value) {
+                    imported_type.clone()
+                } else if let Some(param_type) = parameter_types.get(&component_attr.value) {
+                    param_type.clone()
                 } else {
                     errors.push(RangeError::new(
                         format!("Component {} not found", component_attr.value),
-                        component_attr.range.clone(),
+                        component_attr.range,
                     ));
                     continue;
                 };
 
-                match typecheck_expr(&params_attr.value, env, unifier) {
-                    Ok(t2) => match unifier.unify(&t1, &t2) {
-                        None => {
-                            annotations.push(TypeAnnotation::new(params_attr.range.clone(), t1));
-                        }
-                        Some(err) => {
-                            errors.push(RangeError::new(err.message, params_attr.range.clone()));
-                        }
-                    },
-                    Err(err) => {
-                        errors.push(RangeError::new(err, params_attr.range.clone()));
-                    }
+                let t2 = Type::TypeVar(unifier.next_type_var());
+                if let Some(err) = typecheck_expr(&t2, &params_attr.value, env, unifier) {
+                    errors.push(RangeError::new(err, params_attr.range));
+                    continue;
                 }
+
+                if let Some(err) = unifier.unify(&t1, &t2) {
+                    errors.push(RangeError::new(err.message, params_attr.range));
+                    continue;
+                }
+
+                annotations.push(TypeAnnotation::new(params_attr.range, t1));
             }
 
             NodeType::NativeHTMLNode => {
-                if node.has_attribute("inner-text") {
-                    let inner_text_attr = node.get_attribute("inner-text");
-
-                    match typecheck_expr(&inner_text_attr.value, env, unifier) {
-                        Ok(t1) => match unifier.unify(&t1, &Type::String) {
-                            Some(err) => {
-                                errors.push(RangeError::new(
-                                    err.message,
-                                    inner_text_attr.range.clone(),
-                                ));
-                            }
-                            None => {
-                                annotations
-                                    .push(TypeAnnotation::new(inner_text_attr.range.clone(), t1));
-                            }
-                        },
-                        Err(err) => {
-                            errors.push(RangeError::new(err, inner_text_attr.range.clone()));
-                        }
-                    }
+                if !node.has_attribute("inner-text") {
+                    continue;
                 }
+
+                let inner_text_attr = node.get_attribute("inner-text");
+                let t1 = Type::TypeVar(unifier.next_type_var());
+
+                if let Some(err) = typecheck_expr(&t1, &inner_text_attr.value, env, unifier) {
+                    errors.push(RangeError::new(err, inner_text_attr.range));
+                    continue;
+                }
+
+                if let Some(err) = unifier.unify(&t1, &Type::String) {
+                    errors.push(RangeError::new(err.message, inner_text_attr.range));
+                    continue;
+                }
+
+                annotations.push(TypeAnnotation::new(inner_text_attr.range, t1));
             }
 
-            _ => {} // Other node types don't need type checking
+            _ => {}
         }
 
         typecheck_nodes(
@@ -221,40 +205,41 @@ fn typecheck_nodes(
 }
 
 fn typecheck_expr(
+    t1: &Type,
     expr: &str,
     env: &Environment<Type>,
     unifier: &mut Unifier,
-) -> Result<Type, String> {
+) -> Option<String> {
     let segments = parse_expr(expr);
 
     if segments.is_empty() {
-        return Err("Empty expression".to_string());
+        return Some("Empty expression".to_string());
     }
 
     if !env.has(&segments[0]) {
-        return Err(format!("Undefined variable: {}", segments[0]));
+        return Some(format!("Undefined variable: {}", segments[0]));
     }
 
     let mut current_type = env.lookup(&segments[0]).unwrap().clone();
 
     for segment in &segments[1..] {
-        let t2 = unifier.new_type_var();
-        let mut props = HashMap::new();
-        props.insert(segment.clone(), t2.clone());
-        if let Type::TypeVar(id) = unifier.new_type_var() {
-            let obj_type = Type::Object(props, id);
-            match unifier.unify(&current_type, &obj_type) {
-                None => {
-                    current_type = t2;
-                }
-                Some(err) => {
-                    return Err(err.message);
-                }
-            }
+        let t2 = Type::TypeVar(unifier.next_type_var());
+        let mut properties = HashMap::new();
+        properties.insert(segment.clone(), t2.clone());
+        let obj = Type::Object(properties, unifier.next_type_var());
+
+        if let Some(err) = unifier.unify(&current_type, &obj) {
+            return Some(err.message);
         }
+
+        current_type = t2;
     }
 
-    Ok(current_type)
+    if let Some(err) = unifier.unify(t1, &current_type) {
+        Some(err.message)
+    } else {
+        None
+    }
 }
 
 fn parse_expr(expr: &str) -> Vec<String> {

@@ -1,4 +1,6 @@
-use crate::common::{is_void_element, Node, NodeType, Position, Range, RangeError, Token, TokenType};
+use crate::common::{
+    Node, NodeType, Position, Range, RangeError, Token, TokenType, is_void_element,
+};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
