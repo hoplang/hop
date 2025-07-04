@@ -1,0 +1,13 @@
+-- main.hop --
+<component name="main" params-as="params">
+	<for each="params" as="j">
+		<cond if="j.a">
+		</cond>
+	</for>
+	<for each="params" as="j">
+		<cond if="j.b">
+		</cond>
+	</for>
+</component>
+-- type.json --
+{a: boolean, b: boolean}[]

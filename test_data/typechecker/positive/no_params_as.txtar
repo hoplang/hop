@@ -1,0 +1,6 @@
+-- main.hop --
+<component name="main">
+	<div></div>
+</component>
+-- type.json --
+void

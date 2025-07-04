@@ -1,0 +1,15 @@
+-- main.hop --
+<component name="bar" params-as="p">
+  <cond if="p">
+  </cond>
+</component>
+
+<component name="foo" params-as="p">
+  <render component="bar" params="p"/>
+</component>
+
+<component name="main" params-as="i">
+  <render component="foo" params="i"/>
+</component>
+-- type.json --
+boolean

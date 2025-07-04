@@ -1,0 +1,15 @@
+-- main.hop --
+<component name="main" params-as="params">
+	<for each="params.tags" as="tag">
+		<cond if="tag">
+		</cond>
+	</for>
+	<for each="params.categories" as="category">
+		<cond if="category">
+		</cond>
+	</for>
+	<cond if="params.metadata.title">
+	</cond>
+</component>
+-- type.json --
+{categories: boolean[], metadata: {title: boolean}, tags: boolean[]}

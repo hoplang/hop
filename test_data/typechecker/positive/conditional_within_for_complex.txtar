@@ -1,0 +1,13 @@
+-- main.hop --
+<component name="main" params-as="params">
+	<for each="params.sections" as="section">
+		<cond if="section.header.visible">
+			<for each="section.items" as="item">
+				<cond if="item.data.valid">
+				</cond>
+			</for>
+		</cond>
+	</for>
+</component>
+-- type.json --
+{sections: {header: {visible: boolean}, items: {data: {valid: boolean}}[]}[]}

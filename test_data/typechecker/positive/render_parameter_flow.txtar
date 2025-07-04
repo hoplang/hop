@@ -1,0 +1,21 @@
+-- main.hop --
+<component name="executeStep" params-as="step">
+	<cond if="step.condition">
+	</cond>
+</component>
+
+<component name="executeWorkflow" params-as="workflow">
+	<cond if="workflow.enabled">
+		<for each="workflow.steps" as="step">
+			<render component="executeStep" params="step"/>
+		</for>
+	</cond>
+</component>
+
+<component name="main" params-as="params">
+	<for each="params.workflows" as="workflow">
+		<render component="executeWorkflow" params="workflow"/>
+	</for>
+</component>
+-- type.json --
+{workflows: {enabled: boolean, steps: {condition: boolean}[]}[]}

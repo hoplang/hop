@@ -1,0 +1,11 @@
+-- main.hop --
+<component name="main" params-as="params">
+	<cond if="params.app.ui.theme.dark">
+	</cond>
+	<cond if="params.app.api.endpoints.users.enabled">
+	</cond>
+	<cond if="params.app.database.connection.ssl">
+	</cond>
+</component>
+-- type.json --
+{app: {api: {endpoints: {users: {enabled: boolean}}}, database: {connection: {ssl: boolean}}, ui: {theme: {dark: boolean}}}}

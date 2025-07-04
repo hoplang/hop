@@ -52,7 +52,12 @@ impl fmt::Display for Type {
             Type::Object(properties, _rest) => {
                 write!(f, "{{")?;
                 let mut first = true;
-                for (key, value) in properties {
+
+                // Collect and sort properties by key
+                let mut sorted_props: Vec<_> = properties.iter().collect();
+                sorted_props.sort_by_key(|(key, _)| *key);
+
+                for (key, value) in sorted_props {
                     if !first {
                         write!(f, ", ")?;
                     }

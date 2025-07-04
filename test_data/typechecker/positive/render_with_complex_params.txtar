@@ -1,0 +1,17 @@
+-- main.hop --
+<component name="processItem" params-as="item">
+	<cond if="item.status.active">
+	</cond>
+	<for each="item.children" as="child">
+		<cond if="child.visible">
+		</cond>
+	</for>
+</component>
+
+<component name="main" params-as="params">
+	<for each="params.items" as="item">
+		<render component="processItem" params="item"/>
+	</for>
+</component>
+-- type.json --
+{items: {children: {visible: boolean}[], status: {active: boolean}}[]}

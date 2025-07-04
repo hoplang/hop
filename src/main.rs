@@ -4,6 +4,7 @@ mod parser_tests;
 mod tokenizer;
 mod tokenizer_tests;
 mod typechecker;
+mod typechecker_tests;
 mod unifier;
 
 use parser::parse;
