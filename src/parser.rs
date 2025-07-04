@@ -3,7 +3,7 @@ use crate::common::{
 };
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct ParseResult {
     pub root: Node,
     pub errors: Vec<RangeError>,
