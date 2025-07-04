@@ -1,6 +1,4 @@
-use crate::common::{
-    Node, NodeType, Position, Range, RangeError, Token, TokenType, is_void_element,
-};
+use crate::common::{is_void_element, Node, NodeType, Position, Range, RangeError, Token, TokenType};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -26,7 +24,6 @@ impl NodeBuilder {
         let mut nodes = Vec::new();
         let mut children = HashMap::new();
 
-        // Create root node
         let root_node = Node::new(
             NodeType::RootNode,
             String::new(),
@@ -34,6 +31,7 @@ impl NodeBuilder {
             Range::new(Position::new(0, 0), Position::new(0, 0)),
             Vec::new(),
         );
+
         nodes.push(root_node);
         children.insert(0, Vec::new());
 
@@ -44,13 +42,10 @@ impl NodeBuilder {
         }
     }
 
-    fn append_child(&mut self, parent_id: usize, node: Node) -> usize {
+    fn append_child(&mut self, id: usize, node: Node) -> usize {
         let idx = self.nodes.len();
         self.nodes.push(node);
-        self.children
-            .entry(parent_id)
-            .or_insert_with(Vec::new)
-            .push(idx);
+        self.children.entry(id).or_insert_with(Vec::new).push(idx);
         self.children.insert(idx, Vec::new());
         idx
     }
@@ -141,14 +136,14 @@ fn validate_attributes(token: &Token) -> Vec<RangeError> {
 pub fn parse(tokens: Vec<Token>) -> ParseResult {
     let mut builder = NodeBuilder::new();
     let mut errors = Vec::new();
-    let mut stack = vec![builder.root];
+    let mut stack: Vec<usize> = vec![builder.root];
 
     for token in tokens {
         let level = stack.len() - 1;
 
         match token.token_type {
             TokenType::Error => {
-                errors.push(RangeError::new(token.value.clone(), token.range));
+                errors.push(RangeError::new(token.value, token.range));
             }
 
             TokenType::Doctype => {
@@ -192,9 +187,7 @@ pub fn parse(tokens: Vec<Token>) -> ParseResult {
                     errors.push(err);
                 }
 
-                for err in validate_attributes(&token) {
-                    errors.push(err);
-                }
+                errors.extend(validate_attributes(&token));
 
                 let node = Node::new(
                     construct_node_type(&token),
@@ -212,7 +205,12 @@ pub fn parse(tokens: Vec<Token>) -> ParseResult {
             }
 
             TokenType::EndTag => {
-                if is_void_element(&token.value) {
+                if level == 0 {
+                    errors.push(RangeError::new(
+                        "Unexpected closing tag".to_string(),
+                        token.range,
+                    ));
+                } else if is_void_element(&token.value) {
                     errors.push(RangeError::new(
                         format!(
                             "Tag <{}> should not be closed using a closing tag",
@@ -220,44 +218,41 @@ pub fn parse(tokens: Vec<Token>) -> ParseResult {
                         ),
                         token.range,
                     ));
-                } else if builder.get(*stack.last().unwrap()).node_type == NodeType::RootNode {
-                    errors.push(RangeError::new(
-                        "Unexpected closing tag".to_string(),
-                        token.range,
-                    ));
-                } else if token.value != builder.get(*stack.last().unwrap()).value {
-                    // Recover by finding a matching tag on the stack
-                    let mut found_match = false;
-                    for (_i, &stack_idx) in stack.iter().enumerate().rev() {
-                        if builder.get(stack_idx).value == token.value {
-                            // Find first matching tag
-                            while builder.get(*stack.last().unwrap()).value != token.value {
-                                let unclosed_idx = stack.pop().unwrap();
-                                let unclosed_node = builder.get(unclosed_idx);
-                                errors.push(RangeError::new(
-                                    format!("Unclosed tag <{}>", unclosed_node.value),
-                                    unclosed_node.range,
-                                ));
-                            }
-                            builder.set_range_end(*stack.last().unwrap(), token.range.end);
-                            stack.pop();
-                            found_match = true;
-                            break;
-                        }
-                    }
-
-                    if !found_match {
-                        errors.push(RangeError::new(
-                            format!(
-                                "Expected closing tag for <{}>",
-                                builder.get(*stack.last().unwrap()).value
-                            ),
-                            token.range,
-                        ));
-                    }
                 } else {
-                    builder.set_range_end(*stack.last().unwrap(), token.range.end);
-                    stack.pop();
+                    let current_idx = *stack.last().unwrap();
+                    let current_node = builder.get(current_idx).clone();
+
+                    if token.value != current_node.value {
+                        // Find matching tag on stack
+                        let mut found_match = false;
+                        for (i, &stack_idx) in stack.iter().enumerate().rev() {
+                            if builder.get(stack_idx).value == token.value {
+                                // Close all unclosed tags up to the match
+                                while stack.len() > i + 1 {
+                                    let unclosed_idx = stack.pop().unwrap();
+                                    let unclosed_node = builder.get(unclosed_idx);
+                                    errors.push(RangeError::new(
+                                        format!("Unclosed tag <{}>", unclosed_node.value),
+                                        unclosed_node.range,
+                                    ));
+                                }
+                                builder.set_range_end(*stack.last().unwrap(), token.range.end);
+                                stack.pop();
+                                found_match = true;
+                                break;
+                            }
+                        }
+
+                        if !found_match {
+                            errors.push(RangeError::new(
+                                format!("Expected closing tag for <{}>", current_node.value),
+                                token.range,
+                            ));
+                        }
+                    } else {
+                        builder.set_range_end(*stack.last().unwrap(), token.range.end);
+                        stack.pop();
+                    }
                 }
             }
         }
@@ -265,11 +260,11 @@ pub fn parse(tokens: Vec<Token>) -> ParseResult {
 
     // Handle unclosed tags
     while stack.len() > 1 {
-        let unclosed_idx = stack.pop().unwrap();
-        let unclosed_node = builder.get(unclosed_idx);
+        let node_idx = stack.pop().unwrap();
+        let node = builder.get(node_idx);
         errors.push(RangeError::new(
-            format!("Unclosed tag <{}>", unclosed_node.value),
-            unclosed_node.range,
+            format!("Unclosed tag <{}>", node.value),
+            node.range,
         ));
     }
 
