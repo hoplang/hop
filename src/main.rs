@@ -3,6 +3,7 @@ mod parser;
 mod parser_tests;
 mod tokenizer;
 mod tokenizer_tests;
+mod unifier;
 
 use parser::parse;
 use tokenizer::tokenize;

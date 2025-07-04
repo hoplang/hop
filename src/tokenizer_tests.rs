@@ -1,4 +1,3 @@
-
 #[cfg(test)]
 mod tests {
     use pretty_assertions::assert_eq;
@@ -6,7 +5,10 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-    use crate::{common::{Attribute, Token, TokenType}, tokenizer::tokenize};
+    use crate::{
+        common::{Attribute, Token, TokenType},
+        tokenizer::tokenize,
+    };
 
     fn format_attr(attr: &Attribute) -> String {
         format!(

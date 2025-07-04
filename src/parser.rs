@@ -1,5 +1,5 @@
 use crate::common::{
-    is_void_element, Node, NodeType, Position, Range, RangeError, Token, TokenType,
+    Node, NodeType, Position, Range, RangeError, Token, TokenType, is_void_element,
 };
 use std::collections::HashMap;
 
