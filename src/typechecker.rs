@@ -172,20 +172,16 @@ fn typecheck_node(
                 typecheck_node(state, child, env, unifier, errors);
             }
         }
-        Node::Text(_) => {
-            // No typechecking needed for text nodes
-        }
-        Node::Doctype(_) => {
-            // No typechecking needed for doctype nodes
-        }
-        Node::Import(_) => {
-            // No typechecking needed for import nodes
-        }
-        Node::Component(component_node) => {
-            // Component nodes are handled at the top level, but we still need to typecheck children
-            for child in &component_node.children {
+        Node::Error(err_node) => {
+            for child in &err_node.children {
                 typecheck_node(state, child, env, unifier, errors);
             }
+        }
+        Node::Text(_) | Node::Doctype(_) => {
+            // No typechecking needed
+        }
+        Node::Import(_) | Node::Component(_) => {
+            panic!("Unexpected node")
         }
     }
 }

@@ -1,119 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
 
-// Position struct with Copy and Clone traits as specified in the Rust guide
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Position {
-    pub line: i32,
-    pub column: i32,
-}
-
-impl Position {
-    pub fn new(line: i32, column: i32) -> Self {
-        Position { line, column }
-    }
-}
-
-// Range struct with Copy and Clone traits as specified in the Rust guide
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Range {
-    pub start: Position,
-    pub end: Position,
-}
-
-impl Range {
-    pub fn new(start: Position, end: Position) -> Self {
-        Range { start, end }
-    }
-
-    // Returns true if the position lies in the range
-    // (where start is inclusive and end is exclusive)
-    pub fn contains_position(&self, position: Position) -> bool {
-        (position.line > self.start.line
-            || (position.line == self.start.line && position.column >= self.start.column))
-            && (position.line < self.end.line
-                || (position.line == self.end.line && position.column < self.end.column))
-    }
-}
-
-// RangeError immutable struct
-#[derive(Debug, Clone, PartialEq)]
-pub struct RangeError {
-    pub message: String,
-    pub range: Range,
-}
-
-impl RangeError {
-    pub fn new(message: String, range: Range) -> Self {
-        RangeError { message, range }
-    }
-}
-
-// Attribute immutable struct
-#[derive(Debug, Clone, PartialEq)]
-pub struct Attribute {
-    pub name: String,
-    pub value: String,
-    pub range: Range,
-}
-
-impl Attribute {
-    pub fn new(name: String, value: String, range: Range) -> Self {
-        Attribute { name, value, range }
-    }
-}
-
-// TokenType enum - simple enum so gets Copy trait as per Rust guide
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum TokenType {
-    Doctype,
-    StartTag,
-    EndTag,
-    SelfClosingTag,
-    Text,
-    Comment,
-    Error,
-}
-
-// Token immutable struct
-#[derive(Debug, Clone, PartialEq)]
-pub struct Token {
-    pub token_type: TokenType,
-    pub value: String,
-    pub attributes: Vec<Attribute>,
-    pub range: Range,
-}
-
-impl Token {
-    pub fn new(
-        token_type: TokenType,
-        value: String,
-        attributes: Vec<Attribute>,
-        range: Range,
-    ) -> Self {
-        Token {
-            token_type,
-            value,
-            attributes,
-            range,
-        }
-    }
-
-    // Returns true if the token has an attribute with the given name
-    pub fn has_attribute(&self, name: &str) -> bool {
-        self.attributes.iter().any(|attr| attr.name == name)
-    }
-
-    // Returns the attribute with the given name, or None if not found
-    pub fn get_attribute(&self, name: &str) -> Option<Attribute> {
-        self.attributes
-            .iter()
-            .find(|attr| attr.name == name)
-            .map(|a| a.clone())
-    }
-}
-
-// Type enum following the Rust implementation guide pattern
+// Type enum with Display trait for toString() functionality
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Object(HashMap<String, Type>, i32),
@@ -153,8 +41,119 @@ impl fmt::Display for Type {
     }
 }
 
+// Position struct with Copy and Clone traits
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Position {
+    pub line: i32,
+    pub column: i32,
+}
 
-// Node enum variants as separate structs following the Rust implementation guide
+impl Position {
+    pub fn new(line: i32, column: i32) -> Self {
+        Position { line, column }
+    }
+}
+
+// Range struct with Copy and Clone traits
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Range {
+    pub start: Position,
+    pub end: Position,
+}
+
+impl Range {
+    pub fn new(start: Position, end: Position) -> Self {
+        Range { start, end }
+    }
+
+    // returns true if the position lies in the range
+    // (where start is inclusive and end is exclusive)
+    pub fn contains_position(&self, position: Position) -> bool {
+        (position.line > self.start.line
+            || (position.line == self.start.line && position.column >= self.start.column))
+            && (position.line < self.end.line
+                || (position.line == self.end.line && position.column < self.end.column))
+    }
+}
+
+// RangeError struct
+#[derive(Debug, Clone, PartialEq)]
+pub struct RangeError {
+    pub message: String,
+    pub range: Range,
+}
+
+impl RangeError {
+    pub fn new(message: String, range: Range) -> Self {
+        RangeError { message, range }
+    }
+}
+
+// Attribute struct
+#[derive(Debug, Clone, PartialEq)]
+pub struct Attribute {
+    pub name: String,
+    pub value: String,
+    pub range: Range,
+}
+
+impl Attribute {
+    pub fn new(name: String, value: String, range: Range) -> Self {
+        Attribute { name, value, range }
+    }
+}
+
+// TokenType enum with Copy trait (simple enum)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TokenType {
+    Doctype,
+    StartTag,
+    EndTag,
+    SelfClosingTag,
+    Text,
+    Comment,
+    Error,
+}
+
+// Token struct
+#[derive(Debug, Clone, PartialEq)]
+pub struct Token {
+    pub token_type: TokenType,
+    pub value: String,
+    pub attributes: Vec<Attribute>,
+    pub range: Range,
+}
+
+impl Token {
+    pub fn new(
+        token_type: TokenType,
+        value: String,
+        attributes: Vec<Attribute>,
+        range: Range,
+    ) -> Self {
+        Token {
+            token_type,
+            value,
+            attributes,
+            range,
+        }
+    }
+
+    // Returns true if the token has an attribute with the given name
+    pub fn has_attribute(&self, name: &str) -> bool {
+        self.attributes.iter().any(|attr| attr.name == name)
+    }
+
+    // Returns the attribute with the given name, or None if not found
+    pub fn get_attribute(&self, name: &str) -> Option<Attribute> {
+        self.attributes
+            .iter()
+            .find(|attr| attr.name == name)
+            .map(|a| a.clone())
+    }
+}
+
+// Node structs as specified in the Rust implementation guide
 #[derive(Debug, Clone, PartialEq)]
 pub struct DoctypeNode {
     pub value: String,
@@ -216,7 +215,13 @@ pub struct NativeHTMLNode {
     pub inner_text_attr: Option<Attribute>,
 }
 
-// Node enum following the Rust implementation guide
+#[derive(Debug, Clone, PartialEq)]
+pub struct ErrorNode {
+    pub range: Range,
+    pub children: Vec<Node>,
+}
+
+// Node enum as specified in the Rust implementation guide
 #[derive(Debug, Clone, PartialEq)]
 pub enum Node {
     Doctype(DoctypeNode),
@@ -227,16 +232,17 @@ pub enum Node {
     Import(ImportNode),
     Component(ComponentNode),
     NativeHTML(NativeHTMLNode),
+    Error(ErrorNode),
 }
 
-// Environment class that models variable scope
-#[derive(Debug)]
+// Environment class for managing variable scope
+#[derive(Debug, Clone)]
 pub struct Environment<T> {
     values: HashMap<String, Vec<T>>,
     operations: Vec<String>,
 }
 
-impl<T> Environment<T> {
+impl<T: Clone> Environment<T> {
     pub fn new() -> Self {
         Environment {
             values: HashMap::new(),
@@ -267,26 +273,16 @@ impl<T> Environment<T> {
 
     // Returns true if the environment contains an entry with the given key
     pub fn has(&self, key: &str) -> bool {
-        self.values.contains_key(key)
-            && self
-                .values
-                .get(key)
-                .map_or(false, |stack| !stack.is_empty())
+        self.values
+            .get(key)
+            .map_or(false, |stack| !stack.is_empty())
     }
 
     // Look up a key in the environment
     pub fn lookup(&self, key: &str) -> Option<&T> {
-        self.values.get(key).and_then(|stack| stack.last())
+        self.values.get(key)?.last()
     }
 }
-
-impl<T> Default for Environment<T> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-// Helper functions
 
 // Escape HTML special characters to prevent XSS attacks
 // Converts &, <, >, ", and ' to their HTML entity equivalents
@@ -306,25 +302,19 @@ pub fn escape_html(text: &str) -> String {
 // Format a collection of range errors into a readable error message
 pub fn format_range_errors(message: &str, errors: &[RangeError]) -> String {
     let mut result = message.to_string();
-    result.push('\n');
-
     for error in errors {
         result.push_str(&format!(
-            "  {}:{}-{}:{}: {}\n",
-            error.range.start.line,
-            error.range.start.column,
-            error.range.end.line,
-            error.range.end.column,
-            error.message
+            "\n  {}:{}:{}: {}",
+            error.range.start.line, error.range.start.column, error.range.end.column, error.message
         ));
     }
-
     result
 }
 
 // Return true if the string represents a void element
-// The void elements are area, base, br, col, embed, hr, img, input, link, meta,
-// param, source, track and wbr (native HTML nodes) as well as import (defined by hop)
+// The void elements are `area`, `base`, `br`, `col`, `embed`, `hr`,
+// `img`, `input`, `link`, `meta`, `param`, `source`, `track` and `wbr`
+// (native HTML nodes) as well as `import` (defined by hop).
 pub fn is_void_element(el: &str) -> bool {
     matches!(
         el,

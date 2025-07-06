@@ -1,7 +1,14 @@
 use crate::common::{
-    Attribute, ComponentNode, CondNode, DoctypeNode, ForNode, ImportNode, NativeHTMLNode, Node,
+    ComponentNode, CondNode, DoctypeNode, ErrorNode, ForNode, ImportNode, NativeHTMLNode, Node,
     Position, Range, RangeError, RenderNode, TextNode, Token, TokenType, is_void_element,
 };
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParseResult {
+    pub components: Vec<ComponentNode>,
+    pub imports: Vec<ImportNode>,
+    pub errors: Vec<RangeError>,
+}
 
 // Error constructors
 fn err_unmatched(t: &Token) -> RangeError {
@@ -54,12 +61,6 @@ fn err_missing_required_attr(t: &Token, attr: &str) -> RangeError {
 }
 
 #[derive(Debug, Clone)]
-pub struct ParseResult {
-    pub components: Vec<ComponentNode>,
-    pub imports: Vec<ImportNode>,
-    pub errors: Vec<RangeError>,
-}
-
 struct TokenTree {
     token: Token,
     children: Vec<TokenTree>,
@@ -98,8 +99,8 @@ pub fn parse(tokens: Vec<Token>) -> ParseResult {
     for child in &tree.children {
         let node = construct_node(child, 0, &mut errors);
         match node {
-            Node::Import(import_node) => imports.push(import_node),
-            Node::Component(component_node) => components.push(component_node),
+            Node::Import(import_data) => imports.push(import_data),
+            Node::Component(component_data) => components.push(component_data),
             _ => {} // ignore other node types at root level
         }
     }
@@ -112,9 +113,9 @@ pub fn parse(tokens: Vec<Token>) -> ParseResult {
 }
 
 fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
-    let mut stack = Vec::new();
+    let mut stack: Vec<TokenTree> = Vec::new();
 
-    // Push root token
+    // Push a root token
     let root_token = Token {
         token_type: TokenType::StartTag,
         value: "root".to_string(),
@@ -156,7 +157,7 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
                 if is_void_element(&token.value) {
                     errors.push(err_closed_void(&token));
                 } else {
-                    // Check if matching start tag exists
+                    // Check if we can find a matching start tag
                     let mut found = false;
                     for tree in &stack {
                         if tree.token.value == token.value {
@@ -169,16 +170,23 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
                         errors.push(err_unmatched(&token));
                     } else {
                         // Pop until we find the matching tag
-                        while stack.len() > 1 && stack.last().unwrap().token.value != token.value {
-                            let unclosed = stack.pop().unwrap();
-                            errors.push(err_unclosed(&unclosed.token));
+                        while stack.len() > 1 {
+                            if let Some(last) = stack.last() {
+                                if last.token.value == token.value {
+                                    break;
+                                }
+                            }
+                            if let Some(unclosed) = stack.pop() {
+                                errors.push(err_unclosed(&unclosed.token));
+                            }
                         }
 
                         if stack.len() > 1 {
-                            let mut completed = stack.pop().unwrap();
-                            completed.set_end_token(token);
-                            if let Some(top) = stack.last_mut() {
-                                top.append_tree(completed);
+                            if let Some(mut completed) = stack.pop() {
+                                completed.set_end_token(token);
+                                if let Some(top) = stack.last_mut() {
+                                    top.append_tree(completed);
+                                }
                             }
                         }
                     }
@@ -187,13 +195,26 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
         }
     }
 
-    // Handle remaining unclosed tags
+    // Close any remaining unclosed tags
     while stack.len() > 1 {
-        let unclosed = stack.pop().unwrap();
-        errors.push(err_unclosed(&unclosed.token));
+        if let Some(unclosed) = stack.pop() {
+            errors.push(err_unclosed(&unclosed.token));
+        }
     }
 
-    stack.pop().unwrap()
+    // Return the root, or create an empty one if stack is empty (shouldn't happen)
+    stack.pop().unwrap_or_else(|| {
+        let root_token = Token {
+            token_type: TokenType::StartTag,
+            value: "root".to_string(),
+            attributes: Vec::new(),
+            range: Range {
+                start: Position { line: 0, column: 0 },
+                end: Position { line: 0, column: 0 },
+            },
+        };
+        TokenTree::new(root_token)
+    })
 }
 
 fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) -> Node {
@@ -230,91 +251,99 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
 
             match t.value.as_str() {
                 "render" => {
-                    if !t.has_attribute("component") {
-                        errors.push(err_missing_required_attr(t, "component"));
-                    }
-                    let component_attr = t.get_attribute("component").unwrap_or(Attribute {
-                        name: "component".to_string(),
-                        value: "".to_string(),
-                        range: t.range,
-                    });
                     let params_attr = t.get_attribute("params");
+                    let component_attr = t.get_attribute("component");
+
+                    if component_attr.is_none() {
+                        errors.push(err_missing_required_attr(t, "component"));
+                        return Node::Error(ErrorNode {
+                            range: t.range,
+                            children,
+                        });
+                    }
+
                     Node::Render(RenderNode {
-                        component_attr,
+                        component_attr: component_attr.unwrap(),
                         params_attr,
                         range: t.range,
                         children,
                     })
                 }
                 "for" => {
-                    if !t.has_attribute("each") {
-                        errors.push(err_missing_required_attr(t, "each"));
-                    }
-                    let each_attr = t.get_attribute("each").unwrap_or(Attribute {
-                        name: "each".to_string(),
-                        value: "".to_string(),
-                        range: t.range,
-                    });
+                    let each_attr = t.get_attribute("each");
                     let as_attr = t.get_attribute("as");
+
+                    if each_attr.is_none() {
+                        errors.push(err_missing_required_attr(t, "each"));
+                        return Node::Error(ErrorNode {
+                            range: t.range,
+                            children,
+                        });
+                    }
+
                     Node::For(ForNode {
-                        each_attr,
+                        each_attr: each_attr.unwrap(),
                         as_attr,
                         range: t.range,
                         children,
                     })
                 }
                 "cond" => {
-                    if !t.has_attribute("if") {
+                    let if_attr = t.get_attribute("if");
+
+                    if if_attr.is_none() {
                         errors.push(err_missing_required_attr(t, "if"));
+                        return Node::Error(ErrorNode {
+                            range: t.range,
+                            children,
+                        });
                     }
-                    let if_attr = t.get_attribute("if").unwrap_or(Attribute {
-                        name: "if".to_string(),
-                        value: "".to_string(),
-                        range: t.range,
-                    });
+
                     Node::Cond(CondNode {
-                        if_attr: if_attr,
+                        if_attr: if_attr.unwrap(),
                         range: t.range,
                         children,
                     })
                 }
                 "import" => {
-                    if !t.has_attribute("component") {
-                        errors.push(err_missing_required_attr(t, "component"));
+                    let component_attr = t.get_attribute("component");
+                    let from_attr = t.get_attribute("from");
+
+                    if component_attr.is_none() || from_attr.is_none() {
+                        if component_attr.is_none() {
+                            errors.push(err_missing_required_attr(t, "component"));
+                        }
+                        if from_attr.is_none() {
+                            errors.push(err_missing_required_attr(t, "from"));
+                        }
+                        return Node::Error(ErrorNode {
+                            range: t.range,
+                            children,
+                        });
                     }
-                    if !t.has_attribute("from") {
-                        errors.push(err_missing_required_attr(t, "from"));
-                    }
-                    let component_attr = t.get_attribute("component").unwrap_or(Attribute {
-                        name: "component".to_string(),
-                        value: "".to_string(),
-                        range: t.range,
-                    });
-                    let from_attr = t.get_attribute("from").unwrap_or(Attribute {
-                        name: "from".to_string(),
-                        value: "".to_string(),
-                        range: t.range,
-                    });
+
                     Node::Import(ImportNode {
-                        component_attr: component_attr,
-                        from_attr: from_attr,
+                        component_attr: component_attr.unwrap(),
+                        from_attr: from_attr.unwrap(),
                         range: t.range,
                     })
                 }
                 "component" => {
-                    if !t.has_attribute("name") {
-                        errors.push(err_missing_required_attr(t, "name"));
-                    }
-                    let name_attr = t.get_attribute("name").unwrap_or(Attribute {
-                        name: "name".to_string(),
-                        value: "".to_string(),
-                        range: t.range,
-                    });
-                    let params_as_attr = t.get_attribute("params-as");
                     let as_attr = t.get_attribute("as");
+                    let params_as_attr = t.get_attribute("params-as");
+                    let name_attr = t.get_attribute("name");
+
+                    if name_attr.is_none() {
+                        errors.push(err_missing_required_attr(t, "name"));
+                        return Node::Error(ErrorNode {
+                            range: t.range,
+                            children,
+                        });
+                    }
+
                     Node::Component(ComponentNode {
-                        name_attr,
-                        params_as_attr: params_as_attr,
+                        name_attr: name_attr.unwrap(),
+                        params_as_attr,
                         as_attr,
                         attributes: t.attributes.clone(),
                         range: t.range,
