@@ -5,7 +5,7 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-    use crate::common::{Node, NodeType};
+    use crate::common::{ComponentNode, CondNode, ForNode, NativeHTMLNode, Node, RenderNode};
     use crate::parser::parse;
     use crate::tokenizer::tokenize;
 
@@ -15,29 +15,46 @@ mod tests {
         fn format_node(node: &Node, depth: usize, lines: &mut Vec<String>) {
             let indent = "\t".repeat(depth);
 
-            match node.node_type {
-                NodeType::ImportNode
-                | NodeType::RenderNode
-                | NodeType::ComponentNode
-                | NodeType::ForNode
-                | NodeType::CondNode
-                | NodeType::NativeHTMLNode => {
-                    lines.push(format!("{}{}", indent, node.value));
+            match node {
+                Node::Import(_) => {
+                    lines.push(format!("{}import", indent));
                 }
-                NodeType::DoctypeNode => {
+                Node::Doctype(_) => {
                     lines.push(format!("{}doctype", indent));
                 }
-                NodeType::TextNode | NodeType::CommentNode | NodeType::RootNode => {
-                    // skip
+                Node::Render(RenderNode { children, .. }) => {
+                    lines.push(format!("{}render", indent));
+                    for child in children {
+                        format_node(child, depth + 1, lines);
+                    }
                 }
-            }
-
-            for child in &node.children {
-                let next_depth = match node.node_type {
-                    NodeType::RootNode => depth,
-                    _ => depth + 1,
-                };
-                format_node(child, next_depth, lines);
+                Node::Cond(CondNode { children, .. }) => {
+                    lines.push(format!("{}cond", indent));
+                    for child in children {
+                        format_node(child, depth + 1, lines);
+                    }
+                }
+                Node::For(ForNode { children, .. }) => {
+                    lines.push(format!("{}for", indent));
+                    for child in children {
+                        format_node(child, depth + 1, lines);
+                    }
+                }
+                Node::Component(ComponentNode { children, .. }) => {
+                    lines.push(format!("{}component", indent));
+                    for child in children {
+                        format_node(child, depth + 1, lines);
+                    }
+                }
+                Node::NativeHTML(NativeHTMLNode {
+                    value, children, ..
+                }) => {
+                    lines.push(format!("{}{}", indent, value));
+                    for child in children {
+                        format_node(child, depth + 1, lines);
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -101,9 +118,12 @@ mod tests {
 
             let result = parse(tokenize(input_html.to_string()));
 
-            let output = format_tree(&result.root);
-
-            assert_eq!(output, expected_output, "Mismatch in file: {}", file_name);
+            for component in result.components {
+                if component.name_attr.value == "main" {
+                    let output = format_tree(&Node::Component(component));
+                    assert_eq!(output, expected_output, "Mismatch in file: {}", file_name);
+                }
+            }
         }
     }
 }

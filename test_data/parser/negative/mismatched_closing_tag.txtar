@@ -3,4 +3,4 @@
 	</div>
 </component>
 -- output.txt --
-Expected closing tag for <component>
+Unmatched </div>

@@ -2,4 +2,4 @@ fmt:
 	cargo fmt
 
 test:
-	cargo test
+	cargo test --no-fail-fast
