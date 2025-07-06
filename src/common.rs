@@ -168,12 +168,6 @@ pub struct TextNode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct CommentNode {
-    pub value: String,
-    pub range: Range,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct RenderNode {
     pub component_attr: Attribute,
     pub params_attr: Option<Attribute>,
@@ -227,7 +221,6 @@ pub struct NativeHTMLNode {
 pub enum Node {
     Doctype(DoctypeNode),
     Text(TextNode),
-    Comment(CommentNode),
     Render(RenderNode),
     For(ForNode),
     Cond(CondNode),

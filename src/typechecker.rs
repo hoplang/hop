@@ -175,9 +175,6 @@ fn typecheck_node(
         Node::Text(_) => {
             // No typechecking needed for text nodes
         }
-        Node::Comment(_) => {
-            // No typechecking needed for comment nodes
-        }
         Node::Doctype(_) => {
             // No typechecking needed for doctype nodes
         }
