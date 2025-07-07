@@ -70,7 +70,14 @@ impl TopoSorter {
 
         for node in &self.nodes {
             if !visited.contains(node) {
-                if let Some(error) = self.dfs(node, &mut result, &mut visited, &mut path, &mut in_path, &self.nodes) {
+                if let Some(error) = self.dfs(
+                    node,
+                    &mut result,
+                    &mut visited,
+                    &mut path,
+                    &mut in_path,
+                    &self.nodes,
+                ) {
                     return SortResult {
                         nodes: Vec::new(),
                         error: Some(error),
@@ -125,7 +132,14 @@ impl TopoSorter {
 
         for node in &subgraph_nodes {
             if !visited.contains(node) {
-                if let Some(error) = self.dfs(node, &mut result, &mut visited, &mut path, &mut in_path, &subgraph_nodes) {
+                if let Some(error) = self.dfs(
+                    node,
+                    &mut result,
+                    &mut visited,
+                    &mut path,
+                    &mut in_path,
+                    &subgraph_nodes,
+                ) {
                     return SortResult {
                         nodes: Vec::new(),
                         error: Some(error),
@@ -183,7 +197,9 @@ impl TopoSorter {
         if let Some(deps) = self.dependencies.get(node) {
             for dep in deps {
                 if subgraph_nodes.contains(dep) {
-                    if let Some(error) = self.dfs(dep, result, visited, path, in_path, subgraph_nodes) {
+                    if let Some(error) =
+                        self.dfs(dep, result, visited, path, in_path, subgraph_nodes)
+                    {
                         return Some(error);
                     }
                 }
