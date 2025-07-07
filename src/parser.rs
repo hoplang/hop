@@ -2,7 +2,7 @@ use crate::common::{
     is_void_element, ComponentNode, CondNode, DoctypeNode, ErrorNode, ExprAttribute, ForNode,
     ImportNode, NativeHTMLNode, Node, Position, Range, RenderNode, TextNode, Token, TokenKind,
 };
-use miette::{Diagnostic, SourceSpan};
+use miette::Diagnostic;
 use thiserror::Error;
 
 #[derive(Debug, Error, Clone, PartialEq, Diagnostic)]

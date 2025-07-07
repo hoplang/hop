@@ -1,6 +1,6 @@
 use crate::common::{
     ComponentNode, CondNode, Environment, ErrorNode, ExprAttribute, ForNode, NativeHTMLNode, Node,
-    Range, RangeError, RenderNode, Type,
+    Range, RenderNode, Type,
 };
 use crate::unifier::Unifier;
 use miette::Diagnostic;
