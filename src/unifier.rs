@@ -188,7 +188,11 @@ mod tests {
                 "string" => Type::String,
                 "bool" => Type::Bool,
                 "void" => Type::Void,
-                _ => table.get(&str).unwrap().clone(),
+                _ => {
+                    // Get type var from table
+                    assert!(str.len() > 0 && str.starts_with('t'));
+                    table.get(&str).unwrap().clone()
+                }
             },
         }
     }
@@ -229,6 +233,7 @@ mod tests {
                             unifier.unify(t1, t2);
                         }
                         "query" => {
+                            assert!(args.len() == 1);
                             let t1 = &sexpr_to_type(args[0].clone(), &table, &mut unifier);
                             lines.push(format!("{}", unifier.query(t1)));
                         }
