@@ -19,6 +19,17 @@ The modules are the following:
 * `src/unifier.rs` - The `unifier` module. This module contains a specification for a class that performs unification.
 * `src/typechecker.rs` - The `typechecker` module. This module contains the specification for the public API and the implementation of the hop typechecker.
 
+The following diagram shows how the modules relate to each other in terms of imports:
+
+```mermaid
+graph LR
+    tokenizer -.-> common
+    parser -.-> common
+    typechecker -.-> common
+    unifier -.-> common
+    typechecker -.-> unifier
+```
+
 ## Transpiling to TypeScript
 
 You may be asked to transpile the project to TypeScript. If you are asked to do
@@ -48,53 +59,37 @@ be declared as `export function fooBar` in TypeScript.
 When a type is declared as `Option<Foo>` the TypeScript implementation should
 use `Foo | null`.
 
-## Use ReadonlyArray and ReadonlyMap for function parameters
+## Implementing the `Node` type
 
-When a function takes a map or an array that is not mutable use TypeScripts
-native `ReadonlyMap` and `ReadonlyArray` as the types of these parameters.
+When implementing the Node type in TypeScript, use the following definition:
 
-## Implementing enums with fields
 
-When implementing enums with fields such as the following:
 ```pseudocode
-pub enum Foo {
-    Bar(Bar),
-    Baz(Baz),
-}
-```
-
-Add a TypeScript enum that represents the kind of each member:
-
-```typescript
-export enum FooKind {
-  Bar = "Bar",
-  Baz = "Baz",
-}
-```
-
-Implement each member of the enum as a class and add a field `kind`, e.g:
-
-```typescript
-export class Foo {
-  readonly kind = FooKind.ObjectType;
+export enum NodeKind {
+  DoctypeNode = "DoctypeNode",
+  TextNode = "TextNode",
+  RenderNode = "RenderNode",
   // ...
 }
-```
 
-Then add a type that is the union of all the enum members:
-
-```typescript
-export type Foo = Bar | Baz;
-```
-
-This allows you to perform discrimination of the different members of the union:
-
-```typescript
-switch (t.kind) {
-  case TypeKind.ObjectType:
-    // here t will be of type ObjectType and you will have access to t.properties
-    // NOTE: You do not have to (and should never) use type assertions
+export class DoctypeNode {
+  readonly kind = NodeKind.DoctypeNode;
+  constructor(...) {}
 }
+
+export class TextNode {
+  readonly kind = NodeKind.TextNode;
+  constructor(...) {}
+}
+
+export class RenderNode {
+  readonly kind = NodeKind.RenderNode;
+  constructor(...) {}
+}
+
+// ...
+
+export type Node = DoctypeNode | TextNode | RenderNode | // ...
 ```
 
 ## Never use Type Assertions
