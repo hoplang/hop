@@ -140,15 +140,11 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
                 });
             }
             TokenType::Doctype | TokenType::Text | TokenType::SelfClosingTag => {
-                if let Some(top) = stack.last_mut() {
-                    top.append_child(token);
-                }
+                stack.last_mut().unwrap().append_child(token);
             }
             TokenType::StartTag => {
                 if is_void_element(&token.value) {
-                    if let Some(top) = stack.last_mut() {
-                        top.append_child(token);
-                    }
+                    stack.last_mut().unwrap().append_child(token);
                 } else {
                     stack.push(TokenTree::new(token));
                 }
@@ -156,40 +152,19 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
             TokenType::EndTag => {
                 if is_void_element(&token.value) {
                     errors.push(err_closed_void(&token));
+                } else if stack
+                    .iter()
+                    .find(|t| t.token.value == token.value)
+                    .is_none()
+                {
+                    errors.push(err_unmatched(&token));
                 } else {
-                    // Check if we can find a matching start tag
-                    let mut found = false;
-                    for tree in &stack {
-                        if tree.token.value == token.value {
-                            found = true;
-                            break;
-                        }
+                    while stack.last().unwrap().token.value != token.value {
+                        errors.push(err_unclosed(&stack.pop().unwrap().token));
                     }
-
-                    if !found {
-                        errors.push(err_unmatched(&token));
-                    } else {
-                        // Pop until we find the matching tag
-                        while stack.len() > 1 {
-                            if let Some(last) = stack.last() {
-                                if last.token.value == token.value {
-                                    break;
-                                }
-                            }
-                            if let Some(unclosed) = stack.pop() {
-                                errors.push(err_unclosed(&unclosed.token));
-                            }
-                        }
-
-                        if stack.len() > 1 {
-                            if let Some(mut completed) = stack.pop() {
-                                completed.set_end_token(token);
-                                if let Some(top) = stack.last_mut() {
-                                    top.append_tree(completed);
-                                }
-                            }
-                        }
-                    }
+                    let mut completed = stack.pop().unwrap();
+                    completed.set_end_token(token);
+                    stack.last_mut().unwrap().append_tree(completed);
                 }
             }
         }
@@ -197,9 +172,7 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
 
     // Close any remaining unclosed tags
     while stack.len() > 1 {
-        if let Some(unclosed) = stack.pop() {
-            errors.push(err_unclosed(&unclosed.token));
-        }
+        errors.push(err_unclosed(&stack.pop().unwrap().token));
     }
 
     // Return the root, or create an empty one if stack is empty (shouldn't happen)
