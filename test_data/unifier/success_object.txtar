@@ -1,0 +1,6 @@
+-- in --
+(unify t1 (object foo t2))
+(unify t2 string)
+(query t1)
+-- out --
+{foo: string}

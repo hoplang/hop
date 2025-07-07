@@ -1,0 +1,5 @@
+-- in --
+(unify (array (array t1)) (array (array string)))
+(query t1)
+-- out --
+string

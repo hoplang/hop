@@ -1,7 +1,0 @@
--- unification.txtar --
-t1 = (object a string b string c (object a string b string))
-(object d string) = t1
--- queries.txtar --
-t1
--- output.txtar --
-{a: string, b: string, c: {a: string, b: string}, d: string}

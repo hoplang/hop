@@ -1,5 +1,6 @@
 mod common;
 mod parser;
+mod sexpr;
 mod tokenizer;
 mod typechecker;
 mod unifier;

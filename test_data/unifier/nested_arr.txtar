@@ -1,6 +1,0 @@
--- unification.txtar --
-(array (array t1)) = (array (array string))
--- queries.txtar --
-t1
--- output.txtar --
-string

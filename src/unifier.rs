@@ -161,108 +161,86 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-    use crate::tokenizer::tokenize;
+    use crate::sexpr::SExpr;
 
-    #[derive(Debug, Clone, PartialEq)]
-    enum SExpr {
-        List(Vec<SExpr>),
-        Symbol(String),
-    }
-
-    impl SExpr {
-        fn parse(input: &str) -> SExpr {
-            let mut pos = 0;
-            let result = Self::parse_expr(input, &mut pos);
-            Self::skip_whitespace(input, &mut pos);
-            if pos < input.len() {
-                panic!("Unexpected characters after S-expression");
-            }
-            result
-        }
-
-        fn parse_expr(input: &str, pos: &mut usize) -> SExpr {
-            Self::skip_whitespace(input, pos);
-            if *pos >= input.len() {
-                panic!("Unexpected end of input");
-            }
-            let chars: Vec<char> = input.chars().collect();
-            match chars[*pos] {
-                '(' => Self::parse_list(input, pos),
-                ')' => panic!("Unexpected closing parenthesis"),
-                _ => Self::parse_symbol(input, pos),
-            }
-        }
-
-        fn parse_list(input: &str, pos: &mut usize) -> SExpr {
-            let chars: Vec<char> = input.chars().collect();
-            if *pos >= chars.len() || chars[*pos] != '(' {
-                panic!("Expected opening parenthesis");
-            }
-            *pos += 1;
-            let mut elements = Vec::new();
-            loop {
-                Self::skip_whitespace(input, pos);
-                if *pos >= chars.len() {
-                    panic!("Unclosed list");
+    fn sexpr_to_type(sexpr: SExpr, table: &HashMap<String, Type>, unifier: &mut Unifier) -> Type {
+        match sexpr {
+            SExpr::Command(cmd, args) => match cmd.as_str() {
+                "array" => {
+                    assert!(args.len() == 1);
+                    Type::Array(Box::new(sexpr_to_type(args[0].clone(), table, unifier)))
                 }
-                if chars[*pos] == ')' {
-                    *pos += 1; // Consume closing parenthesis
-                    break;
+                "object" => {
+                    let mut map: HashMap<String, Type> = HashMap::new();
+                    for chunk in args.chunks(2) {
+                        let value = sexpr_to_type(chunk[1].clone(), table, unifier);
+                        let key = match &chunk[0] {
+                            SExpr::Symbol(s) => s.clone(),
+                            _ => panic!(),
+                        };
+                        map.insert(key, value);
+                    }
+                    Type::Object(map, unifier.next_type_var())
                 }
-                elements.push(Self::parse_expr(input, pos));
-            }
-            SExpr::List(elements)
-        }
-
-        fn parse_symbol(input: &str, pos: &mut usize) -> SExpr {
-            let chars: Vec<char> = input.chars().collect();
-            let mut symbol = String::new();
-            while *pos < chars.len() {
-                let ch = chars[*pos];
-                if ch.is_whitespace() || ch == '(' || ch == ')' {
-                    break;
-                }
-                symbol.push(ch);
-                *pos += 1;
-            }
-            if symbol.is_empty() {
-                panic!("Empty symbol");
-            }
-            SExpr::Symbol(symbol)
-        }
-
-        fn skip_whitespace(input: &str, pos: &mut usize) {
-            let chars: Vec<char> = input.chars().collect();
-            while *pos < chars.len() && chars[*pos].is_whitespace() {
-                *pos += 1;
-            }
+                _ => panic!(),
+            },
+            SExpr::Symbol(str) => match str.as_str() {
+                "string" => Type::String,
+                "bool" => Type::Bool,
+                "void" => Type::Void,
+                _ => table.get(&str).unwrap().clone(),
+            },
         }
     }
 
     #[test]
-    fn test_unifier() {}
+    fn test_unifier() {
+        let entries = fs::read_dir(Path::new("test_data/unifier")).unwrap();
 
-    #[test]
-    fn test_sexpr() {
-        assert_eq!(SExpr::parse("hello"), SExpr::Symbol("hello".to_string()));
-        assert_eq!(SExpr::parse("()"), SExpr::List(vec![]));
-        assert_eq!(
-            SExpr::parse("(a b)"),
-            SExpr::List(vec![
-                SExpr::Symbol("a".to_string()),
-                SExpr::Symbol("b".to_string())
-            ])
-        );
-        assert_eq!(
-            SExpr::parse("(a ((b c)) d)"),
-            SExpr::List(vec![
-                SExpr::Symbol("a".to_string()),
-                SExpr::List(vec![SExpr::List(vec![
-                    SExpr::Symbol("b".to_string()),
-                    SExpr::Symbol("c".to_string())
-                ]),]),
-                SExpr::Symbol("d".to_string())
-            ])
-        );
+        for entry in entries {
+            let path = entry.unwrap().path();
+
+            let file_name = path.file_name().unwrap().to_string_lossy();
+
+            let archive = Archive::from(fs::read_to_string(&path).unwrap());
+
+            let input = archive.get("in").unwrap().content.trim();
+            let expected = archive.get("out").unwrap().content.trim();
+            let mut table: HashMap<String, Type> = HashMap::new();
+
+            let mut unifier = Unifier::new();
+
+            // Reserve type vars t1, t2, ... in a table
+            for n in 1..101 {
+                table.insert(format!("t{}", n), Type::TypeVar(unifier.next_type_var()));
+            }
+
+            let mut lines: Vec<String> = Vec::new();
+
+            println!("{}", file_name);
+
+            for line in input.split("\n") {
+                match SExpr::parse(line) {
+                    SExpr::Command(cmd, args) => match cmd.as_str() {
+                        "unify" => {
+                            assert!(args.len() == 2);
+                            let t1 = &sexpr_to_type(args[0].clone(), &table, &mut unifier);
+                            let t2 = &sexpr_to_type(args[1].clone(), &table, &mut unifier);
+                            unifier.unify(t1, t2);
+                        }
+                        "query" => {
+                            let t1 = &sexpr_to_type(args[0].clone(), &table, &mut unifier);
+                            lines.push(format!("{}", unifier.query(t1)));
+                        }
+                        _ => panic!(),
+                    },
+                    _ => panic!(),
+                }
+            }
+
+            let output = lines.join("\n");
+
+            assert_eq!(output, expected, "Mismatch in file: {}", file_name);
+        }
     }
 }

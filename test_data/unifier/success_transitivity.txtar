@@ -1,0 +1,14 @@
+-- in --
+(unify t1 t2)
+(unify t2 t3)
+(unify t3 t4)
+(unify t5 t6)
+(unify t6 t7)
+(unify t7 t8)
+(unify t8 string)
+(unify t4 t5)
+(query t1)
+(query t8)
+-- out --
+string
+string
