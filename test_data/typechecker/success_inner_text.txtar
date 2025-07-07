@@ -1,6 +1,6 @@
--- main.hop --
+-- in --
 <component name="main" params-as="params">
 	<div inner-text="params"></div>
 </component>
--- type.json --
+-- out --
 string

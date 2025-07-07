@@ -1,9 +1,9 @@
--- main.hop --
+-- in --
 <component name="main" params-as="params">
 	<cond if="params.i.j.k.l">
-		<cond if="params.i.k">
-		</cond>
+	</cond>
+	<cond if="params.i.k">
 	</cond>
 </component>
--- type.json --
+-- out --
 {i: {j: {k: {l: boolean}}, k: boolean}}

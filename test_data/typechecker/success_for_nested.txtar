@@ -1,4 +1,4 @@
--- main.hop --
+-- in --
 <component name="main" params-as="i">
 	<for each="i" as="j">
 		<for each="j" as="k">
@@ -7,5 +7,5 @@
 		</for>
 	</for>
 </component>
--- type.json --
+-- out --
 boolean[][]

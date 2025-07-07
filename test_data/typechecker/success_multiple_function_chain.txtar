@@ -1,4 +1,4 @@
--- main.hop --
+-- in --
 <component name="step3" params-as="settings">
 	<cond if="settings.enabled">
 	</cond>
@@ -15,5 +15,5 @@
 <component name="main" params-as="params">
 	<render component="step1" params="params"/>
 </component>
--- type.json --
+-- out --
 {config: {settings: {enabled: boolean}}}

@@ -1,4 +1,4 @@
--- main.hop --
+-- in --
 <component name="processItem" params-as="item">
 	<cond if="item.status.active">
 	</cond>
@@ -13,5 +13,5 @@
 		<render component="processItem" params="item"/>
 	</for>
 </component>
--- type.json --
+-- out --
 {items: {children: {visible: boolean}[], status: {active: boolean}}[]}

@@ -1,4 +1,4 @@
--- main.hop --
+-- in --
 <component name="main" params-as="params">
 	<cond if="params.app.ui.theme.dark">
 	</cond>
@@ -7,5 +7,5 @@
 	<cond if="params.app.database.connection.ssl">
 	</cond>
 </component>
--- type.json --
+-- out --
 {app: {api: {endpoints: {users: {enabled: boolean}}}, database: {connection: {ssl: boolean}}, ui: {theme: {dark: boolean}}}}

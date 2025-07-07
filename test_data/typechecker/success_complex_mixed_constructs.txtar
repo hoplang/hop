@@ -1,4 +1,4 @@
--- main.hop --
+-- in --
 <component name="main" params-as="params">
 	<cond if="params.enabled">
 		<for each="params.users" as="user">
@@ -11,5 +11,5 @@
 		</for>
 	</cond>
 </component>
--- type.json --
+-- out --
 {enabled: boolean, users: {posts: {published: boolean}[], profile: {verified: boolean}}[]}

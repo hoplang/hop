@@ -1,4 +1,4 @@
--- main.hop --
+-- in --
 <component name="executeStep" params-as="step">
 	<cond if="step.condition">
 	</cond>
@@ -17,5 +17,5 @@
 		<render component="executeWorkflow" params="workflow"/>
 	</for>
 </component>
--- type.json --
+-- out --
 {workflows: {enabled: boolean, steps: {condition: boolean}[]}[]}

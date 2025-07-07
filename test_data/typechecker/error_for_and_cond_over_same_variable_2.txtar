@@ -1,4 +1,4 @@
--- main.hop --
+-- in --
 <component name="main" params-as="params">
 	<for each="params" as="item">
 		<cond if="item.k">
@@ -9,5 +9,5 @@
 		</for>
 	</for>
 </component>
--- error.txt --
+-- out --
 Can not unify types

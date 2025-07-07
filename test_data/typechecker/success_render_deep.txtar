@@ -1,4 +1,4 @@
--- main.hop --
+-- in --
 <component name="bar" params-as="p">
   <cond if="p">
   </cond>
@@ -11,5 +11,5 @@
 <component name="main" params-as="i">
   <render component="foo" params="i"/>
 </component>
--- type.json --
+-- out --
 boolean

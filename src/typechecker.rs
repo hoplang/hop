@@ -247,42 +247,44 @@ mod tests {
     use std::path::Path;
 
     #[test]
-    fn test_typechecker_positive() {
-        let test_data_dir = Path::new("test_data/typechecker/positive");
-
-        let entries = fs::read_dir(test_data_dir).expect("Failed to read test_data directory");
+    fn test_typechecker() {
+        let entries = fs::read_dir(Path::new("test_data/typechecker")).unwrap();
 
         for entry in entries {
-            let entry = entry.expect("Failed to read directory entry");
-            let path = entry.path();
+            let path = entry.unwrap().path();
 
             let file_name = path.file_name().unwrap().to_string_lossy();
 
-            println!("Running test for: {}", file_name);
+            let archive = Archive::from(fs::read_to_string(&path).unwrap());
 
-            let content = fs::read_to_string(&path)
-                .expect(&format!("Failed to read file: {}", path.display()));
+            let input = archive.get("in").unwrap().content.trim();
+            let expected = archive.get("out").unwrap().content.trim();
 
-            let archive = Archive::from(&content);
+            let parse_result = parse(tokenize(input.to_string()));
 
-            let input_html = archive.get("main.hop").unwrap().content.trim();
-            let expected_output: &str = archive.get("type.json").unwrap().content.trim();
+            let type_result = typecheck(&parse_result.components, HashMap::new());
 
-            let result = parse(tokenize(input_html.to_string()));
+            if !type_result.errors.is_empty() {
+                let output = type_result
+                    .errors
+                    .iter()
+                    .map(|e| e.message.clone())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                assert_eq!(output, expected, "Mismatch in file: {}", file_name);
+            } else {
+                let output = type_result
+                    .parameter_types
+                    .get("main")
+                    .expect("Type for main not found");
 
-            let type_result = typecheck(&result.components, HashMap::new());
-
-            let output = type_result
-                .parameter_types
-                .get("main")
-                .expect("Type for main not found");
-
-            assert_eq!(
-                format!("{}", output),
-                expected_output,
-                "Mismatch in file: {}",
-                file_name
-            );
+                assert_eq!(
+                    format!("{}", output),
+                    expected,
+                    "Mismatch in file: {}",
+                    file_name
+                );
+            }
         }
     }
 }

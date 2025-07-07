@@ -1,4 +1,4 @@
--- main.hop --
+-- in --
 <component name="main" params-as="params">
 	<for each="params.items" as="item">
 		<cond if="item.active">
@@ -7,5 +7,5 @@
 		</cond>
 	</for>
 </component>
--- type.json --
+-- out --
 {items: {active: boolean, name: boolean}[]}

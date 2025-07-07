@@ -1,9 +1,9 @@
--- main.hop --
+-- in --
 <component name="main" params-as="params">
 	<for each="params.foo.bar" as="j">
 		<cond if="j">
 		</cond>
 	</for>
 </component>
--- type.json --
+-- out --
 {foo: {bar: boolean[]}}

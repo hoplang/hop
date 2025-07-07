@@ -1,4 +1,4 @@
--- main.hop --
+-- in --
 <component name="main" params-as="params">
 	<cond if="params.config.debug">
 	</cond>
@@ -11,5 +11,5 @@
 		</for>
 	</for>
 </component>
--- type.json --
+-- out --
 {config: {debug: boolean}, data: {attributes: boolean[], id: boolean}[]}

@@ -1,9 +1,9 @@
--- main.hop --
+-- in --
 <component name="main" params-as="params">
 	<cond if="item.active">
 	</cond>
 	<for each="params">
 	</for>
 </component>
--- error.txt --
+-- out --
 Undefined variable: item
