@@ -319,7 +319,9 @@ impl Compiler {
 
             let type_info = typecheck(components, &import_types);
             if !type_info.errors.is_empty() {
-                let range_errors: Vec<RangeError> = type_info.errors.iter()
+                let range_errors: Vec<RangeError> = type_info
+                    .errors
+                    .iter()
                     .map(|e| RangeError::new(e.to_string(), e.range()))
                     .collect();
                 return Err(format_range_errors(
@@ -373,14 +375,14 @@ mod tests {
                         t.kind,
                         " ".to_string(),
                         t.attributes,
-                        Range::new(Position::new(0, 0), Position::new(0, 0)),
+                        Range::new(Position::new(0, 0, 0), Position::new(0, 0, 0)),
                     )
                 } else {
                     Token::new(
                         t.kind,
                         t.value,
                         t.attributes,
-                        Range::new(Position::new(0, 0), Position::new(0, 0)),
+                        Range::new(Position::new(0, 0, 0), Position::new(0, 0, 0)),
                     )
                 }
             })

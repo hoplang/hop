@@ -2,9 +2,10 @@ use crate::common::{
     is_void_element, ComponentNode, CondNode, DoctypeNode, ErrorNode, ExprAttribute, ForNode,
     ImportNode, NativeHTMLNode, Node, Position, Range, RenderNode, TextNode, Token, TokenKind,
 };
+use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
 
-#[derive(Debug, Error, Clone, PartialEq)]
+#[derive(Debug, Error, Clone, PartialEq, Diagnostic)]
 pub enum ParseError {
     #[error("Unmatched </{value}>")]
     UnmatchedTag { value: String, range: Range },
@@ -51,6 +52,23 @@ impl ParseError {
             ParseError::EmptyExpression { range } => *range,
             ParseError::TokenizerError { range, .. } => *range,
         }
+    }
+
+    pub fn labels(&self) -> Vec<miette::LabeledSpan> {
+        vec![miette::LabeledSpan::at(
+            self.range().to_source_span(),
+            match self {
+                ParseError::UnmatchedTag { .. } => "unmatched closing tag",
+                ParseError::UnclosedTag { .. } => "unclosed opening tag",
+                ParseError::ClosedVoidElement { .. } => "void element incorrectly closed",
+                ParseError::UnexpectedOutsideRoot { .. } => "must be at module root",
+                ParseError::UnexpectedAtRoot { .. } => "unexpected at module root",
+                ParseError::DoctypeAtRoot { .. } => "doctype at module root",
+                ParseError::MissingRequiredAttribute { .. } => "missing required attribute",
+                ParseError::EmptyExpression { .. } => "empty expression",
+                ParseError::TokenizerError { .. } => "tokenizer error",
+            },
+        )]
     }
 }
 
@@ -122,8 +140,16 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<ParseError>) -> TokenTree {
         value: "root".to_string(),
         attributes: Vec::new(),
         range: Range {
-            start: Position { line: 0, column: 0 },
-            end: Position { line: 0, column: 0 },
+            start: Position {
+                line: 0,
+                column: 0,
+                offset: 0,
+            },
+            end: Position {
+                line: 0,
+                column: 0,
+                offset: 0,
+            },
         },
     };
     stack.push(TokenTree::new(root_token));
@@ -195,8 +221,16 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<ParseError>) -> TokenTree {
             value: "root".to_string(),
             attributes: Vec::new(),
             range: Range {
-                start: Position { line: 0, column: 0 },
-                end: Position { line: 0, column: 0 },
+                start: Position {
+                    line: 0,
+                    column: 0,
+                    offset: 0,
+                },
+                end: Position {
+                    line: 0,
+                    column: 0,
+                    offset: 0,
+                },
             },
         };
         TokenTree::new(root_token)

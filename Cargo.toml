@@ -10,6 +10,7 @@ path = "src/main.rs"
 [dependencies]
 serde_json = "1.0"
 thiserror = "1.0"
+miette = { version = "7.0", features = ["fancy"] }
 
 [dev-dependencies]
 simple_txtar = "1.1.0"

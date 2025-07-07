@@ -1,3 +1,4 @@
+use miette::{SourceOffset, SourceSpan};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -40,15 +41,24 @@ impl fmt::Display for Type {
     }
 }
 
+/// Represents a position in source code with UTF-8 byte-based tracking
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Position {
+    /// Line number (1-based)
     pub line: usize,
+    /// Byte column within the line (1-based, incremented by UTF-8 byte length)
     pub column: usize,
+    /// Absolute byte offset from start of file (0-based)
+    pub offset: usize,
 }
 
 impl Position {
-    pub fn new(line: usize, column: usize) -> Self {
-        Position { line, column }
+    pub fn new(line: usize, column: usize, offset: usize) -> Self {
+        Position {
+            line,
+            column,
+            offset,
+        }
     }
 }
 
@@ -70,6 +80,12 @@ impl Range {
             || (position.line == self.start.line && position.column >= self.start.column))
             && (position.line < self.end.line
                 || (position.line == self.end.line && position.column < self.end.column))
+    }
+
+    // Convert to miette's SourceSpan
+    pub fn to_source_span(&self) -> SourceSpan {
+        let len = self.end.offset.saturating_sub(self.start.offset);
+        SourceSpan::new(SourceOffset::from(self.start.offset), len)
     }
 }
 

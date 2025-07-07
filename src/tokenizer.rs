@@ -26,18 +26,22 @@ enum TokenizerState {
 
 struct Cursor {
     input: Vec<char>,
-    position: usize,
+    input_str: String,
+    char_position: usize,
+    byte_position: usize,
     line: usize,
-    column: usize,
+    byte_column: usize,
 }
 
 impl Cursor {
     fn new(input: String) -> Self {
         Self {
             input: input.chars().collect(),
-            position: 0,
+            input_str: input,
+            char_position: 0,
+            byte_position: 0,
             line: 1,
-            column: 1,
+            byte_column: 1,
         }
     }
 
@@ -45,19 +49,25 @@ impl Cursor {
         if self.is_at_end() {
             '\0'
         } else {
-            self.input[self.position]
+            self.input[self.char_position]
         }
     }
 
     fn advance(&mut self) {
         if !self.is_at_end() {
-            if self.input[self.position] == '\n' {
+            let ch = self.input[self.char_position];
+            let byte_len = ch.len_utf8();
+
+            // Update byte position by the byte length of this character
+            self.byte_position += byte_len;
+
+            if ch == '\n' {
                 self.line += 1;
-                self.column = 1;
+                self.byte_column = 1;
             } else {
-                self.column += 1;
+                self.byte_column += byte_len;
             }
-            self.position += 1;
+            self.char_position += 1;
         }
     }
 
@@ -70,22 +80,23 @@ impl Cursor {
     fn get_position(&self) -> Position {
         Position {
             line: self.line,
-            column: self.column,
+            column: self.byte_column,
+            offset: self.byte_position,
         }
     }
 
     fn is_at_end(&self) -> bool {
-        self.position >= self.input.len()
+        self.char_position >= self.input.len()
     }
 
     fn match_str(&self, s: &str) -> bool {
         let chars: Vec<char> = s.chars().collect();
-        if self.position + chars.len() > self.input.len() {
+        if self.char_position + chars.len() > self.input.len() {
             return false;
         }
 
         for (i, &ch) in chars.iter().enumerate() {
-            if self.input[self.position + i] != ch {
+            if self.input[self.char_position + i] != ch {
                 return false;
             }
         }
@@ -109,11 +120,19 @@ impl TokenBuilder {
         Self {
             token_value: String::new(),
             token_kind: TokenKind::Text,
-            token_start: Position { line: 1, column: 1 },
+            token_start: Position {
+                line: 1,
+                column: 1,
+                offset: 0,
+            },
             token_attributes: Vec::new(),
             attribute_name: String::new(),
             attribute_value: String::new(),
-            attribute_start: Position { line: 1, column: 1 },
+            attribute_start: Position {
+                line: 1,
+                column: 1,
+                offset: 0,
+            },
             tokens: Vec::new(),
         }
     }
