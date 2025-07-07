@@ -120,7 +120,10 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
         kind: TokenKind::StartTag,
         value: "root".to_string(),
         attributes: Vec::new(),
-        range: Range(Position(0, 0), Position(0, 0)),
+        range: Range {
+            start: Position { line: 0, column: 0 },
+            end: Position { line: 0, column: 0 },
+        },
     };
     stack.push(TokenTree::new(root_token));
 
@@ -167,18 +170,19 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
         }
     }
 
-    // Close any remaining unclosed tags
     while stack.len() > 1 {
         errors.push(err_unclosed(&stack.pop().unwrap().token));
     }
 
-    // Return the root, or create an empty one if stack is empty (shouldn't happen)
     stack.pop().unwrap_or_else(|| {
         let root_token = Token {
             kind: TokenKind::StartTag,
             value: "root".to_string(),
             attributes: Vec::new(),
-            range: Range(Position(0, 0), Position(0, 0)),
+            range: Range {
+                start: Position { line: 0, column: 0 },
+                end: Position { line: 0, column: 0 },
+            },
         };
         TokenTree::new(root_token)
     })

@@ -42,17 +42,25 @@ impl fmt::Display for Type {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Position(pub usize, pub usize);
+pub struct Position {
+    pub line: usize,
+    pub column: usize,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Range(pub Position, pub Position);
+pub struct Range {
+    pub start: Position,
+    pub end: Position,
+}
 
 impl Range {
     // returns true if the position lies in the range
-    // (where start is inclusive and end is exclusive)
+    // where start is inclusive and end is exclusive
     pub fn contains_position(&self, position: Position) -> bool {
-        (position.0 > self.0 .0 || (position.0 == self.0 .0 && position.1 >= self.0 .1))
-            && (position.0 < self.1 .0 || (position.0 == self.1 .0 && position.1 < self.1 .1))
+        (position.line > self.start.line
+            || (position.line == self.start.line && position.column >= self.start.column))
+            && (position.line < self.end.line
+                || (position.line == self.end.line && position.column < self.end.column))
     }
 }
 
@@ -68,7 +76,6 @@ impl RangeError {
     }
 }
 
-// Attribute struct
 #[derive(Debug, Clone, PartialEq)]
 pub struct Attribute {
     pub name: String,
@@ -82,7 +89,6 @@ impl Attribute {
     }
 }
 
-// TokenType enum with Copy trait (simple enum)
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenKind {
     Doctype,
@@ -94,7 +100,6 @@ pub enum TokenKind {
     Error,
 }
 
-// Token struct
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
     pub kind: TokenKind,
@@ -113,12 +118,10 @@ impl Token {
         }
     }
 
-    // Returns true if the token has an attribute with the given name
     pub fn has_attribute(&self, name: &str) -> bool {
         self.attributes.iter().any(|attr| attr.name == name)
     }
 
-    // Returns the attribute with the given name, or None if not found
     pub fn get_attribute(&self, name: &str) -> Option<Attribute> {
         self.attributes
             .iter()
@@ -279,7 +282,7 @@ pub fn format_range_errors(message: &str, errors: &[RangeError]) -> String {
     for error in errors {
         result.push_str(&format!(
             "\n  {}:{}:{}: {}",
-            error.range.0 .0, error.range.0 .1, error.range.1 .1, error.message
+            error.range.start.line, error.range.start.column, error.range.end.column, error.message
         ));
     }
     result

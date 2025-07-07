@@ -5,12 +5,12 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeAnnotation {
     pub range: Range,
-    pub type_: Type,
+    pub value: Type,
 }
 
 impl TypeAnnotation {
-    pub fn new(range: Range, type_: Type) -> Self {
-        TypeAnnotation { range, type_ }
+    pub fn new(range: Range, value: Type) -> Self {
+        TypeAnnotation { range, value }
     }
 }
 
@@ -98,11 +98,10 @@ pub fn typecheck(components: &[ComponentNode], import_types: HashMap<String, Typ
             .insert(component_name.clone(), unifier.query(&t1));
     }
 
-    // Apply unifier to all annotations
     let final_annotations = state
         .annotations
         .into_iter()
-        .map(|a| TypeAnnotation::new(a.range, unifier.query(&a.type_)))
+        .map(|a| TypeAnnotation::new(a.range, unifier.query(&a.value)))
         .collect();
 
     TypeResult::new(state.parameter_types, final_annotations, errors)
@@ -212,9 +211,10 @@ fn typecheck_expr(
 
     for s in &segments[1..] {
         let t2 = Type::TypeVar(unifier.next_type_var());
-        let mut props = HashMap::new();
-        props.insert(s.clone(), t2.clone());
-        let obj = Type::Object(props, unifier.next_type_var());
+        let obj = Type::Object(
+            HashMap::from([(s.clone(), t2.clone())]),
+            unifier.next_type_var(),
+        );
 
         if let Some(err) = unifier.unify(&current_type, &obj) {
             errors.push(RangeError::new(err.message, attr.range));

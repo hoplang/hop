@@ -68,7 +68,10 @@ impl Cursor {
     }
 
     fn get_position(&self) -> Position {
-        Position(self.line, self.column)
+        Position {
+            line: self.line,
+            column: self.column,
+        }
     }
 
     fn is_at_end(&self) -> bool {
@@ -106,11 +109,11 @@ impl TokenBuilder {
         Self {
             token_value: String::new(),
             token_kind: TokenKind::Text,
-            token_start: Position(1, 1),
+            token_start: Position { line: 1, column: 1 },
             token_attributes: Vec::new(),
             attribute_name: String::new(),
             attribute_value: String::new(),
-            attribute_start: Position(1, 1),
+            attribute_start: Position { line: 1, column: 1 },
             tokens: Vec::new(),
         }
     }
@@ -120,7 +123,10 @@ impl TokenBuilder {
             self.token_kind,
             mem::take(&mut self.token_value),
             mem::take(&mut self.token_attributes),
-            Range(self.token_start, cursor.get_position()),
+            Range {
+                start: self.token_start,
+                end: cursor.get_position(),
+            },
         ));
         self.token_kind = TokenKind::Text;
         self.token_start = cursor.get_position();
@@ -130,7 +136,10 @@ impl TokenBuilder {
         self.token_attributes.push(Attribute::new(
             mem::take(&mut self.attribute_name),
             mem::take(&mut self.attribute_value),
-            Range(self.attribute_start, cursor.get_position()),
+            Range {
+                start: self.attribute_start,
+                end: cursor.get_position(),
+            },
         ));
         self.attribute_start = cursor.get_position();
     }
@@ -541,7 +550,7 @@ mod tests {
     fn format_range(range: Range) -> String {
         format!(
             "{}:{}-{}:{}",
-            range.0 .0, range.0 .1, range.1 .0, range.1 .1
+            range.start.line, range.start.column, range.end.line, range.end.column
         )
     }
 
