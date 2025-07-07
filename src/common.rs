@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::fmt;
 
-// Type enum with Display trait for toString() functionality
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Object(HashMap<String, Type>, i32),
