@@ -52,12 +52,12 @@ impl TopoSorter {
     ///
     /// This dependency implies that the node b should come before the node a when sorting.
     /// Each node of the dependency is added to the graph if they do not already exist.
-    pub fn add_dependency(&mut self, a: String, b: String) {
-        self.add_node(a.clone());
-        self.add_node(b.clone());
+    pub fn add_dependency(&mut self, a: &str, b: &str) {
+        self.add_node(a.to_string());
+        self.add_node(b.to_string());
 
-        self.dependencies.get_mut(&a).unwrap().insert(b.clone());
-        self.dependents.get_mut(&b).unwrap().insert(a);
+        self.dependencies.get_mut(a).unwrap().insert(b.to_string());
+        self.dependents.get_mut(b).unwrap().insert(a.to_string());
     }
 
     /// Sort the nodes of the graph and return a SortResult where the nodes are in topological order

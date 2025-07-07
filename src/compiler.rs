@@ -279,8 +279,7 @@ impl Compiler {
 
             module_sorter.add_node(module_name.clone());
             for import_node in &result.imports {
-                module_sorter
-                    .add_dependency(module_name.clone(), import_node.from_attr.value.clone());
+                module_sorter.add_dependency(module_name, &import_node.from_attr.value);
             }
         }
 
