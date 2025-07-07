@@ -1,0 +1,7 @@
+-- unification.txtar --
+string = string
+t1 = string
+-- queries.txtar --
+t1
+-- output.txtar --
+string

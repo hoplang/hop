@@ -1,0 +1,7 @@
+-- unification.txtar --
+t1 = (object foo t2)
+t2 = string
+-- queries.txtar --
+t1
+-- output.txtar --
+{foo: string}

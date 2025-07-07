@@ -1,0 +1,27 @@
+-- unification.txtar --
+t1 = t2
+t2 = t3
+t3 = t4
+t5 = t6
+t6 = t7
+t7 = t8
+t8 = string
+t4 = t5
+-- queries.txtar --
+t1
+t2
+t3
+t4
+t5
+t6
+t7
+t8
+-- output.txtar --
+string
+string
+string
+string
+string
+string
+string
+string
