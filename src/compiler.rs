@@ -109,7 +109,7 @@ impl Program {
                         if let Some(inner_text_attr) = &native_html_node.inner_text_attr {
                             let evaluated =
                                 self.evaluate_expression(&inner_text_attr.value, env)?;
-                            result.push_str(&escape_html(&evaluated.to_string()));
+                            result.push_str(&escape_html(evaluated.as_str().unwrap()));
                         } else {
                             result.push_str(&self.execute_nodes(
                                 &native_html_node.children,
@@ -350,5 +350,89 @@ impl Compiler {
             import_maps,
             script_builder.build(),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::{Position, Range, Token, TokenKind};
+    use pretty_assertions::assert_eq;
+    use simple_txtar::Archive;
+    use std::fs;
+    use std::path::Path;
+
+    fn normalize_tokens(tokens: Vec<Token>) -> Vec<Token> {
+        tokens
+            .into_iter()
+            .map(|t| {
+                if t.kind == TokenKind::Text && t.value.trim().is_empty() {
+                    Token::new(
+                        t.kind,
+                        " ".to_string(),
+                        t.attributes,
+                        Range::new(Position::new(0, 0), Position::new(0, 0)),
+                    )
+                } else {
+                    Token::new(
+                        t.kind,
+                        t.value,
+                        t.attributes,
+                        Range::new(Position::new(0, 0), Position::new(0, 0)),
+                    )
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_compiler() {
+        let entries = fs::read_dir(Path::new("test_data/compiler")).unwrap();
+
+        for entry in entries {
+            let path = entry.unwrap().path();
+
+            let file_name = path.file_name().unwrap().to_string_lossy();
+
+            let archive = Archive::from(fs::read_to_string(&path).unwrap());
+
+            let data_json = archive.get("data.json").unwrap().content.trim();
+            let expected_output = archive.get("output.html").unwrap().content.trim();
+
+            let mut compiler = Compiler::new();
+
+            // Add all .hop files as modules
+            for file in archive.iter() {
+                if file.name.ends_with(".hop") {
+                    let module_name = file.name.trim_end_matches(".hop");
+                    compiler.add_module(module_name.to_string(), file.content.trim().to_string());
+                }
+            }
+
+            let program = compiler.compile().unwrap_or_else(|e| {
+                panic!("Compilation failed for {}: {}", file_name, e);
+            });
+
+            println!("{}", file_name);
+
+            let data: serde_json::Value = serde_json::from_str(data_json).unwrap_or_else(|e| {
+                panic!("Failed to parse JSON data for {}: {}", file_name, e);
+            });
+
+            let actual_output = program.execute("main", "main", data).unwrap_or_else(|e| {
+                panic!("Execution failed for {}: {}", file_name, e);
+            });
+
+            // Normalize whitespace by tokenizing both outputs and comparing tokens
+            let expected_tokens =
+                normalize_tokens(crate::tokenizer::tokenize(expected_output.to_string()));
+            let actual_tokens = normalize_tokens(crate::tokenizer::tokenize(actual_output.clone()));
+
+            assert_eq!(
+                actual_tokens, expected_tokens,
+                "Mismatch in file: {}",
+                file_name
+            );
+        }
     }
 }

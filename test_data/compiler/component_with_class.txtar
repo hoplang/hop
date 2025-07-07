@@ -1,0 +1,10 @@
+-- main.hop --
+<component name="main" params-as="p" class="p-2">
+	<div>hello</div>
+</component>
+-- data.json --
+{}
+-- output.html --
+<div data-hop-id="main/main" class="p-2">
+	<div>hello</div>
+</div>

@@ -46,6 +46,12 @@ pub struct Position {
     pub column: usize,
 }
 
+impl Position {
+    pub fn new(line: usize, column: usize) -> Self {
+        Position { line, column }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Range {
     pub start: Position,
@@ -53,6 +59,10 @@ pub struct Range {
 }
 
 impl Range {
+    pub fn new(start: Position, end: Position) -> Self {
+        Range { start, end }
+    }
+
     // returns true if the position lies in the range
     // where start is inclusive and end is exclusive
     pub fn contains_position(&self, position: Position) -> bool {
