@@ -41,42 +41,21 @@ impl fmt::Display for Type {
     }
 }
 
-// Position struct with Copy and Clone traits
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Position {
-    pub line: i32,
-    pub column: i32,
-}
+pub struct Position(pub usize, pub usize);
 
-impl Position {
-    pub fn new(line: i32, column: i32) -> Self {
-        Position { line, column }
-    }
-}
-
-// Range struct with Copy and Clone traits
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Range {
-    pub start: Position,
-    pub end: Position,
-}
+pub struct Range(pub Position, pub Position);
 
 impl Range {
-    pub fn new(start: Position, end: Position) -> Self {
-        Range { start, end }
-    }
-
     // returns true if the position lies in the range
     // (where start is inclusive and end is exclusive)
     pub fn contains_position(&self, position: Position) -> bool {
-        (position.line > self.start.line
-            || (position.line == self.start.line && position.column >= self.start.column))
-            && (position.line < self.end.line
-                || (position.line == self.end.line && position.column < self.end.column))
+        (position.0 > self.0 .0 || (position.0 == self.0 .0 && position.1 >= self.0 .1))
+            && (position.0 < self.1 .0 || (position.0 == self.1 .0 && position.1 < self.1 .1))
     }
 }
 
-// RangeError struct
 #[derive(Debug, Clone, PartialEq)]
 pub struct RangeError {
     pub message: String,
@@ -125,14 +104,9 @@ pub struct Token {
 }
 
 impl Token {
-    pub fn new(
-        token_type: TokenKind,
-        value: String,
-        attributes: Vec<Attribute>,
-        range: Range,
-    ) -> Self {
+    pub fn new(kind: TokenKind, value: String, attributes: Vec<Attribute>, range: Range) -> Self {
         Token {
-            kind: token_type,
+            kind,
             value,
             attributes,
             range,
@@ -305,7 +279,7 @@ pub fn format_range_errors(message: &str, errors: &[RangeError]) -> String {
     for error in errors {
         result.push_str(&format!(
             "\n  {}:{}:{}: {}",
-            error.range.start.line, error.range.start.column, error.range.end.column, error.message
+            error.range.0 .0, error.range.0 .1, error.range.1 .1, error.message
         ));
     }
     result
