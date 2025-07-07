@@ -319,9 +319,12 @@ impl Compiler {
 
             let type_info = typecheck(components, &import_types);
             if !type_info.errors.is_empty() {
+                let range_errors: Vec<RangeError> = type_info.errors.iter()
+                    .map(|e| RangeError::new(e.to_string(), e.range()))
+                    .collect();
                 return Err(format_range_errors(
                     &format!("Type errors in module {}", module_name),
-                    &type_info.errors,
+                    &range_errors,
                 ));
             }
 

@@ -4,6 +4,33 @@ use crate::common::{
 };
 use crate::unifier::Unifier;
 use std::collections::HashMap;
+use thiserror::Error;
+
+#[derive(Debug, Error, Clone, PartialEq)]
+pub enum TypeError {
+    #[error("Component {component} not found")]
+    ComponentNotFound { component: String, range: Range },
+    
+    #[error("Empty expression")]
+    EmptyExpression { range: Range },
+    
+    #[error("Undefined variable: {variable}")]
+    UndefinedVariable { variable: String, range: Range },
+    
+    #[error("{message}")]
+    UnificationError { message: String, range: Range },
+}
+
+impl TypeError {
+    pub fn range(&self) -> Range {
+        match self {
+            TypeError::ComponentNotFound { range, .. } => *range,
+            TypeError::EmptyExpression { range } => *range,
+            TypeError::UndefinedVariable { range, .. } => *range,
+            TypeError::UnificationError { range, .. } => *range,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeAnnotation {
@@ -21,14 +48,14 @@ impl TypeAnnotation {
 pub struct TypeResult {
     pub parameter_types: HashMap<String, Type>,
     pub annotations: Vec<TypeAnnotation>,
-    pub errors: Vec<RangeError>,
+    pub errors: Vec<TypeError>,
 }
 
 impl TypeResult {
     pub fn new(
         parameter_types: HashMap<String, Type>,
         annotations: Vec<TypeAnnotation>,
-        errors: Vec<RangeError>,
+        errors: Vec<TypeError>,
     ) -> Self {
         TypeResult {
             parameter_types,
@@ -87,7 +114,7 @@ fn typecheck_node(
     env: &mut Environment<Type>,
     unifier: &mut Unifier,
     annotations: &mut Vec<TypeAnnotation>,
-    errors: &mut Vec<RangeError>,
+    errors: &mut Vec<TypeError>,
 ) {
     match node {
         Node::For(ForNode {
@@ -139,10 +166,10 @@ fn typecheck_node(
                     typecheck_expr(&t1.clone(), params_attr, env, unifier, annotations, errors);
                 }
             } else {
-                errors.push(RangeError::new(
-                    format!("Component {} not found", component_attr.value),
-                    component_attr.range,
-                ));
+                errors.push(TypeError::ComponentNotFound {
+                    component: component_attr.value.clone(),
+                    range: component_attr.range,
+                });
             }
 
             for child in children {
@@ -182,11 +209,11 @@ fn typecheck_expr(
     env: &Environment<Type>,
     unifier: &mut Unifier,
     annotations: &mut Vec<TypeAnnotation>,
-    errors: &mut Vec<RangeError>,
+    errors: &mut Vec<TypeError>,
 ) {
     let segments = &attr.segments;
     if segments.is_empty() {
-        errors.push(RangeError::new("Empty expression".to_string(), attr.range));
+        errors.push(TypeError::EmptyExpression { range: attr.range });
         return;
     }
 
@@ -196,16 +223,19 @@ fn typecheck_expr(
         });
 
         if let Some(err) = unifier.unify(env_type, &obj_type) {
-            errors.push(RangeError::new(err.message, attr.range));
+            errors.push(TypeError::UnificationError {
+                message: err.message,
+                range: attr.range,
+            });
             return;
         }
 
         annotations.push(TypeAnnotation::new(attr.range, t1.clone()));
     } else {
-        errors.push(RangeError::new(
-            format!("Undefined variable: {}", segments[0]),
-            attr.range,
-        ));
+        errors.push(TypeError::UndefinedVariable {
+            variable: segments[0].clone(),
+            range: attr.range,
+        });
         return;
     }
 }
@@ -243,7 +273,7 @@ mod tests {
                 let output = type_result
                     .errors
                     .iter()
-                    .map(|e| e.message.clone())
+                    .map(|e| e.to_string())
                     .collect::<Vec<_>>()
                     .join("\n");
                 assert_eq!(output, expected, "Mismatch in file: {}", file_name);

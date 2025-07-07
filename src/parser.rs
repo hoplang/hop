@@ -52,7 +52,6 @@ impl ParseError {
             ParseError::TokenizerError { range, .. } => *range,
         }
     }
-
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -61,7 +60,6 @@ pub struct ParseResult {
     pub imports: Vec<ImportNode>,
     pub errors: Vec<ParseError>,
 }
-
 
 #[derive(Debug, Clone)]
 struct TokenTree {
