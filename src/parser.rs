@@ -1,6 +1,7 @@
 use crate::common::{
-    is_void_element, ComponentNode, CondNode, DoctypeNode, ErrorNode, ForNode, ImportNode,
-    NativeHTMLNode, Node, Position, Range, RangeError, RenderNode, TextNode, Token, TokenKind,
+    is_void_element, ComponentNode, CondNode, DoctypeNode, ErrorNode, ExprAttribute, ForNode,
+    ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode, TextNode, Token,
+    TokenKind,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -188,6 +189,24 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
     })
 }
 
+fn parse_expr(expr: &str) -> Vec<String> {
+    expr.trim().split('.').map(|s| s.to_string()).collect()
+}
+
+fn parse_expr_attribute(
+    name: &str,
+    value: &str,
+    range: Range,
+    errors: &mut Vec<RangeError>,
+) -> Option<ExprAttribute> {
+    let segments = parse_expr(value);
+    if segments.is_empty() {
+        errors.push(RangeError::new("Empty expression".to_string(), range));
+        return None;
+    }
+    Some(ExprAttribute::new(name.to_string(), segments, range))
+}
+
 fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) -> Node {
     let children: Vec<Node> = tree
         .children
@@ -222,7 +241,9 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
 
             match t.value.as_str() {
                 "render" => {
-                    let params_attr = t.get_attribute("params");
+                    let params_attr = t.get_attribute("params").and_then(|attr| {
+                        parse_expr_attribute(&attr.name, &attr.value, attr.range, errors)
+                    });
                     let component_attr = t.get_attribute("component");
 
                     if component_attr.is_none() {
@@ -252,8 +273,23 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                         });
                     }
 
+                    let each_attr = each_attr.unwrap();
+                    let parsed_each_attr = parse_expr_attribute(
+                        &each_attr.name,
+                        &each_attr.value,
+                        each_attr.range,
+                        errors,
+                    );
+
+                    if parsed_each_attr.is_none() {
+                        return Node::Error(ErrorNode {
+                            range: t.range,
+                            children,
+                        });
+                    }
+
                     Node::For(ForNode {
-                        each_attr: each_attr.unwrap(),
+                        each_attr: parsed_each_attr.unwrap(),
                         as_attr,
                         range: t.range,
                         children,
@@ -270,8 +306,19 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                         });
                     }
 
+                    let if_attr = if_attr.unwrap();
+                    let parsed_if_attr =
+                        parse_expr_attribute(&if_attr.name, &if_attr.value, if_attr.range, errors);
+
+                    if parsed_if_attr.is_none() {
+                        return Node::Error(ErrorNode {
+                            range: t.range,
+                            children,
+                        });
+                    }
+
                     Node::Cond(CondNode {
-                        if_attr: if_attr.unwrap(),
+                        if_attr: parsed_if_attr.unwrap(),
                         range: t.range,
                         children,
                     })
@@ -322,7 +369,9 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                     })
                 }
                 _ => {
-                    let inner_text_attr = t.get_attribute("inner-text");
+                    let inner_text_attr = t.get_attribute("inner-text").and_then(|attr| {
+                        parse_expr_attribute(&attr.name, &attr.value, attr.range, errors)
+                    });
                     Node::NativeHTML(NativeHTMLNode {
                         value: t.value.clone(),
                         attributes: t.attributes.clone(),

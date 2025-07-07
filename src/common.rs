@@ -98,6 +98,23 @@ impl Attribute {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExprAttribute {
+    pub name: String,
+    pub segments: Vec<String>,
+    pub range: Range,
+}
+
+impl ExprAttribute {
+    pub fn new(name: String, segments: Vec<String>, range: Range) -> Self {
+        ExprAttribute {
+            name,
+            segments,
+            range,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenKind {
     Doctype,
@@ -155,14 +172,14 @@ pub struct TextNode {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RenderNode {
     pub component_attr: Attribute,
-    pub params_attr: Option<Attribute>,
+    pub params_attr: Option<ExprAttribute>,
     pub range: Range,
     pub children: Vec<Node>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForNode {
-    pub each_attr: Attribute,
+    pub each_attr: ExprAttribute,
     pub as_attr: Option<Attribute>,
     pub range: Range,
     pub children: Vec<Node>,
@@ -170,7 +187,7 @@ pub struct ForNode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CondNode {
-    pub if_attr: Attribute,
+    pub if_attr: ExprAttribute,
     pub range: Range,
     pub children: Vec<Node>,
 }
@@ -198,7 +215,7 @@ pub struct NativeHTMLNode {
     pub attributes: Vec<Attribute>,
     pub range: Range,
     pub children: Vec<Node>,
-    pub inner_text_attr: Option<Attribute>,
+    pub inner_text_attr: Option<ExprAttribute>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

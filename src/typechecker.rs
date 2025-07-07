@@ -1,5 +1,5 @@
 use crate::common::{
-    Attribute, ComponentNode, CondNode, Environment, ErrorNode, ForNode, NativeHTMLNode, Node,
+    ComponentNode, CondNode, Environment, ErrorNode, ExprAttribute, ForNode, NativeHTMLNode, Node,
     Range, RangeError, RenderNode, Type,
 };
 use crate::unifier::Unifier;
@@ -178,13 +178,13 @@ fn typecheck_node(
 
 fn typecheck_expr(
     t1: &Type,
-    attr: &Attribute,
+    attr: &ExprAttribute,
     env: &Environment<Type>,
     unifier: &mut Unifier,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut Vec<RangeError>,
 ) {
-    let segments = parse_expr(&attr.value);
+    let segments = &attr.segments;
     if segments.is_empty() {
         errors.push(RangeError::new("Empty expression".to_string(), attr.range));
         return;
@@ -208,10 +208,6 @@ fn typecheck_expr(
         ));
         return;
     }
-}
-
-fn parse_expr(expr: &str) -> Vec<String> {
-    expr.trim().split('.').map(|s| s.to_string()).collect()
 }
 
 #[cfg(test)]

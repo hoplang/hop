@@ -1,5 +1,6 @@
 use crate::common::{
-    escape_html, format_range_errors, is_void_element, ComponentNode, Environment, Node,
+    escape_html, format_range_errors, is_void_element, ComponentNode, Environment, ExprAttribute,
+    Node,
 };
 use crate::parser::parse;
 use crate::scriptbuilder::ScriptBuilder;
@@ -108,7 +109,7 @@ impl Program {
                     if !is_void_element(&native_html_node.value) {
                         if let Some(inner_text_attr) = &native_html_node.inner_text_attr {
                             let evaluated =
-                                self.evaluate_expression(&inner_text_attr.value, env)?;
+                                self.evaluate_expression(&inner_text_attr.segments, env)?;
                             result.push_str(&escape_html(evaluated.as_str().unwrap()));
                         } else {
                             result.push_str(&self.execute_nodes(
@@ -121,7 +122,8 @@ impl Program {
                     }
                 }
                 Node::For(for_node) => {
-                    let array_value = self.evaluate_expression(&for_node.each_attr.value, env)?;
+                    let array_value =
+                        self.evaluate_expression(&for_node.each_attr.segments, env)?;
 
                     let array = array_value
                         .as_array()
@@ -143,7 +145,7 @@ impl Program {
                 }
                 Node::Cond(cond_node) => {
                     let condition_value =
-                        self.evaluate_expression(&cond_node.if_attr.value, env)?;
+                        self.evaluate_expression(&cond_node.if_attr.segments, env)?;
                     if condition_value.as_bool().unwrap_or(false) {
                         result.push_str(&self.execute_nodes(
                             &cond_node.children,
@@ -155,7 +157,7 @@ impl Program {
                 Node::Render(render_node) => {
                     let mut params_value = serde_json::Value::Null;
                     if let Some(params_attr) = &render_node.params_attr {
-                        params_value = self.evaluate_expression(&params_attr.value, env)?;
+                        params_value = self.evaluate_expression(&params_attr.segments, env)?;
                     }
 
                     let component_name = &render_node.component_attr.value;
@@ -196,25 +198,23 @@ impl Program {
 
     fn evaluate_expression(
         &self,
-        expr: &str,
+        expr: &[String],
         env: &Environment<serde_json::Value>,
     ) -> Result<serde_json::Value, String> {
-        let segments = self.parse_expression(expr);
-
-        if segments.is_empty() {
+        if expr.is_empty() {
             return Err("Empty expression".to_string());
         }
 
-        if !env.has(&segments[0]) {
-            return Err(format!("Undefined variable: {}", segments[0]));
+        if !env.has(&expr[0]) {
+            return Err(format!("Undefined variable: {}", expr[0]));
         }
 
         let mut current_value = env
-            .lookup(&segments[0])
-            .ok_or_else(|| format!("Undefined variable: {}", segments[0]))?
+            .lookup(&expr[0])
+            .ok_or_else(|| format!("Undefined variable: {}", expr[0]))?
             .clone();
 
-        for segment in segments.iter().skip(1) {
+        for segment in expr.iter().skip(1) {
             if current_value.is_null() {
                 return Err("Current value is not defined".to_string());
             }
@@ -230,10 +230,6 @@ impl Program {
         }
 
         Ok(current_value)
-    }
-
-    fn parse_expression(&self, expr: &str) -> Vec<String> {
-        expr.trim().split('.').map(|s| s.to_string()).collect()
     }
 }
 
