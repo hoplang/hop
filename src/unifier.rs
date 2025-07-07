@@ -25,10 +25,18 @@ impl Unifier {
         }
     }
 
-    pub fn next_type_var(&mut self) -> i32 {
+    fn next_type_var(&mut self) -> i32 {
         let id = self.next_type_var_id;
         self.next_type_var_id += 1;
         id
+    }
+
+    pub fn new_type_var(&mut self) -> Type {
+        Type::TypeVar(self.next_type_var())
+    }
+
+    pub fn new_object(&mut self, map: HashMap<String, Type>) -> Type {
+        Type::Object(map, self.next_type_var())
     }
 
     pub fn unify(&mut self, a: &Type, b: &Type) -> Option<UnificationError> {
@@ -216,7 +224,7 @@ mod tests {
 
             // Reserve type vars t1, t2, ... in a table
             for n in 1..101 {
-                table.insert(format!("t{}", n), Type::TypeVar(unifier.next_type_var()));
+                table.insert(format!("t{}", n), unifier.new_type_var());
             }
 
             let mut lines: Vec<String> = Vec::new();

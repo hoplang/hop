@@ -84,7 +84,7 @@ pub fn typecheck(components: &[ComponentNode], import_types: HashMap<String, Typ
         }
 
         let mut env = Environment::new();
-        let t1 = Type::TypeVar(unifier.next_type_var());
+        let t1 = unifier.new_type_var();
         let params_as_attr = component.params_as_attr.as_ref().unwrap();
         env.push(params_as_attr.value.clone(), t1.clone());
         state.push_annotation(params_as_attr.range, t1.clone());
@@ -116,7 +116,7 @@ fn typecheck_node(
 ) {
     match node {
         Node::For(for_node) => {
-            let t1 = Type::TypeVar(unifier.next_type_var());
+            let t1 = unifier.new_type_var();
             typecheck_expr(
                 state,
                 &Type::Array(Box::new(t1.clone())),
@@ -199,36 +199,24 @@ fn typecheck_expr(
         return;
     }
 
-    if !env.has(&segments[0]) {
+    if let Some(env_type) = env.lookup(&segments[0]) {
+        let obj_type = segments.iter().skip(1).rev().fold(t1.clone(), |acc, s| {
+            unifier.new_object(HashMap::from([(s.clone(), acc.clone())]))
+        });
+
+        if let Some(err) = unifier.unify(env_type, &obj_type) {
+            errors.push(RangeError::new(err.message, attr.range));
+            return;
+        }
+
+        state.push_annotation(attr.range, t1.clone());
+    } else {
         errors.push(RangeError::new(
             format!("Undefined variable: {}", segments[0]),
             attr.range,
         ));
         return;
     }
-
-    let mut current_type = env.lookup(&segments[0]).unwrap().clone();
-
-    for s in &segments[1..] {
-        let t2 = Type::TypeVar(unifier.next_type_var());
-        let obj = Type::Object(
-            HashMap::from([(s.clone(), t2.clone())]),
-            unifier.next_type_var(),
-        );
-
-        if let Some(err) = unifier.unify(&current_type, &obj) {
-            errors.push(RangeError::new(err.message, attr.range));
-            return;
-        }
-        current_type = t2;
-    }
-
-    if let Some(err) = unifier.unify(t1, &current_type) {
-        errors.push(RangeError::new(err.message, attr.range));
-        return;
-    }
-
-    state.push_annotation(attr.range, t1.clone());
 }
 
 fn parse_expr(expr: &str) -> Vec<String> {
