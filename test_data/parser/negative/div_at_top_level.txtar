@@ -1,4 +1,0 @@
--- main.hop --
-<div></div>
--- output.txt --
-Unexpected <div> at module root

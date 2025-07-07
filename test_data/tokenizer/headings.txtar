@@ -1,11 +1,11 @@
--- input.html --
+-- in --
 <h1></h1>
 <h2></h2>
 <h3></h3>
 <h4></h4>
 <h5></h5>
 <h6></h6>
--- tokens.txt --
+-- out --
 StartTag(h1) [] 1:1-1:5
 EndTag(h1) 1:5-1:10
 Text 1:10-2:1

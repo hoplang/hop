@@ -1,4 +1,6 @@
-use crate::common::{Attribute, Position, Range, Token, TokenType};
+use std::mem;
+
+use crate::common::{Attribute, Position, Range, Token, TokenKind};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum TokenizerState {
@@ -90,7 +92,7 @@ impl Cursor {
 
 struct TokenBuilder {
     token_value: String,
-    token_type: TokenType,
+    token_kind: TokenKind,
     token_start: Position,
     token_attributes: Vec<Attribute>,
     attribute_name: String,
@@ -103,7 +105,7 @@ impl TokenBuilder {
     fn new() -> Self {
         Self {
             token_value: String::new(),
-            token_type: TokenType::Text,
+            token_kind: TokenKind::Text,
             token_start: Position::new(1, 1),
             token_attributes: Vec::new(),
             attribute_name: String::new(),
@@ -115,25 +117,21 @@ impl TokenBuilder {
 
     fn push_current_token(&mut self, cursor: &Cursor) {
         self.tokens.push(Token::new(
-            self.token_type,
-            self.token_value.clone(),
-            self.token_attributes.clone(),
+            self.token_kind,
+            mem::take(&mut self.token_value),
+            mem::take(&mut self.token_attributes),
             Range::new(self.token_start, cursor.get_position()),
         ));
-        self.token_type = TokenType::Text;
-        self.token_value.clear();
-        self.token_attributes.clear();
+        self.token_kind = TokenKind::Text;
         self.token_start = cursor.get_position();
     }
 
     fn push_current_attribute(&mut self, cursor: &Cursor) {
         self.token_attributes.push(Attribute::new(
-            self.attribute_name.clone(),
-            self.attribute_value.clone(),
+            mem::take(&mut self.attribute_name),
+            mem::take(&mut self.attribute_value),
             Range::new(self.attribute_start, cursor.get_position()),
         ));
-        self.attribute_name.clear();
-        self.attribute_value.clear();
         self.attribute_start = cursor.get_position();
     }
 
@@ -157,12 +155,12 @@ impl TokenBuilder {
         &self.token_value
     }
 
-    fn set_current_token_type(&mut self, token_type: TokenType) {
-        self.token_type = token_type;
+    fn set_current_token_kind(&mut self, kind: TokenKind) {
+        self.token_kind = kind;
     }
 
     fn push_error_token(&mut self, message: &str, cursor: &Cursor) {
-        self.token_type = TokenType::Error;
+        self.token_kind = TokenKind::Error;
         self.token_value = message.to_string();
         self.push_current_token(cursor);
     }
@@ -215,12 +213,12 @@ pub fn tokenize(input: String) -> Vec<Token> {
 
             TokenizerState::TagOpen => {
                 if is_alphabetic(ch) {
-                    builder.set_current_token_type(TokenType::StartTag);
+                    builder.set_current_token_kind(TokenKind::StartTag);
                     builder.append_to_current_token_value(&ch.to_string());
                     cursor.advance();
                     state = TokenizerState::StartTagName;
                 } else if ch == '/' {
-                    builder.set_current_token_type(TokenType::EndTag);
+                    builder.set_current_token_kind(TokenKind::EndTag);
                     cursor.advance();
                     state = TokenizerState::EndTagOpen;
                 } else if ch == '!' {
@@ -253,7 +251,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                         state = TokenizerState::Text;
                     }
                 } else if ch == '/' {
-                    builder.set_current_token_type(TokenType::SelfClosingTag);
+                    builder.set_current_token_kind(TokenKind::SelfClosingTag);
                     cursor.advance();
                     state = TokenizerState::SelfClosing;
                 } else {
@@ -319,7 +317,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     cursor.advance();
                     state = TokenizerState::AttrName;
                 } else if ch == '/' {
-                    builder.set_current_token_type(TokenType::SelfClosingTag);
+                    builder.set_current_token_kind(TokenKind::SelfClosingTag);
                     cursor.advance();
                     state = TokenizerState::SelfClosing;
                 } else if ch == '>' {
@@ -366,7 +364,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     }
                 } else if ch == '/' {
                     builder.push_current_attribute(&cursor);
-                    builder.set_current_token_type(TokenType::SelfClosingTag);
+                    builder.set_current_token_kind(TokenKind::SelfClosingTag);
                     cursor.advance();
                     state = TokenizerState::SelfClosing;
                 } else {
@@ -428,11 +426,11 @@ pub fn tokenize(input: String) -> Vec<Token> {
 
             TokenizerState::MarkupDeclaration => {
                 if cursor.match_str("--") {
-                    builder.set_current_token_type(TokenType::Comment);
+                    builder.set_current_token_kind(TokenKind::Comment);
                     cursor.advance_n(2);
                     state = TokenizerState::Comment;
                 } else if cursor.match_str("DOCTYPE") {
-                    builder.set_current_token_type(TokenType::Doctype);
+                    builder.set_current_token_kind(TokenKind::Doctype);
                     cursor.advance_n(7);
                     state = TokenizerState::Doctype;
                 } else {
@@ -510,7 +508,7 @@ pub fn tokenize(input: String) -> Vec<Token> {
                     if !builder.get_current_token_value().is_empty() {
                         builder.push_current_token(&cursor);
                     }
-                    builder.set_current_token_type(TokenType::EndTag);
+                    builder.set_current_token_kind(TokenKind::EndTag);
                     builder.append_to_current_token_value(&stored_tag_name);
                     cursor.advance_n(end_tag.len());
                     builder.push_current_token(&cursor);
@@ -530,4 +528,88 @@ pub fn tokenize(input: String) -> Vec<Token> {
     }
 
     builder.get_tokens()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+    use simple_txtar::Archive;
+    use std::fs;
+    use std::path::Path;
+
+    fn format_range(range: Range) -> String {
+        format!(
+            "{}:{}-{}:{}",
+            range.start.line, range.start.column, range.end.line, range.end.column
+        )
+    }
+
+    fn format_attr(attr: &Attribute) -> String {
+        format!(
+            "{}=[{}] {}",
+            attr.name,
+            attr.value,
+            format_range(attr.range),
+        )
+    }
+
+    fn format_token(token: &Token) -> String {
+        match token.kind {
+            TokenKind::Text | TokenKind::Doctype | TokenKind::Comment => {
+                format!("{:?} {}", token.kind, format_range(token.range))
+            }
+            TokenKind::EndTag => {
+                format!(
+                    "{:?}({}) {}",
+                    token.kind,
+                    token.value,
+                    format_range(token.range)
+                )
+            }
+            TokenKind::StartTag | TokenKind::SelfClosingTag => {
+                let attrs = token
+                    .attributes
+                    .iter()
+                    .map(format_attr)
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                format!(
+                    "{:?}({}) [{}] {}",
+                    token.kind,
+                    token.value,
+                    attrs,
+                    format_range(token.range)
+                )
+            }
+            TokenKind::Error => {
+                format!("{:?}", token.kind)
+            }
+        }
+    }
+
+    #[test]
+    fn test_tokenizer() {
+        let entries =
+            fs::read_dir(Path::new("test_data/tokenizer")).expect("Failed to read directory");
+
+        for entry in entries {
+            let path = entry.unwrap().path();
+
+            let file_name = path.file_name().unwrap().to_string_lossy();
+
+            let archive = Archive::from(fs::read_to_string(&path).unwrap());
+
+            let input = archive.get("in").unwrap().content.trim();
+            let expected = archive.get("out").unwrap().content.trim();
+
+            let actual = tokenize(input.to_string())
+                .iter()
+                .map(format_token)
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            assert_eq!(actual, expected, "Mismatch in file: {}", file_name);
+        }
+    }
 }

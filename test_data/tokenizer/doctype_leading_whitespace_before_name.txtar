@@ -1,4 +1,4 @@
--- input.html --
+-- in --
 <!DOCTYPE   html>
--- tokens.txt --
+-- out --
 Doctype 1:1-1:18

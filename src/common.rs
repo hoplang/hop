@@ -105,7 +105,7 @@ impl Attribute {
 
 // TokenType enum with Copy trait (simple enum)
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum TokenType {
+pub enum TokenKind {
     Doctype,
     StartTag,
     EndTag,
@@ -118,7 +118,7 @@ pub enum TokenType {
 // Token struct
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
-    pub token_type: TokenType,
+    pub kind: TokenKind,
     pub value: String,
     pub attributes: Vec<Attribute>,
     pub range: Range,
@@ -126,13 +126,13 @@ pub struct Token {
 
 impl Token {
     pub fn new(
-        token_type: TokenType,
+        token_type: TokenKind,
         value: String,
         attributes: Vec<Attribute>,
         range: Range,
     ) -> Self {
         Token {
-            token_type,
+            kind: token_type,
             value,
             attributes,
             range,

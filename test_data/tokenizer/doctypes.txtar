@@ -1,9 +1,9 @@
--- input.html --
+-- in --
 <!DOCTYPE html>
 <!DOCTYPE HTML>
 <!DOCTYPE HtML>
 <!DOCTYPE foo>
--- tokens.txt --
+-- out --
 Doctype 1:1-1:16
 Text 1:16-2:1
 Doctype 2:1-2:16

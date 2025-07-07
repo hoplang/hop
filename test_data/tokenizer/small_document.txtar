@@ -1,4 +1,4 @@
--- input.html --
+-- in --
 <!DOCTYPE html>
 <html>
 <head>
@@ -10,7 +10,7 @@
   </div>
 </body>
 </html>
--- tokens.txt --
+-- out --
 Doctype 1:1-1:16
 Text 1:16-2:1
 StartTag(html) [] 2:1-2:7

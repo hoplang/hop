@@ -1,8 +1,8 @@
--- input.html --
+-- in --
 <textarea>
 	<div></div>
 </textarea>
--- tokens.txt --
+-- out --
 StartTag(textarea) [] 1:1-1:11
 Text 1:11-3:1
 EndTag(textarea) 3:1-3:12

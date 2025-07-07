@@ -1,6 +1,6 @@
--- input.html --
+-- in --
 <p></p><p></p>
--- tokens.txt --
+-- out --
 StartTag(p) [] 1:1-1:4
 EndTag(p) 1:4-1:8
 StartTag(p) [] 1:8-1:11

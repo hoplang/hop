@@ -1,11 +1,11 @@
--- input.html --
+-- in --
 <component name="main">
 	<form id="form">
 		<input type="text" required>
 		<button type="submit">Send</button>
 	</form>
 </component>
--- tokens.txt --
+-- out --
 StartTag(component) [name=[main] 1:12-1:23] 1:1-1:24
 Text 1:24-2:2
 StartTag(form) [id=[form] 2:8-2:17] 2:2-2:18

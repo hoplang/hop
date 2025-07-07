@@ -1,4 +1,4 @@
--- input.html --
+-- in --
 <!-- This comment has <tags> and "quotes" and 'apostrophes' -->
--- tokens.txt --
+-- out --
 Comment 1:1-1:64

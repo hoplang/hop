@@ -1,4 +1,4 @@
--- input.html --
+-- in --
 <h1 foo="bar"x="y">
--- tokens.txt --
+-- out --
 StartTag(h1) [foo=[bar] 1:5-1:14 x=[y] 1:14-1:19] 1:1-1:20

@@ -1,6 +1,6 @@
 use crate::common::{
-    ComponentNode, CondNode, DoctypeNode, ErrorNode, ForNode, ImportNode, NativeHTMLNode, Node,
-    Position, Range, RangeError, RenderNode, TextNode, Token, TokenType, is_void_element,
+    is_void_element, ComponentNode, CondNode, DoctypeNode, ErrorNode, ForNode, ImportNode,
+    NativeHTMLNode, Node, Position, Range, RangeError, RenderNode, TextNode, Token, TokenKind,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -117,7 +117,7 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
 
     // Push a root token
     let root_token = Token {
-        token_type: TokenType::StartTag,
+        kind: TokenKind::StartTag,
         value: "root".to_string(),
         attributes: Vec::new(),
         range: Range {
@@ -128,28 +128,28 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
     stack.push(TokenTree::new(root_token));
 
     for token in tokens {
-        match token.token_type {
-            TokenType::Comment => {
+        match token.kind {
+            TokenKind::Comment => {
                 // skip comments
                 continue;
             }
-            TokenType::Error => {
+            TokenKind::Error => {
                 errors.push(RangeError {
                     message: token.value.clone(),
                     range: token.range,
                 });
             }
-            TokenType::Doctype | TokenType::Text | TokenType::SelfClosingTag => {
+            TokenKind::Doctype | TokenKind::Text | TokenKind::SelfClosingTag => {
                 stack.last_mut().unwrap().append_child(token);
             }
-            TokenType::StartTag => {
+            TokenKind::StartTag => {
                 if is_void_element(&token.value) {
                     stack.last_mut().unwrap().append_child(token);
                 } else {
                     stack.push(TokenTree::new(token));
                 }
             }
-            TokenType::EndTag => {
+            TokenKind::EndTag => {
                 if is_void_element(&token.value) {
                     errors.push(err_closed_void(&token));
                 } else if stack
@@ -178,7 +178,7 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
     // Return the root, or create an empty one if stack is empty (shouldn't happen)
     stack.pop().unwrap_or_else(|| {
         let root_token = Token {
-            token_type: TokenType::StartTag,
+            kind: TokenKind::StartTag,
             value: "root".to_string(),
             attributes: Vec::new(),
             range: Range {
@@ -199,8 +199,8 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
 
     let t = &tree.token;
 
-    match t.token_type {
-        TokenType::Doctype => {
+    match t.kind {
+        TokenKind::Doctype => {
             if depth == 0 {
                 errors.push(err_doctype_at_root(t));
             }
@@ -209,11 +209,11 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                 range: t.range,
             })
         }
-        TokenType::Text => Node::Text(TextNode {
+        TokenKind::Text => Node::Text(TextNode {
             value: t.value.clone(),
             range: t.range,
         }),
-        TokenType::SelfClosingTag | TokenType::StartTag => {
+        TokenKind::SelfClosingTag | TokenKind::StartTag => {
             if t.value == "import" || t.value == "component" {
                 if depth > 0 {
                     errors.push(err_unexpected_outside_root(t));
@@ -337,6 +337,105 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
         }
         _ => {
             panic!("Unexpected token type in construct_node");
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+    use simple_txtar::Archive;
+    use std::fs;
+    use std::path::Path;
+
+    use crate::tokenizer::tokenize;
+
+    pub fn format_tree(root: &Node) -> String {
+        let mut lines = Vec::new();
+
+        fn format_node(node: &Node, depth: usize, lines: &mut Vec<String>) {
+            let indent = "\t".repeat(depth);
+
+            match node {
+                Node::Import(_) => {
+                    lines.push(format!("{}import", indent));
+                }
+                Node::Doctype(_) => {
+                    lines.push(format!("{}doctype", indent));
+                }
+                Node::Render(RenderNode { children, .. }) => {
+                    lines.push(format!("{}render", indent));
+                    for child in children {
+                        format_node(child, depth + 1, lines);
+                    }
+                }
+                Node::Cond(CondNode { children, .. }) => {
+                    lines.push(format!("{}cond", indent));
+                    for child in children {
+                        format_node(child, depth + 1, lines);
+                    }
+                }
+                Node::For(ForNode { children, .. }) => {
+                    lines.push(format!("{}for", indent));
+                    for child in children {
+                        format_node(child, depth + 1, lines);
+                    }
+                }
+                Node::Component(ComponentNode { children, .. }) => {
+                    lines.push(format!("{}component", indent));
+                    for child in children {
+                        format_node(child, depth + 1, lines);
+                    }
+                }
+                Node::NativeHTML(NativeHTMLNode {
+                    value, children, ..
+                }) => {
+                    lines.push(format!("{}{}", indent, value));
+                    for child in children {
+                        format_node(child, depth + 1, lines);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        format_node(root, 0, &mut lines);
+        lines.join("\n")
+    }
+
+    #[test]
+    fn test_parser() {
+        let entries = fs::read_dir(Path::new("test_data/parser")).unwrap();
+
+        for entry in entries {
+            let path = entry.unwrap().path();
+
+            let file_name = path.file_name().unwrap().to_string_lossy();
+
+            let archive = Archive::from(fs::read_to_string(&path).unwrap());
+
+            let input = archive.get("main.hop").unwrap().content.trim();
+            let expected = archive.get("output.txt").unwrap().content.trim();
+
+            let result = parse(tokenize(input.to_string()));
+
+            if !result.errors.is_empty() {
+                let output = result
+                    .errors
+                    .iter()
+                    .map(|e| e.message.clone())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                assert_eq!(output, expected, "Mismatch in file: {}", file_name);
+            } else {
+                for component in result.components {
+                    if component.name_attr.value == "main" {
+                        let output = format_tree(&Node::Component(component));
+                        assert_eq!(output, expected, "Mismatch in file: {}", file_name);
+                    }
+                }
+            }
         }
     }
 }
