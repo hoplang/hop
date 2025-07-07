@@ -187,8 +187,8 @@ export type Type =
 
 You should never use type assertions in TypeScript (the `as` keyword). Instead,
 use the fact that TypeScript does type narrowing for discriminated unions. If
-you do not think it is possible to implement the pseudo code without a type
-assertion, abort immediately and explain why a type assertion is needed.
+you do not think it is possible to implement the code without a type assertion,
+abort immediately and explain why a type assertion is needed.
 
 ### Prefer to use define fields in constructors when possible
 
