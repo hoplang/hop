@@ -1,0 +1,10 @@
+-- nodes.txt --
+a
+b
+c
+-- dependencies.txt --
+a b
+b c
+c a
+-- cycle.txt --
+a b c

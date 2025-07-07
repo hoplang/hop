@@ -1,0 +1,13 @@
+-- nodes.txt --
+a
+b
+c
+d
+e
+f
+-- dependencies.txt --
+a b
+b c
+c d
+d e
+e f
