@@ -59,12 +59,12 @@ be declared as `export function fooBar` in TypeScript.
 When a type is declared as `Option<Foo>` the TypeScript implementation should
 use `Foo | null`.
 
-## Implementing the `Node` type
+### Implementing the `Node` type
 
 When implementing the Node type in TypeScript, use the following definition:
 
 
-```pseudocode
+```typescript
 export enum NodeKind {
   DoctypeNode = "DoctypeNode",
   TextNode = "TextNode",
@@ -89,17 +89,98 @@ export class RenderNode {
 
 // ...
 
-export type Node = DoctypeNode | TextNode | RenderNode | // ...
+export type Node =
+  | DoctypeNode
+  | TextNode
+  | RenderNode
+  | // ...
 ```
 
-## Never use Type Assertions
+### Implementing the `Type` type
+
+Use the following definitions when implementing the `Type` type:
+
+```typescript
+export enum TypeKind {
+  ObjectType = "ObjectType",
+  ArrayType = "ArrayType",
+  BoolType = "BoolType",
+  StringType = "StringType",
+  VoidType = "VoidType",
+  TypeVarType = "TypeVarType",
+}
+
+export class ObjectType {
+  readonly kind = TypeKind.ObjectType;
+  constructor(
+    readonly properties: ReadonlyMap<string, Type>,
+    readonly rest: number,
+  ) {}
+
+  toString(): string {
+    // ...
+  }
+}
+
+export class ArrayType {
+  readonly kind = TypeKind.ArrayType;
+  constructor(readonly type: Type) {}
+
+  toString(): string {
+    // ...
+  }
+}
+
+export class BoolType {
+  readonly kind = TypeKind.BoolType;
+
+  toString(): string {
+    // ...
+  }
+}
+
+export class StringType {
+  readonly kind = TypeKind.StringType;
+
+  toString(): string {
+    // ...
+  }
+}
+
+export class VoidType {
+  readonly kind = TypeKind.VoidType;
+
+  toString(): string {
+    // ...
+  }
+}
+
+export class TypeVarType {
+  readonly kind = TypeKind.TypeVarType;
+  constructor(readonly id: number) {}
+
+  toString(): string {
+    // ...
+  }
+}
+
+export type Type =
+  | ObjectType
+  | ArrayType
+  | BoolType
+  | StringType
+  | VoidType
+  | TypeVarType;
+```
+
+### Never use Type Assertions
 
 You should never use type assertions in TypeScript (the `as` keyword). Instead,
 use the fact that TypeScript does type narrowing for discriminated unions. If
 you do not think it is possible to implement the pseudo code without a type
 assertion, abort immediately and explain why a type assertion is needed.
 
-## Prefer to use define fields in constructors when possible
+### Prefer to use define fields in constructors when possible
 
 You should prefer to write
 
@@ -129,7 +210,7 @@ class ParseError {
 }
 ```
 
-## Use double quotes for strings
+### Use double quotes for strings
 
 You should prefer to use double quotes for strings, i.e. write:
 
