@@ -7,6 +7,9 @@ edition = "2024"
 name = "hop_rs"
 path = "src/main.rs"
 
+[dependencies]
+serde_json = "1.0"
+
 [dev-dependencies]
 simple_txtar = "1.1.0"
 pretty_assertions = "1.4.1"

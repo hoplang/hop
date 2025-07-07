@@ -19,6 +19,7 @@ The modules are the following:
 * `src/unifier.rs` - The `unifier` module. This module contains a specification for a class that performs unification.
 * `src/typechecker.rs` - The `typechecker` module. This module contains the specification for the public API and the implementation of the hop typechecker.
 * `src/toposorter.rs` - The `toposorter` module. This module contains a class that performs topological sorting of directed graphs.
+* `src/compiler.rs` - The `compiler` module. This module contains the specification for the public API and the implementation of the hop compiler that compiles hop modules into executable programs.
 
 The following diagram shows how the modules relate to each other in terms of imports:
 
@@ -30,6 +31,13 @@ graph LR
     unifier -.-> common
     typechecker -.-> unifier
     toposorter
+    scriptbuilder -.-> common
+    compiler -.-> common
+    compiler -.-> parser
+    compiler -.-> scriptbuilder
+    compiler -.-> tokenizer
+    compiler -.-> toposorter
+    compiler -.-> typechecker
 ```
 
 ## Transpiling to TypeScript

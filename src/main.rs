@@ -1,5 +1,7 @@
 mod common;
+mod compiler;
 mod parser;
+mod scriptbuilder;
 mod tokenizer;
 mod toposorter;
 mod typechecker;
