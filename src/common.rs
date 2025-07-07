@@ -172,7 +172,6 @@ impl Token {
     }
 }
 
-// Node structs as specified in the Rust implementation guide
 #[derive(Debug, Clone, PartialEq)]
 pub struct DoctypeNode {
     pub value: String,
@@ -240,7 +239,6 @@ pub struct ErrorNode {
     pub children: Vec<Node>,
 }
 
-// Node enum as specified in the Rust implementation guide
 #[derive(Debug, Clone, PartialEq)]
 pub enum Node {
     Doctype(DoctypeNode),
