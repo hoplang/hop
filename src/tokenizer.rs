@@ -57,10 +57,7 @@ impl Cursor {
         if !self.is_at_end() {
             let ch = self.input[self.char_position];
             let byte_len = ch.len_utf8();
-
-            // Update byte position by the byte length of this character
             self.byte_position += byte_len;
-
             if ch == '\n' {
                 self.line += 1;
                 self.byte_column = 1;
