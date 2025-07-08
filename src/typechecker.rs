@@ -13,25 +13,22 @@ pub struct TypeAnnotation(pub Range, pub Type);
 pub struct TypeResult {
     pub parameter_types: HashMap<String, Type>,
     pub annotations: Vec<TypeAnnotation>,
-    pub errors: Vec<RangeError>,
 }
 
 impl TypeResult {
-    pub fn new(
-        parameter_types: HashMap<String, Type>,
-        annotations: Vec<TypeAnnotation>,
-        errors: Vec<RangeError>,
-    ) -> Self {
+    pub fn new(parameter_types: HashMap<String, Type>, annotations: Vec<TypeAnnotation>) -> Self {
         TypeResult {
             parameter_types,
             annotations,
-            errors,
         }
     }
 }
 
-pub fn typecheck(module: &Module, import_types: &HashMap<String, Type>) -> TypeResult {
-    let mut errors = Vec::new();
+pub fn typecheck(
+    module: &Module,
+    import_types: &HashMap<String, Type>,
+    errors: &mut Vec<RangeError>,
+) -> TypeResult {
     let mut unifier = Unifier::new();
     let mut annotations: Vec<TypeAnnotation> = Vec::new();
     let mut parameter_types = import_types.clone();
@@ -55,7 +52,7 @@ pub fn typecheck(module: &Module, import_types: &HashMap<String, Type>) -> TypeR
                     &mut env,
                     &mut unifier,
                     &mut annotations,
-                    &mut errors,
+                    errors,
                 );
             }
             env.pop();
@@ -70,7 +67,7 @@ pub fn typecheck(module: &Module, import_types: &HashMap<String, Type>) -> TypeR
         .map(|TypeAnnotation(range, t)| TypeAnnotation(range, unifier.query(&t)))
         .collect();
 
-    TypeResult::new(parameter_types, final_annotations, errors)
+    TypeResult::new(parameter_types, final_annotations)
 }
 
 fn typecheck_node(
@@ -201,7 +198,7 @@ fn typecheck_expr(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::{parse, ParseResult};
+    use crate::parser::parse;
     use crate::tokenizer::tokenize;
     use pretty_assertions::assert_eq;
     use simple_txtar::Archive;
@@ -223,15 +220,15 @@ mod tests {
             let input = archive.get("in").unwrap().content.trim();
             let expected = archive.get("out").unwrap().content.trim();
 
-            let ParseResult(module, parse_errors) = parse(tokenize(input));
+            let mut errors = Vec::new();
+            let module = parse(tokenize(input), &mut errors);
 
-            assert!(parse_errors.is_empty());
+            assert!(errors.is_empty());
 
-            let type_result = typecheck(&module, &HashMap::new());
+            let type_result = typecheck(&module, &HashMap::new(), &mut errors);
 
-            if !type_result.errors.is_empty() {
-                let output = type_result
-                    .errors
+            if !errors.is_empty() {
+                let output = errors
                     .iter()
                     .map(|e| e.message.clone())
                     .collect::<Vec<_>>()

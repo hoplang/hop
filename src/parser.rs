@@ -10,18 +10,14 @@ pub struct Module {
     pub imports: Vec<ImportNode>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct ParseResult(pub Module, pub Vec<RangeError>);
-
-pub fn parse(tokens: Vec<Token>) -> ParseResult {
-    let mut errors = Vec::new();
-    let tree = build_tree(tokens, &mut errors);
+pub fn parse(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> Module {
+    let tree = build_tree(tokens, errors);
 
     let mut components = Vec::new();
     let mut imports = Vec::new();
 
     for child in &tree.children {
-        let node = construct_node(child, 0, &mut errors);
+        let node = construct_node(child, 0, errors);
         match node {
             Node::Import(import_data) => imports.push(import_data),
             Node::Component(component_data) => components.push(component_data),
@@ -29,13 +25,10 @@ pub fn parse(tokens: Vec<Token>) -> ParseResult {
         }
     }
 
-    ParseResult(
-        Module {
-            components,
-            imports,
-        },
-        errors,
-    )
+    Module {
+        components,
+        imports,
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -436,7 +429,8 @@ mod tests {
             let input = archive.get("main.hop").unwrap().content.trim();
             let expected = archive.get("output.txt").unwrap().content.trim();
 
-            let ParseResult(module, errors) = parse(tokenize(input));
+            let mut errors = Vec::new();
+            let module = parse(tokenize(input), &mut errors);
 
             if !errors.is_empty() {
                 let output = errors

@@ -1,5 +1,5 @@
 use crate::common::{format_range_errors, Type};
-use crate::parser::{parse, ParseResult};
+use crate::parser::parse;
 use crate::runtime::Program;
 use crate::scriptcollector::ScriptCollector;
 use crate::tokenizer::tokenize;
@@ -33,7 +33,8 @@ impl Compiler {
 
         // Parse all modules
         for (module_name, source_code) in &self.modules {
-            let ParseResult(module, errors) = parse(tokenize(source_code));
+            let mut errors = Vec::new();
+            let module = parse(tokenize(source_code), &mut errors);
             if !errors.is_empty() {
                 return Err(format_range_errors(
                     &format!("Parse errors in module {}", module_name),
@@ -84,11 +85,12 @@ impl Compiler {
                 }
             }
 
-            let type_info = typecheck(module, &import_types);
-            if !type_info.errors.is_empty() {
+            let mut errors = Vec::new();
+            let type_info = typecheck(module, &import_types, &mut errors);
+            if !errors.is_empty() {
                 return Err(format_range_errors(
                     &format!("Type errors in module {}", module_name),
-                    &type_info.errors,
+                    &errors,
                 ));
             }
 

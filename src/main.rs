@@ -10,7 +10,7 @@ mod typechecker;
 mod unifier;
 
 use formatter::ErrorFormatter;
-use parser::{parse, ParseResult};
+use parser::parse;
 use tokenizer::tokenize;
 
 // Example with multiple types of errors
@@ -25,7 +25,8 @@ const SOURCE_CODE: &str = r#"<component name="example">
 
 fn main() {
     let tokens = tokenize(SOURCE_CODE);
-    let ParseResult(_, errors) = parse(tokens);
+    let mut errors = Vec::new();
+    let _ = parse(tokens, &mut errors);
 
     if !errors.is_empty() {
         println!("Found {} parse error(s):\n", errors.len());
