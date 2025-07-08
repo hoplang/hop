@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(nix develop:*)"
+      "Bash(nix develop:*)",
+      "Bash(rg:*)"
     ],
     "deny": []
   }

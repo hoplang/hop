@@ -26,8 +26,7 @@ impl Compiler {
     pub fn compile(&self) -> Result<Program, String> {
         let mut component_maps = HashMap::new();
         let mut import_maps = HashMap::new();
-        let mut module_components = HashMap::new();
-        let mut module_imports = HashMap::new();
+        let mut modules = HashMap::new();
         let mut module_parameter_types: HashMap<String, HashMap<String, crate::common::Type>> =
             HashMap::new();
         let mut script_collector = ScriptCollector::new();
@@ -43,8 +42,7 @@ impl Compiler {
                 ));
             }
 
-            module_components.insert(module_name.clone(), result.module.components.clone());
-            module_imports.insert(module_name.clone(), result.module.imports.clone());
+            modules.insert(module_name.clone(), result.module.clone());
             script_collector.add_module(module_name.clone(), result.module.components);
 
             module_sorter.add_node(module_name.clone());
@@ -65,11 +63,10 @@ impl Compiler {
 
         // Typecheck modules in topological order
         for module_name in sorted_modules {
-            let components = module_components.get(&module_name).unwrap();
-            let imports = module_imports.get(&module_name).unwrap();
+            let module = modules.get(&module_name).unwrap();
             let mut import_types = HashMap::new();
 
-            for import_node in imports {
+            for import_node in &module.imports {
                 let from_module = &import_node.from_attr.value;
                 let component_name = &import_node.component_attr.value;
 
@@ -87,7 +84,7 @@ impl Compiler {
                 }
             }
 
-            let type_info = typecheck(components, &import_types);
+            let type_info = typecheck(module, &import_types);
             if !type_info.errors.is_empty() {
                 return Err(format_range_errors(
                     &format!("Type errors in module {}", module_name),
@@ -98,11 +95,11 @@ impl Compiler {
             let mut component_map = HashMap::new();
             let mut import_map = HashMap::new();
 
-            for comp_node in components {
+            for comp_node in &module.components {
                 component_map.insert(comp_node.name_attr.value.clone(), comp_node.clone());
             }
 
-            for import_node in imports {
+            for import_node in &module.imports {
                 import_map.insert(
                     import_node.component_attr.value.clone(),
                     import_node.from_attr.value.clone(),

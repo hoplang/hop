@@ -2,6 +2,7 @@ use crate::common::{
     ComponentNode, CondNode, Environment, ErrorNode, ExprAttribute, ForNode, NativeHTMLNode, Node,
     Range, RangeError, RenderNode, Type,
 };
+use crate::parser::Module;
 use crate::unifier::Unifier;
 use std::collections::HashMap;
 
@@ -38,7 +39,7 @@ impl TypeResult {
     }
 }
 
-pub fn typecheck(components: &[ComponentNode], import_types: &HashMap<String, Type>) -> TypeResult {
+pub fn typecheck(module: &Module, import_types: &HashMap<String, Type>) -> TypeResult {
     let mut errors = Vec::new();
     let mut unifier = Unifier::new();
     let mut annotations: Vec<TypeAnnotation> = Vec::new();
@@ -50,7 +51,7 @@ pub fn typecheck(components: &[ComponentNode], import_types: &HashMap<String, Ty
         params_as_attr,
         children,
         ..
-    } in components
+    } in &module.components
     {
         if let Some(params_as_attr) = params_as_attr {
             let t1 = unifier.new_type_var();
@@ -233,7 +234,7 @@ mod tests {
 
             let parse_result = parse(tokenize(input));
 
-            let type_result = typecheck(&parse_result.module.components, &HashMap::new());
+            let type_result = typecheck(&parse_result.module, &HashMap::new());
 
             if !type_result.errors.is_empty() {
                 let output = type_result
