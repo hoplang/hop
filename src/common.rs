@@ -140,7 +140,7 @@ impl RangeError {
     }
 
     pub fn unused_variable(var: &str, range: Range) -> Self {
-        Self::new(format!("Variable {var} is unused"), range)
+        Self::new(format!("Unused variable {var}"), range)
     }
 
     pub fn variable_already_defined(var: &str, range: Range) -> Self {
