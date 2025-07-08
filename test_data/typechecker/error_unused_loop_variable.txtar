@@ -1,0 +1,9 @@
+-- in --
+<component name="main" params-as="items">
+  <div>
+      <for each="items" as="item">
+      </for>
+  </div>
+</component>
+-- out --
+Variable item is unused

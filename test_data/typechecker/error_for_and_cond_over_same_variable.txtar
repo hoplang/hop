@@ -3,6 +3,7 @@
 	<cond if="params">
 	</cond>
 	<for each="params" as="item">
+		<div inner-text="item"></div>
 	</for>
 </component>
 -- out --

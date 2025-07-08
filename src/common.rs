@@ -303,6 +303,7 @@ pub enum Node {
 pub struct Environment<T> {
     values: HashMap<String, Vec<T>>,
     operations: Vec<String>,
+    accessed: HashMap<String, bool>,
 }
 
 impl<T: Clone> Environment<T> {
@@ -310,24 +311,33 @@ impl<T: Clone> Environment<T> {
         Environment {
             values: HashMap::new(),
             operations: Vec::new(),
+            accessed: HashMap::new(),
         }
     }
 
     // Bind the key to the given value
     pub fn push(&mut self, key: String, value: T) {
         self.values.entry(key.clone()).or_default().push(value);
-        self.operations.push(key);
+        self.operations.push(key.clone());
+        self.accessed.insert(key, false);
     }
 
-    // Undo the latest push operation
-    pub fn pop(&mut self) {
+    // Undo the latest push operation and return whether the variable was accessed
+    pub fn pop(&mut self) -> bool {
         if let Some(key) = self.operations.pop() {
             if let Some(stack) = self.values.get_mut(&key) {
                 stack.pop();
+                let was_accessed = self.accessed.get(&key).copied().unwrap_or(false);
                 if stack.is_empty() {
                     self.values.remove(&key);
+                    self.accessed.remove(&key);
                 }
+                was_accessed
+            } else {
+                false
             }
+        } else {
+            false
         }
     }
 
@@ -337,8 +347,13 @@ impl<T: Clone> Environment<T> {
     }
 
     // Look up a key in the environment
-    pub fn lookup(&self, key: &str) -> Option<&T> {
-        self.values.get(key)?.last()
+    pub fn lookup(&mut self, key: &str) -> Option<&T> {
+        if let Some(value) = self.values.get(key)?.last() {
+            self.accessed.insert(key.to_string(), true);
+            Some(value)
+        } else {
+            None
+        }
     }
 }
 

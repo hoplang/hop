@@ -191,7 +191,7 @@ impl Program {
     fn evaluate_expression(
         &self,
         expr: &[String],
-        env: &Environment<serde_json::Value>,
+        env: &mut Environment<serde_json::Value>,
     ) -> Result<serde_json::Value, String> {
         if expr.is_empty() {
             return Err("Empty expression".to_string());

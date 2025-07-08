@@ -66,14 +66,13 @@ pub fn typecheck(
             }
 
             let final_type = unifier.query(&t1);
-            if matches!(final_type, Type::TypeVar(_)) {
+            let was_accessed = env.pop();
+            if !was_accessed {
                 errors.push(RangeError::unused_variable(
                     &params_as_attr.value,
                     params_as_attr.range,
                 ));
             }
-
-            env.pop();
             parameter_types.insert(name_attr.value.clone(), final_type);
         } else {
             parameter_types.insert(name_attr.value.clone(), Type::Void);
@@ -125,15 +124,21 @@ fn typecheck_node(
 
             if let Some(attr) = as_attr {
                 annotations.push(TypeAnnotation(attr.range, t1.clone()));
-                env.push(attr.value.clone(), t1);
+                env.push(attr.value.clone(), t1.clone());
             }
 
             for child in children {
                 typecheck_node(child, parameter_types, env, unifier, annotations, errors);
             }
 
-            if as_attr.is_some() {
-                env.pop();
+            if let Some(attr) = as_attr {
+                let was_accessed = env.pop();
+                if !was_accessed {
+                    errors.push(RangeError::unused_variable(
+                        &attr.value,
+                        attr.range,
+                    ));
+                }
             }
         }
         Node::Cond(CondNode {
@@ -196,7 +201,7 @@ fn typecheck_node(
 fn typecheck_expr(
     t1: &Type,
     attr: &ExprAttribute,
-    env: &Environment<Type>,
+    env: &mut Environment<Type>,
     unifier: &mut Unifier,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut Vec<RangeError>,
