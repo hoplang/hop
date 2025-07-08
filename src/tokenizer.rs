@@ -149,8 +149,8 @@ impl TokenBuilder {
         self.attribute_start = cursor.get_position();
     }
 
-    fn append_to_current_token_value(&mut self, s: &str) {
-        self.token_value.push_str(s);
+    fn append_to_current_token_value(&mut self, ch: char) {
+        self.token_value.push(ch);
     }
 
     fn append_to_current_attribute_name(&mut self, s: &str) {
@@ -219,7 +219,7 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     cursor.advance();
                     state = TokenizerState::TagOpen;
                 } else {
-                    builder.append_to_current_token_value(&ch.to_string());
+                    builder.append_to_current_token_value(ch);
                     cursor.advance();
                     state = TokenizerState::Text;
                 }
@@ -228,7 +228,7 @@ pub fn tokenize(input: &str) -> Vec<Token> {
             TokenizerState::TagOpen => {
                 if is_alphabetic(ch) {
                     builder.set_current_token_kind(TokenKind::StartTag);
-                    builder.append_to_current_token_value(&ch.to_string());
+                    builder.append_to_current_token_value(ch);
                     cursor.advance();
                     state = TokenizerState::StartTagName;
                 } else if ch == '/' {
@@ -247,7 +247,7 @@ pub fn tokenize(input: &str) -> Vec<Token> {
 
             TokenizerState::StartTagName => {
                 if is_alphanumeric_or_dash(ch) {
-                    builder.append_to_current_token_value(&ch.to_string());
+                    builder.append_to_current_token_value(ch);
                     cursor.advance();
                     state = TokenizerState::StartTagName;
                 } else if is_whitespace(ch) {
@@ -277,7 +277,7 @@ pub fn tokenize(input: &str) -> Vec<Token> {
 
             TokenizerState::EndTagOpen => {
                 if is_alphabetic(ch) {
-                    builder.append_to_current_token_value(&ch.to_string());
+                    builder.append_to_current_token_value(ch);
                     cursor.advance();
                     state = TokenizerState::EndTagName;
                 } else {
@@ -289,7 +289,7 @@ pub fn tokenize(input: &str) -> Vec<Token> {
 
             TokenizerState::EndTagName => {
                 if is_alphanumeric_or_dash(ch) {
-                    builder.append_to_current_token_value(&ch.to_string());
+                    builder.append_to_current_token_value(ch);
                     cursor.advance();
                     state = TokenizerState::EndTagName;
                 } else if ch == '>' {
@@ -460,7 +460,7 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     builder.push_current_token(&cursor);
                     state = TokenizerState::Text;
                 } else {
-                    builder.append_to_current_token_value(&ch.to_string());
+                    builder.append_to_current_token_value(ch);
                     cursor.advance();
                     state = TokenizerState::Comment;
                 }
@@ -500,7 +500,9 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     state = TokenizerState::DoctypeName;
                 } else if ch == '>' {
                     if doctype_name_buffer.to_lowercase() == "html" {
-                        builder.append_to_current_token_value(&doctype_name_buffer);
+                        for ch in doctype_name_buffer.chars() {
+                            builder.append_to_current_token_value(ch);
+                        }
                         cursor.advance();
                         builder.push_current_token(&cursor);
                         state = TokenizerState::Text;
@@ -523,12 +525,14 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                         builder.push_current_token(&cursor);
                     }
                     builder.set_current_token_kind(TokenKind::EndTag);
-                    builder.append_to_current_token_value(&stored_tag_name);
+                    for ch in stored_tag_name.chars() {
+                        builder.append_to_current_token_value(ch);
+                    }
                     cursor.advance_n(end_tag.len());
                     builder.push_current_token(&cursor);
                     state = TokenizerState::Text;
                 } else {
-                    builder.append_to_current_token_value(&ch.to_string());
+                    builder.append_to_current_token_value(ch);
                     cursor.advance();
                     state = TokenizerState::RawtextData;
                 }
