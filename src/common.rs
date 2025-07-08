@@ -126,6 +126,10 @@ impl RangeError {
         Self::new("Empty expression".to_string(), range)
     }
 
+    pub fn invalid_variable_name(name: &str, range: Range) -> Self {
+        Self::new(format!("Invalid variable name '{name}'. Variable names must match [a-z][a-z0-9]*"), range)
+    }
+
     // Typechecker error functions
     pub fn component_not_found(component: &str, range: Range) -> Self {
         Self::new(format!("Component {component} not found"), range)
@@ -157,6 +161,29 @@ pub struct Attribute {
     pub name: String,
     pub value: String,
     pub range: Range,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VariableNameAttr {
+    pub value: String,
+    pub range: Range,
+}
+
+impl VariableNameAttr {
+    pub fn new(value: String, range: Range) -> Result<Self, RangeError> {
+        let mut chars = value.chars();
+        if let Some(first_char) = chars.next() {
+            if !first_char.is_ascii_lowercase() {
+                return Err(RangeError::invalid_variable_name(&value, range));
+            }
+            if !chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) {
+                return Err(RangeError::invalid_variable_name(&value, range));
+            }
+        } else {
+            return Err(RangeError::invalid_variable_name(&value, range));
+        }
+        Ok(VariableNameAttr { value, range })
+    }
 }
 
 impl Attribute {
@@ -245,7 +272,7 @@ pub struct RenderNode {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForNode {
     pub each_attr: ExprAttribute,
-    pub as_attr: Option<Attribute>,
+    pub as_attr: Option<VariableNameAttr>,
     pub range: Range,
     pub children: Vec<Node>,
 }
@@ -267,7 +294,7 @@ pub struct ImportNode {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentNode {
     pub name_attr: Attribute,
-    pub params_as_attr: Option<Attribute>,
+    pub params_as_attr: Option<VariableNameAttr>,
     pub as_attr: Option<Attribute>,
     pub attributes: Vec<Attribute>,
     pub range: Range,

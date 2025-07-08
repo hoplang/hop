@@ -1,7 +1,7 @@
 use crate::common::{
     is_void_element, ComponentNode, CondNode, DoctypeNode, ErrorNode, ExprAttribute, ForNode,
     ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode, TextNode, Token,
-    TokenKind,
+    TokenKind, VariableNameAttr,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -239,9 +239,24 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                         });
                     }
 
+                    let validated_as_attr = if let Some(as_attr) = as_attr {
+                        match VariableNameAttr::new(as_attr.value.clone(), as_attr.range) {
+                            Ok(var_attr) => Some(var_attr),
+                            Err(err) => {
+                                errors.push(err);
+                                return Node::Error(ErrorNode {
+                                    range: t.range,
+                                    children,
+                                });
+                            }
+                        }
+                    } else {
+                        None
+                    };
+
                     Node::For(ForNode {
                         each_attr: parsed_each_attr.unwrap(),
-                        as_attr,
+                        as_attr: validated_as_attr,
                         range: t.range,
                         children,
                     })
@@ -320,9 +335,24 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                         });
                     }
 
+                    let validated_params_as_attr = if let Some(params_as_attr) = params_as_attr {
+                        match VariableNameAttr::new(params_as_attr.value.clone(), params_as_attr.range) {
+                            Ok(var_attr) => Some(var_attr),
+                            Err(err) => {
+                                errors.push(err);
+                                return Node::Error(ErrorNode {
+                                    range: t.range,
+                                    children,
+                                });
+                            }
+                        }
+                    } else {
+                        None
+                    };
+
                     Node::Component(ComponentNode {
                         name_attr: name_attr.unwrap(),
-                        params_as_attr,
+                        params_as_attr: validated_params_as_attr,
                         as_attr,
                         attributes: t.attributes.clone(),
                         range: t.range,

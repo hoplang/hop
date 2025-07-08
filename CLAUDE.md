@@ -15,6 +15,34 @@ For example:
 - `nix develop --command cargo build`
 - `nix develop --command cargo test`
 
+## Testing
+
+The project uses txtar format for test cases located in `test_data/` directories organized by module:
+- `test_data/tokenizer/` - Tokenizer tests
+- `test_data/parser/` - Parser tests  
+- `test_data/typechecker/` - Typechecker tests
+- `test_data/compiler/` - Compiler tests
+- `test_data/unifier/` - Unifier tests
+- `test_data/toposorter/` - Toposorter tests
+
+### Test File Format
+
+Each test file uses the txtar format with.
+
+Example error test:
+```
+-- in --
+<component name="main" params-as="InvalidName">
+</component>
+-- out --
+Invalid variable name 'InvalidName'. Variable names must match [a-z][a-z0-9]*
+```
+
+Run specific module tests with:
+- `nix develop --command cargo test test_parser`
+- `nix develop --command cargo test test_tokenizer`
+- etc.
+
 ## Project Overview
 
 This project contains the reference implementation for the hop language.

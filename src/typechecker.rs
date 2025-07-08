@@ -267,7 +267,7 @@ mod tests {
             let tokens = tokenize(input, &mut errors);
             let module = parse(tokens, &mut errors);
 
-            assert!(errors.is_empty());
+            assert_eq!(errors, Vec::new());
 
             let type_result = typecheck(&module, &HashMap::new(), &mut errors);
 
