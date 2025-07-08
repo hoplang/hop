@@ -43,12 +43,12 @@ impl Compiler {
                 ));
             }
 
-            module_components.insert(module_name.clone(), result.components.clone());
-            module_imports.insert(module_name.clone(), result.imports.clone());
-            script_collector.add_module(module_name.clone(), result.components);
+            module_components.insert(module_name.clone(), result.module.components.clone());
+            module_imports.insert(module_name.clone(), result.module.imports.clone());
+            script_collector.add_module(module_name.clone(), result.module.components);
 
             module_sorter.add_node(module_name.clone());
-            for import_node in &result.imports {
+            for import_node in &result.module.imports {
                 module_sorter.add_dependency(module_name, &import_node.from_attr.value);
             }
         }

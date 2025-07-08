@@ -233,7 +233,7 @@ mod tests {
 
             let parse_result = parse(tokenize(input));
 
-            let type_result = typecheck(&parse_result.components, &HashMap::new());
+            let type_result = typecheck(&parse_result.module.components, &HashMap::new());
 
             if !type_result.errors.is_empty() {
                 let output = type_result

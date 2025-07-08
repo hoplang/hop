@@ -5,9 +5,14 @@ use crate::common::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ParseResult {
+pub struct Module {
     pub components: Vec<ComponentNode>,
     pub imports: Vec<ImportNode>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParseResult {
+    pub module: Module,
     pub errors: Vec<RangeError>,
 }
 
@@ -28,8 +33,10 @@ pub fn parse(tokens: Vec<Token>) -> ParseResult {
     }
 
     ParseResult {
-        components,
-        imports,
+        module: Module {
+            components,
+            imports,
+        },
         errors,
     }
 }
@@ -443,7 +450,7 @@ mod tests {
                     .join(" ");
                 assert_eq!(output, expected, "Mismatch in file: {}", file_name);
             } else {
-                for component in result.components {
+                for component in result.module.components {
                     if component.name_attr.value == "main" {
                         let output = format_tree(&Node::Component(component));
                         assert_eq!(output, expected, "Mismatch in file: {}", file_name);
