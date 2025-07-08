@@ -86,6 +86,62 @@ impl RangeError {
     pub fn new(message: String, range: Range) -> Self {
         RangeError { message, range }
     }
+
+    // Parser error functions
+    pub fn unmatched_closing_tag(tag: &str, range: Range) -> Self {
+        Self::new(format!("Unmatched </{tag}>"), range)
+    }
+
+    pub fn unclosed_tag(tag: &str, range: Range) -> Self {
+        Self::new(format!("Unclosed <{tag}>"), range)
+    }
+
+    pub fn closed_void_tag(tag: &str, range: Range) -> Self {
+        Self::new(
+            format!("<{tag}> should not be closed using a closing tag"),
+            range,
+        )
+    }
+
+    pub fn unexpected_tag_outside_root(tag: &str, range: Range) -> Self {
+        Self::new(format!("<{tag}> must be placed at module root"), range)
+    }
+
+    pub fn unexpected_tag_at_root(tag: &str, range: Range) -> Self {
+        Self::new(format!("Unexpected <{tag}> at module root"), range)
+    }
+
+    pub fn unexpected_doctype_at_root(range: Range) -> Self {
+        Self::new("Unexpected doctype at module root".to_string(), range)
+    }
+
+    pub fn missing_required_attribute(tag: &str, attr: &str, range: Range) -> Self {
+        Self::new(
+            format!("<{tag}> is missing required attribute {attr}"),
+            range,
+        )
+    }
+
+    pub fn empty_expression(range: Range) -> Self {
+        Self::new("Empty expression".to_string(), range)
+    }
+
+    pub fn tokenizer_error(message: &str, range: Range) -> Self {
+        Self::new(format!("Tokenizer error: {}", message), range)
+    }
+
+    // Typechecker error functions
+    pub fn component_not_found(component: &str, range: Range) -> Self {
+        Self::new(format!("Component {component} not found"), range)
+    }
+
+    pub fn undefined_variable(var: &str, range: Range) -> Self {
+        Self::new(format!("Undefined variable: {var}"), range)
+    }
+
+    pub fn unification_error(message: &str, range: Range) -> Self {
+        Self::new(message.to_string(), range)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

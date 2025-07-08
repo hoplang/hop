@@ -1,5 +1,5 @@
 use crate::common::{
-    escape_html, format_range_errors, is_void_element, ComponentNode, Environment, Node, RangeError,
+    escape_html, format_range_errors, is_void_element, ComponentNode, Environment, Node,
 };
 use crate::parser::parse;
 use crate::scriptbuilder::ScriptBuilder;
@@ -262,14 +262,9 @@ impl Compiler {
         for (module_name, source_code) in &self.modules {
             let result = parse(tokenize(source_code.to_string()));
             if !result.errors.is_empty() {
-                let range_errors: Vec<RangeError> = result
-                    .errors
-                    .iter()
-                    .map(|e| RangeError::new(e.to_string(), e.range()))
-                    .collect();
                 return Err(format_range_errors(
                     &format!("Parse errors in module {}", module_name),
-                    &range_errors,
+                    &result.errors,
                 ));
             }
 
@@ -319,14 +314,9 @@ impl Compiler {
 
             let type_info = typecheck(components, &import_types);
             if !type_info.errors.is_empty() {
-                let range_errors: Vec<RangeError> = type_info
-                    .errors
-                    .iter()
-                    .map(|e| RangeError::new(e.to_string(), e.range()))
-                    .collect();
                 return Err(format_range_errors(
                     &format!("Type errors in module {}", module_name),
-                    &range_errors,
+                    &type_info.errors,
                 ));
             }
 

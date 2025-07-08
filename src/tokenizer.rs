@@ -116,17 +116,11 @@ impl TokenBuilder {
         Self {
             token_value: String::new(),
             token_kind: TokenKind::Text,
-            token_start: Position {
-                line: 1,
-                column: 1,
-            },
+            token_start: Position { line: 1, column: 1 },
             token_attributes: Vec::new(),
             attribute_name: String::new(),
             attribute_value: String::new(),
-            attribute_start: Position {
-                line: 1,
-                column: 1,
-            },
+            attribute_start: Position { line: 1, column: 1 },
             tokens: Vec::new(),
         }
     }

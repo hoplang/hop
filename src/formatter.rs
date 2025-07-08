@@ -17,44 +17,7 @@ impl ErrorFormatter {
         }
     }
 
-    pub fn format_error<E: ErrorLike>(&self, error: &E) -> String {
-        let mut output = String::new();
-
-        // Error header
-        output.push_str(&format!("error: {}\n", error.message()));
-
-        let range = error.range();
-
-        // Location info
-        output.push_str(&format!(
-            "  --> {} (line {}, col {})\n",
-            self.filename, range.start.line, range.start.column
-        ));
-
-        // Source code context with surrounding lines
-        self.format_source_context(&mut output, range);
-
-        output
-    }
-
-    pub fn format_range_errors(&self, message: &str, errors: &[RangeError]) -> String {
-        let mut output = String::new();
-
-        if !errors.is_empty() {
-            output.push_str(&format!("{}\n\n", message));
-
-            for (i, error) in errors.iter().enumerate() {
-                if i > 0 {
-                    output.push('\n');
-                }
-                output.push_str(&self.format_range_error(error));
-            }
-        }
-
-        output
-    }
-
-    fn format_range_error(&self, error: &RangeError) -> String {
+    pub fn format_error(&self, error: &RangeError) -> String {
         let mut output = String::new();
 
         // Error header
@@ -136,30 +99,5 @@ impl ErrorFormatter {
         // Calculate display width of the substring up to the byte offset
         let substring = &line[..target_byte_offset];
         substring.width() + 1 // +1 for 1-based indexing
-    }
-}
-
-pub trait ErrorLike {
-    fn message(&self) -> String;
-    fn range(&self) -> Range;
-}
-
-impl ErrorLike for crate::parser::ParseError {
-    fn message(&self) -> String {
-        self.to_string()
-    }
-
-    fn range(&self) -> Range {
-        self.range()
-    }
-}
-
-impl ErrorLike for crate::typechecker::TypeError {
-    fn message(&self) -> String {
-        self.to_string()
-    }
-
-    fn range(&self) -> Range {
-        self.range()
     }
 }

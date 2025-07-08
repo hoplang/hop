@@ -1,64 +1,14 @@
 use crate::common::{
     is_void_element, ComponentNode, CondNode, DoctypeNode, ErrorNode, ExprAttribute, ForNode,
-    ImportNode, NativeHTMLNode, Node, Position, Range, RenderNode, TextNode, Token, TokenKind,
+    ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode, TextNode, Token,
+    TokenKind,
 };
-use thiserror::Error;
-
-#[derive(Debug, Error, Clone, PartialEq)]
-pub enum ParseError {
-    #[error("Unmatched </{value}>")]
-    UnmatchedTag { value: String, range: Range },
-
-    #[error("Unclosed <{value}>")]
-    UnclosedTag { value: String, range: Range },
-
-    #[error("<{value}> should not be closed using a closing tag")]
-    ClosedVoidElement { value: String, range: Range },
-
-    #[error("<{value}> must be placed at module root")]
-    UnexpectedOutsideRoot { value: String, range: Range },
-
-    #[error("Unexpected <{value}> at module root")]
-    UnexpectedAtRoot { value: String, range: Range },
-
-    #[error("Unexpected doctype at module root")]
-    DoctypeAtRoot { range: Range },
-
-    #[error("<{tag}> is missing required attribute {attr}")]
-    MissingRequiredAttribute {
-        tag: String,
-        attr: String,
-        range: Range,
-    },
-
-    #[error("Empty expression")]
-    EmptyExpression { range: Range },
-
-    #[error("Tokenizer error: {message}")]
-    TokenizerError { message: String, range: Range },
-}
-
-impl ParseError {
-    pub fn range(&self) -> Range {
-        match self {
-            ParseError::UnmatchedTag { range, .. } => *range,
-            ParseError::UnclosedTag { range, .. } => *range,
-            ParseError::ClosedVoidElement { range, .. } => *range,
-            ParseError::UnexpectedOutsideRoot { range, .. } => *range,
-            ParseError::UnexpectedAtRoot { range, .. } => *range,
-            ParseError::DoctypeAtRoot { range } => *range,
-            ParseError::MissingRequiredAttribute { range, .. } => *range,
-            ParseError::EmptyExpression { range } => *range,
-            ParseError::TokenizerError { range, .. } => *range,
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParseResult {
     pub components: Vec<ComponentNode>,
     pub imports: Vec<ImportNode>,
-    pub errors: Vec<ParseError>,
+    pub errors: Vec<RangeError>,
 }
 
 #[derive(Debug, Clone)]
@@ -113,7 +63,7 @@ pub fn parse(tokens: Vec<Token>) -> ParseResult {
     }
 }
 
-fn build_tree(tokens: Vec<Token>, errors: &mut Vec<ParseError>) -> TokenTree {
+fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
     let mut stack: Vec<TokenTree> = Vec::new();
 
     // Push a root token
@@ -122,14 +72,8 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<ParseError>) -> TokenTree {
         value: "root".to_string(),
         attributes: Vec::new(),
         range: Range {
-            start: Position {
-                line: 0,
-                column: 0,
-            },
-            end: Position {
-                line: 0,
-                column: 0,
-            },
+            start: Position { line: 0, column: 0 },
+            end: Position { line: 0, column: 0 },
         },
     };
     stack.push(TokenTree::new(root_token));
@@ -141,10 +85,7 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<ParseError>) -> TokenTree {
                 continue;
             }
             TokenKind::Error => {
-                errors.push(ParseError::TokenizerError {
-                    message: token.value.clone(),
-                    range: token.range,
-                });
+                errors.push(RangeError::tokenizer_error(&token.value, token.range));
             }
             TokenKind::Doctype | TokenKind::Text | TokenKind::SelfClosingTag => {
                 stack.last_mut().unwrap().append_child(token);
@@ -158,26 +99,20 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<ParseError>) -> TokenTree {
             }
             TokenKind::EndTag => {
                 if is_void_element(&token.value) {
-                    errors.push(ParseError::ClosedVoidElement {
-                        value: token.value.clone(),
-                        range: token.range,
-                    });
+                    errors.push(RangeError::closed_void_tag(&token.value, token.range));
                 } else if stack
                     .iter()
                     .find(|t| t.token.value == token.value)
                     .is_none()
                 {
-                    errors.push(ParseError::UnmatchedTag {
-                        value: token.value.clone(),
-                        range: token.range,
-                    });
+                    errors.push(RangeError::unmatched_closing_tag(&token.value, token.range));
                 } else {
                     while stack.last().unwrap().token.value != token.value {
                         let unclosed_token = stack.pop().unwrap().token;
-                        errors.push(ParseError::UnclosedTag {
-                            value: unclosed_token.value.clone(),
-                            range: unclosed_token.range,
-                        });
+                        errors.push(RangeError::unclosed_tag(
+                            &unclosed_token.value,
+                            unclosed_token.range,
+                        ));
                     }
                     let mut completed = stack.pop().unwrap();
                     completed.set_end_token(token);
@@ -189,10 +124,10 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<ParseError>) -> TokenTree {
 
     while stack.len() > 1 {
         let unclosed_token = stack.pop().unwrap().token;
-        errors.push(ParseError::UnclosedTag {
-            value: unclosed_token.value.clone(),
-            range: unclosed_token.range,
-        });
+        errors.push(RangeError::unclosed_tag(
+            &unclosed_token.value,
+            unclosed_token.range,
+        ));
     }
 
     stack.pop().unwrap_or_else(|| {
@@ -201,14 +136,8 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<ParseError>) -> TokenTree {
             value: "root".to_string(),
             attributes: Vec::new(),
             range: Range {
-                start: Position {
-                    line: 0,
-                    column: 0,
-                },
-                end: Position {
-                    line: 0,
-                    column: 0,
-                },
+                start: Position { line: 0, column: 0 },
+                end: Position { line: 0, column: 0 },
             },
         };
         TokenTree::new(root_token)
@@ -223,17 +152,17 @@ fn parse_expr_attribute(
     name: &str,
     value: &str,
     range: Range,
-    errors: &mut Vec<ParseError>,
+    errors: &mut Vec<RangeError>,
 ) -> Option<ExprAttribute> {
     let segments = parse_expr(value);
     if segments.is_empty() {
-        errors.push(ParseError::EmptyExpression { range });
+        errors.push(RangeError::empty_expression(range));
         return None;
     }
     Some(ExprAttribute::new(name.to_string(), segments, range))
 }
 
-fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<ParseError>) -> Node {
+fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) -> Node {
     let children: Vec<Node> = tree
         .children
         .iter()
@@ -245,7 +174,7 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<ParseError>) 
     match t.kind {
         TokenKind::Doctype => {
             if depth == 0 {
-                errors.push(ParseError::DoctypeAtRoot { range: t.range });
+                errors.push(RangeError::unexpected_doctype_at_root(t.range));
             }
             Node::Doctype(DoctypeNode {
                 value: t.value.clone(),
@@ -259,16 +188,10 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<ParseError>) 
         TokenKind::SelfClosingTag | TokenKind::StartTag => {
             if t.value == "import" || t.value == "component" {
                 if depth > 0 {
-                    errors.push(ParseError::UnexpectedOutsideRoot {
-                        value: t.value.clone(),
-                        range: t.range,
-                    });
+                    errors.push(RangeError::unexpected_tag_outside_root(&t.value, t.range));
                 }
             } else if depth == 0 {
-                errors.push(ParseError::UnexpectedAtRoot {
-                    value: t.value.clone(),
-                    range: t.range,
-                });
+                errors.push(RangeError::unexpected_tag_at_root(&t.value, t.range));
             }
 
             match t.value.as_str() {
@@ -279,11 +202,11 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<ParseError>) 
                     let component_attr = t.get_attribute("component");
 
                     if component_attr.is_none() {
-                        errors.push(ParseError::MissingRequiredAttribute {
-                            tag: t.value.clone(),
-                            attr: "component".to_string(),
-                            range: t.range,
-                        });
+                        errors.push(RangeError::missing_required_attribute(
+                            &t.value,
+                            "component",
+                            t.range,
+                        ));
                         return Node::Error(ErrorNode {
                             range: t.range,
                             children,
@@ -302,11 +225,9 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<ParseError>) 
                     let as_attr = t.get_attribute("as");
 
                     if each_attr.is_none() {
-                        errors.push(ParseError::MissingRequiredAttribute {
-                            tag: t.value.clone(),
-                            attr: "each".to_string(),
-                            range: t.range,
-                        });
+                        errors.push(RangeError::missing_required_attribute(
+                            &t.value, "each", t.range,
+                        ));
                         return Node::Error(ErrorNode {
                             range: t.range,
                             children,
@@ -339,11 +260,9 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<ParseError>) 
                     let if_attr = t.get_attribute("if");
 
                     if if_attr.is_none() {
-                        errors.push(ParseError::MissingRequiredAttribute {
-                            tag: t.value.clone(),
-                            attr: "if".to_string(),
-                            range: t.range,
-                        });
+                        errors.push(RangeError::missing_required_attribute(
+                            &t.value, "if", t.range,
+                        ));
                         return Node::Error(ErrorNode {
                             range: t.range,
                             children,
@@ -373,18 +292,16 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<ParseError>) 
 
                     if component_attr.is_none() || from_attr.is_none() {
                         if component_attr.is_none() {
-                            errors.push(ParseError::MissingRequiredAttribute {
-                                tag: t.value.clone(),
-                                attr: "component".to_string(),
-                                range: t.range,
-                            });
+                            errors.push(RangeError::missing_required_attribute(
+                                &t.value,
+                                "component",
+                                t.range,
+                            ));
                         }
                         if from_attr.is_none() {
-                            errors.push(ParseError::MissingRequiredAttribute {
-                                tag: t.value.clone(),
-                                attr: "from".to_string(),
-                                range: t.range,
-                            });
+                            errors.push(RangeError::missing_required_attribute(
+                                &t.value, "from", t.range,
+                            ));
                         }
                         return Node::Error(ErrorNode {
                             range: t.range,
@@ -404,11 +321,9 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<ParseError>) 
                     let name_attr = t.get_attribute("name");
 
                     if name_attr.is_none() {
-                        errors.push(ParseError::MissingRequiredAttribute {
-                            tag: t.value.clone(),
-                            attr: "name".to_string(),
-                            range: t.range,
-                        });
+                        errors.push(RangeError::missing_required_attribute(
+                            &t.value, "name", t.range,
+                        ));
                         return Node::Error(ErrorNode {
                             range: t.range,
                             children,
@@ -527,7 +442,7 @@ mod tests {
                 let output = result
                     .errors
                     .iter()
-                    .map(|e| e.to_string())
+                    .map(|e| e.message.clone())
                     .collect::<Vec<_>>()
                     .join(" ");
                 assert_eq!(output, expected, "Mismatch in file: {}", file_name);
