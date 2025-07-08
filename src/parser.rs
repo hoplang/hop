@@ -11,6 +11,29 @@ pub struct ParseResult {
     pub errors: Vec<RangeError>,
 }
 
+pub fn parse(tokens: Vec<Token>) -> ParseResult {
+    let mut errors = Vec::new();
+    let tree = build_tree(tokens, &mut errors);
+
+    let mut components = Vec::new();
+    let mut imports = Vec::new();
+
+    for child in &tree.children {
+        let node = construct_node(child, 0, &mut errors);
+        match node {
+            Node::Import(import_data) => imports.push(import_data),
+            Node::Component(component_data) => components.push(component_data),
+            _ => {} // ignore other node types at root level
+        }
+    }
+
+    ParseResult {
+        components,
+        imports,
+        errors,
+    }
+}
+
 #[derive(Debug, Clone)]
 struct TokenTree {
     token: Token,
@@ -37,29 +60,6 @@ impl TokenTree {
 
     fn set_end_token(&mut self, token: Token) {
         self.end_token = Some(token);
-    }
-}
-
-pub fn parse(tokens: Vec<Token>) -> ParseResult {
-    let mut errors = Vec::new();
-    let tree = build_tree(tokens, &mut errors);
-
-    let mut components = Vec::new();
-    let mut imports = Vec::new();
-
-    for child in &tree.children {
-        let node = construct_node(child, 0, &mut errors);
-        match node {
-            Node::Import(import_data) => imports.push(import_data),
-            Node::Component(component_data) => components.push(component_data),
-            _ => {} // ignore other node types at root level
-        }
-    }
-
-    ParseResult {
-        components,
-        imports,
-        errors,
     }
 }
 
