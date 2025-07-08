@@ -197,30 +197,27 @@ impl Program {
             return Err("Empty expression".to_string());
         }
 
-        if !env.has(&expr[0]) {
-            return Err(format!("Undefined variable: {}", expr[0]));
-        }
+        if let Some(val) = env.lookup(&expr[0]) {
+            let mut current_value = val.clone();
 
-        let mut current_value = env
-            .lookup(&expr[0])
-            .ok_or_else(|| format!("Undefined variable: {}", expr[0]))?
-            .clone();
+            for segment in expr.iter().skip(1) {
+                if current_value.is_null() {
+                    return Err("Current value is not defined".to_string());
+                }
 
-        for segment in expr.iter().skip(1) {
-            if current_value.is_null() {
-                return Err("Current value is not defined".to_string());
+                if !current_value.is_object() {
+                    return Err("Cannot access property of non-object".to_string());
+                }
+
+                current_value = current_value
+                    .get(segment)
+                    .ok_or_else(|| format!("Property '{}' not found", segment))?
+                    .clone();
             }
 
-            if !current_value.is_object() {
-                return Err("Cannot access property of non-object".to_string());
-            }
-
-            current_value = current_value
-                .get(segment)
-                .ok_or_else(|| format!("Property '{}' not found", segment))?
-                .clone();
+            Ok(current_value)
+        } else {
+            Err(format!("Undefined variable: {}", expr[0]))
         }
-
-        Ok(current_value)
     }
 }

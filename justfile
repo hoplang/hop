@@ -7,5 +7,5 @@ test:
 build:
 	cargo build
 
-install:
+install: build
 	sudo cp target/debug/hop /usr/local/bin/hop

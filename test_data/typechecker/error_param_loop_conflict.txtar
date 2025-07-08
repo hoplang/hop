@@ -1,0 +1,7 @@
+-- in --
+<component name="main" params-as="items">
+  <for each="items" as="items">
+  </for>
+</component>
+-- out --
+Variable items is already defined

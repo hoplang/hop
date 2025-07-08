@@ -1,0 +1,10 @@
+-- in --
+<component name="main" params-as="items">
+  <for each="items.a" as="item">
+    <for each="items.b" as="item">
+      <div inner-text="item"></div>
+    </for>
+  </for>
+</component>
+-- out --
+Variable item is already defined

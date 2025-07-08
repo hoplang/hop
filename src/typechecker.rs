@@ -52,7 +52,9 @@ pub fn typecheck(
 
         if let Some(params_as_attr) = params_as_attr {
             let t1 = unifier.new_type_var();
-            env.push(params_as_attr.value.clone(), t1.clone());
+            if !env.push(params_as_attr.value.clone(), t1.clone()) {
+                panic!("Variable name for component parameter was unexpectedly in use")
+            }
             annotations.push(TypeAnnotation(params_as_attr.range, t1.clone()));
             for child in children {
                 typecheck_node(
@@ -122,22 +124,30 @@ fn typecheck_node(
                 errors,
             );
 
+            let mut pushed = false;
+
             if let Some(attr) = as_attr {
                 annotations.push(TypeAnnotation(attr.range, t1.clone()));
-                env.push(attr.value.clone(), t1.clone());
+                if env.push(attr.value.clone(), t1.clone()) {
+                    pushed = true;
+                } else {
+                    errors.push(RangeError::variable_already_defined(
+                        &attr.value,
+                        attr.range,
+                    ));
+                }
             }
 
             for child in children {
                 typecheck_node(child, parameter_types, env, unifier, annotations, errors);
             }
 
-            if let Some(attr) = as_attr {
-                let was_accessed = env.pop();
-                if !was_accessed {
-                    errors.push(RangeError::unused_variable(
-                        &attr.value,
-                        attr.range,
-                    ));
+            if pushed {
+                if let Some(attr) = as_attr {
+                    let was_accessed = env.pop();
+                    if !was_accessed {
+                        errors.push(RangeError::unused_variable(&attr.value, attr.range));
+                    }
                 }
             }
         }
@@ -212,12 +222,12 @@ fn typecheck_expr(
         return;
     }
 
-    if let Some(env_type) = env.lookup(&segments[0]) {
+    if let Some(val) = env.lookup(&segments[0]) {
         let obj_type = segments.iter().skip(1).rev().fold(t1.clone(), |acc, s| {
             unifier.new_object(HashMap::from([(s.clone(), acc.clone())]))
         });
 
-        if let Some(err) = unifier.unify(env_type, &obj_type) {
+        if let Some(err) = unifier.unify(val, &obj_type) {
             errors.push(RangeError::unification_error(&err.message, attr.range));
             return;
         }
