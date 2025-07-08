@@ -3,10 +3,8 @@
   <for each="items" as="item">
       <div inner-text="item"></div>
   </for>
-  <div>
-      <for each="items" as="item">
-      </for>
-  </div>
+  <for each="items" as="item">
+  </for>
 </component>
 -- out --
 Variable item is unused
