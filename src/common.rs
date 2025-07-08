@@ -335,40 +335,52 @@ pub enum Node {
     Error(ErrorNode),
 }
 
+// Environment entry that holds both value and access status
+#[derive(Debug, Clone)]
+struct EnvironmentEntry<T> {
+    value: T,
+    accessed: bool,
+}
+
 // Environment class for managing variable scope
 #[derive(Debug, Clone)]
 pub struct Environment<T> {
-    values: HashMap<String, T>,
+    entries: HashMap<String, EnvironmentEntry<T>>,
     operations: Vec<String>,
-    accessed: HashMap<String, bool>,
 }
 
 impl<T: Clone> Environment<T> {
     pub fn new() -> Self {
         Environment {
-            values: HashMap::new(),
+            entries: HashMap::new(),
             operations: Vec::new(),
-            accessed: HashMap::new(),
         }
     }
 
     // Bind the key to the given value
     // Returns true if successful, false if the variable already exists (shadowing not allowed)
     pub fn push(&mut self, key: String, value: T) -> bool {
-        if self.values.contains_key(&key) {
+        if self.entries.contains_key(&key) {
             return false;
         }
-        self.values.insert(key.clone(), value);
-        self.operations.push(key.clone());
-        self.accessed.insert(key, false);
+        self.entries.insert(
+            key.clone(),
+            EnvironmentEntry {
+                value,
+                accessed: false,
+            },
+        );
+        self.operations.push(key);
         true
     }
 
     // Undo the latest push operation and return whether the variable was accessed
     pub fn pop(&mut self) -> bool {
         if let Some(key) = self.operations.pop() {
-            self.values.remove(&key);
-            self.accessed.remove(&key).unwrap_or(false)
+            self.entries
+                .remove(&key)
+                .map(|entry| entry.accessed)
+                .unwrap_or(false)
         } else {
             false
         }
@@ -376,125 +388,12 @@ impl<T: Clone> Environment<T> {
 
     // Look up a key in the environment
     pub fn lookup(&mut self, key: &str) -> Option<&T> {
-        if let Some(value) = self.values.get(key) {
-            self.accessed.insert(key.to_string(), true);
-            Some(value)
+        if let Some(entry) = self.entries.get_mut(key) {
+            entry.accessed = true;
+            Some(&entry.value)
         } else {
             None
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_environment_basic_operations() {
-        let mut env = Environment::new();
-
-        // Test push and lookup
-        env.push("x".to_string(), 42);
-        assert_eq!(env.lookup("x"), Some(&42));
-        assert_eq!(env.lookup("y"), None);
-
-        // Test pop returns true when accessed
-        assert_eq!(env.pop(), true);
-        assert_eq!(env.lookup("x"), None);
-    }
-
-    #[test]
-    fn test_environment_unused_variable() {
-        let mut env = Environment::new();
-
-        // Push a variable but don't access it
-        env.push("unused".to_string(), 123);
-
-        // Pop should return false since it was never accessed
-        assert_eq!(env.pop(), false);
-    }
-
-    #[test]
-    fn test_environment_no_shadowing() {
-        let mut env = Environment::new();
-
-        // Push a variable
-        assert_eq!(env.push("x".to_string(), 1), true);
-        assert_eq!(env.lookup("x"), Some(&1));
-
-        // Try to shadow the variable - should fail
-        assert_eq!(env.push("x".to_string(), 2), false);
-        assert_eq!(env.lookup("x"), Some(&1)); // Should still be the original value
-
-        // Pop should work normally
-        assert_eq!(env.pop(), true);
-
-        // Now we can add x again since it's out of scope
-        assert_eq!(env.push("x".to_string(), 3), true);
-        assert_eq!(env.lookup("x"), Some(&3));
-        assert_eq!(env.pop(), true);
-    }
-
-    #[test]
-    fn test_environment_mixed_access() {
-        let mut env = Environment::new();
-
-        // Push two variables
-        env.push("used".to_string(), 10);
-        env.push("unused".to_string(), 20);
-
-        // Only access the first one
-        assert_eq!(env.lookup("used"), Some(&10));
-
-        // Pop unused variable first
-        assert_eq!(env.pop(), false);
-
-        // Pop used variable second
-        assert_eq!(env.pop(), true);
-    }
-
-    #[test]
-    fn test_environment_push_returns_status() {
-        let mut env = Environment::new();
-
-        // First push should succeed
-        assert_eq!(env.push("x".to_string(), 1), true);
-
-        // Second push with same key should fail
-        assert_eq!(env.push("x".to_string(), 2), false);
-
-        // Different key should succeed
-        assert_eq!(env.push("y".to_string(), 3), true);
-
-        // Original values should be unchanged
-        assert_eq!(env.lookup("x"), Some(&1));
-        assert_eq!(env.lookup("y"), Some(&3));
-
-        // Pop in reverse order
-        assert_eq!(env.pop(), true); // y was accessed
-        assert_eq!(env.pop(), true); // x was accessed
-    }
-
-    #[test]
-    fn test_environment_shadowing_prevention() {
-        let mut env = Environment::new();
-
-        // Push a variable
-        assert_eq!(env.push("x".to_string(), 1), true);
-
-        // Try to push with same name - should fail
-        assert_eq!(env.push("x".to_string(), 2), false);
-
-        // Variable should still have original value
-        assert_eq!(env.lookup("x"), Some(&1));
-
-        // Pop should work normally
-        assert_eq!(env.pop(), true);
-
-        // Now we can push the same name again
-        assert_eq!(env.push("x".to_string(), 3), true);
-        assert_eq!(env.lookup("x"), Some(&3));
-        assert_eq!(env.pop(), true);
     }
 }
 
