@@ -1,8 +1,8 @@
 use crate::common::{Position, RangeError};
-use crate::parser::{parse, Module};
+use crate::parser::{Module, parse};
 use crate::tokenizer::tokenize;
 use crate::toposorter::TopoSorter;
-use crate::typechecker::{typecheck, TypeAnnotation, TypeResult};
+use crate::typechecker::{TypeAnnotation, TypeResult, typecheck};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]

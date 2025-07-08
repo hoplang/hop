@@ -15,7 +15,6 @@ use formatter::ErrorFormatter;
 use parser::parse;
 use tokenizer::tokenize;
 
-
 // Example with multiple types of errors
 const SOURCE_CODE: &str = r#"<component name="example">
     <div>Hello 😀</div> <render!>
@@ -50,7 +49,7 @@ fn run_example() {
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = std::env::args().collect();
-    
+
     if args.len() > 1 {
         match args[1].as_str() {
             "lsp" => lsp::run_lsp().await,

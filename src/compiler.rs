@@ -1,4 +1,4 @@
-use crate::common::{format_range_errors, Type};
+use crate::common::{Type, format_range_errors};
 use crate::parser::parse;
 use crate::runtime::Program;
 use crate::scriptcollector::ScriptCollector;

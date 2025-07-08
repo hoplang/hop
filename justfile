@@ -1,5 +1,5 @@
 fmt PATH='src/*':
-  rustfmt {{PATH}}
+  rustfmt --edition 2024 {{PATH}}
 
 test:
 	cargo test --no-fail-fast

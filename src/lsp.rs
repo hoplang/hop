@@ -42,7 +42,7 @@ impl HopLanguageServer {
         let module_name = self.uri_to_module_name(uri);
         let server = self.server.read().await;
         let diagnostics = server.get_error_diagnostics(&module_name);
-        
+
         let lsp_diagnostics: Vec<tower_lsp::lsp_types::Diagnostic> = diagnostics
             .into_iter()
             .map(|d| tower_lsp::lsp_types::Diagnostic {
@@ -113,7 +113,7 @@ impl LanguageServer for HopLanguageServer {
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
         let changes = params.content_changes;
-        
+
         if let Some(change) = changes.into_iter().next() {
             let text = change.text;
             let module_name = self.uri_to_module_name(&uri);
@@ -154,7 +154,10 @@ impl LanguageServer for HopLanguageServer {
             Ok(Some(Hover {
                 contents: HoverContents::Scalar(MarkedString::String(hover_info.type_str)),
                 range: Some(Range {
-                    start: Self::rust_position_to_lsp(hover_info.start_line, hover_info.start_column),
+                    start: Self::rust_position_to_lsp(
+                        hover_info.start_line,
+                        hover_info.start_column,
+                    ),
                     end: Self::rust_position_to_lsp(hover_info.end_line, hover_info.end_column),
                 }),
             }))

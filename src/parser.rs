@@ -1,7 +1,7 @@
 use crate::common::{
-    is_void_element, ComponentNode, CondNode, DoctypeNode, ErrorNode, ExprAttribute, ForNode,
-    ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode, TextNode, Token,
-    TokenKind, VarNameAttr,
+    ComponentNode, CondNode, DoctypeNode, ErrorNode, ExprAttribute, ForNode, ImportNode,
+    NativeHTMLNode, Node, Position, Range, RangeError, RenderNode, TextNode, Token, TokenKind,
+    VarNameAttr, is_void_element,
 };
 
 #[derive(Debug, Clone, PartialEq)]
