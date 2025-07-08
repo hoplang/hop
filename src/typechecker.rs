@@ -41,6 +41,15 @@ pub fn typecheck(
         ..
     } in &module.components
     {
+        // Check for duplicate component names
+        if parameter_types.contains_key(&name_attr.value) {
+            errors.push(RangeError::component_already_defined(
+                &name_attr.value,
+                name_attr.range,
+            ));
+            continue;
+        }
+
         if let Some(params_as_attr) = params_as_attr {
             let t1 = unifier.new_type_var();
             env.push(params_as_attr.value.clone(), t1.clone());

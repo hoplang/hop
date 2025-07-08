@@ -131,6 +131,10 @@ impl RangeError {
         Self::new(format!("Component {component} not found"), range)
     }
 
+    pub fn component_already_defined(component: &str, range: Range) -> Self {
+        Self::new(format!("Component {component} is already defined"), range)
+    }
+
     pub fn undefined_variable(var: &str, range: Range) -> Self {
         Self::new(format!("Undefined variable: {var}"), range)
     }

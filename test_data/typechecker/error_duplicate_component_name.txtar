@@ -1,0 +1,8 @@
+-- in --
+<component name="foo" params-as="p">
+</component>
+
+<component name="foo" params-as="p">
+</component>
+-- out --
+Component foo is already defined
