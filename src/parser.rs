@@ -240,14 +240,11 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                     }
 
                     let validated_as_attr = if let Some(as_attr) = as_attr {
-                        match VariableNameAttr::new(as_attr.value.clone(), as_attr.range) {
+                        match VariableNameAttr::new(&as_attr) {
                             Ok(var_attr) => Some(var_attr),
                             Err(err) => {
                                 errors.push(err);
-                                return Node::Error(ErrorNode {
-                                    range: t.range,
-                                    children,
-                                });
+                                None
                             }
                         }
                     } else {
@@ -336,7 +333,7 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                     }
 
                     let validated_params_as_attr = if let Some(params_as_attr) = params_as_attr {
-                        match VariableNameAttr::new(params_as_attr.value.clone(), params_as_attr.range) {
+                        match VariableNameAttr::new(&params_as_attr) {
                             Ok(var_attr) => Some(var_attr),
                             Err(err) => {
                                 errors.push(err);

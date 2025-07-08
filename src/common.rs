@@ -127,7 +127,10 @@ impl RangeError {
     }
 
     pub fn invalid_variable_name(name: &str, range: Range) -> Self {
-        Self::new(format!("Invalid variable name '{name}'. Variable names must match [a-z][a-z0-9]*"), range)
+        Self::new(
+            format!("Invalid variable name '{name}'. Variable names must match [a-z][a-z0-9]*"),
+            range,
+        )
     }
 
     // Typechecker error functions
@@ -170,19 +173,22 @@ pub struct VariableNameAttr {
 }
 
 impl VariableNameAttr {
-    pub fn new(value: String, range: Range) -> Result<Self, RangeError> {
-        let mut chars = value.chars();
+    pub fn new(attr: &Attribute) -> Result<Self, RangeError> {
+        let mut chars = attr.value.chars();
         if let Some(first_char) = chars.next() {
             if !first_char.is_ascii_lowercase() {
-                return Err(RangeError::invalid_variable_name(&value, range));
+                return Err(RangeError::invalid_variable_name(&attr.value, attr.range));
             }
             if !chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) {
-                return Err(RangeError::invalid_variable_name(&value, range));
+                return Err(RangeError::invalid_variable_name(&attr.value, attr.range));
             }
         } else {
-            return Err(RangeError::invalid_variable_name(&value, range));
+            return Err(RangeError::invalid_variable_name(&attr.value, attr.range));
         }
-        Ok(VariableNameAttr { value, range })
+        Ok(VariableNameAttr {
+            value: attr.value.clone(),
+            range: attr.range,
+        })
     }
 }
 
