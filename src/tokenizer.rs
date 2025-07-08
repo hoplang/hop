@@ -1,6 +1,6 @@
 use std::mem;
 
-use crate::common::{Attribute, Position, Range, Token, TokenKind};
+use crate::common::{Attribute, Position, Range, RangeError, Token, TokenKind};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum TokenizerState {
@@ -173,10 +173,12 @@ impl TokenBuilder {
         self.token_kind = kind;
     }
 
-    fn push_error_token(&mut self, message: &str, cursor: &Cursor) {
-        self.token_kind = TokenKind::Error;
-        self.token_value = message.to_string();
-        self.push_current_token(cursor);
+    fn reset(&mut self, cursor: &Cursor) {
+        self.token_value = String::new();
+        self.token_attributes = Vec::new();
+        self.token_kind = TokenKind::Text;
+        self.token_start = cursor.get_position();
+        self.attribute_start = cursor.get_position();
     }
 
     fn get_tokens(self) -> Vec<Token> {
@@ -200,7 +202,7 @@ fn is_whitespace(ch: char) -> bool {
     ch.is_whitespace()
 }
 
-pub fn tokenize(input: &str) -> Vec<Token> {
+pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
     let mut cursor = Cursor::new(input);
     let mut builder = TokenBuilder::new();
     let mut state = TokenizerState::Text;
@@ -239,8 +241,13 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     cursor.advance();
                     state = TokenizerState::MarkupDeclaration;
                 } else {
+                    let start_pos = cursor.get_position();
                     cursor.advance();
-                    builder.push_error_token("Invalid character after '<'", &cursor);
+                    errors.push(RangeError::new(
+                        "Invalid character after '<'".to_string(),
+                        Range::new(start_pos, cursor.get_position()),
+                    ));
+                    builder.reset(&cursor);
                     state = TokenizerState::Text;
                 }
             }
@@ -269,8 +276,13 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     cursor.advance();
                     state = TokenizerState::SelfClosing;
                 } else {
+                    let start_pos = cursor.get_position();
                     cursor.advance();
-                    builder.push_error_token("Invalid character in tag name", &cursor);
+                    errors.push(RangeError::new(
+                        "Invalid character after '<'".to_string(),
+                        Range::new(start_pos, cursor.get_position()),
+                    ));
+                    builder.reset(&cursor);
                     state = TokenizerState::Text;
                 }
             }
@@ -281,8 +293,13 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     cursor.advance();
                     state = TokenizerState::EndTagName;
                 } else {
+                    let start_pos = cursor.get_position();
                     cursor.advance();
-                    builder.push_error_token("Invalid character after '</'", &cursor);
+                    errors.push(RangeError::new(
+                        "Invalid character after '</'".to_string(),
+                        Range::new(start_pos, cursor.get_position()),
+                    ));
+                    builder.reset(&cursor);
                     state = TokenizerState::Text;
                 }
             }
@@ -300,8 +317,13 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     cursor.advance();
                     state = TokenizerState::AfterEndTagName;
                 } else {
+                    let start_pos = cursor.get_position();
                     cursor.advance();
-                    builder.push_error_token("Invalid character in end tag name", &cursor);
+                    errors.push(RangeError::new(
+                        "Invalid character in end tag name".to_string(),
+                        Range::new(start_pos, cursor.get_position()),
+                    ));
+                    builder.reset(&cursor);
                     state = TokenizerState::Text;
                 }
             }
@@ -315,8 +337,13 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     builder.push_current_token(&cursor);
                     state = TokenizerState::Text;
                 } else {
+                    let start_pos = cursor.get_position();
                     cursor.advance();
-                    builder.push_error_token("Invalid character after end tag name", &cursor);
+                    errors.push(RangeError::new(
+                        "Invalid character after end tag name".to_string(),
+                        Range::new(start_pos, cursor.get_position()),
+                    ));
+                    builder.reset(&cursor);
                     state = TokenizerState::Text;
                 }
             }
@@ -346,8 +373,13 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                         state = TokenizerState::Text;
                     }
                 } else {
+                    let start_pos = cursor.get_position();
                     cursor.advance();
-                    builder.push_error_token("Invalid character before attribute name", &cursor);
+                    errors.push(RangeError::new(
+                        "Invalid character before attribute name".to_string(),
+                        Range::new(start_pos, cursor.get_position()),
+                    ));
+                    builder.reset(&cursor);
                     state = TokenizerState::Text;
                 }
             }
@@ -382,8 +414,13 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     cursor.advance();
                     state = TokenizerState::SelfClosing;
                 } else {
+                    let start_pos = cursor.get_position();
                     cursor.advance();
-                    builder.push_error_token("Invalid character in attribute name", &cursor);
+                    errors.push(RangeError::new(
+                        "Invalid character in attribute name".to_string(),
+                        Range::new(start_pos, cursor.get_position()),
+                    ));
+                    builder.reset(&cursor);
                     state = TokenizerState::Text;
                 }
             }
@@ -396,8 +433,13 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     cursor.advance();
                     state = TokenizerState::AttrValueSingleQuote;
                 } else {
+                    let start_pos = cursor.get_position();
                     cursor.advance();
-                    builder.push_error_token("Expected quoted attribute value", &cursor);
+                    errors.push(RangeError::new(
+                        "Expected quoted attribute name".to_string(),
+                        Range::new(start_pos, cursor.get_position()),
+                    ));
+                    builder.reset(&cursor);
                     state = TokenizerState::Text;
                 }
             }
@@ -432,8 +474,13 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     builder.push_current_token(&cursor);
                     state = TokenizerState::Text;
                 } else {
+                    let start_pos = cursor.get_position();
                     cursor.advance();
-                    builder.push_error_token("Expected '>' after '/'", &cursor);
+                    errors.push(RangeError::new(
+                        "Expected '>' after '/'".to_string(),
+                        Range::new(start_pos, cursor.get_position()),
+                    ));
+                    builder.reset(&cursor);
                     state = TokenizerState::Text;
                 }
             }
@@ -448,8 +495,13 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     cursor.advance_n(7);
                     state = TokenizerState::Doctype;
                 } else {
+                    let start_pos = cursor.get_position();
                     cursor.advance();
-                    builder.push_error_token("Invalid markup declaration", &cursor);
+                    errors.push(RangeError::new(
+                        "Invalid markup declaration".to_string(),
+                        Range::new(start_pos, cursor.get_position()),
+                    ));
+                    builder.reset(&cursor);
                     state = TokenizerState::Text;
                 }
             }
@@ -471,8 +523,13 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     cursor.advance();
                     state = TokenizerState::BeforeDoctypeName;
                 } else {
+                    let start_pos = cursor.get_position();
                     cursor.advance();
-                    builder.push_error_token("Expected whitespace after DOCTYPE", &cursor);
+                    errors.push(RangeError::new(
+                        "Expected whitespace after DOCTYPE".to_string(),
+                        Range::new(start_pos, cursor.get_position()),
+                    ));
+                    builder.reset(&cursor);
                     state = TokenizerState::Text;
                 }
             }
@@ -487,8 +544,13 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                     cursor.advance();
                     state = TokenizerState::DoctypeName;
                 } else {
+                    let start_pos = cursor.get_position();
                     cursor.advance();
-                    builder.push_error_token("Expected DOCTYPE name", &cursor);
+                    errors.push(RangeError::new(
+                        "Expected DOCTYPE name".to_string(),
+                        Range::new(start_pos, cursor.get_position()),
+                    ));
+                    builder.reset(&cursor);
                     state = TokenizerState::Text;
                 }
             }
@@ -507,13 +569,20 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                         builder.push_current_token(&cursor);
                         state = TokenizerState::Text;
                     } else {
+                        let start_pos = cursor.get_position();
                         cursor.advance();
-                        builder.push_error_token("Invalid DOCTYPE name", &cursor);
+                        // TODO: better range?
+                        errors.push(RangeError::new(
+                            "Invalid DOCTYPE name".to_string(),
+                            Range::new(start_pos, cursor.get_position()),
+                        ));
+                        builder.reset(&cursor);
                         state = TokenizerState::Text;
                     }
                 } else {
                     cursor.advance();
-                    builder.push_error_token("Invalid character in DOCTYPE name", &cursor);
+                    // "Invalid character in DOCTYPE name"
+                    builder.reset(&cursor);
                     state = TokenizerState::Text;
                 }
             }
@@ -600,9 +669,6 @@ mod tests {
                     format_range(token.range)
                 )
             }
-            TokenKind::Error => {
-                format!("{:?}", token.kind)
-            }
         }
     }
 
@@ -620,12 +686,15 @@ mod tests {
 
             let input = archive.get("in").unwrap().content.trim();
             let expected = archive.get("out").unwrap().content.trim();
+            let mut errors = Vec::new();
 
-            let actual = tokenize(input)
+            let actual = tokenize(input, &mut errors)
                 .iter()
                 .map(format_token)
                 .collect::<Vec<_>>()
                 .join("\n");
+
+            assert!(errors.is_empty());
 
             assert_eq!(actual, expected, "Mismatch in file: {}", file_name);
         }

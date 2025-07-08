@@ -34,7 +34,8 @@ impl Compiler {
         // Parse all modules
         for (module_name, source_code) in &self.modules {
             let mut errors = Vec::new();
-            let module = parse(tokenize(source_code), &mut errors);
+            let tokens = tokenize(source_code, &mut errors);
+            let module = parse(tokens, &mut errors);
             if !errors.is_empty() {
                 return Err(format_range_errors(
                     &format!("Parse errors in module {}", module_name),
@@ -192,8 +193,10 @@ mod tests {
             });
 
             // Normalize whitespace by tokenizing both outputs and comparing tokens
-            let expected_tokens = normalize_tokens(tokenize(expected_output));
-            let actual_tokens = normalize_tokens(tokenize(&actual_output));
+            let mut errors = Vec::new();
+            let expected_tokens = normalize_tokens(tokenize(expected_output, &mut errors));
+            let actual_tokens = normalize_tokens(tokenize(&actual_output, &mut errors));
+            assert!(errors.is_empty());
 
             assert_eq!(
                 actual_tokens, expected_tokens,

@@ -221,7 +221,8 @@ mod tests {
             let expected = archive.get("out").unwrap().content.trim();
 
             let mut errors = Vec::new();
-            let module = parse(tokenize(input), &mut errors);
+            let tokens = tokenize(input, &mut errors);
+            let module = parse(tokens, &mut errors);
 
             assert!(errors.is_empty());
 

@@ -15,7 +15,7 @@ use tokenizer::tokenize;
 
 // Example with multiple types of errors
 const SOURCE_CODE: &str = r#"<component name="example">
-    <div>Hello 😀</div> <render>
+    <div>Hello 😀</div> <render!>
     <span>Some text</span>
     <br></br>
                                         <for each="items">
@@ -24,8 +24,8 @@ const SOURCE_CODE: &str = r#"<component name="example">
 </component>"#;
 
 fn main() {
-    let tokens = tokenize(SOURCE_CODE);
     let mut errors = Vec::new();
+    let tokens = tokenize(SOURCE_CODE, &mut errors);
     let _ = parse(tokens, &mut errors);
 
     if !errors.is_empty() {

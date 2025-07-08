@@ -126,10 +126,6 @@ impl RangeError {
         Self::new("Empty expression".to_string(), range)
     }
 
-    pub fn tokenizer_error(message: &str, range: Range) -> Self {
-        Self::new(format!("Tokenizer error: {}", message), range)
-    }
-
     // Typechecker error functions
     pub fn component_not_found(component: &str, range: Range) -> Self {
         Self::new(format!("Component {component} not found"), range)
@@ -182,7 +178,6 @@ pub enum TokenKind {
     SelfClosingTag,
     Text,
     Comment,
-    Error,
 }
 
 #[derive(Debug, Clone, PartialEq)]

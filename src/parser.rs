@@ -81,9 +81,6 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
                 // skip comments
                 continue;
             }
-            TokenKind::Error => {
-                errors.push(RangeError::tokenizer_error(&token.value, token.range));
-            }
             TokenKind::Doctype | TokenKind::Text | TokenKind::SelfClosingTag => {
                 stack.last_mut().unwrap().append_child(token);
             }
@@ -430,7 +427,9 @@ mod tests {
             let expected = archive.get("output.txt").unwrap().content.trim();
 
             let mut errors = Vec::new();
-            let module = parse(tokenize(input), &mut errors);
+            let tokens = tokenize(input, &mut errors);
+            assert!(errors.is_empty());
+            let module = parse(tokens, &mut errors);
 
             if !errors.is_empty() {
                 let output = errors
