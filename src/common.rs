@@ -211,7 +211,7 @@ impl Token {
         self.attributes
             .iter()
             .find(|attr| attr.name == name)
-            .map(|a| a.clone())
+            .cloned()
     }
 }
 
@@ -312,10 +312,7 @@ impl<T: Clone> Environment<T> {
 
     // Bind the key to the given value
     pub fn push(&mut self, key: String, value: T) {
-        self.values
-            .entry(key.clone())
-            .or_insert_with(Vec::new)
-            .push(value);
+        self.values.entry(key.clone()).or_default().push(value);
         self.operations.push(key);
     }
 
@@ -333,9 +330,7 @@ impl<T: Clone> Environment<T> {
 
     // Returns true if the environment contains an entry with the given key
     pub fn has(&self, key: &str) -> bool {
-        self.values
-            .get(key)
-            .map_or(false, |stack| !stack.is_empty())
+        self.values.get(key).is_some_and(|stack| !stack.is_empty())
     }
 
     // Look up a key in the environment

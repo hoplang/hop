@@ -151,7 +151,7 @@ impl Unifier {
                     && props_a.len() == props_b.len()
                     && props_a
                         .iter()
-                        .all(|(k, v)| props_b.get(k).map_or(false, |v2| self.types_equal(v, v2)))
+                        .all(|(k, v)| props_b.get(k).is_some_and(|v2| self.types_equal(v, v2)))
             }
             (Type::Bool, Type::Bool) => true,
             (Type::String, Type::String) => true,

@@ -100,11 +100,7 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
             TokenKind::EndTag => {
                 if is_void_element(&token.value) {
                     errors.push(RangeError::closed_void_tag(&token.value, token.range));
-                } else if stack
-                    .iter()
-                    .find(|t| t.token.value == token.value)
-                    .is_none()
-                {
+                } else if !stack.iter().any(|t| t.token.value == token.value) {
                     errors.push(RangeError::unmatched_closing_tag(&token.value, token.range));
                 } else {
                     while stack.last().unwrap().token.value != token.value {

@@ -115,7 +115,7 @@ fn typecheck_node(
                 typecheck_node(child, parameter_types, env, unifier, annotations, errors);
             }
 
-            if let Some(_) = as_attr {
+            if as_attr.is_some() {
                 env.pop();
             }
         }
@@ -203,7 +203,6 @@ fn typecheck_expr(
         annotations.push(TypeAnnotation::new(attr.range, t1.clone()));
     } else {
         errors.push(RangeError::undefined_variable(&segments[0], attr.range));
-        return;
     }
 }
 
