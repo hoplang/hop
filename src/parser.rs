@@ -11,10 +11,7 @@ pub struct Module {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ParseResult {
-    pub module: Module,
-    pub errors: Vec<RangeError>,
-}
+pub struct ParseResult(pub Module, pub Vec<RangeError>);
 
 pub fn parse(tokens: Vec<Token>) -> ParseResult {
     let mut errors = Vec::new();
@@ -32,13 +29,13 @@ pub fn parse(tokens: Vec<Token>) -> ParseResult {
         }
     }
 
-    ParseResult {
-        module: Module {
+    ParseResult(
+        Module {
             components,
             imports,
         },
         errors,
-    }
+    )
 }
 
 #[derive(Debug, Clone)]
@@ -439,18 +436,17 @@ mod tests {
             let input = archive.get("main.hop").unwrap().content.trim();
             let expected = archive.get("output.txt").unwrap().content.trim();
 
-            let result = parse(tokenize(input));
+            let ParseResult(module, errors) = parse(tokenize(input));
 
-            if !result.errors.is_empty() {
-                let output = result
-                    .errors
+            if !errors.is_empty() {
+                let output = errors
                     .iter()
                     .map(|e| e.message.clone())
                     .collect::<Vec<_>>()
                     .join(" ");
                 assert_eq!(output, expected, "Mismatch in file: {}", file_name);
             } else {
-                for component in result.module.components {
+                for component in module.components {
                     if component.name_attr.value == "main" {
                         let output = format_tree(&Node::Component(component));
                         assert_eq!(output, expected, "Mismatch in file: {}", file_name);

@@ -10,7 +10,7 @@ mod typechecker;
 mod unifier;
 
 use formatter::ErrorFormatter;
-use parser::parse;
+use parser::{parse, ParseResult};
 use tokenizer::tokenize;
 
 // Example with multiple types of errors
@@ -25,14 +25,14 @@ const SOURCE_CODE: &str = r#"<component name="example">
 
 fn main() {
     let tokens = tokenize(SOURCE_CODE);
-    let parse_result = parse(tokens);
+    let ParseResult(_, errors) = parse(tokens);
 
-    if !parse_result.errors.is_empty() {
-        println!("Found {} parse error(s):\n", parse_result.errors.len());
+    if !errors.is_empty() {
+        println!("Found {} parse error(s):\n", errors.len());
 
         let formatter = ErrorFormatter::new(SOURCE_CODE.to_string(), "example.hop".to_string());
 
-        for (i, error) in parse_result.errors.iter().enumerate() {
+        for (i, error) in errors.iter().enumerate() {
             if i > 0 {
                 println!();
             }

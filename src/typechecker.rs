@@ -201,7 +201,7 @@ fn typecheck_expr(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::parse;
+    use crate::parser::{parse, ParseResult};
     use crate::tokenizer::tokenize;
     use pretty_assertions::assert_eq;
     use simple_txtar::Archive;
@@ -223,9 +223,11 @@ mod tests {
             let input = archive.get("in").unwrap().content.trim();
             let expected = archive.get("out").unwrap().content.trim();
 
-            let parse_result = parse(tokenize(input));
+            let ParseResult(module, parse_errors) = parse(tokenize(input));
 
-            let type_result = typecheck(&parse_result.module, &HashMap::new());
+            assert!(parse_errors.is_empty());
+
+            let type_result = typecheck(&module, &HashMap::new());
 
             if !type_result.errors.is_empty() {
                 let output = type_result

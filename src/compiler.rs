@@ -1,5 +1,5 @@
 use crate::common::{format_range_errors, Type};
-use crate::parser::parse;
+use crate::parser::{parse, ParseResult};
 use crate::runtime::Program;
 use crate::scriptcollector::ScriptCollector;
 use crate::tokenizer::tokenize;
@@ -33,21 +33,22 @@ impl Compiler {
 
         // Parse all modules
         for (module_name, source_code) in &self.modules {
-            let result = parse(tokenize(source_code));
-            if !result.errors.is_empty() {
+            let ParseResult(module, errors) = parse(tokenize(source_code));
+            if !errors.is_empty() {
                 return Err(format_range_errors(
                     &format!("Parse errors in module {}", module_name),
-                    &result.errors,
+                    &errors,
                 ));
             }
 
-            modules.insert(module_name.clone(), result.module.clone());
-            script_collector.add_module(module_name.clone(), result.module.components);
+            script_collector.add_module(module_name.clone(), module.components.clone());
 
             module_sorter.add_node(module_name.clone());
-            for import_node in &result.module.imports {
+            for import_node in &module.imports {
                 module_sorter.add_dependency(module_name, &import_node.from_attr.value);
             }
+
+            modules.insert(module_name, module);
         }
 
         // Sort modules topologically
