@@ -16,6 +16,7 @@
           nativeBuildInputs = [
             pkgs.rustc
             pkgs.cargo
+            pkgs.clippy
             pkgs.rust-analyzer
             pkgs.rustfmt
             pkgs.just
