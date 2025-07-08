@@ -3,3 +3,9 @@ fmt PATH='src/*':
 
 test:
 	cargo test --no-fail-fast
+
+build:
+	cargo build
+
+install:
+	sudo cp target/debug/hop /usr/local/bin/hop

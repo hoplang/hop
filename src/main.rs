@@ -1,6 +1,7 @@
 mod common;
 mod compiler;
 mod formatter;
+mod lsp;
 mod parser;
 mod runtime;
 mod scriptcollector;
@@ -14,6 +15,7 @@ use formatter::ErrorFormatter;
 use parser::parse;
 use tokenizer::tokenize;
 
+
 // Example with multiple types of errors
 const SOURCE_CODE: &str = r#"<component name="example">
     <div>Hello 😀</div> <render!>
@@ -24,7 +26,7 @@ const SOURCE_CODE: &str = r#"<component name="example">
     </unknown-tag>
 </component>"#;
 
-fn main() {
+fn run_example() {
     let mut errors = Vec::new();
     let tokens = tokenize(SOURCE_CODE, &mut errors);
     let _ = parse(tokens, &mut errors);
@@ -42,5 +44,22 @@ fn main() {
         }
     } else {
         println!("✅ No parse errors!");
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    
+    if args.len() > 1 {
+        match args[1].as_str() {
+            "lsp" => lsp::run_lsp().await,
+            "--version" | "-v" => {
+                println!("hop {}", env!("CARGO_PKG_VERSION"));
+            }
+            _ => run_example(),
+        }
+    } else {
+        run_example();
     }
 }

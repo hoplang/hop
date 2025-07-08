@@ -4,12 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [[bin]]
-name = "hop_rs"
+name = "hop"
 path = "src/main.rs"
 
 [dependencies]
 serde_json = "1.0"
 unicode-width = "0.1"
+tower-lsp = "0.20"
+tokio = { version = "1.0", features = ["full"] }
 
 [dev-dependencies]
 simple_txtar = "1.1.0"
