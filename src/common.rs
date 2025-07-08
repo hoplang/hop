@@ -139,6 +139,10 @@ impl RangeError {
         Self::new(format!("Undefined variable: {var}"), range)
     }
 
+    pub fn unused_variable(var: &str, range: Range) -> Self {
+        Self::new(format!("Variable {var} is unused"), range)
+    }
+
     pub fn unification_error(message: &str, range: Range) -> Self {
         Self::new(message.to_string(), range)
     }

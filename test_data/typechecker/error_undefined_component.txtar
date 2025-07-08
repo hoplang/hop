@@ -1,6 +1,6 @@
 -- in --
-<component name="main" params-as="params">
-	<h1>Hello, <render component="renderName" params="params.user" />!</h1>
+<component name="main">
+	<h1>Hello, <render component="renderName" />!</h1>
 </component>
 -- out --
 Component renderName not found

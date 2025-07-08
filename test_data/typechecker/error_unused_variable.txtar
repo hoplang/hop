@@ -1,0 +1,7 @@
+-- in --
+<component name="bar" params-as="p">
+  <div>
+  </div>
+</component>
+-- out --
+Variable p is unused

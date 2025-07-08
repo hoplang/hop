@@ -64,10 +64,29 @@ pub fn typecheck(
                     errors,
                 );
             }
+
+            let final_type = unifier.query(&t1);
+            if matches!(final_type, Type::TypeVar(_)) {
+                errors.push(RangeError::unused_variable(
+                    &params_as_attr.value,
+                    params_as_attr.range,
+                ));
+            }
+
             env.pop();
-            parameter_types.insert(name_attr.value.clone(), unifier.query(&t1));
+            parameter_types.insert(name_attr.value.clone(), final_type);
         } else {
             parameter_types.insert(name_attr.value.clone(), Type::Void);
+            for child in children {
+                typecheck_node(
+                    child,
+                    &parameter_types,
+                    &mut env,
+                    &mut unifier,
+                    &mut annotations,
+                    errors,
+                );
+            }
         }
     }
 

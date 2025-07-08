@@ -1,5 +1,5 @@
 -- main.hop --
-<component name="main" params-as="p" class="p-2">
+<component name="main" class="p-2">
 	<div>hello</div>
 </component>
 -- data.json --
