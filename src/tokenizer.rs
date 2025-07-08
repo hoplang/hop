@@ -26,22 +26,21 @@ enum TokenizerState {
 
 struct Cursor {
     input: Vec<char>,
-    input_str: String,
-    char_position: usize,
-    byte_position: usize,
+    /// Current position (0-index, in characters)
+    position: usize,
+    /// Current line number (1-indexed)
     line: usize,
-    byte_column: usize,
+    /// Current column index (1-indexed, in bytes)
+    column: usize,
 }
 
 impl Cursor {
     fn new(input: String) -> Self {
         Self {
             input: input.chars().collect(),
-            input_str: input,
-            char_position: 0,
-            byte_position: 0,
+            position: 0,
             line: 1,
-            byte_column: 1,
+            column: 1,
         }
     }
 
@@ -49,22 +48,21 @@ impl Cursor {
         if self.is_at_end() {
             '\0'
         } else {
-            self.input[self.char_position]
+            self.input[self.position]
         }
     }
 
     fn advance(&mut self) {
         if !self.is_at_end() {
-            let ch = self.input[self.char_position];
+            let ch = self.input[self.position];
             let byte_len = ch.len_utf8();
-            self.byte_position += byte_len;
             if ch == '\n' {
                 self.line += 1;
-                self.byte_column = 1;
+                self.column = 1;
             } else {
-                self.byte_column += byte_len;
+                self.column += byte_len;
             }
-            self.char_position += 1;
+            self.position += 1;
         }
     }
 
@@ -77,22 +75,22 @@ impl Cursor {
     fn get_position(&self) -> Position {
         Position {
             line: self.line,
-            column: self.byte_column,
+            column: self.column,
         }
     }
 
     fn is_at_end(&self) -> bool {
-        self.char_position >= self.input.len()
+        self.position >= self.input.len()
     }
 
     fn match_str(&self, s: &str) -> bool {
         let chars: Vec<char> = s.chars().collect();
-        if self.char_position + chars.len() > self.input.len() {
+        if self.position + chars.len() > self.input.len() {
             return false;
         }
 
         for (i, &ch) in chars.iter().enumerate() {
-            if self.input[self.char_position + i] != ch {
+            if self.input[self.position + i] != ch {
                 return false;
             }
         }
