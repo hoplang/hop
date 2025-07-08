@@ -3,11 +3,10 @@ use crate::common::{
     Range, RenderNode, Type,
 };
 use crate::unifier::Unifier;
-use miette::Diagnostic;
 use std::collections::HashMap;
 use thiserror::Error;
 
-#[derive(Debug, Error, Clone, PartialEq, Diagnostic)]
+#[derive(Debug, Error, Clone, PartialEq)]
 pub enum TypeError {
     #[error("Component {component} not found")]
     ComponentNotFound { component: String, range: Range },
@@ -30,18 +29,6 @@ impl TypeError {
             TypeError::UndefinedVariable { range, .. } => *range,
             TypeError::UnificationError { range, .. } => *range,
         }
-    }
-
-    pub fn labels(&self) -> Vec<miette::LabeledSpan> {
-        vec![miette::LabeledSpan::at(
-            self.range().to_source_span(),
-            match self {
-                TypeError::ComponentNotFound { .. } => "component not found",
-                TypeError::EmptyExpression { .. } => "empty expression",
-                TypeError::UndefinedVariable { .. } => "undefined variable",
-                TypeError::UnificationError { .. } => "type error",
-            },
-        )]
     }
 }
 

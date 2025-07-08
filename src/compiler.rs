@@ -375,14 +375,14 @@ mod tests {
                         t.kind,
                         " ".to_string(),
                         t.attributes,
-                        Range::new(Position::new(0, 0, 0), Position::new(0, 0, 0)),
+                        Range::new(Position::new(0, 0), Position::new(0, 0)),
                     )
                 } else {
                     Token::new(
                         t.kind,
                         t.value,
                         t.attributes,
-                        Range::new(Position::new(0, 0, 0), Position::new(0, 0, 0)),
+                        Range::new(Position::new(0, 0), Position::new(0, 0)),
                     )
                 }
             })

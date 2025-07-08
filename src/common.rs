@@ -1,4 +1,3 @@
-use miette::{SourceOffset, SourceSpan};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -48,17 +47,11 @@ pub struct Position {
     pub line: usize,
     /// Byte column within the line (1-based, incremented by UTF-8 byte length)
     pub column: usize,
-    /// Absolute byte offset from start of file (0-based)
-    pub offset: usize,
 }
 
 impl Position {
-    pub fn new(line: usize, column: usize, offset: usize) -> Self {
-        Position {
-            line,
-            column,
-            offset,
-        }
+    pub fn new(line: usize, column: usize) -> Self {
+        Position { line, column }
     }
 }
 
@@ -80,12 +73,6 @@ impl Range {
             || (position.line == self.start.line && position.column >= self.start.column))
             && (position.line < self.end.line
                 || (position.line == self.end.line && position.column < self.end.column))
-    }
-
-    // Convert to miette's SourceSpan
-    pub fn to_source_span(&self) -> SourceSpan {
-        let len = self.end.offset.saturating_sub(self.start.offset);
-        SourceSpan::new(SourceOffset::from(self.start.offset), len)
     }
 }
 
@@ -317,6 +304,7 @@ pub fn escape_html(text: &str) -> String {
 }
 
 // Format a collection of range errors into a readable error message
+// NOTE: This function is deprecated. Use ErrorFormatter::format_range_errors instead.
 pub fn format_range_errors(message: &str, errors: &[RangeError]) -> String {
     let mut result = message.to_string();
     for error in errors {

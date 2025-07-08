@@ -78,7 +78,6 @@ impl Cursor {
         Position {
             line: self.line,
             column: self.byte_column,
-            offset: self.byte_position,
         }
     }
 
@@ -120,7 +119,6 @@ impl TokenBuilder {
             token_start: Position {
                 line: 1,
                 column: 1,
-                offset: 0,
             },
             token_attributes: Vec::new(),
             attribute_name: String::new(),
@@ -128,7 +126,6 @@ impl TokenBuilder {
             attribute_start: Position {
                 line: 1,
                 column: 1,
-                offset: 0,
             },
             tokens: Vec::new(),
         }
