@@ -167,25 +167,25 @@ pub struct Attribute {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct VariableNameAttr {
+pub struct VarNameAttr {
     pub value: String,
     pub range: Range,
 }
 
-impl VariableNameAttr {
-    pub fn new(attr: &Attribute) -> Result<Self, RangeError> {
+impl VarNameAttr {
+    pub fn new(attr: &Attribute) -> Option<Self> {
         let mut chars = attr.value.chars();
         if let Some(first_char) = chars.next() {
             if !first_char.is_ascii_lowercase() {
-                return Err(RangeError::invalid_variable_name(&attr.value, attr.range));
+                return None;
             }
             if !chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) {
-                return Err(RangeError::invalid_variable_name(&attr.value, attr.range));
+                return None;
             }
         } else {
-            return Err(RangeError::invalid_variable_name(&attr.value, attr.range));
+            return None;
         }
-        Ok(VariableNameAttr {
+        Some(VarNameAttr {
             value: attr.value.clone(),
             range: attr.range,
         })
@@ -278,7 +278,7 @@ pub struct RenderNode {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForNode {
     pub each_attr: ExprAttribute,
-    pub as_attr: Option<VariableNameAttr>,
+    pub as_attr: Option<VarNameAttr>,
     pub range: Range,
     pub children: Vec<Node>,
 }
@@ -300,7 +300,7 @@ pub struct ImportNode {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentNode {
     pub name_attr: Attribute,
-    pub params_as_attr: Option<VariableNameAttr>,
+    pub params_as_attr: Option<VarNameAttr>,
     pub as_attr: Option<Attribute>,
     pub attributes: Vec<Attribute>,
     pub range: Range,
