@@ -2,7 +2,6 @@ use crate::common::{Range, RangeError};
 use unicode_width::UnicodeWidthStr;
 
 pub struct ErrorFormatter {
-    source_code: String,
     lines: Vec<String>,
     filename: String,
 }
@@ -10,11 +9,7 @@ pub struct ErrorFormatter {
 impl ErrorFormatter {
     pub fn new(source_code: String, filename: String) -> Self {
         let lines = source_code.lines().map(|s| s.to_string()).collect();
-        Self {
-            source_code,
-            lines,
-            filename,
-        }
+        Self { lines, filename }
     }
 
     pub fn format_error(&self, error: &RangeError) -> String {
