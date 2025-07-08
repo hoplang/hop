@@ -7,16 +7,7 @@ use crate::unifier::Unifier;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypeAnnotation {
-    pub range: Range,
-    pub value: Type,
-}
-
-impl TypeAnnotation {
-    pub fn new(range: Range, value: Type) -> Self {
-        TypeAnnotation { range, value }
-    }
-}
+pub struct TypeAnnotation(pub Range, pub Type);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeResult {
@@ -56,7 +47,7 @@ pub fn typecheck(module: &Module, import_types: &HashMap<String, Type>) -> TypeR
         if let Some(params_as_attr) = params_as_attr {
             let t1 = unifier.new_type_var();
             env.push(params_as_attr.value.clone(), t1.clone());
-            annotations.push(TypeAnnotation::new(params_as_attr.range, t1.clone()));
+            annotations.push(TypeAnnotation(params_as_attr.range, t1.clone()));
             for child in children {
                 typecheck_node(
                     child,
@@ -76,7 +67,7 @@ pub fn typecheck(module: &Module, import_types: &HashMap<String, Type>) -> TypeR
 
     let final_annotations = annotations
         .into_iter()
-        .map(|a| TypeAnnotation::new(a.range, unifier.query(&a.value)))
+        .map(|TypeAnnotation(range, t)| TypeAnnotation(range, unifier.query(&t)))
         .collect();
 
     TypeResult::new(parameter_types, final_annotations, errors)
@@ -108,7 +99,7 @@ fn typecheck_node(
             );
 
             if let Some(attr) = as_attr {
-                annotations.push(TypeAnnotation::new(attr.range, t1.clone()));
+                annotations.push(TypeAnnotation(attr.range, t1.clone()));
                 env.push(attr.value.clone(), t1);
             }
 
@@ -201,7 +192,7 @@ fn typecheck_expr(
             return;
         }
 
-        annotations.push(TypeAnnotation::new(attr.range, t1.clone()));
+        annotations.push(TypeAnnotation(attr.range, t1.clone()));
     } else {
         errors.push(RangeError::undefined_variable(&segments[0], attr.range));
     }

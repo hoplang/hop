@@ -1,4 +1,4 @@
-use crate::common::format_range_errors;
+use crate::common::{format_range_errors, Type};
 use crate::parser::parse;
 use crate::runtime::Program;
 use crate::scriptcollector::ScriptCollector;
@@ -27,8 +27,7 @@ impl Compiler {
         let mut component_maps = HashMap::new();
         let mut import_maps = HashMap::new();
         let mut modules = HashMap::new();
-        let mut module_parameter_types: HashMap<String, HashMap<String, crate::common::Type>> =
-            HashMap::new();
+        let mut module_parameter_types: HashMap<String, HashMap<String, Type>> = HashMap::new();
         let mut script_collector = ScriptCollector::new();
         let mut module_sorter = TopoSorter::new();
 
