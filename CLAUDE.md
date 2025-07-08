@@ -2,6 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Development Environment
+
+This project uses Nix for development environment management. When running Rust/Cargo commands, always use:
+
+```bash
+nix develop --command <cargo command>
+```
+
+For example:
+- `nix develop --command cargo check`
+- `nix develop --command cargo build`
+- `nix develop --command cargo test`
+
 ## Project Overview
 
 This project contains the reference implementation for the hop language.
@@ -19,6 +32,7 @@ The modules are the following:
 * `src/unifier.rs` - The `unifier` module. This module contains a specification for a class that performs unification.
 * `src/typechecker.rs` - The `typechecker` module. This module contains the specification for the public API and the implementation of the hop typechecker.
 * `src/toposorter.rs` - The `toposorter` module. This module contains a class that performs topological sorting of directed graphs.
+* `src/scriptcollector.rs` - The `scriptcollector` module. This module contains functionality for collecting and processing script content from hop components.
 * `src/compiler.rs` - The `compiler` module. This module contains the specification for the public API and the implementation of the hop compiler that compiles hop modules into executable programs.
 * `src/runtime.rs` - The `runtime` module. This module defines the runtime semantics of the hop language and allows for execution of hop programs.
 
@@ -29,12 +43,12 @@ graph LR
     tokenizer -.-> common
     parser -.-> common
     unifier -.-> common
-    scriptbuilder -.-> common
+    scriptcollector -.-> common
     compiler -.-> common
     typechecker -.-> common
     typechecker -.-> unifier
     compiler -.-> parser
-    compiler -.-> scriptbuilder
+    compiler -.-> scriptcollector
     compiler -.-> tokenizer
     compiler -.-> toposorter
     compiler -.-> typechecker
