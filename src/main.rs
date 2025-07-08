@@ -24,7 +24,7 @@ const SOURCE_CODE: &str = r#"<component name="example">
 </component>"#;
 
 fn main() {
-    let tokens = tokenize(SOURCE_CODE.to_string());
+    let tokens = tokenize(SOURCE_CODE);
     let parse_result = parse(tokens);
 
     if !parse_result.errors.is_empty() {

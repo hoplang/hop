@@ -26,7 +26,7 @@ enum TokenizerState {
 
 struct Cursor {
     input: Vec<char>,
-    /// Current position (0-index, in characters)
+    /// Current position (0-indexed, in characters)
     position: usize,
     /// Current line number (1-indexed)
     line: usize,
@@ -35,7 +35,7 @@ struct Cursor {
 }
 
 impl Cursor {
-    fn new(input: String) -> Self {
+    fn new(input: &str) -> Self {
         Self {
             input: input.chars().collect(),
             position: 0,
@@ -200,7 +200,7 @@ fn is_whitespace(ch: char) -> bool {
     ch.is_whitespace()
 }
 
-pub fn tokenize(input: String) -> Vec<Token> {
+pub fn tokenize(input: &str) -> Vec<Token> {
     let mut cursor = Cursor::new(input);
     let mut builder = TokenBuilder::new();
     let mut state = TokenizerState::Text;
@@ -617,7 +617,7 @@ mod tests {
             let input = archive.get("in").unwrap().content.trim();
             let expected = archive.get("out").unwrap().content.trim();
 
-            let actual = tokenize(input.to_string())
+            let actual = tokenize(input)
                 .iter()
                 .map(format_token)
                 .collect::<Vec<_>>()

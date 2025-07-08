@@ -432,7 +432,7 @@ mod tests {
             let input = archive.get("main.hop").unwrap().content.trim();
             let expected = archive.get("output.txt").unwrap().content.trim();
 
-            let result = parse(tokenize(input.to_string()));
+            let result = parse(tokenize(input));
 
             if !result.errors.is_empty() {
                 let output = result

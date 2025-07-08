@@ -231,7 +231,7 @@ mod tests {
             let input = archive.get("in").unwrap().content.trim();
             let expected = archive.get("out").unwrap().content.trim();
 
-            let parse_result = parse(tokenize(input.to_string()));
+            let parse_result = parse(tokenize(input));
 
             let type_result = typecheck(&parse_result.components, &HashMap::new());
 

@@ -35,7 +35,7 @@ impl Compiler {
 
         // Parse all modules
         for (module_name, source_code) in &self.modules {
-            let result = parse(tokenize(source_code.to_string()));
+            let result = parse(tokenize(source_code));
             if !result.errors.is_empty() {
                 return Err(format_range_errors(
                     &format!("Parse errors in module {}", module_name),
@@ -193,9 +193,8 @@ mod tests {
             });
 
             // Normalize whitespace by tokenizing both outputs and comparing tokens
-            let expected_tokens =
-                normalize_tokens(crate::tokenizer::tokenize(expected_output.to_string()));
-            let actual_tokens = normalize_tokens(crate::tokenizer::tokenize(actual_output.clone()));
+            let expected_tokens = normalize_tokens(tokenize(expected_output));
+            let actual_tokens = normalize_tokens(tokenize(&actual_output));
 
             assert_eq!(
                 actual_tokens, expected_tokens,
