@@ -2,6 +2,7 @@ mod common;
 mod compiler;
 mod formatter;
 mod parser;
+mod runtime;
 mod scriptbuilder;
 mod tokenizer;
 mod toposorter;

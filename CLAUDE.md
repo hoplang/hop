@@ -20,6 +20,7 @@ The modules are the following:
 * `src/typechecker.rs` - The `typechecker` module. This module contains the specification for the public API and the implementation of the hop typechecker.
 * `src/toposorter.rs` - The `toposorter` module. This module contains a class that performs topological sorting of directed graphs.
 * `src/compiler.rs` - The `compiler` module. This module contains the specification for the public API and the implementation of the hop compiler that compiles hop modules into executable programs.
+* `src/runtime.rs` - The `runtime` module. This module defines the runtime semantics of the hop language and allows for execution of hop programs.
 
 The following diagram shows how the modules relate to each other in terms of imports:
 
@@ -27,17 +28,17 @@ The following diagram shows how the modules relate to each other in terms of imp
 graph LR
     tokenizer -.-> common
     parser -.-> common
-    typechecker -.-> common
     unifier -.-> common
-    typechecker -.-> unifier
-    toposorter
     scriptbuilder -.-> common
     compiler -.-> common
+    typechecker -.-> common
+    typechecker -.-> unifier
     compiler -.-> parser
     compiler -.-> scriptbuilder
     compiler -.-> tokenizer
     compiler -.-> toposorter
     compiler -.-> typechecker
+    compiler -.-> runtime
 ```
 
 ## Transpiling to TypeScript
@@ -187,8 +188,8 @@ export type Type =
 
 You should never use type assertions in TypeScript (the `as` keyword). Instead,
 use the fact that TypeScript does type narrowing for discriminated unions. If
-you do not think it is possible to implement the code without a type assertion,
-abort immediately and explain why a type assertion is needed.
+you do not think it is possible to implement the code without a type
+assertion, abort immediately and explain why a type assertion is needed.
 
 ### Prefer to use define fields in constructors when possible
 
