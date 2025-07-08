@@ -4,6 +4,7 @@ mod formatter;
 mod parser;
 mod runtime;
 mod scriptcollector;
+mod server;
 mod tokenizer;
 mod toposorter;
 mod typechecker;

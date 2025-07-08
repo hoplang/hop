@@ -34,6 +34,7 @@ The modules are the following:
 * `src/toposorter.rs` - The `toposorter` module. This module contains a class that performs topological sorting of directed graphs.
 * `src/scriptcollector.rs` - The `scriptcollector` module. This module contains functionality for collecting and processing script content from hop components.
 * `src/compiler.rs` - The `compiler` module. This module contains the specification for the public API and the implementation of the hop compiler that compiles hop modules into executable programs.
+* `src/server.rs` - The `server` module. This module provides incremental typechecking and contains utilities for implementing IDE-like tools and Language Servers for hop.
 * `src/runtime.rs` - The `runtime` module. This module defines the runtime semantics of the hop language and allows for execution of hop programs.
 
 The following diagram shows how the modules relate to each other in terms of imports:
@@ -44,15 +45,20 @@ graph LR
     parser -.-> common
     unifier -.-> common
     scriptcollector -.-> common
-    compiler -.-> common
-    typechecker -.-> common
+    runtime -.-> common
     typechecker -.-> unifier
+
     compiler -.-> parser
     compiler -.-> scriptcollector
     compiler -.-> tokenizer
     compiler -.-> toposorter
     compiler -.-> typechecker
     compiler -.-> runtime
+    
+    server -.-> parser
+    server -.-> tokenizer
+    server -.-> typechecker
+    server -.-> toposorter
 ```
 
 ## Transpiling to TypeScript
