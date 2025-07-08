@@ -3,7 +3,7 @@ mod compiler;
 mod formatter;
 mod parser;
 mod runtime;
-mod scriptbuilder;
+mod scriptcollector;
 mod tokenizer;
 mod toposorter;
 mod typechecker;

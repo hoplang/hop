@@ -1,4 +1,4 @@
-use crate::common::{escape_html, ComponentNode, Environment, Node, is_void_element};
+use crate::common::{escape_html, is_void_element, ComponentNode, Environment, Node};
 use std::collections::HashMap;
 
 /// Program represents a compiled hop program that can execute components

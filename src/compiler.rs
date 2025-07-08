@@ -1,7 +1,7 @@
 use crate::common::format_range_errors;
 use crate::parser::parse;
 use crate::runtime::Program;
-use crate::scriptbuilder::ScriptBuilder;
+use crate::scriptcollector::ScriptCollector;
 use crate::tokenizer::tokenize;
 use crate::toposorter::TopoSorter;
 use crate::typechecker::typecheck;
@@ -30,7 +30,7 @@ impl Compiler {
         let mut module_imports = HashMap::new();
         let mut module_parameter_types: HashMap<String, HashMap<String, crate::common::Type>> =
             HashMap::new();
-        let mut script_builder = ScriptBuilder::new();
+        let mut script_collector = ScriptCollector::new();
         let mut module_sorter = TopoSorter::new();
 
         // Parse all modules
@@ -45,7 +45,7 @@ impl Compiler {
 
             module_components.insert(module_name.clone(), result.components.clone());
             module_imports.insert(module_name.clone(), result.imports.clone());
-            script_builder.add_module(module_name.clone(), result.components);
+            script_collector.add_module(module_name.clone(), result.components);
 
             module_sorter.add_node(module_name.clone());
             for import_node in &result.imports {
@@ -117,7 +117,7 @@ impl Compiler {
         Ok(Program::new(
             component_maps,
             import_maps,
-            script_builder.build(),
+            script_collector.build(),
         ))
     }
 }

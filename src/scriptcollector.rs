@@ -1,13 +1,13 @@
 use crate::common::{ComponentNode, Node};
 use std::collections::HashMap;
 
-pub struct ScriptBuilder {
+pub struct ScriptCollector {
     modules: HashMap<String, Vec<ComponentNode>>,
 }
 
-impl ScriptBuilder {
+impl ScriptCollector {
     pub fn new() -> Self {
-        ScriptBuilder {
+        ScriptCollector {
             modules: HashMap::new(),
         }
     }
