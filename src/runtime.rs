@@ -1,4 +1,4 @@
-use crate::common::{ComponentNode, Environment, Node, escape_html, is_void_element};
+use crate::common::{ComponentNode, Environment, Node, escape_html, is_void_element, ForNode, CondNode, RenderNode, NativeHTMLNode, ErrorNode};
 use std::collections::HashMap;
 
 /// Program represents a compiled hop program that can execute components
@@ -55,133 +55,141 @@ impl Program {
             }
         }
         result.push('>');
-        result.push_str(&self.execute_nodes(&component.children, &mut env, module_name)?);
+        for child in &component.children {
+            result.push_str(&self.evaluate_node(child, &mut env, module_name)?);
+        }
         result.push_str(&format!("</{}>", element_type));
 
         Ok(result)
     }
 
-    fn execute_nodes(
+    fn evaluate_node(
         &self,
-        nodes: &[Node],
+        node: &Node,
         env: &mut Environment<serde_json::Value>,
         current_module: &str,
     ) -> Result<String, String> {
-        let mut result = String::new();
+        match node {
+            Node::For(ForNode {
+                as_attr,
+                each_attr,
+                children,
+                ..
+            }) => {
+                let array_value =
+                    self.evaluate_expr(&each_attr.segments, env)?;
 
-        for node in nodes {
-            match node {
-                Node::Text(text_node) => {
-                    result.push_str(&text_node.value);
-                }
-                Node::Doctype(doctype_node) => {
-                    result.push_str(&format!("<!DOCTYPE {}>", doctype_node.value));
-                }
-                Node::NativeHTML(native_html_node) => {
-                    // Skip script and style nodes
-                    if native_html_node.value == "script" || native_html_node.value == "style" {
-                        continue;
+                let array = array_value
+                    .as_array()
+                    .ok_or_else(|| "For loop expects an array".to_string())?;
+
+                let mut result = String::new();
+                for item in array {
+                    if let Some(attr) = as_attr {
+                        env.push(attr.value.clone(), item.clone());
                     }
-
-                    result.push_str(&format!("<{}", native_html_node.value));
-                    for attr in &native_html_node.attributes {
-                        if attr.name != "inner-text" {
-                            result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
-                        }
+                    for child in children {
+                        result.push_str(&self.evaluate_node(child, env, current_module)?);
                     }
-                    result.push('>');
-
-                    if !is_void_element(&native_html_node.value) {
-                        if let Some(inner_text_attr) = &native_html_node.inner_text_attr {
-                            let evaluated =
-                                self.evaluate_expression(&inner_text_attr.segments, env)?;
-                            result.push_str(&escape_html(evaluated.as_str().unwrap()));
-                        } else {
-                            result.push_str(&self.execute_nodes(
-                                &native_html_node.children,
-                                env,
-                                current_module,
-                            )?);
-                        }
-                        result.push_str(&format!("</{}>", native_html_node.value));
+                    if as_attr.is_some() {
+                        env.pop();
                     }
                 }
-                Node::For(for_node) => {
-                    let array_value =
-                        self.evaluate_expression(&for_node.each_attr.segments, env)?;
 
-                    let array = array_value
-                        .as_array()
-                        .ok_or_else(|| "For loop expects an array".to_string())?;
-
-                    for item in array {
-                        if let Some(as_attr) = &for_node.as_attr {
-                            env.push(as_attr.value.clone(), item.clone());
-                        }
-                        result.push_str(&self.execute_nodes(
-                            &for_node.children,
-                            env,
-                            current_module,
-                        )?);
-                        if for_node.as_attr.is_some() {
-                            env.pop();
-                        }
+                Ok(result)
+            }
+            Node::Cond(CondNode {
+                if_attr, children, ..
+            }) => {
+                let condition_value =
+                    self.evaluate_expr(&if_attr.segments, env)?;
+                if condition_value.as_bool().unwrap_or(false) {
+                    let mut result = String::new();
+                    for child in children {
+                        result.push_str(&self.evaluate_node(child, env, current_module)?);
                     }
-                }
-                Node::Cond(cond_node) => {
-                    let condition_value =
-                        self.evaluate_expression(&cond_node.if_attr.segments, env)?;
-                    if condition_value.as_bool().unwrap_or(false) {
-                        result.push_str(&self.execute_nodes(
-                            &cond_node.children,
-                            env,
-                            current_module,
-                        )?);
-                    }
-                }
-                Node::Render(render_node) => {
-                    let mut params_value = serde_json::Value::Null;
-                    if let Some(params_attr) = &render_node.params_attr {
-                        params_value = self.evaluate_expression(&params_attr.segments, env)?;
-                    }
-
-                    let component_name = &render_node.component_attr.value;
-                    let mut target_module = current_module.to_string();
-
-                    if let Some(current_module_import_map) = self.import_maps.get(current_module) {
-                        if let Some(imported_module) = current_module_import_map.get(component_name)
-                        {
-                            target_module = imported_module.clone();
-                        }
-                    }
-
-                    result.push_str(&self.execute(&target_module, component_name, params_value)?);
-                }
-                Node::Component(component_node) => {
-                    // Component nodes shouldn't appear in execution, but handle children just in case
-                    result.push_str(&self.execute_nodes(
-                        &component_node.children,
-                        env,
-                        current_module,
-                    )?);
-                }
-                Node::Import(_) => {
-                    // Import nodes shouldn't appear in execution
-                }
-                Node::Error(error_node) => {
-                    result.push_str(&self.execute_nodes(
-                        &error_node.children,
-                        env,
-                        current_module,
-                    )?);
+                    Ok(result)
+                } else {
+                    Ok(String::new())
                 }
             }
-        }
+            Node::Render(RenderNode {
+                component_attr,
+                params_attr,
+                ..
+            }) => {
+                let mut params_value = serde_json::Value::Null;
+                if let Some(attr) = params_attr {
+                    params_value = self.evaluate_expr(&attr.segments, env)?;
+                }
 
-        Ok(result)
+                let component_name = &component_attr.value;
+                let mut target_module = current_module.to_string();
+
+                if let Some(current_module_import_map) = self.import_maps.get(current_module) {
+                    if let Some(imported_module) = current_module_import_map.get(component_name)
+                    {
+                        target_module = imported_module.clone();
+                    }
+                }
+
+                self.execute(&target_module, component_name, params_value)
+            }
+            Node::NativeHTML(NativeHTMLNode {
+                inner_text_attr,
+                children,
+                value,
+                attributes,
+                ..
+            }) => {
+                // Skip script and style nodes
+                if value == "script" || value == "style" {
+                    return Ok(String::new());
+                }
+
+                let mut result = format!("<{}", value);
+                for attr in attributes {
+                    if attr.name != "inner-text" {
+                        result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
+                    }
+                }
+                result.push('>');
+
+                if !is_void_element(value) {
+                    if let Some(attr) = inner_text_attr {
+                        let evaluated =
+                            self.evaluate_expr(&attr.segments, env)?;
+                        result.push_str(&escape_html(evaluated.as_str().unwrap()));
+                    } else {
+                        for child in children {
+                            result.push_str(&self.evaluate_node(child, env, current_module)?);
+                        }
+                    }
+                    result.push_str(&format!("</{}>", value));
+                }
+
+                Ok(result)
+            }
+            Node::Error(ErrorNode { children, .. }) => {
+                let mut result = String::new();
+                for child in children {
+                    result.push_str(&self.evaluate_node(child, env, current_module)?);
+                }
+                Ok(result)
+            }
+            Node::Text(text_node) => {
+                Ok(text_node.value.clone())
+            }
+            Node::Doctype(doctype_node) => {
+                Ok(format!("<!DOCTYPE {}>", doctype_node.value))
+            }
+            Node::Import(_) | Node::Component(_) => {
+                panic!("Unexpected node")
+            }
+        }
     }
 
-    fn evaluate_expression(
+    fn evaluate_expr(
         &self,
         expr: &[String],
         env: &mut Environment<serde_json::Value>,
