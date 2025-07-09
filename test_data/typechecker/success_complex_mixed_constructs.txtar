@@ -12,4 +12,4 @@
 	</cond>
 </component>
 -- out --
-{enabled: boolean, users: {posts: {published: boolean}[], profile: {verified: boolean}}[]}
+main : {enabled: boolean, users: {posts: {published: boolean}[], profile: {verified: boolean}}[]}

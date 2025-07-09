@@ -6,4 +6,4 @@
 	</for>
 </component>
 -- out --
-{foo: {bar: boolean[]}}
+main : {foo: {bar: boolean[]}}

@@ -47,7 +47,7 @@ impl TokenTree {
         }
     }
 
-    fn append_child(&mut self, token: Token) {
+    fn append_node(&mut self, token: Token) {
         self.children.push(TokenTree::new(token));
     }
 
@@ -82,11 +82,11 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
                 continue;
             }
             TokenKind::Doctype | TokenKind::Text | TokenKind::SelfClosingTag => {
-                stack.last_mut().unwrap().append_child(token);
+                stack.last_mut().unwrap().append_node(token);
             }
             TokenKind::StartTag => {
                 if is_void_element(&token.value) {
-                    stack.last_mut().unwrap().append_child(token);
+                    stack.last_mut().unwrap().append_node(token);
                 } else {
                     stack.push(TokenTree::new(token));
                 }

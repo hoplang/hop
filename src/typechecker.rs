@@ -279,13 +279,20 @@ mod tests {
                     .join("\n");
                 assert_eq!(output, expected, "Mismatch in file: {}", file_name);
             } else {
-                let output = type_result
-                    .parameter_types
-                    .get("main")
-                    .expect("Type for main not found");
+                let mut output_lines = Vec::new();
+                for c in module.components {
+                    output_lines.push(format!(
+                        "{} : {}",
+                        c.name_attr.value,
+                        type_result
+                            .parameter_types
+                            .get(&c.name_attr.value)
+                            .expect("Type for main not found")
+                    ))
+                }
 
                 assert_eq!(
-                    format!("{}", output),
+                    format!("{}", output_lines.join("\n")),
                     expected,
                     "Mismatch in file: {}",
                     file_name

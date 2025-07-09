@@ -10,4 +10,4 @@
 	</for>
 </component>
 -- out --
-{a: boolean, b: boolean}[]
+main : {a: boolean, b: boolean}[]
