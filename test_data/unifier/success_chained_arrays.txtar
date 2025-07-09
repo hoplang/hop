@@ -1,0 +1,6 @@
+-- in --
+(unify (array (array (array string))) (array t1))
+(unify t1 (array t2))
+(query t2)
+-- out --
+t2 : string[]

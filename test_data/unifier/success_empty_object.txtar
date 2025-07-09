@@ -1,0 +1,5 @@
+-- in --
+(unify (object) t1)
+(query t1)
+-- out --
+t1 : {}

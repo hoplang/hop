@@ -1,0 +1,4 @@
+-- in --
+(unify (array string) string)
+-- out --
+Can not unify types

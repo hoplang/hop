@@ -1,0 +1,6 @@
+-- in --
+(unify string t1)
+(unify t1 string)
+(query t1)
+-- out --
+t1 : string
