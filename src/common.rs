@@ -134,7 +134,7 @@ impl RangeError {
     }
 
     // Typechecker error functions
-    pub fn component_not_found(component: &str, range: Range) -> Self {
+    pub fn undefined_component(component: &str, range: Range) -> Self {
         Self::new(format!("Component {component} not found"), range)
     }
 

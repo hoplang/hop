@@ -68,8 +68,7 @@ pub fn typecheck(
             }
 
             let final_type = unifier.query(&t1);
-            let was_accessed = env.pop();
-            if !was_accessed {
+            if !env.pop() {
                 errors.push(RangeError::unused_variable(
                     &params_as_attr.value,
                     params_as_attr.range,
@@ -144,8 +143,7 @@ fn typecheck_node(
 
             if pushed {
                 if let Some(attr) = as_attr {
-                    let was_accessed = env.pop();
-                    if !was_accessed {
+                    if !env.pop() {
                         errors.push(RangeError::unused_variable(&attr.value, attr.range));
                     }
                 }
@@ -171,7 +169,7 @@ fn typecheck_node(
                     typecheck_expr(&t1.clone(), params_attr, env, unifier, annotations, errors);
                 }
             } else {
-                errors.push(RangeError::component_not_found(
+                errors.push(RangeError::undefined_component(
                     &component_attr.value,
                     component_attr.range,
                 ));
