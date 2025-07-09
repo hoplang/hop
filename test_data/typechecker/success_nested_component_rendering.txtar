@@ -1,0 +1,23 @@
+-- in --
+<component name="card" params-as="item">
+  <div inner-text="item.title">
+  </div>
+  <cond if="item.active">
+    <span inner-text="item.status">
+    </span>
+  </cond>
+</component>
+
+<component name="list" params-as="items">
+  <for each="items" as="item">
+    <render component="card" params="item"/>
+  </for>
+</component>
+
+<component name="main" params-as="data">
+  <render component="list" params="data.items"/>
+</component>
+-- out --
+card : {active: boolean, status: string, title: string}
+list : {active: boolean, status: string, title: string}[]
+main : {items: {active: boolean, status: string, title: string}[]}

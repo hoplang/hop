@@ -1,0 +1,7 @@
+-- in --
+<component name="main" params-as="data">
+  <div inner-text="data.message">
+  </div>
+</component>
+-- out --
+main : {message: string}
