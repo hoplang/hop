@@ -2,4 +2,4 @@
 (unify (object foo string) (object foo t1))
 (query t1)
 -- out --
-string
+t1 : string

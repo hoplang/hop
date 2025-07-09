@@ -10,5 +10,5 @@
 (query t1)
 (query t8)
 -- out --
-string
-string
+t1 : string
+t8 : string

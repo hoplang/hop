@@ -3,4 +3,4 @@
 (unify (object d string) t1)
 (query t1)
 -- out --
-{a: string, b: string, c: string, d: string}
+t1 : {a: string, b: string, c: string, d: string}

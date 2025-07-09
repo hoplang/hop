@@ -4,4 +4,4 @@
 (unify (array t3) (array (array (array (array string)))))
 (query t2)
 -- out --
-string[]
+t2 : string[]

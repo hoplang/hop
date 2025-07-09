@@ -278,7 +278,7 @@ mod tests {
                 "void" => Type::Void,
                 _ => {
                     // Get type var from table
-                    assert!(str.len() > 0 && str.starts_with('t'));
+                    assert!(str.starts_with('t'));
                     table.get(&str).unwrap().clone()
                 }
             },
@@ -323,7 +323,11 @@ mod tests {
                         "query" => {
                             assert!(args.len() == 1);
                             let t1 = &sexpr_to_type(args[0].clone(), &table, &mut unifier);
-                            lines.push(format!("{}", unifier.query(t1)));
+                            let val = match &args[0] {
+                                SExpr::Symbol(s) => s,
+                                SExpr::Command(..) => panic!(),
+                            };
+                            lines.push(format!("{} : {}", val, unifier.query(t1)));
                         }
                         _ => panic!(),
                     },

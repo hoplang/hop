@@ -3,4 +3,4 @@
 (unify t2 string)
 (query t1)
 -- out --
-{foo: string}
+t1 : {foo: string}

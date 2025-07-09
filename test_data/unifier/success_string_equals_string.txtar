@@ -3,4 +3,4 @@
 (unify t1 string)
 (query t1)
 -- out --
-string
+t1 : string
