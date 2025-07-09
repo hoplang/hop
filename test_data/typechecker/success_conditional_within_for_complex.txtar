@@ -10,4 +10,4 @@
 	</for>
 </component>
 -- out --
-main : {sections: {header: {visible: boolean}, items: {data: {valid: boolean}}[]}[]}
+main::main : {sections: {header: {visible: boolean}, items: {data: {valid: boolean}}[]}[]}

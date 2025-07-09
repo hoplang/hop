@@ -8,4 +8,4 @@
 	</cond>
 </component>
 -- out --
-main : {app: {api: {endpoints: {users: {enabled: boolean}}}, database: {connection: {ssl: boolean}}, ui: {theme: {dark: boolean}}}}
+main::main : {app: {api: {endpoints: {users: {enabled: boolean}}}, database: {connection: {ssl: boolean}}, ui: {theme: {dark: boolean}}}}

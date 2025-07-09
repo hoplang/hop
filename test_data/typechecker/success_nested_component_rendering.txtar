@@ -18,6 +18,6 @@
   <render component="list" params="data.items"/>
 </component>
 -- out --
-card : {active: boolean, status: string, title: string}
-list : {active: boolean, status: string, title: string}[]
-main : {items: {active: boolean, status: string, title: string}[]}
+main::card : {active: boolean, status: string, title: string}
+main::list : {active: boolean, status: string, title: string}[]
+main::main : {items: {active: boolean, status: string, title: string}[]}

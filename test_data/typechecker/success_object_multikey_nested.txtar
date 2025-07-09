@@ -6,4 +6,4 @@
 	</cond>
 </component>
 -- out --
-main : {i: {j: {k: {l: boolean}}, k: boolean}}
+main::main : {i: {j: {k: {l: boolean}}, k: boolean}}

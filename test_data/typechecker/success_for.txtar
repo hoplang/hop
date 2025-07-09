@@ -6,4 +6,4 @@
 	</for>
 </component>
 -- out --
-main : boolean[]
+main::main : boolean[]

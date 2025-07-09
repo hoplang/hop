@@ -12,6 +12,6 @@
   <render component="foo" params="i"/>
 </component>
 -- out --
-bar : boolean
-foo : boolean
-main : boolean
+main::bar : boolean
+main::foo : boolean
+main::main : boolean

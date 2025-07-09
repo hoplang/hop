@@ -3,4 +3,4 @@
 	<div inner-text="params"></div>
 </component>
 -- out --
-main : string
+main::main : string

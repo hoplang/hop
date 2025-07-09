@@ -3,4 +3,4 @@
 	<div></div>
 </component>
 -- out --
-main : void
+main::main : void

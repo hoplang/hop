@@ -8,5 +8,5 @@
   <render component="foo" params="i"/>
 </component>
 -- out --
-foo : boolean
-main : boolean
+main::foo : boolean
+main::main : boolean

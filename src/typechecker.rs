@@ -258,39 +258,81 @@ mod tests {
 
             let archive = Archive::from(fs::read_to_string(&path).unwrap());
 
-            let input = archive.get("main.hop").unwrap().content.trim();
             let expected = archive.get("out").unwrap().content.trim();
+            let mut all_errors = Vec::new();
+            let mut all_output_lines = Vec::new();
+            let mut module_component_types: HashMap<String, HashMap<String, Type>> = HashMap::new();
 
-            let mut errors = Vec::new();
-            let tokens = tokenize(input, &mut errors);
-            let module = parse(tokens, &mut errors);
+            // Process all .hop files in the archive
+            for file in archive.iter() {
+                if file.name.ends_with(".hop") {
+                    let mut errors = Vec::new();
+                    let tokens = tokenize(&file.content.trim(), &mut errors);
+                    let module = parse(tokens, &mut errors);
 
-            assert_eq!(errors, Vec::new());
+                    if !errors.is_empty() {
+                        all_errors.extend(errors);
+                        continue;
+                    }
 
-            let type_result = typecheck(&module, &HashMap::new(), &mut errors);
+                    // Build import types from previously processed modules
+                    let mut import_types = HashMap::new();
+                    for import_node in &module.imports {
+                        let from_module = &import_node.from_attr.value;
+                        let component_name = &import_node.component_attr.value;
 
-            if !errors.is_empty() {
-                let output = errors
+                        let module_types = module_component_types
+                            .get(from_module)
+                            .unwrap_or_else(|| panic!("Module '{}' not found", from_module));
+
+                        let component_type =
+                            module_types.get(component_name).unwrap_or_else(|| {
+                                panic!(
+                                    "Component '{}' not found in module '{}'",
+                                    component_name, from_module
+                                )
+                            });
+
+                        import_types.insert(component_name.clone(), component_type.clone());
+                    }
+
+                    let type_result = typecheck(&module, &import_types, &mut errors);
+
+                    if !errors.is_empty() {
+                        all_errors.extend(errors);
+                    } else {
+                        // Get module name from filename (without .hop extension)
+                        let module_name = file.name.trim_end_matches(".hop");
+
+                        // Store this module's component types
+                        module_component_types
+                            .insert(module_name.to_string(), type_result.parameter_types.clone());
+
+                        for c in module.components {
+                            all_output_lines.push(format!(
+                                "{}::{} : {}",
+                                module_name,
+                                c.name_attr.value,
+                                type_result
+                                    .parameter_types
+                                    .get(&c.name_attr.value)
+                                    .expect("Type not found")
+                            ));
+                        }
+                    }
+                }
+            }
+
+            if !all_errors.is_empty() {
+                let output = all_errors
                     .iter()
                     .map(|e| e.message.clone())
                     .collect::<Vec<_>>()
                     .join("\n");
                 assert_eq!(output, expected, "Mismatch in file: {}", file_name);
             } else {
-                let mut output_lines = Vec::new();
-                for c in module.components {
-                    output_lines.push(format!(
-                        "{} : {}",
-                        c.name_attr.value,
-                        type_result
-                            .parameter_types
-                            .get(&c.name_attr.value)
-                            .expect("Type for main not found")
-                    ))
-                }
-
                 assert_eq!(
-                    format!("{}", output_lines.join("\n")),
+                    all_output_lines.join("\n"),
                     expected,
                     "Mismatch in file: {}",
                     file_name

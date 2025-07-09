@@ -12,4 +12,4 @@
 	</cond>
 </component>
 -- out --
-main : {categories: boolean[], metadata: {title: boolean}, tags: boolean[]}
+main::main : {categories: boolean[], metadata: {title: boolean}, tags: boolean[]}

@@ -8,4 +8,4 @@
 	</for>
 </component>
 -- out --
-main : {items: {active: boolean, name: boolean}[]}
+main::main : {items: {active: boolean, name: boolean}[]}

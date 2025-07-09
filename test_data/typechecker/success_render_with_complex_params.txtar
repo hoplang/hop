@@ -14,5 +14,5 @@
 	</for>
 </component>
 -- out --
-processItem : {children: {visible: boolean}[], status: {active: boolean}}
-main : {items: {children: {visible: boolean}[], status: {active: boolean}}[]}
+main::processItem : {children: {visible: boolean}[], status: {active: boolean}}
+main::main : {items: {children: {visible: boolean}[], status: {active: boolean}}[]}

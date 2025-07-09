@@ -4,4 +4,4 @@
   </div>
 </component>
 -- out --
-main : {message: string}
+main::main : {message: string}

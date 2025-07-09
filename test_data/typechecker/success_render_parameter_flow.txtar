@@ -18,6 +18,6 @@
 	</for>
 </component>
 -- out --
-executeStep : {condition: boolean}
-executeWorkflow : {enabled: boolean, steps: {condition: boolean}[]}
-main : {workflows: {enabled: boolean, steps: {condition: boolean}[]}[]}
+main::executeStep : {condition: boolean}
+main::executeWorkflow : {enabled: boolean, steps: {condition: boolean}[]}
+main::main : {workflows: {enabled: boolean, steps: {condition: boolean}[]}[]}

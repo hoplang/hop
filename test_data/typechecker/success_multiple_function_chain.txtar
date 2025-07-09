@@ -16,7 +16,7 @@
 	<render component="step1" params="params"/>
 </component>
 -- out --
-step3 : {enabled: boolean}
-step2 : {settings: {enabled: boolean}}
-step1 : {config: {settings: {enabled: boolean}}}
-main : {config: {settings: {enabled: boolean}}}
+main::step3 : {enabled: boolean}
+main::step2 : {settings: {enabled: boolean}}
+main::step1 : {config: {settings: {enabled: boolean}}}
+main::main : {config: {settings: {enabled: boolean}}}

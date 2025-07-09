@@ -1,0 +1,12 @@
+-- foo.hop --
+<component name="foo" params-as="p">
+  <cond if="p">
+  </cond>
+</component>
+-- bar.hop --
+<component name="bar" params-as="s">
+  <div inner-text="s"/>
+</component>
+-- out --
+foo::foo : boolean
+bar::bar : string
