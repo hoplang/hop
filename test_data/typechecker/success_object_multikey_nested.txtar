@@ -1,4 +1,4 @@
--- in --
+-- main.hop --
 <component name="main" params-as="params">
 	<cond if="params.i.j.k.l">
 		<cond if="params.i.k">

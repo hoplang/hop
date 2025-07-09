@@ -258,7 +258,7 @@ mod tests {
 
             let archive = Archive::from(fs::read_to_string(&path).unwrap());
 
-            let input = archive.get("in").unwrap().content.trim();
+            let input = archive.get("main.hop").unwrap().content.trim();
             let expected = archive.get("out").unwrap().content.trim();
 
             let mut errors = Vec::new();

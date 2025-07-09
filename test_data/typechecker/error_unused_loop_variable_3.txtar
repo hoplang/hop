@@ -1,4 +1,4 @@
--- in --
+-- main.hop --
 <component name="main" params-as="items">
   <for each="items" as="item">
   </for>

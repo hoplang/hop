@@ -1,4 +1,4 @@
--- in --
+-- main.hop --
 <component name="main" params-as="i">
 	<for each="i" as="j">
 		<cond if="j">

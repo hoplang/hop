@@ -1,4 +1,4 @@
--- in --
+-- main.hop --
 <component name="bar" params-as="p">
   <cond if="p">
   </cond>
