@@ -5,24 +5,17 @@ use std::collections::HashMap;
 pub struct Program {
     component_maps: HashMap<String, HashMap<String, ComponentNode>>,
     import_maps: HashMap<String, HashMap<String, String>>,
-    scripts: String,
 }
 
 impl Program {
     pub fn new(
         component_maps: HashMap<String, HashMap<String, ComponentNode>>,
         import_maps: HashMap<String, HashMap<String, String>>,
-        scripts: String,
     ) -> Self {
         Program {
             component_maps,
             import_maps,
-            scripts,
         }
-    }
-
-    pub fn get_scripts(&self) -> &str {
-        &self.scripts
     }
 
     pub fn execute(
