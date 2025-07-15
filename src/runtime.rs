@@ -1,4 +1,7 @@
-use crate::common::{ComponentNode, Environment, Node, escape_html, is_void_element, ForNode, CondNode, RenderNode, NativeHTMLNode, ErrorNode};
+use crate::common::{
+    ComponentNode, CondNode, Environment, ErrorNode, ForNode, NativeHTMLNode, Node, RenderNode,
+    escape_html, is_void_element,
+};
 use std::collections::HashMap;
 
 /// Program represents a compiled hop program that can execute components
@@ -76,8 +79,7 @@ impl Program {
                 children,
                 ..
             }) => {
-                let array_value =
-                    self.evaluate_expr(&each_attr.segments, env)?;
+                let array_value = self.evaluate_expr(&each_attr.segments, env)?;
 
                 let array = array_value
                     .as_array()
@@ -101,8 +103,7 @@ impl Program {
             Node::Cond(CondNode {
                 if_attr, children, ..
             }) => {
-                let condition_value =
-                    self.evaluate_expr(&if_attr.segments, env)?;
+                let condition_value = self.evaluate_expr(&if_attr.segments, env)?;
                 if condition_value.as_bool().unwrap_or(false) {
                     let mut result = String::new();
                     for child in children {
@@ -127,8 +128,7 @@ impl Program {
                 let mut target_module = current_module.to_string();
 
                 if let Some(current_module_import_map) = self.import_maps.get(current_module) {
-                    if let Some(imported_module) = current_module_import_map.get(component_name)
-                    {
+                    if let Some(imported_module) = current_module_import_map.get(component_name) {
                         target_module = imported_module.clone();
                     }
                 }
@@ -157,8 +157,7 @@ impl Program {
 
                 if !is_void_element(value) {
                     if let Some(attr) = inner_text_attr {
-                        let evaluated =
-                            self.evaluate_expr(&attr.segments, env)?;
+                        let evaluated = self.evaluate_expr(&attr.segments, env)?;
                         result.push_str(&escape_html(evaluated.as_str().unwrap()));
                     } else {
                         for child in children {
@@ -177,12 +176,8 @@ impl Program {
                 }
                 Ok(result)
             }
-            Node::Text(text_node) => {
-                Ok(text_node.value.clone())
-            }
-            Node::Doctype(doctype_node) => {
-                Ok(format!("<!DOCTYPE {}>", doctype_node.value))
-            }
+            Node::Text(text_node) => Ok(text_node.value.clone()),
+            Node::Doctype(doctype_node) => Ok(format!("<!DOCTYPE {}>", doctype_node.value)),
             Node::Import(_) | Node::Component(_) => {
                 panic!("Unexpected node")
             }
