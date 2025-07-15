@@ -11,54 +11,60 @@ mod toposorter;
 mod typechecker;
 mod unifier;
 
-use formatter::ErrorFormatter;
-use parser::parse;
-use tokenizer::tokenize;
+use clap::{CommandFactory, Parser, Subcommand};
 
-// Example with multiple types of errors
-const SOURCE_CODE: &str = r#"<component name="example">
-    <div>Hello 😀</div> <render!>
-    <span>Some text</span>
-    <br></br>
-                                        <for each="items">
-        <p>Item: unclosed paragraph
-    </unknown-tag>
-</component>"#;
+#[derive(Parser)]
+#[command(name = "hop")]
+#[command(about = "A HTML-like templating language with built-in type checking")]
+#[command(version = env!("CARGO_PKG_VERSION"))]
+struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
 
-fn run_example() {
-    let mut errors = Vec::new();
-    let tokens = tokenize(SOURCE_CODE, &mut errors);
-    let _ = parse(tokens, &mut errors);
-
-    if !errors.is_empty() {
-        println!("Found {} parse error(s):\n", errors.len());
-
-        let formatter = ErrorFormatter::new(SOURCE_CODE.to_string(), "example.hop".to_string());
-
-        for (i, error) in errors.iter().enumerate() {
-            if i > 0 {
-                println!();
-            }
-            print!("{}", formatter.format_error(error));
-        }
-    } else {
-        println!("✅ No parse errors!");
-    }
+#[derive(Subcommand)]
+enum Commands {
+    /// Run the Language Server Protocol (LSP) server
+    Lsp,
+    /// Compile a hop file
+    Compile {
+        /// The hop file to compile
+        file: String,
+    },
+    /// Run a hop file
+    Run {
+        /// The hop file to run
+        file: String,
+    },
 }
 
 #[tokio::main]
 async fn main() {
-    let args: Vec<String> = std::env::args().collect();
+    let cli = Cli::parse();
 
-    if args.len() > 1 {
-        match args[1].as_str() {
-            "lsp" => lsp::run_lsp().await,
-            "--version" | "-v" => {
-                println!("hop {}", env!("CARGO_PKG_VERSION"));
-            }
-            _ => run_example(),
+    match &cli.command {
+        Some(Commands::Lsp) => {
+            lsp::run_lsp().await;
         }
-    } else {
-        run_example();
+        Some(Commands::Compile { file }) => {
+            compile_file(file);
+        }
+        Some(Commands::Run { file }) => {
+            run_file(file);
+        }
+        None => {
+            let mut cmd = Cli::command();
+            cmd.print_help().unwrap();
+        }
     }
+}
+
+fn compile_file(file_path: &str) {
+    eprintln!("Compile command not yet implemented for: {}", file_path);
+    std::process::exit(1);
+}
+
+fn run_file(file_path: &str) {
+    eprintln!("Run command not yet implemented for: {}", file_path);
+    std::process::exit(1);
 }
