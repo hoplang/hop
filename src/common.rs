@@ -243,10 +243,6 @@ impl Token {
         }
     }
 
-    pub fn has_attribute(&self, name: &str) -> bool {
-        self.attributes.iter().any(|attr| attr.name == name)
-    }
-
     pub fn get_attribute(&self, name: &str) -> Option<Attribute> {
         self.attributes
             .iter()
