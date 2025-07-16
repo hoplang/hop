@@ -1,4 +1,5 @@
-use crate::common::{Type, format_range_errors};
+use crate::common::Type;
+use crate::formatter::ErrorFormatter;
 use crate::parser::parse;
 use crate::runtime::Program;
 use crate::tokenizer::tokenize;
@@ -35,10 +36,13 @@ impl Compiler {
             let tokens = tokenize(source_code, &mut errors);
             let module = parse(tokens, &mut errors);
             if !errors.is_empty() {
-                return Err(format_range_errors(
-                    &format!("Parse errors in module {}", module_name),
-                    &errors,
-                ));
+                let formatter = ErrorFormatter::new(source_code.clone(), format!("{}.hop", module_name));
+                let mut formatted_errors = String::new();
+                for error in &errors {
+                    formatted_errors.push_str(&formatter.format_error(error));
+                    formatted_errors.push('\n');
+                }
+                return Err(formatted_errors);
             }
 
             module_sorter.add_node(module_name.clone());
@@ -85,10 +89,14 @@ impl Compiler {
             let mut errors = Vec::new();
             let type_info = typecheck(module, &import_types, &mut errors);
             if !errors.is_empty() {
-                return Err(format_range_errors(
-                    &format!("Type errors in module {}", module_name),
-                    &errors,
-                ));
+                let source_code = self.modules.get(&module_name).unwrap();
+                let formatter = ErrorFormatter::new(source_code.clone(), format!("{}.hop", module_name));
+                let mut formatted_errors = String::new();
+                for error in &errors {
+                    formatted_errors.push_str(&formatter.format_error(error));
+                    formatted_errors.push('\n');
+                }
+                return Err(formatted_errors);
             }
 
             let mut component_map = HashMap::new();
