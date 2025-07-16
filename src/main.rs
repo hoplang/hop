@@ -63,6 +63,9 @@ enum Commands {
         /// Host to bind to
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
+        /// Directory to serve static files from
+        #[arg(long)]
+        servedir: Option<String>,
     },
 }
 
@@ -74,18 +77,16 @@ async fn main() {
         Some(Commands::Lsp) => {
             lsp::run_lsp().await;
         }
-        Some(Commands::Render {
-            manifest,
-            outdir,
-        }) => {
+        Some(Commands::Render { manifest, outdir }) => {
             render_from_manifest(manifest, outdir);
         }
         Some(Commands::Serve {
             manifest,
             port,
             host,
+            servedir,
         }) => {
-            serve_from_manifest(manifest, host, *port).await;
+            serve_from_manifest(manifest, host, *port, servedir.as_deref()).await;
         }
         None => {
             let mut cmd = Cli::command();
@@ -196,7 +197,10 @@ fn render_from_manifest(manifest_path: &str, output_dir: &str) {
         let html = match program.execute(&entry.module, &entry.function, data) {
             Ok(html) => html,
             Err(e) => {
-                eprintln!("Error executing {}::{}: {}", entry.module, entry.function, e);
+                eprintln!(
+                    "Error executing {}::{}: {}",
+                    entry.module, entry.function, e
+                );
                 std::process::exit(1);
             }
         };
@@ -226,7 +230,7 @@ fn render_from_manifest(manifest_path: &str, output_dir: &str) {
     println!("Rendered {} files to {}", manifest.files.len(), output_dir);
 }
 
-async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16) {
+async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16, servedir: Option<&str>) {
     use axum::http::StatusCode;
     use axum::response::Html;
     use axum::routing::get;
@@ -318,10 +322,11 @@ async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16) {
         file_data.insert(file_path.clone(), data);
     }
 
-    // Create router with routes for each file in manifest
+    // Create router
     let mut router = axum::Router::new();
     let manifest_files = manifest.files.clone();
 
+    // Add manifest routes first (these take precedence)
     for (file_path, entry) in manifest.files {
         let route_path = if file_path == "index.html" {
             "/".to_string()
@@ -357,12 +362,21 @@ async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16) {
         );
     }
 
+    // Add static file serving as fallback if servedir is provided
+    if let Some(static_dir) = servedir {
+        use tower_http::services::ServeDir;
+        router = router.fallback_service(ServeDir::new(static_dir));
+    }
+
     let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port))
         .await
         .unwrap();
 
     println!("Hop server running on http://{}:{}", host, port);
     println!("Serving from manifest: {}", manifest_path);
+    if let Some(static_dir) = servedir {
+        println!("Static files from: {}", static_dir);
+    }
     println!("Available routes:");
     for (file_path, entry) in &manifest_files {
         let route_path = if file_path == "index.html" {

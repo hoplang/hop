@@ -4,3 +4,4 @@ hop
 *.ts
 *.json
 dist
+www
