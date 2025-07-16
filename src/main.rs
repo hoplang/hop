@@ -425,13 +425,13 @@ async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16, servedi
         let mut watcher = RecommendedWatcher::new(
             move |res: Result<notify::Event, notify::Error>| {
                 if let Ok(event) = res {
-                    if event.kind.is_modify() || event.kind.is_create() {
-                        if event.paths.iter().any(|p| {
+                    if (event.kind.is_modify() || event.kind.is_create())
+                        && event.paths.iter().any(|p| {
                             let ext = p.extension().and_then(|s| s.to_str());
                             ext == Some("hop") || ext == Some("json")
-                        }) {
-                            let _ = tx.try_send(());
-                        }
+                        })
+                    {
+                        let _ = tx.try_send(());
                     }
                 }
             },
@@ -450,11 +450,11 @@ async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16, servedi
             if json_path.exists() {
                 watcher
                     .watch(json_path, RecursiveMode::NonRecursive)
-                    .expect(&format!("Failed to watch JSON file: {}", json_file));
+                    .unwrap_or_else(|_| panic!("Failed to watch JSON file: {}", json_file));
             }
         }
 
-        while let Some(_) = rx.recv().await {
+        while (rx.recv().await).is_some() {
             // Debounce rapid file changes
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
