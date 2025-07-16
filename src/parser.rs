@@ -63,7 +63,6 @@ impl TokenTree {
 fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
     let mut stack: Vec<TokenTree> = Vec::new();
 
-    // Push a root token
     let root_token = Token {
         kind: TokenKind::StartTag,
         value: "root".to_string(),
