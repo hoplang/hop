@@ -382,6 +382,7 @@ dependencies = [
  "axum",
  "clap",
  "pretty_assertions",
+ "serde",
  "serde_json",
  "simple_txtar",
  "tokio",

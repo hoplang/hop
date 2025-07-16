@@ -12,6 +12,23 @@ mod typechecker;
 mod unifier;
 
 use clap::{CommandFactory, Parser, Subcommand};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ManifestEntry {
+    /// The hop module to use
+    pub module: String,
+    /// The function to call
+    pub function: String,
+    /// Optional data file to pass as parameters
+    pub data: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Manifest {
+    /// Map of file paths to their configuration
+    pub files: std::collections::HashMap<String, ManifestEntry>,
+}
 
 #[derive(Parser)]
 #[command(name = "hop")]
@@ -39,21 +56,17 @@ enum Commands {
         #[arg(short, long)]
         data: Option<String>,
     },
-    /// Start an HTTP server for serving hop templates
+    /// Start an HTTP server for serving hop templates from a manifest
     Serve {
-        /// The hop module to serve from
-        module: String,
-        /// The function to serve
-        function: String,
+        /// Path to manifest.json file
+        #[arg(short, long, default_value = "manifest.json")]
+        manifest: String,
         /// Port to serve on
         #[arg(short, long, default_value = "3000")]
         port: u16,
         /// Host to bind to
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
-        /// JSON data file to pass as parameters
-        #[arg(short, long)]
-        data: Option<String>,
     },
 }
 
@@ -74,13 +87,11 @@ async fn main() {
             render_function(module, function, output.as_deref(), data.as_deref());
         }
         Some(Commands::Serve {
-            module,
-            function,
+            manifest,
             port,
             host,
-            data,
         }) => {
-            serve_function(module, function, host, *port, data.as_deref()).await;
+            serve_from_manifest(manifest, host, *port).await;
         }
         None => {
             let mut cmd = Cli::command();
@@ -163,7 +174,7 @@ fn render_function(module: &str, function: &str, output: Option<&str>, data: Opt
     let result = match program.execute(module, function, params) {
         Ok(html) => html,
         Err(e) => {
-            eprintln!("Error executing {}.{}: {}", module, function, e);
+            eprintln!("Error executing {}::{}: {}", module, function, e);
             std::process::exit(1);
         }
     };
@@ -183,17 +194,29 @@ fn render_function(module: &str, function: &str, output: Option<&str>, data: Opt
     }
 }
 
-async fn serve_function(
-    module: &str,
-    function: &str,
-    host: &str,
-    port: u16,
-    data_file: Option<&str>,
-) {
+async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16) {
     use axum::http::StatusCode;
     use axum::response::Html;
+    use axum::routing::get;
     use compiler::Compiler;
     use std::fs;
+
+    // Read and parse manifest
+    let manifest_content = match fs::read_to_string(manifest_path) {
+        Ok(content) => content,
+        Err(e) => {
+            eprintln!("Error reading manifest file {}: {}", manifest_path, e);
+            std::process::exit(1);
+        }
+    };
+
+    let manifest: Manifest = match serde_json::from_str(&manifest_content) {
+        Ok(manifest) => manifest,
+        Err(e) => {
+            eprintln!("Error parsing manifest file {}: {}", manifest_path, e);
+            std::process::exit(1);
+        }
+    };
 
     let hop_dir = std::path::Path::new("./hop");
     if !hop_dir.exists() {
@@ -240,57 +263,85 @@ async fn serve_function(
         }
     };
 
-    // Load data once at startup
-    let data = if let Some(data_file_path) = data_file {
-        match fs::read_to_string(data_file_path) {
-            Ok(json_str) => match serde_json::from_str(&json_str) {
-                Ok(value) => value,
+    // Load data for each manifest entry
+    let mut file_data = std::collections::HashMap::new();
+    for (file_path, entry) in &manifest.files {
+        let data = if let Some(data_file_path) = &entry.data {
+            match fs::read_to_string(data_file_path) {
+                Ok(json_str) => match serde_json::from_str(&json_str) {
+                    Ok(value) => value,
+                    Err(e) => {
+                        eprintln!("Error parsing JSON from file {}: {}", data_file_path, e);
+                        std::process::exit(1);
+                    }
+                },
                 Err(e) => {
-                    eprintln!("Error parsing JSON from file {}: {}", data_file_path, e);
+                    eprintln!("Error reading data file {}: {}", data_file_path, e);
                     std::process::exit(1);
                 }
-            },
-            Err(e) => {
-                eprintln!("Error reading data file {}: {}", data_file_path, e);
-                std::process::exit(1);
             }
-        }
-    } else {
-        serde_json::Value::Null
-    };
+        } else {
+            serde_json::Value::Null
+        };
+        file_data.insert(file_path.clone(), data);
+    }
 
-    let module_owned = module.to_string();
-    let function_owned = function.to_string();
+    // Create router with routes for each file in manifest
+    let mut router = axum::Router::new();
+    let manifest_files = manifest.files.clone();
 
-    let app = axum::Router::new().route(
-        "/",
-        axum::routing::get(move || {
-            let module = module_owned.clone();
-            let function = function_owned.clone();
-            let data = data.clone();
-            let program = program.clone();
+    for (file_path, entry) in manifest.files {
+        let route_path = if file_path == "index.html" {
+            "/".to_string()
+        } else if file_path.ends_with(".html") {
+            format!("/{}", file_path.strip_suffix(".html").unwrap())
+        } else {
+            format!("/{}", file_path)
+        };
 
-            async move {
-                match program.execute(&module, &function, data) {
-                    Ok(html) => Ok(Html(html)),
-                    Err(e) => {
-                        eprintln!("Error executing {}.{}: {}", module, function, e);
-                        Err(StatusCode::INTERNAL_SERVER_ERROR)
+        let module = entry.module.clone();
+        let function = entry.function.clone();
+        let data = file_data.get(&file_path).unwrap().clone();
+        let program_clone = program.clone();
+
+        router = router.route(
+            &route_path,
+            get(move || {
+                let module = module.clone();
+                let function = function.clone();
+                let data = data.clone();
+                let program = program_clone.clone();
+
+                async move {
+                    match program.execute(&module, &function, data) {
+                        Ok(html) => Ok(Html(html)),
+                        Err(e) => {
+                            eprintln!("Error executing {}::{}: {}", module, function, e);
+                            Err(StatusCode::INTERNAL_SERVER_ERROR)
+                        }
                     }
                 }
-            }
-        }),
-    );
+            }),
+        );
+    }
 
     let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port))
         .await
         .unwrap();
 
     println!("Hop server running on http://{}:{}", host, port);
-    println!("Serving {}.{}", module, function);
-    if let Some(data_file) = data_file {
-        println!("Using data from file: {}", data_file);
+    println!("Serving from manifest: {}", manifest_path);
+    println!("Available routes:");
+    for (file_path, entry) in &manifest_files {
+        let route_path = if file_path == "index.html" {
+            "/".to_string()
+        } else if file_path.ends_with(".html") {
+            format!("/{}", file_path.strip_suffix(".html").unwrap())
+        } else {
+            format!("/{}", file_path)
+        };
+        println!("  {} -> {}::{}", route_path, entry.module, entry.function);
     }
 
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, router).await.unwrap();
 }
