@@ -1,12 +1,13 @@
 use crate::common::{
-    ComponentNode, CondNode, DoctypeNode, ErrorNode, ExprAttribute, ForNode, ImportNode,
-    NativeHTMLNode, Node, Position, Range, RangeError, RenderNode, TextNode, Token, TokenKind,
-    VarNameAttr, is_void_element,
+    ComponentNode, CondNode, DoctypeNode, EntrypointNode, ErrorNode, ExprAttribute, ForNode,
+    ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode, TextNode, Token,
+    TokenKind, VarNameAttr, is_void_element,
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module {
     pub components: Vec<ComponentNode>,
+    pub entrypoints: Vec<EntrypointNode>,
     pub imports: Vec<ImportNode>,
 }
 
@@ -14,6 +15,7 @@ pub fn parse(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> Module {
     let tree = build_tree(tokens, errors);
 
     let mut components = Vec::new();
+    let mut entrypoints = Vec::new();
     let mut imports = Vec::new();
 
     for child in &tree.children {
@@ -21,12 +23,14 @@ pub fn parse(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> Module {
         match node {
             Node::Import(import_data) => imports.push(import_data),
             Node::Component(component_data) => components.push(component_data),
+            Node::Entrypoint(entrypoint_data) => entrypoints.push(entrypoint_data),
             _ => {} // ignore other node types at root level
         }
     }
 
     Module {
         components,
+        entrypoints,
         imports,
     }
 }
@@ -164,7 +168,7 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
             range: t.range,
         }),
         TokenKind::SelfClosingTag | TokenKind::StartTag => {
-            if t.value == "import" || t.value == "component" {
+            if t.value == "import" || t.value == "component" || t.value == "entrypoint" {
                 if depth > 0 {
                     errors.push(RangeError::unexpected_tag_outside_root(&t.value, t.range));
                 }
@@ -325,6 +329,39 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                         }),
                     }
                 }
+                "entrypoint" => {
+                    let params_as_attr = t.get_attribute("params-as").and_then(|attr| {
+                        match VarNameAttr::new(&attr) {
+                            Some(var_attr) => Some(var_attr),
+                            None => {
+                                errors.push(RangeError::invalid_variable_name(
+                                    &attr.value,
+                                    attr.range,
+                                ));
+                                None
+                            }
+                        }
+                    });
+                    let name_attr = t.get_attribute("name").or_else(|| {
+                        errors.push(RangeError::missing_required_attribute(
+                            &t.value, "name", t.range,
+                        ));
+                        None
+                    });
+
+                    match name_attr {
+                        Some(name_attr) => Node::Entrypoint(EntrypointNode {
+                            name_attr,
+                            params_as_attr,
+                            range: t.range,
+                            children,
+                        }),
+                        None => Node::Error(ErrorNode {
+                            range: t.range,
+                            children,
+                        }),
+                    }
+                }
                 _ => {
                     let inner_text_attr = t.get_attribute("inner-text").and_then(|attr| {
                         parse_expr_attribute(&attr.name, &attr.value, attr.range, errors)
@@ -388,6 +425,12 @@ mod tests {
                 }
                 Node::Component(ComponentNode { children, .. }) => {
                     lines.push(format!("{}component", indent));
+                    for child in children {
+                        format_node(child, depth + 1, lines);
+                    }
+                }
+                Node::Entrypoint(EntrypointNode { children, .. }) => {
+                    lines.push(format!("{}entrypoint", indent));
                     for child in children {
                         format_node(child, depth + 1, lines);
                     }

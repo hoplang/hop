@@ -304,6 +304,14 @@ pub struct ComponentNode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct EntrypointNode {
+    pub name_attr: Attribute,
+    pub params_as_attr: Option<VarNameAttr>,
+    pub range: Range,
+    pub children: Vec<Node>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct NativeHTMLNode {
     pub tag_name: String,
     pub attributes: Vec<Attribute>,
@@ -327,6 +335,7 @@ pub enum Node {
     Cond(CondNode),
     Import(ImportNode),
     Component(ComponentNode),
+    Entrypoint(EntrypointNode),
     NativeHTML(NativeHTMLNode),
     Error(ErrorNode),
 }

@@ -1,23 +1,26 @@
 use crate::common::{
-    ComponentNode, CondNode, Environment, ErrorNode, ForNode, NativeHTMLNode, Node, RenderNode,
-    escape_html, is_void_element,
+    ComponentNode, CondNode, EntrypointNode, Environment, ErrorNode, ForNode, NativeHTMLNode, Node,
+    RenderNode, escape_html, is_void_element,
 };
 use std::collections::HashMap;
 
-/// Program represents a compiled hop program that can execute components
+/// Program represents a compiled hop program that can execute components and entrypoints
 #[derive(Clone)]
 pub struct Program {
     component_maps: HashMap<String, HashMap<String, ComponentNode>>,
+    entrypoint_maps: HashMap<String, HashMap<String, EntrypointNode>>,
     import_maps: HashMap<String, HashMap<String, String>>,
 }
 
 impl Program {
     pub fn new(
         component_maps: HashMap<String, HashMap<String, ComponentNode>>,
+        entrypoint_maps: HashMap<String, HashMap<String, EntrypointNode>>,
         import_maps: HashMap<String, HashMap<String, String>>,
     ) -> Self {
         Program {
             component_maps,
+            entrypoint_maps,
             import_maps,
         }
     }
@@ -28,6 +31,13 @@ impl Program {
         component_name: &str,
         params: serde_json::Value,
     ) -> Result<String, String> {
+        // First try to find entrypoints, then components
+        if let Some(entrypoint_map) = self.entrypoint_maps.get(module_name) {
+            if let Some(entrypoint) = entrypoint_map.get(component_name) {
+                return self.execute_entrypoint(entrypoint, params, module_name);
+            }
+        }
+
         let component_map = self
             .component_maps
             .get(module_name)
@@ -65,6 +75,73 @@ impl Program {
         result.push_str(&format!("</{}>", element_type));
 
         Ok(result)
+    }
+
+    fn execute_entrypoint(
+        &self,
+        entrypoint: &EntrypointNode,
+        params: serde_json::Value,
+        module_name: &str,
+    ) -> Result<String, String> {
+        let mut env = Environment::new();
+        if let Some(params_as_attr) = &entrypoint.params_as_attr {
+            env.push(params_as_attr.value.clone(), params);
+        }
+
+        let mut result = String::new();
+        for child in &entrypoint.children {
+            result.push_str(&self.evaluate_entrypoint_node(child, &mut env, module_name)?);
+        }
+
+        Ok(result)
+    }
+
+    fn evaluate_entrypoint_node(
+        &self,
+        node: &Node,
+        env: &mut Environment<serde_json::Value>,
+        current_module: &str,
+    ) -> Result<String, String> {
+        match node {
+            Node::NativeHTML(NativeHTMLNode {
+                tag_name,
+                attributes,
+                children,
+                inner_text_attr,
+                ..
+            }) => {
+                // For entrypoints, preserve script and style tags
+                let mut result = format!("<{}", tag_name);
+                for attr in attributes {
+                    if attr.name != "inner-text" {
+                        result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
+                    }
+                }
+                result.push('>');
+
+                if !is_void_element(tag_name) {
+                    if let Some(attr) = inner_text_attr {
+                        let evaluated = self.evaluate_expr(&attr.segments, env)?;
+                        result.push_str(&escape_html(evaluated.as_str().unwrap()));
+                    } else {
+                        for child in children {
+                            result.push_str(&self.evaluate_entrypoint_node(
+                                child,
+                                env,
+                                current_module,
+                            )?);
+                        }
+                    }
+                    result.push_str(&format!("</{}>", tag_name));
+                }
+
+                Ok(result)
+            }
+            _ => {
+                // For all other node types, use the existing evaluation logic
+                self.evaluate_node(node, env, current_module)
+            }
+        }
     }
 
     fn evaluate_node(
@@ -179,7 +256,7 @@ impl Program {
             }
             Node::Text(text_node) => Ok(text_node.value.clone()),
             Node::Doctype(doctype_node) => Ok(format!("<!DOCTYPE {}>", doctype_node.value)),
-            Node::Import(_) | Node::Component(_) => {
+            Node::Import(_) | Node::Component(_) | Node::Entrypoint(_) => {
                 panic!("Unexpected node")
             }
         }

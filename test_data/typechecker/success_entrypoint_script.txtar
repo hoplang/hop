@@ -1,0 +1,11 @@
+-- main.hop --
+<entrypoint name="main">
+    <script>
+        console.log("test");
+    </script>
+    <style>
+        body { color: red; }
+    </style>
+</entrypoint>
+-- out --
+main::main : void

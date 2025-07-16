@@ -1,0 +1,13 @@
+-- main.hop --
+<entrypoint name="main">
+    <script>
+        console.log("test");
+    </script>
+    <style>
+        body { color: red; }
+    </style>
+</entrypoint>
+-- output.txt --
+entrypoint
+	script
+	style
