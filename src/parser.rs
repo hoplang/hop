@@ -119,18 +119,7 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
         ));
     }
 
-    stack.pop().unwrap_or_else(|| {
-        let root_token = Token {
-            kind: TokenKind::StartTag,
-            value: "root".to_string(),
-            attributes: Vec::new(),
-            range: Range {
-                start: Position { line: 0, column: 0 },
-                end: Position { line: 0, column: 0 },
-            },
-        };
-        TokenTree::new(root_token)
-    })
+    stack.pop().unwrap()
 }
 
 fn parse_expr(expr: &str) -> Vec<String> {
