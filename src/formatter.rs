@@ -42,7 +42,7 @@ impl ErrorFormatter {
                 output.push_str(&format!(
                     "{:width$} | {}\n",
                     error_line - 1,
-                    prev_line,
+                    self.expand_tabs(prev_line),
                     width = max_line_width
                 ));
             }
@@ -53,7 +53,7 @@ impl ErrorFormatter {
             output.push_str(&format!(
                 "{:width$} | {}\n",
                 error_line,
-                line_content,
+                self.expand_tabs(line_content),
                 width = max_line_width
             ));
 
@@ -67,7 +67,7 @@ impl ErrorFormatter {
             let display_end = if range.start.line == range.end.line {
                 self.byte_to_display_position(line_content, range.end.column)
             } else {
-                line_content.width()
+                self.display_width_with_tabs(line_content)
             };
 
             // Add spaces to align with the error position
@@ -88,11 +88,28 @@ impl ErrorFormatter {
 
         // If byte offset is beyond the line, return display width + 1
         if target_byte_offset >= line.len() {
-            return line.width() + 1;
+            return self.display_width_with_tabs(line) + 1;
         }
 
         // Calculate display width of the substring up to the byte offset
         let substring = &line[..target_byte_offset];
-        substring.width() + 1 // +1 for 1-based indexing
+        self.display_width_with_tabs(substring) + 1 // +1 for 1-based indexing
+    }
+
+    fn display_width_with_tabs(&self, text: &str) -> usize {
+        let mut width = 0;
+        for ch in text.chars() {
+            if ch == '\t' {
+                // Tab width is 4 spaces
+                width += 4;
+            } else {
+                width += UnicodeWidthStr::width(ch.to_string().as_str());
+            }
+        }
+        width
+    }
+
+    fn expand_tabs(&self, text: &str) -> String {
+        text.replace('\t', "    ")
     }
 }
