@@ -177,150 +177,43 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                     let params_attr = t.get_attribute("params").and_then(|attr| {
                         parse_expr_attribute(&attr.name, &attr.value, attr.range, errors)
                     });
-                    let component_attr = t.get_attribute("component");
-
-                    if component_attr.is_none() {
+                    let component_attr = t.get_attribute("component").or_else(|| {
                         errors.push(RangeError::missing_required_attribute(
                             &t.value,
                             "component",
                             t.range,
                         ));
-                        return Node::Error(ErrorNode {
+                        None
+                    });
+
+                    match component_attr {
+                        Some(component_attr) => Node::Render(RenderNode {
+                            component_attr,
+                            params_attr,
                             range: t.range,
                             children,
-                        });
+                        }),
+                        None => Node::Error(ErrorNode {
+                            range: t.range,
+                            children,
+                        }),
                     }
-
-                    Node::Render(RenderNode {
-                        component_attr: component_attr.unwrap(),
-                        params_attr,
-                        range: t.range,
-                        children,
-                    })
                 }
                 "for" => {
-                    let each_attr = t.get_attribute("each");
-                    let as_attr = t.get_attribute("as");
-
-                    if each_attr.is_none() {
-                        errors.push(RangeError::missing_required_attribute(
-                            &t.value, "each", t.range,
-                        ));
-                        return Node::Error(ErrorNode {
-                            range: t.range,
-                            children,
-                        });
-                    }
-
-                    let each_attr = each_attr.unwrap();
-                    let parsed_each_attr = parse_expr_attribute(
-                        &each_attr.name,
-                        &each_attr.value,
-                        each_attr.range,
-                        errors,
-                    );
-
-                    if parsed_each_attr.is_none() {
-                        return Node::Error(ErrorNode {
-                            range: t.range,
-                            children,
-                        });
-                    }
-
-                    Node::For(ForNode {
-                        each_attr: parsed_each_attr.unwrap(),
-                        as_attr: as_attr.and_then(|attr| match VarNameAttr::new(&attr) {
-                            Some(var_attr) => Some(var_attr),
-                            None => {
-                                errors.push(RangeError::invalid_variable_name(
-                                    &attr.value,
-                                    attr.range,
-                                ));
-                                None
-                            }
-                        }),
-                        range: t.range,
-                        children,
-                    })
-                }
-                "cond" => {
-                    let if_attr = t.get_attribute("if");
-
-                    if if_attr.is_none() {
-                        errors.push(RangeError::missing_required_attribute(
-                            &t.value, "if", t.range,
-                        ));
-                        return Node::Error(ErrorNode {
-                            range: t.range,
-                            children,
-                        });
-                    }
-
-                    let if_attr = if_attr.unwrap();
-                    let parsed_if_attr =
-                        parse_expr_attribute(&if_attr.name, &if_attr.value, if_attr.range, errors);
-
-                    if parsed_if_attr.is_none() {
-                        return Node::Error(ErrorNode {
-                            range: t.range,
-                            children,
-                        });
-                    }
-
-                    Node::Cond(CondNode {
-                        if_attr: parsed_if_attr.unwrap(),
-                        range: t.range,
-                        children,
-                    })
-                }
-                "import" => {
-                    let component_attr = t.get_attribute("component");
-                    let from_attr = t.get_attribute("from");
-
-                    if component_attr.is_none() || from_attr.is_none() {
-                        if component_attr.is_none() {
+                    let each_attr = t
+                        .get_attribute("each")
+                        .or_else(|| {
                             errors.push(RangeError::missing_required_attribute(
-                                &t.value,
-                                "component",
-                                t.range,
+                                &t.value, "each", t.range,
                             ));
-                        }
-                        if from_attr.is_none() {
-                            errors.push(RangeError::missing_required_attribute(
-                                &t.value, "from", t.range,
-                            ));
-                        }
-                        return Node::Error(ErrorNode {
-                            range: t.range,
-                            children,
+                            None
+                        })
+                        .and_then(|attr| {
+                            parse_expr_attribute(&attr.name, &attr.value, attr.range, errors)
                         });
-                    }
-
-                    Node::Import(ImportNode {
-                        component_attr: component_attr.unwrap(),
-                        from_attr: from_attr.unwrap(),
-                        range: t.range,
-                    })
-                }
-                "component" => {
-                    let as_attr = t.get_attribute("as");
-                    let params_as_attr = t.get_attribute("params-as");
-                    let name_attr = t.get_attribute("name");
-
-                    if name_attr.is_none() {
-                        errors.push(RangeError::missing_required_attribute(
-                            &t.value, "name", t.range,
-                        ));
-                        return Node::Error(ErrorNode {
-                            range: t.range,
-                            children,
-                        });
-                    }
-
-                    Node::Component(ComponentNode {
-                        name_attr: name_attr.unwrap(),
-                        params_as_attr: params_as_attr.and_then(|attr| {
-                            match VarNameAttr::new(&attr) {
+                    let as_attr =
+                        t.get_attribute("as")
+                            .and_then(|attr| match VarNameAttr::new(&attr) {
                                 Some(var_attr) => Some(var_attr),
                                 None => {
                                     errors.push(RangeError::invalid_variable_name(
@@ -329,13 +222,108 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                                     ));
                                     None
                                 }
-                            }
+                            });
+                    match each_attr {
+                        Some(each_attr) => Node::For(ForNode {
+                            each_attr,
+                            as_attr,
+                            range: t.range,
+                            children,
                         }),
-                        as_attr,
-                        attributes: t.attributes.clone(),
-                        range: t.range,
-                        children,
-                    })
+                        None => Node::Error(ErrorNode {
+                            range: t.range,
+                            children,
+                        }),
+                    }
+                }
+                "cond" => {
+                    let if_attr = t
+                        .get_attribute("if")
+                        .or_else(|| {
+                            errors.push(RangeError::missing_required_attribute(
+                                &t.value, "if", t.range,
+                            ));
+                            None
+                        })
+                        .and_then(|attr| {
+                            parse_expr_attribute(&attr.name, &attr.value, attr.range, errors)
+                        });
+
+                    match if_attr {
+                        Some(if_attr) => Node::Cond(CondNode {
+                            if_attr,
+                            range: t.range,
+                            children,
+                        }),
+                        None => Node::Error(ErrorNode {
+                            range: t.range,
+                            children,
+                        }),
+                    }
+                }
+                "import" => {
+                    let component_attr = t.get_attribute("component").or_else(|| {
+                        errors.push(RangeError::missing_required_attribute(
+                            &t.value,
+                            "component",
+                            t.range,
+                        ));
+                        None
+                    });
+                    let from_attr = t.get_attribute("from").or_else(|| {
+                        errors.push(RangeError::missing_required_attribute(
+                            &t.value, "from", t.range,
+                        ));
+                        None
+                    });
+
+                    match (component_attr, from_attr) {
+                        (Some(component_attr), Some(from_attr)) => Node::Import(ImportNode {
+                            component_attr,
+                            from_attr,
+                            range: t.range,
+                        }),
+                        _ => Node::Error(ErrorNode {
+                            range: t.range,
+                            children,
+                        }),
+                    }
+                }
+                "component" => {
+                    let as_attr = t.get_attribute("as");
+                    let params_as_attr = t.get_attribute("params-as").and_then(|attr| {
+                        match VarNameAttr::new(&attr) {
+                            Some(var_attr) => Some(var_attr),
+                            None => {
+                                errors.push(RangeError::invalid_variable_name(
+                                    &attr.value,
+                                    attr.range,
+                                ));
+                                None
+                            }
+                        }
+                    });
+                    let name_attr = t.get_attribute("name").or_else(|| {
+                        errors.push(RangeError::missing_required_attribute(
+                            &t.value, "name", t.range,
+                        ));
+                        None
+                    });
+
+                    match name_attr {
+                        Some(name_attr) => Node::Component(ComponentNode {
+                            name_attr,
+                            params_as_attr,
+                            as_attr,
+                            attributes: t.attributes.clone(),
+                            range: t.range,
+                            children,
+                        }),
+                        None => Node::Error(ErrorNode {
+                            range: t.range,
+                            children,
+                        }),
+                    }
                 }
                 _ => {
                     let inner_text_attr = t.get_attribute("inner-text").and_then(|attr| {
