@@ -354,7 +354,7 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                         parse_expr_attribute(&attr.name, &attr.value, attr.range, errors)
                     });
                     Node::NativeHTML(NativeHTMLNode {
-                        value: t.value.clone(),
+                        tag_name: t.value.clone(),
                         attributes: t.attributes.clone(),
                         range: t.range,
                         children,
@@ -417,9 +417,9 @@ mod tests {
                     }
                 }
                 Node::NativeHTML(NativeHTMLNode {
-                    value, children, ..
+                    tag_name, children, ..
                 }) => {
-                    lines.push(format!("{}{}", indent, value));
+                    lines.push(format!("{}{}", indent, tag_name));
                     for child in children {
                         format_node(child, depth + 1, lines);
                     }

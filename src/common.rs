@@ -305,7 +305,7 @@ pub struct ComponentNode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NativeHTMLNode {
-    pub value: String,
+    pub tag_name: String,
     pub attributes: Vec<Attribute>,
     pub range: Range,
     pub children: Vec<Node>,

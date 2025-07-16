@@ -54,7 +54,7 @@ impl ScriptCollector {
                 for node in all_nodes {
                     match node {
                         Node::NativeHTML(native_html_node) => {
-                            if native_html_node.value != "script" {
+                            if native_html_node.tag_name != "script" {
                                 continue;
                             }
 

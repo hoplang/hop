@@ -138,16 +138,16 @@ impl Program {
             Node::NativeHTML(NativeHTMLNode {
                 inner_text_attr,
                 children,
-                value,
+                tag_name,
                 attributes,
                 ..
             }) => {
                 // Skip script and style nodes
-                if value == "script" || value == "style" {
+                if tag_name == "script" || tag_name == "style" {
                     return Ok(String::new());
                 }
 
-                let mut result = format!("<{}", value);
+                let mut result = format!("<{}", tag_name);
                 for attr in attributes {
                     if attr.name != "inner-text" {
                         result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
@@ -155,7 +155,7 @@ impl Program {
                 }
                 result.push('>');
 
-                if !is_void_element(value) {
+                if !is_void_element(tag_name) {
                     if let Some(attr) = inner_text_attr {
                         let evaluated = self.evaluate_expr(&attr.segments, env)?;
                         result.push_str(&escape_html(evaluated.as_str().unwrap()));
@@ -164,7 +164,7 @@ impl Program {
                             result.push_str(&self.evaluate_node(child, env, current_module)?);
                         }
                     }
-                    result.push_str(&format!("</{}>", value));
+                    result.push_str(&format!("</{}>", tag_name));
                 }
 
                 Ok(result)
