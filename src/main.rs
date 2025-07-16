@@ -43,18 +43,14 @@ struct Cli {
 enum Commands {
     /// Run the Language Server Protocol (LSP) server
     Lsp,
-    /// Render a hop module function to HTML
+    /// Render hop templates from a manifest to files
     Render {
-        /// The hop module to render from
-        module: String,
-        /// The function to render
-        function: String,
-        /// Output file (defaults to stdout)
-        #[arg(short, long)]
-        output: Option<String>,
-        /// JSON data file to pass as parameters
-        #[arg(short, long)]
-        data: Option<String>,
+        /// Path to manifest.json file
+        #[arg(short, long, default_value = "manifest.json")]
+        manifest: String,
+        /// Output directory (defaults to current directory)
+        #[arg(short, long, default_value = ".")]
+        output: String,
     },
     /// Start an HTTP server for serving hop templates from a manifest
     Serve {
@@ -79,12 +75,10 @@ async fn main() {
             lsp::run_lsp().await;
         }
         Some(Commands::Render {
-            module,
-            function,
+            manifest,
             output,
-            data,
         }) => {
-            render_function(module, function, output.as_deref(), data.as_deref());
+            render_from_manifest(manifest, output);
         }
         Some(Commands::Serve {
             manifest,
@@ -100,20 +94,45 @@ async fn main() {
     }
 }
 
-fn render_function(module: &str, function: &str, output: Option<&str>, data: Option<&str>) {
+fn render_from_manifest(manifest_path: &str, output_dir: &str) {
     use compiler::Compiler;
     use std::fs;
+    use std::path::Path;
 
-    // Read all .hop files from ./hop directory
-    let hop_dir = std::path::Path::new("./hop");
+    // Read and parse manifest
+    let manifest_content = match fs::read_to_string(manifest_path) {
+        Ok(content) => content,
+        Err(e) => {
+            eprintln!("Error reading manifest file {}: {}", manifest_path, e);
+            std::process::exit(1);
+        }
+    };
+
+    let manifest: Manifest = match serde_json::from_str(&manifest_content) {
+        Ok(manifest) => manifest,
+        Err(e) => {
+            eprintln!("Error parsing manifest file {}: {}", manifest_path, e);
+            std::process::exit(1);
+        }
+    };
+
+    let hop_dir = Path::new("./hop");
     if !hop_dir.exists() {
         eprintln!("Error: ./hop directory does not exist");
         std::process::exit(1);
     }
 
-    let mut compiler = Compiler::new();
+    // Create output directory if it doesn't exist
+    let output_path = Path::new(output_dir);
+    if !output_path.exists() {
+        if let Err(e) = fs::create_dir_all(output_path) {
+            eprintln!("Error creating output directory {}: {}", output_dir, e);
+            std::process::exit(1);
+        }
+    }
 
-    // Read all .hop files
+    // Load and compile all hop modules
+    let mut compiler = Compiler::new();
     match fs::read_dir(hop_dir) {
         Ok(entries) => {
             for entry in entries.flatten() {
@@ -143,55 +162,68 @@ fn render_function(module: &str, function: &str, output: Option<&str>, data: Opt
         }
     }
 
-    // Compile (parse and typecheck) all modules
     let program = match compiler.compile() {
         Ok(program) => program,
         Err(errors) => {
-            eprintln!("{}", errors);
+            eprintln!("Compilation errors: {}", errors);
             std::process::exit(1);
         }
     };
 
-    // Read JSON data if provided
-    let params = match data {
-        Some(data_file) => match fs::read_to_string(data_file) {
-            Ok(json_str) => match serde_json::from_str(&json_str) {
-                Ok(value) => value,
+    // Render each file from the manifest
+    println!("Rendering from manifest: {}", manifest_path);
+    for (file_path, entry) in &manifest.files {
+        // Load data for this file
+        let data = if let Some(data_file_path) = &entry.data {
+            match fs::read_to_string(data_file_path) {
+                Ok(json_str) => match serde_json::from_str(&json_str) {
+                    Ok(value) => value,
+                    Err(e) => {
+                        eprintln!("Error parsing JSON from file {}: {}", data_file_path, e);
+                        std::process::exit(1);
+                    }
+                },
                 Err(e) => {
-                    eprintln!("Error parsing JSON from {}: {}", data_file, e);
+                    eprintln!("Error reading data file {}: {}", data_file_path, e);
                     std::process::exit(1);
                 }
-            },
+            }
+        } else {
+            serde_json::Value::Null
+        };
+
+        // Execute the function
+        let html = match program.execute(&entry.module, &entry.function, data) {
+            Ok(html) => html,
             Err(e) => {
-                eprintln!("Error reading data file {}: {}", data_file, e);
+                eprintln!("Error executing {}::{}: {}", entry.module, entry.function, e);
                 std::process::exit(1);
             }
-        },
-        None => serde_json::Value::Null,
-    };
+        };
 
-    // Execute the specified function from the module
-    let result = match program.execute(module, function, params) {
-        Ok(html) => html,
-        Err(e) => {
-            eprintln!("Error executing {}::{}: {}", module, function, e);
-            std::process::exit(1);
+        // Write to output file
+        let output_file_path = output_path.join(file_path);
+        if let Some(parent) = output_file_path.parent() {
+            if !parent.exists() {
+                if let Err(e) = fs::create_dir_all(parent) {
+                    eprintln!("Error creating directory {:?}: {}", parent, e);
+                    std::process::exit(1);
+                }
+            }
         }
-    };
 
-    // Write output
-    match output {
-        Some(file_path) => match fs::write(file_path, result) {
-            Ok(_) => println!("Output written to {}", file_path),
+        match fs::write(&output_file_path, html) {
+            Ok(_) => {
+                println!("Generated {} -> {:?}", file_path, output_file_path);
+            }
             Err(e) => {
-                eprintln!("Error writing to file {}: {}", file_path, e);
+                eprintln!("Error writing to file {:?}: {}", output_file_path, e);
                 std::process::exit(1);
             }
-        },
-        None => {
-            print!("{}", result);
         }
     }
+
+    println!("Rendered {} files to {}", manifest.files.len(), output_dir);
 }
 
 async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16) {
