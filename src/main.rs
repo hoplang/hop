@@ -67,7 +67,6 @@ async fn main() {
 fn render_function(module: &str, function: &str, output: Option<&str>, data: Option<&str>) {
     use compiler::Compiler;
     use std::fs;
-    use std::io::Write;
 
     // Read all .hop files from ./hop directory
     let hop_dir = std::path::Path::new("./hop");
@@ -81,24 +80,22 @@ fn render_function(module: &str, function: &str, output: Option<&str>, data: Opt
     // Read all .hop files
     match fs::read_dir(hop_dir) {
         Ok(entries) => {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    let path = entry.path();
-                    if path.extension().and_then(|s| s.to_str()) == Some("hop") {
-                        let module_name = path
-                            .file_stem()
-                            .and_then(|s| s.to_str())
-                            .unwrap_or("unknown")
-                            .to_string();
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("hop") {
+                    let module_name = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("unknown")
+                        .to_string();
 
-                        match fs::read_to_string(&path) {
-                            Ok(content) => {
-                                compiler.add_module(module_name, content);
-                            }
-                            Err(e) => {
-                                eprintln!("Error reading file {:?}: {}", path, e);
-                                std::process::exit(1);
-                            }
+                    match fs::read_to_string(&path) {
+                        Ok(content) => {
+                            compiler.add_module(module_name, content);
+                        }
+                        Err(e) => {
+                            eprintln!("Error reading file {:?}: {}", path, e);
+                            std::process::exit(1);
                         }
                     }
                 }
