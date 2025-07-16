@@ -5,6 +5,7 @@ use crate::common::{
 use std::collections::HashMap;
 
 /// Program represents a compiled hop program that can execute components
+#[derive(Clone)]
 pub struct Program {
     component_maps: HashMap<String, HashMap<String, ComponentNode>>,
     import_maps: HashMap<String, HashMap<String, String>>,

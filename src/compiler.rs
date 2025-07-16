@@ -36,7 +36,8 @@ impl Compiler {
             let tokens = tokenize(source_code, &mut errors);
             let module = parse(tokens, &mut errors);
             if !errors.is_empty() {
-                let formatter = ErrorFormatter::new(source_code.clone(), format!("{}.hop", module_name));
+                let formatter =
+                    ErrorFormatter::new(source_code.clone(), format!("{}.hop", module_name));
                 let mut formatted_errors = String::new();
                 for error in &errors {
                     formatted_errors.push_str(&formatter.format_error(error));
@@ -90,7 +91,8 @@ impl Compiler {
             let type_info = typecheck(module, &import_types, &mut errors);
             if !errors.is_empty() {
                 let source_code = self.modules.get(&module_name).unwrap();
-                let formatter = ErrorFormatter::new(source_code.clone(), format!("{}.hop", module_name));
+                let formatter =
+                    ErrorFormatter::new(source_code.clone(), format!("{}.hop", module_name));
                 let mut formatted_errors = String::new();
                 for error in &errors {
                     formatted_errors.push_str(&formatter.format_error(error));
