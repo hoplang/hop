@@ -48,9 +48,9 @@ enum Commands {
         /// Path to manifest.json file
         #[arg(short, long, default_value = "manifest.json")]
         manifest: String,
-        /// Output directory (defaults to current directory)
-        #[arg(short, long, default_value = ".")]
-        output: String,
+        /// Output directory
+        #[arg(long)]
+        outdir: String,
     },
     /// Start an HTTP server for serving hop templates from a manifest
     Serve {
@@ -76,9 +76,9 @@ async fn main() {
         }
         Some(Commands::Render {
             manifest,
-            output,
+            outdir,
         }) => {
-            render_from_manifest(manifest, output);
+            render_from_manifest(manifest, outdir);
         }
         Some(Commands::Serve {
             manifest,
