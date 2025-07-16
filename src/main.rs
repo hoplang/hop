@@ -230,12 +230,154 @@ fn render_from_manifest(manifest_path: &str, output_dir: &str) {
     println!("Rendered {} files to {}", manifest.files.len(), output_dir);
 }
 
-async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16, servedir: Option<&str>) {
-    use axum::http::StatusCode;
-    use axum::response::Html;
-    use axum::routing::get;
+// Function to inject hot reload script into HTML
+fn inject_hot_reload_script(html: &str) -> String {
+    const HOT_RELOAD_SCRIPT: &str = r#"
+<script type="module">
+import morphdom from 'https://unpkg.com/morphdom@2.7.0/dist/morphdom-esm.js';
+
+const eventSource = new EventSource('/__hop_hot_reload');
+eventSource.onmessage = function(event) {
+    if (event.data === 'reload') {
+        fetch(window.location.href)
+            .then(response => response.text())
+            .then(html => {
+                // Parse the HTML document properly
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                
+                // Extract the body content
+                const newContent = doc.body;
+                
+                // Use morphdom to update the current page
+                if (newContent) {
+                    morphdom(document.body, newContent);
+                }
+            })
+            .catch(error => {
+                console.error('Hot reload fetch error:', error);
+            });
+    }
+};
+eventSource.onerror = function(event) {
+    console.log('Hot reload connection error:', event);
+    // Attempt to reconnect after a delay
+    setTimeout(() => {
+        eventSource.close();
+        location.reload();
+    }, 1000);
+};
+</script>
+"#;
+
+    // Try to inject before closing body tag, fallback to end of document
+    if let Some(body_end_pos) = html.rfind("</body>") {
+        let mut result = String::with_capacity(html.len() + HOT_RELOAD_SCRIPT.len());
+        result.push_str(&html[..body_end_pos]);
+        result.push_str(HOT_RELOAD_SCRIPT);
+        result.push_str(&html[body_end_pos..]);
+        result
+    } else if let Some(html_end_pos) = html.rfind("</html>") {
+        let mut result = String::with_capacity(html.len() + HOT_RELOAD_SCRIPT.len());
+        result.push_str(&html[..html_end_pos]);
+        result.push_str(HOT_RELOAD_SCRIPT);
+        result.push_str(&html[html_end_pos..]);
+        result
+    } else {
+        // If no body or html tags found, append to end
+        let mut result = String::with_capacity(html.len() + HOT_RELOAD_SCRIPT.len());
+        result.push_str(html);
+        result.push_str(HOT_RELOAD_SCRIPT);
+        result
+    }
+}
+
+// Function to compile hop modules and execute a specific entrypoint
+fn compile_and_execute(
+    module_name: &str,
+    function_name: &str,
+    data_file: Option<&str>,
+) -> Result<String, String> {
     use compiler::Compiler;
     use std::fs;
+
+    let hop_dir = std::path::Path::new("./hop");
+    if !hop_dir.exists() {
+        return Err("./hop directory does not exist".to_string());
+    }
+
+    // Load and compile all hop modules for this request
+    let mut compiler = Compiler::new();
+    match fs::read_dir(hop_dir) {
+        Ok(entries) => {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("hop") {
+                    let module_name = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("unknown")
+                        .to_string();
+
+                    match fs::read_to_string(&path) {
+                        Ok(content) => {
+                            compiler.add_module(module_name, content);
+                        }
+                        Err(e) => {
+                            return Err(format!("Error reading file {:?}: {}", path, e));
+                        }
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            return Err(format!("Error reading ./hop directory: {}", e));
+        }
+    }
+
+    let program = match compiler.compile() {
+        Ok(program) => program,
+        Err(errors) => {
+            return Err(format!("Compilation errors: {}", errors));
+        }
+    };
+
+    // Load data from file if specified
+    let data = if let Some(data_file_path) = data_file {
+        match fs::read_to_string(data_file_path) {
+            Ok(json_str) => match serde_json::from_str(&json_str) {
+                Ok(value) => value,
+                Err(e) => {
+                    return Err(format!(
+                        "Error parsing JSON from file {}: {}",
+                        data_file_path, e
+                    ));
+                }
+            },
+            Err(e) => {
+                return Err(format!("Error reading data file {}: {}", data_file_path, e));
+            }
+        }
+    } else {
+        serde_json::Value::Null
+    };
+
+    // Execute the entrypoint
+    program.execute(module_name, function_name, data)
+}
+
+async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16, servedir: Option<&str>) {
+    use axum::http::StatusCode;
+    use axum::response::{
+        Html,
+        sse::{Event, KeepAlive, Sse},
+    };
+    use axum::routing::get;
+    use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
+    use std::fs;
+    use std::sync::Arc;
+    use tokio::sync::broadcast;
+    use tokio_stream::StreamExt;
 
     // Read and parse manifest
     let manifest_content = match fs::read_to_string(manifest_path) {
@@ -260,71 +402,95 @@ async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16, servedi
         std::process::exit(1);
     }
 
-    // Load and compile all hop modules once at startup
-    let mut compiler = Compiler::new();
-    match fs::read_dir(hop_dir) {
-        Ok(entries) => {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|s| s.to_str()) == Some("hop") {
-                    let module_name = path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("unknown")
-                        .to_string();
+    // Note: Compilation now happens on each request for hot reloading
 
-                    match fs::read_to_string(&path) {
-                        Ok(content) => {
-                            compiler.add_module(module_name, content);
-                        }
-                        Err(e) => {
-                            eprintln!("Error reading file {:?}: {}", path, e);
-                            std::process::exit(1);
-                        }
-                    }
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("Error reading ./hop directory: {}", e);
-            std::process::exit(1);
+    // Set up broadcast channel for hot reload events
+    let (reload_tx, _) = broadcast::channel::<()>(100);
+    let reload_tx = Arc::new(reload_tx);
+
+    // Collect all JSON data files referenced in manifest
+    let mut json_files = std::collections::HashSet::new();
+    for entry in manifest.files.values() {
+        if let Some(data_file) = &entry.data {
+            json_files.insert(data_file.clone());
         }
     }
 
-    let program = match compiler.compile() {
-        Ok(program) => program,
-        Err(errors) => {
-            eprintln!("Compilation errors: {}", errors);
-            std::process::exit(1);
-        }
-    };
+    // Set up file watcher for hot reloading
+    let watcher_tx = reload_tx.clone();
+    let hop_dir_path = hop_dir.to_path_buf();
+    tokio::spawn(async move {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(100);
 
-    // Load data for each manifest entry
-    let mut file_data = std::collections::HashMap::new();
-    for (file_path, entry) in &manifest.files {
-        let data = if let Some(data_file_path) = &entry.data {
-            match fs::read_to_string(data_file_path) {
-                Ok(json_str) => match serde_json::from_str(&json_str) {
-                    Ok(value) => value,
-                    Err(e) => {
-                        eprintln!("Error parsing JSON from file {}: {}", data_file_path, e);
-                        std::process::exit(1);
+        let mut watcher = RecommendedWatcher::new(
+            move |res: Result<notify::Event, notify::Error>| {
+                if let Ok(event) = res {
+                    if event.kind.is_modify() || event.kind.is_create() {
+                        if event.paths.iter().any(|p| {
+                            let ext = p.extension().and_then(|s| s.to_str());
+                            ext == Some("hop") || ext == Some("json")
+                        }) {
+                            let _ = tx.try_send(());
+                        }
                     }
-                },
-                Err(e) => {
-                    eprintln!("Error reading data file {}: {}", data_file_path, e);
-                    std::process::exit(1);
                 }
+            },
+            Config::default(),
+        )
+        .expect("Failed to create file watcher");
+
+        // Watch hop directory for .hop files
+        watcher
+            .watch(&hop_dir_path, RecursiveMode::Recursive)
+            .expect("Failed to watch hop directory");
+
+        // Watch each JSON data file individually
+        for json_file in &json_files {
+            let json_path = std::path::Path::new(json_file);
+            if json_path.exists() {
+                watcher
+                    .watch(json_path, RecursiveMode::NonRecursive)
+                    .expect(&format!("Failed to watch JSON file: {}", json_file));
             }
-        } else {
-            serde_json::Value::Null
-        };
-        file_data.insert(file_path.clone(), data);
-    }
+        }
+
+        while let Some(_) = rx.recv().await {
+            // Debounce rapid file changes
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+            // Send reload event to all connected clients
+            let _ = watcher_tx.send(());
+        }
+    });
+
+    // Note: Data loading now happens on each request for hot reloading
 
     // Create router
     let mut router = axum::Router::new();
     let manifest_files = manifest.files.clone();
+
+    // Add SSE endpoint for hot reload events
+    let sse_reload_tx = reload_tx.clone();
+    router = router.route(
+        "/__hop_hot_reload",
+        get({
+            let tx = sse_reload_tx.clone();
+            move || {
+                let tx = tx.clone();
+                async move {
+                    let rx = tx.subscribe();
+                    let stream = tokio_stream::wrappers::BroadcastStream::new(rx)
+                        .map(|_| Ok::<Event, axum::Error>(Event::default().data("reload")));
+
+                    Sse::new(stream).keep_alive(
+                        KeepAlive::new()
+                            .interval(std::time::Duration::from_secs(30))
+                            .text("keep-alive"),
+                    )
+                }
+            }
+        }),
+    );
 
     // Add manifest routes first (these take precedence)
     for (file_path, entry) in manifest.files {
@@ -338,22 +504,24 @@ async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16, servedi
 
         let module = entry.module.clone();
         let function = entry.function.clone();
-        let data = file_data.get(&file_path).unwrap().clone();
-        let program_clone = program.clone();
+        let data_file = entry.data.clone();
 
         router = router.route(
             &route_path,
             get(move || {
                 let module = module.clone();
                 let function = function.clone();
-                let data = data.clone();
-                let program = program_clone.clone();
+                let data_file = data_file.clone();
 
                 async move {
-                    match program.execute(&module, &function, data) {
-                        Ok(html) => Ok(Html(html)),
+                    match compile_and_execute(&module, &function, data_file.as_deref()) {
+                        Ok(html) => {
+                            // Inject hot reload script for development
+                            let html_with_hot_reload = inject_hot_reload_script(&html);
+                            Ok(Html(html_with_hot_reload))
+                        }
                         Err(e) => {
-                            eprintln!("Error executing {}::{}: {}", module, function, e);
+                            eprintln!("Error: {}", e);
                             Err(StatusCode::INTERNAL_SERVER_ERROR)
                         }
                     }
