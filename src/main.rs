@@ -81,7 +81,7 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
@@ -89,10 +89,7 @@ async fn main() {
             lsp::run_lsp().await;
         }
         Some(Commands::Build { manifest, outdir }) => {
-            if let Err(e) = build_from_manifest(manifest, outdir) {
-                eprintln!("Error: {:#}", e);
-                std::process::exit(1);
-            }
+            build_from_manifest(manifest, outdir)?;
         }
         Some(Commands::Serve {
             manifest,
@@ -100,16 +97,15 @@ async fn main() {
             host,
             servedir,
         }) => {
-            if let Err(e) = build_and_serve_from_manifest(manifest, host, *port, servedir.as_deref()).await {
-                eprintln!("Error: {:#}", e);
-                std::process::exit(1);
-            }
+            build_and_serve_from_manifest(manifest, host, *port, servedir.as_deref()).await?;
         }
         None => {
             let mut cmd = Cli::command();
             cmd.print_help().unwrap();
         }
     }
+
+    Ok(())
 }
 
 fn build_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Result<()> {
