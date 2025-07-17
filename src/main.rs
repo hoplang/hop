@@ -66,7 +66,7 @@ pub struct ManifestEntry {
     pub data: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Manifest {
     /// Array of files to build
     pub files: Vec<ManifestEntry>,
@@ -313,10 +313,7 @@ async fn serve_from_manifest(
 ) -> anyhow::Result<()> {
     use anyhow::Context;
     use axum::http::StatusCode;
-    use axum::response::{
-        Html,
-        sse::{Event, Sse},
-    };
+    use axum::response::sse::{Event, Sse};
     use axum::routing::get;
     use colored::*;
     use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
@@ -405,30 +402,42 @@ async fn serve_from_manifest(
         }),
     );
 
-    // Add manifest routes first (these take precedence)
-    for entry in manifest.files {
-        let route_path = match entry.path.as_str() {
-            "index.html" => "/".to_string(),
-            path if path.ends_with(".html") => format!("/{}", path.strip_suffix(".html").unwrap()),
-            path => format!("/{}", path),
+    let mp = manifest_path.to_string();
+    let request_handler = async |req: axum::extract::Request| {
+        // Read and parse manifest
+        let manifest_content = fs::read_to_string(mp).unwrap();
+        let manifest: Manifest = serde_json::from_str(&manifest_content).unwrap();
+        let path = req.uri().path();
+
+        // Convert request path to file path format
+        let file_path = match path {
+            "/" => "index.html",
+            path if path.starts_with('/') => &path[1..],
+            path => path,
         };
 
-        router = router.route(
-            &route_path,
-            get(move || async move {
-                match build_and_execute(&entry.module, &entry.entrypoint, entry.data.as_deref()) {
-                    Ok(html) => {
-                        let html_with_hot_reload = inject_hot_reload_script(&html);
-                        Ok(Html(html_with_hot_reload))
-                    }
-                    Err(e) => {
-                        eprintln!("Error: {:#}", e);
-                        Err(StatusCode::INTERNAL_SERVER_ERROR)
-                    }
+        // Find matching manifest entry
+        let entry = manifest.files.iter().find(|entry| {
+            entry.path == file_path
+                || (entry.path.ends_with(".html")
+                    && entry.path.strip_suffix(".html").unwrap() == file_path)
+        });
+
+        if let Some(entry) = entry {
+            match build_and_execute(&entry.module, &entry.entrypoint, entry.data.as_deref()) {
+                Ok(html) => {
+                    let html_with_hot_reload = inject_hot_reload_script(&html);
+                    Ok(axum::response::Html(html_with_hot_reload))
                 }
-            }),
-        );
-    }
+                Err(e) => {
+                    eprintln!("Error: {:#}", e);
+                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+                }
+            }
+        } else {
+            Err(StatusCode::NOT_FOUND)
+        }
+    };
 
     // Add static file serving as fallback if servedir is provided
     if let Some(servedir_path) = servedir {
@@ -439,7 +448,11 @@ async fn serve_from_manifest(
         if !servedir.is_dir() {
             anyhow::bail!("serve path '{}' is not a directory", servedir_path);
         }
-        router = router.fallback_service(tower_http::services::ServeDir::new(servedir_path));
+        router = router.fallback_service(
+            tower_http::services::ServeDir::new(servedir_path).fallback(get(request_handler)),
+        );
+    } else {
+        router = router.fallback(request_handler);
     }
 
     let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port))
