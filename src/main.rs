@@ -100,7 +100,6 @@ fn render_from_manifest(manifest_path: &str, output_dir: &str) {
     use std::fs;
     use std::path::Path;
 
-    // Read and parse manifest
     let manifest_content = match fs::read_to_string(manifest_path) {
         Ok(content) => content,
         Err(e) => {
@@ -123,7 +122,6 @@ fn render_from_manifest(manifest_path: &str, output_dir: &str) {
         std::process::exit(1);
     }
 
-    // Create output directory if it doesn't exist
     let output_path = Path::new(output_dir);
     if !output_path.exists() {
         if let Err(e) = fs::create_dir_all(output_path) {
@@ -132,7 +130,6 @@ fn render_from_manifest(manifest_path: &str, output_dir: &str) {
         }
     }
 
-    // Load and compile all hop modules
     let mut compiler = Compiler::new();
     match fs::read_dir(hop_dir) {
         Ok(entries) => {
@@ -142,7 +139,7 @@ fn render_from_manifest(manifest_path: &str, output_dir: &str) {
                     let module_name = path
                         .file_stem()
                         .and_then(|s| s.to_str())
-                        .unwrap_or("unknown")
+                        .unwrap()
                         .to_string();
 
                     match fs::read_to_string(&path) {
@@ -171,10 +168,8 @@ fn render_from_manifest(manifest_path: &str, output_dir: &str) {
         }
     };
 
-    // Render each file from the manifest
     println!("Rendering from manifest: {}", manifest_path);
     for (file_path, entry) in &manifest.files {
-        // Load data for this file
         let data = match &entry.data {
             Some(data_file_path) => {
                 let json_str = fs::read_to_string(data_file_path).unwrap_or_else(|e| {
@@ -189,7 +184,6 @@ fn render_from_manifest(manifest_path: &str, output_dir: &str) {
             None => serde_json::Value::Null,
         };
 
-        // Execute the function
         let html = match program.execute(&entry.module, &entry.entrypoint, data) {
             Ok(html) => html,
             Err(e) => {
@@ -201,7 +195,6 @@ fn render_from_manifest(manifest_path: &str, output_dir: &str) {
             }
         };
 
-        // Write to output file
         let output_file_path = output_path.join(file_path);
         if let Some(parent) = output_file_path.parent() {
             if !parent.exists() {
@@ -444,8 +437,6 @@ async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16, servedi
             let _ = watcher_tx.send(());
         }
     });
-
-    // Note: Data loading now happens on each request for hot reloading
 
     // Create router
     let mut router = axum::Router::new();
