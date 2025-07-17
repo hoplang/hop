@@ -129,10 +129,7 @@ fn build_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Res
     let manifest: Manifest = serde_json::from_str(&manifest_content)
         .with_context(|| format!("Failed to parse manifest file {}", manifest_path))?;
 
-    let output_dir = Path::new(output_dir_str);
-    fs::create_dir_all(output_dir)
-        .with_context(|| format!("Failed to create output directory {}", output_dir_str))?;
-
+    // Compile hop program
     let mut compiler = Compiler::new();
     for entry in fs::read_dir(hop_dir).context("Failed to read hop directory")? {
         let path = entry.context("Failed to read directory entry")?.path();
@@ -149,7 +146,6 @@ fn build_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Res
             compiler.add_module(module_name, content)
         }
     }
-
     let program = compiler
         .compile()
         .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))?;
@@ -158,6 +154,7 @@ fn build_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Res
     let mut file_outputs = Vec::new();
 
     for entry in &manifest.files {
+        // Parse the json data used to render the output file
         let data = match &entry.data {
             Some(data_file_path) => {
                 let json_str = fs::read_to_string(data_file_path)
@@ -168,6 +165,7 @@ fn build_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Res
             None => serde_json::Value::Null,
         };
 
+        // Render output file
         let html = program
             .execute(&entry.module, &entry.entrypoint, data)
             .map_err(|e| {
@@ -179,12 +177,14 @@ fn build_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Res
                 )
             })?;
 
-        let output_file_path = output_dir.join(&entry.path);
+        // Create parent directory for output file
+        let output_file_path = Path::new(output_dir_str).join(&entry.path);
         if let Some(parent) = output_file_path.parent() {
             fs::create_dir_all(parent)
                 .with_context(|| format!("Failed to create directory {:?}", parent))?;
         }
 
+        // Write output file
         fs::write(&output_file_path, &html)
             .with_context(|| format!("Failed to write to file {:?}", output_file_path))?;
 
@@ -194,17 +194,13 @@ fn build_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Res
 
     let elapsed = start_time.elapsed();
 
-    // Show build completion message
     println!();
     println!("  {} | built in {} ms", "hop".bold(), elapsed.as_millis());
     println!();
-
-    // Show file outputs (sorted by filename)
     file_outputs.sort_by(|a, b| a.0.cmp(&b.0));
     for (file_path, size) in file_outputs {
         println!("  {:<50} {}", file_path, format_file_size(size));
     }
-
     println!();
     println!("  {:<50} {}", "total", format_file_size(total_size));
     println!();
@@ -515,7 +511,7 @@ mod tests {
     /// When the user calls `hop build` and the manifest file does not exist, an error should be
     /// returned.
     #[test]
-    fn test_build_from_manifest_nonexistent_manifest() {
+    fn test_build_nonexistent_manifest() {
         let dir = env::temp_dir();
         let manifest_json = dir.join("non-existent-manifest.json");
         let output_dir = dir.join("output");
