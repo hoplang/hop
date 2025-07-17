@@ -329,11 +329,15 @@ async fn serve_from_manifest(
         sse::{Event, KeepAlive, Sse},
     };
     use axum::routing::get;
+    use colored::*;
     use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
     use std::fs;
     use std::sync::Arc;
+    use std::time::Instant;
     use tokio::sync::broadcast;
     use tokio_stream::StreamExt;
+
+    let start_time = Instant::now();
 
     // Read and parse manifest
     let manifest_content = fs::read_to_string(manifest_path)
@@ -408,7 +412,6 @@ async fn serve_from_manifest(
 
     // Create router
     let mut router = axum::Router::new();
-    let manifest_files = manifest.files.clone();
 
     // Add SSE endpoint for hot reload events
     let sse_reload_tx = reload_tx.clone();
@@ -484,20 +487,20 @@ async fn serve_from_manifest(
         .await
         .with_context(|| format!("Failed to bind to {}:{}", host, port))?;
 
-    println!("Hop server running on http://{}:{}", host, port);
-    println!("Serving from manifest: {}", manifest_path);
-    if let Some(static_dir) = servedir {
-        println!("Static files from: {}", static_dir);
-    }
-    println!("Available routes:");
-    for entry in &manifest_files {
-        let route_path = match entry.path.as_str() {
-            "index.html" => "/".to_string(),
-            path if path.ends_with(".html") => format!("/{}", path.strip_suffix(".html").unwrap()),
-            path => format!("/{}", path),
-        };
-        println!("  {} -> {}::{}", route_path, entry.module, entry.entrypoint);
-    }
+    let elapsed = start_time.elapsed();
+
+    // Show startup message
+    println!();
+    println!(
+        "  {} v{} {} {} ms",
+        "hop".bold(),
+        env!("CARGO_PKG_VERSION"),
+        "ready in".bright_black(),
+        elapsed.as_millis()
+    );
+    println!();
+    println!("  {} http://{}:{}/", "➜".green(), host, port,);
+    println!();
 
     axum::serve(listener, router)
         .await
