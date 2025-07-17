@@ -129,7 +129,9 @@ async fn main() -> anyhow::Result<()> {
             host,
             servedir,
         }) => {
-            serve_from_manifest(manifest, host, *port, servedir.as_deref()).await?;
+            let router = serve_from_manifest(manifest, host, *port, servedir.as_deref()).await?;
+            let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port)).await?;
+            axum::serve(listener, router).await?;
         }
         None => {
             let mut cmd = Cli::command();
@@ -311,8 +313,7 @@ async fn serve_from_manifest(
     host: &str,
     port: u16,
     servedir: Option<&str>,
-) -> anyhow::Result<()> {
-    use anyhow::Context;
+) -> anyhow::Result<axum::Router> {
     use axum::http::StatusCode;
     use axum::response::sse::{Event, Sse};
     use axum::routing::get;
@@ -456,10 +457,6 @@ async fn serve_from_manifest(
         router = router.fallback(request_handler);
     }
 
-    let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port))
-        .await
-        .with_context(|| format!("Failed to bind to {}:{}", host, port))?;
-
     let elapsed = start_time.elapsed();
 
     println!();
@@ -468,10 +465,7 @@ async fn serve_from_manifest(
     println!("  {} http://{}:{}/", "➜".green(), host, port);
     println!();
 
-    axum::serve(listener, router)
-        .await
-        .context("Server error")?;
-    Ok(())
+    Ok(router)
 }
 
 #[cfg(test)]
