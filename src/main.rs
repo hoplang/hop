@@ -14,7 +14,7 @@ mod unifier;
 use clap::{CommandFactory, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 
-// Helper function to format file sizes nicely
+/// Format file size.
 fn format_file_size(bytes: usize) -> String {
     if bytes < 1024 {
         format!("{} B", bytes)
@@ -27,6 +27,8 @@ fn format_file_size(bytes: usize) -> String {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ManifestEntry {
+    /// The output file path
+    pub path: String,
     /// The hop module to use
     pub module: String,
     /// The function to call
@@ -37,8 +39,8 @@ pub struct ManifestEntry {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Manifest {
-    /// Map of file paths to their configuration
-    pub files: std::collections::HashMap<String, ManifestEntry>,
+    /// Array of files to build
+    pub files: Vec<ManifestEntry>,
 }
 
 #[derive(Parser)]
@@ -125,26 +127,26 @@ fn build_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Res
         .with_context(|| format!("Failed to parse manifest file {}", manifest_path))?;
 
     let hop_dir = Path::new("./hop");
-    anyhow::ensure!(hop_dir.exists(), "./hop directory does not exist");
+    anyhow::ensure!(hop_dir.exists(), "hop directory does not exist");
 
     let output_dir = Path::new(output_dir_str);
     fs::create_dir_all(output_dir)
         .with_context(|| format!("Failed to create output directory {}", output_dir_str))?;
 
     let mut compiler = Compiler::new();
-    for entry in fs::read_dir(hop_dir).context("Failed to read ./hop directory")? {
+    for entry in fs::read_dir(hop_dir).context("Failed to read hop directory")? {
         let path = entry.context("Failed to read directory entry")?.path();
         if path.extension().and_then(|s| s.to_str()) == Some("hop") {
             let module_name = path
                 .file_stem()
                 .and_then(|s| s.to_str())
-                .context("Invalid hop file name")?
+                .context("Invalid file name")?
                 .to_string();
 
             let content = fs::read_to_string(&path)
                 .with_context(|| format!("Failed to read file {:?}", path))?;
 
-            compiler.add_module(module_name, content);
+            compiler.add_module(module_name, content)
         }
     }
 
@@ -152,7 +154,7 @@ fn build_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Res
         .compile()
         .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))?;
 
-    for (file_path, entry) in &manifest.files {
+    for entry in &manifest.files {
         let data = match &entry.data {
             Some(data_file_path) => {
                 let json_str = fs::read_to_string(data_file_path)
@@ -174,7 +176,7 @@ fn build_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Res
                 )
             })?;
 
-        let output_file_path = output_dir.join(file_path);
+        let output_file_path = output_dir.join(&entry.path);
         if let Some(parent) = output_file_path.parent() {
             fs::create_dir_all(parent)
                 .with_context(|| format!("Failed to create directory {:?}", parent))?;
@@ -183,12 +185,10 @@ fn build_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Res
         fs::write(&output_file_path, &html)
             .with_context(|| format!("Failed to write to file {:?}", output_file_path))?;
 
-        // Format the file size nicely
-        let file_size = format_file_size(html.len());
         println!(
             "{:<50} {}",
             output_file_path.display().to_string().cyan(),
-            file_size.bright_black()
+            format_file_size(html.len()).bright_black()
         );
     }
 
@@ -347,15 +347,13 @@ async fn serve_from_manifest(
         anyhow::bail!("./hop directory does not exist");
     }
 
-    // Note: Compilation now happens on each request for hot reloading
-
     // Set up broadcast channel for hot reload events
     let (reload_tx, _) = broadcast::channel::<()>(100);
     let reload_tx = Arc::new(reload_tx);
 
     // Collect all JSON data files referenced in manifest
     let mut json_files = std::collections::HashSet::new();
-    for entry in manifest.files.values() {
+    for entry in &manifest.files {
         if let Some(data_file) = &entry.data {
             json_files.insert(data_file.clone());
         }
@@ -436,8 +434,8 @@ async fn serve_from_manifest(
     );
 
     // Add manifest routes first (these take precedence)
-    for (file_path, entry) in manifest.files {
-        let route_path = match file_path.as_str() {
+    for entry in manifest.files {
+        let route_path = match entry.path.as_str() {
             "index.html" => "/".to_string(),
             path if path.ends_with(".html") => format!("/{}", path.strip_suffix(".html").unwrap()),
             path => format!("/{}", path),
@@ -492,8 +490,8 @@ async fn serve_from_manifest(
         println!("Static files from: {}", static_dir);
     }
     println!("Available routes:");
-    for (file_path, entry) in &manifest_files {
-        let route_path = match file_path.as_str() {
+    for entry in &manifest_files {
+        let route_path = match entry.path.as_str() {
             "index.html" => "/".to_string(),
             path if path.ends_with(".html") => format!("/{}", path.strip_suffix(".html").unwrap()),
             path => format!("/{}", path),
