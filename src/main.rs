@@ -120,14 +120,14 @@ fn build_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Res
 
     let start_time = Instant::now();
 
+    let hop_dir = Path::new("./hop");
+    anyhow::ensure!(hop_dir.exists(), "hop directory does not exist");
+
     let manifest_content = fs::read_to_string(manifest_path)
         .with_context(|| format!("Failed to read manifest file {}", manifest_path))?;
 
     let manifest: Manifest = serde_json::from_str(&manifest_content)
         .with_context(|| format!("Failed to parse manifest file {}", manifest_path))?;
-
-    let hop_dir = Path::new("./hop");
-    anyhow::ensure!(hop_dir.exists(), "hop directory does not exist");
 
     let output_dir = Path::new(output_dir_str);
     fs::create_dir_all(output_dir)
@@ -508,13 +508,24 @@ async fn serve_from_manifest(
 
 #[cfg(test)]
 mod tests {
+    use std::{env, fs};
+
     use super::*;
 
     /// When the user calls `hop build` and the manifest file does not exist, an error should be
     /// returned.
     #[test]
     fn test_build_from_manifest_nonexistent_manifest() {
-        let result = build_from_manifest("/tmp/non-existent-manifest.json", "/tmp/output");
+        let dir = env::temp_dir();
+        let manifest_json = dir.join("non-existent-manifest.json");
+        let output_dir = dir.join("output");
+        let hop_dir = dir.join("hop");
+        assert!(env::set_current_dir(&dir).is_ok());
+        assert!(fs::create_dir_all(&hop_dir).is_ok());
+        let result = build_from_manifest(
+            manifest_json.to_str().unwrap(),
+            output_dir.to_str().unwrap(),
+        );
         assert!(result.is_err());
         assert!(
             result

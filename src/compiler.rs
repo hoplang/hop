@@ -141,7 +141,7 @@ mod tests {
     use pretty_assertions::assert_eq;
     use simple_txtar::Archive;
     use std::fs;
-    use std::path::Path;
+    use std::path::PathBuf;
 
     fn normalize_tokens(tokens: Vec<Token>) -> Vec<Token> {
         tokens
@@ -168,7 +168,9 @@ mod tests {
 
     #[test]
     fn test_compiler() {
-        let entries = fs::read_dir(Path::new("test_data/compiler")).unwrap();
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("test_data/compiler");
+        let entries = fs::read_dir(d).unwrap();
 
         for entry in entries {
             let path = entry.unwrap().path();

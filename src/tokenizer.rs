@@ -623,7 +623,7 @@ mod tests {
     use pretty_assertions::assert_eq;
     use simple_txtar::Archive;
     use std::fs;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     fn format_range(range: Range) -> String {
         format!(
@@ -674,8 +674,9 @@ mod tests {
 
     #[test]
     fn test_tokenizer() {
-        let entries =
-            fs::read_dir(Path::new("test_data/tokenizer")).expect("Failed to read directory");
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("test_data/tokenizer");
+        let entries = fs::read_dir(d).unwrap();
 
         for entry in entries {
             let path = entry.unwrap().path();

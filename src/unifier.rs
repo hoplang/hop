@@ -167,7 +167,7 @@ mod tests {
     use pretty_assertions::assert_eq;
     use simple_txtar::Archive;
     use std::fs;
-    use std::path::Path;
+    use std::path::PathBuf;
 
     #[derive(Debug, Clone, PartialEq)]
     pub enum SExpr {
@@ -325,7 +325,9 @@ mod tests {
 
     #[test]
     fn test_unifier() {
-        let entries = fs::read_dir(Path::new("test_data/unifier")).unwrap();
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("test_data/unifier");
+        let entries = fs::read_dir(d).unwrap();
 
         for entry in entries {
             let path = entry.unwrap().path();

@@ -302,11 +302,13 @@ mod tests {
     use simple_txtar::Archive;
     use std::collections::HashMap;
     use std::fs;
-    use std::path::Path;
+    use std::path::PathBuf;
 
     #[test]
     fn test_typechecker() {
-        let entries = fs::read_dir(Path::new("test_data/typechecker")).unwrap();
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("test_data/typechecker");
+        let entries = fs::read_dir(d).unwrap();
 
         for entry in entries {
             let path = entry.unwrap().path();
@@ -324,7 +326,7 @@ mod tests {
             for file in archive.iter() {
                 if file.name.ends_with(".hop") {
                     let mut errors = Vec::new();
-                    let tokens = tokenize(&file.content.trim(), &mut errors);
+                    let tokens = tokenize(file.content.trim(), &mut errors);
                     let module = parse(tokens, &mut errors);
 
                     if !errors.is_empty() {
