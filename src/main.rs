@@ -14,6 +14,17 @@ mod unifier;
 use clap::{CommandFactory, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 
+// Helper function to format file sizes nicely
+fn format_file_size(bytes: usize) -> String {
+    if bytes < 1024 {
+        format!("{} B", bytes)
+    } else if bytes < 1024 * 1024 {
+        format!("{:.2} kB", bytes as f64 / 1024.0)
+    } else {
+        format!("{:.2} MB", bytes as f64 / (1024.0 * 1024.0))
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ManifestEntry {
     /// The hop module to use
@@ -101,11 +112,15 @@ async fn main() {
     }
 }
 
-fn render_from_manifest(manifest_path: &str, output_dir: &str) -> anyhow::Result<()> {
+fn render_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Result<()> {
     use anyhow::Context;
+    use colored::*;
     use compiler::Compiler;
     use std::fs;
     use std::path::Path;
+    use std::time::Instant;
+
+    let start_time = Instant::now();
 
     let manifest_content = fs::read_to_string(manifest_path)
         .with_context(|| format!("Failed to read manifest file {}", manifest_path))?;
@@ -114,26 +129,20 @@ fn render_from_manifest(manifest_path: &str, output_dir: &str) -> anyhow::Result
         .with_context(|| format!("Failed to parse manifest file {}", manifest_path))?;
 
     let hop_dir = Path::new("./hop");
-    if !hop_dir.exists() {
-        anyhow::bail!("./hop directory does not exist");
-    }
+    anyhow::ensure!(hop_dir.exists(), "./hop directory does not exist");
 
-    let output_path = Path::new(output_dir);
-    if !output_path.exists() {
-        fs::create_dir_all(output_path)
-            .with_context(|| format!("Failed to create output directory {}", output_dir))?;
-    }
+    let output_dir = Path::new(output_dir_str);
+    fs::create_dir_all(output_dir)
+        .with_context(|| format!("Failed to create output directory {}", output_dir_str))?;
 
     let mut compiler = Compiler::new();
-    let entries = fs::read_dir(hop_dir).context("Failed to read ./hop directory")?;
-
-    for entry in entries.flatten() {
-        let path = entry.path();
+    for entry in fs::read_dir(hop_dir).context("Failed to read ./hop directory")? {
+        let path = entry.context("Failed to read directory entry")?.path();
         if path.extension().and_then(|s| s.to_str()) == Some("hop") {
             let module_name = path
                 .file_stem()
                 .and_then(|s| s.to_str())
-                .unwrap()
+                .context("Invalid hop file name")?
                 .to_string();
 
             let content = fs::read_to_string(&path)
@@ -147,7 +156,6 @@ fn render_from_manifest(manifest_path: &str, output_dir: &str) -> anyhow::Result
         .compile()
         .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))?;
 
-    println!("Rendering from manifest: {}", manifest_path);
     for (file_path, entry) in &manifest.files {
         let data = match &entry.data {
             Some(data_file_path) => {
@@ -170,21 +178,30 @@ fn render_from_manifest(manifest_path: &str, output_dir: &str) -> anyhow::Result
                 )
             })?;
 
-        let output_file_path = output_path.join(file_path);
+        let output_file_path = output_dir.join(file_path);
         if let Some(parent) = output_file_path.parent() {
-            if !parent.exists() {
-                fs::create_dir_all(parent)
-                    .with_context(|| format!("Failed to create directory {:?}", parent))?;
-            }
+            fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create directory {:?}", parent))?;
         }
 
-        fs::write(&output_file_path, html)
+        fs::write(&output_file_path, &html)
             .with_context(|| format!("Failed to write to file {:?}", output_file_path))?;
 
-        println!("Generated {} -> {:?}", file_path, output_file_path);
+        // Format the file size nicely
+        let file_size = format_file_size(html.len());
+        println!(
+            "{:<50} {}",
+            output_file_path.display().to_string().cyan(),
+            file_size.bright_black()
+        );
     }
 
-    println!("Rendered {} files to {}", manifest.files.len(), output_dir);
+    let elapsed = start_time.elapsed();
+    println!(
+        "{} {}",
+        "✓".green(),
+        format!("built in {:.2}s", elapsed.as_secs_f64()).bright_black()
+    );
     Ok(())
 }
 
