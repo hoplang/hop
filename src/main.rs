@@ -13,6 +13,35 @@ mod unifier;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
+
+pub fn compile_hop_program(hop_dir: &Path) -> anyhow::Result<runtime::Program> {
+    use anyhow::Context;
+    use compiler::Compiler;
+    use std::fs;
+    anyhow::ensure!(hop_dir.exists(), "hop directory does not exist");
+
+    let mut compiler = Compiler::new();
+    for entry in fs::read_dir(hop_dir).context("Failed to read hop directory")? {
+        let path = entry.context("Failed to read directory entry")?.path();
+        if path.extension().and_then(|s| s.to_str()) == Some("hop") {
+            let module_name = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .context("Invalid file name")?
+                .to_string();
+
+            let content = fs::read_to_string(&path)
+                .with_context(|| format!("Failed to read file {:?}", path))?;
+
+            compiler.add_module(module_name, content);
+        }
+    }
+
+    compiler
+        .compile()
+        .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
+}
 
 /// Format file size.
 fn format_file_size(bytes: usize) -> String {
@@ -113,15 +142,11 @@ async fn main() -> anyhow::Result<()> {
 fn build_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Result<()> {
     use anyhow::Context;
     use colored::*;
-    use compiler::Compiler;
     use std::fs;
     use std::path::Path;
     use std::time::Instant;
 
     let start_time = Instant::now();
-
-    let hop_dir = Path::new("./hop");
-    anyhow::ensure!(hop_dir.exists(), "hop directory does not exist");
 
     let manifest_content = fs::read_to_string(manifest_path)
         .with_context(|| format!("Failed to read manifest file {}", manifest_path))?;
@@ -129,26 +154,7 @@ fn build_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Res
     let manifest: Manifest = serde_json::from_str(&manifest_content)
         .with_context(|| format!("Failed to parse manifest file {}", manifest_path))?;
 
-    // Compile hop program
-    let mut compiler = Compiler::new();
-    for entry in fs::read_dir(hop_dir).context("Failed to read hop directory")? {
-        let path = entry.context("Failed to read directory entry")?.path();
-        if path.extension().and_then(|s| s.to_str()) == Some("hop") {
-            let module_name = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .context("Invalid file name")?
-                .to_string();
-
-            let content = fs::read_to_string(&path)
-                .with_context(|| format!("Failed to read file {:?}", path))?;
-
-            compiler.add_module(module_name, content)
-        }
-    }
-    let program = compiler
-        .compile()
-        .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))?;
+    let program = compile_hop_program(Path::new("./hop"))?;
 
     let mut total_size = 0;
     let mut file_outputs = Vec::new();
@@ -276,34 +282,11 @@ fn build_and_execute(
     data_file: Option<&str>,
 ) -> anyhow::Result<String> {
     use anyhow::Context;
-    use compiler::Compiler;
     use std::fs;
-
-    let hop_dir = std::path::Path::new("./hop");
-    anyhow::ensure!(hop_dir.exists(), "./hop directory does not exist");
+    use std::path::Path;
 
     // Load and compile all hop modules for this request
-    let mut compiler = Compiler::new();
-    for entry in fs::read_dir(hop_dir).context("Failed to read ./hop directory")? {
-        let entry = entry.context("Failed to read directory entry")?;
-        let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) == Some("hop") {
-            let module_name = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .context("Invalid hop file name")?
-                .to_string();
-
-            let content = fs::read_to_string(&path)
-                .with_context(|| format!("Failed to read file {:?}", path))?;
-
-            compiler.add_module(module_name, content);
-        }
-    }
-
-    let program = compiler
-        .compile()
-        .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))?;
+    let program = compile_hop_program(Path::new("./hop"))?;
 
     // Load data from file if specified
     let data = match data_file {
