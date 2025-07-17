@@ -175,22 +175,18 @@ fn render_from_manifest(manifest_path: &str, output_dir: &str) {
     println!("Rendering from manifest: {}", manifest_path);
     for (file_path, entry) in &manifest.files {
         // Load data for this file
-        let data = if let Some(data_file_path) = &entry.data {
-            match fs::read_to_string(data_file_path) {
-                Ok(json_str) => match serde_json::from_str(&json_str) {
-                    Ok(value) => value,
-                    Err(e) => {
-                        eprintln!("Error parsing JSON from file {}: {}", data_file_path, e);
-                        std::process::exit(1);
-                    }
-                },
-                Err(e) => {
+        let data = match &entry.data {
+            Some(data_file_path) => {
+                let json_str = fs::read_to_string(data_file_path).unwrap_or_else(|e| {
                     eprintln!("Error reading data file {}: {}", data_file_path, e);
                     std::process::exit(1);
-                }
+                });
+                serde_json::from_str(&json_str).unwrap_or_else(|e| {
+                    eprintln!("Error parsing JSON from file {}: {}", data_file_path, e);
+                    std::process::exit(1);
+                })
             }
-        } else {
-            serde_json::Value::Null
+            None => serde_json::Value::Null,
         };
 
         // Execute the function
@@ -343,23 +339,14 @@ fn compile_and_execute(
     };
 
     // Load data from file if specified
-    let data = if let Some(data_file_path) = data_file {
-        match fs::read_to_string(data_file_path) {
-            Ok(json_str) => match serde_json::from_str(&json_str) {
-                Ok(value) => value,
-                Err(e) => {
-                    return Err(format!(
-                        "Error parsing JSON from file {}: {}",
-                        data_file_path, e
-                    ));
-                }
-            },
-            Err(e) => {
-                return Err(format!("Error reading data file {}: {}", data_file_path, e));
-            }
+    let data = match data_file {
+        Some(data_file_path) => {
+            let json_str = fs::read_to_string(data_file_path)
+                .map_err(|e| format!("Error reading data file {}: {}", data_file_path, e))?;
+            serde_json::from_str(&json_str)
+                .map_err(|e| format!("Error parsing JSON from file {}: {}", data_file_path, e))?
         }
-    } else {
-        serde_json::Value::Null
+        None => serde_json::Value::Null,
     };
 
     // Execute the entrypoint
@@ -425,12 +412,12 @@ async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16, servedi
         let mut watcher = RecommendedWatcher::new(
             move |res: Result<notify::Event, notify::Error>| {
                 if let Ok(event) = res {
-                    if (event.kind.is_modify() || event.kind.is_create())
+                    let should_reload = (event.kind.is_modify() || event.kind.is_create())
                         && event.paths.iter().any(|p| {
-                            let ext = p.extension().and_then(|s| s.to_str());
-                            ext == Some("hop") || ext == Some("json")
-                        })
-                    {
+                            matches!(p.extension().and_then(|s| s.to_str()), Some("hop" | "json"))
+                        });
+                    
+                    if should_reload {
                         let _ = tx.try_send(());
                     }
                 }
@@ -494,12 +481,10 @@ async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16, servedi
 
     // Add manifest routes first (these take precedence)
     for (file_path, entry) in manifest.files {
-        let route_path = if file_path == "index.html" {
-            "/".to_string()
-        } else if file_path.ends_with(".html") {
-            format!("/{}", file_path.strip_suffix(".html").unwrap())
-        } else {
-            format!("/{}", file_path)
+        let route_path = match file_path.as_str() {
+            "index.html" => "/".to_string(),
+            path if path.ends_with(".html") => format!("/{}", path.strip_suffix(".html").unwrap()),
+            path => format!("/{}", path),
         };
 
         let module = entry.module.clone();
@@ -516,7 +501,6 @@ async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16, servedi
                 async move {
                     match compile_and_execute(&module, &entrypoint, data_file.as_deref()) {
                         Ok(html) => {
-                            // Inject hot reload script for development
                             let html_with_hot_reload = inject_hot_reload_script(&html);
                             Ok(Html(html_with_hot_reload))
                         }
@@ -547,12 +531,10 @@ async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16, servedi
     }
     println!("Available routes:");
     for (file_path, entry) in &manifest_files {
-        let route_path = if file_path == "index.html" {
-            "/".to_string()
-        } else if file_path.ends_with(".html") {
-            format!("/{}", file_path.strip_suffix(".html").unwrap())
-        } else {
-            format!("/{}", file_path)
+        let route_path = match file_path.as_str() {
+            "index.html" => "/".to_string(),
+            path if path.ends_with(".html") => format!("/{}", path.strip_suffix(".html").unwrap()),
+            path => format!("/{}", path),
         };
         println!("  {} -> {}::{}", route_path, entry.module, entry.entrypoint);
     }
