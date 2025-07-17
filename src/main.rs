@@ -332,7 +332,7 @@ async fn serve_from_manifest(
     use axum::http::StatusCode;
     use axum::response::{
         Html,
-        sse::{Event, KeepAlive, Sse},
+        sse::{Event, Sse},
     };
     use axum::routing::get;
     use colored::*;
@@ -342,6 +342,7 @@ async fn serve_from_manifest(
     use std::time::Instant;
     use tokio::sync::broadcast;
     use tokio_stream::StreamExt;
+    use tokio_stream::wrappers::BroadcastStream;
 
     let start_time = Instant::now();
 
@@ -378,12 +379,7 @@ async fn serve_from_manifest(
         let mut watcher = RecommendedWatcher::new(
             move |res: Result<notify::Event, notify::Error>| {
                 if let Ok(event) = res {
-                    let should_reload = (event.kind.is_modify() || event.kind.is_create())
-                        && event.paths.iter().any(|p| {
-                            matches!(p.extension().and_then(|s| s.to_str()), Some("hop" | "json"))
-                        });
-
-                    if should_reload {
+                    if event.kind.is_modify() || event.kind.is_create() {
                         let _ = tx.try_send(());
                     }
                 }
@@ -408,9 +404,6 @@ async fn serve_from_manifest(
         }
 
         while (rx.recv().await).is_some() {
-            // Debounce rapid file changes
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-
             // Send reload event to all connected clients
             let _ = watcher_tx.send(());
         }
@@ -419,25 +412,13 @@ async fn serve_from_manifest(
     let mut router = axum::Router::new();
 
     // Add SSE endpoint for hot reload events
-    let sse_reload_tx = reload_tx.clone();
     router = router.route(
         "/__hop_hot_reload",
-        get({
-            let tx = sse_reload_tx.clone();
-            move || {
-                let tx = tx.clone();
-                async move {
-                    let rx = tx.subscribe();
-                    let stream = tokio_stream::wrappers::BroadcastStream::new(rx)
-                        .map(|_| Ok::<Event, axum::Error>(Event::default().data("reload")));
-
-                    Sse::new(stream).keep_alive(
-                        KeepAlive::new()
-                            .interval(std::time::Duration::from_secs(30))
-                            .text("keep-alive"),
-                    )
-                }
-            }
+        get(async move || {
+            Sse::new(
+                BroadcastStream::new(reload_tx.subscribe())
+                    .map(|_| Ok::<Event, axum::Error>(Event::default().data("reload"))),
+            )
         }),
     );
 
@@ -451,21 +432,15 @@ async fn serve_from_manifest(
 
         router = router.route(
             &route_path,
-            get(move || {
-                let module = entry.module.clone();
-                let entrypoint = entry.entrypoint.clone();
-                let data_file = entry.data.clone();
-
-                async move {
-                    match build_and_execute(&module, &entrypoint, data_file.as_deref()) {
-                        Ok(html) => {
-                            let html_with_hot_reload = inject_hot_reload_script(&html);
-                            Ok(Html(html_with_hot_reload))
-                        }
-                        Err(e) => {
-                            eprintln!("Error: {:#}", e);
-                            Err(StatusCode::INTERNAL_SERVER_ERROR)
-                        }
+            get(move || async move {
+                match build_and_execute(&entry.module, &entry.entrypoint, entry.data.as_deref()) {
+                    Ok(html) => {
+                        let html_with_hot_reload = inject_hot_reload_script(&html);
+                        Ok(Html(html_with_hot_reload))
+                    }
+                    Err(e) => {
+                        eprintln!("Error: {:#}", e);
+                        Err(StatusCode::INTERNAL_SERVER_ERROR)
                     }
                 }
             }),
