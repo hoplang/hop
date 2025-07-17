@@ -362,6 +362,17 @@ fn create_error_page(error: &anyhow::Error) -> String {
     )
 }
 
+/// Create a server that responds to requests for the output files specified in the manifest.
+///
+/// Also sets up a watcher that watches all source files used to construct the output files.
+/// The watcher emits SSE-events on the `/__hop_hot_reload` route. There is also an injected
+/// script on in all `html` files that listens to SSE-events on that route and performs
+/// hot-reloading when an event is emitted.
+///
+/// If `servedir` is specified the server serves static files from the given directory as well.
+///
+/// The client may change the manifest while the server is running as the server will reread the
+/// manifest whenever a new request comes in.
 async fn serve_from_manifest(
     manifest_path: &str,
     servedir: Option<&str>,
@@ -406,15 +417,20 @@ async fn serve_from_manifest(
             .expect("Failed to watch hop directory");
 
         // Read and parse manifest
-        let manifest_content = fs::read_to_string(mp).unwrap();
+        let manifest_content = fs::read_to_string(&mp).unwrap();
         let manifest: Manifest = serde_json::from_str(&manifest_content).unwrap();
+        let manifest_dir = std::path::Path::new(&mp)
+            .parent()
+            .unwrap_or(std::path::Path::new("."));
         for entry in &manifest.files {
             if let Some(json_file) = &entry.data {
-                let json_path = std::path::Path::new(json_file);
+                let json_path = manifest_dir.join(json_file);
                 if json_path.exists() {
                     watcher
-                        .watch(json_path, RecursiveMode::NonRecursive)
-                        .unwrap_or_else(|_| panic!("Failed to watch JSON file: {}", json_file));
+                        .watch(&json_path, RecursiveMode::NonRecursive)
+                        .unwrap_or_else(|_| {
+                            panic!("Failed to watch JSON file: {}", json_path.display())
+                        });
                 }
             }
         }
