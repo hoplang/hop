@@ -54,8 +54,8 @@ struct Cli {
 enum Commands {
     /// Run the Language Server Protocol (LSP) server
     Lsp,
-    /// Render hop templates from a manifest to files
-    Render {
+    /// Build hop templates from a manifest to files
+    Build {
         /// Path to manifest.json file
         #[arg(short, long, default_value = "manifest.json")]
         manifest: String,
@@ -88,8 +88,8 @@ async fn main() {
         Some(Commands::Lsp) => {
             lsp::run_lsp().await;
         }
-        Some(Commands::Render { manifest, outdir }) => {
-            if let Err(e) = render_from_manifest(manifest, outdir) {
+        Some(Commands::Build { manifest, outdir }) => {
+            if let Err(e) = build_from_manifest(manifest, outdir) {
                 eprintln!("Error: {:#}", e);
                 std::process::exit(1);
             }
@@ -100,7 +100,7 @@ async fn main() {
             host,
             servedir,
         }) => {
-            if let Err(e) = serve_from_manifest(manifest, host, *port, servedir.as_deref()).await {
+            if let Err(e) = build_and_serve_from_manifest(manifest, host, *port, servedir.as_deref()).await {
                 eprintln!("Error: {:#}", e);
                 std::process::exit(1);
             }
@@ -112,7 +112,7 @@ async fn main() {
     }
 }
 
-fn render_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Result<()> {
+fn build_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Result<()> {
     use anyhow::Context;
     use colored::*;
     use compiler::Compiler;
@@ -267,8 +267,8 @@ eventSource.onerror = function(event) {
     }
 }
 
-// Function to compile hop modules and execute a specific entrypoint
-fn compile_and_execute(
+// Function to build hop modules and execute a specific entrypoint
+fn build_and_execute(
     module_name: &str,
     entrypoint: &str,
     data_file: Option<&str>,
@@ -327,7 +327,7 @@ fn compile_and_execute(
     program.execute(module_name, entrypoint, data)
 }
 
-async fn serve_from_manifest(
+async fn build_and_serve_from_manifest(
     manifest_path: &str,
     host: &str,
     port: u16,
@@ -466,7 +466,7 @@ async fn serve_from_manifest(
                 let data_file = data_file.clone();
 
                 async move {
-                    match compile_and_execute(&module, &entrypoint, data_file.as_deref()) {
+                    match build_and_execute(&module, &entrypoint, data_file.as_deref()) {
                         Ok(html) => {
                             let html_with_hot_reload = inject_hot_reload_script(&html);
                             Ok(Html(html_with_hot_reload))
@@ -522,11 +522,11 @@ async fn serve_from_manifest(
 mod tests {
     use super::*;
 
-    /// When the user calls `hop render` and the manifest file does not exist, an error should be
+    /// When the user calls `hop build` and the manifest file does not exist, an error should be
     /// returned.
     #[test]
-    fn test_render_from_manifest_nonexistent_manifest() {
-        let result = render_from_manifest("/tmp/non-existent-manifest.json", "/tmp/output");
+    fn test_build_from_manifest_nonexistent_manifest() {
+        let result = build_from_manifest("/tmp/non-existent-manifest.json", "/tmp/output");
         assert!(result.is_err());
         assert!(
             result
