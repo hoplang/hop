@@ -504,12 +504,8 @@ mod tests {
     use super::*;
 
     fn temp_dir_from_txtar(archive: &str) -> std::io::Result<std::path::PathBuf> {
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis();
-        let temp_dir =
-            env::temp_dir().join(format!("hop_test_{}_{}", std::process::id(), timestamp));
+        let r = rand::random::<u64>();
+        let temp_dir = env::temp_dir().join(format!("hop_test_{}", r));
         fs::create_dir_all(&temp_dir)?;
         for file in Archive::from(archive).iter() {
             let file_path = temp_dir.join(&file.name);
@@ -547,9 +543,10 @@ mod tests {
                 .to_string()
                 .contains("Failed to read manifest file")
         );
-        let _ = fs::remove_dir_all(&dir);
     }
 
+    /// When the user calls `hop serve` and has a entry for `index.html` in the manifest file, the
+    /// index.html entry should be rendered when the user issues a GET to /.
     #[tokio::test]
     async fn test_serve_from_manifest() {
         let dir = temp_dir_from_txtar(
@@ -592,7 +589,65 @@ mod tests {
 
         let body = response.text();
         assert!(body.contains("foo bar"));
+    }
 
-        let _ = fs::remove_dir_all(&dir);
+    /// When the user changes the contents of the manifest file after running `hop serve` the
+    /// changes should be reflected when the user sends a request to the server.
+    #[tokio::test]
+    async fn test_serve_from_manifest_dynamic_update() -> anyhow::Result<()> {
+        let dir = temp_dir_from_txtar(
+            r#"
+-- hop/test.hop --
+<component name="foo">
+  message is foo
+</component>
+<component name="bar">
+  message is bar
+</component>
+-- manifest.json --
+{
+  "files": [
+    {
+      "path": "index.html",
+      "module": "test",
+      "entrypoint": "foo"
+    }
+  ]
+}
+"#,
+        )?;
+
+        let router = serve_from_manifest(
+            dir.join("manifest.json").to_str().unwrap(),
+            "127.0.0.1",
+            3000,
+            None,
+            dir.join("hop").to_str().unwrap(),
+        )
+        .await?;
+
+        let server = TestServer::new(router).unwrap();
+
+        let response = server.get("/").await;
+        response.assert_status_ok();
+        let body = response.text();
+        assert!(body.contains("message is foo"));
+        fs::write(
+            dir.join("manifest.json"),
+            r#"{
+  "files": [
+    {
+      "path": "index.html",
+      "module": "test",
+      "entrypoint": "bar"
+    }
+  ]
+}"#,
+        )?;
+        let response = server.get("/").await;
+        response.assert_status_ok();
+        let body = response.text();
+        assert!(body.contains("message is bar"));
+        Ok(())
     }
 }
