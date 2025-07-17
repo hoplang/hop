@@ -650,4 +650,63 @@ mod tests {
         assert!(body.contains("message is bar"));
         Ok(())
     }
+
+    /// When the user calls `hop serve` with a servedir parameter, static files should be served
+    /// from that directory.
+    #[tokio::test]
+    async fn test_serve_from_manifest_static_files() {
+        let dir = temp_dir_from_txtar(
+            r#"
+-- hop/test.hop --
+<component name="hello">
+  hello world!
+</component>
+-- manifest.json --
+{
+  "files": [
+    {
+      "path": "index.html",
+      "module": "test",
+      "entrypoint": "hello"
+    }
+  ]
+}
+-- static/style.css --
+body { background: blue; }
+-- static/script.js --
+console.log("Hello from static file");
+"#,
+        )
+        .unwrap();
+
+        let router = serve_from_manifest(
+            dir.join("manifest.json").to_str().unwrap(),
+            "127.0.0.1",
+            3000,
+            Some(dir.join("static").to_str().unwrap()),
+            dir.join("hop").to_str().unwrap(),
+        )
+        .await
+        .unwrap();
+
+        let server = TestServer::new(router).unwrap();
+
+        // Test that the hop component still works
+        let response = server.get("/").await;
+        response.assert_status_ok();
+        let body = response.text();
+        assert!(body.contains("hello world!"));
+
+        // Test that static CSS file is served
+        let response = server.get("/style.css").await;
+        response.assert_status_ok();
+        let body = response.text();
+        assert!(body.contains("body { background: blue; }"));
+
+        // Test that static JS file is served
+        let response = server.get("/script.js").await;
+        response.assert_status_ok();
+        let body = response.text();
+        assert!(body.contains("console.log(\"Hello from static file\");"));
+    }
 }
