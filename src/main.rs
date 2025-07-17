@@ -420,7 +420,6 @@ async fn serve_from_manifest(
         }
     });
 
-    // Create router
     let mut router = axum::Router::new();
 
     // Add SSE endpoint for hot reload events
@@ -454,16 +453,12 @@ async fn serve_from_manifest(
             path => format!("/{}", path),
         };
 
-        let module = entry.module.clone();
-        let entrypoint = entry.entrypoint.clone();
-        let data_file = entry.data.clone();
-
         router = router.route(
             &route_path,
             get(move || {
-                let module = module.clone();
-                let entrypoint = entrypoint.clone();
-                let data_file = data_file.clone();
+                let module = entry.module.clone();
+                let entrypoint = entry.entrypoint.clone();
+                let data_file = entry.data.clone();
 
                 async move {
                     match build_and_execute(&module, &entrypoint, data_file.as_deref()) {
