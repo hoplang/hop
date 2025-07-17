@@ -154,6 +154,9 @@ fn build_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Res
         .compile()
         .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))?;
 
+    let mut total_size = 0;
+    let mut file_outputs = Vec::new();
+
     for entry in &manifest.files {
         let data = match &entry.data {
             Some(data_file_path) => {
@@ -185,19 +188,25 @@ fn build_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Res
         fs::write(&output_file_path, &html)
             .with_context(|| format!("Failed to write to file {:?}", output_file_path))?;
 
-        println!(
-            "{:<50} {}",
-            output_file_path.display().to_string().cyan(),
-            format_file_size(html.len()).bright_black()
-        );
+        total_size += html.len();
+        file_outputs.push((output_file_path.display().to_string(), html.len()));
     }
 
     let elapsed = start_time.elapsed();
-    println!(
-        "{} {}",
-        "✓".green(),
-        format!("built in {:.2}s", elapsed.as_secs_f64()).bright_black()
-    );
+
+    // Show build completion message
+    println!();
+    println!("  {} | built in {} ms", "hop".bold(), elapsed.as_millis());
+    println!();
+
+    // Show file outputs
+    for (file_path, size) in file_outputs {
+        println!("  {:<50} {}", file_path, format_file_size(size));
+    }
+
+    println!();
+    println!("  {:<50} {}", "total", format_file_size(total_size));
+    println!();
     Ok(())
 }
 
@@ -489,17 +498,10 @@ async fn serve_from_manifest(
 
     let elapsed = start_time.elapsed();
 
-    // Show startup message
     println!();
-    println!(
-        "  {} v{} {} {} ms",
-        "hop".bold(),
-        env!("CARGO_PKG_VERSION"),
-        "ready in".bright_black(),
-        elapsed.as_millis()
-    );
+    println!("  {} | ready in {} ms", "hop".bold(), elapsed.as_millis());
     println!();
-    println!("  {} http://{}:{}/", "➜".green(), host, port,);
+    println!("  {} http://{}:{}/", "➜".green(), host, port);
     println!();
 
     axum::serve(listener, router)
