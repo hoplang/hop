@@ -44,17 +44,6 @@ pub fn compile_hop_program(hop_dir: &Path) -> anyhow::Result<runtime::Program> {
         .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
 }
 
-/// Format file size.
-fn format_file_size(bytes: usize) -> String {
-    if bytes < 1024 {
-        format!("{} B", bytes)
-    } else if bytes < 1024 * 1024 {
-        format!("{:.2} kB", bytes as f64 / 1024.0)
-    } else {
-        format!("{:.2} MB", bytes as f64 / (1024.0 * 1024.0))
-    }
-}
-
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ManifestEntry {
     /// The output file path
@@ -94,6 +83,9 @@ enum Commands {
         /// Output directory
         #[arg(long)]
         outdir: String,
+        /// Directory containing hop files
+        #[arg(long, default_value = "./hop")]
+        hopdir: String,
     },
     /// Start an HTTP server for serving hop templates from a manifest
     Serve {
@@ -119,21 +111,36 @@ enum Commands {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    let print_header = |action: &str, elapsed: u128| {
+    fn print_header(action: &str, elapsed: u128) {
         use colored::*;
         println!();
         println!("  {} | {} in {} ms", "hop".bold(), action, elapsed);
         println!();
-    };
+    }
+
+    /// Format file size.
+    fn format_file_size(bytes: usize) -> String {
+        if bytes < 1024 {
+            format!("{} B", bytes)
+        } else if bytes < 1024 * 1024 {
+            format!("{:.2} kB", bytes as f64 / 1024.0)
+        } else {
+            format!("{:.2} MB", bytes as f64 / (1024.0 * 1024.0))
+        }
+    }
 
     match &cli.command {
         Some(Commands::Lsp) => {
             lsp::run_lsp().await;
         }
-        Some(Commands::Build { manifest, outdir }) => {
+        Some(Commands::Build {
+            manifest,
+            outdir,
+            hopdir,
+        }) => {
             use std::time::Instant;
             let start_time = Instant::now();
-            let mut outputs = build_from_manifest(manifest, outdir)?;
+            let mut outputs = build_from_manifest(manifest, outdir, hopdir)?;
             let elapsed = start_time.elapsed();
 
             print_header("built", elapsed.as_millis());
@@ -178,6 +185,7 @@ async fn main() -> anyhow::Result<()> {
 fn build_from_manifest(
     manifest_path: &str,
     output_dir_str: &str,
+    hopdir: &str,
 ) -> anyhow::Result<Vec<(String, usize)>> {
     use anyhow::Context;
     use std::fs;
@@ -189,7 +197,7 @@ fn build_from_manifest(
     let manifest: Manifest = serde_json::from_str(&manifest_content)
         .with_context(|| format!("Failed to parse manifest file {}", manifest_path))?;
 
-    let program = compile_hop_program(Path::new("./hop"))?;
+    let program = compile_hop_program(Path::new(hopdir))?;
 
     let mut file_outputs = Vec::new();
 
@@ -336,6 +344,24 @@ fn build_and_execute(
         .map_err(|e| anyhow::anyhow!("Failed to execute {}::{}: {}", module_name, entrypoint, e))
 }
 
+fn create_error_page(error: &anyhow::Error) -> String {
+    format!(
+        r#"<!DOCTYPE html>
+<html>
+<head>
+    <title>Error</title>
+</head>
+<body style="background: black; color: white; max-width: 1200px; padding: 32px;">
+    <div>
+        <div>Error</div>
+        <pre>{}</pre>
+    </div>
+</body>
+</html>"#,
+        escape_html(format!("{:#}", error).as_str()),
+    )
+}
+
 async fn serve_from_manifest(
     manifest_path: &str,
     servedir: Option<&str>,
@@ -382,18 +408,14 @@ async fn serve_from_manifest(
         // Read and parse manifest
         let manifest_content = fs::read_to_string(mp).unwrap();
         let manifest: Manifest = serde_json::from_str(&manifest_content).unwrap();
-        let mut json_files = std::collections::HashSet::new();
         for entry in &manifest.files {
-            if let Some(data_file) = &entry.data {
-                json_files.insert(data_file.clone());
-            }
-        }
-        for json_file in &json_files {
-            let json_path = std::path::Path::new(json_file);
-            if json_path.exists() {
-                watcher
-                    .watch(json_path, RecursiveMode::NonRecursive)
-                    .unwrap_or_else(|_| panic!("Failed to watch JSON file: {}", json_file));
+            if let Some(json_file) = &entry.data {
+                let json_path = std::path::Path::new(json_file);
+                if json_path.exists() {
+                    watcher
+                        .watch(json_path, RecursiveMode::NonRecursive)
+                        .unwrap_or_else(|_| panic!("Failed to watch JSON file: {}", json_file));
+                }
             }
         }
 
@@ -420,8 +442,20 @@ async fn serve_from_manifest(
     let hopdir_for_handler = hopdir.to_string();
     let request_handler = async move |req: axum::extract::Request| {
         // Read and parse manifest
-        let manifest_content = fs::read_to_string(&mp).unwrap();
-        let manifest: Manifest = serde_json::from_str(&manifest_content).unwrap();
+        let manifest_content = match fs::read_to_string(&mp) {
+            Ok(content) => content,
+            Err(e) => {
+                let error = anyhow::anyhow!("Failed to read manifest file: {}", e);
+                return Ok(axum::response::Html(create_error_page(&error)));
+            }
+        };
+        let manifest: Manifest = match serde_json::from_str(&manifest_content) {
+            Ok(manifest) => manifest,
+            Err(e) => {
+                let error = anyhow::anyhow!("Failed to parse manifest file: {}", e);
+                return Ok(axum::response::Html(create_error_page(&error)));
+            }
+        };
         let path = req.uri().path();
 
         // Convert request path to file path format
@@ -450,21 +484,7 @@ async fn serve_from_manifest(
                     let html_with_hot_reload = inject_hot_reload_script(&html);
                     Ok(axum::response::Html(html_with_hot_reload))
                 }
-                Err(e) => Ok(axum::response::Html(format!(
-                    r#"<!DOCTYPE html>
-<html>
-<head>
-    <title>Error</title>
-</head>
-<body style="background: black; color: white; max-width: 1200px; padding: 32px;">
-    <div>
-        <div>Error</div>
-        <div>{}</div>
-    </div>
-</body>
-</html>"#,
-                    escape_html(format!("{:#}", e).as_str()),
-                ))),
+                Err(e) => Ok(axum::response::Html(create_error_page(&e))),
             }
         } else {
             Err(StatusCode::NOT_FOUND)
@@ -530,6 +550,7 @@ mod tests {
         let result = build_from_manifest(
             dir.join("manifest.json").to_str().unwrap(),
             dir.join("out").to_str().unwrap(),
+            dir.join("hop").to_str().unwrap(),
         );
         assert!(result.is_err());
         assert!(
@@ -639,6 +660,40 @@ mod tests {
         response.assert_status_ok();
         let body = response.text();
         assert!(body.contains("message is bar"));
+        Ok(())
+    }
+
+    /// When the user calls `hop serve` with a manifest file that contains invalid
+    /// json, an error message should be returned when the user tries to render a page.
+    #[tokio::test]
+    async fn test_serve_from_manifest_with_invalid_json_in_manifest() -> anyhow::Result<()> {
+        let dir = temp_dir_from_txtar(
+            r#"
+-- hop/test.hop --
+<component name="foo">
+  message is foo
+</component>
+<component name="bar">
+  message is bar
+</component>
+-- manifest.json --
+{
+  "file
+"#,
+        )?;
+
+        let router = serve_from_manifest(
+            dir.join("manifest.json").to_str().unwrap(),
+            None,
+            dir.join("hop").to_str().unwrap(),
+        )
+        .await?;
+
+        let server = TestServer::new(router).unwrap();
+
+        let response = server.get("/").await;
+        let body = response.text();
+        assert!(body.contains("Failed to parse manifest file"));
         Ok(())
     }
 
