@@ -12,6 +12,7 @@ mod typechecker;
 mod unifier;
 
 use clap::{CommandFactory, Parser, Subcommand};
+use common::escape_html;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -429,10 +430,21 @@ async fn serve_from_manifest(
                     let html_with_hot_reload = inject_hot_reload_script(&html);
                     Ok(axum::response::Html(html_with_hot_reload))
                 }
-                Err(e) => {
-                    eprintln!("Error: {:#}", e);
-                    Err(StatusCode::INTERNAL_SERVER_ERROR)
-                }
+                Err(e) => Ok(axum::response::Html(format!(
+                    r#"<!DOCTYPE html>
+<html>
+<head>
+    <title>Error</title>
+</head>
+<body style="background: black; color: white; max-width: 1200px; padding: 32px;">
+    <div>
+        <div>Error</div>
+        <div>{}</div>
+    </div>
+</body>
+</html>"#,
+                    escape_html(format!("{:#}", e).as_str()),
+                ))),
             }
         } else {
             Err(StatusCode::NOT_FOUND)
