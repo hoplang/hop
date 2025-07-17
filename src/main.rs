@@ -199,7 +199,8 @@ fn build_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Res
     println!("  {} | built in {} ms", "hop".bold(), elapsed.as_millis());
     println!();
 
-    // Show file outputs
+    // Show file outputs (sorted by filename)
+    file_outputs.sort_by(|a, b| a.0.cmp(&b.0));
     for (file_path, size) in file_outputs {
         println!("  {:<50} {}", file_path, format_file_size(size));
     }
