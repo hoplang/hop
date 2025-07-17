@@ -268,59 +268,52 @@ fn build_and_execute(
     module_name: &str,
     entrypoint: &str,
     data_file: Option<&str>,
-) -> Result<String, String> {
+) -> anyhow::Result<String> {
+    use anyhow::Context;
     use compiler::Compiler;
     use std::fs;
 
     let hop_dir = std::path::Path::new("./hop");
-    if !hop_dir.exists() {
-        return Err("./hop directory does not exist".to_string());
-    }
+    anyhow::ensure!(hop_dir.exists(), "./hop directory does not exist");
 
     // Load and compile all hop modules for this request
     let mut compiler = Compiler::new();
-    match fs::read_dir(hop_dir) {
-        Ok(entries) => {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|s| s.to_str()) == Some("hop") {
-                    let module_name = path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("unknown")
-                        .to_string();
+    for entry in fs::read_dir(hop_dir).context("Failed to read ./hop directory")? {
+        let entry = entry.context("Failed to read directory entry")?;
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) == Some("hop") {
+            let module_name = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .context("Invalid hop file name")?
+                .to_string();
 
-                    match fs::read_to_string(&path) {
-                        Ok(content) => {
-                            compiler.add_module(module_name, content);
-                        }
-                        Err(e) => {
-                            return Err(format!("Error reading file {:?}: {}", path, e));
-                        }
-                    }
-                }
-            }
-        }
-        Err(e) => {
-            return Err(format!("Error reading ./hop directory: {}", e));
+            let content = fs::read_to_string(&path)
+                .with_context(|| format!("Failed to read file {:?}", path))?;
+
+            compiler.add_module(module_name, content);
         }
     }
 
-    let program = compiler.compile()?;
+    let program = compiler
+        .compile()
+        .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))?;
 
     // Load data from file if specified
     let data = match data_file {
         Some(data_file_path) => {
             let json_str = fs::read_to_string(data_file_path)
-                .map_err(|e| format!("Error reading data file {}: {}", data_file_path, e))?;
+                .with_context(|| format!("Failed to read data file {}", data_file_path))?;
             serde_json::from_str(&json_str)
-                .map_err(|e| format!("Error parsing JSON from file {}: {}", data_file_path, e))?
+                .with_context(|| format!("Failed to parse JSON from file {}", data_file_path))?
         }
         None => serde_json::Value::Null,
     };
 
     // Execute the entrypoint
-    program.execute(module_name, entrypoint, data)
+    program
+        .execute(module_name, entrypoint, data)
+        .map_err(|e| anyhow::anyhow!("Failed to execute {}::{}: {}", module_name, entrypoint, e))
 }
 
 async fn build_and_serve_from_manifest(
@@ -468,7 +461,7 @@ async fn build_and_serve_from_manifest(
                             Ok(Html(html_with_hot_reload))
                         }
                         Err(e) => {
-                            eprintln!("Error: {}", e);
+                            eprintln!("Error: {:#}", e);
                             Err(StatusCode::INTERNAL_SERVER_ERROR)
                         }
                     }
