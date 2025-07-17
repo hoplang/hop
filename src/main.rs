@@ -119,12 +119,33 @@ enum Commands {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
+    let print_header = |action: &str, elapsed: u128| {
+        use colored::*;
+        println!();
+        println!("  {} | {} in {} ms", "hop".bold(), action, elapsed);
+        println!();
+    };
+
     match &cli.command {
         Some(Commands::Lsp) => {
             lsp::run_lsp().await;
         }
         Some(Commands::Build { manifest, outdir }) => {
-            build_from_manifest(manifest, outdir)?;
+            use std::time::Instant;
+            let start_time = Instant::now();
+            let mut outputs = build_from_manifest(manifest, outdir)?;
+            let elapsed = start_time.elapsed();
+
+            print_header("built", elapsed.as_millis());
+            outputs.sort_by(|a, b| a.0.cmp(&b.0));
+            let mut total_size = 0;
+            for (file_path, size) in outputs {
+                println!("  {:<50} {}", file_path, format_file_size(size));
+                total_size += size;
+            }
+            println!();
+            println!("  {:<50} {}", "total", format_file_size(total_size));
+            println!();
         }
         Some(Commands::Serve {
             manifest,
@@ -133,9 +154,16 @@ async fn main() -> anyhow::Result<()> {
             servedir,
             hopdir,
         }) => {
-            let router =
-                serve_from_manifest(manifest, host, *port, servedir.as_deref(), hopdir).await?;
+            use colored::*;
+            use std::time::Instant;
+            let start_time = Instant::now();
+            let router = serve_from_manifest(manifest, servedir.as_deref(), hopdir).await?;
+            let elapsed = start_time.elapsed();
             let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port)).await?;
+
+            print_header("ready", elapsed.as_millis());
+            println!("  {} http://{}:{}/", "➜".green(), host, port);
+            println!();
             axum::serve(listener, router).await?;
         }
         None => {
@@ -147,14 +175,13 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn build_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Result<()> {
+fn build_from_manifest(
+    manifest_path: &str,
+    output_dir_str: &str,
+) -> anyhow::Result<Vec<(String, usize)>> {
     use anyhow::Context;
-    use colored::*;
     use std::fs;
     use std::path::Path;
-    use std::time::Instant;
-
-    let start_time = Instant::now();
 
     let manifest_content = fs::read_to_string(manifest_path)
         .with_context(|| format!("Failed to read manifest file {}", manifest_path))?;
@@ -164,7 +191,6 @@ fn build_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Res
 
     let program = compile_hop_program(Path::new("./hop"))?;
 
-    let mut total_size = 0;
     let mut file_outputs = Vec::new();
 
     for entry in &manifest.files {
@@ -206,23 +232,10 @@ fn build_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Res
         fs::write(&output_file_path, &html)
             .with_context(|| format!("Failed to write to file {:?}", output_file_path))?;
 
-        total_size += html.len();
         file_outputs.push((output_file_path.display().to_string(), html.len()));
     }
 
-    let elapsed = start_time.elapsed();
-
-    println!();
-    println!("  {} | built in {} ms", "hop".bold(), elapsed.as_millis());
-    println!();
-    file_outputs.sort_by(|a, b| a.0.cmp(&b.0));
-    for (file_path, size) in file_outputs {
-        println!("  {:<50} {}", file_path, format_file_size(size));
-    }
-    println!();
-    println!("  {:<50} {}", "total", format_file_size(total_size));
-    println!();
-    Ok(())
+    Ok(file_outputs)
 }
 
 // Function to inject hot reload script into HTML
@@ -325,24 +338,18 @@ fn build_and_execute(
 
 async fn serve_from_manifest(
     manifest_path: &str,
-    host: &str,
-    port: u16,
     servedir: Option<&str>,
     hopdir: &str,
 ) -> anyhow::Result<axum::Router> {
     use axum::http::StatusCode;
     use axum::response::sse::{Event, Sse};
     use axum::routing::get;
-    use colored::*;
     use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
     use std::fs;
     use std::sync::Arc;
-    use std::time::Instant;
     use tokio::sync::broadcast;
     use tokio_stream::StreamExt;
     use tokio_stream::wrappers::BroadcastStream;
-
-    let start_time = Instant::now();
 
     // Set up broadcast channel for hot reload events
     let (reload_tx, _) = broadcast::channel::<()>(100);
@@ -484,14 +491,6 @@ async fn serve_from_manifest(
         router = router.fallback(request_handler);
     }
 
-    let elapsed = start_time.elapsed();
-
-    println!();
-    println!("  {} | ready in {} ms", "hop".bold(), elapsed.as_millis());
-    println!();
-    println!("  {} http://{}:{}/", "➜".green(), host, port);
-    println!();
-
     Ok(router)
 }
 
@@ -574,8 +573,6 @@ mod tests {
 
         let router = serve_from_manifest(
             dir.join("manifest.json").to_str().unwrap(),
-            "127.0.0.1",
-            3000,
             None,
             dir.join("hop").to_str().unwrap(),
         )
@@ -619,8 +616,6 @@ mod tests {
 
         let router = serve_from_manifest(
             dir.join("manifest.json").to_str().unwrap(),
-            "127.0.0.1",
-            3000,
             None,
             dir.join("hop").to_str().unwrap(),
         )
@@ -681,8 +676,6 @@ console.log("Hello from static file");
 
         let router = serve_from_manifest(
             dir.join("manifest.json").to_str().unwrap(),
-            "127.0.0.1",
-            3000,
             Some(dir.join("static").to_str().unwrap()),
             dir.join("hop").to_str().unwrap(),
         )
@@ -691,19 +684,16 @@ console.log("Hello from static file");
 
         let server = TestServer::new(router).unwrap();
 
-        // Test that the hop component still works
         let response = server.get("/").await;
         response.assert_status_ok();
         let body = response.text();
         assert!(body.contains("hello world!"));
 
-        // Test that static CSS file is served
         let response = server.get("/style.css").await;
         response.assert_status_ok();
         let body = response.text();
         assert!(body.contains("body { background: blue; }"));
 
-        // Test that static JS file is served
         let response = server.get("/script.js").await;
         response.assert_status_ok();
         let body = response.text();
