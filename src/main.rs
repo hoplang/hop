@@ -291,7 +291,7 @@ eventSource.onerror = function(event) {
 // Function to compile hop modules and execute a specific entrypoint
 fn compile_and_execute(
     module_name: &str,
-    function_name: &str,
+    entrypoint: &str,
     data_file: Option<&str>,
 ) -> Result<String, String> {
     use compiler::Compiler;
@@ -331,12 +331,7 @@ fn compile_and_execute(
         }
     }
 
-    let program = match compiler.compile() {
-        Ok(program) => program,
-        Err(errors) => {
-            return Err(format!("Compilation errors: {}", errors));
-        }
-    };
+    let program = compiler.compile()?;
 
     // Load data from file if specified
     let data = match data_file {
@@ -350,7 +345,7 @@ fn compile_and_execute(
     };
 
     // Execute the entrypoint
-    program.execute(module_name, function_name, data)
+    program.execute(module_name, entrypoint, data)
 }
 
 async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16, servedir: Option<&str>) {
@@ -416,7 +411,7 @@ async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16, servedi
                         && event.paths.iter().any(|p| {
                             matches!(p.extension().and_then(|s| s.to_str()), Some("hop" | "json"))
                         });
-                    
+
                     if should_reload {
                         let _ = tx.try_send(());
                     }
