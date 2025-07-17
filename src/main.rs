@@ -109,6 +109,9 @@ enum Commands {
         /// Directory to serve static files from
         #[arg(long)]
         servedir: Option<String>,
+        /// Directory containing hop files
+        #[arg(long, default_value = "./hop")]
+        hopdir: String,
     },
 }
 
@@ -128,8 +131,10 @@ async fn main() -> anyhow::Result<()> {
             port,
             host,
             servedir,
+            hopdir,
         }) => {
-            let router = serve_from_manifest(manifest, host, *port, servedir.as_deref()).await?;
+            let router =
+                serve_from_manifest(manifest, host, *port, servedir.as_deref(), hopdir).await?;
             let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port)).await?;
             axum::serve(listener, router).await?;
         }
@@ -166,10 +171,14 @@ fn build_from_manifest(manifest_path: &str, output_dir_str: &str) -> anyhow::Res
         // Parse the json data used to render the output file
         let data = match &entry.data {
             Some(data_file_path) => {
-                let json_str = fs::read_to_string(data_file_path)
-                    .with_context(|| format!("Failed to read data file {}", data_file_path))?;
-                serde_json::from_str(&json_str)
-                    .with_context(|| format!("Failed to parse JSON from file {}", data_file_path))?
+                // Resolve data file path relative to manifest file
+                let manifest_dir = Path::new(manifest_path).parent().unwrap_or(Path::new("."));
+                let data_path = manifest_dir.join(data_file_path);
+                let json_str = fs::read_to_string(&data_path)
+                    .with_context(|| format!("Failed to read data file {}", data_path.display()))?;
+                serde_json::from_str(&json_str).with_context(|| {
+                    format!("Failed to parse JSON from file {}", data_path.display())
+                })?
             }
             None => serde_json::Value::Null,
         };
@@ -283,21 +292,27 @@ fn build_and_execute(
     module_name: &str,
     entrypoint: &str,
     data_file: Option<&str>,
+    hopdir: &str,
+    manifest_path: &str,
 ) -> anyhow::Result<String> {
     use anyhow::Context;
     use std::fs;
     use std::path::Path;
 
     // Load and compile all hop modules for this request
-    let program = compile_hop_program(Path::new("./hop"))?;
+    let program = compile_hop_program(Path::new(hopdir))?;
 
     // Load data from file if specified
     let data = match data_file {
         Some(data_file_path) => {
-            let json_str = fs::read_to_string(data_file_path)
-                .with_context(|| format!("Failed to read data file {}", data_file_path))?;
-            serde_json::from_str(&json_str)
-                .with_context(|| format!("Failed to parse JSON from file {}", data_file_path))?
+            // Resolve data file path relative to manifest file
+            let manifest_dir = Path::new(manifest_path).parent().unwrap_or(Path::new("."));
+            let data_path = manifest_dir.join(data_file_path);
+            let json_str = fs::read_to_string(&data_path)
+                .with_context(|| format!("Failed to read data file {}", data_path.display()))?;
+            serde_json::from_str(&json_str).with_context(|| {
+                format!("Failed to parse JSON from file {}", data_path.display())
+            })?
         }
         None => serde_json::Value::Null,
     };
@@ -313,6 +328,7 @@ async fn serve_from_manifest(
     host: &str,
     port: u16,
     servedir: Option<&str>,
+    hopdir: &str,
 ) -> anyhow::Result<axum::Router> {
     use axum::http::StatusCode;
     use axum::response::sse::{Event, Sse};
@@ -334,7 +350,7 @@ async fn serve_from_manifest(
 
     // Set up file watcher for hot reloading
     let watcher_tx = reload_tx.clone();
-    let hop_dir_path = std::path::Path::new("./hop").to_path_buf();
+    let hop_dir_path = std::path::Path::new(hopdir).to_path_buf();
     let mp = manifest_path.to_string();
     tokio::spawn(async move {
         let (tx, mut rx) = tokio::sync::mpsc::channel(100);
@@ -394,34 +410,44 @@ async fn serve_from_manifest(
     );
 
     let mp = manifest_path.to_string();
-    let request_handler = async |req: axum::extract::Request| {
-        // Read and parse manifest
-        let manifest_content = fs::read_to_string(mp).unwrap();
-        let manifest: Manifest = serde_json::from_str(&manifest_content).unwrap();
-        let path = req.uri().path();
+    let hopdir_for_handler = hopdir.to_string();
+    let request_handler = {
+        let hopdir_clone = hopdir_for_handler.clone();
+        let mp_clone = mp.clone();
+        async move |req: axum::extract::Request| {
+            // Read and parse manifest
+            let manifest_content = fs::read_to_string(&mp_clone).unwrap();
+            let manifest: Manifest = serde_json::from_str(&manifest_content).unwrap();
+            let path = req.uri().path();
 
-        // Convert request path to file path format
-        let file_path = match path {
-            "/" => "index.html",
-            path if path.starts_with('/') => &path[1..],
-            path => path,
-        };
+            // Convert request path to file path format
+            let file_path = match path {
+                "/" => "index.html",
+                path if path.starts_with('/') => &path[1..],
+                path => path,
+            };
 
-        // Find matching manifest entry
-        let entry = manifest.files.iter().find(|entry| {
-            entry.path == file_path
-                || (entry.path.ends_with(".html")
-                    && entry.path.strip_suffix(".html").unwrap() == file_path)
-        });
+            // Find matching manifest entry
+            let entry = manifest.files.iter().find(|entry| {
+                entry.path == file_path
+                    || (entry.path.ends_with(".html")
+                        && entry.path.strip_suffix(".html").unwrap() == file_path)
+            });
 
-        if let Some(entry) = entry {
-            match build_and_execute(&entry.module, &entry.entrypoint, entry.data.as_deref()) {
-                Ok(html) => {
-                    let html_with_hot_reload = inject_hot_reload_script(&html);
-                    Ok(axum::response::Html(html_with_hot_reload))
-                }
-                Err(e) => Ok(axum::response::Html(format!(
-                    r#"<!DOCTYPE html>
+            if let Some(entry) = entry {
+                match build_and_execute(
+                    &entry.module,
+                    &entry.entrypoint,
+                    entry.data.as_deref(),
+                    &hopdir_clone,
+                    &mp_clone,
+                ) {
+                    Ok(html) => {
+                        let html_with_hot_reload = inject_hot_reload_script(&html);
+                        Ok(axum::response::Html(html_with_hot_reload))
+                    }
+                    Err(e) => Ok(axum::response::Html(format!(
+                        r#"<!DOCTYPE html>
 <html>
 <head>
     <title>Error</title>
@@ -433,11 +459,12 @@ async fn serve_from_manifest(
     </div>
 </body>
 </html>"#,
-                    escape_html(format!("{:#}", e).as_str()),
-                ))),
+                        escape_html(format!("{:#}", e).as_str()),
+                    ))),
+                }
+            } else {
+                Err(StatusCode::NOT_FOUND)
             }
-        } else {
-            Err(StatusCode::NOT_FOUND)
         }
     };
 
@@ -470,23 +497,48 @@ async fn serve_from_manifest(
 
 #[cfg(test)]
 mod tests {
+    use axum_test::TestServer;
+    use simple_txtar::Archive;
     use std::{env, fs};
 
     use super::*;
+
+    fn temp_dir_from_txtar(archive: &str) -> std::io::Result<std::path::PathBuf> {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        let temp_dir =
+            env::temp_dir().join(format!("hop_test_{}_{}", std::process::id(), timestamp));
+        fs::create_dir_all(&temp_dir)?;
+        for file in Archive::from(archive).iter() {
+            let file_path = temp_dir.join(&file.name);
+            if let Some(parent) = file_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::write(&file_path, &file.content)?;
+        }
+        Ok(temp_dir)
+    }
 
     /// When the user calls `hop build` and the manifest file does not exist, an error should be
     /// returned.
     #[test]
     fn test_build_nonexistent_manifest() {
-        let dir = env::temp_dir();
-        let manifest_json = dir.join("non-existent-manifest.json");
-        let output_dir = dir.join("output");
-        let hop_dir = dir.join("hop");
-        assert!(env::set_current_dir(&dir).is_ok());
-        assert!(fs::create_dir_all(&hop_dir).is_ok());
+        let dir = temp_dir_from_txtar(
+            r#"
+-- hop/test.hop --
+<component name="hello" params-as="p">
+  <p inner-text="p.name"></p>
+</component>
+-- data.json --
+{"name": "foo bar"}
+"#,
+        )
+        .unwrap();
         let result = build_from_manifest(
-            manifest_json.to_str().unwrap(),
-            output_dir.to_str().unwrap(),
+            dir.join("manifest.json").to_str().unwrap(),
+            dir.join("out").to_str().unwrap(),
         );
         assert!(result.is_err());
         assert!(
@@ -495,5 +547,52 @@ mod tests {
                 .to_string()
                 .contains("Failed to read manifest file")
         );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn test_serve_from_manifest() {
+        let dir = temp_dir_from_txtar(
+            r#"
+-- hop/test.hop --
+<component name="hello" params-as="p">
+  <p inner-text="p.name"></p>
+</component>
+-- manifest.json --
+{
+  "files": [
+    {
+      "path": "index.html",
+      "module": "test",
+      "entrypoint": "hello",
+      "data": "data.json"
+    }
+  ]
+}
+-- data.json --
+{"name": "foo bar"}
+"#,
+        )
+        .unwrap();
+
+        let router = serve_from_manifest(
+            dir.join("manifest.json").to_str().unwrap(),
+            "127.0.0.1",
+            3000,
+            None,
+            dir.join("hop").to_str().unwrap(),
+        )
+        .await
+        .unwrap();
+
+        let server = TestServer::new(router).unwrap();
+
+        let response = server.get("/").await;
+        response.assert_status_ok();
+
+        let body = response.text();
+        assert!(body.contains("foo bar"));
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }
