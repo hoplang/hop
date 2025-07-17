@@ -418,43 +418,40 @@ async fn serve_from_manifest(
 
     let mp = manifest_path.to_string();
     let hopdir_for_handler = hopdir.to_string();
-    let request_handler = {
-        let hopdir_clone = hopdir_for_handler.clone();
-        let mp_clone = mp.clone();
-        async move |req: axum::extract::Request| {
-            // Read and parse manifest
-            let manifest_content = fs::read_to_string(&mp_clone).unwrap();
-            let manifest: Manifest = serde_json::from_str(&manifest_content).unwrap();
-            let path = req.uri().path();
+    let request_handler = async move |req: axum::extract::Request| {
+        // Read and parse manifest
+        let manifest_content = fs::read_to_string(&mp).unwrap();
+        let manifest: Manifest = serde_json::from_str(&manifest_content).unwrap();
+        let path = req.uri().path();
 
-            // Convert request path to file path format
-            let file_path = match path {
-                "/" => "index.html",
-                path if path.starts_with('/') => &path[1..],
-                path => path,
-            };
+        // Convert request path to file path format
+        let file_path = match path {
+            "/" => "index.html",
+            path if path.starts_with('/') => &path[1..],
+            path => path,
+        };
 
-            // Find matching manifest entry
-            let entry = manifest.files.iter().find(|entry| {
-                entry.path == file_path
-                    || (entry.path.ends_with(".html")
-                        && entry.path.strip_suffix(".html").unwrap() == file_path)
-            });
+        // Find matching manifest entry
+        let entry = manifest.files.iter().find(|entry| {
+            entry.path == file_path
+                || (entry.path.ends_with(".html")
+                    && entry.path.strip_suffix(".html").unwrap() == file_path)
+        });
 
-            if let Some(entry) = entry {
-                match build_and_execute(
-                    &entry.module,
-                    &entry.entrypoint,
-                    entry.data.as_deref(),
-                    &hopdir_clone,
-                    &mp_clone,
-                ) {
-                    Ok(html) => {
-                        let html_with_hot_reload = inject_hot_reload_script(&html);
-                        Ok(axum::response::Html(html_with_hot_reload))
-                    }
-                    Err(e) => Ok(axum::response::Html(format!(
-                        r#"<!DOCTYPE html>
+        if let Some(entry) = entry {
+            match build_and_execute(
+                &entry.module,
+                &entry.entrypoint,
+                entry.data.as_deref(),
+                &hopdir_for_handler,
+                &mp,
+            ) {
+                Ok(html) => {
+                    let html_with_hot_reload = inject_hot_reload_script(&html);
+                    Ok(axum::response::Html(html_with_hot_reload))
+                }
+                Err(e) => Ok(axum::response::Html(format!(
+                    r#"<!DOCTYPE html>
 <html>
 <head>
     <title>Error</title>
@@ -466,12 +463,11 @@ async fn serve_from_manifest(
     </div>
 </body>
 </html>"#,
-                        escape_html(format!("{:#}", e).as_str()),
-                    ))),
-                }
-            } else {
-                Err(StatusCode::NOT_FOUND)
+                    escape_html(format!("{:#}", e).as_str()),
+                ))),
             }
+        } else {
+            Err(StatusCode::NOT_FOUND)
         }
     };
 
