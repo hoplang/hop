@@ -78,7 +78,10 @@ async fn main() {
             lsp::run_lsp().await;
         }
         Some(Commands::Render { manifest, outdir }) => {
-            render_from_manifest(manifest, outdir);
+            if let Err(e) = render_from_manifest(manifest, outdir) {
+                eprintln!("Error: {:#}", e);
+                std::process::exit(1);
+            }
         }
         Some(Commands::Serve {
             manifest,
@@ -86,7 +89,10 @@ async fn main() {
             host,
             servedir,
         }) => {
-            serve_from_manifest(manifest, host, *port, servedir.as_deref()).await;
+            if let Err(e) = serve_from_manifest(manifest, host, *port, servedir.as_deref()).await {
+                eprintln!("Error: {:#}", e);
+                std::process::exit(1);
+            }
         }
         None => {
             let mut cmd = Cli::command();
@@ -95,128 +101,91 @@ async fn main() {
     }
 }
 
-fn render_from_manifest(manifest_path: &str, output_dir: &str) {
+fn render_from_manifest(manifest_path: &str, output_dir: &str) -> anyhow::Result<()> {
+    use anyhow::Context;
     use compiler::Compiler;
     use std::fs;
     use std::path::Path;
 
-    let manifest_content = match fs::read_to_string(manifest_path) {
-        Ok(content) => content,
-        Err(e) => {
-            eprintln!("Error reading manifest file {}: {}", manifest_path, e);
-            std::process::exit(1);
-        }
-    };
+    let manifest_content = fs::read_to_string(manifest_path)
+        .with_context(|| format!("Failed to read manifest file {}", manifest_path))?;
 
-    let manifest: Manifest = match serde_json::from_str(&manifest_content) {
-        Ok(manifest) => manifest,
-        Err(e) => {
-            eprintln!("Error parsing manifest file {}: {}", manifest_path, e);
-            std::process::exit(1);
-        }
-    };
+    let manifest: Manifest = serde_json::from_str(&manifest_content)
+        .with_context(|| format!("Failed to parse manifest file {}", manifest_path))?;
 
     let hop_dir = Path::new("./hop");
     if !hop_dir.exists() {
-        eprintln!("Error: ./hop directory does not exist");
-        std::process::exit(1);
+        anyhow::bail!("./hop directory does not exist");
     }
 
     let output_path = Path::new(output_dir);
     if !output_path.exists() {
-        if let Err(e) = fs::create_dir_all(output_path) {
-            eprintln!("Error creating output directory {}: {}", output_dir, e);
-            std::process::exit(1);
-        }
+        fs::create_dir_all(output_path)
+            .with_context(|| format!("Failed to create output directory {}", output_dir))?;
     }
 
     let mut compiler = Compiler::new();
-    match fs::read_dir(hop_dir) {
-        Ok(entries) => {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|s| s.to_str()) == Some("hop") {
-                    let module_name = path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap()
-                        .to_string();
+    let entries = fs::read_dir(hop_dir).context("Failed to read ./hop directory")?;
 
-                    match fs::read_to_string(&path) {
-                        Ok(content) => {
-                            compiler.add_module(module_name, content);
-                        }
-                        Err(e) => {
-                            eprintln!("Error reading file {:?}: {}", path, e);
-                            std::process::exit(1);
-                        }
-                    }
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("Error reading ./hop directory: {}", e);
-            std::process::exit(1);
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) == Some("hop") {
+            let module_name = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap()
+                .to_string();
+
+            let content = fs::read_to_string(&path)
+                .with_context(|| format!("Failed to read file {:?}", path))?;
+
+            compiler.add_module(module_name, content);
         }
     }
 
-    let program = match compiler.compile() {
-        Ok(program) => program,
-        Err(errors) => {
-            eprintln!("Compilation errors: {}", errors);
-            std::process::exit(1);
-        }
-    };
+    let program = compiler
+        .compile()
+        .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))?;
 
     println!("Rendering from manifest: {}", manifest_path);
     for (file_path, entry) in &manifest.files {
         let data = match &entry.data {
             Some(data_file_path) => {
-                let json_str = fs::read_to_string(data_file_path).unwrap_or_else(|e| {
-                    eprintln!("Error reading data file {}: {}", data_file_path, e);
-                    std::process::exit(1);
-                });
-                serde_json::from_str(&json_str).unwrap_or_else(|e| {
-                    eprintln!("Error parsing JSON from file {}: {}", data_file_path, e);
-                    std::process::exit(1);
-                })
+                let json_str = fs::read_to_string(data_file_path)
+                    .with_context(|| format!("Failed to read data file {}", data_file_path))?;
+                serde_json::from_str(&json_str)
+                    .with_context(|| format!("Failed to parse JSON from file {}", data_file_path))?
             }
             None => serde_json::Value::Null,
         };
 
-        let html = match program.execute(&entry.module, &entry.entrypoint, data) {
-            Ok(html) => html,
-            Err(e) => {
-                eprintln!(
-                    "Error executing {}::{}: {}",
-                    entry.module, entry.entrypoint, e
-                );
-                std::process::exit(1);
-            }
-        };
+        let html = program
+            .execute(&entry.module, &entry.entrypoint, data)
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to execute {}::{}: {}",
+                    entry.module,
+                    entry.entrypoint,
+                    e
+                )
+            })?;
 
         let output_file_path = output_path.join(file_path);
         if let Some(parent) = output_file_path.parent() {
             if !parent.exists() {
-                if let Err(e) = fs::create_dir_all(parent) {
-                    eprintln!("Error creating directory {:?}: {}", parent, e);
-                    std::process::exit(1);
-                }
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("Failed to create directory {:?}", parent))?;
             }
         }
 
-        match fs::write(&output_file_path, html) {
-            Ok(_) => {
-                println!("Generated {} -> {:?}", file_path, output_file_path);
-            }
-            Err(e) => {
-                eprintln!("Error writing to file {:?}: {}", output_file_path, e);
-                std::process::exit(1);
-            }
-        }
+        fs::write(&output_file_path, html)
+            .with_context(|| format!("Failed to write to file {:?}", output_file_path))?;
+
+        println!("Generated {} -> {:?}", file_path, output_file_path);
     }
 
     println!("Rendered {} files to {}", manifest.files.len(), output_dir);
+    Ok(())
 }
 
 // Function to inject hot reload script into HTML
@@ -341,7 +310,13 @@ fn compile_and_execute(
     program.execute(module_name, entrypoint, data)
 }
 
-async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16, servedir: Option<&str>) {
+async fn serve_from_manifest(
+    manifest_path: &str,
+    host: &str,
+    port: u16,
+    servedir: Option<&str>,
+) -> anyhow::Result<()> {
+    use anyhow::Context;
     use axum::http::StatusCode;
     use axum::response::{
         Html,
@@ -355,26 +330,15 @@ async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16, servedi
     use tokio_stream::StreamExt;
 
     // Read and parse manifest
-    let manifest_content = match fs::read_to_string(manifest_path) {
-        Ok(content) => content,
-        Err(e) => {
-            eprintln!("Error reading manifest file {}: {}", manifest_path, e);
-            std::process::exit(1);
-        }
-    };
+    let manifest_content = fs::read_to_string(manifest_path)
+        .with_context(|| format!("Failed to read manifest file {}", manifest_path))?;
 
-    let manifest: Manifest = match serde_json::from_str(&manifest_content) {
-        Ok(manifest) => manifest,
-        Err(e) => {
-            eprintln!("Error parsing manifest file {}: {}", manifest_path, e);
-            std::process::exit(1);
-        }
-    };
+    let manifest: Manifest = serde_json::from_str(&manifest_content)
+        .with_context(|| format!("Failed to parse manifest file {}", manifest_path))?;
 
     let hop_dir = std::path::Path::new("./hop");
     if !hop_dir.exists() {
-        eprintln!("Error: ./hop directory does not exist");
-        std::process::exit(1);
+        anyhow::bail!("./hop directory does not exist");
     }
 
     // Note: Compilation now happens on each request for hot reloading
@@ -504,19 +468,17 @@ async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16, servedi
     if let Some(servedir_path) = servedir {
         let servedir = std::path::Path::new(servedir_path);
         if !servedir.exists() {
-            eprintln!("Error: serve directory '{}' does not exist", servedir_path);
-            std::process::exit(1);
+            anyhow::bail!("serve directory '{}' does not exist", servedir_path);
         }
         if !servedir.is_dir() {
-            eprintln!("Error: serve path '{}' is not a directory", servedir_path);
-            std::process::exit(1);
+            anyhow::bail!("serve path '{}' is not a directory", servedir_path);
         }
         router = router.fallback_service(tower_http::services::ServeDir::new(servedir_path));
     }
 
     let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port))
         .await
-        .unwrap();
+        .with_context(|| format!("Failed to bind to {}:{}", host, port))?;
 
     println!("Hop server running on http://{}:{}", host, port);
     println!("Serving from manifest: {}", manifest_path);
@@ -533,5 +495,27 @@ async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16, servedi
         println!("  {} -> {}::{}", route_path, entry.module, entry.entrypoint);
     }
 
-    axum::serve(listener, router).await.unwrap();
+    axum::serve(listener, router)
+        .await
+        .context("Server error")?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// When the user calls `hop render` and the manifest file does not exist, an error should be
+    /// returned.
+    #[test]
+    fn test_render_from_manifest_nonexistent_manifest() {
+        let result = render_from_manifest("/tmp/non-existent-manifest.json", "/tmp/output");
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Failed to read manifest file")
+        );
+    }
 }
