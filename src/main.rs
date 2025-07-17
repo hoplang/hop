@@ -19,7 +19,7 @@ pub struct ManifestEntry {
     /// The hop module to use
     pub module: String,
     /// The function to call
-    pub function: String,
+    pub entrypoint: String,
     /// Optional data file to pass as parameters
     pub data: Option<String>,
 }
@@ -194,12 +194,12 @@ fn render_from_manifest(manifest_path: &str, output_dir: &str) {
         };
 
         // Execute the function
-        let html = match program.execute(&entry.module, &entry.function, data) {
+        let html = match program.execute(&entry.module, &entry.entrypoint, data) {
             Ok(html) => html,
             Err(e) => {
                 eprintln!(
                     "Error executing {}::{}: {}",
-                    entry.module, entry.function, e
+                    entry.module, entry.entrypoint, e
                 );
                 std::process::exit(1);
             }
@@ -503,18 +503,18 @@ async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16, servedi
         };
 
         let module = entry.module.clone();
-        let function = entry.function.clone();
+        let entrypoint = entry.entrypoint.clone();
         let data_file = entry.data.clone();
 
         router = router.route(
             &route_path,
             get(move || {
                 let module = module.clone();
-                let function = function.clone();
+                let entrypoint = entrypoint.clone();
                 let data_file = data_file.clone();
 
                 async move {
-                    match compile_and_execute(&module, &function, data_file.as_deref()) {
+                    match compile_and_execute(&module, &entrypoint, data_file.as_deref()) {
                         Ok(html) => {
                             // Inject hot reload script for development
                             let html_with_hot_reload = inject_hot_reload_script(&html);
@@ -554,7 +554,7 @@ async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16, servedi
         } else {
             format!("/{}", file_path)
         };
-        println!("  {} -> {}::{}", route_path, entry.module, entry.function);
+        println!("  {} -> {}::{}", route_path, entry.module, entry.entrypoint);
     }
 
     axum::serve(listener, router).await.unwrap();
