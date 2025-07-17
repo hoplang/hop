@@ -385,7 +385,7 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
             }
 
             TokenizerState::AttrName => {
-                if is_alphabetic(ch) || ch == '-' {
+                if is_alphanumeric_or_dash(ch) {
                     builder.append_to_current_attribute_name(&ch.to_string());
                     cursor.advance();
                     state = TokenizerState::AttrName;
