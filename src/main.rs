@@ -97,7 +97,7 @@ async fn main() -> anyhow::Result<()> {
             host,
             servedir,
         }) => {
-            build_and_serve_from_manifest(manifest, host, *port, servedir.as_deref()).await?;
+            serve_from_manifest(manifest, host, *port, servedir.as_deref()).await?;
         }
         None => {
             let mut cmd = Cli::command();
@@ -316,7 +316,7 @@ fn build_and_execute(
         .map_err(|e| anyhow::anyhow!("Failed to execute {}::{}: {}", module_name, entrypoint, e))
 }
 
-async fn build_and_serve_from_manifest(
+async fn serve_from_manifest(
     manifest_path: &str,
     host: &str,
     port: u16,
