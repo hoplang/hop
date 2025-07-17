@@ -327,33 +327,14 @@ async fn serve_from_manifest(
 
     let start_time = Instant::now();
 
-    // Read and parse manifest
-    let manifest_content = fs::read_to_string(manifest_path)
-        .with_context(|| format!("Failed to read manifest file {}", manifest_path))?;
-
-    let manifest: Manifest = serde_json::from_str(&manifest_content)
-        .with_context(|| format!("Failed to parse manifest file {}", manifest_path))?;
-
-    let hop_dir = std::path::Path::new("./hop");
-    if !hop_dir.exists() {
-        anyhow::bail!("./hop directory does not exist");
-    }
-
     // Set up broadcast channel for hot reload events
     let (reload_tx, _) = broadcast::channel::<()>(100);
     let reload_tx = Arc::new(reload_tx);
 
-    // Collect all JSON data files referenced in manifest
-    let mut json_files = std::collections::HashSet::new();
-    for entry in &manifest.files {
-        if let Some(data_file) = &entry.data {
-            json_files.insert(data_file.clone());
-        }
-    }
-
     // Set up file watcher for hot reloading
     let watcher_tx = reload_tx.clone();
-    let hop_dir_path = hop_dir.to_path_buf();
+    let hop_dir_path = std::path::Path::new("./hop").to_path_buf();
+    let mp = manifest_path.to_string();
     tokio::spawn(async move {
         let (tx, mut rx) = tokio::sync::mpsc::channel(100);
 
@@ -374,7 +355,15 @@ async fn serve_from_manifest(
             .watch(&hop_dir_path, RecursiveMode::Recursive)
             .expect("Failed to watch hop directory");
 
-        // Watch each JSON data file individually
+        // Read and parse manifest
+        let manifest_content = fs::read_to_string(mp).unwrap();
+        let manifest: Manifest = serde_json::from_str(&manifest_content).unwrap();
+        let mut json_files = std::collections::HashSet::new();
+        for entry in &manifest.files {
+            if let Some(data_file) = &entry.data {
+                json_files.insert(data_file.clone());
+            }
+        }
         for json_file in &json_files {
             let json_path = std::path::Path::new(json_file);
             if json_path.exists() {
@@ -451,7 +440,7 @@ async fn serve_from_manifest(
         }
     };
 
-    // Add static file serving as fallback if servedir is provided
+    // Add static file serving if servedir is provided
     if let Some(servedir_path) = servedir {
         let servedir = std::path::Path::new(servedir_path);
         if !servedir.exists() {
