@@ -377,6 +377,19 @@ async fn serve_from_manifest(manifest_path: &str, host: &str, port: u16, servedi
         std::process::exit(1);
     }
 
+    // Validate servedir if provided
+    if let Some(servedir_path) = servedir {
+        let servedir = std::path::Path::new(servedir_path);
+        if !servedir.exists() {
+            eprintln!("Error: serve directory '{}' does not exist", servedir_path);
+            std::process::exit(1);
+        }
+        if !servedir.is_dir() {
+            eprintln!("Error: serve path '{}' is not a directory", servedir_path);
+            std::process::exit(1);
+        }
+    }
+
     // Note: Compilation now happens on each request for hot reloading
 
     // Set up broadcast channel for hot reload events
