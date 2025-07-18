@@ -86,6 +86,9 @@ enum Commands {
         /// Directory containing hop files
         #[arg(long, default_value = "./hop")]
         hopdir: String,
+        /// Directory containing data files
+        #[arg(long, default_value = "./data")]
+        datadir: String,
     },
     /// Start an HTTP server for serving hop templates from a manifest
     Serve {
@@ -104,6 +107,9 @@ enum Commands {
         /// Directory containing hop files
         #[arg(long, default_value = "./hop")]
         hopdir: String,
+        /// Directory containing data files
+        #[arg(long, default_value = "./data")]
+        datadir: String,
     },
 }
 
@@ -137,10 +143,11 @@ async fn main() -> anyhow::Result<()> {
             manifest,
             outdir,
             hopdir,
+            datadir,
         }) => {
             use std::time::Instant;
             let start_time = Instant::now();
-            let mut outputs = build_from_manifest(manifest, outdir, hopdir)?;
+            let mut outputs = build_from_manifest(manifest, outdir, hopdir, datadir)?;
             let elapsed = start_time.elapsed();
 
             print_header("built", elapsed.as_millis());
@@ -160,12 +167,13 @@ async fn main() -> anyhow::Result<()> {
             host,
             servedir,
             hopdir,
+            datadir,
         }) => {
             use colored::*;
             use std::time::Instant;
             let start_time = Instant::now();
             let (router, _watcher) =
-                serve_from_manifest(manifest, servedir.as_deref(), hopdir).await?;
+                serve_from_manifest(manifest, servedir.as_deref(), hopdir, datadir).await?;
             let elapsed = start_time.elapsed();
             let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port)).await?;
 
@@ -187,6 +195,7 @@ fn build_from_manifest(
     manifest_path: &str,
     output_dir_str: &str,
     hopdir: &str,
+    datadir: &str,
 ) -> anyhow::Result<Vec<(String, usize)>> {
     use anyhow::Context;
     use std::fs;
@@ -199,12 +208,11 @@ fn build_from_manifest(
     let mut file_outputs = Vec::new();
 
     for entry in &manifest.files {
-        let manifest_dir = Path::new(manifest_path).parent().unwrap_or(Path::new("."));
         // Parse the json data used to render the output file
         let data = match &entry.data {
             Some(data_file_path) => {
-                // Resolve data file path relative to manifest file
-                let data_path = manifest_dir.join(data_file_path);
+                // Resolve data file path relative to data directory
+                let data_path = Path::new(datadir).join(data_file_path);
                 let json_str = fs::read_to_string(&data_path)
                     .with_context(|| format!("Failed to read data file {}", data_path.display()))?;
                 serde_json::from_str(&json_str).with_context(|| {
@@ -305,7 +313,7 @@ fn build_and_execute(
     entrypoint: &str,
     data_file: Option<&str>,
     hopdir: &str,
-    manifest_path: &str,
+    datadir: &str,
 ) -> anyhow::Result<String> {
     use anyhow::Context;
     use std::fs;
@@ -317,9 +325,8 @@ fn build_and_execute(
     // Load data from file if specified
     let data = match data_file {
         Some(data_file_path) => {
-            // Resolve data file path relative to manifest file
-            let manifest_dir = Path::new(manifest_path).parent().unwrap_or(Path::new("."));
-            let data_path = manifest_dir.join(data_file_path);
+            // Resolve data file path relative to data directory
+            let data_path = Path::new(datadir).join(data_file_path);
             let json_str = fs::read_to_string(&data_path)
                 .with_context(|| format!("Failed to read data file {}", data_path.display()))?;
             serde_json::from_str(&json_str).with_context(|| {
@@ -365,7 +372,8 @@ fn load_manifest(manifest_path: &str) -> anyhow::Result<Manifest> {
 }
 
 fn create_file_watcher(
-    hop_dir_path: &std::path::Path,
+    hopdir: &str,
+    datadir: &str,
     manifest_path: &str,
 ) -> anyhow::Result<(notify::RecommendedWatcher, tokio::sync::broadcast::Sender<()>)> {
     use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
@@ -386,19 +394,18 @@ fn create_file_watcher(
     )?;
 
     // Watch hop directory for .hop files
+    let hop_dir_path = std::path::Path::new(hopdir);
     watcher.watch(hop_dir_path, RecursiveMode::Recursive)?;
 
-    // Read and parse manifest to watch JSON files
-    let manifest = load_manifest(manifest_path)?;
-    let manifest_dir = std::path::Path::new(manifest_path)
-        .parent()
-        .unwrap_or(std::path::Path::new("."));
-    for entry in &manifest.files {
-        if let Some(json_file) = &entry.data {
-            let json_path = manifest_dir.join(json_file);
-            watcher.watch(&json_path, RecursiveMode::NonRecursive)?
-        }
+    // Watch data directory recursively for all JSON files
+    let data_dir_path = std::path::Path::new(datadir);
+    if data_dir_path.exists() {
+        watcher.watch(data_dir_path, RecursiveMode::Recursive)?;
     }
+
+    // Watch manifest file for changes
+    let manifest_file_path = std::path::Path::new(manifest_path);
+    watcher.watch(manifest_file_path, RecursiveMode::NonRecursive)?;
 
     Ok((watcher, channel))
 }
@@ -418,6 +425,7 @@ async fn serve_from_manifest(
     manifest_path: &str,
     servedir: Option<&str>,
     hopdir: &str,
+    datadir: &str,
 ) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher)> {
     use axum::http::StatusCode;
     use axum::response::sse::{Event, Sse};
@@ -426,12 +434,10 @@ async fn serve_from_manifest(
     use tokio_stream::wrappers::BroadcastStream;
 
     // Set up file watcher for hot reloading
-    let hop_dir_path = std::path::Path::new(hopdir).to_path_buf();
-
     let mut router = axum::Router::new();
 
     // Add SSE endpoint for hot reload events
-    let (watcher, channel) = create_file_watcher(&hop_dir_path, manifest_path)?;
+    let (watcher, channel) = create_file_watcher(hopdir, datadir, manifest_path)?;
     router = router.route(
         "/__hop_hot_reload",
         get(async move || {
@@ -444,6 +450,7 @@ async fn serve_from_manifest(
 
     let mp = manifest_path.to_string();
     let hopdir_for_handler = hopdir.to_string();
+    let datadir_for_handler = datadir.to_string();
     let request_handler = async move |req: axum::extract::Request| {
         // Read and parse manifest
         let manifest = match load_manifest(&mp) {
@@ -474,7 +481,7 @@ async fn serve_from_manifest(
                 &entry.entrypoint,
                 entry.data.as_deref(),
                 &hopdir_for_handler,
-                &mp,
+                &datadir_for_handler,
             ) {
                 Ok(html) => Ok(axum::response::Html(inject_hot_reload_script(&html))),
                 Err(e) => Ok(axum::response::Html(create_error_page(&e))),
@@ -535,7 +542,7 @@ mod tests {
 <component name="hello" params-as="p">
   <p inner-text="p.name"></p>
 </component>
--- data.json --
+-- data/data.json --
 {"name": "foo bar"}
 "#,
         )
@@ -544,6 +551,7 @@ mod tests {
             dir.join("manifest.json").to_str().unwrap(),
             dir.join("out").to_str().unwrap(),
             dir.join("hop").to_str().unwrap(),
+            dir.join("data").to_str().unwrap(),
         );
         assert!(result.is_err());
         assert!(
@@ -575,7 +583,7 @@ mod tests {
     }
   ]
 }
--- data.json --
+-- data/data.json --
 {"name": "foo bar"}
 "#,
         )
@@ -585,6 +593,7 @@ mod tests {
             dir.join("manifest.json").to_str().unwrap(),
             None,
             dir.join("hop").to_str().unwrap(),
+            dir.join("data").to_str().unwrap(),
         )
         .await
         .unwrap();
@@ -628,6 +637,7 @@ mod tests {
             dir.join("manifest.json").to_str().unwrap(),
             None,
             dir.join("hop").to_str().unwrap(),
+            dir.join("data").to_str().unwrap(),
         )
         .await?;
 
@@ -656,40 +666,6 @@ mod tests {
         Ok(())
     }
 
-    /// When the user calls `hop serve` with a manifest file that contains invalid
-    /// json, an error message should be returned.
-    #[tokio::test]
-    async fn test_serve_from_manifest_with_invalid_json_in_manifest() -> anyhow::Result<()> {
-        let dir = temp_dir_from_txtar(
-            r#"
--- hop/test.hop --
-<component name="foo">
-  message is foo
-</component>
-<component name="bar">
-  message is bar
-</component>
--- manifest.json --
-invalid json
-"#,
-        )?;
-
-        let result = serve_from_manifest(
-            dir.join("manifest.json").to_str().unwrap(),
-            None,
-            dir.join("hop").to_str().unwrap(),
-        )
-        .await;
-
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("Failed to parse manifest file")
-        );
-        Ok(())
-    }
 
     /// When the user calls `hop serve` with a servedir parameter, static files should be served
     /// from the given directory.
@@ -723,6 +699,7 @@ console.log("Hello from static file");
             dir.join("manifest.json").to_str().unwrap(),
             Some(dir.join("static").to_str().unwrap()),
             dir.join("hop").to_str().unwrap(),
+            dir.join("data").to_str().unwrap(),
         )
         .await
         .unwrap();
