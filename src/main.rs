@@ -199,11 +199,11 @@ fn build_from_manifest(
     let mut file_outputs = Vec::new();
 
     for entry in &manifest.files {
+        let manifest_dir = Path::new(manifest_path).parent().unwrap_or(Path::new("."));
         // Parse the json data used to render the output file
         let data = match &entry.data {
             Some(data_file_path) => {
                 // Resolve data file path relative to manifest file
-                let manifest_dir = Path::new(manifest_path).parent().unwrap_or(Path::new("."));
                 let data_path = manifest_dir.join(data_file_path);
                 let json_str = fs::read_to_string(&data_path)
                     .with_context(|| format!("Failed to read data file {}", data_path.display()))?;
