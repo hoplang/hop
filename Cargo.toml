@@ -11,21 +11,21 @@ path = "src/main.rs"
 clap = { version = "4.0", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-unicode-width = "0.1"
+unicode-width = "0.2"
 tower-lsp = "0.20"
 tokio = { version = "1.0", features = ["full"] }
-axum = { version = "0.7" }
-tower = "0.4"
-tower-http = { version = "0.5", features = ["fs"] }
-notify = "6.1"
+axum = { version = "0.8" }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs"] }
+notify = "8.0"
 tokio-stream = { version = "0.1", features = ["sync"] }
 anyhow = "1.0"
-colored = "2.0"
+colored = "3.0"
 
 [dev-dependencies]
 simple_txtar = "1.1.0"
 pretty_assertions = "1.4.1"
-axum-test = "15.0"
+axum-test = "17.0"
 rand = "0.9"
 
 [lints.clippy]
