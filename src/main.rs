@@ -371,7 +371,7 @@ fn load_manifest(manifest_path: &str) -> anyhow::Result<Manifest> {
 }
 
 fn create_watcher(
-    sender: std::sync::Arc<tokio::sync::broadcast::Sender<()>>,
+    sender: tokio::sync::broadcast::Sender<()>,
     hop_dir_path: &std::path::Path,
     manifest_path: &str,
 ) -> anyhow::Result<notify::RecommendedWatcher> {
@@ -425,14 +425,12 @@ async fn serve_from_manifest(
     use axum::http::StatusCode;
     use axum::response::sse::{Event, Sse};
     use axum::routing::get;
-    use std::sync::Arc;
     use tokio::sync::broadcast;
     use tokio_stream::StreamExt;
     use tokio_stream::wrappers::BroadcastStream;
 
     // Set up broadcast channel for hot reload events
     let (reload_tx, _) = broadcast::channel::<()>(100);
-    let reload_tx = Arc::new(reload_tx);
 
     // Set up file watcher for hot reloading
     let hop_dir_path = std::path::Path::new(hopdir).to_path_buf();
