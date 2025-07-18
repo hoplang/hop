@@ -164,7 +164,8 @@ async fn main() -> anyhow::Result<()> {
             use colored::*;
             use std::time::Instant;
             let start_time = Instant::now();
-            let router = serve_from_manifest(manifest, servedir.as_deref(), hopdir).await?;
+            let (router, _watcher) =
+                serve_from_manifest(manifest, servedir.as_deref(), hopdir).await?;
             let elapsed = start_time.elapsed();
             let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port)).await?;
 
@@ -362,6 +363,48 @@ fn create_error_page(error: &anyhow::Error) -> String {
     )
 }
 
+fn create_watcher(
+    sender: std::sync::Arc<tokio::sync::broadcast::Sender<()>>,
+    hop_dir_path: &std::path::Path,
+    manifest_path: &str,
+) -> anyhow::Result<notify::RecommendedWatcher> {
+    use crate::Manifest;
+    use anyhow::Context;
+    use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
+    use std::fs;
+
+    let mut watcher = RecommendedWatcher::new(
+        move |res: Result<notify::Event, notify::Error>| {
+            if let Ok(event) = res {
+                if event.kind.is_modify() || event.kind.is_create() {
+                    let _ = sender.send(());
+                }
+            }
+        },
+        Config::default(),
+    )?;
+
+    // Watch hop directory for .hop files
+    watcher.watch(hop_dir_path, RecursiveMode::Recursive)?;
+
+    // Read and parse manifest to watch JSON files
+    let manifest_content = fs::read_to_string(manifest_path)
+        .with_context(|| format!("Failed to read manifest file {}", manifest_path))?;
+    let manifest = serde_json::from_str::<Manifest>(&manifest_content)
+        .with_context(|| format!("Failed to parse manifest file {}", manifest_path))?;
+    let manifest_dir = std::path::Path::new(manifest_path)
+        .parent()
+        .unwrap_or(std::path::Path::new("."));
+    for entry in &manifest.files {
+        if let Some(json_file) = &entry.data {
+            let json_path = manifest_dir.join(json_file);
+            watcher.watch(&json_path, RecursiveMode::NonRecursive)?
+        }
+    }
+
+    Ok(watcher)
+}
+
 /// Create a server that responds to requests for the output files specified in the manifest.
 ///
 /// Also sets up a watcher that watches all source files used to construct the output files.
@@ -377,11 +420,10 @@ async fn serve_from_manifest(
     manifest_path: &str,
     servedir: Option<&str>,
     hopdir: &str,
-) -> anyhow::Result<axum::Router> {
+) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher)> {
     use axum::http::StatusCode;
     use axum::response::sse::{Event, Sse};
     use axum::routing::get;
-    use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
     use std::fs;
     use std::sync::Arc;
     use tokio::sync::broadcast;
@@ -393,53 +435,8 @@ async fn serve_from_manifest(
     let reload_tx = Arc::new(reload_tx);
 
     // Set up file watcher for hot reloading
-    let watcher_tx = reload_tx.clone();
     let hop_dir_path = std::path::Path::new(hopdir).to_path_buf();
-    let mp = manifest_path.to_string();
-    tokio::spawn(async move {
-        let (tx, mut rx) = tokio::sync::mpsc::channel(100);
-
-        let mut watcher = RecommendedWatcher::new(
-            move |res: Result<notify::Event, notify::Error>| {
-                if let Ok(event) = res {
-                    if event.kind.is_modify() || event.kind.is_create() {
-                        let _ = tx.try_send(());
-                    }
-                }
-            },
-            Config::default(),
-        )
-        .expect("Failed to create file watcher");
-
-        // Watch hop directory for .hop files
-        watcher
-            .watch(&hop_dir_path, RecursiveMode::Recursive)
-            .expect("Failed to watch hop directory");
-
-        // Read and parse manifest
-        let manifest_content = fs::read_to_string(&mp).unwrap();
-        let manifest: Manifest = serde_json::from_str(&manifest_content).unwrap();
-        let manifest_dir = std::path::Path::new(&mp)
-            .parent()
-            .unwrap_or(std::path::Path::new("."));
-        for entry in &manifest.files {
-            if let Some(json_file) = &entry.data {
-                let json_path = manifest_dir.join(json_file);
-                if json_path.exists() {
-                    watcher
-                        .watch(&json_path, RecursiveMode::NonRecursive)
-                        .unwrap_or_else(|_| {
-                            panic!("Failed to watch JSON file: {}", json_path.display())
-                        });
-                }
-            }
-        }
-
-        while (rx.recv().await).is_some() {
-            // Send reload event to all connected clients
-            let _ = watcher_tx.send(());
-        }
-    });
+    let watcher = create_watcher(reload_tx.clone(), &hop_dir_path, manifest_path)?;
 
     let mut router = axum::Router::new();
 
@@ -523,7 +520,7 @@ async fn serve_from_manifest(
         router = router.fallback(request_handler);
     }
 
-    Ok(router)
+    Ok((router, watcher))
 }
 
 #[cfg(test)]
@@ -604,7 +601,7 @@ mod tests {
         )
         .unwrap();
 
-        let router = serve_from_manifest(
+        let (router, _watcher) = serve_from_manifest(
             dir.join("manifest.json").to_str().unwrap(),
             None,
             dir.join("hop").to_str().unwrap(),
@@ -647,7 +644,7 @@ mod tests {
 "#,
         )?;
 
-        let router = serve_from_manifest(
+        let (router, _watcher) = serve_from_manifest(
             dir.join("manifest.json").to_str().unwrap(),
             None,
             dir.join("hop").to_str().unwrap(),
@@ -680,7 +677,7 @@ mod tests {
     }
 
     /// When the user calls `hop serve` with a manifest file that contains invalid
-    /// json, an error message should be returned when the user tries to render a page.
+    /// json, an error message should be returned.
     #[tokio::test]
     async fn test_serve_from_manifest_with_invalid_json_in_manifest() -> anyhow::Result<()> {
         let dir = temp_dir_from_txtar(
@@ -698,18 +695,20 @@ mod tests {
 "#,
         )?;
 
-        let router = serve_from_manifest(
+        let result = serve_from_manifest(
             dir.join("manifest.json").to_str().unwrap(),
             None,
             dir.join("hop").to_str().unwrap(),
         )
-        .await?;
+        .await;
 
-        let server = TestServer::new(router).unwrap();
-
-        let response = server.get("/").await;
-        let body = response.text();
-        assert!(body.contains("Failed to parse manifest file"));
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Failed to parse manifest file")
+        );
         Ok(())
     }
 
@@ -741,7 +740,7 @@ console.log("Hello from static file");
         )
         .unwrap();
 
-        let router = serve_from_manifest(
+        let (router, _watcher) = serve_from_manifest(
             dir.join("manifest.json").to_str().unwrap(),
             Some(dir.join("static").to_str().unwrap()),
             dir.join("hop").to_str().unwrap(),
