@@ -365,11 +365,14 @@ fn load_manifest(manifest_path: &str) -> anyhow::Result<Manifest> {
 }
 
 fn create_file_watcher(
-    sender: tokio::sync::broadcast::Sender<()>,
     hop_dir_path: &std::path::Path,
     manifest_path: &str,
-) -> anyhow::Result<notify::RecommendedWatcher> {
+) -> anyhow::Result<(notify::RecommendedWatcher, tokio::sync::broadcast::Sender<()>)> {
     use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
+
+    let (channel, _) = tokio::sync::broadcast::channel::<()>(100);
+
+    let sender = channel.clone();
 
     let mut watcher = RecommendedWatcher::new(
         move |res: Result<notify::Event, notify::Error>| {
@@ -397,7 +400,7 @@ fn create_file_watcher(
         }
     }
 
-    Ok(watcher)
+    Ok((watcher, channel))
 }
 
 /// Create a server that responds to requests for the output files specified in the manifest.
@@ -419,25 +422,21 @@ async fn serve_from_manifest(
     use axum::http::StatusCode;
     use axum::response::sse::{Event, Sse};
     use axum::routing::get;
-    use tokio::sync::broadcast;
     use tokio_stream::StreamExt;
     use tokio_stream::wrappers::BroadcastStream;
 
-    // Set up broadcast channel for hot reload events
-    let (reload_tx, _) = broadcast::channel::<()>(100);
-
     // Set up file watcher for hot reloading
     let hop_dir_path = std::path::Path::new(hopdir).to_path_buf();
-    let watcher = create_file_watcher(reload_tx.clone(), &hop_dir_path, manifest_path)?;
 
     let mut router = axum::Router::new();
 
     // Add SSE endpoint for hot reload events
+    let (watcher, channel) = create_file_watcher(&hop_dir_path, manifest_path)?;
     router = router.route(
         "/__hop_hot_reload",
         get(async move || {
             Sse::new(
-                BroadcastStream::new(reload_tx.subscribe())
+                BroadcastStream::new(channel.subscribe())
                     .map(|_| Ok::<Event, axum::Error>(Event::default().data("reload"))),
             )
         }),
