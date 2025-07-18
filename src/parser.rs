@@ -388,7 +388,7 @@ mod tests {
     use pretty_assertions::assert_eq;
     use simple_txtar::Archive;
     use std::fs;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
 
     use crate::tokenizer::tokenize;
 

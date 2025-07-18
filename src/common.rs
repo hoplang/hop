@@ -417,19 +417,6 @@ pub fn escape_html(text: &str) -> String {
         .collect()
 }
 
-// Format a collection of range errors into a readable error message
-// NOTE: This function is deprecated. Use ErrorFormatter::format_range_errors instead.
-pub fn format_range_errors(message: &str, errors: &[RangeError]) -> String {
-    let mut result = message.to_string();
-    for error in errors {
-        result.push_str(&format!(
-            "\n  {}:{}:{}: {}",
-            error.range.start.line, error.range.start.column, error.range.end.column, error.message
-        ));
-    }
-    result
-}
-
 // Return true if the string represents a void element
 // The void elements are `area`, `base`, `br`, `col`, `embed`, `hr`,
 // `img`, `input`, `link`, `meta`, `param`, `source`, `track` and `wbr`
