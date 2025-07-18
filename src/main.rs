@@ -222,9 +222,13 @@ fn build_from_manifest(
                 let data_path = data_dir.join(data_file_path);
                 let json_str = fs::read_to_string(&data_path)
                     .with_context(|| format!("Failed to read data file {}", data_path.display()))?;
-                serde_json::from_str(&json_str).with_context(|| {
+                let data = serde_json::from_str(&json_str).with_context(|| {
                     format!("Failed to parse JSON from file {}", data_path.display())
-                })?
+                })?;
+                program
+                    .validate(&entry.module, &entry.entrypoint, &data)
+                    .with_context(|| format!("Validation error in {:?}", data_path))?;
+                data
             }
             None => serde_json::Value::Null,
         };
@@ -341,6 +345,8 @@ fn build_and_execute(
         }
         None => serde_json::Value::Null,
     };
+
+    program.validate(module_name, entrypoint, &data)?;
 
     // Execute the entrypoint
     program

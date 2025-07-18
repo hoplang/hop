@@ -130,7 +130,12 @@ impl Compiler {
             module_parameter_types.insert(module_name.clone(), type_info.parameter_types);
         }
 
-        Ok(Program::new(component_maps, entrypoint_maps, import_maps))
+        Ok(Program::new(
+            component_maps,
+            entrypoint_maps,
+            import_maps,
+            module_parameter_types,
+        ))
     }
 }
 

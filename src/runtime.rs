@@ -1,6 +1,6 @@
 use crate::common::{
     ComponentNode, CondNode, EntrypointNode, Environment, ErrorNode, ForNode, NativeHTMLNode, Node,
-    RenderNode, escape_html, is_void_element,
+    RenderNode, Type, escape_html, is_void_element,
 };
 use std::collections::HashMap;
 
@@ -10,6 +10,7 @@ pub struct Program {
     component_maps: HashMap<String, HashMap<String, ComponentNode>>,
     entrypoint_maps: HashMap<String, HashMap<String, EntrypointNode>>,
     import_maps: HashMap<String, HashMap<String, String>>,
+    parameter_types: HashMap<String, HashMap<String, Type>>,
 }
 
 impl Program {
@@ -17,12 +18,47 @@ impl Program {
         component_maps: HashMap<String, HashMap<String, ComponentNode>>,
         entrypoint_maps: HashMap<String, HashMap<String, EntrypointNode>>,
         import_maps: HashMap<String, HashMap<String, String>>,
+        parameter_types: HashMap<String, HashMap<String, Type>>,
     ) -> Self {
         Program {
             component_maps,
             entrypoint_maps,
             import_maps,
+            parameter_types,
         }
+    }
+
+    /// Validate that the provided parameters match the expected JSON schema for the component
+    pub fn validate(
+        &self,
+        module_name: &str,
+        component_name: &str,
+        params: &serde_json::Value,
+    ) -> anyhow::Result<()> {
+        let component_type = self
+            .parameter_types
+            .get(module_name)
+            .and_then(|types| types.get(component_name))
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Component '{}' not found in module '{}'",
+                    component_name,
+                    module_name
+                )
+            })?;
+        let schema = component_type.to_json_schema();
+
+        let compiled_schema = jsonschema::JSONSchema::compile(&schema)
+            .map_err(|e| anyhow::anyhow!("Failed to compile JSON schema: {}", e))?;
+
+        if let Err(validation_errors) = compiled_schema.validate(params) {
+            let error_messages: Vec<String> = validation_errors
+                .map(|error| format!("{} at {}", error, error.instance_path))
+                .collect();
+            return Err(anyhow::anyhow!("{}", error_messages.join("\n")));
+        }
+
+        Ok(())
     }
 
     pub fn execute(

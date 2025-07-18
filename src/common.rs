@@ -1,3 +1,4 @@
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -36,6 +37,56 @@ impl fmt::Display for Type {
             Type::String => write!(f, "string"),
             Type::Void => write!(f, "void"),
             Type::TypeVar(id) => write!(f, "?t{}", id),
+        }
+    }
+}
+
+impl Type {
+    /// Convert a Type to a JSON Schema representation
+    pub fn to_json_schema(&self) -> Value {
+        match self {
+            Type::Object(properties, _rest) => {
+                let mut schema_properties = serde_json::Map::new();
+                let mut required = Vec::new();
+
+                for (key, value) in properties {
+                    schema_properties.insert(key.clone(), value.to_json_schema());
+                    required.push(key.clone());
+                }
+
+                json!({
+                    "type": "object",
+                    "properties": schema_properties,
+                    "required": required,
+                    "additionalProperties": false
+                })
+            }
+            Type::Array(inner_type) => {
+                json!({
+                    "type": "array",
+                    "items": inner_type.to_json_schema()
+                })
+            }
+            Type::Bool => {
+                json!({
+                    "type": "boolean"
+                })
+            }
+            Type::String => {
+                json!({
+                    "type": "string"
+                })
+            }
+            Type::Void => {
+                json!({
+                    "type": "null"
+                })
+            }
+            Type::TypeVar(_id) => {
+                // Type variables are placeholders during type inference
+                // In JSON Schema, we represent them as allowing any type
+                json!({})
+            }
         }
     }
 }
