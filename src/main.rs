@@ -403,7 +403,7 @@ fn create_file_watcher(
     Ok((watcher, channel))
 }
 
-/// Create a server that responds to requests for the output files specified in the manifest.
+/// Create a router that responds to requests for the output files specified in the manifest.
 ///
 /// Also sets up a watcher that watches all source files used to construct the output files.
 /// The watcher emits SSE-events on the `/__hop_hot_reload` route. There is also an injected
