@@ -20,10 +20,11 @@ pub fn compile_hop_program(hop_dir: &Path) -> anyhow::Result<runtime::Program> {
     use anyhow::Context;
     use compiler::Compiler;
     use std::fs;
-    anyhow::ensure!(hop_dir.exists(), "hop directory does not exist");
+
+    let dir = fs::read_dir(hop_dir).context("Failed to read hop directory")?;
 
     let mut compiler = Compiler::new();
-    for entry in fs::read_dir(hop_dir).context("Failed to read hop directory")? {
+    for entry in dir {
         let path = entry.context("Failed to read directory entry")?.path();
         if path.extension().and_then(|s| s.to_str()) == Some("hop") {
             let module_name = path
@@ -31,14 +32,11 @@ pub fn compile_hop_program(hop_dir: &Path) -> anyhow::Result<runtime::Program> {
                 .and_then(|s| s.to_str())
                 .context("Invalid file name")?
                 .to_string();
-
             let content = fs::read_to_string(&path)
                 .with_context(|| format!("Failed to read file {:?}", path))?;
-
             compiler.add_module(module_name, content);
         }
     }
-
     compiler
         .compile()
         .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
