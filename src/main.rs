@@ -192,11 +192,7 @@ fn build_from_manifest(
     use std::fs;
     use std::path::Path;
 
-    let manifest_content = fs::read_to_string(manifest_path)
-        .with_context(|| format!("Failed to read manifest file {}", manifest_path))?;
-
-    let manifest: Manifest = serde_json::from_str(&manifest_content)
-        .with_context(|| format!("Failed to parse manifest file {}", manifest_path))?;
+    let manifest = load_manifest(manifest_path)?;
 
     let program = compile_hop_program(Path::new(hopdir))?;
 
@@ -363,15 +359,23 @@ fn create_error_page(error: &anyhow::Error) -> String {
     )
 }
 
+fn load_manifest(manifest_path: &str) -> anyhow::Result<Manifest> {
+    use anyhow::Context;
+    use std::fs;
+
+    let manifest_content = fs::read_to_string(manifest_path)
+        .with_context(|| format!("Failed to read manifest file {}", manifest_path))?;
+    let manifest = serde_json::from_str::<Manifest>(&manifest_content)
+        .with_context(|| format!("Failed to parse manifest file {}", manifest_path))?;
+    Ok(manifest)
+}
+
 fn create_watcher(
     sender: std::sync::Arc<tokio::sync::broadcast::Sender<()>>,
     hop_dir_path: &std::path::Path,
     manifest_path: &str,
 ) -> anyhow::Result<notify::RecommendedWatcher> {
-    use crate::Manifest;
-    use anyhow::Context;
     use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
-    use std::fs;
 
     let mut watcher = RecommendedWatcher::new(
         move |res: Result<notify::Event, notify::Error>| {
@@ -388,10 +392,7 @@ fn create_watcher(
     watcher.watch(hop_dir_path, RecursiveMode::Recursive)?;
 
     // Read and parse manifest to watch JSON files
-    let manifest_content = fs::read_to_string(manifest_path)
-        .with_context(|| format!("Failed to read manifest file {}", manifest_path))?;
-    let manifest = serde_json::from_str::<Manifest>(&manifest_content)
-        .with_context(|| format!("Failed to parse manifest file {}", manifest_path))?;
+    let manifest = load_manifest(manifest_path)?;
     let manifest_dir = std::path::Path::new(manifest_path)
         .parent()
         .unwrap_or(std::path::Path::new("."));
@@ -424,7 +425,6 @@ async fn serve_from_manifest(
     use axum::http::StatusCode;
     use axum::response::sse::{Event, Sse};
     use axum::routing::get;
-    use std::fs;
     use std::sync::Arc;
     use tokio::sync::broadcast;
     use tokio_stream::StreamExt;
@@ -455,18 +455,10 @@ async fn serve_from_manifest(
     let hopdir_for_handler = hopdir.to_string();
     let request_handler = async move |req: axum::extract::Request| {
         // Read and parse manifest
-        let manifest_content = match fs::read_to_string(&mp) {
-            Ok(content) => content,
-            Err(e) => {
-                let error = anyhow::anyhow!("Failed to read manifest file: {}", e);
-                return Ok(axum::response::Html(create_error_page(&error)));
-            }
-        };
-        let manifest: Manifest = match serde_json::from_str(&manifest_content) {
+        let manifest = match load_manifest(&mp) {
             Ok(manifest) => manifest,
             Err(e) => {
-                let error = anyhow::anyhow!("Failed to parse manifest file: {}", e);
-                return Ok(axum::response::Html(create_error_page(&error)));
+                return Ok(axum::response::Html(create_error_page(&e)));
             }
         };
         let path = req.uri().path();
@@ -493,10 +485,7 @@ async fn serve_from_manifest(
                 &hopdir_for_handler,
                 &mp,
             ) {
-                Ok(html) => {
-                    let html_with_hot_reload = inject_hot_reload_script(&html);
-                    Ok(axum::response::Html(html_with_hot_reload))
-                }
+                Ok(html) => Ok(axum::response::Html(inject_hot_reload_script(&html))),
                 Err(e) => Ok(axum::response::Html(create_error_page(&e))),
             }
         } else {
