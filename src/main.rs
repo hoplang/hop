@@ -385,7 +385,7 @@ fn create_file_watcher(
     let mut watcher = RecommendedWatcher::new(
         move |res: Result<notify::Event, notify::Error>| {
             if let Ok(event) = res {
-                if event.kind.is_modify() || event.kind.is_create() {
+                if event.kind.is_modify() || event.kind.is_create() || event.kind.is_remove() {
                     let _ = sender.send(());
                 }
             }
