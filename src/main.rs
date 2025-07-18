@@ -526,7 +526,7 @@ mod tests {
     }
 
     /// When the user calls `hop build` and the manifest file does not exist, an error should be
-    /// returned.
+    /// returned stating the the manifest file could not be read.
     #[test]
     fn test_build_nonexistent_manifest() {
         let dir = temp_dir_from_txtar(
@@ -670,8 +670,7 @@ mod tests {
   message is bar
 </component>
 -- manifest.json --
-{
-  "file
+invalid json
 "#,
         )?;
 
@@ -693,7 +692,7 @@ mod tests {
     }
 
     /// When the user calls `hop serve` with a servedir parameter, static files should be served
-    /// from that directory.
+    /// from the given directory.
     #[tokio::test]
     async fn test_serve_from_manifest_static_files() {
         let dir = temp_dir_from_txtar(
