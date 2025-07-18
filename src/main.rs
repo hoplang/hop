@@ -255,14 +255,9 @@ eventSource.onmessage = function(event) {
         fetch(window.location.href)
             .then(response => response.text())
             .then(html => {
-                // Parse the HTML document properly
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
-                
-                // Extract the body content
                 const newContent = doc.body;
-                
-                // Use morphdom to update the current page
                 if (newContent) {
                     morphdom(document.body, newContent);
                 }
@@ -274,7 +269,6 @@ eventSource.onmessage = function(event) {
 };
 eventSource.onerror = function(event) {
     console.log('Hot reload connection error:', event);
-    // Attempt to reconnect after a delay
     setTimeout(() => {
         eventSource.close();
         location.reload();
@@ -370,7 +364,7 @@ fn load_manifest(manifest_path: &str) -> anyhow::Result<Manifest> {
     Ok(manifest)
 }
 
-fn create_watcher(
+fn create_file_watcher(
     sender: tokio::sync::broadcast::Sender<()>,
     hop_dir_path: &std::path::Path,
     manifest_path: &str,
@@ -434,7 +428,7 @@ async fn serve_from_manifest(
 
     // Set up file watcher for hot reloading
     let hop_dir_path = std::path::Path::new(hopdir).to_path_buf();
-    let watcher = create_watcher(reload_tx.clone(), &hop_dir_path, manifest_path)?;
+    let watcher = create_file_watcher(reload_tx.clone(), &hop_dir_path, manifest_path)?;
 
     let mut router = axum::Router::new();
 
