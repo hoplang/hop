@@ -1,0 +1,4 @@
+-- in --
+app.user.profile.settings.theme
+-- out --
+PropertyAccess(PropertyAccess(PropertyAccess(PropertyAccess(Variable("app"), "user"), "profile"), "settings"), "theme")
