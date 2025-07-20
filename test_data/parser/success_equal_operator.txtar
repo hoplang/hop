@@ -1,0 +1,10 @@
+-- main.hop --
+<component name="main">
+  <cond if="x == y">
+    <div>Equal</div>
+  </cond>
+</component>
+-- output.txt --
+component
+	cond
+		div

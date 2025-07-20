@@ -1,0 +1,8 @@
+-- main.hop --
+<component name="main" params-as="params">
+  <cond if="params.role == 'admin'">
+    <div>Admin</div>
+  </cond>
+</component>
+-- out --
+main::main : {role: string}

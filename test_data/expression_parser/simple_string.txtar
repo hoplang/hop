@@ -1,0 +1,4 @@
+-- in --
+'hello'
+-- out --
+StringLiteral("hello")

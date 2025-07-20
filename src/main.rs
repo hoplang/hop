@@ -1,5 +1,6 @@
 mod common;
 mod compiler;
+mod expression_parser;
 mod formatter;
 mod lsp;
 mod parser;

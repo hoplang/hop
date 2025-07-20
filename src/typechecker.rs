@@ -1,6 +1,6 @@
 use crate::common::{
-    ComponentNode, CondNode, EntrypointNode, Environment, ErrorNode, ExprAttribute, ForNode,
-    NativeHTMLNode, Node, Range, RangeError, RenderNode, Type,
+    BinaryOp, ComponentNode, CondNode, EntrypointNode, Environment, ErrorNode, ExprAttribute,
+    Expression, ForNode, NativeHTMLNode, Node, Range, RangeError, RenderNode, Type,
 };
 use crate::parser::Module;
 use crate::unifier::Unifier;
@@ -264,32 +264,79 @@ fn typecheck_node(
 }
 
 fn typecheck_expr(
-    t1: &Type,
+    expected_type: &Type,
     attr: &ExprAttribute,
     env: &mut Environment<Type>,
     unifier: &mut Unifier,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut Vec<RangeError>,
 ) {
-    let segments = &attr.segments;
-    if segments.is_empty() {
-        errors.push(RangeError::empty_expression(attr.range));
+    let expr_type = typecheck_expression(
+        &attr.expression,
+        env,
+        unifier,
+        annotations,
+        errors,
+        attr.range,
+    );
+
+    if let Some(err) = unifier.unify(&expr_type, expected_type) {
+        errors.push(RangeError::unification_error(&err.message, attr.range));
         return;
     }
 
-    if let Some(val) = env.lookup(&segments[0]) {
-        let obj_type = segments.iter().skip(1).rev().fold(t1.clone(), |acc, s| {
-            unifier.new_object(HashMap::from([(s.clone(), acc.clone())]))
-        });
+    annotations.push(TypeAnnotation(attr.range, expected_type.clone()));
+}
 
-        if let Some(err) = unifier.unify(val, &obj_type) {
-            errors.push(RangeError::unification_error(&err.message, attr.range));
-            return;
+fn typecheck_expression(
+    expr: &Expression,
+    env: &mut Environment<Type>,
+    unifier: &mut Unifier,
+    annotations: &mut Vec<TypeAnnotation>,
+    errors: &mut Vec<RangeError>,
+    range: Range,
+) -> Type {
+    match expr {
+        Expression::Variable(name) => {
+            if let Some(var_type) = env.lookup(name) {
+                var_type.clone()
+            } else {
+                errors.push(RangeError::undefined_variable(name, range));
+                unifier.new_type_var()
+            }
         }
+        Expression::StringLiteral(_) => {
+            // String literals always have type String
+            Type::String
+        }
+        Expression::PropertyAccess(base_expr, property) => {
+            let base_type =
+                typecheck_expression(base_expr, env, unifier, annotations, errors, range);
+            let property_type = unifier.new_type_var();
+            let obj_type =
+                unifier.new_object(HashMap::from([(property.clone(), property_type.clone())]));
 
-        annotations.push(TypeAnnotation(attr.range, t1.clone()));
-    } else {
-        errors.push(RangeError::undefined_variable(&segments[0], attr.range));
+            if let Some(err) = unifier.unify(&base_type, &obj_type) {
+                errors.push(RangeError::unification_error(&err.message, range));
+            }
+
+            property_type
+        }
+        Expression::BinaryOp(left, BinaryOp::Equal, right) => {
+            let left_type = typecheck_expression(left, env, unifier, annotations, errors, range);
+            let right_type = typecheck_expression(right, env, unifier, annotations, errors, range);
+
+            // Both operands should have the same type for equality comparison
+            if let Some(err) = unifier.unify(&left_type, &right_type) {
+                errors.push(RangeError::unification_error(
+                    &format!("Type mismatch in equality comparison: {}", err.message),
+                    range,
+                ));
+            }
+
+            // The result of == is always boolean
+            Type::Bool
+        }
     }
 }
 

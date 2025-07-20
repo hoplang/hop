@@ -1,0 +1,15 @@
+-- main.hop --
+<component name="main" params-as="params">
+  <cond if="params.x == params.y">
+    <span>Equal</span>
+  </cond>
+</component>
+-- data.json --
+{
+  "x": "hello",
+  "y": "hello"
+}
+-- output.html --
+<div data-hop-id="main/main">
+  <span>Equal</span>
+</div>

@@ -1,0 +1,8 @@
+-- main.hop --
+<component name="main" params-as="params">
+  <cond if="(params.a == 'str') == params.b">
+    <div>Match</div>
+  </cond>
+</component>
+-- out --
+main::main : {a: string, b: boolean}

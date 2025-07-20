@@ -3,6 +3,7 @@ use crate::common::{
     ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode, TextNode, Token,
     TokenKind, VarNameAttr, is_void_element,
 };
+use crate::expression_parser::parse_expression;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module {
@@ -126,22 +127,19 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
     stack.pop().unwrap()
 }
 
-fn parse_expr(expr: &str) -> Vec<String> {
-    expr.trim().split('.').map(|s| s.to_string()).collect()
-}
-
 fn parse_expr_attribute(
     name: &str,
     value: &str,
     range: Range,
     errors: &mut Vec<RangeError>,
 ) -> Option<ExprAttribute> {
-    let segments = parse_expr(value);
-    if segments.is_empty() {
-        errors.push(RangeError::empty_expression(range));
-        return None;
+    match parse_expression(value) {
+        Ok(expression) => Some(ExprAttribute::new(name.to_string(), expression, range)),
+        Err(err) => {
+            errors.push(RangeError::new(err, range));
+            None
+        }
     }
-    Some(ExprAttribute::new(name.to_string(), segments, range))
 }
 
 fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) -> Node {

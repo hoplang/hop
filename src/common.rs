@@ -250,17 +250,30 @@ impl Attribute {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum BinaryOp {
+    Equal,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Expression {
+    Variable(String),
+    PropertyAccess(Box<Expression>, String),
+    StringLiteral(String),
+    BinaryOp(Box<Expression>, BinaryOp, Box<Expression>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ExprAttribute {
     pub name: String,
-    pub segments: Vec<String>,
+    pub expression: Expression,
     pub range: Range,
 }
 
 impl ExprAttribute {
-    pub fn new(name: String, segments: Vec<String>, range: Range) -> Self {
+    pub fn new(name: String, expression: Expression, range: Range) -> Self {
         ExprAttribute {
             name,
-            segments,
+            expression,
             range,
         }
     }

@@ -1,6 +1,6 @@
 use crate::common::{
-    ComponentNode, CondNode, EntrypointNode, Environment, ErrorNode, ForNode, NativeHTMLNode, Node,
-    RenderNode, Type, escape_html, is_void_element,
+    BinaryOp, ComponentNode, CondNode, EntrypointNode, Environment, ErrorNode, Expression, ForNode,
+    NativeHTMLNode, Node, RenderNode, Type, escape_html, is_void_element,
 };
 use std::collections::HashMap;
 
@@ -157,7 +157,7 @@ impl Program {
 
                 if !is_void_element(tag_name) {
                     if let Some(attr) = inner_text_attr {
-                        let evaluated = self.evaluate_expr(&attr.segments, env)?;
+                        let evaluated = self.evaluate_expr(&attr.expression, env)?;
                         result.push_str(&escape_html(evaluated.as_str().unwrap()));
                     } else {
                         for child in children {
@@ -193,7 +193,7 @@ impl Program {
                 children,
                 ..
             }) => {
-                let array_value = self.evaluate_expr(&each_attr.segments, env)?;
+                let array_value = self.evaluate_expr(&each_attr.expression, env)?;
 
                 let array = array_value
                     .as_array()
@@ -217,7 +217,7 @@ impl Program {
             Node::Cond(CondNode {
                 if_attr, children, ..
             }) => {
-                let condition_value = self.evaluate_expr(&if_attr.segments, env)?;
+                let condition_value = self.evaluate_expr(&if_attr.expression, env)?;
                 if condition_value.as_bool().unwrap_or(false) {
                     let mut result = String::new();
                     for child in children {
@@ -235,7 +235,7 @@ impl Program {
             }) => {
                 let mut params_value = serde_json::Value::Null;
                 if let Some(attr) = params_attr {
-                    params_value = self.evaluate_expr(&attr.segments, env)?;
+                    params_value = self.evaluate_expr(&attr.expression, env)?;
                 }
 
                 let component_name = &component_attr.value;
@@ -271,7 +271,7 @@ impl Program {
 
                 if !is_void_element(tag_name) {
                     if let Some(attr) = inner_text_attr {
-                        let evaluated = self.evaluate_expr(&attr.segments, env)?;
+                        let evaluated = self.evaluate_expr(&attr.expression, env)?;
                         result.push_str(&escape_html(evaluated.as_str().unwrap()));
                     } else {
                         for child in children {
@@ -300,34 +300,40 @@ impl Program {
 
     fn evaluate_expr(
         &self,
-        expr: &[String],
+        expr: &Expression,
         env: &mut Environment<serde_json::Value>,
     ) -> Result<serde_json::Value, String> {
-        if expr.is_empty() {
-            return Err("Empty expression".to_string());
-        }
+        match expr {
+            Expression::Variable(name) => {
+                if let Some(val) = env.lookup(name) {
+                    Ok(val.clone())
+                } else {
+                    Err(format!("Undefined variable: {}", name))
+                }
+            }
+            Expression::StringLiteral(value) => Ok(serde_json::Value::String(value.clone())),
+            Expression::PropertyAccess(base_expr, property) => {
+                let base_value = self.evaluate_expr(base_expr, env)?;
 
-        if let Some(val) = env.lookup(&expr[0]) {
-            let mut current_value = val.clone();
-
-            for segment in expr.iter().skip(1) {
-                if current_value.is_null() {
-                    return Err("Current value is not defined".to_string());
+                if base_value.is_null() {
+                    return Err("Cannot access property of null value".to_string());
                 }
 
-                if !current_value.is_object() {
+                if !base_value.is_object() {
                     return Err("Cannot access property of non-object".to_string());
                 }
 
-                current_value = current_value
-                    .get(segment)
-                    .ok_or_else(|| format!("Property '{}' not found", segment))?
-                    .clone();
+                base_value
+                    .get(property)
+                    .ok_or_else(|| format!("Property '{}' not found", property))
+                    .map(|v| v.clone())
             }
+            Expression::BinaryOp(left, BinaryOp::Equal, right) => {
+                let left_value = self.evaluate_expr(left, env)?;
+                let right_value = self.evaluate_expr(right, env)?;
 
-            Ok(current_value)
-        } else {
-            Err(format!("Undefined variable: {}", expr[0]))
+                Ok(serde_json::Value::Bool(left_value == right_value))
+            }
         }
     }
 }

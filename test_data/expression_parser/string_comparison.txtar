@@ -1,0 +1,4 @@
+-- in --
+'apple' == 'orange'
+-- out --
+BinaryOp(StringLiteral("apple"), Equal, StringLiteral("orange"))
