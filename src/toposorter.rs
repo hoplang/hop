@@ -13,13 +13,6 @@ impl CycleError {
     }
 }
 
-/// SortResult represents the result of a topological sort operation.
-#[derive(Debug, Clone, PartialEq)]
-pub struct SortResult {
-    pub nodes: Vec<String>,
-    pub error: Option<CycleError>,
-}
-
 /// The TopoSorter module is responsible for performing topological sorting of directed graphs.
 #[derive(Debug, Clone)]
 pub struct TopoSorter {
@@ -60,9 +53,9 @@ impl TopoSorter {
         self.dependents.get_mut(b).unwrap().insert(a.to_string());
     }
 
-    /// Sort the nodes of the graph and return a SortResult where the nodes are in topological order
-    /// or an empty vector and an error if the graph contains a cycle.
-    pub fn sort(&self) -> SortResult {
+    /// Sort the nodes of the graph and return a Result where the nodes are in topological order
+    /// or an error if the graph contains a cycle.
+    pub fn sort(&self) -> Result<Vec<String>, CycleError> {
         let mut result = Vec::new();
         let mut visited = HashSet::new();
         let mut path = Vec::new();
@@ -78,30 +71,21 @@ impl TopoSorter {
                     &mut in_path,
                     &self.nodes,
                 ) {
-                    return SortResult {
-                        nodes: Vec::new(),
-                        error: Some(error),
-                    };
+                    return Err(error);
                 }
             }
         }
 
-        SortResult {
-            nodes: result,
-            error: None,
-        }
+        Ok(result)
     }
 
     /// Do a topological sort of the subgraph containing all nodes that depend on the given node.
     ///
     /// The result includes the node `root` (which will be the first node of the array) and all
     /// nodes that depend on `root` (directly or transitively).
-    pub fn sort_subgraph(&self, root: &str) -> SortResult {
+    pub fn sort_subgraph(&self, root: &str) -> Result<Vec<String>, CycleError> {
         if !self.nodes.contains(root) {
-            return SortResult {
-                nodes: Vec::new(),
-                error: None,
-            };
+            return Ok(Vec::new());
         }
 
         // Find all nodes that depend on root (transitively)
@@ -140,18 +124,12 @@ impl TopoSorter {
                     &mut in_path,
                     &subgraph_nodes,
                 ) {
-                    return SortResult {
-                        nodes: Vec::new(),
-                        error: Some(error),
-                    };
+                    return Err(error);
                 }
             }
         }
 
-        SortResult {
-            nodes: result,
-            error: None,
-        }
+        Ok(result)
     }
 
     /// Clear all dependencies that matches (node -> _).

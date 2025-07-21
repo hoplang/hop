@@ -56,14 +56,15 @@ impl Compiler {
         }
 
         // Sort modules topologically
-        let sort_result = module_sorter.sort();
-        if let Some(error) = sort_result.error {
-            return Err(format!(
-                "Circular module dependencies: {}",
-                error.cycle.join(" -> ")
-            ));
-        }
-        let sorted_modules = sort_result.nodes;
+        let sorted_modules = match module_sorter.sort() {
+            Ok(nodes) => nodes,
+            Err(error) => {
+                return Err(format!(
+                    "Circular module dependencies: {}",
+                    error.cycle.join(" -> ")
+                ));
+            }
+        };
 
         // Typecheck modules in topological order
         for module_name in sorted_modules {

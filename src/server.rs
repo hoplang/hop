@@ -58,12 +58,9 @@ impl Server {
         self.modules.insert(name.clone(), module);
         self.parse_errors.insert(name.clone(), parse_errors);
 
-        let sort_result = self.topo_sorter.sort_subgraph(&name);
-
-        let dependent_modules = if sort_result.error.is_some() {
-            vec![name]
-        } else {
-            sort_result.nodes
+        let dependent_modules = match self.topo_sorter.sort_subgraph(&name) {
+            Ok(nodes) => nodes,
+            Err(_) => vec![name],
         };
 
         for module_name in dependent_modules {
