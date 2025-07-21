@@ -102,11 +102,12 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
                     errors.push(RangeError::unmatched_closing_tag(&token.value, token.range));
                 } else {
                     while stack.last().unwrap().token.value != token.value {
-                        let unclosed_token = stack.pop().unwrap().token;
+                        let unclosed = stack.pop().unwrap();
                         errors.push(RangeError::unclosed_tag(
-                            &unclosed_token.value,
-                            unclosed_token.range,
+                            &unclosed.token.value,
+                            unclosed.token.range,
                         ));
+                        stack.last_mut().unwrap().append_tree(unclosed);
                     }
                     let mut completed = stack.pop().unwrap();
                     completed.set_end_token(token);
