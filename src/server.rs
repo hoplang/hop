@@ -92,18 +92,25 @@ impl Server {
 
         let mut import_types = HashMap::new();
 
+        let mut typecheck_errors = Vec::new();
+
         for import_node in &parse_result.module.imports {
             let from_module = &import_node.from_attr.value;
             let component = &import_node.component_attr.value;
 
-            if let Some(type_result) = self.type_results.get(from_module) {
-                if let Some(param_type) = type_result.type_result.parameter_types.get(component) {
-                    import_types.insert(component.clone(), param_type.clone());
+            match self
+                .type_results
+                .get(from_module)
+                .and_then(|result| result.type_result.parameter_types.get(component))
+            {
+                Some(t) => {
+                    import_types.insert(component.clone(), t.clone());
                 }
+                None => typecheck_errors
+                    .push(RangeError::unresolved_import(component, import_node.range)),
             }
         }
 
-        let mut typecheck_errors = Vec::new();
         let type_result = typecheck(&parse_result.module, &import_types, &mut typecheck_errors);
 
         let typecheck_result = TypecheckResult {

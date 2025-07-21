@@ -197,6 +197,10 @@ impl RangeError {
         Self::new(format!("Undefined variable: {var}"), range)
     }
 
+    pub fn unresolved_import(component: &str, range: Range) -> Self {
+        Self::new(format!("Unresolved import: {component}"), range)
+    }
+
     pub fn unused_variable(var: &str, range: Range) -> Self {
         Self::new(format!("Unused variable {var}"), range)
     }
