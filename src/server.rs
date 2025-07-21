@@ -23,29 +23,21 @@ pub struct Diagnostic {
     pub end_column: usize,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct ParseResult {
-    pub module: Module,
-    pub errors: Vec<RangeError>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct TypecheckResult {
-    pub type_result: TypeResult,
-    pub errors: Vec<RangeError>,
-}
-
 pub struct Server {
-    parse_results: HashMap<String, ParseResult>,
-    type_results: HashMap<String, TypecheckResult>,
+    modules: HashMap<String, Module>,
+    type_results: HashMap<String, TypeResult>,
+    parse_errors: HashMap<String, Vec<RangeError>>,
+    type_errors: HashMap<String, Vec<RangeError>>,
     topo_sorter: TopoSorter,
 }
 
 impl Server {
     pub fn new() -> Self {
         Server {
-            parse_results: HashMap::new(),
+            modules: HashMap::new(),
             type_results: HashMap::new(),
+            parse_errors: HashMap::new(),
+            type_errors: HashMap::new(),
             topo_sorter: TopoSorter::new(),
         }
     }
@@ -55,20 +47,16 @@ impl Server {
         let tokens = tokenize(source_code, &mut parse_errors);
         let module = parse(tokens, &mut parse_errors);
 
-        let parse_result = ParseResult {
-            module,
-            errors: parse_errors,
-        };
-
         self.topo_sorter.clear_dependencies(&name);
         self.topo_sorter.add_node(name.clone());
 
-        for import_node in &parse_result.module.imports {
+        for import_node in &module.imports {
             self.topo_sorter
                 .add_dependency(&name, &import_node.from_attr.value);
         }
 
-        self.parse_results.insert(name.clone(), parse_result);
+        self.modules.insert(name.clone(), module);
+        self.parse_errors.insert(name.clone(), parse_errors);
 
         let sort_result = self.topo_sorter.sort_subgraph(&name);
 
@@ -84,8 +72,8 @@ impl Server {
     }
 
     fn typecheck_module(&mut self, module_name: &str) {
-        let parse_result = match self.parse_results.get(module_name) {
-            Some(result) => result,
+        let module = match self.modules.get(module_name) {
+            Some(module) => module,
             None => return,
         };
 
@@ -93,14 +81,14 @@ impl Server {
 
         let mut typecheck_errors = Vec::new();
 
-        for import_node in &parse_result.module.imports {
+        for import_node in &module.imports {
             let from_module = &import_node.from_attr.value;
             let component = &import_node.component_attr.value;
 
             match self
                 .type_results
                 .get(from_module)
-                .and_then(|result| result.type_result.parameter_types.get(component))
+                .and_then(|result| result.parameter_types.get(component))
             {
                 Some(t) => {
                     import_types.insert(component.clone(), t.clone());
@@ -110,15 +98,12 @@ impl Server {
             }
         }
 
-        let type_result = typecheck(&parse_result.module, &import_types, &mut typecheck_errors);
-
-        let typecheck_result = TypecheckResult {
-            type_result,
-            errors: typecheck_errors,
-        };
+        let type_result = typecheck(module, &import_types, &mut typecheck_errors);
 
         self.type_results
-            .insert(module_name.to_string(), typecheck_result);
+            .insert(module_name.to_string(), type_result);
+        self.type_errors
+            .insert(module_name.to_string(), typecheck_errors);
     }
 
     pub fn get_hover_info(
@@ -130,7 +115,7 @@ impl Server {
         let type_result = self.type_results.get(module_name)?;
         let pos = Position::new(line, column);
 
-        for TypeAnnotation(range, val) in &type_result.type_result.annotations {
+        for TypeAnnotation(range, val) in &type_result.annotations {
             if range.contains_position(pos) {
                 return Some(HoverInfo {
                     type_str: val.to_string(),
@@ -148,8 +133,8 @@ impl Server {
     pub fn get_error_diagnostics(&self, module_name: &str) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
 
-        if let Some(parse_result) = self.parse_results.get(module_name) {
-            for error in &parse_result.errors {
+        if let Some(parse_errors) = self.parse_errors.get(module_name) {
+            for error in parse_errors {
                 diagnostics.push(Diagnostic {
                     message: error.message.clone(),
                     start_line: error.range.start.line,
@@ -160,8 +145,8 @@ impl Server {
             }
         }
 
-        if let Some(type_result) = self.type_results.get(module_name) {
-            for error in &type_result.errors {
+        if let Some(typecheck_errors) = self.type_errors.get(module_name) {
+            for error in typecheck_errors {
                 diagnostics.push(Diagnostic {
                     message: error.message.clone(),
                     start_line: error.range.start.line,
@@ -181,10 +166,10 @@ impl Server {
         line: usize,
         column: usize,
     ) -> Option<String> {
-        let parse_result = self.parse_results.get(module_name)?;
+        let module = self.modules.get(module_name)?;
         let position = Position::new(line, column);
 
-        for component in &parse_result.module.components {
+        for component in &module.components {
             if component.range.contains_position(position) {
                 return Some(component.name_attr.value.clone());
             }
