@@ -1,0 +1,44 @@
+-- main.hop --
+<component name="main" params-as="items">
+  <for each="items" as="item">
+    <div>
+      <span inner-text="item.name"></span>
+      <cond if="item.type == 'admin'">
+        <strong> [Admin]</strong>
+      </cond>
+      <cond if="item.type == 'user'">
+        <em> [User]</em>
+      </cond>
+    </div>
+  </for>
+</component>
+-- data.json --
+[
+  {
+    "name": "Alice",
+    "type": "admin"
+  },
+  {
+    "name": "Bob", 
+    "type": "user"
+  },
+  {
+    "name": "Carol",
+    "type": "admin"
+  }
+]
+-- output.html --
+<div data-hop-id="main/main">
+  <div>
+    <span>Alice</span>
+    <strong> [Admin]</strong>
+  </div>
+  <div>
+    <span>Bob</span>
+    <em> [User]</em>
+  </div>
+  <div>
+    <span>Carol</span>
+    <strong> [Admin]</strong>
+  </div>
+</div>
