@@ -13,7 +13,7 @@ mod typechecker;
 mod unifier;
 
 use clap::{CommandFactory, Parser, Subcommand};
-use common::escape_html;
+use compiler::Compiler;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -355,78 +355,45 @@ fn build_and_execute(
         .map_err(|e| anyhow::anyhow!("Failed to execute {}::{}: {}", module_name, entrypoint, e))
 }
 
-fn create_error_page(error: &anyhow::Error) -> String {
-    let html = format!(
-        r#"<!DOCTYPE html>
-<html>
-<head>
-    <title>Error</title>
-</head>
-<body style="background: black; color: white; max-width: 1200px; padding: 32px;">
-    <div>
-        <div>Error</div>
-        <pre>{}</pre>
-    </div>
-</body>
-</html>"#,
-        escape_html(format!("{:#}", error).as_str()),
-    );
-    inject_hot_reload_script(&html)
-}
+const ERROR_TEMPLATES: &str = include_str!("../error_pages.hop");
 
-fn create_not_found_page(path: &str, available_paths: &[String]) -> String {
-    let available_list = if available_paths.is_empty() {
-        "<li>No routes defined in manifest</li>".to_string()
-    } else {
-        available_paths
-            .iter()
-            .map(|p| {
-                let href = if p == "/" {
-                    "/".to_string()
-                } else {
-                    format!("/{}", p)
-                };
-                let display_name = if p == "/" {
-                    "/".to_string()
-                } else {
-                    format!("/{}", p)
-                };
-                format!(
-                    "<li><a href=\"{}\" style=\"color: #60a5fa;\">{}</a></li>",
-                    href,
-                    escape_html(&display_name)
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n        ")
+fn create_error_page(error: &anyhow::Error) -> String {
+    let mut compiler = Compiler::new();
+    compiler.add_module("error_pages".to_string(), ERROR_TEMPLATES.to_string());
+
+    let program = match compiler.compile() {
+        Ok(program) => program,
+        Err(e) => return format!("Template compilation error: {}", e),
     };
 
-    let html = format!(
-        r#"<!DOCTYPE html>
-<html>
-<head>
-    <title>404 Not Found</title>
-</head>
-<body style="background: black; color: white; max-width: 1200px; padding: 32px; font-family: monospace;">
-    <div>
-        <h1 style="color: #ef4444; margin-bottom: 16px;">404 Not Found</h1>
-        <p style="margin-bottom: 24px;">The requested path <code style="background: #374151; padding: 4px 8px; border-radius: 4px;">{}</code> was not found in the manifest.</p>
-        
-        <h2 style="color: #f59e0b; margin-bottom: 12px;">Available Routes:</h2>
-        <ul style="margin-left: 20px; margin-bottom: 24px;">
-        {}
-        </ul>
-        
-        <p style="color: #9ca3af;">
-            To add this route, update your <code style="background: #374151; padding: 2px 4px; border-radius: 4px;">manifest.json</code> file with an entry for this path.
-        </p>
-    </div>
-</body>
-</html>"#,
-        escape_html(path),
-        available_list,
-    );
-    inject_hot_reload_script(&html)
+    let error_data = serde_json::json!({
+        "message": format!("{:#}", error)
+    });
+
+    match program.execute("error_pages", "generic-error", error_data) {
+        Ok(html) => inject_hot_reload_script(&html),
+        Err(e) => format!("Error rendering template: {}", e),
+    }
+}
+
+fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
+    let mut compiler = Compiler::new();
+    compiler.add_module("error_pages".to_string(), ERROR_TEMPLATES.to_string());
+
+    let program = match compiler.compile() {
+        Ok(program) => program,
+        Err(e) => return format!("Template compilation error: {}", e),
+    };
+
+    let not_found_data = serde_json::json!({
+        "path": path,
+        "available_routes": available_routes
+    });
+
+    match program.execute("error_pages", "not-found", not_found_data) {
+        Ok(html) => inject_hot_reload_script(&html),
+        Err(e) => format!("Error rendering template: {}", e),
+    }
 }
 
 fn load_manifest(manifest_path: &Path) -> anyhow::Result<Manifest> {
@@ -561,9 +528,9 @@ async fn serve_from_manifest(
                     if f.path == "index.html" {
                         "/".to_string()
                     } else if f.path.ends_with(".html") {
-                        f.path.strip_suffix(".html").unwrap().to_string()
+                        format!("/{}", f.path.strip_suffix(".html").unwrap())
                     } else {
-                        f.path.clone()
+                        format!("/{}", f.path)
                     }
                 })
                 .collect();
