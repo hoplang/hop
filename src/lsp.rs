@@ -1,6 +1,7 @@
 use crate::server::Server;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::path::Path;
 use tokio::sync::RwLock;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
@@ -35,7 +36,49 @@ impl HopLanguageServer {
     }
 
     fn uri_to_module_name(&self, uri: &Url) -> String {
-        uri.path().trim_start_matches('/').to_string()
+        let path = std::path::Path::new(uri.path());
+        path.file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string()
+    }
+
+    async fn load_dependency_modules(&self, uri: &Url) -> std::io::Result<()> {
+        let file_path = Path::new(uri.path());
+        let directory = file_path.parent().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::NotFound, "Could not find parent directory")
+        })?;
+
+        // Read all .hop files in the same directory
+        let entries = std::fs::read_dir(directory)?;
+        
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+            
+            if path.extension().and_then(|s| s.to_str()) == Some("hop") {
+                let module_name = path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                
+                // Check if we already have this module loaded
+                {
+                    let server = self.server.read().await;
+                    if server.has_module(&module_name) {
+                        continue;
+                    }
+                }
+                
+                // Load the module content
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    let mut server = self.server.write().await;
+                    server.update_module(module_name, &content);
+                }
+            }
+        }
+        
+        Ok(())
     }
 
     async fn publish_diagnostics(&self, uri: &Url) {
@@ -101,6 +144,9 @@ impl LanguageServer for HopLanguageServer {
             let mut document_map = self.document_map.write().await;
             document_map.insert(uri.clone(), text.clone());
         }
+
+        // Load any missing dependency modules from the same directory
+        let _ = self.load_dependency_modules(&uri).await;
 
         {
             let mut server = self.server.write().await;
@@ -178,3 +224,4 @@ pub async fn run_lsp() {
     let (service, socket) = LspService::new(HopLanguageServer::new);
     LspServer::new(stdin, stdout, socket).serve(service).await;
 }
+

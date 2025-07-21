@@ -42,6 +42,10 @@ impl Server {
         }
     }
 
+    pub fn has_module(&self, module_name: &str) -> bool {
+        self.modules.contains_key(module_name)
+    }
+
     pub fn update_module(&mut self, name: String, source_code: &str) {
         let mut parse_errors = Vec::new();
         let tokens = tokenize(source_code, &mut parse_errors);
