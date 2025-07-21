@@ -1,4 +1,4 @@
-use crate::common::{Position, RangeError};
+use crate::common::{ImportNode, Position, RangeError};
 use crate::parser::{Module, parse};
 use crate::tokenizer::tokenize;
 use crate::toposorter::TopoSorter;
@@ -79,31 +79,35 @@ impl Server {
 
         let mut import_types = HashMap::new();
 
-        let mut typecheck_errors = Vec::new();
+        let mut type_errors = Vec::new();
 
-        for import_node in &module.imports {
-            let from_module = &import_node.from_attr.value;
-            let component = &import_node.component_attr.value;
-
+        for ImportNode {
+            from_attr,
+            component_attr,
+            range,
+            ..
+        } in &module.imports
+        {
             match self
                 .type_results
-                .get(from_module)
-                .and_then(|result| result.parameter_types.get(component))
+                .get(&from_attr.value)
+                .and_then(|result| result.parameter_types.get(&component_attr.value))
             {
                 Some(t) => {
-                    import_types.insert(component.clone(), t.clone());
+                    import_types.insert(component_attr.value.clone(), t.clone());
                 }
-                None => typecheck_errors
-                    .push(RangeError::unresolved_import(component, import_node.range)),
+                None => {
+                    type_errors.push(RangeError::unresolved_import(&component_attr.value, *range))
+                }
             }
         }
 
-        let type_result = typecheck(module, &import_types, &mut typecheck_errors);
+        let type_result = typecheck(module, &import_types, &mut type_errors);
 
         self.type_results
             .insert(module_name.to_string(), type_result);
         self.type_errors
-            .insert(module_name.to_string(), typecheck_errors);
+            .insert(module_name.to_string(), type_errors);
     }
 
     pub fn get_hover_info(
