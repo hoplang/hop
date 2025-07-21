@@ -373,6 +373,60 @@ fn create_error_page(error: &anyhow::Error) -> String {
     )
 }
 
+fn create_not_found_page(path: &str, available_paths: &[String]) -> String {
+    let available_list = if available_paths.is_empty() {
+        "<li>No routes defined in manifest</li>".to_string()
+    } else {
+        available_paths
+            .iter()
+            .map(|p| {
+                let href = if p == "/" {
+                    "/".to_string()
+                } else {
+                    format!("/{}", p)
+                };
+                let display_name = if p == "/" {
+                    "/".to_string()
+                } else {
+                    format!("/{}", p)
+                };
+                format!(
+                    "<li><a href=\"{}\" style=\"color: #60a5fa;\">{}</a></li>",
+                    href,
+                    escape_html(&display_name)
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n        ")
+    };
+
+    format!(
+        r#"<!DOCTYPE html>
+<html>
+<head>
+    <title>404 Not Found</title>
+</head>
+<body style="background: black; color: white; max-width: 1200px; padding: 32px; font-family: monospace;">
+    <div>
+        <h1 style="color: #ef4444; margin-bottom: 16px;">404 Not Found</h1>
+        <p style="margin-bottom: 24px;">The requested path <code style="background: #374151; padding: 4px 8px; border-radius: 4px;">{}</code> was not found in the manifest.</p>
+        
+        <h2 style="color: #f59e0b; margin-bottom: 12px;">Available Routes:</h2>
+        <ul style="margin-left: 20px; margin-bottom: 24px;">
+        {}
+        </ul>
+        
+        <p style="color: #9ca3af;">
+            To add this route, update your <code style="background: #374151; padding: 2px 4px; border-radius: 4px;">manifest.json</code> file with an entry for this path.
+        </p>
+    </div>
+</body>
+</html>"#,
+        escape_html(path),
+        available_list,
+    )
+}
+
 fn load_manifest(manifest_path: &Path) -> anyhow::Result<Manifest> {
     use anyhow::Context;
     use std::fs;
@@ -497,7 +551,25 @@ async fn serve_from_manifest(
                 Err(e) => Ok(axum::response::Html(create_error_page(&e))),
             }
         } else {
-            Err(StatusCode::NOT_FOUND)
+            // Collect available paths from manifest for helpful 404 page
+            let available_paths: Vec<String> = manifest
+                .files
+                .iter()
+                .map(|f| {
+                    if f.path == "index.html" {
+                        "/".to_string()
+                    } else if f.path.ends_with(".html") {
+                        f.path.strip_suffix(".html").unwrap().to_string()
+                    } else {
+                        f.path.clone()
+                    }
+                })
+                .collect();
+
+            Err((
+                StatusCode::NOT_FOUND,
+                axum::response::Html(create_not_found_page(path, &available_paths)),
+            ))
         }
     };
 
@@ -728,5 +800,73 @@ console.log("Hello from static file");
         response.assert_status_ok();
         let body = response.text();
         assert!(body.contains("console.log(\"Hello from static file\");"));
+    }
+
+    /// When the user calls `hop serve` and requests a path that doesn't exist in the manifest,
+    /// a 404 page should be returned with available routes.
+    #[tokio::test]
+    async fn test_serve_404_with_helpful_message() {
+        let dir = temp_dir_from_txtar(
+            r#"
+-- hop/test.hop --
+<component name="hello">
+  hello world!
+</component>
+<component name="about">
+  about page
+</component>
+<component name="nested">
+  nested page content
+</component>
+-- manifest.json --
+{
+  "files": [
+    {
+      "path": "index.html",
+      "module": "test",
+      "entrypoint": "hello"
+    },
+    {
+      "path": "about.html",
+      "module": "test",
+      "entrypoint": "about"
+    },
+    {
+      "path": "foo/bar.html",
+      "module": "test",
+      "entrypoint": "nested"
+    }
+  ]
+}
+"#,
+        )
+        .unwrap();
+
+        let (router, _watcher) = serve_from_manifest(
+            &dir.join("manifest.json"),
+            None,
+            &dir.join("hop"),
+            &dir.join("data"),
+        )
+        .await
+        .unwrap();
+
+        let server = TestServer::new(router).unwrap();
+
+        // Test non-existent path
+        let response = server.get("/nonexistent").await;
+        response.assert_status(axum::http::StatusCode::NOT_FOUND);
+
+        let body = response.text();
+        assert!(body.contains("404 Not Found"));
+        assert!(body.contains("/nonexistent"));
+        assert!(body.contains("Available Routes"));
+        assert!(body.contains("href=\"/\""));
+        assert!(body.contains("href=\"/about\""));
+        assert!(body.contains("href=\"/foo/bar\""));
+        assert!(body.contains(">/</a>"));
+        assert!(body.contains(">/about</a>"));
+        assert!(body.contains(">/foo/bar</a>"));
+        assert!(body.contains("manifest.json"));
     }
 }
