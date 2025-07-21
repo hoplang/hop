@@ -342,7 +342,6 @@ impl Program {
 mod tests {
     use super::*;
     use crate::common::{Position, Range, Token, TokenKind};
-    use crate::error_formatter::ErrorFormatter;
     use crate::parser::parse;
     use crate::tokenizer::tokenize;
     use crate::typechecker::typecheck;
@@ -355,84 +354,44 @@ mod tests {
         let mut component_maps = HashMap::new();
         let mut entrypoint_maps = HashMap::new();
         let mut import_maps = HashMap::new();
-        let mut modules = Vec::new();
         let mut module_parameter_types: HashMap<String, HashMap<String, Type>> = HashMap::new();
 
-        // Parse all modules
+        // Parse and typecheck modules in order
         for (module_name, source_code) in &modules_source {
             let mut errors = Vec::new();
             let tokens = tokenize(source_code, &mut errors);
             let module = parse(tokens, &mut errors);
-            if !errors.is_empty() {
-                let formatter =
-                    ErrorFormatter::new(source_code.clone(), format!("{}.hop", module_name));
-                let mut formatted_errors = String::new();
-                for error in &errors {
-                    formatted_errors.push_str(&formatter.format_error(error));
-                    formatted_errors.push('\n');
-                }
-                return Err(formatted_errors);
-            }
 
-            modules.push((module_name.clone(), module));
-        }
-
-        // Typecheck modules in order
-        for (module_name, module) in &modules {
             let mut import_types = HashMap::new();
-
-            for import_node in &module.imports {
-                let from_module = &import_node.from_attr.value;
-                let component_name = &import_node.component_attr.value;
-
-                if let Some(from_module_types) = module_parameter_types.get(from_module) {
-                    if let Some(component_type) = from_module_types.get(component_name) {
+            for n in &module.imports {
+                let from_module = &n.from_attr.value;
+                let component_name = &n.component_attr.value;
+                if let Some(types) = module_parameter_types.get(from_module) {
+                    if let Some(component_type) = types.get(component_name) {
                         import_types.insert(component_name.clone(), component_type.clone());
-                    } else {
-                        return Err(format!(
-                            "Component {} not found in module {}",
-                            component_name, from_module
-                        ));
                     }
-                } else {
-                    return Err(format!("Module {} not found", from_module));
                 }
             }
 
-            let mut errors = Vec::new();
-            let type_info = typecheck(module, &import_types, &mut errors);
+            let type_info = typecheck(&module, &import_types, &mut errors);
             if !errors.is_empty() {
-                let source_code = &modules_source.iter().find(|(name, _)| name == module_name).unwrap().1;
-                let formatter =
-                    ErrorFormatter::new(source_code.clone(), format!("{}.hop", module_name));
-                let mut formatted_errors = String::new();
-                for error in &errors {
-                    formatted_errors.push_str(&formatter.format_error(error));
-                    formatted_errors.push('\n');
-                }
-                return Err(formatted_errors);
+                return Err(format!("Errors in {}: {:?}", module_name, errors));
             }
 
             let mut component_map = HashMap::new();
             let mut entrypoint_map = HashMap::new();
             let mut import_map = HashMap::new();
 
-            for comp_node in &module.components {
-                component_map.insert(comp_node.name_attr.value.clone(), comp_node.clone());
+            for n in &module.components {
+                component_map.insert(n.name_attr.value.clone(), n.clone());
             }
 
-            for entrypoint_node in &module.entrypoints {
-                entrypoint_map.insert(
-                    entrypoint_node.name_attr.value.clone(),
-                    entrypoint_node.clone(),
-                );
+            for n in &module.entrypoints {
+                entrypoint_map.insert(n.name_attr.value.clone(), n.clone());
             }
 
-            for import_node in &module.imports {
-                import_map.insert(
-                    import_node.component_attr.value.clone(),
-                    import_node.from_attr.value.clone(),
-                );
+            for n in &module.imports {
+                import_map.insert(n.component_attr.value.clone(), n.from_attr.value.clone());
             }
 
             component_maps.insert(module_name.clone(), component_map);
