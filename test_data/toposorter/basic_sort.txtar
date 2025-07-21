@@ -2,5 +2,10 @@
 add_dependency a b
 add_dependency b c
 sort
+sort
+add_dependency c a
+sort
 -- out --
 sorted: c b a
+sorted: c b a
+cycle: a b c
