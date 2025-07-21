@@ -1,8 +1,6 @@
 target
 node_modules
-hop
 *.ts
-*.json
 dist
 www
 output

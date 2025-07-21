@@ -355,7 +355,7 @@ fn build_and_execute(
         .map_err(|e| anyhow::anyhow!("Failed to execute {}::{}: {}", module_name, entrypoint, e))
 }
 
-const ERROR_TEMPLATES: &str = include_str!("../error_pages.hop");
+const ERROR_TEMPLATES: &str = include_str!("../hop/error_pages.hop");
 
 fn create_error_page(error: &anyhow::Error) -> String {
     let mut compiler = Compiler::new();

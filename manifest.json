@@ -1,0 +1,16 @@
+{
+  "files": [
+    {
+      "path": "404.html",
+      "module": "error_pages",
+      "entrypoint": "not-found",
+	  "data": "error_404.json"
+    },
+    {
+      "path": "generic-error.html",
+      "module": "error_pages",
+      "entrypoint": "generic-error",
+	  "data": "generic_error.json"
+    }
+  ]
+}

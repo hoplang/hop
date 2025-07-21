@@ -1,0 +1,40 @@
+<entrypoint name="generic-error" params-as="error">
+	<!DOCTYPE html>
+	<html>
+	<head>
+		<title>Error</title>
+	</head>
+	<body style="background: black; color: white; max-width: 1200px; margin: 0px auto; padding: 32px; font-family: sans-serif;">
+		<div>
+			<h1 style="color: #ff4444; margin-bottom: 16px;">Error</h1>
+			<pre set-inner-text="error.message"></pre>
+		</div>
+	</body>
+	</html>
+</entrypoint>
+
+<entrypoint name="not-found" params-as="params">
+	<!DOCTYPE html>
+	<html>
+	<head>
+		<title>404 Not Found</title>
+	</head>
+	<body style="background: black; color: white; max-width: 1200px; margin: 0px auto; padding: 32px; font-family: sans-serif;">
+		<div>
+			<h1 style="color: #ff4444; margin-bottom: 16px;">Route not found</h1>
+			<p style="margin-bottom: 24px;">The requested route <code style="background: #374151; padding: 2px 4px; border-radius: 4px;" set-inner-text="params.path"></code> was not found in the manifest.</p>
+			
+			<h2 style="font-size: 18px; margin-bottom: 12px;">Available Routes</h2>
+			<ul style="padding-left: 0px; margin-left: 20px; margin-bottom: 24px;">
+				<for each="params.available_routes" as="route">
+					<li><a set-href="route" style="color: #60a5fa;" set-inner-text="route"></a></li>
+				</for>
+			</ul>
+			
+			<p style="color: #9ca3af;">
+				To add this route, update your <code style="background: #374151; padding: 2px 4px; border-radius: 4px;">manifest.json</code> file with an entry for this path.
+			</p>
+		</div>
+	</body>
+	</html>
+</entrypoint>
