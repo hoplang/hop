@@ -60,19 +60,18 @@ impl Server {
             errors: parse_errors,
         };
 
-        self.parse_results.insert(name.clone(), parse_result);
-
         self.topo_sorter.clear_dependencies(&name);
         self.topo_sorter.add_node(name.clone());
 
-        if let Some(parse_result) = self.parse_results.get(&name) {
-            for import_node in &parse_result.module.imports {
-                self.topo_sorter
-                    .add_dependency(&name, &import_node.from_attr.value);
-            }
+        for import_node in &parse_result.module.imports {
+            self.topo_sorter
+                .add_dependency(&name, &import_node.from_attr.value);
         }
 
+        self.parse_results.insert(name.clone(), parse_result);
+
         let sort_result = self.topo_sorter.sort_subgraph(&name);
+
         let dependent_modules = if sort_result.error.is_some() {
             vec![name]
         } else {
