@@ -214,7 +214,7 @@ mod tests {
 
         for entry in entries {
             let path = entry.unwrap().path();
-            if !path.is_file() || !path.extension().map_or(false, |ext| ext == "txtar") {
+            if !path.is_file() || path.extension().is_none_or(|ext| ext != "txtar") {
                 continue;
             }
 
