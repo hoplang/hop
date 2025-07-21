@@ -1,7 +1,7 @@
 use crate::server::Server;
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::path::Path;
+use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
@@ -46,22 +46,26 @@ impl HopLanguageServer {
     async fn load_dependency_modules(&self, uri: &Url) -> std::io::Result<()> {
         let file_path = Path::new(uri.path());
         let directory = file_path.parent().ok_or_else(|| {
-            std::io::Error::new(std::io::ErrorKind::NotFound, "Could not find parent directory")
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Could not find parent directory",
+            )
         })?;
 
         // Read all .hop files in the same directory
         let entries = std::fs::read_dir(directory)?;
-        
+
         for entry in entries {
             let entry = entry?;
             let path = entry.path();
-            
+
             if path.extension().and_then(|s| s.to_str()) == Some("hop") {
-                let module_name = path.file_stem()
+                let module_name = path
+                    .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("unknown")
                     .to_string();
-                
+
                 // Check if we already have this module loaded
                 {
                     let server = self.server.read().await;
@@ -69,7 +73,7 @@ impl HopLanguageServer {
                         continue;
                     }
                 }
-                
+
                 // Load the module content
                 if let Ok(content) = std::fs::read_to_string(&path) {
                     let mut server = self.server.write().await;
@@ -77,7 +81,7 @@ impl HopLanguageServer {
                 }
             }
         }
-        
+
         Ok(())
     }
 
@@ -224,4 +228,3 @@ pub async fn run_lsp() {
     let (service, socket) = LspService::new(HopLanguageServer::new);
     LspServer::new(stdin, stdout, socket).serve(service).await;
 }
-
