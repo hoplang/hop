@@ -1,5 +1,5 @@
 use crate::common::Type;
-use crate::formatter::ErrorFormatter;
+use crate::error_formatter::ErrorFormatter;
 use crate::parser::parse;
 use crate::runtime::Program;
 use crate::tokenizer::tokenize;

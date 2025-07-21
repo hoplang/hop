@@ -1,7 +1,7 @@
 mod common;
 mod compiler;
 mod expression_parser;
-mod formatter;
+mod error_formatter;
 mod lsp;
 mod parser;
 mod runtime;
