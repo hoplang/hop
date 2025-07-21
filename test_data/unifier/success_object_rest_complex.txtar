@@ -1,0 +1,9 @@
+-- in --
+(unify (object a string b bool) t1)
+(unify (object c (array string) d void) t2)
+(unify t1 t2)
+(query t1)
+(query t2)
+-- out --
+t1 : {a: string, b: boolean, c: string[], d: void}
+t2 : {a: string, b: boolean, c: string[], d: void}

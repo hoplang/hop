@@ -1,0 +1,9 @@
+-- in --
+(unify t1 (array (array (object data (array (object id string value bool))))))
+(unify t2 (array (array (object data t3))))
+(unify t1 t2)
+(query t1)
+(query t3)
+-- out --
+t1 : {data: {id: string, value: boolean}[]}[][]
+t3 : {id: string, value: boolean}[]

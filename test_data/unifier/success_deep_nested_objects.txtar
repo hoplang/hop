@@ -1,0 +1,9 @@
+-- in --
+(unify t1 (object level1 (object level2 (object level3 (object level4 string)))))
+(unify t2 (object level1 (object level2 (object level3 (object level4 t3) extra bool))))
+(unify t1 t2)
+(query t1)
+(query t3)
+-- out --
+t1 : {level1: {level2: {extra: boolean, level3: {level4: string}}}}
+t3 : string

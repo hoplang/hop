@@ -1,0 +1,14 @@
+-- in --
+(unify t1 (array t2))
+(unify t2 (array t3))
+(unify t3 (array t4))
+(unify t4 (array bool))
+(unify t5 t1)
+(unify t6 t2)
+(query t5)
+(query t6)
+(query t1)
+-- out --
+t5 : boolean[][][][]
+t6 : boolean[][][]
+t1 : boolean[][][][]
