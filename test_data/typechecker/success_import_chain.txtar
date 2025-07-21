@@ -1,7 +1,7 @@
 -- bar.hop --
 <component name="widget" params-as="config">
   <cond if="config.enabled">
-    <div inner-text="config.title"/>
+    <div set-inner-text="config.title"/>
   </cond>
 </component>
 

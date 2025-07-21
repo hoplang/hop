@@ -149,7 +149,7 @@ impl Program {
                 // For entrypoints, preserve script and style tags
                 let mut result = format!("<{}", tag_name);
                 for attr in attributes {
-                    if attr.name != "inner-text" {
+                    if attr.name != "set-inner-text" {
                         result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
                     }
                 }
@@ -263,7 +263,7 @@ impl Program {
 
                 let mut result = format!("<{}", tag_name);
                 for attr in attributes {
-                    if attr.name != "inner-text" {
+                    if attr.name != "set-inner-text" {
                         result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
                     }
                 }

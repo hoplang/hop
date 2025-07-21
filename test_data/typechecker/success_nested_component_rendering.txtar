@@ -1,9 +1,9 @@
 -- main.hop --
 <component name="card" params-as="item">
-  <div inner-text="item.title">
+  <div set-inner-text="item.title">
   </div>
   <cond if="item.active">
-    <span inner-text="item.status">
+    <span set-inner-text="item.status">
     </span>
   </cond>
 </component>

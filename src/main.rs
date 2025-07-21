@@ -623,7 +623,7 @@ mod tests {
             r#"
 -- hop/test.hop --
 <component name="hello" params-as="p">
-  <p inner-text="p.name"></p>
+  <p set-inner-text="p.name"></p>
 </component>
 -- data/data.json --
 {"name": "foo bar"}
@@ -653,7 +653,7 @@ mod tests {
             r#"
 -- hop/test.hop --
 <component name="hello" params-as="p">
-  <p inner-text="p.name"></p>
+  <p set-inner-text="p.name"></p>
 </component>
 -- manifest.json --
 {

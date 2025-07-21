@@ -2,7 +2,7 @@
 <component name="main" params-as="items">
   <for each="items.a" as="item">
     <for each="items.b" as="item">
-      <div inner-text="item"></div>
+      <div set-inner-text="item"></div>
     </for>
   </for>
 </component>

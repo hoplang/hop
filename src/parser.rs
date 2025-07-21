@@ -362,7 +362,7 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                     }
                 }
                 _ => {
-                    let inner_text_attr = t.get_attribute("inner-text").and_then(|attr| {
+                    let inner_text_attr = t.get_attribute("set-inner-text").and_then(|attr| {
                         parse_expr_attribute(&attr.name, &attr.value, attr.range, errors)
                     });
                     Node::NativeHTML(NativeHTMLNode {

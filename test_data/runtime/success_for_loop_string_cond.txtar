@@ -2,7 +2,7 @@
 <component name="main" params-as="items">
   <for each="items" as="item">
     <div>
-      <span inner-text="item.name"></span>
+      <span set-inner-text="item.name"></span>
       <cond if="item.type == 'admin'">
         <strong> [Admin]</strong>
       </cond>

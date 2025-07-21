@@ -6,7 +6,7 @@
 	</for>
 	<for each="params" as="item">
 		<for each="item.k" as="inner">
-			<div inner-text="inner"></div>
+			<div set-inner-text="inner"></div>
 		</for>
 	</for>
 </component>

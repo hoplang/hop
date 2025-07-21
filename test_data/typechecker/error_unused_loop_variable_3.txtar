@@ -3,7 +3,7 @@
   <for each="items" as="item">
   </for>
   <for each="items" as="item">
-      <div inner-text="item"></div>
+      <div set-inner-text="item"></div>
   </for>
 </component>
 -- out --

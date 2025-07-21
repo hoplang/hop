@@ -1,7 +1,7 @@
 -- main.hop --
 <entrypoint name="main" params-as="data">
     <h1>Hello World</h1>
-    <p inner-text="data.message"></p>
+    <p set-inner-text="data.message"></p>
 </entrypoint>
 -- output.txt --
 entrypoint

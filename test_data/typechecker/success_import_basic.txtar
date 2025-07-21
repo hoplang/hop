@@ -1,6 +1,6 @@
 -- utils.hop --
 <component name="button" params-as="text">
-  <div inner-text="text"/>
+  <div set-inner-text="text"/>
 </component>
 
 -- main.hop --

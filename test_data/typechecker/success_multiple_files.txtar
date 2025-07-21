@@ -5,7 +5,7 @@
 </component>
 -- bar.hop --
 <component name="bar" params-as="s">
-  <div inner-text="s"/>
+  <div set-inner-text="s"/>
 </component>
 -- out --
 foo::foo : boolean
