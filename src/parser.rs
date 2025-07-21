@@ -365,12 +365,23 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                     let inner_text_attr = t.get_attribute("set-inner-text").and_then(|attr| {
                         parse_expr_attribute(&attr.name, &attr.value, attr.range, errors)
                     });
+                    
+                    let mut set_attributes = Vec::new();
+                    for attr in &t.attributes {
+                        if attr.name.starts_with("set-") && attr.name != "set-inner-text" {
+                            if let Some(expr_attr) = parse_expr_attribute(&attr.name, &attr.value, attr.range, errors) {
+                                set_attributes.push(expr_attr);
+                            }
+                        }
+                    }
+                    
                     Node::NativeHTML(NativeHTMLNode {
                         tag_name: t.value.clone(),
                         attributes: t.attributes.clone(),
                         range: t.range,
                         children,
                         inner_text_attr,
+                        set_attributes,
                     })
                 }
             }

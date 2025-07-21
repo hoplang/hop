@@ -238,11 +238,16 @@ fn typecheck_node(
         }
         Node::NativeHTML(NativeHTMLNode {
             inner_text_attr,
+            set_attributes,
             children,
             ..
         }) => {
             if let Some(attr) = inner_text_attr {
                 typecheck_expr(&Type::String, attr, env, unifier, annotations, errors);
+            }
+
+            for set_attr in set_attributes {
+                typecheck_expr(&Type::String, set_attr, env, unifier, annotations, errors);
             }
 
             for child in children {

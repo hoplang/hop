@@ -49,6 +49,28 @@ This project contains the reference implementation for the hop language.
 
 hop is a HTML-like templating language with built-in type checking.
 
+### Dynamic Attributes
+
+hop supports dynamic attributes on native HTML elements using the `set-` prefix:
+
+- `set-inner-text="expression"` - Sets the inner text content of an element
+- `set-<attribute>="expression"` - Sets any HTML attribute dynamically (e.g., `set-href`, `set-class`, `set-title`)
+
+Examples:
+```html
+<component name="main" params-as="user">
+  <a set-href="user.profile_url" set-title="user.name">Profile</a>
+  <div set-inner-text="user.greeting"></div>
+  <img set-src="user.avatar" set-alt="user.name" />
+</component>
+```
+
+All `set-*` attributes are:
+- Evaluated as expressions at runtime
+- Type-checked to ensure they produce strings
+- HTML-escaped for safety
+- Rendered as the target attribute (without the `set-` prefix)
+
 The reference implementation is divided into modules where each file
 corresponds to a module.
 

@@ -144,15 +144,24 @@ impl Program {
                 attributes,
                 children,
                 inner_text_attr,
+                set_attributes,
                 ..
             }) => {
                 // For entrypoints, preserve script and style tags
                 let mut result = format!("<{}", tag_name);
                 for attr in attributes {
-                    if attr.name != "set-inner-text" {
+                    if !attr.name.starts_with("set-") {
                         result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
                     }
                 }
+                
+                // Evaluate and add set-* attributes
+                for set_attr in set_attributes {
+                    let attr_name = &set_attr.name[4..]; // Remove "set-" prefix
+                    let evaluated = self.evaluate_expr(&set_attr.expression, env)?;
+                    result.push_str(&format!(" {}=\"{}\"", attr_name, escape_html(evaluated.as_str().unwrap())));
+                }
+                
                 result.push('>');
 
                 if !is_void_element(tag_name) {
@@ -254,6 +263,7 @@ impl Program {
                 children,
                 tag_name,
                 attributes,
+                set_attributes,
                 ..
             }) => {
                 // Skip script and style nodes
@@ -263,10 +273,18 @@ impl Program {
 
                 let mut result = format!("<{}", tag_name);
                 for attr in attributes {
-                    if attr.name != "set-inner-text" {
+                    if !attr.name.starts_with("set-") {
                         result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
                     }
                 }
+                
+                // Evaluate and add set-* attributes
+                for set_attr in set_attributes {
+                    let attr_name = &set_attr.name[4..]; // Remove "set-" prefix
+                    let evaluated = self.evaluate_expr(&set_attr.expression, env)?;
+                    result.push_str(&format!(" {}=\"{}\"", attr_name, escape_html(evaluated.as_str().unwrap())));
+                }
+                
                 result.push('>');
 
                 if !is_void_element(tag_name) {

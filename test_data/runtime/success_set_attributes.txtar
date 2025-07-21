@@ -1,0 +1,10 @@
+-- main.hop --
+<component name="main" params-as="user">
+  <a set-href="user.profile_url" set-title="user.name">Click here</a>
+</component>
+-- data.json --
+{"profile_url": "https://example.com/user/123", "name": "John Doe"}
+-- output.html --
+<div data-hop-id="main/main">
+  <a href="https://example.com/user/123" title="John Doe">Click here</a>
+</div>
