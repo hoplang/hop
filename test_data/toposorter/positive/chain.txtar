@@ -1,9 +1,0 @@
--- nodes.txt --
-a
-b
-c
-d
--- dependencies.txt --
-a b
-b c
-c d

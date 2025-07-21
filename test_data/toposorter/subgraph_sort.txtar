@@ -1,0 +1,7 @@
+-- in --
+add_dependency a b
+add_dependency b c
+add_dependency d e
+sort_subgraph b
+-- out --
+subgraph: b a

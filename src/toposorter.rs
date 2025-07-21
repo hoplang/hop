@@ -161,7 +161,8 @@ impl TopoSorter {
         if in_path.contains(node) {
             // Found a cycle - extract the cycle from path
             let cycle_start = path.iter().position(|x| x == node).unwrap();
-            let cycle = path[cycle_start..].to_vec();
+            let mut cycle = path[cycle_start..].to_vec();
+            cycle.sort();
             return Some(CycleError::new(cycle));
         }
 
@@ -196,5 +197,90 @@ impl TopoSorter {
 impl Default for TopoSorter {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use simple_txtar::Archive;
+    use std::{env, fs, path::PathBuf};
+
+    #[test]
+    fn test_toposorter() {
+        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        d.push("test_data/toposorter");
+        let entries = fs::read_dir(d).unwrap();
+
+        for entry in entries {
+            let path = entry.unwrap().path();
+            if !path.is_file() || !path.extension().map_or(false, |ext| ext == "txtar") {
+                continue;
+            }
+
+            let file_name = path.file_name().unwrap().to_string_lossy();
+            println!("{}", file_name);
+
+            let archive = Archive::from(fs::read_to_string(&path).unwrap());
+
+            let input = archive.get("in").unwrap().content.trim();
+            let expected = archive.get("out").unwrap().content.trim();
+
+            let mut toposorter = TopoSorter::new();
+            let mut lines: Vec<String> = Vec::new();
+
+            for line in input.split('\n') {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.is_empty() {
+                    continue;
+                }
+
+                match parts[0] {
+                    "add_node" => {
+                        assert_eq!(parts.len(), 2, "add_node expects 1 argument");
+                        toposorter.add_node(parts[1].to_string());
+                    }
+                    "add_dependency" => {
+                        assert_eq!(parts.len(), 3, "add_dependency expects 2 arguments");
+                        toposorter.add_dependency(parts[1], parts[2]);
+                    }
+                    "sort" => {
+                        assert_eq!(parts.len(), 1, "sort expects no arguments");
+                        match toposorter.sort() {
+                            Ok(sorted) => {
+                                lines.push(format!("sorted: {}", sorted.join(" ")));
+                            }
+                            Err(cycle_error) => {
+                                lines.push(format!("cycle: {}", cycle_error.cycle.join(" ")));
+                            }
+                        }
+                    }
+                    "sort_subgraph" => {
+                        assert_eq!(parts.len(), 2, "sort_subgraph expects 1 argument");
+                        match toposorter.sort_subgraph(parts[1]) {
+                            Ok(sorted) => {
+                                lines.push(format!("subgraph: {}", sorted.join(" ")));
+                            }
+                            Err(cycle_error) => {
+                                lines.push(format!("cycle: {}", cycle_error.cycle.join(" ")));
+                            }
+                        }
+                    }
+                    "clear_dependencies" => {
+                        assert_eq!(parts.len(), 2, "clear_dependencies expects 1 argument");
+                        toposorter.clear_dependencies(parts[1]);
+                    }
+                    _ => panic!("Unknown command: {}", parts[0]),
+                }
+            }
+
+            let output = lines.join("\n");
+            assert_eq!(output, expected, "Mismatch in file: {}", file_name);
+        }
     }
 }

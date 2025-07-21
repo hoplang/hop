@@ -1,0 +1,6 @@
+-- in --
+add_dependency a b
+add_dependency b c
+sort
+-- out --
+sorted: c b a
