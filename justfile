@@ -7,5 +7,11 @@ test:
 build:
 	cargo build
 
+build-release:
+	cargo build --release
+
 install: build
 	sudo cp target/debug/hop /usr/local/bin/hop
+
+install-release: build-release
+	sudo cp target/release/hop /usr/local/bin/hop
