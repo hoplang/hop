@@ -356,7 +356,7 @@ fn build_and_execute(
 }
 
 fn create_error_page(error: &anyhow::Error) -> String {
-    format!(
+    let html = format!(
         r#"<!DOCTYPE html>
 <html>
 <head>
@@ -370,7 +370,8 @@ fn create_error_page(error: &anyhow::Error) -> String {
 </body>
 </html>"#,
         escape_html(format!("{:#}", error).as_str()),
-    )
+    );
+    inject_hot_reload_script(&html)
 }
 
 fn create_not_found_page(path: &str, available_paths: &[String]) -> String {
@@ -400,7 +401,7 @@ fn create_not_found_page(path: &str, available_paths: &[String]) -> String {
             .join("\n        ")
     };
 
-    format!(
+    let html = format!(
         r#"<!DOCTYPE html>
 <html>
 <head>
@@ -424,7 +425,8 @@ fn create_not_found_page(path: &str, available_paths: &[String]) -> String {
 </html>"#,
         escape_html(path),
         available_list,
-    )
+    );
+    inject_hot_reload_script(&html)
 }
 
 fn load_manifest(manifest_path: &Path) -> anyhow::Result<Manifest> {
@@ -868,5 +870,8 @@ console.log("Hello from static file");
         assert!(body.contains(">/about</a>"));
         assert!(body.contains(">/foo/bar</a>"));
         assert!(body.contains("manifest.json"));
+
+        // Verify hot reload script is included
+        assert!(body.contains("/__hop_hot_reload"));
     }
 }
