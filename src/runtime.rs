@@ -326,7 +326,7 @@ impl Program {
                 base_value
                     .get(property)
                     .ok_or_else(|| format!("Property '{}' not found", property))
-                    .map(|v| v.clone())
+                    .cloned()
             }
             Expression::BinaryOp(left, BinaryOp::Equal, right) => {
                 let left_value = self.evaluate_expr(left, env)?;
