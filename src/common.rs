@@ -173,10 +173,6 @@ impl RangeError {
         )
     }
 
-    pub fn empty_expression(range: Range) -> Self {
-        Self::new("Empty expression".to_string(), range)
-    }
-
     pub fn invalid_variable_name(name: &str, range: Range) -> Self {
         Self::new(
             format!("Invalid variable name '{name}'. Variable names must match [a-z][a-z0-9]*"),
