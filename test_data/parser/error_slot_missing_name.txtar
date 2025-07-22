@@ -1,0 +1,8 @@
+-- main.hop --
+<component name="main">
+    <define-slot>
+        Content
+    </define-slot>
+</component>
+-- output.txt --
+<define-slot> is missing required attribute name

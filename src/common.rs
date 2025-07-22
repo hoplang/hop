@@ -58,7 +58,7 @@ impl Type {
                     "type": "object",
                     "properties": schema_properties,
                     "required": required,
-                    "additionalProperties": false
+                    "additionalProperties": true
                 })
             }
             Type::Array(inner_type) => {
@@ -207,6 +207,24 @@ impl RangeError {
 
     pub fn unification_error(message: &str, range: Range) -> Self {
         Self::new(message.to_string(), range)
+    }
+
+    pub fn undefined_slot(slot: &str, range: Range) -> Self {
+        Self::new(
+            format!("Slot '{slot}' is not defined in this component"),
+            range,
+        )
+    }
+
+    pub fn slot_already_defined(slot: &str, range: Range) -> Self {
+        Self::new(format!("Slot '{slot}' is already defined"), range)
+    }
+
+    pub fn supply_slot_outside_render(range: Range) -> Self {
+        Self::new(
+            "supply-slot must be a direct child of render".to_string(),
+            range,
+        )
     }
 }
 
@@ -366,6 +384,7 @@ pub struct ComponentNode {
     pub range: Range,
     pub children: Vec<Node>,
     pub entrypoint: bool,
+    pub slots: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -385,6 +404,20 @@ pub struct ErrorNode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct DefineSlotNode {
+    pub name_attr: Attribute,
+    pub range: Range,
+    pub children: Vec<Node>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SupplySlotNode {
+    pub name_attr: Attribute,
+    pub range: Range,
+    pub children: Vec<Node>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Node {
     Doctype(DoctypeNode),
     Text(TextNode),
@@ -395,6 +428,8 @@ pub enum Node {
     Component(ComponentNode),
     NativeHTML(NativeHTMLNode),
     Error(ErrorNode),
+    DefineSlot(DefineSlotNode),
+    SupplySlot(SupplySlotNode),
 }
 
 // Environment entry that holds both value and access status

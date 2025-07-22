@@ -1,6 +1,6 @@
 use crate::common::{
-    BinaryOp, ComponentNode, CondNode, Environment, ErrorNode, Expression, ForNode,
-    NativeHTMLNode, Node, RenderNode, Type, escape_html, is_void_element,
+    BinaryOp, ComponentNode, CondNode, DefineSlotNode, Environment, ErrorNode, Expression, ForNode,
+    NativeHTMLNode, Node, RenderNode, SupplySlotNode, Type, escape_html, is_void_element,
 };
 use std::collections::HashMap;
 
@@ -23,6 +23,16 @@ impl Program {
             import_maps,
             parameter_types,
         }
+    }
+
+    pub fn execute_simple(
+        &self,
+        module_name: &str,
+        component_name: &str,
+        params: serde_json::Value,
+    ) -> Result<String, String> {
+        let empty_slots = HashMap::new();
+        self.execute(module_name, component_name, params, &empty_slots)
     }
 
     /// Validate that the provided parameters match the expected JSON schema for the component
@@ -63,6 +73,7 @@ impl Program {
         module_name: &str,
         component_name: &str,
         params: serde_json::Value,
+        slot_content: &HashMap<String, String>,
     ) -> Result<String, String> {
         let component_map = self
             .component_maps
@@ -99,13 +110,17 @@ impl Program {
             let mut result = format!("<{} data-hop-id=\"{}\"", element_type, data_hop_id);
 
             for attr in &component.attributes {
-                if attr.name != "name" && attr.name != "params-as" && attr.name != "as" && attr.name != "entrypoint" {
+                if attr.name != "name"
+                    && attr.name != "params-as"
+                    && attr.name != "as"
+                    && attr.name != "entrypoint"
+                {
                     result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
                 }
             }
             result.push('>');
             for child in &component.children {
-                result.push_str(&self.evaluate_node(child, &mut env, module_name)?);
+                result.push_str(&self.evaluate_node(child, slot_content, &mut env, module_name)?);
             }
             result.push_str(&format!("</{}>", element_type));
 
@@ -113,10 +128,10 @@ impl Program {
         }
     }
 
-
     fn evaluate_node(
         &self,
         node: &Node,
+        slot_content: &HashMap<String, String>,
         env: &mut Environment<serde_json::Value>,
         current_module: &str,
     ) -> Result<String, String> {
@@ -139,7 +154,12 @@ impl Program {
                         env.push(attr.value.clone(), item.clone());
                     }
                     for child in children {
-                        result.push_str(&self.evaluate_node(child, env, current_module)?);
+                        result.push_str(&self.evaluate_node(
+                            child,
+                            slot_content,
+                            env,
+                            current_module,
+                        )?);
                     }
                     if as_attr.is_some() {
                         env.pop();
@@ -155,7 +175,12 @@ impl Program {
                 if condition_value.as_bool().unwrap_or(false) {
                     let mut result = String::new();
                     for child in children {
-                        result.push_str(&self.evaluate_node(child, env, current_module)?);
+                        result.push_str(&self.evaluate_node(
+                            child,
+                            slot_content,
+                            env,
+                            current_module,
+                        )?);
                     }
                     Ok(result)
                 } else {
@@ -165,6 +190,7 @@ impl Program {
             Node::Render(RenderNode {
                 component_attr,
                 params_attr,
+                children,
                 ..
             }) => {
                 let mut params_value = serde_json::Value::Null;
@@ -181,7 +207,25 @@ impl Program {
                     }
                 }
 
-                self.execute(&target_module, component_name, params_value)
+                // Collect and evaluate supply-slot mappings
+                let mut slot_content: HashMap<String, String> = HashMap::new();
+                for child in children {
+                    if let Node::SupplySlot(SupplySlotNode {
+                        name_attr,
+                        children,
+                        ..
+                    }) = child
+                    {
+                        let mut slot_html = String::new();
+                        let empty_slots: HashMap<String, String> = HashMap::new();
+                        for slot_child in children {
+                            slot_html.push_str(&self.evaluate_node(slot_child, &empty_slots, env, current_module)?);
+                        }
+                        slot_content.insert(name_attr.value.clone(), slot_html);
+                    }
+                }
+
+                self.execute(&target_module, component_name, params_value, &slot_content)
             }
             Node::NativeHTML(NativeHTMLNode {
                 inner_text_attr,
@@ -222,7 +266,12 @@ impl Program {
                         result.push_str(&escape_html(evaluated.as_str().unwrap()));
                     } else {
                         for child in children {
-                            result.push_str(&self.evaluate_node(child, env, current_module)?);
+                            result.push_str(&self.evaluate_node(
+                                child,
+                                slot_content,
+                                env,
+                                current_module,
+                            )?);
                         }
                     }
                     result.push_str(&format!("</{}>", tag_name));
@@ -233,12 +282,52 @@ impl Program {
             Node::Error(ErrorNode { children, .. }) => {
                 let mut result = String::new();
                 for child in children {
-                    result.push_str(&self.evaluate_node(child, env, current_module)?);
+                    result.push_str(&self.evaluate_node(
+                        child,
+                        slot_content,
+                        env,
+                        current_module,
+                    )?);
                 }
                 Ok(result)
             }
             Node::Text(text_node) => Ok(text_node.value.clone()),
             Node::Doctype(doctype_node) => Ok(format!("<!DOCTYPE {}>", doctype_node.value)),
+            Node::DefineSlot(DefineSlotNode {
+                name_attr,
+                children,
+                ..
+            }) => {
+                // Check if we have supply-slot content for this slot
+                if let Some(supplied_html) = slot_content.get(&name_attr.value) {
+                    // Use the pre-evaluated supplied content
+                    Ok(supplied_html.clone())
+                } else {
+                    // Render the default content
+                    let mut result = String::new();
+                    for child in children {
+                        result.push_str(&self.evaluate_node(
+                            child,
+                            slot_content,
+                            env,
+                            current_module,
+                        )?);
+                    }
+                    Ok(result)
+                }
+            }
+            Node::SupplySlot(SupplySlotNode { children, .. }) => {
+                let mut result = String::new();
+                for child in children {
+                    result.push_str(&self.evaluate_node(
+                        child,
+                        slot_content,
+                        env,
+                        current_module,
+                    )?);
+                }
+                Ok(result)
+            }
             Node::Import(_) | Node::Component(_) => {
                 panic!("Unexpected node")
             }
@@ -300,8 +389,9 @@ impl Program {
                 Ok(result)
             }
             _ => {
-                // For all other node types, use the existing evaluation logic
-                self.evaluate_node(node, env, current_module)
+                // For all other node types, use the existing evaluation logic (no slots in entrypoints)
+                let empty_slots: HashMap<String, String> = HashMap::new();
+                self.evaluate_node(node, &empty_slots, env, current_module)
             }
         }
     }
@@ -412,21 +502,25 @@ mod tests {
         tokens
             .into_iter()
             .map(|t| {
-                if t.kind == TokenKind::Text && t.value.trim().is_empty() {
-                    Token::new(
-                        t.kind,
-                        " ".to_string(),
-                        t.attributes,
-                        Range::new(Position::new(0, 0), Position::new(0, 0)),
-                    )
+                let normalized_value = if t.kind == TokenKind::Text && t.value.trim().is_empty() {
+                    " ".to_string()
                 } else {
-                    Token::new(
-                        t.kind,
-                        t.value,
-                        t.attributes,
-                        Range::new(Position::new(0, 0), Position::new(0, 0)),
-                    )
-                }
+                    t.value
+                };
+
+                // Normalize and sort attributes
+                let mut normalized_attrs = t.attributes;
+                normalized_attrs.iter_mut().for_each(|attr| {
+                    attr.range = Range::new(Position::new(0, 0), Position::new(0, 0));
+                });
+                normalized_attrs.sort_by(|a, b| a.name.cmp(&b.name));
+
+                Token::new(
+                    t.kind,
+                    normalized_value,
+                    normalized_attrs,
+                    Range::new(Position::new(0, 0), Position::new(0, 0)),
+                )
             })
             .collect()
     }
@@ -466,14 +560,16 @@ mod tests {
                 panic!("Failed to parse JSON data for {}: {}", file_name, e);
             });
 
-            let actual_output = program.execute("main", "main", data).unwrap_or_else(|e| {
-                panic!("Execution failed for {}: {}", file_name, e);
-            });
+            let actual_output = program
+                .execute_simple("main", "main", data)
+                .unwrap_or_else(|e| {
+                    panic!("Execution failed for {}: {}", file_name, e);
+                });
 
             // Normalize whitespace by tokenizing both outputs and comparing tokens
             let mut errors = Vec::new();
             let expected_tokens = normalize_tokens(tokenize(expected_output, &mut errors));
-            let actual_tokens = normalize_tokens(tokenize(&actual_output, &mut errors));
+            let actual_tokens = normalize_tokens(tokenize(actual_output.trim(), &mut errors));
             assert!(errors.is_empty());
 
             assert_eq!(

@@ -1,9 +1,10 @@
 use crate::common::{
     ComponentNode, CondNode, DoctypeNode, ErrorNode, ExprAttribute, ForNode,
     ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode, TextNode, Token,
-    TokenKind, VarNameAttr, is_void_element,
+    TokenKind, VarNameAttr, DefineSlotNode, SupplySlotNode, is_void_element,
 };
 use crate::expression_parser::parse_expression;
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module {
@@ -135,6 +136,42 @@ fn parse_expr_attribute(
         Err(err) => {
             errors.push(RangeError::new(err, range));
             None
+        }
+    }
+}
+
+fn collect_slots_from_children(children: &[Node], slots: &mut HashSet<String>, errors: &mut Vec<RangeError>) {
+    for child in children {
+        match child {
+            Node::DefineSlot(DefineSlotNode { name_attr, range, .. }) => {
+                if slots.contains(&name_attr.value) {
+                    errors.push(RangeError::slot_already_defined(&name_attr.value, *range));
+                } else {
+                    slots.insert(name_attr.value.clone());
+                }
+            }
+            Node::Component(ComponentNode { children, .. }) => {
+                collect_slots_from_children(children, slots, errors);
+            }
+            Node::For(ForNode { children, .. }) => {
+                collect_slots_from_children(children, slots, errors);
+            }
+            Node::Cond(CondNode { children, .. }) => {
+                collect_slots_from_children(children, slots, errors);
+            }
+            Node::NativeHTML(NativeHTMLNode { children, .. }) => {
+                collect_slots_from_children(children, slots, errors);
+            }
+            Node::Render(RenderNode { children, .. }) => {
+                collect_slots_from_children(children, slots, errors);
+            }
+            Node::SupplySlot(SupplySlotNode { children, .. }) => {
+                collect_slots_from_children(children, slots, errors);
+            }
+            Node::Error(ErrorNode { children, .. }) => {
+                collect_slots_from_children(children, slots, errors);
+            }
+            _ => {}
         }
     }
 }
@@ -311,14 +348,57 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                     });
 
                     match name_attr {
-                        Some(name_attr) => Node::Component(ComponentNode {
-                            name_attr,
-                            params_as_attr,
-                            as_attr,
-                            attributes: t.attributes.clone(),
+                        Some(name_attr) => {
+                            let mut slots = HashSet::new();
+                            collect_slots_from_children(&children, &mut slots, errors);
+                            Node::Component(ComponentNode {
+                                name_attr,
+                                params_as_attr,
+                                as_attr,
+                                attributes: t.attributes.clone(),
+                                range: t.range,
+                                children,
+                                entrypoint,
+                                slots: slots.into_iter().collect(),
+                            })
+                        }
+                        None => Node::Error(ErrorNode {
                             range: t.range,
                             children,
-                            entrypoint,
+                        }),
+                    }
+                }
+                "define-slot" => {
+                    let name_attr = t.get_attribute("name").or_else(|| {
+                        errors.push(RangeError::missing_required_attribute(
+                            &t.value, "name", t.range,
+                        ));
+                        None
+                    });
+                    match name_attr {
+                        Some(name_attr) => Node::DefineSlot(DefineSlotNode {
+                            name_attr,
+                            range: t.range,
+                            children,
+                        }),
+                        None => Node::Error(ErrorNode {
+                            range: t.range,
+                            children,
+                        }),
+                    }
+                }
+                "supply-slot" => {
+                    let name_attr = t.get_attribute("name").or_else(|| {
+                        errors.push(RangeError::missing_required_attribute(
+                            &t.value, "name", t.range,
+                        ));
+                        None
+                    });
+                    match name_attr {
+                        Some(name_attr) => Node::SupplySlot(SupplySlotNode {
+                            name_attr,
+                            range: t.range,
+                            children,
                         }),
                         None => Node::Error(ErrorNode {
                             range: t.range,
@@ -410,6 +490,18 @@ mod tests {
                     tag_name, children, ..
                 }) => {
                     lines.push(format!("{}{}", indent, tag_name));
+                    for child in children {
+                        format_node(child, depth + 1, lines);
+                    }
+                }
+                Node::DefineSlot(DefineSlotNode { children, .. }) => {
+                    lines.push(format!("{}define-slot", indent));
+                    for child in children {
+                        format_node(child, depth + 1, lines);
+                    }
+                }
+                Node::SupplySlot(SupplySlotNode { children, .. }) => {
+                    lines.push(format!("{}supply-slot", indent));
                     for child in children {
                         format_node(child, depth + 1, lines);
                     }

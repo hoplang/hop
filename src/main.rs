@@ -236,7 +236,7 @@ fn build_from_manifest(
 
         // Render output file
         let html = program
-            .execute(&entry.module, &entry.entrypoint, data)
+            .execute_simple(&entry.module, &entry.entrypoint, data)
             .map_err(|e| {
                 anyhow::anyhow!(
                     "Failed to execute {}::{}: {}",
@@ -351,7 +351,7 @@ fn build_and_execute(
 
     // Execute the entrypoint
     program
-        .execute(module_name, entrypoint, data)
+        .execute_simple(module_name, entrypoint, data)
         .map_err(|e| anyhow::anyhow!("Failed to execute {}::{}: {}", module_name, entrypoint, e))
 }
 
@@ -370,7 +370,7 @@ fn create_error_page(error: &anyhow::Error) -> String {
         "message": format!("{:#}", error)
     });
 
-    match program.execute("error_pages", "generic-error", error_data) {
+    match program.execute_simple("error_pages", "generic-error", error_data) {
         Ok(html) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
     }
@@ -390,7 +390,7 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
         "available_routes": available_routes
     });
 
-    match program.execute("error_pages", "not-found", not_found_data) {
+    match program.execute_simple("error_pages", "not-found", not_found_data) {
         Ok(html) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
     }

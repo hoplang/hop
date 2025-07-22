@@ -1,6 +1,7 @@
 use crate::common::{
     BinaryOp, ComponentNode, CondNode, Environment, ErrorNode, ExprAttribute,
     Expression, ForNode, NativeHTMLNode, Node, Range, RangeError, RenderNode, Type,
+    DefineSlotNode, SupplySlotNode,
 };
 use crate::parser::Module;
 use crate::unifier::Unifier;
@@ -32,12 +33,14 @@ pub fn typecheck(
     let mut unifier = Unifier::new();
     let mut annotations: Vec<TypeAnnotation> = Vec::new();
     let mut parameter_types = import_types.clone();
+    let mut component_slots: HashMap<String, Vec<String>> = HashMap::new();
     let mut env = Environment::new();
 
     for ComponentNode {
         name_attr,
         params_as_attr,
         children,
+        slots,
         ..
     } in &module.components
     {
@@ -49,6 +52,9 @@ pub fn typecheck(
             ));
             continue;
         }
+        
+        // Store component slots for validation
+        component_slots.insert(name_attr.value.clone(), slots.clone());
 
         if let Some(params_as_attr) = params_as_attr {
             let t1 = unifier.new_type_var();
@@ -60,6 +66,7 @@ pub fn typecheck(
                 typecheck_node(
                     child,
                     &parameter_types,
+                    &component_slots,
                     &mut env,
                     &mut unifier,
                     &mut annotations,
@@ -81,6 +88,7 @@ pub fn typecheck(
                 typecheck_node(
                     child,
                     &parameter_types,
+                    &component_slots,
                     &mut env,
                     &mut unifier,
                     &mut annotations,
@@ -102,6 +110,7 @@ pub fn typecheck(
 fn typecheck_node(
     node: &Node,
     parameter_types: &HashMap<String, Type>,
+    component_slots: &HashMap<String, Vec<String>>,
     env: &mut Environment<Type>,
     unifier: &mut Unifier,
     annotations: &mut Vec<TypeAnnotation>,
@@ -139,7 +148,7 @@ fn typecheck_node(
             }
 
             for child in children {
-                typecheck_node(child, parameter_types, env, unifier, annotations, errors);
+                typecheck_node(child, parameter_types, component_slots, env, unifier, annotations, errors);
             }
 
             if pushed {
@@ -156,7 +165,7 @@ fn typecheck_node(
             typecheck_expr(&Type::Bool, if_attr, env, unifier, annotations, errors);
 
             for child in children {
-                typecheck_node(child, parameter_types, env, unifier, annotations, errors);
+                typecheck_node(child, parameter_types, component_slots, env, unifier, annotations, errors);
             }
         }
         Node::Render(RenderNode {
@@ -175,9 +184,20 @@ fn typecheck_node(
                     component_attr.range,
                 ));
             }
+            
+            // Validate slots
+            if let Some(defined_slots) = component_slots.get(&component_attr.value) {
+                for child in children {
+                    if let Node::SupplySlot(SupplySlotNode { name_attr, .. }) = child {
+                        if !defined_slots.contains(&name_attr.value) {
+                            errors.push(RangeError::undefined_slot(&name_attr.value, name_attr.range));
+                        }
+                    }
+                }
+            }
 
             for child in children {
-                typecheck_node(child, parameter_types, env, unifier, annotations, errors);
+                typecheck_node(child, parameter_types, component_slots, env, unifier, annotations, errors);
             }
         }
         Node::NativeHTML(NativeHTMLNode {
@@ -195,16 +215,26 @@ fn typecheck_node(
             }
 
             for child in children {
-                typecheck_node(child, parameter_types, env, unifier, annotations, errors);
+                typecheck_node(child, parameter_types, component_slots, env, unifier, annotations, errors);
             }
         }
         Node::Error(ErrorNode { children, .. }) => {
             for child in children {
-                typecheck_node(child, parameter_types, env, unifier, annotations, errors);
+                typecheck_node(child, parameter_types, component_slots, env, unifier, annotations, errors);
             }
         }
         Node::Text(_) | Node::Doctype(_) => {
             // No typechecking needed
+        }
+        Node::DefineSlot(DefineSlotNode { children, .. }) => {
+            for child in children {
+                typecheck_node(child, parameter_types, component_slots, env, unifier, annotations, errors);
+            }
+        }
+        Node::SupplySlot(SupplySlotNode { children, .. }) => {
+            for child in children {
+                typecheck_node(child, parameter_types, component_slots, env, unifier, annotations, errors);
+            }
         }
         Node::Import(_) | Node::Component(_) => {
             panic!("Unexpected node")

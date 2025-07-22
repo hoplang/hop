@@ -1,0 +1,20 @@
+-- main.hop --
+<component name="wrapper">
+    <div>
+        <define-slot name="content">Default</define-slot>
+    </div>
+</component>
+
+<component name="main" entrypoint>
+    <render component="wrapper">
+        <supply-slot name="content">Custom</supply-slot>
+    </render>
+</component>
+-- data.json --
+{}
+-- output.html --
+<div data-hop-id="main/wrapper">
+	<div>
+        Custom
+    </div>
+</div>

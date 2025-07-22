@@ -1,0 +1,35 @@
+-- main.hop --
+<component name="layout">
+    <div class="page">
+        <header>
+            <define-slot name="title">Default Title</define-slot>
+        </header>
+        <main>
+            <define-slot name="content">Default Content</define-slot>
+        </main>
+    </div>
+</component>
+
+<component name="main" entrypoint>
+    <render component="layout">
+        <supply-slot name="title">My Custom Title</supply-slot>
+        <supply-slot name="content">
+            <p>This is custom content!</p>
+            <p>With multiple paragraphs.</p>
+        </supply-slot>
+    </render>
+</component>
+-- data.json --
+{}
+-- output.html --
+<div data-hop-id="main/layout">
+    <div class="page">
+        <header>
+            My Custom Title
+        </header>
+        <main>
+            <p>This is custom content!</p>
+            <p>With multiple paragraphs.</p>
+        </main>
+    </div>
+</div>
