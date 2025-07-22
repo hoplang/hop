@@ -1,7 +1,7 @@
 -- main.hop --
 <component name="card">
     <div class="card">
-        <define-slot name="content">Default content</define-slot>
+        <define-slot name="content"></define-slot>
     </div>
 </component>
 
@@ -16,12 +16,12 @@
 -- data.json --
 {
     "title": "Hello World",
-    "message": "This text comes from outside params!"
+    "message": "This text comes from outside params"
 }
 -- output.html --
 <div data-hop-id="main/card">
     <div class="card">
         <h1>Hello World</h1>
-        <p>This text comes from outside params!</p>
+        <p>This text comes from outside params</p>
     </div>
 </div>

@@ -1,7 +1,7 @@
 -- main.hop --
 <component name="wrapper">
     <div>
-        <define-slot name="content">Default</define-slot>
+        <define-slot name="content"></define-slot>
     </div>
 </component>
 
