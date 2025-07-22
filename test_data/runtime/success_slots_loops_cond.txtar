@@ -1,0 +1,65 @@
+-- main.hop --
+<component name="card">
+    <div class="card">
+        <define-slot name="header"></define-slot>
+        <div class="body">
+            <define-slot name="content"></define-slot>
+        </div>
+        <define-slot name="footer"></define-slot>
+    </div>
+</component>
+
+<component name="main" entrypoint params-as="data">
+    <render component="card">
+        <supply-slot name="header">
+            <h1 set-inner-text="data.title"></h1>
+        </supply-slot>
+        <supply-slot name="content">
+            <for each="data.users" as="user">
+                <cond if="user.active">
+                    <div class="user-item">
+                        <span set-inner-text="user.name"></span>
+                        <cond if="user.admin">
+                            <strong> (Admin)</strong>
+                        </cond>
+                    </div>
+                </cond>
+            </for>
+        </supply-slot>
+        <supply-slot name="footer">
+            <p>Total active users: <span set-inner-text="data.active_count"></span></p>
+        </supply-slot>
+    </render>
+</component>
+-- data.json --
+{
+    "title": "User Management",
+    "active_count": "3",
+    "users": [
+        {"name": "Alice", "active": true, "admin": true},
+        {"name": "Bob", "active": false, "admin": false},
+        {"name": "Charlie", "active": true, "admin": false},
+        {"name": "Diana", "active": true, "admin": true},
+        {"name": "Eve", "active": false, "admin": false}
+    ]
+}
+-- output.html --
+<div data-hop-id="main/card">
+    <div class="card">
+        <h1>User Management</h1>
+        <div class="body">
+            <div class="user-item">
+                <span>Alice</span>
+                <strong> (Admin)</strong>
+            </div>
+            <div class="user-item">
+                <span>Charlie</span>
+            </div>
+            <div class="user-item">
+                <span>Diana</span>
+                <strong> (Admin)</strong>
+            </div>
+        </div>
+        <p>Total active users: <span>3</span></p>
+    </div>
+</div>
