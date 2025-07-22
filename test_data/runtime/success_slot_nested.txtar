@@ -1,0 +1,67 @@
+-- main.hop --
+<component name="page-layout">
+    <div class="page">
+        <define-slot name="content"></define-slot>
+    </div>
+</component>
+
+<component name="modal-wrapper">
+    <div class="modal-container">
+        <define-slot name="modal-slot"></define-slot>
+    </div>
+</component>
+
+<component name="modal">
+    <div class="modal">
+        <div class="modal-header">
+            <define-slot name="header"></define-slot>
+        </div>
+        <div class="modal-body">
+            <define-slot name="body"></define-slot>
+        </div>
+    </div>
+</component>
+
+<component name="main" entrypoint params-as="data">
+    <render component="page-layout">
+        <supply-slot name="content">
+            <h1 set-inner-text="data.page_title"></h1>
+            <render component="modal-wrapper">
+                <supply-slot name="modal-slot">
+                    <render component="modal">
+                        <supply-slot name="header">
+						  	<span>header</span>
+                        </supply-slot>
+                        <supply-slot name="body">
+                            <span>body</span>
+                        </supply-slot>
+                    </render>
+                </supply-slot>
+            </render>
+        </supply-slot>
+    </render>
+</component>
+-- data.json --
+{
+    "page_title": "Welcome Page"
+}
+-- output.html --
+<div data-hop-id="main/page-layout">
+    <div class="page">
+        <h1>Welcome Page</h1>
+        <div data-hop-id="main/modal-wrapper">
+            <div class="modal-container">
+                <div data-hop-id="main/modal">
+                    <div class="modal">
+                        <div class="modal-header">
+                            <span>header</span>
+                        </div>
+                        <div class="modal-body">
+                            <span>body</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
