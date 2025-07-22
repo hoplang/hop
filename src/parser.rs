@@ -143,11 +143,11 @@ fn parse_expr_attribute(
 fn collect_slots_from_children(children: &[Node], slots: &mut HashSet<String>, errors: &mut Vec<RangeError>) {
     for child in children {
         match child {
-            Node::DefineSlot(DefineSlotNode { name_attr, range, .. }) => {
-                if slots.contains(&name_attr.value) {
-                    errors.push(RangeError::slot_already_defined(&name_attr.value, *range));
+            Node::DefineSlot(DefineSlotNode { name, range, .. }) => {
+                if slots.contains(name) {
+                    errors.push(RangeError::slot_already_defined(name, *range));
                 } else {
-                    slots.insert(name_attr.value.clone());
+                    slots.insert(name.clone());
                 }
             }
             Node::Component(ComponentNode { children, .. }) => {
@@ -368,43 +368,21 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                         }),
                     }
                 }
-                "define-slot" => {
-                    let name_attr = t.get_attribute("name").or_else(|| {
-                        errors.push(RangeError::missing_required_attribute(
-                            &t.value, "name", t.range,
-                        ));
-                        None
-                    });
-                    match name_attr {
-                        Some(name_attr) => Node::DefineSlot(DefineSlotNode {
-                            name_attr,
-                            range: t.range,
-                            children,
-                        }),
-                        None => Node::Error(ErrorNode {
-                            range: t.range,
-                            children,
-                        }),
-                    }
+                tag_name if tag_name.starts_with("slot-") => {
+                    let slot_name = &tag_name[5..]; // Remove "slot-" prefix
+                    Node::DefineSlot(DefineSlotNode {
+                        name: slot_name.to_string(),
+                        range: t.range,
+                        children,
+                    })
                 }
-                "supply-slot" => {
-                    let name_attr = t.get_attribute("name").or_else(|| {
-                        errors.push(RangeError::missing_required_attribute(
-                            &t.value, "name", t.range,
-                        ));
-                        None
-                    });
-                    match name_attr {
-                        Some(name_attr) => Node::SupplySlot(SupplySlotNode {
-                            name_attr,
-                            range: t.range,
-                            children,
-                        }),
-                        None => Node::Error(ErrorNode {
-                            range: t.range,
-                            children,
-                        }),
-                    }
+                tag_name if tag_name.starts_with("with-") => {
+                    let slot_name = &tag_name[5..]; // Remove "with-" prefix
+                    Node::SupplySlot(SupplySlotNode {
+                        name: slot_name.to_string(),
+                        range: t.range,
+                        children,
+                    })
                 }
                 _ => {
                     let inner_text_attr = t.get_attribute("set-inner-text").and_then(|attr| {
@@ -494,14 +472,14 @@ mod tests {
                         format_node(child, depth + 1, lines);
                     }
                 }
-                Node::DefineSlot(DefineSlotNode { children, .. }) => {
-                    lines.push(format!("{}define-slot", indent));
+                Node::DefineSlot(DefineSlotNode { name, children, .. }) => {
+                    lines.push(format!("{}slot-{}", indent, name));
                     for child in children {
                         format_node(child, depth + 1, lines);
                     }
                 }
-                Node::SupplySlot(SupplySlotNode { children, .. }) => {
-                    lines.push(format!("{}supply-slot", indent));
+                Node::SupplySlot(SupplySlotNode { name, children, .. }) => {
+                    lines.push(format!("{}with-{}", indent, name));
                     for child in children {
                         format_node(child, depth + 1, lines);
                     }

@@ -1,44 +1,44 @@
 -- main.hop --
 <component name="page-layout">
     <div class="page">
-        <define-slot name="content"></define-slot>
+        <slot-content></slot-content>
     </div>
 </component>
 
 <component name="modal-wrapper">
     <div class="modal-container">
-        <define-slot name="modal-slot"></define-slot>
+        <slot-modal></slot-modal>
     </div>
 </component>
 
 <component name="modal">
     <div class="modal">
         <div class="modal-header">
-            <define-slot name="header"></define-slot>
+            <slot-header></slot-header>
         </div>
         <div class="modal-body">
-            <define-slot name="body"></define-slot>
+            <slot-body></slot-body>
         </div>
     </div>
 </component>
 
 <component name="main" entrypoint params-as="data">
     <render component="page-layout">
-        <supply-slot name="content">
+        <with-content>
             <h1 set-inner-text="data.page_title"></h1>
             <render component="modal-wrapper">
-                <supply-slot name="modal-slot">
+                <with-modal>
                     <render component="modal">
-                        <supply-slot name="header">
+                        <with-header>
 						  	<span>header</span>
-                        </supply-slot>
-                        <supply-slot name="body">
+                        </with-header>
+                        <with-body>
                             <span>body</span>
-                        </supply-slot>
+                        </with-body>
                     </render>
-                </supply-slot>
+                </with-modal>
             </render>
-        </supply-slot>
+        </with-content>
     </render>
 </component>
 -- data.json --

@@ -1,15 +1,15 @@
 -- main.hop --
 <component name="main">
     <strong>
-        <define-slot name="data"></define-slot>
+        <slot-data></slot-data>
     </strong>
 </component>
 
 <component name="bar">
     <render component="main">
-        <supply-slot name="data">
+        <with-data>
             Here's the content for the 'data' slot
-        </supply-slot>
+        </with-data>
     </render>
 </component>
 -- out --

@@ -1,15 +1,15 @@
 -- main.hop --
 <component name="main">
     <strong>
-        <define-slot name="data"></define-slot>
+        <slot-data></slot-data>
     </strong>
 </component>
 
 <component name="bar">
     <render component="main">
-        <supply-slot name="invalid">
+        <with-invalid>
             This slot doesn't exist
-        </supply-slot>
+        </with-invalid>
     </render>
 </component>
 -- out --

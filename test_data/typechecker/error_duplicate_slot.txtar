@@ -1,11 +1,11 @@
 -- main.hop --
 <component name="main">
-    <define-slot name="content">
+    <slot-content>
         First definition
-    </define-slot>
-    <define-slot name="content">
+    </slot-content>
+    <slot-content>
         Second definition
-    </define-slot>
+    </slot-content>
 </component>
 -- out --
 Slot 'content' is already defined

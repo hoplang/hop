@@ -222,7 +222,7 @@ impl RangeError {
 
     pub fn supply_slot_outside_render(range: Range) -> Self {
         Self::new(
-            "supply-slot must be a direct child of render".to_string(),
+            "with-* slot must be a direct child of render".to_string(),
             range,
         )
     }
@@ -405,14 +405,14 @@ pub struct ErrorNode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DefineSlotNode {
-    pub name_attr: Attribute,
+    pub name: String,
     pub range: Range,
     pub children: Vec<Node>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SupplySlotNode {
-    pub name_attr: Attribute,
+    pub name: String,
     pub range: Range,
     pub children: Vec<Node>,
 }

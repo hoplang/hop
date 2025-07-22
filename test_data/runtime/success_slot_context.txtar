@@ -1,16 +1,16 @@
 -- main.hop --
 <component name="card">
     <div class="card">
-        <define-slot name="content"></define-slot>
+        <slot-content></slot-content>
     </div>
 </component>
 
 <component name="main" entrypoint params-as="data">
     <render component="card">
-        <supply-slot name="content">
+        <with-content>
             <h1 set-inner-text="data.title"></h1>
             <p set-inner-text="data.message"></p>
-        </supply-slot>
+        </with-content>
     </render>
 </component>
 -- data.json --

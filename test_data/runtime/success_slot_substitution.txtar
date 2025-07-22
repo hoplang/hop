@@ -1,13 +1,13 @@
 -- main.hop --
 <component name="wrapper">
     <div>
-        <define-slot name="content"></define-slot>
+        <slot-content></slot-content>
     </div>
 </component>
 
 <component name="main" entrypoint>
     <render component="wrapper">
-        <supply-slot name="content">Custom</supply-slot>
+        <with-content>Custom</with-content>
     </render>
 </component>
 -- data.json --

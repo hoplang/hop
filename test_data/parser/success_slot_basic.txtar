@@ -1,22 +1,22 @@
 -- main.hop --
 <component name="main">
-    <define-slot name="content">
+    <slot-content>
         Default content
-    </define-slot>
+    </slot-content>
     <render component="other">
-        <supply-slot name="data">
+        <with-data>
             Custom content
-        </supply-slot>
+        </with-data>
     </render>
 </component>
 
 <component name="other">
-    <define-slot name="data">
+    <slot-data>
         Other content
-    </define-slot>
+    </slot-data>
 </component>
 -- output.txt --
 component
-	define-slot
+	slot-content
 	render
-		supply-slot
+		with-data

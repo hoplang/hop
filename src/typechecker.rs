@@ -188,9 +188,9 @@ fn typecheck_node(
             // Validate slots
             if let Some(defined_slots) = component_slots.get(&component_attr.value) {
                 for child in children {
-                    if let Node::SupplySlot(SupplySlotNode { name_attr, .. }) = child {
-                        if !defined_slots.contains(&name_attr.value) {
-                            errors.push(RangeError::undefined_slot(&name_attr.value, name_attr.range));
+                    if let Node::SupplySlot(SupplySlotNode { name, range, .. }) = child {
+                        if !defined_slots.contains(name) {
+                            errors.push(RangeError::undefined_slot(name, *range));
                         }
                     }
                 }
