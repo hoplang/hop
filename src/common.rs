@@ -365,14 +365,7 @@ pub struct ComponentNode {
     pub attributes: Vec<Attribute>,
     pub range: Range,
     pub children: Vec<Node>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct EntrypointNode {
-    pub name_attr: Attribute,
-    pub params_as_attr: Option<VarNameAttr>,
-    pub range: Range,
-    pub children: Vec<Node>,
+    pub entrypoint: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -400,7 +393,6 @@ pub enum Node {
     Cond(CondNode),
     Import(ImportNode),
     Component(ComponentNode),
-    Entrypoint(EntrypointNode),
     NativeHTML(NativeHTMLNode),
     Error(ErrorNode),
 }

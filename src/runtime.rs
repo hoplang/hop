@@ -1,5 +1,5 @@
 use crate::common::{
-    BinaryOp, ComponentNode, CondNode, EntrypointNode, Environment, ErrorNode, Expression, ForNode,
+    BinaryOp, ComponentNode, CondNode, Environment, ErrorNode, Expression, ForNode,
     NativeHTMLNode, Node, RenderNode, Type, escape_html, is_void_element,
 };
 use std::collections::HashMap;
@@ -8,7 +8,6 @@ use std::collections::HashMap;
 #[derive(Clone)]
 pub struct Program {
     component_maps: HashMap<String, HashMap<String, ComponentNode>>,
-    entrypoint_maps: HashMap<String, HashMap<String, EntrypointNode>>,
     import_maps: HashMap<String, HashMap<String, String>>,
     parameter_types: HashMap<String, HashMap<String, Type>>,
 }
@@ -16,13 +15,11 @@ pub struct Program {
 impl Program {
     pub fn new(
         component_maps: HashMap<String, HashMap<String, ComponentNode>>,
-        entrypoint_maps: HashMap<String, HashMap<String, EntrypointNode>>,
         import_maps: HashMap<String, HashMap<String, String>>,
         parameter_types: HashMap<String, HashMap<String, Type>>,
     ) -> Self {
         Program {
             component_maps,
-            entrypoint_maps,
             import_maps,
             parameter_types,
         }
@@ -67,13 +64,6 @@ impl Program {
         component_name: &str,
         params: serde_json::Value,
     ) -> Result<String, String> {
-        // First try to find entrypoints, then components
-        if let Some(entrypoint_map) = self.entrypoint_maps.get(module_name) {
-            if let Some(entrypoint) = entrypoint_map.get(component_name) {
-                return self.execute_entrypoint(entrypoint, params, module_name);
-            }
-        }
-
         let component_map = self
             .component_maps
             .get(module_name)
@@ -91,107 +81,38 @@ impl Program {
             env.push(params_as_attr.value.clone(), params);
         }
 
-        let mut element_type = "div".to_string();
-        if let Some(as_attr) = &component.as_attr {
-            element_type = as_attr.value.clone();
-        }
-
-        let data_hop_id = format!("{}/{}", module_name, component_name);
-        let mut result = format!("<{} data-hop-id=\"{}\"", element_type, data_hop_id);
-
-        for attr in &component.attributes {
-            if attr.name != "name" && attr.name != "params-as" && attr.name != "as" {
-                result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
+        if component.entrypoint {
+            // For entrypoints, don't wrap in a div, just execute children directly
+            let mut result = String::new();
+            for child in &component.children {
+                result.push_str(&self.evaluate_node_entrypoint(child, &mut env, module_name)?);
             }
-        }
-        result.push('>');
-        for child in &component.children {
-            result.push_str(&self.evaluate_node(child, &mut env, module_name)?);
-        }
-        result.push_str(&format!("</{}>", element_type));
+            Ok(result)
+        } else {
+            // For regular components, wrap in the specified element type
+            let mut element_type = "div".to_string();
+            if let Some(as_attr) = &component.as_attr {
+                element_type = as_attr.value.clone();
+            }
 
-        Ok(result)
+            let data_hop_id = format!("{}/{}", module_name, component_name);
+            let mut result = format!("<{} data-hop-id=\"{}\"", element_type, data_hop_id);
+
+            for attr in &component.attributes {
+                if attr.name != "name" && attr.name != "params-as" && attr.name != "as" && attr.name != "entrypoint" {
+                    result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
+                }
+            }
+            result.push('>');
+            for child in &component.children {
+                result.push_str(&self.evaluate_node(child, &mut env, module_name)?);
+            }
+            result.push_str(&format!("</{}>", element_type));
+
+            Ok(result)
+        }
     }
 
-    fn execute_entrypoint(
-        &self,
-        entrypoint: &EntrypointNode,
-        params: serde_json::Value,
-        module_name: &str,
-    ) -> Result<String, String> {
-        let mut env = Environment::new();
-        if let Some(params_as_attr) = &entrypoint.params_as_attr {
-            env.push(params_as_attr.value.clone(), params);
-        }
-
-        let mut result = String::new();
-        for child in &entrypoint.children {
-            result.push_str(&self.evaluate_entrypoint_node(child, &mut env, module_name)?);
-        }
-
-        Ok(result)
-    }
-
-    fn evaluate_entrypoint_node(
-        &self,
-        node: &Node,
-        env: &mut Environment<serde_json::Value>,
-        current_module: &str,
-    ) -> Result<String, String> {
-        match node {
-            Node::NativeHTML(NativeHTMLNode {
-                tag_name,
-                attributes,
-                children,
-                inner_text_attr,
-                set_attributes,
-                ..
-            }) => {
-                // For entrypoints, preserve script and style tags
-                let mut result = format!("<{}", tag_name);
-                for attr in attributes {
-                    if !attr.name.starts_with("set-") {
-                        result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
-                    }
-                }
-
-                // Evaluate and add set-* attributes
-                for set_attr in set_attributes {
-                    let attr_name = &set_attr.name[4..]; // Remove "set-" prefix
-                    let evaluated = self.evaluate_expr(&set_attr.expression, env)?;
-                    result.push_str(&format!(
-                        " {}=\"{}\"",
-                        attr_name,
-                        escape_html(evaluated.as_str().unwrap())
-                    ));
-                }
-
-                result.push('>');
-
-                if !is_void_element(tag_name) {
-                    if let Some(attr) = inner_text_attr {
-                        let evaluated = self.evaluate_expr(&attr.expression, env)?;
-                        result.push_str(&escape_html(evaluated.as_str().unwrap()));
-                    } else {
-                        for child in children {
-                            result.push_str(&self.evaluate_entrypoint_node(
-                                child,
-                                env,
-                                current_module,
-                            )?);
-                        }
-                    }
-                    result.push_str(&format!("</{}>", tag_name));
-                }
-
-                Ok(result)
-            }
-            _ => {
-                // For all other node types, use the existing evaluation logic
-                self.evaluate_node(node, env, current_module)
-            }
-        }
-    }
 
     fn evaluate_node(
         &self,
@@ -318,8 +239,69 @@ impl Program {
             }
             Node::Text(text_node) => Ok(text_node.value.clone()),
             Node::Doctype(doctype_node) => Ok(format!("<!DOCTYPE {}>", doctype_node.value)),
-            Node::Import(_) | Node::Component(_) | Node::Entrypoint(_) => {
+            Node::Import(_) | Node::Component(_) => {
                 panic!("Unexpected node")
+            }
+        }
+    }
+
+    fn evaluate_node_entrypoint(
+        &self,
+        node: &Node,
+        env: &mut Environment<serde_json::Value>,
+        current_module: &str,
+    ) -> Result<String, String> {
+        match node {
+            Node::NativeHTML(NativeHTMLNode {
+                tag_name,
+                attributes,
+                children,
+                inner_text_attr,
+                set_attributes,
+                ..
+            }) => {
+                // For entrypoints, preserve script and style tags
+                let mut result = format!("<{}", tag_name);
+                for attr in attributes {
+                    if !attr.name.starts_with("set-") {
+                        result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
+                    }
+                }
+
+                // Evaluate and add set-* attributes
+                for set_attr in set_attributes {
+                    let attr_name = &set_attr.name[4..]; // Remove "set-" prefix
+                    let evaluated = self.evaluate_expr(&set_attr.expression, env)?;
+                    result.push_str(&format!(
+                        " {}=\"{}\"",
+                        attr_name,
+                        escape_html(evaluated.as_str().unwrap())
+                    ));
+                }
+
+                result.push('>');
+
+                if !is_void_element(tag_name) {
+                    if let Some(attr) = inner_text_attr {
+                        let evaluated = self.evaluate_expr(&attr.expression, env)?;
+                        result.push_str(&escape_html(evaluated.as_str().unwrap()));
+                    } else {
+                        for child in children {
+                            result.push_str(&self.evaluate_node_entrypoint(
+                                child,
+                                env,
+                                current_module,
+                            )?);
+                        }
+                    }
+                    result.push_str(&format!("</{}>", tag_name));
+                }
+
+                Ok(result)
+            }
+            _ => {
+                // For all other node types, use the existing evaluation logic
+                self.evaluate_node(node, env, current_module)
             }
         }
     }
@@ -378,7 +360,6 @@ mod tests {
 
     fn compile_modules(modules_source: Vec<(String, String)>) -> Result<Program, String> {
         let mut component_maps = HashMap::new();
-        let mut entrypoint_maps = HashMap::new();
         let mut import_maps = HashMap::new();
         let mut module_parameter_types: HashMap<String, HashMap<String, Type>> = HashMap::new();
 
@@ -405,15 +386,10 @@ mod tests {
             }
 
             let mut component_map = HashMap::new();
-            let mut entrypoint_map = HashMap::new();
             let mut import_map = HashMap::new();
 
             for n in &module.components {
                 component_map.insert(n.name_attr.value.clone(), n.clone());
-            }
-
-            for n in &module.entrypoints {
-                entrypoint_map.insert(n.name_attr.value.clone(), n.clone());
             }
 
             for n in &module.imports {
@@ -421,14 +397,12 @@ mod tests {
             }
 
             component_maps.insert(module_name.clone(), component_map);
-            entrypoint_maps.insert(module_name.clone(), entrypoint_map);
             import_maps.insert(module_name.clone(), import_map);
             module_parameter_types.insert(module_name.clone(), type_info.parameter_types);
         }
 
         Ok(Program::new(
             component_maps,
-            entrypoint_maps,
             import_maps,
             module_parameter_types,
         ))

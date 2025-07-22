@@ -25,7 +25,6 @@ impl Compiler {
 
     pub fn compile(&self) -> Result<Program, String> {
         let mut component_maps = HashMap::new();
-        let mut entrypoint_maps = HashMap::new();
         let mut import_maps = HashMap::new();
         let mut modules = HashMap::new();
         let mut module_parameter_types: HashMap<String, HashMap<String, Type>> = HashMap::new();
@@ -104,18 +103,10 @@ impl Compiler {
             }
 
             let mut component_map = HashMap::new();
-            let mut entrypoint_map = HashMap::new();
             let mut import_map = HashMap::new();
 
             for comp_node in &module.components {
                 component_map.insert(comp_node.name_attr.value.clone(), comp_node.clone());
-            }
-
-            for entrypoint_node in &module.entrypoints {
-                entrypoint_map.insert(
-                    entrypoint_node.name_attr.value.clone(),
-                    entrypoint_node.clone(),
-                );
             }
 
             for import_node in &module.imports {
@@ -126,14 +117,12 @@ impl Compiler {
             }
 
             component_maps.insert(module_name.clone(), component_map);
-            entrypoint_maps.insert(module_name.clone(), entrypoint_map);
             import_maps.insert(module_name.clone(), import_map);
             module_parameter_types.insert(module_name.clone(), type_info.parameter_types);
         }
 
         Ok(Program::new(
             component_maps,
-            entrypoint_maps,
             import_maps,
             module_parameter_types,
         ))

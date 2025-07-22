@@ -1,7 +1,7 @@
 -- main.hop --
-<entrypoint name="main" params-as="data">
+<component name="main" params-as="data" entrypoint>
     <h1>Hello World</h1>
     <p set-inner-text="data.message"></p>
-</entrypoint>
+</component>
 -- out --
 main::main : {message: string}

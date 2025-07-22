@@ -1,5 +1,5 @@
 use crate::common::{
-    BinaryOp, ComponentNode, CondNode, EntrypointNode, Environment, ErrorNode, ExprAttribute,
+    BinaryOp, ComponentNode, CondNode, Environment, ErrorNode, ExprAttribute,
     Expression, ForNode, NativeHTMLNode, Node, Range, RangeError, RenderNode, Type,
 };
 use crate::parser::Module;
@@ -90,62 +90,6 @@ pub fn typecheck(
         }
     }
 
-    // Typecheck entrypoints similarly to components
-    for EntrypointNode {
-        name_attr,
-        params_as_attr,
-        children,
-        ..
-    } in &module.entrypoints
-    {
-        // Check for duplicate entrypoint names (they share the same namespace as components)
-        if parameter_types.contains_key(&name_attr.value) {
-            errors.push(RangeError::component_already_defined(
-                &name_attr.value,
-                name_attr.range,
-            ));
-            continue;
-        }
-
-        if let Some(params_as_attr) = params_as_attr {
-            let t1 = unifier.new_type_var();
-            if !env.push(params_as_attr.value.clone(), t1.clone()) {
-                panic!("Variable name for entrypoint parameter was unexpectedly in use")
-            }
-            annotations.push(TypeAnnotation(params_as_attr.range, t1.clone()));
-            for child in children {
-                typecheck_node(
-                    child,
-                    &parameter_types,
-                    &mut env,
-                    &mut unifier,
-                    &mut annotations,
-                    errors,
-                );
-            }
-
-            let final_type = unifier.query(&t1);
-            if !env.pop() {
-                errors.push(RangeError::unused_variable(
-                    &params_as_attr.value,
-                    params_as_attr.range,
-                ));
-            }
-            parameter_types.insert(name_attr.value.clone(), final_type);
-        } else {
-            parameter_types.insert(name_attr.value.clone(), Type::Void);
-            for child in children {
-                typecheck_node(
-                    child,
-                    &parameter_types,
-                    &mut env,
-                    &mut unifier,
-                    &mut annotations,
-                    errors,
-                );
-            }
-        }
-    }
 
     let final_annotations = annotations
         .into_iter()
@@ -262,7 +206,7 @@ fn typecheck_node(
         Node::Text(_) | Node::Doctype(_) => {
             // No typechecking needed
         }
-        Node::Import(_) | Node::Component(_) | Node::Entrypoint(_) => {
+        Node::Import(_) | Node::Component(_) => {
             panic!("Unexpected node")
         }
     }
@@ -427,17 +371,6 @@ mod tests {
                                 type_result
                                     .parameter_types
                                     .get(&c.name_attr.value)
-                                    .expect("Type not found")
-                            ));
-                        }
-                        for e in module.entrypoints {
-                            all_output_lines.push(format!(
-                                "{}::{} : {}",
-                                module_name,
-                                e.name_attr.value,
-                                type_result
-                                    .parameter_types
-                                    .get(&e.name_attr.value)
                                     .expect("Type not found")
                             ));
                         }

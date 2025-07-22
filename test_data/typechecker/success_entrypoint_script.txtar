@@ -1,11 +1,11 @@
 -- main.hop --
-<entrypoint name="main">
+<component name="main" entrypoint>
     <script>
         console.log("test");
     </script>
     <style>
         body { color: red; }
     </style>
-</entrypoint>
+</component>
 -- out --
 main::main : void
