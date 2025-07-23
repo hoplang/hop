@@ -5,15 +5,15 @@
 </step3-comp>
 
 <step2-comp params-as="config">
-	<render component="step3-comp" params="config.settings"/>
+	<step3-comp params="config.settings"/>
 </step2-comp>
 
 <step1-comp params-as="data">
-	<render component="step2-comp" params="data.config"/>
+	<step2-comp params="data.config"/>
 </step1-comp>
 
 <main-comp params-as="params">
-	<render component="step1-comp" params="params"/>
+	<step1-comp params="params"/>
 </main-comp>
 -- out --
 main::step3-comp : {enabled: boolean}

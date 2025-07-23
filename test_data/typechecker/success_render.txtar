@@ -5,7 +5,7 @@
 </foo-comp>
 
 <main-comp params-as="i">
-  <render component="foo-comp" params="i"/>
+  <foo-comp params="i"/>
 </main-comp>
 -- out --
 main::foo-comp : boolean

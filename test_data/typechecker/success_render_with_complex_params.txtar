@@ -10,7 +10,7 @@
 
 <main-comp params-as="params">
 	<for each="params.items" as="item">
-		<render component="process-item" params="item"/>
+		<process-item params="item"/>
 	</for>
 </main-comp>
 -- out --

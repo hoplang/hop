@@ -10,7 +10,7 @@
 
 <panel-comp params-as="data">
   <for each="data.items" as="item">
-    <render component="widget-comp" params="item"/>
+    <widget-comp params="item"/>
   </for>
 </panel-comp>
 
@@ -18,7 +18,7 @@
 <import component="panel-comp" from="foo">
 
 <main-comp params-as="settings">
-  <render component="panel-comp" params="settings.dashboard"/>
+  <panel-comp params="settings.dashboard"/>
 </main-comp>
 
 -- out --

@@ -6,11 +6,11 @@
 </main-comp>
 
 <bar-comp>
-    <render component="main-comp">
+    <main-comp>
         <with-invalid>
             This slot doesn't exist
         </with-invalid>
-    </render>
+    </main-comp>
 </bar-comp>
 -- out --
 Slot 'invalid' is not defined in this component

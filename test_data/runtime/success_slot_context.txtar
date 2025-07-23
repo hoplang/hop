@@ -6,12 +6,12 @@
 </main-card>
 
 <main-comp entrypoint params-as="data">
-    <render component="main-card">
+    <main-card>
         <with-content>
             <h1 set-inner-text="data.title"></h1>
             <p set-inner-text="data.message"></p>
         </with-content>
-    </render>
+    </main-card>
 </main-comp>
 -- data.json --
 {

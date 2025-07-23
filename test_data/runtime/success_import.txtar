@@ -6,7 +6,7 @@
 <import from="test" component="button-comp">
 
 <main-comp>
-  <render component="button-comp"></render>
+  <button-comp></button-comp>
 </main-comp>
 -- data.json --
 {}

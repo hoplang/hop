@@ -261,32 +261,6 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                         slots: slots.into_iter().collect(),
                     })
                 }
-                "render" => {
-                    let params_attr = t.get_attribute("params").and_then(|attr| {
-                        parse_expr_attribute(&attr.name, &attr.value, attr.range, errors)
-                    });
-                    let component_attr = t.get_attribute("component").or_else(|| {
-                        errors.push(RangeError::missing_required_attribute(
-                            &t.value,
-                            "component",
-                            t.range,
-                        ));
-                        None
-                    });
-
-                    match component_attr {
-                        Some(component_attr) => Node::Render(RenderNode {
-                            component_attr,
-                            params_attr,
-                            range: t.range,
-                            children,
-                        }),
-                        None => Node::Error(ErrorNode {
-                            range: t.range,
-                            children,
-                        }),
-                    }
-                }
                 "for" => {
                     let each_attr = t
                         .get_attribute("each")
@@ -389,6 +363,26 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                     let slot_name = &tag_name[5..]; // Remove "with-" prefix
                     Node::SupplySlot(SupplySlotNode {
                         name: slot_name.to_string(),
+                        range: t.range,
+                        children,
+                    })
+                }
+                tag_name if is_valid_component_name(tag_name) => {
+                    // This is a component render (contains dash)
+                    let params_attr = t.get_attribute("params").and_then(|attr| {
+                        parse_expr_attribute(&attr.name, &attr.value, attr.range, errors)
+                    });
+
+                    // Create a component attribute from the tag name
+                    let component_attr = crate::common::Attribute {
+                        name: "component".to_string(),
+                        value: tag_name.to_string(),
+                        range: t.range,
+                    };
+
+                    Node::Render(RenderNode {
+                        component_attr,
+                        params_attr,
                         range: t.range,
                         children,
                     })

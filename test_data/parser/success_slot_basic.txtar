@@ -3,11 +3,11 @@
     <slot-content>
         Default content
     </slot-content>
-    <render component="other">
+    <other-comp>
         <with-data>
             Custom content
         </with-data>
-    </render>
+    </other-comp>
 </main-comp>
 
 <other-comp>

@@ -7,14 +7,14 @@
 <execute-workflow params-as="workflow">
 	<cond if="workflow.enabled">
 		<for each="workflow.steps" as="step">
-			<render component="execute-step" params="step"/>
+			<execute-step params="step"/>
 		</for>
 	</cond>
 </execute-workflow>
 
 <main-comp params-as="params">
 	<for each="params.workflows" as="workflow">
-		<render component="execute-workflow" params="workflow"/>
+		<execute-workflow params="workflow"/>
 	</for>
 </main-comp>
 -- out --

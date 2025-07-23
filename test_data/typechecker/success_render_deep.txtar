@@ -5,11 +5,11 @@
 </main-bar>
 
 <main-foo params-as="p">
-  <render component="main-bar" params="p"/>
+  <main-bar params="p"/>
 </main-foo>
 
 <main-comp params-as="i">
-  <render component="main-foo" params="i"/>
+  <main-foo params="i"/>
 </main-comp>
 -- out --
 main::main-bar : boolean

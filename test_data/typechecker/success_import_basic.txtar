@@ -7,7 +7,7 @@
 <import component="button-comp" from="utils">
 
 <main-comp params-as="label">
-  <render component="button-comp" params="label"/>
+  <button-comp params="label"/>
 </main-comp>
 
 -- out --

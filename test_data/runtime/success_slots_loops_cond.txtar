@@ -10,7 +10,7 @@
 </main-card>
 
 <main-comp entrypoint params-as="data">
-    <render component="main-card">
+    <main-card>
         <with-header>
             <h1 set-inner-text="data.title"></h1>
         </with-header>
@@ -29,7 +29,7 @@
         <with-footer>
             <p>Total active users: <span set-inner-text="data.active_count"></span></p>
         </with-footer>
-    </render>
+    </main-card>
 </main-comp>
 -- data.json --
 {

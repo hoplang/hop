@@ -10,12 +10,12 @@
 
 <main-list params-as="items">
   <for each="items" as="item">
-    <render component="main-card" params="item"/>
+    <main-card params="item"/>
   </for>
 </main-list>
 
 <main-comp params-as="data">
-  <render component="main-list" params="data.items"/>
+  <main-list params="data.items"/>
 </main-comp>
 -- out --
 main::main-card : {active: boolean, status: string, title: string}

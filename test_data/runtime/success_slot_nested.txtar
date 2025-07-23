@@ -23,23 +23,23 @@
 </modal-comp>
 
 <main-comp entrypoint params-as="data">
-    <render component="page-layout">
+    <page-layout>
         <with-content>
             <h1 set-inner-text="data.page_title"></h1>
-            <render component="modal-wrapper">
+            <modal-wrapper>
                 <with-modal>
-                    <render component="modal-comp">
+                    <modal-comp>
                         <with-header>
 						  	<span>header</span>
                         </with-header>
                         <with-body>
                             <span>body</span>
                         </with-body>
-                    </render>
+                    </modal-comp>
                 </with-modal>
-            </render>
+            </modal-wrapper>
         </with-content>
-    </render>
+    </page-layout>
 </main-comp>
 -- data.json --
 {

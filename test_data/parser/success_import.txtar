@@ -1,7 +1,7 @@
 -- main.hop --
 <main-comp params-as="p">
-	<render component="foo"></render>
-	<render component="foo"></render>
+	<foo-comp></foo-comp>
+	<foo-comp></foo-comp>
 </main-comp>
 -- output.txt --
 component

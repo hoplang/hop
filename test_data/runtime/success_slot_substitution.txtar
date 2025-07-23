@@ -6,9 +6,9 @@
 </wrapper-comp>
 
 <main-comp entrypoint>
-    <render component="wrapper-comp">
+    <wrapper-comp>
         <with-content>Custom</with-content>
-    </render>
+    </wrapper-comp>
 </main-comp>
 -- data.json --
 {}

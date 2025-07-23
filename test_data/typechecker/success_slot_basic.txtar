@@ -6,11 +6,11 @@
 </main-comp>
 
 <bar-comp>
-    <render component="main-comp">
+    <main-comp>
         <with-data>
             Here's the content for the 'data' slot
         </with-data>
-    </render>
+    </main-comp>
 </bar-comp>
 -- out --
 main::main-comp : void
