@@ -366,15 +366,8 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                         parse_expr_attribute(&attr.name, &attr.value, attr.range, errors)
                     });
 
-                    // Create a component attribute from the tag name
-                    let component_attr = crate::common::Attribute {
-                        name: "component".to_string(),
-                        value: tag_name.to_string(),
-                        range: t.range,
-                    };
-
                     Node::Render(RenderNode {
-                        component_attr,
+                        component: tag_name.to_string(),
                         params_attr,
                         range: t.range,
                         children,

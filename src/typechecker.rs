@@ -184,24 +184,25 @@ fn typecheck_node(
             }
         }
         Node::Render(RenderNode {
-            component_attr,
+            component,
             params_attr,
             children,
+            range,
             ..
         }) => {
-            if let Some(t1) = parameter_types.get(&component_attr.value) {
+            if let Some(t1) = parameter_types.get(component) {
                 if let Some(params_attr) = params_attr {
                     typecheck_expr(&t1.clone(), params_attr, env, unifier, annotations, errors);
                 }
             } else {
                 errors.push(RangeError::undefined_component(
-                    &component_attr.value,
-                    component_attr.range,
+                    component,
+                    *range,
                 ));
             }
 
             // Validate slots
-            if let Some(defined_slots) = component_slots.get(&component_attr.value) {
+            if let Some(defined_slots) = component_slots.get(component) {
                 for child in children {
                     if let Node::SupplySlot(SupplySlotNode { name, range, .. }) = child {
                         if !defined_slots.contains(name) {

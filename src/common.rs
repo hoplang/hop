@@ -355,7 +355,7 @@ pub struct TextNode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RenderNode {
-    pub component_attr: Attribute,
+    pub component: String,
     pub params_attr: Option<ExprAttribute>,
     pub range: Range,
     pub children: Vec<Node>,

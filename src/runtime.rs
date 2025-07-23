@@ -188,7 +188,7 @@ impl Program {
                 }
             }
             Node::Render(RenderNode {
-                component_attr,
+                component,
                 params_attr,
                 children,
                 ..
@@ -198,7 +198,7 @@ impl Program {
                     params_value = self.evaluate_expr(&attr.expression, env)?;
                 }
 
-                let component_name = &component_attr.value;
+                let component_name = component;
                 let mut target_module = current_module.to_string();
 
                 if let Some(current_module_import_map) = self.import_maps.get(current_module) {
