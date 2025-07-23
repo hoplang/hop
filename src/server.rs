@@ -176,7 +176,7 @@ impl Server {
 
         for component in &module.components {
             if component.range.contains_position(position) {
-                return Some(component.name_attr.value.clone());
+                return Some(component.name.clone());
             }
         }
 

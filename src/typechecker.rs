@@ -36,24 +36,25 @@ pub fn typecheck(
     let mut env = Environment::new();
 
     for ComponentNode {
-        name_attr,
+        name,
         params_as_attr,
         children,
         slots,
+        range,
         ..
     } in &module.components
     {
         // Check for duplicate component names
-        if parameter_types.contains_key(&name_attr.value) {
+        if parameter_types.contains_key(name) {
             errors.push(RangeError::component_already_defined(
-                &name_attr.value,
-                name_attr.range,
+                name,
+                *range,
             ));
             continue;
         }
 
         // Store component slots for validation
-        component_slots.insert(name_attr.value.clone(), slots.clone());
+        component_slots.insert(name.clone(), slots.clone());
 
         if let Some(params_as_attr) = params_as_attr {
             let t1 = unifier.new_type_var();
@@ -80,9 +81,9 @@ pub fn typecheck(
                     params_as_attr.range,
                 ));
             }
-            parameter_types.insert(name_attr.value.clone(), final_type);
+            parameter_types.insert(name.clone(), final_type);
         } else {
-            parameter_types.insert(name_attr.value.clone(), Type::Void);
+            parameter_types.insert(name.clone(), Type::Void);
             for child in children {
                 typecheck_node(
                     child,
@@ -451,10 +452,10 @@ mod tests {
                             all_output_lines.push(format!(
                                 "{}::{} : {}",
                                 module_name,
-                                c.name_attr.value,
+                                c.name,
                                 type_result
                                     .parameter_types
-                                    .get(&c.name_attr.value)
+                                    .get(&c.name)
                                     .expect("Type not found")
                             ));
                         }

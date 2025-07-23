@@ -385,7 +385,7 @@ pub struct ImportNode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentNode {
-    pub name_attr: Attribute,
+    pub name: String,
     pub params_as_attr: Option<VarNameAttr>,
     pub as_attr: Option<Attribute>,
     pub attributes: Vec<Attribute>,

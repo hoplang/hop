@@ -241,17 +241,10 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                         }
                     });
 
-                    // Create a name attribute from the tag name
-                    let name_attr = crate::common::Attribute {
-                        name: "name".to_string(),
-                        value: name.to_string(),
-                        range: t.range,
-                    };
-
                     let mut slots = HashSet::new();
                     collect_slots_from_children(&children, &mut slots, errors);
                     Node::Component(ComponentNode {
-                        name_attr,
+                        name: name.to_string(),
                         params_as_attr,
                         as_attr,
                         attributes: t.attributes.clone(),
@@ -525,7 +518,7 @@ mod tests {
                 assert_eq!(output, expected, "Mismatch in file: {}", file_name);
             } else {
                 for component in module.components {
-                    if component.name_attr.value == "main-comp" {
+                    if component.name == "main-comp" {
                         let output = format_tree(&Node::Component(component));
                         assert_eq!(output, expected, "Mismatch in file: {}", file_name);
                     }

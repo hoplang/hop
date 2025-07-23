@@ -72,7 +72,7 @@ impl ScriptCollector {
                             };
 
                             let data_hop_id =
-                                format!("{}/{}", module_name, component.name_attr.value);
+                                format!("{}/{}", module_name, component.name);
                             let wrapped_script = format!(
                                 "document.querySelectorAll('[data-hop-id=\"{}\"]').forEach((frameElement) => {{{}}});",
                                 data_hop_id, script_content

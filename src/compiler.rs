@@ -106,7 +106,7 @@ impl Compiler {
             let mut import_map = HashMap::new();
 
             for comp_node in &module.components {
-                component_map.insert(comp_node.name_attr.value.clone(), comp_node.clone());
+                component_map.insert(comp_node.name.clone(), comp_node.clone());
             }
 
             for import_node in &module.imports {

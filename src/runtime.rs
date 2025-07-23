@@ -475,7 +475,7 @@ mod tests {
             let mut import_map = HashMap::new();
 
             for n in &module.components {
-                component_map.insert(n.name_attr.value.clone(), n.clone());
+                component_map.insert(n.name.clone(), n.clone());
             }
 
             for n in &module.imports {
