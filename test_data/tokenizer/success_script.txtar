@@ -1,14 +1,14 @@
 -- in --
-<component name="main" params-as="foo">
+<main-comp params-as="foo">
 	<script>
 		const x = "<div></div>";
 	</script>
-</component>
+</main-comp>
 -- out --
-StartTag(component) [name=[main] 1:12-1:23 params-as=[foo] 1:24-1:39] 1:1-1:40
-Text 1:40-2:2
+StartTag(main-comp) [params-as=[foo] 1:12-1:27] 1:1-1:28
+Text 1:28-2:2
 StartTag(script) [] 2:2-2:10
 Text 2:10-4:2
 EndTag(script) 4:2-4:11
 Text 4:11-5:1
-EndTag(component) 5:1-5:13
+EndTag(main-comp) 5:1-5:13

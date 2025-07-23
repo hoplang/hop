@@ -1,10 +1,10 @@
 -- main.hop --
-<component name="main" params-as="params">
+<main-comp params-as="params">
 	<cond if="params">
 	</cond>
 	<for each="params" as="item">
 		<div set-inner-text="item"></div>
 	</for>
-</component>
+</main-comp>
 -- out --
 Can not unify types

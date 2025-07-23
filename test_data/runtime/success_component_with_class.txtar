@@ -1,10 +1,10 @@
 -- main.hop --
-<component name="main" class="p-2">
+<main-comp class="p-2">
 	<div>hello</div>
-</component>
+</main-comp>
 -- data.json --
 {}
 -- output.html --
-<div data-hop-id="main/main" class="p-2">
+<div data-hop-id="main/main-comp" class="p-2">
 	<div>hello</div>
 </div>

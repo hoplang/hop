@@ -1,25 +1,25 @@
 -- main.hop --
-<component name="card">
+<main-card>
     <div class="card">
         <slot-content></slot-content>
     </div>
-</component>
+</main-card>
 
-<component name="main" entrypoint params-as="data">
-    <render component="card">
+<main-comp entrypoint params-as="data">
+    <render component="main-card">
         <with-content>
             <h1 set-inner-text="data.title"></h1>
             <p set-inner-text="data.message"></p>
         </with-content>
     </render>
-</component>
+</main-comp>
 -- data.json --
 {
     "title": "Hello World",
     "message": "This text comes from outside params"
 }
 -- output.html --
-<div data-hop-id="main/card">
+<div data-hop-id="main/main-card">
     <div class="card">
         <h1>Hello World</h1>
         <p>This text comes from outside params</p>

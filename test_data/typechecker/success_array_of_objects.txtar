@@ -1,11 +1,11 @@
 -- main.hop --
-<component name="main" params-as="params">
+<main-comp params-as="params">
 	<for each="params.items" as="item">
 		<cond if="item.active">
 		</cond>
 		<cond if="item.name">
 		</cond>
 	</for>
-</component>
+</main-comp>
 -- out --
-main::main : {items: {active: boolean, name: boolean}[]}
+main::main-comp : {items: {active: boolean, name: boolean}[]}

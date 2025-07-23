@@ -1,10 +1,10 @@
 -- main.hop --
-<component name="main" params-as="p">
+<main-comp params-as="p">
 	<div set-inner-text="p"></div>
-</component>
+</main-comp>
 -- data.json --
 "foo bar"
 -- output.html --
-<div data-hop-id="main/main">
+<div data-hop-id="main/main-comp">
 	<div>foo bar</div>
 </div>

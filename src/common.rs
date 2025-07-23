@@ -179,6 +179,14 @@ impl RangeError {
             range,
         )
     }
+    pub fn invalid_component_name(name: &str, range: Range) -> Self {
+        Self::new(
+            format!(
+                "Invalid component name '{name}'. Component names must contain a dash and not start or end with one"
+            ),
+            range,
+        )
+    }
 
     // Typechecker error functions
     pub fn undefined_component(component: &str, range: Range) -> Self {

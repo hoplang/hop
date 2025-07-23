@@ -1,23 +1,23 @@
 -- main.hop --
-<component name="executeStep" params-as="step">
+<execute-step params-as="step">
 	<cond if="step.condition">
 	</cond>
-</component>
+</execute-step>
 
-<component name="executeWorkflow" params-as="workflow">
+<execute-workflow params-as="workflow">
 	<cond if="workflow.enabled">
 		<for each="workflow.steps" as="step">
-			<render component="executeStep" params="step"/>
+			<render component="execute-step" params="step"/>
 		</for>
 	</cond>
-</component>
+</execute-workflow>
 
-<component name="main" params-as="params">
+<main-comp params-as="params">
 	<for each="params.workflows" as="workflow">
-		<render component="executeWorkflow" params="workflow"/>
+		<render component="execute-workflow" params="workflow"/>
 	</for>
-</component>
+</main-comp>
 -- out --
-main::executeStep : {condition: boolean}
-main::executeWorkflow : {enabled: boolean, steps: {condition: boolean}[]}
-main::main : {workflows: {enabled: boolean, steps: {condition: boolean}[]}[]}
+main::execute-step : {condition: boolean}
+main::execute-workflow : {enabled: boolean, steps: {condition: boolean}[]}
+main::main-comp : {workflows: {enabled: boolean, steps: {condition: boolean}[]}[]}

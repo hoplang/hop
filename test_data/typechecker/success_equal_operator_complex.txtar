@@ -1,11 +1,11 @@
 -- main.hop --
-<component name="main" params-as="params">
+<main-comp params-as="params">
   <cond if="params.user.name == params.other_user.name">
     <div>Same name</div>
   </cond>
   <cond if="(params.data.x == params.data.y)">
     <div>Parentheses work</div>
   </cond>
-</component>
+</main-comp>
 -- out --
-main::main : {data: {x: ?t21, y: ?t21}, other_user: {name: ?t8}, user: {name: ?t8}}
+main::main-comp : {data: {x: ?t21, y: ?t21}, other_user: {name: ?t8}, user: {name: ?t8}}

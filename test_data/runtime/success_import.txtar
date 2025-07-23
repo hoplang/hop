@@ -1,18 +1,18 @@
 -- test.hop --
-<component name="button" as="button">
+<button-comp as="button">
 	<span>button</span>
-</component>
+</button-comp>
 -- main.hop --
-<import from="test" component="button">
+<import from="test" component="button-comp">
 
-<component name="main">
-  <render component="button"></render>
-</component>
+<main-comp>
+  <render component="button-comp"></render>
+</main-comp>
 -- data.json --
 {}
 -- output.html --
-<div data-hop-id="main/main">
-  <button data-hop-id="test/button">
+<div data-hop-id="main/main-comp">
+  <button data-hop-id="test/button-comp">
 	<span>button</span>
   </button>
 </div>

@@ -1,5 +1,5 @@
 -- main.hop --
-<component name="main" params-as="params">
+<main-comp params-as="params">
 	<for each="params.sections" as="section">
 		<cond if="section.header.visible">
 			<for each="section.items" as="item">
@@ -8,6 +8,6 @@
 			</for>
 		</cond>
 	</for>
-</component>
+</main-comp>
 -- out --
-main::main : {sections: {header: {visible: boolean}, items: {data: {valid: boolean}}[]}[]}
+main::main-comp : {sections: {header: {visible: boolean}, items: {data: {valid: boolean}}[]}[]}

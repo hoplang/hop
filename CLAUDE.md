@@ -29,15 +29,6 @@ The project uses txtar format for test cases located in `test_data/` directories
 
 Each test file uses the txtar format with.
 
-Example error test:
-```
--- in --
-<component name="main" params-as="InvalidName">
-</component>
--- out --
-Invalid variable name 'InvalidName'. Variable names must match [a-z][a-z0-9]*
-```
-
 Run specific module tests with:
 - `nix develop --command cargo test test_parser`
 - `nix develop --command cargo test test_tokenizer`
@@ -58,11 +49,11 @@ hop supports dynamic attributes on native HTML elements using the `set-` prefix:
 
 Examples:
 ```html
-<component name="main" params-as="user">
+<page-main params-as="user">
   <a set-href="user.profile_url" set-title="user.name">Profile</a>
   <div set-inner-text="user.greeting"></div>
   <img set-src="user.avatar" set-alt="user.name" />
-</component>
+</page-main>
 ```
 
 All `set-*` attributes are:

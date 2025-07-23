@@ -1,11 +1,11 @@
 -- main.hop --
-<component name="main" params-as="params">
+<main-comp params-as="params">
 	<cond if="params.app.ui.theme.dark">
 	</cond>
 	<cond if="params.app.api.endpoints.users.enabled">
 	</cond>
 	<cond if="params.app.database.connection.ssl">
 	</cond>
-</component>
+</main-comp>
 -- out --
-main::main : {app: {api: {endpoints: {users: {enabled: boolean}}}, database: {connection: {ssl: boolean}}, ui: {theme: {dark: boolean}}}}
+main::main-comp : {app: {api: {endpoints: {users: {enabled: boolean}}}, database: {connection: {ssl: boolean}}, ui: {theme: {dark: boolean}}}}

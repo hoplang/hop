@@ -1,5 +1,5 @@
 -- main.hop --
-<component name="main" params-as="params">
+<main-comp params-as="params">
   <cond if="params.role == 'admin'">
     <div>Admin Access</div>
   </cond>
@@ -9,14 +9,14 @@
   <cond if="params.status == 'inactive'">
     <div>Inactive User</div>
   </cond>
-</component>
+</main-comp>
 -- data.json --
 {
   "role": "admin",
   "status": "active"
 }
 -- output.html --
-<div data-hop-id="main/main">
+<div data-hop-id="main/main-comp">
   <div>Admin Access</div>
   <div>Active User</div>
 </div>

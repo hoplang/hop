@@ -1,5 +1,5 @@
 -- main.hop --
-<component name="main" params-as="params">
+<main-comp params-as="params">
 	<cond if="params.config.debug">
 	</cond>
 	<for each="params.data" as="item">
@@ -10,6 +10,6 @@
 			</cond>
 		</for>
 	</for>
-</component>
+</main-comp>
 -- out --
-main::main : {config: {debug: boolean}, data: {attributes: boolean[], id: boolean}[]}
+main::main-comp : {config: {debug: boolean}, data: {attributes: boolean[], id: boolean}[]}

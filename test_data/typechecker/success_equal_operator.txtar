@@ -1,8 +1,8 @@
 -- main.hop --
-<component name="main" params-as="params">
+<main-comp params-as="params">
   <cond if="params.x == params.y">
     <div>Values are equal</div>
   </cond>
-</component>
+</main-comp>
 -- out --
-main::main : {x: ?t3, y: ?t3}
+main::main-comp : {x: ?t3, y: ?t3}

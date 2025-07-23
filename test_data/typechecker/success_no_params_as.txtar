@@ -1,6 +1,6 @@
 -- main.hop --
-<component name="main">
+<main-comp>
 	<div></div>
-</component>
+</main-comp>
 -- out --
-main::main : void
+main::main-comp : void

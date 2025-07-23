@@ -1,7 +1,7 @@
 -- main.hop --
-<component name="main" params-as="user">
+<main-comp params-as="user">
   <a set-href="user.url" set-class="user.theme">Link</a>
-</component>
+</main-comp>
 -- output.txt --
 component
 	a

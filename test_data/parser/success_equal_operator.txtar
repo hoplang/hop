@@ -1,9 +1,9 @@
 -- main.hop --
-<component name="main">
+<main-comp>
   <cond if="x == y">
     <div>Equal</div>
   </cond>
-</component>
+</main-comp>
 -- output.txt --
 component
 	cond

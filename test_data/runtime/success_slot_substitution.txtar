@@ -1,19 +1,19 @@
 -- main.hop --
-<component name="wrapper">
+<wrapper-comp>
     <div>
         <slot-content></slot-content>
     </div>
-</component>
+</wrapper-comp>
 
-<component name="main" entrypoint>
-    <render component="wrapper">
+<main-comp entrypoint>
+    <render component="wrapper-comp">
         <with-content>Custom</with-content>
     </render>
-</component>
+</main-comp>
 -- data.json --
 {}
 -- output.html --
-<div data-hop-id="main/wrapper">
+<div data-hop-id="main/wrapper-comp">
 	<div>
         Custom
     </div>

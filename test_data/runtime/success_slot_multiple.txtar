@@ -1,5 +1,5 @@
 -- main.hop --
-<component name="layout">
+<main-layout>
     <div class="page">
         <header>
             <slot-title></slot-title>
@@ -8,21 +8,21 @@
             <slot-content></slot-content>
         </main>
     </div>
-</component>
+</main-layout>
 
-<component name="main" entrypoint>
-    <render component="layout">
+<main-comp entrypoint>
+    <render component="main-layout">
         <with-title>My Custom Title</with-title>
         <with-content>
             <p>This is custom content</p>
             <p>With multiple paragraphs</p>
         </with-content>
     </render>
-</component>
+</main-comp>
 -- data.json --
 {}
 -- output.html --
-<div data-hop-id="main/layout">
+<div data-hop-id="main/main-layout">
     <div class="page">
         <header>
             My Custom Title

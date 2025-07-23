@@ -1,5 +1,5 @@
 -- main.hop --
-<component name="main">
+<main-comp>
   <cond if="user.name == other_user.name">
     <div>Same name</div>
   </cond>
@@ -9,7 +9,7 @@
   <cond if="a == b == c">
     <div>Chained equality</div>
   </cond>
-</component>
+</main-comp>
 -- output.txt --
 component
 	cond

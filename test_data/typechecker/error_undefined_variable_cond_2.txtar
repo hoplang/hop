@@ -1,11 +1,11 @@
 -- main.hop --
-<component name="main" params-as="params">
+<main-comp params-as="params">
 	<for each="params" as="item">
 	  <cond if="item.active">
 	  </cond>
 	</for>
 	<cond if="item.active">
 	</cond>
-</component>
+</main-comp>
 -- out --
 Undefined variable: item

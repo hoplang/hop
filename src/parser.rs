@@ -1,10 +1,17 @@
 use crate::common::{
-    ComponentNode, CondNode, DoctypeNode, ErrorNode, ExprAttribute, ForNode,
-    ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode, TextNode, Token,
-    TokenKind, VarNameAttr, DefineSlotNode, SupplySlotNode, is_void_element,
+    ComponentNode, CondNode, DefineSlotNode, DoctypeNode, ErrorNode, ExprAttribute, ForNode,
+    ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode, SupplySlotNode,
+    TextNode, Token, TokenKind, VarNameAttr, is_void_element,
 };
 use crate::expression_parser::parse_expression;
 use std::collections::HashSet;
+
+fn is_valid_component_name(name: &str) -> bool {
+    if name.is_empty() || name.starts_with('-') || name.ends_with('-') {
+        return false;
+    }
+    name.contains('-')
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module {
@@ -140,7 +147,11 @@ fn parse_expr_attribute(
     }
 }
 
-fn collect_slots_from_children(children: &[Node], slots: &mut HashSet<String>, errors: &mut Vec<RangeError>) {
+fn collect_slots_from_children(
+    children: &[Node],
+    slots: &mut HashSet<String>,
+    errors: &mut Vec<RangeError>,
+) {
     for child in children {
         match child {
             Node::DefineSlot(DefineSlotNode { name, range, .. }) => {
@@ -200,15 +211,56 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
             range: t.range,
         }),
         TokenKind::SelfClosingTag | TokenKind::StartTag => {
-            if t.value == "import" || t.value == "component" {
+            if t.value == "import" {
                 if depth > 0 {
                     errors.push(RangeError::unexpected_tag_outside_root(&t.value, t.range));
                 }
-            } else if depth == 0 {
-                errors.push(RangeError::unexpected_tag_at_root(&t.value, t.range));
+            } else if depth == 0 && t.value != "import" {
+                // At root level, non-import tags are treated as components
+                // Validate component name format
+                if !is_valid_component_name(&t.value) {
+                    errors.push(RangeError::invalid_component_name(&t.value, t.range));
+                }
             }
 
             match t.value.as_str() {
+                name if depth == 0 && name != "import" => {
+                    // Handle component at root level
+                    let as_attr = t.get_attribute("as");
+                    let entrypoint = t.get_attribute("entrypoint").is_some();
+                    let params_as_attr = t.get_attribute("params-as").and_then(|attr| {
+                        match VarNameAttr::new(&attr) {
+                            Some(var_attr) => Some(var_attr),
+                            None => {
+                                errors.push(RangeError::invalid_variable_name(
+                                    &attr.value,
+                                    attr.range,
+                                ));
+                                None
+                            }
+                        }
+                    });
+
+                    // Create a name attribute from the tag name
+                    let name_attr = crate::common::Attribute {
+                        name: "name".to_string(),
+                        value: name.to_string(),
+                        range: t.range,
+                    };
+
+                    let mut slots = HashSet::new();
+                    collect_slots_from_children(&children, &mut slots, errors);
+                    Node::Component(ComponentNode {
+                        name_attr,
+                        params_as_attr,
+                        as_attr,
+                        attributes: t.attributes.clone(),
+                        range: t.range,
+                        children,
+                        entrypoint,
+                        slots: slots.into_iter().collect(),
+                    })
+                }
                 "render" => {
                     let params_attr = t.get_attribute("params").and_then(|attr| {
                         parse_expr_attribute(&attr.name, &attr.value, attr.range, errors)
@@ -320,49 +372,6 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                             range: t.range,
                         }),
                         _ => Node::Error(ErrorNode {
-                            range: t.range,
-                            children,
-                        }),
-                    }
-                }
-                "component" => {
-                    let as_attr = t.get_attribute("as");
-                    let entrypoint = t.get_attribute("entrypoint").is_some();
-                    let params_as_attr = t.get_attribute("params-as").and_then(|attr| {
-                        match VarNameAttr::new(&attr) {
-                            Some(var_attr) => Some(var_attr),
-                            None => {
-                                errors.push(RangeError::invalid_variable_name(
-                                    &attr.value,
-                                    attr.range,
-                                ));
-                                None
-                            }
-                        }
-                    });
-                    let name_attr = t.get_attribute("name").or_else(|| {
-                        errors.push(RangeError::missing_required_attribute(
-                            &t.value, "name", t.range,
-                        ));
-                        None
-                    });
-
-                    match name_attr {
-                        Some(name_attr) => {
-                            let mut slots = HashSet::new();
-                            collect_slots_from_children(&children, &mut slots, errors);
-                            Node::Component(ComponentNode {
-                                name_attr,
-                                params_as_attr,
-                                as_attr,
-                                attributes: t.attributes.clone(),
-                                range: t.range,
-                                children,
-                                entrypoint,
-                                slots: slots.into_iter().collect(),
-                            })
-                        }
-                        None => Node::Error(ErrorNode {
                             range: t.range,
                             children,
                         }),
@@ -522,7 +531,7 @@ mod tests {
                 assert_eq!(output, expected, "Mismatch in file: {}", file_name);
             } else {
                 for component in module.components {
-                    if component.name_attr.value == "main" {
+                    if component.name_attr.value == "main-comp" {
                         let output = format_tree(&Node::Component(component));
                         assert_eq!(output, expected, "Mismatch in file: {}", file_name);
                     }

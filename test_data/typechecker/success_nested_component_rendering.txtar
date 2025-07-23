@@ -1,23 +1,23 @@
 -- main.hop --
-<component name="card" params-as="item">
+<main-card params-as="item">
   <div set-inner-text="item.title">
   </div>
   <cond if="item.active">
     <span set-inner-text="item.status">
     </span>
   </cond>
-</component>
+</main-card>
 
-<component name="list" params-as="items">
+<main-list params-as="items">
   <for each="items" as="item">
-    <render component="card" params="item"/>
+    <render component="main-card" params="item"/>
   </for>
-</component>
+</main-list>
 
-<component name="main" params-as="data">
-  <render component="list" params="data.items"/>
-</component>
+<main-comp params-as="data">
+  <render component="main-list" params="data.items"/>
+</main-comp>
 -- out --
-main::card : {active: boolean, status: string, title: string}
-main::list : {active: boolean, status: string, title: string}[]
-main::main : {items: {active: boolean, status: string, title: string}[]}
+main::main-card : {active: boolean, status: string, title: string}
+main::main-list : {active: boolean, status: string, title: string}[]
+main::main-comp : {items: {active: boolean, status: string, title: string}[]}

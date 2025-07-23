@@ -1,5 +1,5 @@
 -- main.hop --
-<component name="main" params-as="params">
+<main-comp params-as="params">
 	<for each="params" as="level1">
 		<for each="level1" as="level2">
 			<for each="level2" as="level3">
@@ -8,6 +8,6 @@
 			</for>
 		</for>
 	</for>
-</component>
+</main-comp>
 -- out --
-main::main : boolean[][][]
+main::main-comp : boolean[][][]

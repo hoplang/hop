@@ -1,12 +1,12 @@
 -- main.hop --
-<component name="main" params-as="params">
+<main-comp params-as="params">
   <cond if="params.user.name == params.admin.name">
     <div>Is Admin</div>
   </cond>
   <cond if="params.status == params.expected_status">
     <div>Status OK</div>
   </cond>
-</component>
+</main-comp>
 -- data.json --
 {
   "user": {"name": "alice"},
@@ -15,7 +15,7 @@
   "expected_status": "active"
 }
 -- output.html --
-<div data-hop-id="main/main">
+<div data-hop-id="main/main-comp">
   <div>Is Admin</div>
   <div>Status OK</div>
 </div>

@@ -1,5 +1,5 @@
 -- main.hop --
-<component name="main" params-as="sections">
+<main-comp params-as="sections">
 	<div>
 		<for each="sections" as="section">
 			<div>
@@ -10,7 +10,7 @@
 			</div>
 		</for>
 	</div>
-</component>
+</main-comp>
 -- output.txt --
 component
 	div

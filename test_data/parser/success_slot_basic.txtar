@@ -1,5 +1,5 @@
 -- main.hop --
-<component name="main">
+<main-comp>
     <slot-content>
         Default content
     </slot-content>
@@ -8,13 +8,13 @@
             Custom content
         </with-data>
     </render>
-</component>
+</main-comp>
 
-<component name="other">
+<other-comp>
     <slot-data>
         Other content
     </slot-data>
-</component>
+</other-comp>
 -- output.txt --
 component
 	slot-content

@@ -1,5 +1,5 @@
 -- main.hop --
-<component name="main" params-as="params">
+<main-comp params-as="params">
 	<cond if="params.enabled">
 		<for each="params.users" as="user">
 			<cond if="user.profile.verified">
@@ -10,6 +10,6 @@
 			</cond>
 		</for>
 	</cond>
-</component>
+</main-comp>
 -- out --
-main::main : {enabled: boolean, users: {posts: {published: boolean}[], profile: {verified: boolean}}[]}
+main::main-comp : {enabled: boolean, users: {posts: {published: boolean}[], profile: {verified: boolean}}[]}

@@ -1,8 +1,8 @@
 -- main.hop --
-<component name="foo">
-</component>
+<foo-comp>
+</foo-comp>
 
-<component name="foo">
-</component>
+<foo-comp>
+</foo-comp>
 -- out --
-Component foo is already defined
+Component foo-comp is already defined

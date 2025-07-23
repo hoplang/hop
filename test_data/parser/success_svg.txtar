@@ -1,5 +1,5 @@
 -- main.hop --
-<component name="main">
+<main-comp>
 	<div class="navbar">
 		<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" version="1.1" viewBox="0 0 128 128" class="size-12">
 			<g style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;">
@@ -12,7 +12,7 @@
 			<li><a href="/">Home</a></li>
 		</ul>
 	</div>
-</component>
+</main-comp>
 -- output.txt --
 component
 	div

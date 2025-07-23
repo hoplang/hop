@@ -1,7 +1,7 @@
 -- main.hop --
-<component name="bar" params-as="p">
+<bar-comp params-as="p">
   <div>
   </div>
-</component>
+</bar-comp>
 -- out --
 Unused variable p

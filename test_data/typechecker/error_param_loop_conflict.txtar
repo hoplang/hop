@@ -1,7 +1,7 @@
 -- main.hop --
-<component name="main" params-as="items">
+<main-comp params-as="items">
   <for each="items" as="items">
   </for>
-</component>
+</main-comp>
 -- out --
 Variable items is already defined

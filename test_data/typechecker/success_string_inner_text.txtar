@@ -1,7 +1,7 @@
 -- main.hop --
-<component name="main" params-as="data">
+<main-comp params-as="data">
   <div set-inner-text="data.message">
   </div>
-</component>
+</main-comp>
 -- out --
-main::main : {message: string}
+main::main-comp : {message: string}

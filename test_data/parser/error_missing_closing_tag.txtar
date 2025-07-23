@@ -1,6 +1,6 @@
 -- main.hop --
-<component name="main" params-as="data">
+<main-comp params-as="data">
 	<div>
-</component>
+</main-comp>
 -- output.txt --
 Unclosed <div>

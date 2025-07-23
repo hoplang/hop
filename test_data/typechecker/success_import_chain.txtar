@@ -1,27 +1,27 @@
 -- bar.hop --
-<component name="widget" params-as="config">
+<widget-comp params-as="config">
   <cond if="config.enabled">
     <div set-inner-text="config.title"/>
   </cond>
-</component>
+</widget-comp>
 
 -- foo.hop --
-<import component="widget" from="bar">
+<import component="widget-comp" from="bar">
 
-<component name="panel" params-as="data">
+<panel-comp params-as="data">
   <for each="data.items" as="item">
-    <render component="widget" params="item"/>
+    <render component="widget-comp" params="item"/>
   </for>
-</component>
+</panel-comp>
 
 -- main.hop --
-<import component="panel" from="foo">
+<import component="panel-comp" from="foo">
 
-<component name="main" params-as="settings">
-  <render component="panel" params="settings.dashboard"/>
-</component>
+<main-comp params-as="settings">
+  <render component="panel-comp" params="settings.dashboard"/>
+</main-comp>
 
 -- out --
-bar::widget : {enabled: boolean, title: string}
-foo::panel : {items: {enabled: boolean, title: string}[]}
-main::main : {dashboard: {items: {enabled: boolean, title: string}[]}}
+bar::widget-comp : {enabled: boolean, title: string}
+foo::panel-comp : {items: {enabled: boolean, title: string}[]}
+main::main-comp : {dashboard: {items: {enabled: boolean, title: string}[]}}

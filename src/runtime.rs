@@ -210,16 +210,16 @@ impl Program {
                 // Collect and evaluate supply-slot mappings
                 let mut slot_content: HashMap<String, String> = HashMap::new();
                 for child in children {
-                    if let Node::SupplySlot(SupplySlotNode {
-                        name,
-                        children,
-                        ..
-                    }) = child
-                    {
+                    if let Node::SupplySlot(SupplySlotNode { name, children, .. }) = child {
                         let mut slot_html = String::new();
                         let empty_slots: HashMap<String, String> = HashMap::new();
                         for slot_child in children {
-                            slot_html.push_str(&self.evaluate_node(slot_child, &empty_slots, env, current_module)?);
+                            slot_html.push_str(&self.evaluate_node(
+                                slot_child,
+                                &empty_slots,
+                                env,
+                                current_module,
+                            )?);
                         }
                         slot_content.insert(name.clone(), slot_html);
                     }
@@ -293,11 +293,7 @@ impl Program {
             }
             Node::Text(text_node) => Ok(text_node.value.clone()),
             Node::Doctype(doctype_node) => Ok(format!("<!DOCTYPE {}>", doctype_node.value)),
-            Node::DefineSlot(DefineSlotNode {
-                name,
-                children,
-                ..
-            }) => {
+            Node::DefineSlot(DefineSlotNode { name, children, .. }) => {
                 // Check if we have supply-slot content for this slot
                 if let Some(supplied_html) = slot_content.get(name) {
                     // Use the pre-evaluated supplied content
@@ -561,7 +557,7 @@ mod tests {
             });
 
             let actual_output = program
-                .execute_simple("main", "main", data)
+                .execute_simple("main", "main-comp", data)
                 .unwrap_or_else(|e| {
                     panic!("Execution failed for {}: {}", file_name, e);
                 });

@@ -1,9 +1,9 @@
 -- main.hop --
-<component name="main" params-as="foo">
+<main-comp params-as="foo">
 	<for each="foo" as="v">
 		<div set-inner-text="v"></div>
 	</for>
-</component>
+</main-comp>
 -- output.txt --
 component
 	for

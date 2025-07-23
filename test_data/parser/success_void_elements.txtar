@@ -1,10 +1,10 @@
 -- main.hop --
-<component name="main">
+<main-comp>
 	<form id="form">
 		<input type="text" required>
 		<button type="submit">Send</button>
 	</form>
-</component>
+</main-comp>
 -- output.txt --
 component
 	form

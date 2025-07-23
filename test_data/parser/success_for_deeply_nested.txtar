@@ -1,5 +1,5 @@
 -- main.hop --
-<component name="main" params-as="i">
+<main-comp params-as="i">
 	<for each="i" as="j">
 		<for each="j.s.t" as="k">
 			<cond if="k">
@@ -12,7 +12,7 @@
 			</for>
 		</for>
 	</for>
-</component>
+</main-comp>
 -- output.txt --
 component
 	for

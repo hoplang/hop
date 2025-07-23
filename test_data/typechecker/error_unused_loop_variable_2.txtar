@@ -1,10 +1,10 @@
 -- main.hop --
-<component name="main" params-as="items">
+<main-comp params-as="items">
   <for each="items" as="item">
       <div set-inner-text="item"></div>
   </for>
   <for each="items" as="item">
   </for>
-</component>
+</main-comp>
 -- out --
 Unused variable item

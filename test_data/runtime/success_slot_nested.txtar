@@ -1,17 +1,17 @@
 -- main.hop --
-<component name="page-layout">
+<page-layout>
     <div class="page">
         <slot-content></slot-content>
     </div>
-</component>
+</page-layout>
 
-<component name="modal-wrapper">
+<modal-wrapper>
     <div class="modal-container">
         <slot-modal></slot-modal>
     </div>
-</component>
+</modal-wrapper>
 
-<component name="modal">
+<modal-comp>
     <div class="modal">
         <div class="modal-header">
             <slot-header></slot-header>
@@ -20,15 +20,15 @@
             <slot-body></slot-body>
         </div>
     </div>
-</component>
+</modal-comp>
 
-<component name="main" entrypoint params-as="data">
+<main-comp entrypoint params-as="data">
     <render component="page-layout">
         <with-content>
             <h1 set-inner-text="data.page_title"></h1>
             <render component="modal-wrapper">
                 <with-modal>
-                    <render component="modal">
+                    <render component="modal-comp">
                         <with-header>
 						  	<span>header</span>
                         </with-header>
@@ -40,7 +40,7 @@
             </render>
         </with-content>
     </render>
-</component>
+</main-comp>
 -- data.json --
 {
     "page_title": "Welcome Page"
@@ -51,7 +51,7 @@
         <h1>Welcome Page</h1>
         <div data-hop-id="main/modal-wrapper">
             <div class="modal-container">
-                <div data-hop-id="main/modal">
+                <div data-hop-id="main/modal-comp">
                     <div class="modal">
                         <div class="modal-header">
                             <span>header</span>

@@ -1,22 +1,22 @@
 -- main.hop --
-<component name="step3" params-as="settings">
+<step3-comp params-as="settings">
 	<cond if="settings.enabled">
 	</cond>
-</component>
+</step3-comp>
 
-<component name="step2" params-as="config">
-	<render component="step3" params="config.settings"/>
-</component>
+<step2-comp params-as="config">
+	<render component="step3-comp" params="config.settings"/>
+</step2-comp>
 
-<component name="step1" params-as="data">
-	<render component="step2" params="data.config"/>
-</component>
+<step1-comp params-as="data">
+	<render component="step2-comp" params="data.config"/>
+</step1-comp>
 
-<component name="main" params-as="params">
-	<render component="step1" params="params"/>
-</component>
+<main-comp params-as="params">
+	<render component="step1-comp" params="params"/>
+</main-comp>
 -- out --
-main::step3 : {enabled: boolean}
-main::step2 : {settings: {enabled: boolean}}
-main::step1 : {config: {settings: {enabled: boolean}}}
-main::main : {config: {settings: {enabled: boolean}}}
+main::step3-comp : {enabled: boolean}
+main::step2-comp : {settings: {enabled: boolean}}
+main::step1-comp : {config: {settings: {enabled: boolean}}}
+main::main-comp : {config: {settings: {enabled: boolean}}}

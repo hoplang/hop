@@ -1,6 +1,6 @@
 -- main.hop --
-<component name="main" params-as="Data123">
+<main-comp params-as="Data123">
 	<div></div>
-</component>
+</main-comp>
 -- output.txt --
 Invalid variable name 'Data123'. Variable names must match [a-z][a-z0-9]*

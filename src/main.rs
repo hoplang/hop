@@ -390,7 +390,7 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
         "available_routes": available_routes
     });
 
-    match program.execute_simple("error_pages", "not-found", not_found_data) {
+    match program.execute_simple("error_pages", "not-found-error", not_found_data) {
         Ok(html) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
     }
@@ -589,9 +589,9 @@ mod tests {
         let dir = temp_dir_from_txtar(
             r#"
 -- hop/test.hop --
-<component name="hello" params-as="p">
+<hello-world>
   <p set-inner-text="p.name"></p>
-</component>
+</hello-world>
 -- data/data.json --
 {"name": "foo bar"}
 "#,
@@ -619,16 +619,16 @@ mod tests {
         let dir = temp_dir_from_txtar(
             r#"
 -- hop/test.hop --
-<component name="hello" params-as="p">
+<hello-world params-as="p">
   <p set-inner-text="p.name"></p>
-</component>
+</hello-world>
 -- manifest.json --
 {
   "files": [
     {
       "path": "index.html",
       "module": "test",
-      "entrypoint": "hello",
+      "entrypoint": "hello-world",
       "data": "data.json"
     }
   ]
@@ -664,19 +664,19 @@ mod tests {
         let dir = temp_dir_from_txtar(
             r#"
 -- hop/test.hop --
-<component name="foo">
+<foo-comp>
   message is foo
-</component>
-<component name="bar">
+</foo-comp>
+<bar-comp>
   message is bar
-</component>
+</bar-comp>
 -- manifest.json --
 {
   "files": [
     {
       "path": "index.html",
       "module": "test",
-      "entrypoint": "foo"
+      "entrypoint": "foo-comp"
     }
   ]
 }
@@ -704,7 +704,7 @@ mod tests {
     {
       "path": "index.html",
       "module": "test",
-      "entrypoint": "bar"
+      "entrypoint": "bar-comp"
     }
   ]
 }"#,
@@ -723,16 +723,16 @@ mod tests {
         let dir = temp_dir_from_txtar(
             r#"
 -- hop/test.hop --
-<component name="hello">
+<hello-world>
   hello world!
-</component>
+</hello-world>
 -- manifest.json --
 {
   "files": [
     {
       "path": "index.html",
       "module": "test",
-      "entrypoint": "hello"
+      "entrypoint": "hello-world"
     }
   ]
 }
@@ -778,32 +778,32 @@ console.log("Hello from static file");
         let dir = temp_dir_from_txtar(
             r#"
 -- hop/test.hop --
-<component name="hello">
+<hello-world>
   hello world!
-</component>
-<component name="about">
+</hello-world>
+<about-page>
   about page
-</component>
-<component name="nested">
+</about-page>
+<nested-page>
   nested page content
-</component>
+</nested-page>
 -- manifest.json --
 {
   "files": [
     {
       "path": "index.html",
       "module": "test",
-      "entrypoint": "hello"
+      "entrypoint": "hello-world"
     },
     {
       "path": "about.html",
       "module": "test",
-      "entrypoint": "about"
+      "entrypoint": "about-page"
     },
     {
       "path": "foo/bar.html",
       "module": "test",
-      "entrypoint": "nested"
+      "entrypoint": "nested-page"
     }
   ]
 }

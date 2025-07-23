@@ -1,12 +1,12 @@
 -- main.hop --
-<component name="main" entrypoint>
+<main-comp entrypoint>
     <script>
         console.log("test");
     </script>
     <style>
         body { color: red; }
     </style>
-</component>
+</main-comp>
 -- output.txt --
 component
 	script

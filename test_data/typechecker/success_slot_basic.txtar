@@ -1,17 +1,17 @@
 -- main.hop --
-<component name="main">
+<main-comp>
     <strong>
         <slot-data></slot-data>
     </strong>
-</component>
+</main-comp>
 
-<component name="bar">
-    <render component="main">
+<bar-comp>
+    <render component="main-comp">
         <with-data>
             Here's the content for the 'data' slot
         </with-data>
     </render>
-</component>
+</bar-comp>
 -- out --
-main::main : void
-main::bar : void
+main::main-comp : void
+main::bar-comp : void

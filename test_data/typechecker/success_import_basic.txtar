@@ -1,15 +1,15 @@
 -- utils.hop --
-<component name="button" params-as="text">
+<button-comp params-as="text">
   <div set-inner-text="text"/>
-</component>
+</button-comp>
 
 -- main.hop --
-<import component="button" from="utils">
+<import component="button-comp" from="utils">
 
-<component name="main" params-as="label">
-  <render component="button" params="label"/>
-</component>
+<main-comp params-as="label">
+  <render component="button-comp" params="label"/>
+</main-comp>
 
 -- out --
-utils::button : string
-main::main : string
+utils::button-comp : string
+main::main-comp : string

@@ -1,11 +1,11 @@
 -- main.hop --
-<component name="main" params-as="items">
+<main-comp params-as="items">
 	<for each="items" as="item">
 		<cond if="item.show">
 			<div></div>
 		</cond>
 	</for>
-</component>
+</main-comp>
 -- data.json --
 [
 	{"show": true},
@@ -13,7 +13,7 @@
 	{"show": true}
 ]
 -- output.html --
-<div data-hop-id="main/main">
+<div data-hop-id="main/main-comp">
 	<div></div>
 	<div></div>
 </div>

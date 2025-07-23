@@ -1,5 +1,5 @@
 -- main.hop --
-<component name="main" params-as="params">
+<main-comp params-as="params">
 	<for each="params" as="j">
 		<cond if="j.a">
 		</cond>
@@ -8,6 +8,6 @@
 		<cond if="j.b">
 		</cond>
 	</for>
-</component>
+</main-comp>
 -- out --
-main::main : {a: boolean, b: boolean}[]
+main::main-comp : {a: boolean, b: boolean}[]
