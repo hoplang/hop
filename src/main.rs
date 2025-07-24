@@ -309,6 +309,11 @@ eventSource.onerror = function(event) {
         location.reload();
     }, 1000);
 };
+window.addEventListener("beforeunload", function() {
+    // This is important on chrome, not closing the event source will leave it open even when the
+    // user navigates away.
+    eventSource.close();
+});
 </script>
 "#;
 
