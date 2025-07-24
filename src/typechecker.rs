@@ -46,10 +46,7 @@ pub fn typecheck(
     {
         // Check for duplicate component names
         if parameter_types.contains_key(name) {
-            errors.push(RangeError::component_already_defined(
-                name,
-                *range,
-            ));
+            errors.push(RangeError::component_already_defined(name, *range));
             continue;
         }
 
@@ -195,10 +192,7 @@ fn typecheck_node(
                     typecheck_expr(&t1.clone(), params_attr, env, unifier, annotations, errors);
                 }
             } else {
-                errors.push(RangeError::undefined_component(
-                    component,
-                    *range,
-                ));
+                errors.push(RangeError::undefined_component(component, *range));
             }
 
             // Validate slots

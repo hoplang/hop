@@ -44,6 +44,15 @@ pub fn compile_hop_program(hop_dir: &Path) -> anyhow::Result<runtime::Program> {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum DataSource {
+    /// Path to a JSON file
+    File(String),
+    /// Inline JSON object
+    Inline(serde_json::Value),
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ManifestEntry {
     /// The output file path
     pub path: String,
@@ -51,8 +60,8 @@ pub struct ManifestEntry {
     pub module: String,
     /// The function to call
     pub entrypoint: String,
-    /// Optional data file to pass as parameters
-    pub data: Option<String>,
+    /// Optional data file path or inline JSON object to pass as parameters
+    pub data: Option<DataSource>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -218,7 +227,7 @@ fn build_from_manifest(
     for entry in &manifest.files {
         // Parse the json data used to render the output file
         let data = match &entry.data {
-            Some(data_file_path) => {
+            Some(DataSource::File(data_file_path)) => {
                 // Resolve data file path relative to data directory
                 let data_path = data_dir.join(data_file_path);
                 let json_str = fs::read_to_string(&data_path)
@@ -230,6 +239,12 @@ fn build_from_manifest(
                     .validate(&entry.module, &entry.entrypoint, &data)
                     .with_context(|| format!("Validation error in {:?}", data_path))?;
                 data
+            }
+            Some(DataSource::Inline(data)) => {
+                program
+                    .validate(&entry.module, &entry.entrypoint, data)
+                    .with_context(|| "Validation error with inline data")?;
+                data.clone()
             }
             None => serde_json::Value::Null,
         };
@@ -323,7 +338,7 @@ eventSource.onerror = function(event) {
 fn build_and_execute(
     module_name: &str,
     entrypoint: &str,
-    data_file: Option<&Path>,
+    data_source: Option<&DataSource>,
     hop_dir: &Path,
     data_dir: &Path,
 ) -> anyhow::Result<String> {
@@ -333,9 +348,9 @@ fn build_and_execute(
     // Load and compile all hop modules for this request
     let program = compile_hop_program(hop_dir)?;
 
-    // Load data from file if specified
-    let data = match data_file {
-        Some(data_file_path) => {
+    // Load data from file or use inline data if specified
+    let data = match data_source {
+        Some(DataSource::File(data_file_path)) => {
             // Resolve data file path relative to data directory
             let data_path = data_dir.join(data_file_path);
             let json_str = fs::read_to_string(&data_path)
@@ -344,6 +359,7 @@ fn build_and_execute(
                 format!("Failed to parse JSON from file {}", data_path.display())
             })?
         }
+        Some(DataSource::Inline(data)) => data.clone(),
         None => serde_json::Value::Null,
     };
 
@@ -512,7 +528,7 @@ async fn serve_from_manifest(
             match build_and_execute(
                 &entry.module,
                 &entry.entrypoint,
-                entry.data.as_deref().map(Path::new),
+                entry.data.as_ref(),
                 &hopdir_for_handler,
                 &datadir_for_handler,
             ) {
@@ -769,6 +785,101 @@ console.log("Hello from static file");
         response.assert_status_ok();
         let body = response.text();
         assert!(body.contains("console.log(\"Hello from static file\");"));
+    }
+
+    /// When the user specifies inline data in the manifest, it should be used directly without
+    /// reading from a file.
+    #[tokio::test]
+    async fn test_serve_with_inline_data() {
+        let dir = temp_dir_from_txtar(
+            r#"
+-- hop/test.hop --
+<hello-world params-as="p">
+  <p set-inner-text="p.name"></p>
+  <p set-inner-text="p.message"></p>
+</hello-world>
+-- manifest.json --
+{
+  "files": [
+    {
+      "path": "index.html",
+      "module": "test",
+      "entrypoint": "hello-world",
+      "data": {
+        "name": "inline user",
+        "message": "This data was specified inline!"
+      }
+    }
+  ]
+}
+"#,
+        )
+        .unwrap();
+
+        let (router, _watcher) = serve_from_manifest(
+            &dir.join("manifest.json"),
+            None,
+            &dir.join("hop"),
+            &dir.join("data"),
+        )
+        .await
+        .unwrap();
+
+        let server = TestServer::new(router).unwrap();
+
+        let response = server.get("/").await;
+        response.assert_status_ok();
+
+        let body = response.text();
+        assert!(body.contains("inline user"));
+        assert!(body.contains("This data was specified inline!"));
+    }
+
+    /// When the user calls `hop build` with inline data in the manifest, the inline data
+    /// should be used to render the output files.
+    #[test]
+    fn test_build_with_inline_data() {
+        let dir = temp_dir_from_txtar(
+            r#"
+-- hop/test.hop --
+<hello-world params-as="p">
+  <h1 set-inner-text="p.title"></h1>
+  <p set-inner-text="p.description"></p>
+</hello-world>
+-- manifest.json --
+{
+  "files": [
+    {
+      "path": "index.html",
+      "module": "test",
+      "entrypoint": "hello-world",
+      "data": {
+        "title": "Inline Data Test",
+        "description": "This content comes from inline JSON data in the manifest."
+      }
+    }
+  ]
+}
+"#,
+        )
+        .unwrap();
+
+        let result = build_from_manifest(
+            &dir.join("manifest.json"),
+            &dir.join("out"),
+            &dir.join("hop"),
+            &dir.join("data"),
+        );
+
+        assert!(result.is_ok());
+        let outputs = result.unwrap();
+        assert_eq!(outputs.len(), 1);
+
+        // Check that the output file was created with the correct content
+        let output_path = dir.join("out").join("index.html");
+        let content = std::fs::read_to_string(&output_path).unwrap();
+        assert!(content.contains("Inline Data Test"));
+        assert!(content.contains("This content comes from inline JSON data"));
     }
 
     /// When the user calls `hop serve` and requests a path that doesn't exist in the manifest,

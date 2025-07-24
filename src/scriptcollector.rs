@@ -71,8 +71,7 @@ impl ScriptCollector {
                                 _ => panic!("Script tag child should be a text node"),
                             };
 
-                            let data_hop_id =
-                                format!("{}/{}", module_name, component.name);
+                            let data_hop_id = format!("{}/{}", module_name, component.name);
                             let wrapped_script = format!(
                                 "document.querySelectorAll('[data-hop-id=\"{}\"]').forEach((frameElement) => {{{}}});",
                                 data_hop_id, script_content
