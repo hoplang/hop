@@ -1,0 +1,14 @@
+-- main.hop --
+<main-comp>
+    <slot-default>
+        Default content
+    </slot-default>
+    <button-comp>
+        <with-default>Custom Button</with-default>
+    </button-comp>
+</main-comp>
+-- output.txt --
+component
+	slot-default
+	render
+		with-default

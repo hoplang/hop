@@ -227,6 +227,12 @@ impl RangeError {
     pub fn slot_already_defined(slot: &str, range: Range) -> Self {
         Self::new(format!("Slot '{slot}' is already defined"), range)
     }
+    pub fn default_slot_with_other_slots(range: Range) -> Self {
+        Self::new(
+            "When using slot-default, it must be the only slot in the component".to_string(),
+            range,
+        )
+    }
 
     pub fn supply_slot_outside_render(range: Range) -> Self {
         Self::new(

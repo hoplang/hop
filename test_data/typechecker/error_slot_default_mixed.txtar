@@ -1,0 +1,7 @@
+-- main.hop --
+<mixed-comp>
+    <slot-default>Default content</slot-default>
+    <slot-other>Other content</slot-other>
+</mixed-comp>
+-- out --
+When using slot-default, it must be the only slot in the component

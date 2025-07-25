@@ -158,7 +158,14 @@ fn collect_slots_from_children(
                 if slots.contains(name) {
                     errors.push(RangeError::slot_already_defined(name, *range));
                 } else {
-                    slots.insert(name.clone());
+                    // Check if trying to mix default slot with other slots
+                    if name == "default" && !slots.is_empty() {
+                        errors.push(RangeError::default_slot_with_other_slots(*range));
+                    } else if slots.contains("default") && name != "default" {
+                        errors.push(RangeError::default_slot_with_other_slots(*range));
+                    } else {
+                        slots.insert(name.clone());
+                    }
                 }
             }
             Node::Component(ComponentNode { children, .. }) => {

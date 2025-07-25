@@ -207,8 +207,22 @@ impl Program {
                     }
                 }
 
+                // Check if target component has only a default slot
+                let target_component = self
+                    .component_maps
+                    .get(&target_module)
+                    .and_then(|module_map| module_map.get(component_name));
+
+                let has_only_default_slot = target_component
+                    .map(|comp| {
+                        comp.slots.len() == 1 && comp.slots.contains(&"default".to_string())
+                    })
+                    .unwrap_or(false);
+
                 // Collect and evaluate supply-slot mappings
                 let mut slot_content: HashMap<String, String> = HashMap::new();
+                let mut non_slot_children = Vec::new();
+
                 for child in children {
                     if let Node::SupplySlot(SupplySlotNode { name, children, .. }) = child {
                         let mut slot_html = String::new();
@@ -222,7 +236,29 @@ impl Program {
                             )?);
                         }
                         slot_content.insert(name.clone(), slot_html);
+                    } else if has_only_default_slot {
+                        // For components with only default slot, collect non-slot children
+                        non_slot_children.push(child);
                     }
+                }
+
+                // If component has only default slot and we have non-slot children,
+                // pass them as default slot content
+                if has_only_default_slot
+                    && !non_slot_children.is_empty()
+                    && !slot_content.contains_key("default")
+                {
+                    let mut default_html = String::new();
+                    let empty_slots: HashMap<String, String> = HashMap::new();
+                    for child in non_slot_children {
+                        default_html.push_str(&self.evaluate_node(
+                            child,
+                            &empty_slots,
+                            env,
+                            current_module,
+                        )?);
+                    }
+                    slot_content.insert("default".to_string(), default_html);
                 }
 
                 self.execute(&target_module, component_name, params_value, &slot_content)
