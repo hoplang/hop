@@ -845,9 +845,14 @@ async fn serve_from_hop(
 
     // Set up static file serving if specified
     if let Some(serve_dir) = serve_dir {
-        router = router
-            .nest_service("/static", tower_http::services::ServeDir::new(serve_dir))
-            .fallback(request_handler);
+        use axum::routing::get;
+        let servedir_path = serve_dir;
+        if !servedir_path.is_dir() {
+            anyhow::bail!("servedir '{}' is not a directory", servedir_path.display());
+        }
+        router = router.fallback_service(
+            tower_http::services::ServeDir::new(servedir_path).fallback(get(request_handler)),
+        );
     } else {
         router = router.fallback(request_handler);
     }
@@ -1008,23 +1013,19 @@ mod tests {
     /// When the user calls `hop serve` with a servedir parameter, static files should be served
     /// from the given directory.
     #[tokio::test]
-    async fn test_serve_from_manifest_static_files() {
+    async fn test_serve_from_hop_static_files() {
         let dir = temp_dir_from_txtar(
             r#"
 -- hop/test.hop --
 <hello-world>
   hello world!
 </hello-world>
--- manifest.json --
-{
-  "files": [
-    {
-      "path": "index.html",
-      "module": "test",
-      "entrypoint": "hello-world"
-    }
-  ]
-}
+-- build.hop --
+<import component="hello-world" from="test" />
+
+<render file="index.html">
+  <hello-world />
+</render>
 -- static/style.css --
 body { background: blue; }
 -- static/script.js --
@@ -1033,8 +1034,8 @@ console.log("Hello from static file");
         )
         .unwrap();
 
-        let (router, _watcher) = serve_from_manifest(
-            &dir.join("manifest.json"),
+        let (router, _watcher) = serve_from_hop(
+            &dir.join("build.hop"),
             Some(&dir.join("static")),
             &dir.join("hop"),
             &dir.join("data"),
