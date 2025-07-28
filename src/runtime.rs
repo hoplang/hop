@@ -1,6 +1,7 @@
 use crate::common::{
-    BinaryOp, BuildRenderNode, ComponentNode, CondNode, DefineSlotNode, Environment, ErrorNode, Expression, ForNode,
-    NativeHTMLNode, Node, RenderNode, SupplySlotNode, Type, escape_html, is_void_element,
+    BinaryOp, BuildRenderNode, ComponentNode, CondNode, DefineSlotNode, Environment, ErrorNode,
+    Expression, ForNode, NativeHTMLNode, Node, RenderNode, SupplySlotNode, Type, escape_html,
+    is_void_element,
 };
 use std::collections::HashMap;
 
@@ -393,7 +394,7 @@ impl Program {
         }
     }
 
-    fn evaluate_node_entrypoint(
+    pub fn evaluate_node_entrypoint(
         &self,
         node: &Node,
         env: &mut Environment<serde_json::Value>,

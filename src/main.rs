@@ -16,7 +16,10 @@ use clap::{CommandFactory, Parser, Subcommand};
 use compiler::Compiler;
 use std::path::Path;
 
-pub fn compile_hop_program(hop_dir: &Path, build_file: Option<&Path>) -> anyhow::Result<runtime::Program> {
+pub fn compile_hop_program(
+    hop_dir: &Path,
+    build_file: Option<&Path>,
+) -> anyhow::Result<runtime::Program> {
     use anyhow::Context;
     use compiler::Compiler;
     use std::fs;
@@ -24,7 +27,7 @@ pub fn compile_hop_program(hop_dir: &Path, build_file: Option<&Path>) -> anyhow:
     let dir = fs::read_dir(hop_dir).context("Failed to read hop directory")?;
 
     let mut compiler = Compiler::new();
-    
+
     // Add modules from hop directory
     for entry in dir {
         let path = entry.context("Failed to read directory entry")?.path();
@@ -39,7 +42,7 @@ pub fn compile_hop_program(hop_dir: &Path, build_file: Option<&Path>) -> anyhow:
             compiler.add_module(module_name, content);
         }
     }
-    
+
     // Add build file if provided
     if let Some(build_path) = build_file {
         let module_name = build_path
@@ -51,12 +54,11 @@ pub fn compile_hop_program(hop_dir: &Path, build_file: Option<&Path>) -> anyhow:
             .with_context(|| format!("Failed to read build file {}", build_path.display()))?;
         compiler.add_module(module_name, content);
     }
-    
+
     compiler
         .compile()
         .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
 }
-
 
 #[derive(Parser)]
 #[command(name = "hop")]
@@ -207,7 +209,6 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-
 fn build_from_hop(
     build_file: &Path,
     output_dir: &Path,
@@ -215,45 +216,44 @@ fn build_from_hop(
     _data_dir: &Path,
     script_file: Option<&str>,
 ) -> anyhow::Result<Vec<(String, usize)>> {
+    use crate::common::Environment;
     use anyhow::Context;
     use std::fs;
-    use crate::common::Environment;
-    use std::collections::HashMap;
-    
+
     // Compile the hop program including the build file
     let program = compile_hop_program(hop_dir, Some(build_file))?;
     let mut file_outputs = Vec::new();
     let mut env = Environment::new();
-    
+
     // Create output directory if it doesn't exist
     fs::create_dir_all(output_dir)?;
-    
+
     // Process BuildRender nodes from all modules
-    for (_module_name, build_renders) in program.get_build_renders() {
+    for build_renders in program.get_build_renders().values() {
         for build_render in build_renders {
             // Evaluate the children to get the rendered content
             let mut content = String::new();
-            let empty_slots: HashMap<String, String> = HashMap::new();
-            
+
             for child in &build_render.children {
-                let rendered = program.evaluate_node(child, &empty_slots, &mut env, "build")
+                let rendered = program
+                    .evaluate_node_entrypoint(child, &mut env, "build")
                     .map_err(|e| anyhow::anyhow!("Failed to evaluate render content: {}", e))?;
                 content.push_str(&rendered);
             }
-            
+
             // Write the file to the output directory
             let output_path = output_dir.join(&build_render.file_attr.value);
             if let Some(parent) = output_path.parent() {
                 fs::create_dir_all(parent)?;
             }
-            
+
             fs::write(&output_path, &content)
                 .with_context(|| format!("Failed to write file {}", output_path.display()))?;
-            
+
             file_outputs.push((build_render.file_attr.value.clone(), content.len()));
         }
     }
-    
+
     // Handle script collection if requested
     if let Some(script_file_name) = script_file {
         let combined_script = program.get_scripts();
@@ -261,7 +261,7 @@ fn build_from_hop(
         fs::write(&script_path, combined_script)
             .with_context(|| format!("Failed to write script file {}", script_path.display()))?;
     }
-    
+
     Ok(file_outputs)
 }
 
@@ -271,29 +271,29 @@ fn render_build_files(
 ) -> anyhow::Result<std::collections::HashMap<String, String>> {
     use crate::common::Environment;
     use std::collections::HashMap;
-    
+
     // Compile the hop program including the build file
     let program = compile_hop_program(hop_dir, Some(build_file))?;
     let mut rendered_files = HashMap::new();
     let mut env = Environment::new();
-    
+
     // Process BuildRender nodes from all modules
-    for (_module_name, build_renders) in program.get_build_renders() {
+    for build_renders in program.get_build_renders().values() {
         for build_render in build_renders {
             // Evaluate the children to get the rendered content
             let mut content = String::new();
-            let empty_slots: HashMap<String, String> = HashMap::new();
-            
+
             for child in &build_render.children {
-                let rendered = program.evaluate_node(child, &empty_slots, &mut env, "build")
+                let rendered = program
+                    .evaluate_node_entrypoint(child, &mut env, "build")
                     .map_err(|e| anyhow::anyhow!("Failed to evaluate render content: {}", e))?;
                 content.push_str(&rendered);
             }
-            
+
             rendered_files.insert(build_render.file_attr.value.clone(), content);
         }
     }
-    
+
     Ok(rendered_files)
 }
 
@@ -401,7 +401,6 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
     }
 }
 
-
 fn create_file_watcher(
     hop_dir: &Path,
     data_dir: &Path,
@@ -493,7 +492,7 @@ async fn serve_from_hop(
                             .header("Content-Type", "application/javascript")
                             .body(Body::from(program.get_scripts().to_string()))
                             .unwrap())
-                    },
+                    }
                     Err(e) => Err((
                         StatusCode::INTERNAL_SERVER_ERROR,
                         format!("Failed to compile hop program: {}", e),
@@ -505,7 +504,10 @@ async fn serve_from_hop(
 
     let build_file_path = build_file.to_path_buf();
     let hopdir_for_handler = hop_dir.to_path_buf();
-    let request_handler = async move |req: axum::extract::Request| -> Result<axum::response::Html<String>, (StatusCode, axum::response::Html<String>)> {
+    let request_handler = async move |req: axum::extract::Request| -> Result<
+        axum::response::Html<String>,
+        (StatusCode, axum::response::Html<String>),
+    > {
         // Render all build files into a HashMap
         let rendered_files = match render_build_files(&build_file_path, &hopdir_for_handler) {
             Ok(files) => files,
@@ -551,10 +553,7 @@ async fn serve_from_hop(
 
                 Err((
                     StatusCode::NOT_FOUND,
-                    axum::response::Html(create_not_found_page(
-                        req.uri().path(),
-                        &available_paths,
-                    )),
+                    axum::response::Html(create_not_found_page(req.uri().path(), &available_paths)),
                 ))
             }
         }
@@ -704,7 +703,7 @@ mod tests {
         response.assert_status_ok();
         let body = response.text();
         assert!(body.contains("message is foo"));
-        
+
         fs::write(
             dir.join("build.hop"),
             r#"<import component="bar-comp" from="test" />
@@ -713,7 +712,7 @@ mod tests {
   <bar-comp />
 </render>"#,
         )?;
-        
+
         let response = server.get("/").await;
         response.assert_status_ok();
         let body = response.text();
@@ -772,7 +771,6 @@ console.log("Hello from static file");
         let body = response.text();
         assert!(body.contains("console.log(\"Hello from static file\");"));
     }
-
 
     /// When the user calls `hop build` with a build.hop file, the rendered content
     /// should be written to the specified output files.

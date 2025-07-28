@@ -127,7 +127,7 @@ impl Compiler {
             component_maps.insert(module_name.clone(), component_map);
             import_maps.insert(module_name.clone(), import_map);
             module_parameter_types.insert(module_name.clone(), type_info.parameter_types);
-            
+
             // Collect scripts from this module
             script_collector.add_module(module_name.clone(), module.components.clone());
         }
