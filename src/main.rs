@@ -668,7 +668,10 @@ async fn serve_from_manifest(
         let manifest = match load_manifest(&mp) {
             Ok(manifest) => manifest,
             Err(e) => {
-                return Ok(axum::response::Html(create_error_page(&e)));
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    axum::response::Html(create_error_page(&e)),
+                ));
             }
         };
         let path = req.uri().path();
@@ -794,12 +797,15 @@ async fn serve_from_hop(
 
     let build_file_path = build_file.to_path_buf();
     let hopdir_for_handler = hop_dir.to_path_buf();
-    let request_handler = async move |req: axum::extract::Request| -> Result<axum::response::Html<String>, std::convert::Infallible> {
+    let request_handler = async move |req: axum::extract::Request| -> Result<axum::response::Html<String>, (StatusCode, axum::response::Html<String>)> {
         // Render all build files into a HashMap
         let rendered_files = match render_build_files(&build_file_path, &hopdir_for_handler) {
             Ok(files) => files,
             Err(e) => {
-                return Ok(axum::response::Html(create_error_page(&e)));
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    axum::response::Html(create_error_page(&e)),
+                ));
             }
         };
 
@@ -835,10 +841,13 @@ async fn serve_from_hop(
                     })
                     .collect();
 
-                Ok(axum::response::Html(create_not_found_page(
-                    req.uri().path(),
-                    &available_paths,
-                )))
+                Err((
+                    StatusCode::NOT_FOUND,
+                    axum::response::Html(create_not_found_page(
+                        req.uri().path(),
+                        &available_paths,
+                    )),
+                ))
             }
         }
     };
@@ -950,10 +959,10 @@ mod tests {
         assert!(body.contains("Hello from build.hop!"));
     }
 
-    /// When the user changes the contents of the manifest file after running `hop serve` the
+    /// When the user changes the contents of the build.hop file after running `hop serve` the
     /// changes should be reflected when the user sends a request to the server.
     #[tokio::test]
-    async fn test_serve_from_manifest_dynamic_update() -> anyhow::Result<()> {
+    async fn test_serve_from_hop_dynamic_update() -> anyhow::Result<()> {
         let dir = temp_dir_from_txtar(
             r#"
 -- hop/test.hop --
@@ -963,21 +972,17 @@ mod tests {
 <bar-comp>
   message is bar
 </bar-comp>
--- manifest.json --
-{
-  "files": [
-    {
-      "path": "index.html",
-      "module": "test",
-      "entrypoint": "foo-comp"
-    }
-  ]
-}
+-- build.hop --
+<import component="foo-comp" from="test" />
+
+<render file="index.html">
+  <foo-comp />
+</render>
 "#,
         )?;
 
-        let (router, _watcher) = serve_from_manifest(
-            &dir.join("manifest.json"),
+        let (router, _watcher) = serve_from_hop(
+            &dir.join("build.hop"),
             None,
             &dir.join("hop"),
             &dir.join("data"),
@@ -991,18 +996,16 @@ mod tests {
         response.assert_status_ok();
         let body = response.text();
         assert!(body.contains("message is foo"));
+        
         fs::write(
-            dir.join("manifest.json"),
-            r#"{
-  "files": [
-    {
-      "path": "index.html",
-      "module": "test",
-      "entrypoint": "bar-comp"
-    }
-  ]
-}"#,
+            dir.join("build.hop"),
+            r#"<import component="bar-comp" from="test" />
+
+<render file="index.html">
+  <bar-comp />
+</render>"#,
         )?;
+        
         let response = server.get("/").await;
         response.assert_status_ok();
         let body = response.text();
@@ -1062,54 +1065,6 @@ console.log("Hello from static file");
         assert!(body.contains("console.log(\"Hello from static file\");"));
     }
 
-    /// When the user specifies inline data in the manifest, it should be used directly without
-    /// reading from a file.
-    #[tokio::test]
-    async fn test_serve_with_inline_data() {
-        let dir = temp_dir_from_txtar(
-            r#"
--- hop/test.hop --
-<hello-world params-as="p">
-  <p set-inner-text="p.name"></p>
-  <p set-inner-text="p.message"></p>
-</hello-world>
--- manifest.json --
-{
-  "files": [
-    {
-      "path": "index.html",
-      "module": "test",
-      "entrypoint": "hello-world",
-      "data": {
-        "name": "inline user",
-        "message": "This data was specified inline!"
-      }
-    }
-  ]
-}
-"#,
-        )
-        .unwrap();
-
-        let (router, _watcher) = serve_from_manifest(
-            &dir.join("manifest.json"),
-            None,
-            &dir.join("hop"),
-            &dir.join("data"),
-            None,
-        )
-        .await
-        .unwrap();
-
-        let server = TestServer::new(router).unwrap();
-
-        let response = server.get("/").await;
-        response.assert_status_ok();
-
-        let body = response.text();
-        assert!(body.contains("inline user"));
-        assert!(body.contains("This data was specified inline!"));
-    }
 
     /// When the user calls `hop build` with a build.hop file, the rendered content
     /// should be written to the specified output files.
@@ -1167,32 +1122,26 @@ console.log("Hello from static file");
 <nested-page>
   nested page content
 </nested-page>
--- manifest.json --
-{
-  "files": [
-    {
-      "path": "index.html",
-      "module": "test",
-      "entrypoint": "hello-world"
-    },
-    {
-      "path": "about.html",
-      "module": "test",
-      "entrypoint": "about-page"
-    },
-    {
-      "path": "foo/bar.html",
-      "module": "test",
-      "entrypoint": "nested-page"
-    }
-  ]
-}
+-- hop/build.hop --
+<import component="hello-world" from="test" />
+<import component="about-page" from="test" />
+<import component="nested-page" from="test" />
+
+<render file="index.html">
+  <hello-world></hello-world>
+</render>
+<render file="about.html">
+  <about-page></about-page>
+</render>
+<render file="foo/bar.html">
+  <nested-page></nested-page>
+</render>
 "#,
         )
         .unwrap();
 
-        let (router, _watcher) = serve_from_manifest(
-            &dir.join("manifest.json"),
+        let (router, _watcher) = serve_from_hop(
+            &dir.join("hop/build.hop"),
             None,
             &dir.join("hop"),
             &dir.join("data"),
@@ -1217,7 +1166,7 @@ console.log("Hello from static file");
         assert!(body.contains(">/</a>"));
         assert!(body.contains(">/about</a>"));
         assert!(body.contains(">/foo/bar</a>"));
-        assert!(body.contains("manifest.json"));
+        assert!(body.contains("build.hop"));
 
         // Verify hot reload script is included
         assert!(body.contains("/__hop_hot_reload"));
