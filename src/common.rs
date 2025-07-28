@@ -158,10 +158,6 @@ impl RangeError {
         Self::new(format!("<{tag}> must be placed at module root"), range)
     }
 
-    pub fn unexpected_tag_at_root(tag: &str, range: Range) -> Self {
-        Self::new(format!("Unexpected <{tag}> at module root"), range)
-    }
-
     pub fn unexpected_doctype_at_root(range: Range) -> Self {
         Self::new("Unexpected doctype at module root".to_string(), range)
     }
@@ -230,13 +226,6 @@ impl RangeError {
     pub fn default_slot_with_other_slots(range: Range) -> Self {
         Self::new(
             "When using slot-default, it must be the only slot in the component".to_string(),
-            range,
-        )
-    }
-
-    pub fn supply_slot_outside_render(range: Range) -> Self {
-        Self::new(
-            "with-* slot must be a direct child of render".to_string(),
             range,
         )
     }

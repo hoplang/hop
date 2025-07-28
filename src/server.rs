@@ -164,22 +164,4 @@ impl Server {
 
         diagnostics
     }
-
-    pub fn get_component_at_position(
-        &self,
-        module_name: &str,
-        line: usize,
-        column: usize,
-    ) -> Option<String> {
-        let module = self.modules.get(module_name)?;
-        let position = Position::new(line, column);
-
-        for component in &module.components {
-            if component.range.contains_position(position) {
-                return Some(component.name.clone());
-            }
-        }
-
-        None
-    }
 }
