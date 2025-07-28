@@ -43,16 +43,14 @@ pub fn compile_hop_program(hop_dir: &Path, build_file: Option<&Path>) -> anyhow:
     
     // Add build file if provided
     if let Some(build_path) = build_file {
-        if build_path.exists() {
-            let module_name = build_path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .context("Invalid build file name")?
-                .to_string();
-            let content = fs::read_to_string(build_path)
-                .with_context(|| format!("Failed to read build file {:?}", build_path))?;
-            compiler.add_module(module_name, content);
-        }
+        let module_name = build_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .context("Invalid build file name")?
+            .to_string();
+        let content = fs::read_to_string(build_path)
+            .with_context(|| format!("Failed to read build file {}", build_path.display()))?;
+        compiler.add_module(module_name, content);
     }
     
     compiler
@@ -211,7 +209,7 @@ async fn main() -> anyhow::Result<()> {
             use colored::*;
             use std::time::Instant;
             let start_time = Instant::now();
-            let (router, _watcher) = serve_from_manifest(
+            let (router, _watcher) = serve_from_hop(
                 Path::new(build_file),
                 servedir.as_deref().map(Path::new),
                 Path::new(hopdir),
@@ -379,6 +377,38 @@ fn build_from_hop(
     }
     
     Ok(file_outputs)
+}
+
+fn render_build_files(
+    build_file: &Path,
+    hop_dir: &Path,
+) -> anyhow::Result<std::collections::HashMap<String, String>> {
+    use crate::common::Environment;
+    use std::collections::HashMap;
+    
+    // Compile the hop program including the build file
+    let program = compile_hop_program(hop_dir, Some(build_file))?;
+    let mut rendered_files = HashMap::new();
+    let mut env = Environment::new();
+    
+    // Process BuildRender nodes from all modules
+    for (_module_name, build_renders) in program.get_build_renders() {
+        for build_render in build_renders {
+            // Evaluate the children to get the rendered content
+            let mut content = String::new();
+            let empty_slots: HashMap<String, String> = HashMap::new();
+            
+            for child in &build_render.children {
+                let rendered = program.evaluate_node(child, &empty_slots, &mut env, "build")
+                    .map_err(|e| anyhow::anyhow!("Failed to evaluate render content: {}", e))?;
+                content.push_str(&rendered);
+            }
+            
+            rendered_files.insert(build_render.file_attr.value.clone(), content);
+        }
+    }
+    
+    Ok(rendered_files)
 }
 
 // Function to inject hot reload script into HTML
@@ -709,6 +739,122 @@ async fn serve_from_manifest(
     Ok((router, watcher))
 }
 
+async fn serve_from_hop(
+    build_file: &Path,
+    serve_dir: Option<&Path>,
+    hop_dir: &Path,
+    _data_dir: &Path,
+    script_file: Option<&str>,
+) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher)> {
+    use axum::http::StatusCode;
+    use axum::response::sse::{Event, Sse};
+    use axum::routing::get;
+    use tokio_stream::StreamExt;
+    use tokio_stream::wrappers::BroadcastStream;
+
+    // Set up file watcher for hot reloading
+    let mut router = axum::Router::new();
+
+    // Add SSE endpoint for hot reload events
+    let (watcher, channel) = create_file_watcher(hop_dir, &hop_dir.join("data"), build_file)?;
+    router = router.route(
+        "/__hop_hot_reload",
+        get(async move || {
+            Sse::new(
+                BroadcastStream::new(channel.subscribe())
+                    .map(|_| Ok::<Event, axum::Error>(Event::default().data("reload"))),
+            )
+        }),
+    );
+
+    // Add script serving endpoint if script_file is specified
+    if let Some(script_filename) = script_file {
+        let script_path = format!("/{}", script_filename);
+        let hopdir_for_script = hop_dir.to_path_buf();
+        let build_file_for_script = build_file.to_path_buf();
+        router = router.route(
+            &script_path,
+            get(async move || {
+                match compile_hop_program(&hopdir_for_script, Some(&build_file_for_script)) {
+                    Ok(program) => {
+                        use axum::body::Body;
+                        Ok(axum::response::Response::builder()
+                            .header("Content-Type", "application/javascript")
+                            .body(Body::from(program.get_scripts().to_string()))
+                            .unwrap())
+                    },
+                    Err(e) => Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Failed to compile hop program: {}", e),
+                    )),
+                }
+            }),
+        );
+    }
+
+    let build_file_path = build_file.to_path_buf();
+    let hopdir_for_handler = hop_dir.to_path_buf();
+    let request_handler = async move |req: axum::extract::Request| -> Result<axum::response::Html<String>, std::convert::Infallible> {
+        // Render all build files into a HashMap
+        let rendered_files = match render_build_files(&build_file_path, &hopdir_for_handler) {
+            Ok(files) => files,
+            Err(e) => {
+                return Ok(axum::response::Html(create_error_page(&e)));
+            }
+        };
+
+        let path = req.uri().path();
+
+        // Convert request path to file path format
+        let file_path = match path {
+            "/" => "index.html",
+            path if path.starts_with('/') => &path[1..],
+            path => path,
+        };
+
+        // Look up the file in our rendered files
+        if let Some(content) = rendered_files.get(file_path) {
+            Ok(axum::response::Html(inject_hot_reload_script(content)))
+        } else {
+            // Try without .html extension for paths that might have it
+            let html_file_path = format!("{}.html", file_path);
+            if let Some(content) = rendered_files.get(&html_file_path) {
+                Ok(axum::response::Html(inject_hot_reload_script(content)))
+            } else {
+                // Create available paths list for 404 page
+                let available_paths: Vec<String> = rendered_files
+                    .keys()
+                    .map(|file_path| {
+                        if file_path == "index.html" {
+                            "/".to_string()
+                        } else if file_path.ends_with(".html") {
+                            format!("/{}", file_path.strip_suffix(".html").unwrap())
+                        } else {
+                            format!("/{}", file_path)
+                        }
+                    })
+                    .collect();
+
+                Ok(axum::response::Html(create_not_found_page(
+                    req.uri().path(),
+                    &available_paths,
+                )))
+            }
+        }
+    };
+
+    // Set up static file serving if specified
+    if let Some(serve_dir) = serve_dir {
+        router = router
+            .nest_service("/static", tower_http::services::ServeDir::new(serve_dir))
+            .fallback(request_handler);
+    } else {
+        router = router.fallback(request_handler);
+    }
+
+    Ok((router, watcher))
+}
+
 #[cfg(test)]
 mod tests {
     use axum_test::TestServer;
@@ -731,23 +877,21 @@ mod tests {
         Ok(temp_dir)
     }
 
-    /// When the user calls `hop build` and the manifest file does not exist, an error should be
-    /// returned stating the the manifest file could not be read.
+    /// When the user calls `hop build` and the build file does not exist, an error should be
+    /// returned stating the the build file could not be read.
     #[test]
-    fn test_build_nonexistent_manifest() {
+    fn test_build_nonexistent_build_file() {
         let dir = temp_dir_from_txtar(
             r#"
 -- hop/test.hop --
 <hello-world>
-  <p set-inner-text="p.name"></p>
+  <p>Test content</p>
 </hello-world>
--- data/data.json --
-{"name": "foo bar"}
 "#,
         )
         .unwrap();
-        let result = build_from_manifest(
-            &dir.join("manifest.json"),
+        let result = build_from_hop(
+            &dir.join("build.hop"),
             &dir.join("out"),
             &dir.join("hop"),
             &dir.join("data"),
@@ -758,39 +902,32 @@ mod tests {
             result
                 .unwrap_err()
                 .to_string()
-                .contains("Failed to read manifest file")
+                .contains("Failed to read build file")
         );
     }
 
     /// When the user calls `hop serve` and has a entry for `index.html` in the manifest file, the
     /// index.html entry should be rendered when the user issues a GET to /.
     #[tokio::test]
-    async fn test_serve_from_manifest() {
+    async fn test_serve_from_hop() {
         let dir = temp_dir_from_txtar(
             r#"
--- hop/test.hop --
-<hello-world params-as="p">
-  <p set-inner-text="p.name"></p>
+-- hop/components.hop --
+<hello-world>
+  <p>Hello from build.hop!</p>
 </hello-world>
--- manifest.json --
-{
-  "files": [
-    {
-      "path": "index.html",
-      "module": "test",
-      "entrypoint": "hello-world",
-      "data": "data.json"
-    }
-  ]
-}
--- data/data.json --
-{"name": "foo bar"}
+-- build.hop --
+<import component="hello-world" from="components" />
+
+<render file="index.html">
+  <hello-world />
+</render>
 "#,
         )
         .unwrap();
 
-        let (router, _watcher) = serve_from_manifest(
-            &dir.join("manifest.json"),
+        let (router, _watcher) = serve_from_hop(
+            &dir.join("build.hop"),
             None,
             &dir.join("hop"),
             &dir.join("data"),
@@ -805,7 +942,7 @@ mod tests {
         response.assert_status_ok();
 
         let body = response.text();
-        assert!(body.contains("foo bar"));
+        assert!(body.contains("Hello from build.hop!"));
     }
 
     /// When the user changes the contents of the manifest file after running `hop serve` the
@@ -973,37 +1110,29 @@ console.log("Hello from static file");
         assert!(body.contains("This data was specified inline!"));
     }
 
-    /// When the user calls `hop build` with inline data in the manifest, the inline data
-    /// should be used to render the output files.
+    /// When the user calls `hop build` with a build.hop file, the rendered content
+    /// should be written to the specified output files.
     #[test]
-    fn test_build_with_inline_data() {
+    fn test_build_with_hop_file() {
         let dir = temp_dir_from_txtar(
             r#"
--- hop/test.hop --
-<hello-world params-as="p">
-  <h1 set-inner-text="p.title"></h1>
-  <p set-inner-text="p.description"></p>
+-- hop/components.hop --
+<hello-world>
+  <h1>Build.hop Test</h1>
+  <p>This content comes from a build.hop file.</p>
 </hello-world>
--- manifest.json --
-{
-  "files": [
-    {
-      "path": "index.html",
-      "module": "test",
-      "entrypoint": "hello-world",
-      "data": {
-        "title": "Inline Data Test",
-        "description": "This content comes from inline JSON data in the manifest."
-      }
-    }
-  ]
-}
+-- build.hop --
+<import component="hello-world" from="components" />
+
+<render file="index.html">
+  <hello-world />
+</render>
 "#,
         )
         .unwrap();
 
-        let result = build_from_manifest(
-            &dir.join("manifest.json"),
+        let result = build_from_hop(
+            &dir.join("build.hop"),
             &dir.join("out"),
             &dir.join("hop"),
             &dir.join("data"),
@@ -1017,8 +1146,8 @@ console.log("Hello from static file");
         // Check that the output file was created with the correct content
         let output_path = dir.join("out").join("index.html");
         let content = std::fs::read_to_string(&output_path).unwrap();
-        assert!(content.contains("Inline Data Test"));
-        assert!(content.contains("This content comes from inline JSON data"));
+        assert!(content.contains("Build.hop Test"));
+        assert!(content.contains("This content comes from a build.hop file"));
     }
 
     /// When the user calls `hop serve` and requests a path that doesn't exist in the manifest,
