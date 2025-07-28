@@ -1,5 +1,5 @@
 use crate::common::{
-    BinaryOp, ComponentNode, CondNode, DefineSlotNode, Environment, ErrorNode, Expression, ForNode,
+    BinaryOp, BuildRenderNode, ComponentNode, CondNode, DefineSlotNode, Environment, ErrorNode, Expression, ForNode,
     NativeHTMLNode, Node, RenderNode, SupplySlotNode, Type, escape_html, is_void_element,
 };
 use std::collections::HashMap;
@@ -10,6 +10,7 @@ pub struct Program {
     component_maps: HashMap<String, HashMap<String, ComponentNode>>,
     import_maps: HashMap<String, HashMap<String, String>>,
     parameter_types: HashMap<String, HashMap<String, Type>>,
+    build_renders: HashMap<String, Vec<BuildRenderNode>>,
     scripts: String,
 }
 
@@ -18,14 +19,20 @@ impl Program {
         component_maps: HashMap<String, HashMap<String, ComponentNode>>,
         import_maps: HashMap<String, HashMap<String, String>>,
         parameter_types: HashMap<String, HashMap<String, Type>>,
+        build_renders: HashMap<String, Vec<BuildRenderNode>>,
         scripts: String,
     ) -> Self {
         Program {
             component_maps,
             import_maps,
             parameter_types,
+            build_renders,
             scripts,
         }
+    }
+
+    pub fn get_build_renders(&self) -> &HashMap<String, Vec<BuildRenderNode>> {
+        &self.build_renders
     }
 
     /// Get the collected scripts from the program
@@ -136,7 +143,7 @@ impl Program {
         }
     }
 
-    fn evaluate_node(
+    pub fn evaluate_node(
         &self,
         node: &Node,
         slot_content: &HashMap<String, String>,
@@ -368,6 +375,18 @@ impl Program {
                 }
                 Ok(result)
             }
+            Node::BuildRender(BuildRenderNode { children, .. }) => {
+                let mut result = String::new();
+                for child in children {
+                    result.push_str(&self.evaluate_node(
+                        child,
+                        slot_content,
+                        env,
+                        current_module,
+                    )?);
+                }
+                Ok(result)
+            }
             Node::Import(_) | Node::Component(_) => {
                 panic!("Unexpected node")
             }
@@ -535,6 +554,7 @@ mod tests {
             component_maps,
             import_maps,
             module_parameter_types,
+            HashMap::new(),
             String::new(),
         ))
     }

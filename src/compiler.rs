@@ -27,6 +27,7 @@ impl Compiler {
     pub fn compile(&self) -> Result<Program, String> {
         let mut component_maps = HashMap::new();
         let mut import_maps = HashMap::new();
+        let mut build_renders_map = HashMap::new();
         let mut modules = HashMap::new();
         let mut module_parameter_types: HashMap<String, HashMap<String, Type>> = HashMap::new();
         let mut module_sorter = TopoSorter::new();
@@ -118,6 +119,11 @@ impl Compiler {
                 );
             }
 
+            // Store build render nodes if any
+            if !module.build_renders.is_empty() {
+                build_renders_map.insert(module_name.clone(), module.build_renders.clone());
+            }
+
             component_maps.insert(module_name.clone(), component_map);
             import_maps.insert(module_name.clone(), import_map);
             module_parameter_types.insert(module_name.clone(), type_info.parameter_types);
@@ -130,6 +136,7 @@ impl Compiler {
             component_maps,
             import_maps,
             module_parameter_types,
+            build_renders_map,
             script_collector.build(),
         ))
     }

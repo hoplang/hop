@@ -1,5 +1,5 @@
 use crate::common::{
-    BinaryOp, ComponentNode, CondNode, DefineSlotNode, Environment, ErrorNode, ExprAttribute,
+    BinaryOp, BuildRenderNode, ComponentNode, CondNode, DefineSlotNode, Environment, ErrorNode, ExprAttribute,
     Expression, ForNode, NativeHTMLNode, Node, Range, RangeError, RenderNode, SupplySlotNode, Type,
 };
 use crate::parser::Module;
@@ -274,6 +274,19 @@ fn typecheck_node(
             }
         }
         Node::SupplySlot(SupplySlotNode { children, .. }) => {
+            for child in children {
+                typecheck_node(
+                    child,
+                    parameter_types,
+                    component_slots,
+                    env,
+                    unifier,
+                    annotations,
+                    errors,
+                );
+            }
+        }
+        Node::BuildRender(BuildRenderNode { children, .. }) => {
             for child in children {
                 typecheck_node(
                     child,

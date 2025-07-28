@@ -17,7 +17,7 @@ use compiler::Compiler;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-pub fn compile_hop_program(hop_dir: &Path) -> anyhow::Result<runtime::Program> {
+pub fn compile_hop_program(hop_dir: &Path, build_file: Option<&Path>) -> anyhow::Result<runtime::Program> {
     use anyhow::Context;
     use compiler::Compiler;
     use std::fs;
@@ -25,6 +25,8 @@ pub fn compile_hop_program(hop_dir: &Path) -> anyhow::Result<runtime::Program> {
     let dir = fs::read_dir(hop_dir).context("Failed to read hop directory")?;
 
     let mut compiler = Compiler::new();
+    
+    // Add modules from hop directory
     for entry in dir {
         let path = entry.context("Failed to read directory entry")?.path();
         if path.extension().and_then(|s| s.to_str()) == Some("hop") {
@@ -38,6 +40,21 @@ pub fn compile_hop_program(hop_dir: &Path) -> anyhow::Result<runtime::Program> {
             compiler.add_module(module_name, content);
         }
     }
+    
+    // Add build file if provided
+    if let Some(build_path) = build_file {
+        if build_path.exists() {
+            let module_name = build_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .context("Invalid build file name")?
+                .to_string();
+            let content = fs::read_to_string(build_path)
+                .with_context(|| format!("Failed to read build file {:?}", build_path))?;
+            compiler.add_module(module_name, content);
+        }
+    }
+    
     compiler
         .compile()
         .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
@@ -85,9 +102,9 @@ enum Commands {
     Lsp,
     /// Build hop templates from a manifest to files
     Build {
-        /// Path to manifest.json file
-        #[arg(short, long, default_value = "manifest.json")]
-        manifest: String,
+        /// Path to build.hop file
+        #[arg(short, long, default_value = "build.hop")]
+        build_file: String,
         /// Output directory
         #[arg(long)]
         outdir: String,
@@ -103,9 +120,9 @@ enum Commands {
     },
     /// Start an HTTP server for serving hop templates from a manifest
     Serve {
-        /// Path to manifest.json file
-        #[arg(short, long, default_value = "manifest.json")]
-        manifest: String,
+        /// Path to build.hop file
+        #[arg(short, long, default_value = "build.hop")]
+        build_file: String,
         /// Port to serve on
         #[arg(short, long, default_value = "3000")]
         port: u16,
@@ -154,7 +171,7 @@ async fn main() -> anyhow::Result<()> {
             lsp::run_lsp().await;
         }
         Some(Commands::Build {
-            manifest,
+            build_file,
             outdir,
             hopdir,
             datadir,
@@ -162,8 +179,8 @@ async fn main() -> anyhow::Result<()> {
         }) => {
             use std::time::Instant;
             let start_time = Instant::now();
-            let mut outputs = build_from_manifest(
-                Path::new(manifest),
+            let mut outputs = build_from_hop(
+                Path::new(build_file),
                 Path::new(outdir),
                 Path::new(hopdir),
                 Path::new(datadir),
@@ -183,7 +200,7 @@ async fn main() -> anyhow::Result<()> {
             println!();
         }
         Some(Commands::Serve {
-            manifest,
+            build_file,
             port,
             host,
             servedir,
@@ -195,7 +212,7 @@ async fn main() -> anyhow::Result<()> {
             use std::time::Instant;
             let start_time = Instant::now();
             let (router, _watcher) = serve_from_manifest(
-                Path::new(manifest),
+                Path::new(build_file),
                 servedir.as_deref().map(Path::new),
                 Path::new(hopdir),
                 Path::new(datadir),
@@ -231,7 +248,7 @@ fn build_from_manifest(
 
     let manifest = load_manifest(manifest_file)?;
 
-    let program = compile_hop_program(hop_dir)?;
+    let program = compile_hop_program(hop_dir, None)?;
 
     let mut file_outputs = Vec::new();
 
@@ -304,6 +321,63 @@ fn build_from_manifest(
         file_outputs.push((script_output_path.display().to_string(), scripts.len()));
     }
 
+    Ok(file_outputs)
+}
+
+fn build_from_hop(
+    build_file: &Path,
+    output_dir: &Path,
+    hop_dir: &Path,
+    _data_dir: &Path,
+    script_file: Option<&str>,
+) -> anyhow::Result<Vec<(String, usize)>> {
+    use anyhow::Context;
+    use std::fs;
+    use crate::common::Environment;
+    use std::collections::HashMap;
+    
+    // Compile the hop program including the build file
+    let program = compile_hop_program(hop_dir, Some(build_file))?;
+    let mut file_outputs = Vec::new();
+    let mut env = Environment::new();
+    
+    // Create output directory if it doesn't exist
+    fs::create_dir_all(output_dir)?;
+    
+    // Process BuildRender nodes from all modules
+    for (_module_name, build_renders) in program.get_build_renders() {
+        for build_render in build_renders {
+            // Evaluate the children to get the rendered content
+            let mut content = String::new();
+            let empty_slots: HashMap<String, String> = HashMap::new();
+            
+            for child in &build_render.children {
+                let rendered = program.evaluate_node(child, &empty_slots, &mut env, "build")
+                    .map_err(|e| anyhow::anyhow!("Failed to evaluate render content: {}", e))?;
+                content.push_str(&rendered);
+            }
+            
+            // Write the file to the output directory
+            let output_path = output_dir.join(&build_render.file_attr.value);
+            if let Some(parent) = output_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            
+            fs::write(&output_path, &content)
+                .with_context(|| format!("Failed to write file {}", output_path.display()))?;
+            
+            file_outputs.push((build_render.file_attr.value.clone(), content.len()));
+        }
+    }
+    
+    // Handle script collection if requested
+    if let Some(script_file_name) = script_file {
+        let combined_script = program.get_scripts();
+        let script_path = output_dir.join(script_file_name);
+        fs::write(&script_path, combined_script)
+            .with_context(|| format!("Failed to write script file {}", script_path.display()))?;
+    }
+    
     Ok(file_outputs)
 }
 
@@ -380,7 +454,7 @@ fn build_and_execute(
     use std::fs;
 
     // Load and compile all hop modules for this request
-    let program = compile_hop_program(hop_dir)?;
+    let program = compile_hop_program(hop_dir, None)?;
 
     // Load data from file or use inline data if specified
     let data = match data_source {
@@ -539,7 +613,7 @@ async fn serve_from_manifest(
         router = router.route(
             &script_path,
             get(async move || {
-                match compile_hop_program(&hopdir_for_script) {
+                match compile_hop_program(&hopdir_for_script, None) {
                     Ok(program) => {
                         use axum::body::Body;
                         Ok(axum::response::Response::builder()
