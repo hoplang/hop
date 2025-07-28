@@ -14,7 +14,6 @@ mod unifier;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use compiler::Compiler;
-use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 pub fn compile_hop_program(hop_dir: &Path, build_file: Option<&Path>) -> anyhow::Result<runtime::Program> {
@@ -58,32 +57,6 @@ pub fn compile_hop_program(hop_dir: &Path, build_file: Option<&Path>) -> anyhow:
         .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(untagged)]
-pub enum DataSource {
-    /// Path to a JSON file
-    File(String),
-    /// Inline JSON object
-    Inline(serde_json::Value),
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct ManifestEntry {
-    /// The output file path
-    pub path: String,
-    /// The hop module to use
-    pub module: String,
-    /// The function to call
-    pub entrypoint: String,
-    /// Optional data file path or inline JSON object to pass as parameters
-    pub data: Option<DataSource>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Manifest {
-    /// Array of files to build
-    pub files: Vec<ManifestEntry>,
-}
 
 #[derive(Parser)]
 #[command(name = "hop")]
@@ -234,93 +207,6 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn build_from_manifest(
-    manifest_file: &Path,
-    output_dir: &Path,
-    hop_dir: &Path,
-    data_dir: &Path,
-    script_file: Option<&str>,
-) -> anyhow::Result<Vec<(String, usize)>> {
-    use anyhow::Context;
-    use std::fs;
-
-    let manifest = load_manifest(manifest_file)?;
-
-    let program = compile_hop_program(hop_dir, None)?;
-
-    let mut file_outputs = Vec::new();
-
-    for entry in &manifest.files {
-        // Parse the json data used to render the output file
-        let data = match &entry.data {
-            Some(DataSource::File(data_file_path)) => {
-                // Resolve data file path relative to data directory
-                let data_path = data_dir.join(data_file_path);
-                let json_str = fs::read_to_string(&data_path)
-                    .with_context(|| format!("Failed to read data file {}", data_path.display()))?;
-                let data = serde_json::from_str(&json_str).with_context(|| {
-                    format!("Failed to parse JSON from file {}", data_path.display())
-                })?;
-                program
-                    .validate(&entry.module, &entry.entrypoint, &data)
-                    .with_context(|| format!("Validation error in {:?}", data_path))?;
-                data
-            }
-            Some(DataSource::Inline(data)) => {
-                program
-                    .validate(&entry.module, &entry.entrypoint, data)
-                    .with_context(|| "Validation error with inline data")?;
-                data.clone()
-            }
-            None => serde_json::Value::Null,
-        };
-
-        // Render output file
-        let html = program
-            .execute_simple(&entry.module, &entry.entrypoint, data)
-            .map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to execute {}::{}: {}",
-                    entry.module,
-                    entry.entrypoint,
-                    e
-                )
-            })?;
-
-        // Create parent directory for output file
-        let output_file_path = output_dir.join(&entry.path);
-        if let Some(parent) = output_file_path.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create directory {:?}", parent))?;
-        }
-
-        // Write output file
-        fs::write(&output_file_path, &html)
-            .with_context(|| format!("Failed to write to file {:?}", output_file_path))?;
-
-        file_outputs.push((output_file_path.display().to_string(), html.len()));
-    }
-
-    // Output scripts if script_file is specified
-    if let Some(script_filename) = script_file {
-        let scripts = program.get_scripts();
-        let script_output_path = output_dir.join(script_filename);
-        
-        // Create parent directory for script file if needed
-        if let Some(parent) = script_output_path.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create directory {:?}", parent))?;
-        }
-        
-        // Write script file
-        fs::write(&script_output_path, scripts)
-            .with_context(|| format!("Failed to write script file {:?}", script_output_path))?;
-        
-        file_outputs.push((script_output_path.display().to_string(), scripts.len()));
-    }
-
-    Ok(file_outputs)
-}
 
 fn build_from_hop(
     build_file: &Path,
@@ -473,41 +359,6 @@ window.addEventListener("beforeunload", function() {
 }
 
 // Function to build hop modules and execute a specific entrypoint
-fn build_and_execute(
-    module_name: &str,
-    entrypoint: &str,
-    data_source: Option<&DataSource>,
-    hop_dir: &Path,
-    data_dir: &Path,
-) -> anyhow::Result<String> {
-    use anyhow::Context;
-    use std::fs;
-
-    // Load and compile all hop modules for this request
-    let program = compile_hop_program(hop_dir, None)?;
-
-    // Load data from file or use inline data if specified
-    let data = match data_source {
-        Some(DataSource::File(data_file_path)) => {
-            // Resolve data file path relative to data directory
-            let data_path = data_dir.join(data_file_path);
-            let json_str = fs::read_to_string(&data_path)
-                .with_context(|| format!("Failed to read data file {}", data_path.display()))?;
-            serde_json::from_str(&json_str).with_context(|| {
-                format!("Failed to parse JSON from file {}", data_path.display())
-            })?
-        }
-        Some(DataSource::Inline(data)) => data.clone(),
-        None => serde_json::Value::Null,
-    };
-
-    program.validate(module_name, entrypoint, &data)?;
-
-    // Execute the entrypoint
-    program
-        .execute_simple(module_name, entrypoint, data)
-        .map_err(|e| anyhow::anyhow!("Failed to execute {}::{}: {}", module_name, entrypoint, e))
-}
 
 const ERROR_TEMPLATES: &str = include_str!("../hop/error_pages.hop");
 
@@ -550,16 +401,6 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
     }
 }
 
-fn load_manifest(manifest_path: &Path) -> anyhow::Result<Manifest> {
-    use anyhow::Context;
-    use std::fs;
-
-    let manifest_content = fs::read_to_string(manifest_path)
-        .with_context(|| format!("Failed to read manifest file {}", manifest_path.display()))?;
-    let manifest = serde_json::from_str::<Manifest>(&manifest_content)
-        .with_context(|| format!("Failed to parse manifest file {}", manifest_path.display()))?;
-    Ok(manifest)
-}
 
 fn create_file_watcher(
     hop_dir: &Path,
@@ -597,7 +438,7 @@ fn create_file_watcher(
     Ok((watcher, channel))
 }
 
-/// Create a router that responds to requests for the output files specified in the manifest.
+/// Create a router that responds to requests for the output files specified in the build.hop file.
 ///
 /// Also sets up a watcher that watches all source files used to construct the output files.
 /// The watcher emits SSE-events on the `/__hop_hot_reload` route. There is also an injected
@@ -606,141 +447,8 @@ fn create_file_watcher(
 ///
 /// If `servedir` is specified the server serves static files from the given directory as well.
 ///
-/// The client may change the manifest while the server is running as the server will reread the
-/// manifest whenever a new request comes in.
-async fn serve_from_manifest(
-    manifest_file: &Path,
-    serve_dir: Option<&Path>,
-    hop_dir: &Path,
-    data_dir: &Path,
-    script_file: Option<&str>,
-) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher)> {
-    use axum::http::StatusCode;
-    use axum::response::sse::{Event, Sse};
-    use axum::routing::get;
-    use tokio_stream::StreamExt;
-    use tokio_stream::wrappers::BroadcastStream;
-
-    // Set up file watcher for hot reloading
-    let mut router = axum::Router::new();
-
-    // Add SSE endpoint for hot reload events
-    let (watcher, channel) = create_file_watcher(hop_dir, data_dir, manifest_file)?;
-    router = router.route(
-        "/__hop_hot_reload",
-        get(async move || {
-            Sse::new(
-                BroadcastStream::new(channel.subscribe())
-                    .map(|_| Ok::<Event, axum::Error>(Event::default().data("reload"))),
-            )
-        }),
-    );
-
-    // Add script serving endpoint if script_file is specified
-    if let Some(script_filename) = script_file {
-        let script_path = format!("/{}", script_filename);
-        let hopdir_for_script = hop_dir.to_path_buf();
-        router = router.route(
-            &script_path,
-            get(async move || {
-                match compile_hop_program(&hopdir_for_script, None) {
-                    Ok(program) => {
-                        use axum::body::Body;
-                        Ok(axum::response::Response::builder()
-                            .header("Content-Type", "application/javascript")
-                            .body(Body::from(program.get_scripts().to_string()))
-                            .unwrap())
-                    },
-                    Err(e) => Err((
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Failed to compile hop program: {}", e),
-                    )),
-                }
-            }),
-        );
-    }
-
-    let mp = manifest_file.to_path_buf();
-    let hopdir_for_handler = hop_dir.to_path_buf();
-    let datadir_for_handler = data_dir.to_path_buf();
-    let request_handler = async move |req: axum::extract::Request| {
-        // Read and parse manifest
-        let manifest = match load_manifest(&mp) {
-            Ok(manifest) => manifest,
-            Err(e) => {
-                return Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    axum::response::Html(create_error_page(&e)),
-                ));
-            }
-        };
-        let path = req.uri().path();
-
-        // Convert request path to file path format
-        let file_path = match path {
-            "/" => "index.html",
-            path if path.starts_with('/') => &path[1..],
-            path => path,
-        };
-
-        // Find matching manifest entry
-        let entry = manifest.files.iter().find(|entry| {
-            entry.path == file_path
-                || (entry.path.ends_with(".html")
-                    && entry.path.strip_suffix(".html").unwrap() == file_path)
-        });
-
-        if let Some(entry) = entry {
-            match build_and_execute(
-                &entry.module,
-                &entry.entrypoint,
-                entry.data.as_ref(),
-                &hopdir_for_handler,
-                &datadir_for_handler,
-            ) {
-                Ok(html) => Ok(axum::response::Html(inject_hot_reload_script(&html))),
-                Err(e) => Ok(axum::response::Html(create_error_page(&e))),
-            }
-        } else {
-            // Collect available paths from manifest for helpful 404 page
-            let available_paths: Vec<String> = manifest
-                .files
-                .iter()
-                .map(|f| {
-                    if f.path == "index.html" {
-                        "/".to_string()
-                    } else if f.path.ends_with(".html") {
-                        format!("/{}", f.path.strip_suffix(".html").unwrap())
-                    } else {
-                        format!("/{}", f.path)
-                    }
-                })
-                .collect();
-
-            Err((
-                StatusCode::NOT_FOUND,
-                axum::response::Html(create_not_found_page(path, &available_paths)),
-            ))
-        }
-    };
-
-    // Add static file serving if servedir is provided
-    if let Some(servedir_path) = serve_dir {
-        if !servedir_path.exists() {
-            anyhow::bail!("servedir '{}' does not exist", servedir_path.display());
-        }
-        if !servedir_path.is_dir() {
-            anyhow::bail!("servedir '{}' is not a directory", servedir_path.display());
-        }
-        router = router.fallback_service(
-            tower_http::services::ServeDir::new(servedir_path).fallback(get(request_handler)),
-        );
-    } else {
-        router = router.fallback(request_handler);
-    }
-
-    Ok((router, watcher))
-}
+/// The client may change the build.hop file while the server is running as the server will reread the
+/// build file whenever a new request comes in.
 
 async fn serve_from_hop(
     build_file: &Path,
