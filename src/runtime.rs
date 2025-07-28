@@ -10,6 +10,7 @@ pub struct Program {
     component_maps: HashMap<String, HashMap<String, ComponentNode>>,
     import_maps: HashMap<String, HashMap<String, String>>,
     parameter_types: HashMap<String, HashMap<String, Type>>,
+    scripts: String,
 }
 
 impl Program {
@@ -17,12 +18,19 @@ impl Program {
         component_maps: HashMap<String, HashMap<String, ComponentNode>>,
         import_maps: HashMap<String, HashMap<String, String>>,
         parameter_types: HashMap<String, HashMap<String, Type>>,
+        scripts: String,
     ) -> Self {
         Program {
             component_maps,
             import_maps,
             parameter_types,
+            scripts,
         }
+    }
+
+    /// Get the collected scripts from the program
+    pub fn get_scripts(&self) -> &str {
+        &self.scripts
     }
 
     pub fn execute_simple(
@@ -527,6 +535,7 @@ mod tests {
             component_maps,
             import_maps,
             module_parameter_types,
+            String::new(),
         ))
     }
 

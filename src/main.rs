@@ -97,6 +97,9 @@ enum Commands {
         /// Directory containing data files
         #[arg(long, default_value = "./data")]
         datadir: String,
+        /// Optional script file name to output collected scripts
+        #[arg(long)]
+        script_file: Option<String>,
     },
     /// Start an HTTP server for serving hop templates from a manifest
     Serve {
@@ -118,6 +121,9 @@ enum Commands {
         /// Directory containing data files
         #[arg(long, default_value = "./data")]
         datadir: String,
+        /// Optional script file name to make scripts available over HTTP
+        #[arg(long)]
+        script_file: Option<String>,
     },
 }
 
@@ -152,6 +158,7 @@ async fn main() -> anyhow::Result<()> {
             outdir,
             hopdir,
             datadir,
+            script_file,
         }) => {
             use std::time::Instant;
             let start_time = Instant::now();
@@ -160,6 +167,7 @@ async fn main() -> anyhow::Result<()> {
                 Path::new(outdir),
                 Path::new(hopdir),
                 Path::new(datadir),
+                script_file.as_deref(),
             )?;
             let elapsed = start_time.elapsed();
 
@@ -181,6 +189,7 @@ async fn main() -> anyhow::Result<()> {
             servedir,
             hopdir,
             datadir,
+            script_file,
         }) => {
             use colored::*;
             use std::time::Instant;
@@ -190,6 +199,7 @@ async fn main() -> anyhow::Result<()> {
                 servedir.as_deref().map(Path::new),
                 Path::new(hopdir),
                 Path::new(datadir),
+                script_file.as_deref(),
             )
             .await?;
             let elapsed = start_time.elapsed();
@@ -214,6 +224,7 @@ fn build_from_manifest(
     output_dir: &Path,
     hop_dir: &Path,
     data_dir: &Path,
+    script_file: Option<&str>,
 ) -> anyhow::Result<Vec<(String, usize)>> {
     use anyhow::Context;
     use std::fs;
@@ -273,6 +284,24 @@ fn build_from_manifest(
             .with_context(|| format!("Failed to write to file {:?}", output_file_path))?;
 
         file_outputs.push((output_file_path.display().to_string(), html.len()));
+    }
+
+    // Output scripts if script_file is specified
+    if let Some(script_filename) = script_file {
+        let scripts = program.get_scripts();
+        let script_output_path = output_dir.join(script_filename);
+        
+        // Create parent directory for script file if needed
+        if let Some(parent) = script_output_path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create directory {:?}", parent))?;
+        }
+        
+        // Write script file
+        fs::write(&script_output_path, scripts)
+            .with_context(|| format!("Failed to write script file {:?}", script_output_path))?;
+        
+        file_outputs.push((script_output_path.display().to_string(), scripts.len()));
     }
 
     Ok(file_outputs)
@@ -480,6 +509,7 @@ async fn serve_from_manifest(
     serve_dir: Option<&Path>,
     hop_dir: &Path,
     data_dir: &Path,
+    script_file: Option<&str>,
 ) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher)> {
     use axum::http::StatusCode;
     use axum::response::sse::{Event, Sse};
@@ -501,6 +531,30 @@ async fn serve_from_manifest(
             )
         }),
     );
+
+    // Add script serving endpoint if script_file is specified
+    if let Some(script_filename) = script_file {
+        let script_path = format!("/{}", script_filename);
+        let hopdir_for_script = hop_dir.to_path_buf();
+        router = router.route(
+            &script_path,
+            get(async move || {
+                match compile_hop_program(&hopdir_for_script) {
+                    Ok(program) => {
+                        use axum::body::Body;
+                        Ok(axum::response::Response::builder()
+                            .header("Content-Type", "application/javascript")
+                            .body(Body::from(program.get_scripts().to_string()))
+                            .unwrap())
+                    },
+                    Err(e) => Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Failed to compile hop program: {}", e),
+                    )),
+                }
+            }),
+        );
+    }
 
     let mp = manifest_file.to_path_buf();
     let hopdir_for_handler = hop_dir.to_path_buf();
@@ -623,6 +677,7 @@ mod tests {
             &dir.join("out"),
             &dir.join("hop"),
             &dir.join("data"),
+            None,
         );
         assert!(result.is_err());
         assert!(
@@ -665,6 +720,7 @@ mod tests {
             None,
             &dir.join("hop"),
             &dir.join("data"),
+            None,
         )
         .await
         .unwrap();
@@ -709,6 +765,7 @@ mod tests {
             None,
             &dir.join("hop"),
             &dir.join("data"),
+            None,
         )
         .await?;
 
@@ -770,6 +827,7 @@ console.log("Hello from static file");
             Some(&dir.join("static")),
             &dir.join("hop"),
             &dir.join("data"),
+            None,
         )
         .await
         .unwrap();
@@ -826,6 +884,7 @@ console.log("Hello from static file");
             None,
             &dir.join("hop"),
             &dir.join("data"),
+            None,
         )
         .await
         .unwrap();
@@ -874,6 +933,7 @@ console.log("Hello from static file");
             &dir.join("out"),
             &dir.join("hop"),
             &dir.join("data"),
+            None,
         );
 
         assert!(result.is_ok());
@@ -932,6 +992,7 @@ console.log("Hello from static file");
             None,
             &dir.join("hop"),
             &dir.join("data"),
+            None,
         )
         .await
         .unwrap();
