@@ -236,22 +236,21 @@ impl Program {
                     .unwrap_or(false);
 
                 // Collect and evaluate supply-slot mappings
-                let mut slot_content: HashMap<String, String> = HashMap::new();
+                let mut new_slot_content: HashMap<String, String> = HashMap::new();
                 let mut non_slot_children = Vec::new();
 
                 for child in children {
                     if let Node::SupplySlot(SupplySlotNode { name, children, .. }) = child {
                         let mut slot_html = String::new();
-                        let empty_slots: HashMap<String, String> = HashMap::new();
                         for slot_child in children {
                             slot_html.push_str(&self.evaluate_node(
                                 slot_child,
-                                &empty_slots,
+                                slot_content,
                                 env,
                                 current_module,
                             )?);
                         }
-                        slot_content.insert(name.clone(), slot_html);
+                        new_slot_content.insert(name.clone(), slot_html);
                     } else if has_only_default_slot {
                         // For components with only default slot, collect non-slot children
                         non_slot_children.push(child);
@@ -262,22 +261,21 @@ impl Program {
                 // pass them as default slot content
                 if has_only_default_slot
                     && !non_slot_children.is_empty()
-                    && !slot_content.contains_key("default")
+                    && !new_slot_content.contains_key("default")
                 {
                     let mut default_html = String::new();
-                    let empty_slots: HashMap<String, String> = HashMap::new();
                     for child in non_slot_children {
                         default_html.push_str(&self.evaluate_node(
                             child,
-                            &empty_slots,
+                            slot_content,
                             env,
                             current_module,
                         )?);
                     }
-                    slot_content.insert("default".to_string(), default_html);
+                    new_slot_content.insert("default".to_string(), default_html);
                 }
 
-                self.execute(&target_module, component_name, params_value, &slot_content)
+                self.execute(&target_module, component_name, params_value, &new_slot_content)
             }
             Node::NativeHTML(NativeHTMLNode {
                 inner_text_attr,
