@@ -627,14 +627,10 @@ mod tests {
         )
         .unwrap();
 
-        let (router, _watcher) = serve_from_hop(
-            &dir.join("build.hop"),
-            None,
-            &dir.join("hop"),
-            None,
-        )
-        .await
-        .unwrap();
+        let (router, _watcher) =
+            serve_from_hop(&dir.join("build.hop"), None, &dir.join("hop"), None)
+                .await
+                .unwrap();
 
         let server = TestServer::new(router).unwrap();
 
@@ -667,13 +663,8 @@ mod tests {
 "#,
         )?;
 
-        let (router, _watcher) = serve_from_hop(
-            &dir.join("build.hop"),
-            None,
-            &dir.join("hop"),
-            None,
-        )
-        .await?;
+        let (router, _watcher) =
+            serve_from_hop(&dir.join("build.hop"), None, &dir.join("hop"), None).await?;
 
         let server = TestServer::new(router).unwrap();
 
@@ -822,14 +813,10 @@ console.log("Hello from static file");
         )
         .unwrap();
 
-        let (router, _watcher) = serve_from_hop(
-            &dir.join("hop/build.hop"),
-            None,
-            &dir.join("hop"),
-            None,
-        )
-        .await
-        .unwrap();
+        let (router, _watcher) =
+            serve_from_hop(&dir.join("hop/build.hop"), None, &dir.join("hop"), None)
+                .await
+                .unwrap();
 
         let server = TestServer::new(router).unwrap();
 
