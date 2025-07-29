@@ -84,9 +84,6 @@ enum Commands {
         /// Directory containing hop files
         #[arg(long, default_value = "./hop")]
         hopdir: String,
-        /// Directory containing data files
-        #[arg(long, default_value = "./data")]
-        datadir: String,
         /// Optional script file name to output collected scripts
         #[arg(long)]
         script_file: Option<String>,
@@ -108,9 +105,6 @@ enum Commands {
         /// Directory containing hop files
         #[arg(long, default_value = "./hop")]
         hopdir: String,
-        /// Directory containing data files
-        #[arg(long, default_value = "./data")]
-        datadir: String,
         /// Optional script file name to make scripts available over HTTP
         #[arg(long)]
         script_file: Option<String>,
@@ -147,7 +141,6 @@ async fn main() -> anyhow::Result<()> {
             build_file,
             outdir,
             hopdir,
-            datadir,
             script_file,
         }) => {
             use std::time::Instant;
@@ -156,7 +149,6 @@ async fn main() -> anyhow::Result<()> {
                 Path::new(build_file),
                 Path::new(outdir),
                 Path::new(hopdir),
-                Path::new(datadir),
                 script_file.as_deref(),
             )?;
             let elapsed = start_time.elapsed();
@@ -178,7 +170,6 @@ async fn main() -> anyhow::Result<()> {
             host,
             servedir,
             hopdir,
-            datadir,
             script_file,
         }) => {
             use colored::*;
@@ -188,7 +179,6 @@ async fn main() -> anyhow::Result<()> {
                 Path::new(build_file),
                 servedir.as_deref().map(Path::new),
                 Path::new(hopdir),
-                Path::new(datadir),
                 script_file.as_deref(),
             )
             .await?;
@@ -213,7 +203,6 @@ fn build_from_hop(
     build_file: &Path,
     output_dir: &Path,
     hop_dir: &Path,
-    _data_dir: &Path,
     script_file: Option<&str>,
 ) -> anyhow::Result<Vec<(String, usize)>> {
     use crate::common::Environment;
@@ -403,7 +392,6 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
 
 fn create_file_watcher(
     hop_dir: &Path,
-    data_dir: &Path,
     manifest_file: &Path,
 ) -> anyhow::Result<(
     notify::RecommendedWatcher,
@@ -427,11 +415,6 @@ fn create_file_watcher(
     )?;
 
     watcher.watch(hop_dir, RecursiveMode::Recursive)?;
-
-    if data_dir.exists() {
-        watcher.watch(data_dir, RecursiveMode::Recursive)?;
-    }
-
     watcher.watch(manifest_file, RecursiveMode::NonRecursive)?;
 
     Ok((watcher, channel))
@@ -452,7 +435,6 @@ async fn serve_from_hop(
     build_file: &Path,
     serve_dir: Option<&Path>,
     hop_dir: &Path,
-    _data_dir: &Path,
     script_file: Option<&str>,
 ) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher)> {
     use axum::http::StatusCode;
@@ -465,7 +447,7 @@ async fn serve_from_hop(
     let mut router = axum::Router::new();
 
     // Add SSE endpoint for hot reload events
-    let (watcher, channel) = create_file_watcher(hop_dir, &hop_dir.join("data"), build_file)?;
+    let (watcher, channel) = create_file_watcher(hop_dir, build_file)?;
     router = router.route(
         "/__hop_hot_reload",
         get(async move || {
@@ -614,7 +596,6 @@ mod tests {
             &dir.join("build.hop"),
             &dir.join("out"),
             &dir.join("hop"),
-            &dir.join("data"),
             None,
         );
         assert!(result.is_err());
@@ -650,7 +631,6 @@ mod tests {
             &dir.join("build.hop"),
             None,
             &dir.join("hop"),
-            &dir.join("data"),
             None,
         )
         .await
@@ -691,7 +671,6 @@ mod tests {
             &dir.join("build.hop"),
             None,
             &dir.join("hop"),
-            &dir.join("data"),
             None,
         )
         .await?;
@@ -747,7 +726,6 @@ console.log("Hello from static file");
             &dir.join("build.hop"),
             Some(&dir.join("static")),
             &dir.join("hop"),
-            &dir.join("data"),
             None,
         )
         .await
@@ -796,7 +774,6 @@ console.log("Hello from static file");
             &dir.join("build.hop"),
             &dir.join("out"),
             &dir.join("hop"),
-            &dir.join("data"),
             None,
         );
 
@@ -849,7 +826,6 @@ console.log("Hello from static file");
             &dir.join("hop/build.hop"),
             None,
             &dir.join("hop"),
-            &dir.join("data"),
             None,
         )
         .await
