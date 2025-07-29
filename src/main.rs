@@ -448,7 +448,6 @@ fn create_file_watcher(
 ///
 /// The client may change the build.hop file while the server is running as the server will reread the
 /// build file whenever a new request comes in.
-
 async fn serve_from_hop(
     build_file: &Path,
     serve_dir: Option<&Path>,

@@ -55,7 +55,7 @@ impl HopLanguageServer {
         // Helper function to load .hop files from a directory
         let load_from_directory = |dir_path: &Path| -> std::io::Result<Vec<(String, String)>> {
             let mut modules = Vec::new();
-            
+
             if !dir_path.exists() || !dir_path.is_dir() {
                 return Ok(modules);
             }
@@ -91,14 +91,37 @@ impl HopLanguageServer {
         all_modules.extend(load_from_directory(&hop_subdir)?);
 
         // Now load all the modules we found
+        self.client
+            .log_message(
+                MessageType::INFO,
+                format!(
+                    "Found {} hop modules to potentially load",
+                    all_modules.len()
+                ),
+            )
+            .await;
+
         for (module_name, content) in all_modules {
             // Check if we already have this module loaded
             {
                 let server = self.server.read().await;
                 if server.has_module(&module_name) {
+                    self.client
+                        .log_message(
+                            MessageType::INFO,
+                            format!("Module '{}' already loaded, skipping", module_name),
+                        )
+                        .await;
                     continue;
                 }
             }
+
+            self.client
+                .log_message(
+                    MessageType::INFO,
+                    format!("Loading module '{}' ({} chars)", module_name, content.len()),
+                )
+                .await;
 
             let mut server = self.server.write().await;
             server.update_module(module_name, &content);
@@ -166,18 +189,35 @@ impl LanguageServer for HopLanguageServer {
         let text = params.text_document.text;
         let module_name = self.uri_to_module_name(&uri);
 
+        self.client
+            .log_message(
+                MessageType::INFO,
+                format!("Opening file: {} (module: {})", uri.path(), module_name),
+            )
+            .await;
+
         {
             let mut document_map = self.document_map.write().await;
             document_map.insert(uri.clone(), text.clone());
         }
 
         // Load any missing dependency modules from the same directory
+        self.client
+            .log_message(MessageType::INFO, "Loading dependency modules...")
+            .await;
         let _ = self.load_dependency_modules(&uri).await;
 
         {
             let mut server = self.server.write().await;
-            server.update_module(module_name, &text);
+            server.update_module(module_name.clone(), &text);
         }
+
+        self.client
+            .log_message(
+                MessageType::INFO,
+                format!("Updated module '{}', publishing diagnostics", module_name),
+            )
+            .await;
 
         self.publish_diagnostics(&uri).await;
     }

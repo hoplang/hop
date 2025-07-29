@@ -36,6 +36,20 @@ pub fn typecheck(
     let mut component_slots: HashMap<String, Vec<String>> = HashMap::new();
     let mut env = Environment::new();
 
+    for BuildRenderNode { children, .. } in &module.build_renders {
+        for child in children {
+            typecheck_node(
+                child,
+                &parameter_types,
+                &component_slots,
+                &mut env,
+                &mut unifier,
+                &mut annotations,
+                errors,
+            );
+        }
+    }
+
     for ComponentNode {
         name,
         params_as_attr,
