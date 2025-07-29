@@ -52,34 +52,56 @@ impl HopLanguageServer {
             )
         })?;
 
-        // Read all .hop files in the same directory
-        let entries = std::fs::read_dir(directory)?;
+        // Helper function to load .hop files from a directory
+        let load_from_directory = |dir_path: &Path| -> std::io::Result<Vec<(String, String)>> {
+            let mut modules = Vec::new();
+            
+            if !dir_path.exists() || !dir_path.is_dir() {
+                return Ok(modules);
+            }
 
-        for entry in entries {
-            let entry = entry?;
-            let path = entry.path();
+            let entries = std::fs::read_dir(dir_path)?;
 
-            if path.extension().and_then(|s| s.to_str()) == Some("hop") {
-                let module_name = path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unknown")
-                    .to_string();
+            for entry in entries {
+                let entry = entry?;
+                let path = entry.path();
 
-                // Check if we already have this module loaded
-                {
-                    let server = self.server.read().await;
-                    if server.has_module(&module_name) {
-                        continue;
+                if path.extension().and_then(|s| s.to_str()) == Some("hop") {
+                    let module_name = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("unknown")
+                        .to_string();
+
+                    // Load the module content
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        modules.push((module_name, content));
                     }
                 }
+            }
 
-                // Load the module content
-                if let Ok(content) = std::fs::read_to_string(&path) {
-                    let mut server = self.server.write().await;
-                    server.update_module(module_name, &content);
+            Ok(modules)
+        };
+
+        // Read all .hop files in the same directory as the current file
+        let mut all_modules = load_from_directory(directory)?;
+
+        // Also look for hop files in a "hop" subdirectory
+        let hop_subdir = directory.join("hop");
+        all_modules.extend(load_from_directory(&hop_subdir)?);
+
+        // Now load all the modules we found
+        for (module_name, content) in all_modules {
+            // Check if we already have this module loaded
+            {
+                let server = self.server.read().await;
+                if server.has_module(&module_name) {
+                    continue;
                 }
             }
+
+            let mut server = self.server.write().await;
+            server.update_module(module_name, &content);
         }
 
         Ok(())
