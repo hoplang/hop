@@ -17,29 +17,30 @@ use compiler::Compiler;
 use std::path::Path;
 
 pub fn compile_hop_program(
-    hop_dir: &Path,
+    hop_dir: Option<&Path>,
     build_file: Option<&Path>,
 ) -> anyhow::Result<runtime::Program> {
     use anyhow::Context;
     use compiler::Compiler;
     use std::fs;
 
-    let dir = fs::read_dir(hop_dir).context("Failed to read hop directory")?;
-
     let mut compiler = Compiler::new();
 
-    // Add modules from hop directory
-    for entry in dir {
-        let path = entry.context("Failed to read directory entry")?.path();
-        if path.extension().and_then(|s| s.to_str()) == Some("hop") {
-            let module_name = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .context("Invalid file name")?
-                .to_string();
-            let content = fs::read_to_string(&path)
-                .with_context(|| format!("Failed to read file {:?}", path))?;
-            compiler.add_module(module_name, content);
+    // Add modules from hop directory if provided
+    if let Some(hop_dir) = hop_dir {
+        let dir = fs::read_dir(hop_dir).context("Failed to read hop directory")?;
+        for entry in dir {
+            let path = entry.context("Failed to read directory entry")?.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("hop") {
+                let module_name = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .context("Invalid file name")?
+                    .to_string();
+                let content = fs::read_to_string(&path)
+                    .with_context(|| format!("Failed to read file {:?}", path))?;
+                compiler.add_module(module_name, content);
+            }
         }
     }
 
@@ -82,8 +83,8 @@ enum Commands {
         #[arg(long)]
         outdir: String,
         /// Directory containing hop files
-        #[arg(long, default_value = "./hop")]
-        hopdir: String,
+        #[arg(long)]
+        hopdir: Option<String>,
         /// Optional script file name to output collected scripts
         #[arg(long)]
         script_file: Option<String>,
@@ -103,8 +104,8 @@ enum Commands {
         #[arg(long)]
         servedir: Option<String>,
         /// Directory containing hop files
-        #[arg(long, default_value = "./hop")]
-        hopdir: String,
+        #[arg(long)]
+        hopdir: Option<String>,
         /// Optional script file name to make scripts available over HTTP
         #[arg(long)]
         script_file: Option<String>,
@@ -148,7 +149,7 @@ async fn main() -> anyhow::Result<()> {
             let mut outputs = build_from_hop(
                 Path::new(build_file),
                 Path::new(outdir),
-                Path::new(hopdir),
+                hopdir.as_deref().map(Path::new),
                 script_file.as_deref(),
             )?;
             let elapsed = start_time.elapsed();
@@ -178,7 +179,7 @@ async fn main() -> anyhow::Result<()> {
             let (router, _watcher) = serve_from_hop(
                 Path::new(build_file),
                 servedir.as_deref().map(Path::new),
-                Path::new(hopdir),
+                hopdir.as_deref().map(Path::new),
                 script_file.as_deref(),
             )
             .await?;
@@ -202,7 +203,7 @@ async fn main() -> anyhow::Result<()> {
 fn build_from_hop(
     build_file: &Path,
     output_dir: &Path,
-    hop_dir: &Path,
+    hop_dir: Option<&Path>,
     script_file: Option<&str>,
 ) -> anyhow::Result<Vec<(String, usize)>> {
     use crate::common::Environment;
@@ -256,7 +257,7 @@ fn build_from_hop(
 
 fn render_build_files(
     build_file: &Path,
-    hop_dir: &Path,
+    hop_dir: Option<&Path>,
 ) -> anyhow::Result<std::collections::HashMap<String, String>> {
     use crate::common::Environment;
     use std::collections::HashMap;
@@ -391,7 +392,7 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
 }
 
 fn create_file_watcher(
-    hop_dir: &Path,
+    hop_dir: Option<&Path>,
     manifest_file: &Path,
 ) -> anyhow::Result<(
     notify::RecommendedWatcher,
@@ -414,7 +415,9 @@ fn create_file_watcher(
         Config::default(),
     )?;
 
-    watcher.watch(hop_dir, RecursiveMode::Recursive)?;
+    if let Some(hop_dir) = hop_dir {
+        watcher.watch(hop_dir, RecursiveMode::Recursive)?;
+    }
     watcher.watch(manifest_file, RecursiveMode::NonRecursive)?;
 
     Ok((watcher, channel))
@@ -434,7 +437,7 @@ fn create_file_watcher(
 async fn serve_from_hop(
     build_file: &Path,
     serve_dir: Option<&Path>,
-    hop_dir: &Path,
+    hop_dir: Option<&Path>,
     script_file: Option<&str>,
 ) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher)> {
     use axum::http::StatusCode;
@@ -461,12 +464,15 @@ async fn serve_from_hop(
     // Add script serving endpoint if script_file is specified
     if let Some(script_filename) = script_file {
         let script_path = format!("/{}", script_filename);
-        let hopdir_for_script = hop_dir.to_path_buf();
+        let hopdir_for_script = hop_dir.map(|p| p.to_path_buf());
         let build_file_for_script = build_file.to_path_buf();
         router = router.route(
             &script_path,
             get(async move || {
-                match compile_hop_program(&hopdir_for_script, Some(&build_file_for_script)) {
+                match compile_hop_program(
+                    hopdir_for_script.as_deref(),
+                    Some(&build_file_for_script),
+                ) {
                     Ok(program) => {
                         use axum::body::Body;
                         Ok(axum::response::Response::builder()
@@ -484,21 +490,22 @@ async fn serve_from_hop(
     }
 
     let build_file_path = build_file.to_path_buf();
-    let hopdir_for_handler = hop_dir.to_path_buf();
+    let hopdir_for_handler = hop_dir.map(|p| p.to_path_buf());
     let request_handler = async move |req: axum::extract::Request| -> Result<
         axum::response::Html<String>,
         (StatusCode, axum::response::Html<String>),
     > {
         // Render all build files into a HashMap
-        let rendered_files = match render_build_files(&build_file_path, &hopdir_for_handler) {
-            Ok(files) => files,
-            Err(e) => {
-                return Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    axum::response::Html(create_error_page(&e)),
-                ));
-            }
-        };
+        let rendered_files =
+            match render_build_files(&build_file_path, hopdir_for_handler.as_deref()) {
+                Ok(files) => files,
+                Err(e) => {
+                    return Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        axum::response::Html(create_error_page(&e)),
+                    ));
+                }
+            };
 
         let path = req.uri().path();
 
@@ -583,21 +590,8 @@ mod tests {
     /// returned stating the the build file could not be read.
     #[test]
     fn test_build_nonexistent_build_file() {
-        let dir = temp_dir_from_txtar(
-            r#"
--- hop/test.hop --
-<hello-world>
-  <p>Test content</p>
-</hello-world>
-"#,
-        )
-        .unwrap();
-        let result = build_from_hop(
-            &dir.join("build.hop"),
-            &dir.join("out"),
-            &dir.join("hop"),
-            None,
-        );
+        let dir = temp_dir_from_txtar("").unwrap();
+        let result = build_from_hop(&dir.join("build.hop"), &dir.join("out"), None, None);
         assert!(result.is_err());
         assert!(
             result
@@ -613,24 +607,17 @@ mod tests {
     async fn test_serve_from_hop() {
         let dir = temp_dir_from_txtar(
             r#"
--- hop/components.hop --
-<hello-world>
-  <p>Hello from build.hop!</p>
-</hello-world>
 -- build.hop --
-<import component="hello-world" from="components" />
-
 <render file="index.html">
-  <hello-world />
+  Hello from build.hop!
 </render>
 "#,
         )
         .unwrap();
 
-        let (router, _watcher) =
-            serve_from_hop(&dir.join("build.hop"), None, &dir.join("hop"), None)
-                .await
-                .unwrap();
+        let (router, _watcher) = serve_from_hop(&dir.join("build.hop"), None, None, None)
+            .await
+            .unwrap();
 
         let server = TestServer::new(router).unwrap();
 
@@ -664,7 +651,7 @@ mod tests {
         )?;
 
         let (router, _watcher) =
-            serve_from_hop(&dir.join("build.hop"), None, &dir.join("hop"), None).await?;
+            serve_from_hop(&dir.join("build.hop"), None, Some(&dir.join("hop")), None).await?;
 
         let server = TestServer::new(router).unwrap();
 
@@ -695,15 +682,9 @@ mod tests {
     async fn test_serve_from_hop_static_files() {
         let dir = temp_dir_from_txtar(
             r#"
--- hop/test.hop --
-<hello-world>
-  hello world!
-</hello-world>
 -- build.hop --
-<import component="hello-world" from="test" />
-
 <render file="index.html">
-  <hello-world />
+  hello world!
 </render>
 -- static/style.css --
 body { background: blue; }
@@ -716,7 +697,7 @@ console.log("Hello from static file");
         let (router, _watcher) = serve_from_hop(
             &dir.join("build.hop"),
             Some(&dir.join("static")),
-            &dir.join("hop"),
+            None,
             None,
         )
         .await
@@ -764,7 +745,7 @@ console.log("Hello from static file");
         let result = build_from_hop(
             &dir.join("build.hop"),
             &dir.join("out"),
-            &dir.join("hop"),
+            Some(&dir.join("hop")),
             None,
         );
 
@@ -785,38 +766,23 @@ console.log("Hello from static file");
     async fn test_serve_404_with_helpful_message() {
         let dir = temp_dir_from_txtar(
             r#"
--- hop/test.hop --
-<hello-world>
-  hello world!
-</hello-world>
-<about-page>
-  about page
-</about-page>
-<nested-page>
-  nested page content
-</nested-page>
--- hop/build.hop --
-<import component="hello-world" from="test" />
-<import component="about-page" from="test" />
-<import component="nested-page" from="test" />
-
+-- build.hop --
 <render file="index.html">
-  <hello-world></hello-world>
+  Hello world!
 </render>
 <render file="about.html">
-  <about-page></about-page>
+  The about page
 </render>
 <render file="foo/bar.html">
-  <nested-page></nested-page>
+  The nested page
 </render>
 "#,
         )
         .unwrap();
 
-        let (router, _watcher) =
-            serve_from_hop(&dir.join("hop/build.hop"), None, &dir.join("hop"), None)
-                .await
-                .unwrap();
+        let (router, _watcher) = serve_from_hop(&dir.join("build.hop"), None, None, None)
+            .await
+            .unwrap();
 
         let server = TestServer::new(router).unwrap();
 
