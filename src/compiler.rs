@@ -70,7 +70,9 @@ impl Compiler {
 
         // Typecheck modules in topological order
         for module_name in sorted_modules {
-            let module = modules.get(&module_name).unwrap();
+            let Some(module) = modules.get(&module_name) else {
+                continue;
+            };
             let mut import_types = HashMap::new();
 
             for import_node in &module.imports {

@@ -604,7 +604,7 @@ mod tests {
     /// When the user calls `hop serve` and has a entry for `index.html` in the manifest file, the
     /// index.html entry should be rendered when the user issues a GET to /.
     #[tokio::test]
-    async fn test_serve_from_hop() {
+    async fn test_serve_and_get_index() {
         let dir = temp_dir_from_txtar(
             r#"
 -- build.hop --
