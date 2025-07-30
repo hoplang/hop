@@ -206,46 +206,32 @@ fn build_from_hop(
     hop_dir: Option<&Path>,
     script_file: Option<&str>,
 ) -> anyhow::Result<Vec<(String, usize)>> {
-    use crate::common::Environment;
     use anyhow::Context;
     use std::fs;
-
-    // Compile the hop program including the build file
-    let program = compile_hop_program(hop_dir, Some(build_file))?;
-    let mut file_outputs = Vec::new();
-    let mut env = Environment::new();
 
     // Create output directory if it doesn't exist
     fs::create_dir_all(output_dir)?;
 
-    // Process BuildRender nodes from all modules
-    for build_renders in program.get_build_renders().values() {
-        for build_render in build_renders {
-            // Evaluate the children to get the rendered content
-            let mut content = String::new();
+    // Use render_build_files to get all rendered content
+    let rendered_files = render_build_files(build_file, hop_dir)?;
+    let mut file_outputs = Vec::new();
 
-            for child in &build_render.children {
-                let rendered = program
-                    .evaluate_node_entrypoint(child, &mut env, "build")
-                    .map_err(|e| anyhow::anyhow!("Failed to evaluate render content: {}", e))?;
-                content.push_str(&rendered);
-            }
-
-            // Write the file to the output directory
-            let output_path = output_dir.join(&build_render.file_attr.value);
-            if let Some(parent) = output_path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-
-            fs::write(&output_path, &content)
-                .with_context(|| format!("Failed to write file {}", output_path.display()))?;
-
-            file_outputs.push((build_render.file_attr.value.clone(), content.len()));
+    // Write each rendered file to the output directory
+    for (file_path, content) in rendered_files {
+        let output_path = output_dir.join(&file_path);
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent)?;
         }
+
+        fs::write(&output_path, &content)
+            .with_context(|| format!("Failed to write file {}", output_path.display()))?;
+
+        file_outputs.push((file_path, content.len()));
     }
 
     // Handle script collection if requested
     if let Some(script_file_name) = script_file {
+        let program = compile_hop_program(hop_dir, Some(build_file))?;
         let combined_script = program.get_scripts();
         let script_path = output_dir.join(script_file_name);
         fs::write(&script_path, combined_script)
