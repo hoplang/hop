@@ -1,0 +1,501 @@
+## BEGIN
+-- main.hop --
+<main-comp class="p-2">
+	<div>hello</div>
+</main-comp>
+-- data.json --
+{}
+-- output.html --
+<div data-hop-id="main/main-comp" class="p-2">
+	<div>hello</div>
+</div>
+## END
+
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+  <cond if="params.user.name == params.admin.name">
+    <div>Is Admin</div>
+  </cond>
+  <cond if="params.status == params.expected_status">
+    <div>Status OK</div>
+  </cond>
+</main-comp>
+-- data.json --
+{
+  "user": {"name": "alice"},
+  "admin": {"name": "alice"},
+  "status": "active",
+  "expected_status": "active"
+}
+-- output.html --
+<div data-hop-id="main/main-comp">
+  <div>Is Admin</div>
+  <div>Status OK</div>
+</div>
+## END
+
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+  <cond if="params.x == params.y">
+    <span>Equal</span>
+  </cond>
+</main-comp>
+-- data.json --
+{
+  "x": "hello",
+  "y": "hello"
+}
+-- output.html --
+<div data-hop-id="main/main-comp">
+  <span>Equal</span>
+</div>
+## END
+
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="items">
+	<for each="items" as="item">
+		<cond if="item.show">
+			<div></div>
+		</cond>
+	</for>
+</main-comp>
+-- data.json --
+[
+	{"show": true},
+	{"show": false},
+	{"show": true}
+]
+-- output.html --
+<div data-hop-id="main/main-comp">
+	<div></div>
+	<div></div>
+</div>
+## END
+
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="items">
+  <for each="items" as="item">
+    <div>
+      <span set-inner-text="item.name"></span>
+      <cond if="item.type == 'admin'">
+        <strong> [Admin]</strong>
+      </cond>
+      <cond if="item.type == 'user'">
+        <em> [User]</em>
+      </cond>
+    </div>
+  </for>
+</main-comp>
+-- data.json --
+[
+  {
+    "name": "Alice",
+    "type": "admin"
+  },
+  {
+    "name": "Bob", 
+    "type": "user"
+  },
+  {
+    "name": "Carol",
+    "type": "admin"
+  }
+]
+-- output.html --
+<div data-hop-id="main/main-comp">
+  <div>
+    <span>Alice</span>
+    <strong> [Admin]</strong>
+  </div>
+  <div>
+    <span>Bob</span>
+    <em> [User]</em>
+  </div>
+  <div>
+    <span>Carol</span>
+    <strong> [Admin]</strong>
+  </div>
+</div>
+## END
+
+
+## BEGIN
+-- test.hop --
+<button-comp as="button">
+	<span>button</span>
+</button-comp>
+-- main.hop --
+<import from="test" component="button-comp">
+
+<main-comp>
+  <button-comp></button-comp>
+</main-comp>
+-- data.json --
+{}
+-- output.html --
+<div data-hop-id="main/main-comp">
+  <button data-hop-id="test/button-comp">
+	<span>button</span>
+  </button>
+</div>
+## END
+
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="p">
+	<div set-inner-text="p"></div>
+</main-comp>
+-- data.json --
+"foo bar"
+-- output.html --
+<div data-hop-id="main/main-comp">
+	<div>foo bar</div>
+</div>
+## END
+
+
+## BEGIN
+-- main.hop --
+<foo-comp>
+    <div class="foo">
+        <h1><slot-title /></h1>
+        <p><slot-content /></p>
+    </div>
+</foo-comp>
+
+<bar-comp>
+    <foo-comp>
+        <with-title><slot-title/></with-title>
+        <with-content><slot-content/></with-content>
+    </foo-comp>
+</bar-comp>
+
+<main-comp entrypoint>
+    <bar-comp>
+        <with-title>Bar Title</with-title>
+        <with-content>Bar Content</with-content>
+    </bar-comp>
+</main-comp>
+-- data.json --
+{}
+-- output.html --
+<div data-hop-id="main/bar-comp">
+    <div data-hop-id="main/foo-comp">
+        <div class="foo">
+            <h1>Bar Title</h1>
+            <p>Bar Content</p>
+        </div>
+    </div>
+</div>
+## END
+
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="user">
+  <a set-href="user.profile_url" set-title="user.name">Click here</a>
+</main-comp>
+-- data.json --
+{"profile_url": "https://example.com/user/123", "name": "John Doe"}
+-- output.html --
+<div data-hop-id="main/main-comp">
+  <a href="https://example.com/user/123" title="John Doe">Click here</a>
+</div>
+## END
+
+## BEGIN
+-- main.hop --
+<main-card>
+    <div class="card">
+        <slot-content></slot-content>
+    </div>
+</main-card>
+
+<main-comp entrypoint params-as="data">
+    <main-card>
+        <with-content>
+            <h1 set-inner-text="data.title"></h1>
+            <p set-inner-text="data.message"></p>
+        </with-content>
+    </main-card>
+</main-comp>
+-- data.json --
+{
+    "title": "Hello World",
+    "message": "This text comes from outside params"
+}
+-- output.html --
+<div data-hop-id="main/main-card">
+    <div class="card">
+        <h1>Hello World</h1>
+        <p>This text comes from outside params</p>
+    </div>
+</div>
+## END
+
+## BEGIN
+-- main.hop --
+<my-button>
+	<slot-default>Default Button</slot-default>
+</my-button>
+
+<main-comp entrypoint>
+	<my-button>Click me!</my-button>
+	<my-button><with-default>Custom Button</with-default></my-button>
+</main-comp>
+-- data.json --
+{}
+-- output.html --
+<div data-hop-id="main/my-button">
+	Click me!
+</div>
+<div data-hop-id="main/my-button">
+	Custom Button
+</div>
+## END
+
+## BEGIN
+-- main.hop --
+<main-layout>
+    <div class="page">
+        <header>
+            <slot-title></slot-title>
+        </header>
+        <main>
+            <slot-content></slot-content>
+        </main>
+    </div>
+</main-layout>
+
+<main-comp entrypoint>
+    <main-layout>
+        <with-title>My Custom Title</with-title>
+        <with-content>
+            <p>This is custom content</p>
+            <p>With multiple paragraphs</p>
+        </with-content>
+    </main-layout>
+</main-comp>
+-- data.json --
+{}
+-- output.html --
+<div data-hop-id="main/main-layout">
+    <div class="page">
+        <header>
+            My Custom Title
+        </header>
+        <main>
+            <p>This is custom content</p>
+            <p>With multiple paragraphs</p>
+        </main>
+    </div>
+</div>
+## END
+
+## BEGIN
+-- main.hop --
+<page-layout>
+    <div class="page">
+        <slot-content></slot-content>
+    </div>
+</page-layout>
+
+<modal-wrapper>
+    <div class="modal-container">
+        <slot-modal></slot-modal>
+    </div>
+</modal-wrapper>
+
+<modal-comp>
+    <div class="modal">
+        <div class="modal-header">
+            <slot-header></slot-header>
+        </div>
+        <div class="modal-body">
+            <slot-body></slot-body>
+        </div>
+    </div>
+</modal-comp>
+
+<main-comp entrypoint params-as="data">
+    <page-layout>
+        <with-content>
+            <h1 set-inner-text="data.page_title"></h1>
+            <modal-wrapper>
+                <with-modal>
+                    <modal-comp>
+                        <with-header>
+						  	<span>header</span>
+                        </with-header>
+                        <with-body>
+                            <span>body</span>
+                        </with-body>
+                    </modal-comp>
+                </with-modal>
+            </modal-wrapper>
+        </with-content>
+    </page-layout>
+</main-comp>
+-- data.json --
+{
+    "page_title": "Welcome Page"
+}
+-- output.html --
+<div data-hop-id="main/page-layout">
+    <div class="page">
+        <h1>Welcome Page</h1>
+        <div data-hop-id="main/modal-wrapper">
+            <div class="modal-container">
+                <div data-hop-id="main/modal-comp">
+                    <div class="modal">
+                        <div class="modal-header">
+                            <span>header</span>
+                        </div>
+                        <div class="modal-body">
+                            <span>body</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+## END
+
+## BEGIN
+-- main.hop --
+<main-card>
+    <div class="card">
+        <slot-header></slot-header>
+        <div class="body">
+            <slot-content></slot-content>
+        </div>
+        <slot-footer></slot-footer>
+    </div>
+</main-card>
+
+<main-comp entrypoint params-as="data">
+    <main-card>
+        <with-header>
+            <h1 set-inner-text="data.title"></h1>
+        </with-header>
+        <with-content>
+            <for each="data.users" as="user">
+                <cond if="user.active">
+                    <div class="user-item">
+                        <span set-inner-text="user.name"></span>
+                        <cond if="user.admin">
+                            <strong> (Admin)</strong>
+                        </cond>
+                    </div>
+                </cond>
+            </for>
+        </with-content>
+        <with-footer>
+            <p>Total active users: <span set-inner-text="data.active_count"></span></p>
+        </with-footer>
+    </main-card>
+</main-comp>
+-- data.json --
+{
+    "title": "User Management",
+    "active_count": "3",
+    "users": [
+        {"name": "Alice", "active": true, "admin": true},
+        {"name": "Bob", "active": false, "admin": false},
+        {"name": "Charlie", "active": true, "admin": false},
+        {"name": "Diana", "active": true, "admin": true},
+        {"name": "Eve", "active": false, "admin": false}
+    ]
+}
+-- output.html --
+<div data-hop-id="main/main-card">
+    <div class="card">
+        <h1>User Management</h1>
+        <div class="body">
+            <div class="user-item">
+                <span>Alice</span>
+                <strong> (Admin)</strong>
+            </div>
+            <div class="user-item">
+                <span>Charlie</span>
+            </div>
+            <div class="user-item">
+                <span>Diana</span>
+                <strong> (Admin)</strong>
+            </div>
+        </div>
+        <p>Total active users: <span>3</span></p>
+    </div>
+</div>
+## END
+
+## BEGIN
+-- main.hop --
+<wrapper-comp>
+    <div>
+        <slot-content></slot-content>
+    </div>
+</wrapper-comp>
+
+<main-comp entrypoint>
+    <wrapper-comp>
+        <with-content>Custom</with-content>
+    </wrapper-comp>
+</main-comp>
+-- data.json --
+{}
+-- output.html --
+<div data-hop-id="main/wrapper-comp">
+	<div>
+        Custom
+    </div>
+</div>
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+  <cond if="params.role == 'admin'">
+    <div>Admin Access</div>
+  </cond>
+  <cond if="params.status == 'active'">
+    <div>Active User</div>
+  </cond>
+  <cond if="params.status == 'inactive'">
+    <div>Inactive User</div>
+  </cond>
+</main-comp>
+-- data.json --
+{
+  "role": "admin",
+  "status": "active"
+}
+-- output.html --
+<div data-hop-id="main/main-comp">
+  <div>Admin Access</div>
+  <div>Active User</div>
+</div>
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="p">
+	<div set-inner-text="p"></div>
+</main-comp>
+-- data.json --
+"<script>alert(1);</script>"
+-- output.html --
+<div data-hop-id="main/main-comp">
+	<div>&lt;script&gt;alert(1);&lt;/script&gt;</div>
+</div>
+## END

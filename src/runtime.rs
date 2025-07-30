@@ -588,18 +588,18 @@ mod tests {
     #[test]
     fn test_runtime() {
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("test_data/runtime");
-        let entries = fs::read_dir(d).unwrap();
+        d.push("test_data/runtime.cases");
+        
+        let content = fs::read_to_string(&d).unwrap();
+        let test_cases = parse_test_cases(&content);
 
-        for entry in entries {
-            let path = entry.unwrap().path();
+        for (case_num, (txtar_content, line_number)) in test_cases.iter().enumerate() {
+            let archive = Archive::from(txtar_content.clone());
 
-            let file_name = path.file_name().unwrap().to_string_lossy();
+            let data_json = archive.get("data.json").expect("Missing 'data.json' section in test case").content.trim();
+            let expected_output = archive.get("output.html").expect("Missing 'output.html' section in test case").content.trim();
 
-            let archive = Archive::from(fs::read_to_string(&path).unwrap());
-
-            let data_json = archive.get("data.json").unwrap().content.trim();
-            let expected_output = archive.get("output.html").unwrap().content.trim();
+            println!("Test case {} (line {})", case_num + 1, line_number);
 
             // Collect all modules from .hop files in order
             let mut modules_source = Vec::new();
@@ -611,19 +611,17 @@ mod tests {
             }
 
             let program = compile_modules(modules_source).unwrap_or_else(|e| {
-                panic!("Compilation failed for {}: {}", file_name, e);
+                panic!("Compilation failed for test case {} (line {}): {}", case_num + 1, line_number, e);
             });
 
-            println!("{}", file_name);
-
             let data: serde_json::Value = serde_json::from_str(data_json).unwrap_or_else(|e| {
-                panic!("Failed to parse JSON data for {}: {}", file_name, e);
+                panic!("Failed to parse JSON data for test case {} (line {}): {}", case_num + 1, line_number, e);
             });
 
             let actual_output = program
                 .execute_simple("main", "main-comp", data)
                 .unwrap_or_else(|e| {
-                    panic!("Execution failed for {}: {}", file_name, e);
+                    panic!("Execution failed for test case {} (line {}): {}", case_num + 1, line_number, e);
                 });
 
             // Normalize whitespace by tokenizing both outputs and comparing tokens
@@ -634,9 +632,40 @@ mod tests {
 
             assert_eq!(
                 actual_tokens, expected_tokens,
-                "Mismatch in file: {}",
-                file_name
+                "Mismatch in test case {} (line {})",
+                case_num + 1, line_number
             );
         }
+    }
+
+    fn parse_test_cases(content: &str) -> Vec<(String, usize)> {
+        let mut test_cases = Vec::new();
+        let mut current_case = String::new();
+        let mut in_case = false;
+        let mut case_start_line = 0;
+
+        for (line_num, line) in content.lines().enumerate() {
+            let line_number = line_num + 1;
+            
+            if line == "## BEGIN" {
+                assert!(!in_case, "Found '## BEGIN' at line {} while already inside a test case", line_number);
+                in_case = true;
+                case_start_line = line_number;
+                current_case.clear();
+            } else if line == "## END" {
+                assert!(in_case, "Found '## END' at line {} without matching '## BEGIN'", line_number);
+                test_cases.push((current_case.clone(), case_start_line));
+                in_case = false;
+            } else if in_case {
+                if !current_case.is_empty() {
+                    current_case.push('\n');
+                }
+                current_case.push_str(line);
+            }
+        }
+
+        assert!(!in_case, "Reached end of file while inside a test case (missing '## END')");
+
+        test_cases
     }
 }
