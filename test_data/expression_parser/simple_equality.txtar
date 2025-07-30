@@ -1,4 +1,0 @@
--- in --
-x == y
--- out --
-BinaryOp(Variable("x"), Equal, Variable("y"))

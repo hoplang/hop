@@ -1,4 +1,0 @@
--- in --
-x
--- out --
-Variable("x")

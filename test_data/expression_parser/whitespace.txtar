@@ -1,4 +1,0 @@
--- in --
-  user . name   ==   admin . name  
--- out --
-BinaryOp(PropertyAccess(Variable("user"), "name"), Equal, PropertyAccess(Variable("admin"), "name"))

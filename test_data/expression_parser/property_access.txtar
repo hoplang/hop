@@ -1,4 +1,0 @@
--- in --
-user.name
--- out --
-PropertyAccess(Variable("user"), "name")

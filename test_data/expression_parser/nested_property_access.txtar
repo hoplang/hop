@@ -1,4 +1,0 @@
--- in --
-user.profile.name
--- out --
-PropertyAccess(PropertyAccess(Variable("user"), "profile"), "name")

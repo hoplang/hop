@@ -1,0 +1,111 @@
+## BEGIN
+-- in --
+a == b == c
+-- out --
+BinaryOp(BinaryOp(Variable("a"), Equal, Variable("b")), Equal, Variable("c"))
+## END
+
+## BEGIN
+-- in --
+user.name == admin.name
+-- out --
+BinaryOp(PropertyAccess(Variable("user"), "name"), Equal, PropertyAccess(Variable("admin"), "name"))
+## END
+
+## BEGIN
+-- in --
+app.user.profile.settings.theme
+-- out --
+PropertyAccess(PropertyAccess(PropertyAccess(PropertyAccess(Variable("app"), "user"), "profile"), "settings"), "theme")
+## END
+
+## BEGIN
+-- in --
+''
+-- out --
+StringLiteral("")
+## END
+
+## BEGIN
+-- in --
+user.profile.name
+-- out --
+PropertyAccess(PropertyAccess(Variable("user"), "profile"), "name")
+## END
+
+## BEGIN
+-- in --
+(x == y)
+-- out --
+BinaryOp(Variable("x"), Equal, Variable("y"))
+## END
+
+## BEGIN
+-- in --
+user.name
+-- out --
+PropertyAccess(Variable("user"), "name")
+## END
+
+## BEGIN
+-- in --
+'guest' == user.role
+-- out --
+BinaryOp(StringLiteral("guest"), Equal, PropertyAccess(Variable("user"), "role"))
+## END
+
+## BEGIN
+-- in --
+x == y
+-- out --
+BinaryOp(Variable("x"), Equal, Variable("y"))
+## END
+
+## BEGIN
+-- in --
+'hello'
+-- out --
+StringLiteral("hello")
+## END
+
+## BEGIN
+-- in --
+x
+-- out --
+Variable("x")
+## END
+
+## BEGIN
+-- in --
+'apple' == 'orange'
+-- out --
+BinaryOp(StringLiteral("apple"), Equal, StringLiteral("orange"))
+## END
+
+## BEGIN
+-- in --
+user.name == 'admin'
+-- out --
+BinaryOp(PropertyAccess(Variable("user"), "name"), Equal, StringLiteral("admin"))
+## END
+
+## BEGIN
+-- in --
+user.name == 'admin'
+-- out --
+BinaryOp(PropertyAccess(Variable("user"), "name"), Equal, StringLiteral("admin"))
+## END
+
+## BEGIN
+-- in --
+'hello world'
+-- out --
+StringLiteral("hello world")
+## END
+
+## BEGIN
+-- in --
+  user . name   ==   admin . name  
+-- out --
+BinaryOp(PropertyAccess(Variable("user"), "name"), Equal, PropertyAccess(Variable("admin"), "name"))
+## END

@@ -1,4 +1,0 @@
--- in --
-'hello world'
--- out --
-StringLiteral("hello world")

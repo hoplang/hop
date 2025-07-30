@@ -1,4 +1,0 @@
--- in --
-'guest' == user.role
--- out --
-BinaryOp(StringLiteral("guest"), Equal, PropertyAccess(Variable("user"), "role"))

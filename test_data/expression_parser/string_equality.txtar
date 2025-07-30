@@ -1,4 +1,0 @@
--- in --
-user.name == 'admin'
--- out --
-BinaryOp(PropertyAccess(Variable("user"), "name"), Equal, StringLiteral("admin"))
