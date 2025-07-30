@@ -14,6 +14,20 @@
 
 ## BEGIN
 -- main.hop --
+<main-comp params-as="p">
+	<div set-inner-text="p"></div>
+</main-comp>
+-- data.json --
+"<script>alert(1);</script>"
+-- output.html --
+<div data-hop-id="main/main-comp">
+	<div>&lt;script&gt;alert(1);&lt;/script&gt;</div>
+</div>
+## END
+
+
+## BEGIN
+-- main.hop --
 <main-comp params-as="params">
   <cond if="params.user.name == params.admin.name">
     <div>Is Admin</div>
@@ -212,6 +226,7 @@
 </div>
 ## END
 
+
 ## BEGIN
 -- main.hop --
 <main-card>
@@ -242,6 +257,7 @@
 </div>
 ## END
 
+
 ## BEGIN
 -- main.hop --
 <my-button>
@@ -262,6 +278,7 @@
 	Custom Button
 </div>
 ## END
+
 
 ## BEGIN
 -- main.hop --
@@ -300,6 +317,7 @@
     </div>
 </div>
 ## END
+
 
 ## BEGIN
 -- main.hop --
@@ -371,6 +389,7 @@
 </div>
 ## END
 
+
 ## BEGIN
 -- main.hop --
 <main-card>
@@ -439,6 +458,7 @@
 </div>
 ## END
 
+
 ## BEGIN
 -- main.hop --
 <wrapper-comp>
@@ -462,6 +482,7 @@
 </div>
 ## END
 
+
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
@@ -484,18 +505,5 @@
 <div data-hop-id="main/main-comp">
   <div>Admin Access</div>
   <div>Active User</div>
-</div>
-## END
-
-## BEGIN
--- main.hop --
-<main-comp params-as="p">
-	<div set-inner-text="p"></div>
-</main-comp>
--- data.json --
-"<script>alert(1);</script>"
--- output.html --
-<div data-hop-id="main/main-comp">
-	<div>&lt;script&gt;alert(1);&lt;/script&gt;</div>
 </div>
 ## END
