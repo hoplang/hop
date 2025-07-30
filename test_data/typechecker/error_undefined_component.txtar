@@ -1,6 +1,0 @@
--- main.hop --
-<main-comp>
-	<h1>Hello, <render-name></render-name>!</h1>
-</main-comp>
--- out --
-Component render-name not found

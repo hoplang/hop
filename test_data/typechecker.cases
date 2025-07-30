@@ -1,0 +1,708 @@
+## BEGIN
+-- main.hop --
+<main-comp>
+	<h1>Hello, <render-name></render-name>!</h1>
+</main-comp>
+-- out --
+Component render-name not found
+## END
+
+## BEGIN
+-- main.hop --
+<foo-comp>
+</foo-comp>
+
+<foo-comp>
+</foo-comp>
+-- out --
+Component foo-comp is already defined
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp>
+    <slot-content>
+        First definition
+    </slot-content>
+    <slot-content>
+        Second definition
+    </slot-content>
+</main-comp>
+-- out --
+Slot 'content' is already defined
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp>
+    <strong>
+        <slot-data></slot-data>
+    </strong>
+</main-comp>
+
+<bar-comp>
+    <main-comp>
+        <with-invalid>
+            This slot doesn't exist
+        </with-invalid>
+    </main-comp>
+</bar-comp>
+-- out --
+Slot 'invalid' is not defined in this component
+## END
+
+## BEGIN
+-- main.hop --
+<mixed-comp>
+    <slot-default>Default content</slot-default>
+    <slot-other>Other content</slot-other>
+</mixed-comp>
+-- out --
+When using slot-default, it must be the only slot in the component
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="items">
+  <for each="items.foo" as="items">
+  </for>
+</main-comp>
+-- out --
+Variable items is already defined
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="items">
+  <for each="items" as="items">
+  </for>
+</main-comp>
+-- out --
+Variable items is already defined
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+	<for each="params" as="item">
+		<cond if="item.k">
+		</cond>
+	</for>
+	<for each="params" as="item">
+		<for each="item.k" as="inner">
+			<div set-inner-text="inner"></div>
+		</for>
+	</for>
+</main-comp>
+-- out --
+Can not unify types
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+	<cond if="params">
+	</cond>
+	<for each="params" as="item">
+		<div set-inner-text="item"></div>
+	</for>
+</main-comp>
+-- out --
+Can not unify types
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+	<for each="params" as="item">
+	  <cond if="item.active">
+	  </cond>
+	</for>
+	<cond if="item.active">
+	</cond>
+</main-comp>
+-- out --
+Undefined variable: item
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+	<cond if="item.active">
+	</cond>
+	<for each="params">
+	</for>
+</main-comp>
+-- out --
+Undefined variable: item
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="items">
+  <for each="items" as="item">
+      <div set-inner-text="item"></div>
+  </for>
+  <for each="items" as="item">
+  </for>
+</main-comp>
+-- out --
+Unused variable item
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="items">
+  <for each="items" as="item">
+  </for>
+  <for each="items" as="item">
+      <div set-inner-text="item"></div>
+  </for>
+</main-comp>
+-- out --
+Unused variable item
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="items">
+  <for each="items" as="item">
+  </for>
+</main-comp>
+-- out --
+Unused variable item
+## END
+
+## BEGIN
+-- main.hop --
+<bar-comp params-as="p">
+  <div>
+  </div>
+</bar-comp>
+-- out --
+Unused variable p
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="items">
+  <for each="items.a" as="item">
+    <for each="items.b" as="item">
+      <div set-inner-text="item"></div>
+    </for>
+  </for>
+</main-comp>
+-- out --
+Variable item is already defined
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+	<for each="params.items" as="item">
+		<cond if="item.active">
+		</cond>
+		<cond if="item.name">
+		</cond>
+	</for>
+</main-comp>
+-- out --
+main::main-comp : {items: {active: boolean, name: boolean}[]}
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+  <cond if="(params.a == 'str') == params.b">
+    <div>Match</div>
+  </cond>
+</main-comp>
+-- out --
+main::main-comp : {a: string, b: boolean}
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+	<cond if="params.enabled">
+		<for each="params.users" as="user">
+			<cond if="user.profile.verified">
+				<for each="user.posts" as="post">
+					<cond if="post.published">
+					</cond>
+				</for>
+			</cond>
+		</for>
+	</cond>
+</main-comp>
+-- out --
+main::main-comp : {enabled: boolean, users: {posts: {published: boolean}[], profile: {verified: boolean}}[]}
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+	<for each="params.sections" as="section">
+		<cond if="section.header.visible">
+			<for each="section.items" as="item">
+				<cond if="item.data.valid">
+				</cond>
+			</for>
+		</cond>
+	</for>
+</main-comp>
+-- out --
+main::main-comp : {sections: {header: {visible: boolean}, items: {data: {valid: boolean}}[]}[]}
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+	<cond if="params.i.j.k.l">
+	</cond>
+</main-comp>
+-- out --
+main::main-comp : {i: {j: {k: {l: boolean}}}}
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+	<cond if="params.app.ui.theme.dark">
+	</cond>
+	<cond if="params.app.api.endpoints.users.enabled">
+	</cond>
+	<cond if="params.app.database.connection.ssl">
+	</cond>
+</main-comp>
+-- out --
+main::main-comp : {app: {api: {endpoints: {users: {enabled: boolean}}}, database: {connection: {ssl: boolean}}, ui: {theme: {dark: boolean}}}}
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp entrypoint>
+    <script>
+        console.log("test");
+    </script>
+    <style>
+        body { color: red; }
+    </style>
+</main-comp>
+-- out --
+main::main-comp : void
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="data" entrypoint>
+    <h1>Hello World</h1>
+    <p set-inner-text="data.message"></p>
+</main-comp>
+-- out --
+main::main-comp : {message: string}
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+  <cond if="params.user.name == params.other_user.name">
+    <div>Same name</div>
+  </cond>
+  <cond if="(params.data.x == params.data.y)">
+    <div>Parentheses work</div>
+  </cond>
+</main-comp>
+-- out --
+main::main-comp : {data: {x: ?t21, y: ?t21}, other_user: {name: ?t8}, user: {name: ?t8}}
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+  <cond if="params.x == params.y">
+    <div>Values are equal</div>
+  </cond>
+</main-comp>
+-- out --
+main::main-comp : {x: ?t3, y: ?t3}
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+	<for each="params.foo.bar" as="j">
+		<cond if="j">
+		</cond>
+	</for>
+</main-comp>
+-- out --
+main::main-comp : {foo: {bar: boolean[]}}
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+	<for each="params" as="j">
+		<cond if="j.a">
+		</cond>
+	</for>
+	<for each="params" as="j">
+		<cond if="j.b">
+		</cond>
+	</for>
+</main-comp>
+-- out --
+main::main-comp : {a: boolean, b: boolean}[]
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="i">
+	<for each="i" as="j">
+		<for each="j" as="k">
+			<cond if="k">
+			</cond>
+		</for>
+	</for>
+</main-comp>
+-- out --
+main::main-comp : boolean[][]
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="i">
+	<for each="i" as="j">
+		<cond if="j">
+		</cond>
+	</for>
+</main-comp>
+-- out --
+main::main-comp : boolean[]
+## END
+
+## BEGIN
+-- utils.hop --
+<button-comp params-as="text">
+  <div set-inner-text="text"/>
+</button-comp>
+
+-- main.hop --
+<import component="button-comp" from="utils">
+
+<main-comp params-as="label">
+  <button-comp params="label"/>
+</main-comp>
+
+-- out --
+utils::button-comp : string
+main::main-comp : string
+## END
+
+## BEGIN
+-- bar.hop --
+<widget-comp params-as="config">
+  <cond if="config.enabled">
+    <div set-inner-text="config.title"/>
+  </cond>
+</widget-comp>
+
+-- foo.hop --
+<import component="widget-comp" from="bar">
+
+<panel-comp params-as="data">
+  <for each="data.items" as="item">
+    <widget-comp params="item"/>
+  </for>
+</panel-comp>
+
+-- main.hop --
+<import component="panel-comp" from="foo">
+
+<main-comp params-as="settings">
+  <panel-comp params="settings.dashboard"/>
+</main-comp>
+
+-- out --
+bar::widget-comp : {enabled: boolean, title: string}
+foo::panel-comp : {items: {enabled: boolean, title: string}[]}
+main::main-comp : {dashboard: {items: {enabled: boolean, title: string}[]}}
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+	<div set-inner-text="params"></div>
+</main-comp>
+-- out --
+main::main-comp : string
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+	<cond if="params.config.debug">
+	</cond>
+	<for each="params.data" as="item">
+		<cond if="item.id">
+		</cond>
+		<for each="item.attributes" as="attr">
+			<cond if="attr">
+			</cond>
+		</for>
+	</for>
+</main-comp>
+-- out --
+main::main-comp : {config: {debug: boolean}, data: {attributes: boolean[], id: boolean}[]}
+## END
+
+## BEGIN
+-- main.hop --
+<step3-comp params-as="settings">
+	<cond if="settings.enabled">
+	</cond>
+</step3-comp>
+
+<step2-comp params-as="config">
+	<step3-comp params="config.settings"/>
+</step2-comp>
+
+<step1-comp params-as="data">
+	<step2-comp params="data.config"/>
+</step1-comp>
+
+<main-comp params-as="params">
+	<step1-comp params="params"/>
+</main-comp>
+-- out --
+main::step3-comp : {enabled: boolean}
+main::step2-comp : {settings: {enabled: boolean}}
+main::step1-comp : {config: {settings: {enabled: boolean}}}
+main::main-comp : {config: {settings: {enabled: boolean}}}
+## END
+
+## BEGIN
+-- main.hop --
+<main-card params-as="item">
+  <div set-inner-text="item.title">
+  </div>
+  <cond if="item.active">
+    <span set-inner-text="item.status">
+    </span>
+  </cond>
+</main-card>
+
+<main-list params-as="items">
+  <for each="items" as="item">
+    <main-card params="item"/>
+  </for>
+</main-list>
+
+<main-comp params-as="data">
+  <main-list params="data.items"/>
+</main-comp>
+-- out --
+main::main-card : {active: boolean, status: string, title: string}
+main::main-list : {active: boolean, status: string, title: string}[]
+main::main-comp : {items: {active: boolean, status: string, title: string}[]}
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp>
+	<div></div>
+</main-comp>
+-- out --
+main::main-comp : void
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+	<cond if="params.i.j.k.l">
+		<cond if="params.i.k">
+		</cond>
+	</cond>
+</main-comp>
+-- out --
+main::main-comp : {i: {j: {k: {l: boolean}}, k: boolean}}
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+	<cond if="params.i.j.k.l">
+	</cond>
+	<cond if="params.i.k">
+	</cond>
+</main-comp>
+-- out --
+main::main-comp : {i: {j: {k: {l: boolean}}, k: boolean}}
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+	<for each="params.tags" as="tag">
+		<cond if="tag">
+		</cond>
+	</for>
+	<for each="params.categories" as="category">
+		<cond if="category">
+		</cond>
+	</for>
+	<cond if="params.metadata.title">
+	</cond>
+</main-comp>
+-- out --
+main::main-comp : {categories: boolean[], metadata: {title: boolean}, tags: boolean[]}
+## END
+
+## BEGIN
+-- main.hop --
+<main-bar params-as="p">
+  <cond if="p">
+  </cond>
+</main-bar>
+
+<main-foo params-as="p">
+  <main-bar params="p"/>
+</main-foo>
+
+<main-comp params-as="i">
+  <main-foo params="i"/>
+</main-comp>
+-- out --
+main::main-bar : boolean
+main::main-foo : boolean
+main::main-comp : boolean
+## END
+
+## BEGIN
+-- main.hop --
+<execute-step params-as="step">
+	<cond if="step.condition">
+	</cond>
+</execute-step>
+
+<execute-workflow params-as="workflow">
+	<cond if="workflow.enabled">
+		<for each="workflow.steps" as="step">
+			<execute-step params="step"/>
+		</for>
+	</cond>
+</execute-workflow>
+
+<main-comp params-as="params">
+	<for each="params.workflows" as="workflow">
+		<execute-workflow params="workflow"/>
+	</for>
+</main-comp>
+-- out --
+main::execute-step : {condition: boolean}
+main::execute-workflow : {enabled: boolean, steps: {condition: boolean}[]}
+main::main-comp : {workflows: {enabled: boolean, steps: {condition: boolean}[]}[]}
+## END
+
+## BEGIN
+-- main.hop --
+<foo-comp params-as="p">
+  <cond if="p">
+  </cond>
+</foo-comp>
+
+<main-comp params-as="i">
+  <foo-comp params="i"/>
+</main-comp>
+-- out --
+main::foo-comp : boolean
+main::main-comp : boolean
+## END
+
+## BEGIN
+-- main.hop --
+<process-item params-as="item">
+	<cond if="item.status.active">
+	</cond>
+	<for each="item.children" as="child">
+		<cond if="child.visible">
+		</cond>
+	</for>
+</process-item>
+
+<main-comp params-as="params">
+	<for each="params.items" as="item">
+		<process-item params="item"/>
+	</for>
+</main-comp>
+-- out --
+main::process-item : {children: {visible: boolean}[], status: {active: boolean}}
+main::main-comp : {items: {children: {visible: boolean}[], status: {active: boolean}}[]}
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="user">
+  <a set-href="user.url" set-class="user.theme">Link</a>
+</main-comp>
+-- out --
+main::main-comp : {theme: string, url: string}
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp>
+    <strong>
+        <slot-data></slot-data>
+    </strong>
+</main-comp>
+
+<bar-comp>
+    <main-comp>
+        <with-data>
+            Here's the content for the 'data' slot
+        </with-data>
+    </main-comp>
+</bar-comp>
+-- out --
+main::main-comp : void
+main::bar-comp : void
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="data">
+  <div set-inner-text="data.message">
+  </div>
+</main-comp>
+-- out --
+main::main-comp : {message: string}
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+  <cond if="params.role == 'admin'">
+    <div>Admin</div>
+  </cond>
+</main-comp>
+-- out --
+main::main-comp : {role: string}
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+	<for each="params" as="level1">
+		<for each="level1" as="level2">
+			<for each="level2" as="level3">
+				<cond if="level3">
+				</cond>
+			</for>
+		</for>
+	</for>
+</main-comp>
+-- out --
+main::main-comp : boolean[][][]
+## END

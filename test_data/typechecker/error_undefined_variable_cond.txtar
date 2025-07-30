@@ -1,9 +1,0 @@
--- main.hop --
-<main-comp params-as="params">
-	<cond if="item.active">
-	</cond>
-	<for each="params">
-	</for>
-</main-comp>
--- out --
-Undefined variable: item

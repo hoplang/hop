@@ -1,8 +1,0 @@
--- main.hop --
-<main-comp params-as="params">
-  <cond if="params.role == 'admin'">
-    <div>Admin</div>
-  </cond>
-</main-comp>
--- out --
-main::main-comp : {role: string}

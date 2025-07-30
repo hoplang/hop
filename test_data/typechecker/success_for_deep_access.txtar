@@ -1,9 +1,0 @@
--- main.hop --
-<main-comp params-as="params">
-	<for each="params.foo.bar" as="j">
-		<cond if="j">
-		</cond>
-	</for>
-</main-comp>
--- out --
-main::main-comp : {foo: {bar: boolean[]}}

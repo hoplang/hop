@@ -1,7 +1,0 @@
--- main.hop --
-<main-comp params-as="items">
-  <for each="items" as="item">
-  </for>
-</main-comp>
--- out --
-Unused variable item

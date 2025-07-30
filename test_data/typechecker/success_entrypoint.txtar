@@ -1,7 +1,0 @@
--- main.hop --
-<main-comp params-as="data" entrypoint>
-    <h1>Hello World</h1>
-    <p set-inner-text="data.message"></p>
-</main-comp>
--- out --
-main::main-comp : {message: string}

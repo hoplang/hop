@@ -1,9 +1,0 @@
--- main.hop --
-<main-comp params-as="i">
-	<for each="i" as="j">
-		<cond if="j">
-		</cond>
-	</for>
-</main-comp>
--- out --
-main::main-comp : boolean[]

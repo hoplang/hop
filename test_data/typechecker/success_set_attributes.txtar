@@ -1,6 +1,0 @@
--- main.hop --
-<main-comp params-as="user">
-  <a set-href="user.url" set-class="user.theme">Link</a>
-</main-comp>
--- out --
-main::main-comp : {theme: string, url: string}

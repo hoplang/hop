@@ -1,9 +1,0 @@
--- main.hop --
-<main-comp params-as="params">
-	<cond if="params.i.j.k.l">
-	</cond>
-	<cond if="params.i.k">
-	</cond>
-</main-comp>
--- out --
-main::main-comp : {i: {j: {k: {l: boolean}}, k: boolean}}
