@@ -1,5 +1,31 @@
 ## BEGIN
 -- main.hop --
+<main-comp params-as="data">
+	<div>
+</main-comp>
+-- output.txt --
+Unclosed <div>
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="data">
+	</div>
+</main-comp>
+-- output.txt --
+Unmatched </div>
+## END
+
+## BEGIN
+-- main.hop --
+<div>
+</div>
+-- output.txt --
+Invalid component name 'div'. Component names must contain a dash and not start or end with one
+## END
+
+## BEGIN
+-- main.hop --
 <main-comp params-as="Data123">
 	<div></div>
 </main-comp>
@@ -16,24 +42,6 @@ Invalid variable name 'Data123'. Variable names must match [a-z][a-z0-9]*
 </main-comp>
 -- output.txt --
 Invalid variable name 'item_name'. Variable names must match [a-z][a-z0-9]*
-## END
-
-## BEGIN
--- main.hop --
-<main-comp params-as="data">
-	</div>
-</main-comp>
--- output.txt --
-Unmatched </div>
-## END
-
-## BEGIN
--- main.hop --
-<main-comp params-as="data">
-	<div>
-</main-comp>
--- output.txt --
-Unclosed <div>
 ## END
 
 ## BEGIN
