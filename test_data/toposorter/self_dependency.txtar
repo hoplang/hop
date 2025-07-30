@@ -1,5 +1,0 @@
--- in --
-add_dependency a a
-sort
--- out --
-cycle: a

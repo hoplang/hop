@@ -1,6 +1,0 @@
--- main.hop --
-<main-comp params-as="data">
-	<div>
-</main-comp>
--- output.txt --
-Unclosed <div>

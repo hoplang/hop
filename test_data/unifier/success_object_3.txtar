@@ -1,6 +1,0 @@
--- in --
-(unify t1 (object a string b string c (object a string b string)))
-(unify (object d string) t1)
-(query t1)
--- out --
-t1 : {a: string, b: string, c: {a: string, b: string}, d: string}

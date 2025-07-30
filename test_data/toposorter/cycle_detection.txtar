@@ -1,7 +1,0 @@
--- in --
-add_dependency a b
-add_dependency b c
-add_dependency c a
-sort
--- out --
-cycle: a b c

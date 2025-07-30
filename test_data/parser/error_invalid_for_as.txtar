@@ -1,8 +1,0 @@
--- main.hop --
-<main-comp params-as="data">
-	<for each="data" as="item_name">
-		<div></div>
-	</for>
-</main-comp>
--- output.txt --
-Invalid variable name 'item_name'. Variable names must match [a-z][a-z0-9]*

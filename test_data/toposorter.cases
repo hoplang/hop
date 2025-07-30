@@ -1,3 +1,36 @@
+## BEGIN
+-- in --
+add_dependency a b
+add_dependency b c
+sort
+sort
+add_dependency c a
+sort
+-- out --
+sorted: c b a
+sorted: c b a
+cycle: a b c
+## END
+
+## BEGIN
+-- in --
+add_dependency a b
+add_dependency b c
+add_dependency c a
+sort
+-- out --
+cycle: a b c
+## END
+
+## BEGIN
+-- in --
+add_dependency a a
+sort
+-- out --
+cycle: a
+## END
+
+## BEGIN
 -- in --
 add_dependency a b
 add_dependency b c
@@ -21,3 +54,4 @@ subgraph: e d c b a
 sorted: e d c b a
 sorted: d e c b a
 subgraph: e c b a
+## END

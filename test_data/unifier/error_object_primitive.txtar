@@ -1,4 +1,0 @@
--- in --
-(unify (object foo string) string)
--- out --
-Can not unify types

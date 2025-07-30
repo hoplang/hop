@@ -1,0 +1,342 @@
+## BEGIN
+-- main.hop --
+<main-comp params-as="Data123">
+	<div></div>
+</main-comp>
+-- output.txt --
+Invalid variable name 'Data123'. Variable names must match [a-z][a-z0-9]*
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="data">
+	<for each="data" as="item_name">
+		<div></div>
+	</for>
+</main-comp>
+-- output.txt --
+Invalid variable name 'item_name'. Variable names must match [a-z][a-z0-9]*
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="data">
+	</div>
+</main-comp>
+-- output.txt --
+Unmatched </div>
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="data">
+	<div>
+</main-comp>
+-- output.txt --
+Unclosed <div>
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="sections">
+	<div>
+		<for each="sections" as="section">
+			<div>
+				<h2 set-inner-text="section.title"></h2>
+				<for each="section.items" as="item">
+					<p set-inner-text="item"></p>
+				</for>
+			</div>
+		</for>
+	</div>
+</main-comp>
+-- output.txt --
+component
+	div
+		for
+			div
+				h2
+				for
+					p
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="foo">
+	<!DOCTYPE html>
+	<html>
+	<body>
+	<div>hello world</div>
+	</body>
+	</html>
+</main-comp>
+-- output.txt --
+component
+	doctype
+	html
+		body
+			div
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp entrypoint>
+    <script>
+        console.log("test");
+    </script>
+    <style>
+        body { color: red; }
+    </style>
+</main-comp>
+-- output.txt --
+component
+	script
+	style
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="data" entrypoint>
+    <h1>Hello World</h1>
+    <p set-inner-text="data.message"></p>
+</main-comp>
+-- output.txt --
+component
+	h1
+	p
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp>
+  <cond if="user.name == other_user.name">
+    <div>Same name</div>
+  </cond>
+  <cond if="(data.x == data.y)">
+    <div>Parentheses work</div>
+  </cond>
+  <cond if="a == b == c">
+    <div>Chained equality</div>
+  </cond>
+</main-comp>
+-- output.txt --
+component
+	cond
+		div
+	cond
+		div
+	cond
+		div
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp>
+  <cond if="x == y">
+    <div>Equal</div>
+  </cond>
+</main-comp>
+-- output.txt --
+component
+	cond
+		div
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="i">
+	<for each="i" as="j">
+		<for each="j.s.t" as="k">
+			<cond if="k">
+			</cond>
+		</for>
+	</for>
+	<for each="i" as="p">
+		<for each="p.s.t" as="k">
+			<for each="k">
+			</for>
+		</for>
+	</for>
+</main-comp>
+-- output.txt --
+component
+	for
+		for
+			cond
+	for
+		for
+			for
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="data">
+	<cond if="data">
+		<for each="data" as="d">
+		</for>
+	</cond>
+</main-comp>
+-- output.txt --
+component
+	cond
+		for
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="foo">
+	<for each="foo" as="bar">
+	  <div></div>
+	</for>
+</main-comp>
+-- output.txt --
+component
+	for
+		div
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="p">
+	<foo-comp></foo-comp>
+	<foo-comp></foo-comp>
+</main-comp>
+-- output.txt --
+component
+	render
+	render
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="foo">
+	<for each="foo" as="v">
+		<div set-inner-text="v"></div>
+	</for>
+</main-comp>
+-- output.txt --
+component
+	for
+		div
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="foo">
+	<script>
+		const x = "<div></div>";
+	</script>
+</main-comp>
+-- output.txt --
+component
+	script
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="user">
+  <a set-href="user.url" set-class="user.theme">Link</a>
+</main-comp>
+-- output.txt --
+component
+	a
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp>
+    <slot-content>
+        Default content
+    </slot-content>
+    <other-comp>
+        <with-data>
+            Custom content
+        </with-data>
+    </other-comp>
+</main-comp>
+
+<other-comp>
+    <slot-data>
+        Other content
+    </slot-data>
+</other-comp>
+-- output.txt --
+component
+	slot-content
+	render
+		with-data
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp>
+    <slot-default>
+        Default content
+    </slot-default>
+    <button-comp>
+        <with-default>Custom Button</with-default>
+    </button-comp>
+</main-comp>
+-- output.txt --
+component
+	slot-default
+	render
+		with-default
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp>
+	<div class="navbar">
+		<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" version="1.1" viewBox="0 0 128 128" class="size-12">
+			<g style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;">
+				<path d="M20.04 38 64 22l43.96 16L64 54Z"></path>
+				<path d="M17.54 47.09v48l35.099 12.775"></path>
+				<path d="M64 112V64l46.46-16.91v48L77.988 106.91"></path>
+			</g>
+		</svg>
+		<ul>
+			<li><a href="/">Home</a></li>
+		</ul>
+	</div>
+</main-comp>
+-- output.txt --
+component
+	div
+		svg
+			g
+				path
+				path
+				path
+		ul
+			li
+				a
+## END
+
+## The content of textareas should be parsed as raw text.
+## BEGIN
+-- main.hop --
+<main-comp>
+	<textarea>
+		<div></div>
+	</textarea>
+</main-comp>
+-- output.txt --
+component
+	textarea
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp>
+	<form id="form">
+		<input type="text" required>
+		<button type="submit">Send</button>
+	</form>
+</main-comp>
+-- output.txt --
+component
+	form
+		input
+		button
+## END

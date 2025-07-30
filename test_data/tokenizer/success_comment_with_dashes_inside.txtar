@@ -1,4 +1,0 @@
--- in --
-<!-- Comment with -- dashes -- inside -->
--- out --
-Comment 1:1-1:42

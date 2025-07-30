@@ -1,7 +1,0 @@
--- in --
-(unify (object foo string bar bool) (object foo t1 bar t2))
-(query t1)
-(query t2)
--- out --
-t1 : string
-t2 : boolean

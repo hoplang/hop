@@ -1,5 +1,0 @@
--- in --
-(unify (array bool) (array t1))
-(query t1)
--- out --
-t1 : boolean

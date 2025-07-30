@@ -1,9 +1,0 @@
--- main.hop --
-<main-comp params-as="p">
-	<foo-comp></foo-comp>
-	<foo-comp></foo-comp>
-</main-comp>
--- output.txt --
-component
-	render
-	render

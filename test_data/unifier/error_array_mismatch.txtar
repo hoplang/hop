@@ -1,4 +1,0 @@
--- in --
-(unify (array string) (array bool))
--- out --
-Can not unify types

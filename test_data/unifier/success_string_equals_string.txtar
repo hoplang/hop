@@ -1,6 +1,0 @@
--- in --
-(unify string string)
-(unify t1 string)
-(query t1)
--- out --
-t1 : string

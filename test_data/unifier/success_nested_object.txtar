@@ -1,5 +1,0 @@
--- in --
-(unify (object foo (object bar string)) (object foo t1))
-(query t1)
--- out --
-t1 : {bar: string}

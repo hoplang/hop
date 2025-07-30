@@ -675,18 +675,16 @@ mod tests {
     #[test]
     fn test_tokenizer() {
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("test_data/tokenizer");
-        let entries = fs::read_dir(d).unwrap();
+        d.push("test_data/tokenizer.cases");
+        
+        let content = fs::read_to_string(&d).unwrap();
+        let test_cases = parse_test_cases(&content);
 
-        for entry in entries {
-            let path = entry.unwrap().path();
+        for (case_num, (txtar_content, line_number)) in test_cases.iter().enumerate() {
+            let archive = Archive::from(txtar_content.clone());
 
-            let file_name = path.file_name().unwrap().to_string_lossy();
-
-            let archive = Archive::from(fs::read_to_string(&path).unwrap());
-
-            let input = archive.get("in").unwrap().content.trim();
-            let expected = archive.get("out").unwrap().content.trim();
+            let input = archive.get("in").expect("Missing 'in' section in test case").content.trim();
+            let expected = archive.get("out").expect("Missing 'out' section in test case").content.trim();
             let mut errors = Vec::new();
 
             let actual = tokenize(input, &mut errors)
@@ -697,7 +695,38 @@ mod tests {
 
             assert!(errors.is_empty());
 
-            assert_eq!(actual, expected, "Mismatch in file: {}", file_name);
+            assert_eq!(actual, expected, "Mismatch in test case {} (line {})", case_num + 1, line_number);
         }
+    }
+
+    fn parse_test_cases(content: &str) -> Vec<(String, usize)> {
+        let mut test_cases = Vec::new();
+        let mut current_case = String::new();
+        let mut in_case = false;
+        let mut case_start_line = 0;
+
+        for (line_num, line) in content.lines().enumerate() {
+            let line_number = line_num + 1;
+            
+            if line == "## BEGIN" {
+                assert!(!in_case, "Found '## BEGIN' at line {} while already inside a test case", line_number);
+                in_case = true;
+                case_start_line = line_number;
+                current_case.clear();
+            } else if line == "## END" {
+                assert!(in_case, "Found '## END' at line {} without matching '## BEGIN'", line_number);
+                test_cases.push((current_case.clone(), case_start_line));
+                in_case = false;
+            } else if in_case {
+                if !current_case.is_empty() {
+                    current_case.push('\n');
+                }
+                current_case.push_str(line);
+            }
+        }
+
+        assert!(!in_case, "Reached end of file while inside a test case (missing '## END')");
+
+        test_cases
     }
 }

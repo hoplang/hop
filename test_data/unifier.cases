@@ -1,0 +1,315 @@
+## BEGIN
+-- in --
+(unify (array string) (array bool))
+-- out --
+Can not unify types
+## END
+
+## BEGIN
+-- in --
+(unify (array string) string)
+-- out --
+Can not unify types
+## END
+
+## BEGIN
+-- in --
+(unify string bool)
+-- out --
+Can not unify types
+## END
+
+## BEGIN
+-- in --
+(unify (object foo string) string)
+-- out --
+Can not unify types
+## END
+
+## BEGIN
+-- in --
+(unify (object foo string) (object foo bool))
+-- out --
+Can not unify types
+## END
+
+## BEGIN
+-- in --
+(unify string t1)
+(unify t1 string)
+(query t1)
+-- out --
+t1 : string
+## END
+
+## BEGIN
+-- in --
+(unify (array bool) (array t1))
+(query t1)
+-- out --
+t1 : boolean
+## END
+
+## BEGIN
+-- in --
+(unify bool bool)
+(unify t1 bool)
+(query t1)
+-- out --
+t1 : boolean
+## END
+
+## BEGIN
+-- in --
+(unify t1 (array (object name string age (array bool))))
+(unify t2 (array (object name t3 age t4 email string)))
+(unify t1 t2)
+(query t1)
+(query t3)
+(query t4)
+-- out --
+t1 : {age: boolean[], email: string, name: string}[]
+t3 : string
+t4 : boolean[]
+## END
+
+## BEGIN
+-- in --
+(unify (array (array (array string))) (array t1))
+(unify t1 (array t2))
+(query t2)
+-- out --
+t2 : string[]
+## END
+
+## BEGIN
+-- in --
+(unify (object a string) t1)
+(unify (object b bool) t1)
+(unify (object c (array string)) t1)
+(query t1)
+-- out --
+t1 : {a: string, b: boolean, c: string[]}
+## END
+
+## BEGIN
+-- in --
+(unify t1 (array t2))
+(unify t2 (array t3))
+(unify t3 (array t4))
+(unify t4 (array bool))
+(unify t5 t1)
+(unify t6 t2)
+(query t5)
+(query t6)
+(query t1)
+-- out --
+t5 : boolean[][][][]
+t6 : boolean[][][]
+t1 : boolean[][][][]
+## END
+
+## BEGIN
+-- in --
+(unify t1 (object level1 (object level2 (object level3 (object level4 string)))))
+(unify t2 (object level1 (object level2 (object level3 (object level4 t3) extra bool))))
+(unify t1 t2)
+(query t1)
+(query t3)
+-- out --
+t1 : {level1: {level2: {extra: boolean, level3: {level4: string}}}}
+t3 : string
+## END
+
+## BEGIN
+-- in --
+(unify (object) t1)
+(query t1)
+-- out --
+t1 : {}
+## END
+
+## BEGIN
+-- in --
+(unify t1 (object x string y bool))
+(unify t2 (object x t3 z (array void)))
+(unify t4 (object y t5 w string))
+(unify t1 t2)
+(unify t1 t4)
+(query t1)
+(query t2)
+(query t4)
+(query t3)
+(query t5)
+-- out --
+t1 : {w: string, x: string, y: boolean, z: void[]}
+t2 : {w: string, x: string, y: boolean, z: void[]}
+t4 : {w: string, x: string, y: boolean, z: void[]}
+t3 : string
+t5 : boolean
+## END
+
+## BEGIN
+-- in --
+(unify (object foo string bar bool) (object foo t1 bar t2))
+(query t1)
+(query t2)
+-- out --
+t1 : string
+t2 : boolean
+## END
+
+## BEGIN
+-- in --
+(unify t1 (array (array (object data (array (object id string value bool))))))
+(unify t2 (array (array (object data t3))))
+(unify t1 t2)
+(query t1)
+(query t3)
+-- out --
+t1 : {data: {id: string, value: boolean}[]}[][]
+t3 : {id: string, value: boolean}[]
+## END
+
+## BEGIN
+-- in --
+(unify (array (array t1)) (array (array string)))
+(query t1)
+-- out --
+t1 : string
+## END
+
+## BEGIN
+-- in --
+(unify t1 t2)
+(unify (array t3) (array (array (array t1))))
+(unify (array t3) (array (array (array (array string)))))
+(query t2)
+-- out --
+t2 : string[]
+## END
+
+## BEGIN
+-- in --
+(unify (object foo (object bar string)) (object foo t1))
+(query t1)
+-- out --
+t1 : {bar: string}
+## END
+
+## BEGIN
+-- in --
+(unify t1 (object a string b string c string))
+(unify (object d string) t1)
+(query t1)
+-- out --
+t1 : {a: string, b: string, c: string, d: string}
+## END
+
+## BEGIN
+-- in --
+(unify t1 (object a string b string c (object a string b string)))
+(unify (object d string) t1)
+(query t1)
+-- out --
+t1 : {a: string, b: string, c: {a: string, b: string}, d: string}
+## END
+
+## BEGIN
+-- in --
+(unify (object foo string) (object foo t1))
+(query t1)
+-- out --
+t1 : string
+## END
+
+## BEGIN
+-- in --
+(unify (object foo string) t1)
+(query t1)
+(unify (object bar string) t1)
+(query t1)
+-- out --
+t1 : {foo: string}
+t1 : {bar: string, foo: string}
+## END
+
+## BEGIN
+-- in --
+(unify (object a string b bool) t1)
+(unify (object c (array string) d void) t2)
+(unify t1 t2)
+(query t1)
+(query t2)
+-- out --
+t1 : {a: string, b: boolean, c: string[], d: void}
+t2 : {a: string, b: boolean, c: string[], d: void}
+## END
+
+## BEGIN
+-- in --
+(unify t1 (object foo t2))
+(unify t2 string)
+(query t1)
+-- out --
+t1 : {foo: string}
+## END
+
+## BEGIN
+-- in --
+(unify (object a string) t1)
+(unify (object b bool) t2)
+(unify (object c void) t3)
+(unify t1 t4)
+(unify t2 t4)
+(unify t3 t4)
+(query t4)
+(query t1)
+(query t2)
+(query t3)
+-- out --
+t4 : {a: string, b: boolean, c: void}
+t1 : {a: string, b: boolean, c: void}
+t2 : {a: string, b: boolean, c: void}
+t3 : {a: string, b: boolean, c: void}
+## END
+
+## BEGIN
+-- in --
+(unify string string)
+(unify t1 string)
+(query t1)
+-- out --
+t1 : string
+## END
+
+## BEGIN
+-- in --
+(unify t1 t2)
+(unify t2 t3)
+(unify t3 t4)
+(unify t5 t6)
+(unify t6 t7)
+(unify t7 t8)
+(unify t8 string)
+(unify t4 t5)
+(query t1)
+(query t8)
+-- out --
+t1 : string
+t8 : string
+## END
+
+## BEGIN
+-- in --
+(unify t1 t2)
+(unify t2 t3)
+(unify t3 t4)
+(unify t4 t5)
+(unify t5 (array bool))
+(query t1)
+(query t3)
+-- out --
+t1 : boolean[]
+t3 : boolean[]
+## END

@@ -1,4 +1,0 @@
--- in --
-(unify string bool)
--- out --
-Can not unify types

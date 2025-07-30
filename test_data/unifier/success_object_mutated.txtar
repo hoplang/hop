@@ -1,8 +1,0 @@
--- in --
-(unify (object foo string) t1)
-(query t1)
-(unify (object bar string) t1)
-(query t1)
--- out --
-t1 : {foo: string}
-t1 : {bar: string, foo: string}

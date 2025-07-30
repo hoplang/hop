@@ -1,4 +1,0 @@
--- in --
-<h1 />
--- out --
-SelfClosingTag(h1) [] 1:1-1:7

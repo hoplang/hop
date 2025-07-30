@@ -1,6 +1,0 @@
--- in --
-<title>This is <em>not</em> parsed as HTML</title>
--- out --
-StartTag(title) [] 1:1-1:8
-Text 1:8-1:43
-EndTag(title) 1:43-1:51

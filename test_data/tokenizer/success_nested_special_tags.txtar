@@ -1,9 +1,0 @@
--- in --
-<script>
-  const html = "<title>Nested</title>";
-  document.write(html);
-</script>
--- out --
-StartTag(script) [] 1:1-1:9
-Text 1:9-4:1
-EndTag(script) 4:1-4:10

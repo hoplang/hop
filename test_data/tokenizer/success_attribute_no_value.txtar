@@ -1,4 +1,0 @@
--- in --
-<h1 foo/>
--- out --
-SelfClosingTag(h1) [foo=[] 1:5-1:8] 1:1-1:10

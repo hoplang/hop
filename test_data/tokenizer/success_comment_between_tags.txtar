@@ -1,6 +1,0 @@
--- in --
-<p><!-- --></p>
--- out --
-StartTag(p) [] 1:1-1:4
-Comment 1:4-1:12
-EndTag(p) 1:12-1:16

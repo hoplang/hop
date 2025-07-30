@@ -1,6 +1,0 @@
--- in --
-(unify bool bool)
-(unify t1 bool)
-(query t1)
--- out --
-t1 : boolean

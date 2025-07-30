@@ -1,9 +1,0 @@
--- main.hop --
-<main-comp params-as="foo">
-	<script>
-		const x = "<div></div>";
-	</script>
-</main-comp>
--- output.txt --
-component
-	script
