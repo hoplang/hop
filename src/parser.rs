@@ -529,15 +529,23 @@ mod tests {
     fn test_parser() {
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         d.push("test_data/parser.cases");
-        
+
         let content = fs::read_to_string(&d).unwrap();
         let test_cases = parse_test_cases(&content);
 
         for (case_num, (txtar_content, line_number)) in test_cases.iter().enumerate() {
             let archive = Archive::from(txtar_content.clone());
 
-            let input = archive.get("main.hop").expect("Missing 'main.hop' section in test case").content.trim();
-            let expected = archive.get("output.txt").expect("Missing 'output.txt' section in test case").content.trim();
+            let input = archive
+                .get("main.hop")
+                .expect("Missing 'main.hop' section in test case")
+                .content
+                .trim();
+            let expected = archive
+                .get("out")
+                .expect("Missing 'out' section in test case")
+                .content
+                .trim();
 
             println!("Test case {} (line {})", case_num + 1, line_number);
 
@@ -552,12 +560,24 @@ mod tests {
                     .map(|e| e.message.clone())
                     .collect::<Vec<_>>()
                     .join(" ");
-                assert_eq!(output, expected, "Mismatch in test case {} (line {})", case_num + 1, line_number);
+                assert_eq!(
+                    output,
+                    expected,
+                    "Mismatch in test case {} (line {})",
+                    case_num + 1,
+                    line_number
+                );
             } else {
                 for component in module.components {
                     if component.name == "main-comp" {
                         let output = format_tree(&Node::Component(component));
-                        assert_eq!(output, expected, "Mismatch in test case {} (line {})", case_num + 1, line_number);
+                        assert_eq!(
+                            output,
+                            expected,
+                            "Mismatch in test case {} (line {})",
+                            case_num + 1,
+                            line_number
+                        );
                     }
                 }
             }
@@ -572,14 +592,22 @@ mod tests {
 
         for (line_num, line) in content.lines().enumerate() {
             let line_number = line_num + 1;
-            
+
             if line == "## BEGIN" {
-                assert!(!in_case, "Found '## BEGIN' at line {} while already inside a test case", line_number);
+                assert!(
+                    !in_case,
+                    "Found '## BEGIN' at line {} while already inside a test case",
+                    line_number
+                );
                 in_case = true;
                 case_start_line = line_number;
                 current_case.clear();
             } else if line == "## END" {
-                assert!(in_case, "Found '## END' at line {} without matching '## BEGIN'", line_number);
+                assert!(
+                    in_case,
+                    "Found '## END' at line {} without matching '## BEGIN'",
+                    line_number
+                );
                 test_cases.push((current_case.clone(), case_start_line));
                 in_case = false;
             } else if in_case {
@@ -590,7 +618,10 @@ mod tests {
             }
         }
 
-        assert!(!in_case, "Reached end of file while inside a test case (missing '## END')");
+        assert!(
+            !in_case,
+            "Reached end of file while inside a test case (missing '## END')"
+        );
 
         test_cases
     }

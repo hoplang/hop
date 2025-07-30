@@ -3,7 +3,7 @@
 <main-comp params-as="data">
 	<div>
 </main-comp>
--- output.txt --
+-- out --
 Unclosed <div>
 ## END
 
@@ -12,7 +12,7 @@ Unclosed <div>
 <main-comp params-as="data">
 	</div>
 </main-comp>
--- output.txt --
+-- out --
 Unmatched </div>
 ## END
 
@@ -20,7 +20,7 @@ Unmatched </div>
 -- main.hop --
 <div>
 </div>
--- output.txt --
+-- out --
 Invalid component name 'div'. Component names must contain a dash and not start or end with one
 ## END
 
@@ -29,7 +29,7 @@ Invalid component name 'div'. Component names must contain a dash and not start 
 <main-comp params-as="Data123">
 	<div></div>
 </main-comp>
--- output.txt --
+-- out --
 Invalid variable name 'Data123'. Variable names must match [a-z][a-z0-9]*
 ## END
 
@@ -40,7 +40,7 @@ Invalid variable name 'Data123'. Variable names must match [a-z][a-z0-9]*
 		<div></div>
 	</for>
 </main-comp>
--- output.txt --
+-- out --
 Invalid variable name 'item_name'. Variable names must match [a-z][a-z0-9]*
 ## END
 
@@ -58,7 +58,7 @@ Invalid variable name 'item_name'. Variable names must match [a-z][a-z0-9]*
 		</for>
 	</div>
 </main-comp>
--- output.txt --
+-- out --
 component
 	div
 		for
@@ -78,7 +78,7 @@ component
 	</body>
 	</html>
 </main-comp>
--- output.txt --
+-- out --
 component
 	doctype
 	html
@@ -96,7 +96,7 @@ component
         body { color: red; }
     </style>
 </main-comp>
--- output.txt --
+-- out --
 component
 	script
 	style
@@ -108,7 +108,7 @@ component
     <h1>Hello World</h1>
     <p set-inner-text="data.message"></p>
 </main-comp>
--- output.txt --
+-- out --
 component
 	h1
 	p
@@ -127,7 +127,7 @@ component
     <div>Chained equality</div>
   </cond>
 </main-comp>
--- output.txt --
+-- out --
 component
 	cond
 		div
@@ -144,7 +144,7 @@ component
     <div>Equal</div>
   </cond>
 </main-comp>
--- output.txt --
+-- out --
 component
 	cond
 		div
@@ -166,7 +166,7 @@ component
 		</for>
 	</for>
 </main-comp>
--- output.txt --
+-- out --
 component
 	for
 		for
@@ -184,7 +184,7 @@ component
 		</for>
 	</cond>
 </main-comp>
--- output.txt --
+-- out --
 component
 	cond
 		for
@@ -197,7 +197,7 @@ component
 	  <div></div>
 	</for>
 </main-comp>
--- output.txt --
+-- out --
 component
 	for
 		div
@@ -209,7 +209,7 @@ component
 	<foo-comp></foo-comp>
 	<foo-comp></foo-comp>
 </main-comp>
--- output.txt --
+-- out --
 component
 	render
 	render
@@ -222,7 +222,7 @@ component
 		<div set-inner-text="v"></div>
 	</for>
 </main-comp>
--- output.txt --
+-- out --
 component
 	for
 		div
@@ -235,7 +235,7 @@ component
 		const x = "<div></div>";
 	</script>
 </main-comp>
--- output.txt --
+-- out --
 component
 	script
 ## END
@@ -245,7 +245,7 @@ component
 <main-comp params-as="user">
   <a set-href="user.url" set-class="user.theme">Link</a>
 </main-comp>
--- output.txt --
+-- out --
 component
 	a
 ## END
@@ -268,7 +268,7 @@ component
         Other content
     </slot-data>
 </other-comp>
--- output.txt --
+-- out --
 component
 	slot-content
 	render
@@ -285,7 +285,7 @@ component
         <with-default>Custom Button</with-default>
     </button-comp>
 </main-comp>
--- output.txt --
+-- out --
 component
 	slot-default
 	render
@@ -308,7 +308,7 @@ component
 		</ul>
 	</div>
 </main-comp>
--- output.txt --
+-- out --
 component
 	div
 		svg
@@ -329,7 +329,7 @@ component
 		<div></div>
 	</textarea>
 </main-comp>
--- output.txt --
+-- out --
 component
 	textarea
 ## END
@@ -342,7 +342,7 @@ component
 		<button type="submit">Send</button>
 	</form>
 </main-comp>
--- output.txt --
+-- out --
 component
 	form
 		input

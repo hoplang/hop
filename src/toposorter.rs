@@ -210,19 +210,27 @@ mod tests {
     fn test_toposorter() {
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         d.push("test_data/toposorter.cases");
-        
+
         let content = fs::read_to_string(&d).unwrap();
         let test_cases = parse_test_cases(&content);
 
         for (case_num, (txtar_content, line_number)) in test_cases.iter().enumerate() {
             let archive = Archive::from(txtar_content.clone());
 
-            let input = archive.get("in").expect("Missing 'in' section in test case").content.trim();
-            let expected = archive.get("out").expect("Missing 'out' section in test case").content.trim();
-            
+            let input = archive
+                .get("in")
+                .expect("Missing 'in' section in test case")
+                .content
+                .trim();
+            let expected = archive
+                .get("out")
+                .expect("Missing 'out' section in test case")
+                .content
+                .trim();
+
             let mut toposorter = TopoSorter::new();
             let mut lines: Vec<String> = Vec::new();
-            
+
             println!("Test case {} (line {})", case_num + 1, line_number);
 
             for line in input.split('\n') {
@@ -276,7 +284,13 @@ mod tests {
             }
 
             let output = lines.join("\n");
-            assert_eq!(output, expected, "Mismatch in test case {} (line {})", case_num + 1, line_number);
+            assert_eq!(
+                output,
+                expected,
+                "Mismatch in test case {} (line {})",
+                case_num + 1,
+                line_number
+            );
         }
     }
 
@@ -288,14 +302,22 @@ mod tests {
 
         for (line_num, line) in content.lines().enumerate() {
             let line_number = line_num + 1;
-            
+
             if line == "## BEGIN" {
-                assert!(!in_case, "Found '## BEGIN' at line {} while already inside a test case", line_number);
+                assert!(
+                    !in_case,
+                    "Found '## BEGIN' at line {} while already inside a test case",
+                    line_number
+                );
                 in_case = true;
                 case_start_line = line_number;
                 current_case.clear();
             } else if line == "## END" {
-                assert!(in_case, "Found '## END' at line {} without matching '## BEGIN'", line_number);
+                assert!(
+                    in_case,
+                    "Found '## END' at line {} without matching '## BEGIN'",
+                    line_number
+                );
                 test_cases.push((current_case.clone(), case_start_line));
                 in_case = false;
             } else if in_case {
@@ -306,7 +328,10 @@ mod tests {
             }
         }
 
-        assert!(!in_case, "Reached end of file while inside a test case (missing '## END')");
+        assert!(
+            !in_case,
+            "Reached end of file while inside a test case (missing '## END')"
+        );
 
         test_cases
     }
