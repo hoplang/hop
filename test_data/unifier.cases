@@ -1,16 +1,12 @@
-## BEGIN
--- in --
-(unify (array string) (array bool))
--- out --
-Can not unify types
-## END
+A basic type can be unified with itself.
 
 ## BEGIN
 -- in --
-(unify (array string) string)
+(unify string string)
 -- out --
-Can not unify types
 ## END
+
+Two different basic types can not be unified.
 
 ## BEGIN
 -- in --
@@ -19,12 +15,35 @@ Can not unify types
 Can not unify types
 ## END
 
+Two arrays can not be unified if their subtypes can not be unified.
+
+## BEGIN
+-- in --
+(unify (array string) (array bool))
+-- out --
+Can not unify types
+## END
+
+An array can not be unified with a basic type.
+
+## BEGIN
+-- in --
+(unify (array string) string)
+-- out --
+Can not unify types
+## END
+
+An object can not be unified with a basic type.
+
 ## BEGIN
 -- in --
 (unify (object foo string) string)
 -- out --
 Can not unify types
 ## END
+
+Two objects can not be unified if they have corresponding properties that
+can not be unified.
 
 ## BEGIN
 -- in --
@@ -33,14 +52,18 @@ Can not unify types
 Can not unify types
 ## END
 
+A type variable can be unified with a basic type.
+
 ## BEGIN
 -- in --
 (unify string t1)
-(unify t1 string)
 (query t1)
 -- out --
 t1 : string
 ## END
+
+The unifier works recursively and will unify subtypes of arrays that
+contain type variables.
 
 ## BEGIN
 -- in --
@@ -50,14 +73,8 @@ t1 : string
 t1 : boolean
 ## END
 
-## BEGIN
--- in --
-(unify bool bool)
-(unify t1 bool)
-(query t1)
--- out --
-t1 : boolean
-## END
+The unifier works recursively and will unify properties of objects that contain
+type variables.
 
 ## BEGIN
 -- in --
