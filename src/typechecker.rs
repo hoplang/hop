@@ -95,7 +95,6 @@ pub fn typecheck(
             }
             parameter_types.insert(name.clone(), final_type);
         } else {
-            parameter_types.insert(name.clone(), Type::Void);
             for child in children {
                 typecheck_node(
                     child,
@@ -107,6 +106,7 @@ pub fn typecheck(
                     errors,
                 );
             }
+            parameter_types.insert(name.clone(), Type::Void);
         }
     }
 

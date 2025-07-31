@@ -1,3 +1,5 @@
+When an undefined component is referenced, the typechecker outputs an error.
+
 ## BEGIN
 -- main.hop --
 <main-comp>
@@ -6,6 +8,19 @@
 -- out --
 Component render-name not found
 ## END
+
+When a component references itself, the typechecker outputs an error.
+
+## BEGIN
+-- main.hop --
+<main-comp>
+	<h1>Hello, <main-comp></main-comp>!</h1>
+</main-comp>
+-- out --
+Component main-comp not found
+## END
+
+When a component is defined twice, the typechecker outputs an error.
 
 ## BEGIN
 -- main.hop --
@@ -17,6 +32,8 @@ Component render-name not found
 -- out --
 Component foo-comp is already defined
 ## END
+
+When a slot is defined twice, the typechecker outputs an error.
 
 ## BEGIN
 -- main.hop --
@@ -31,6 +48,8 @@ Component foo-comp is already defined
 -- out --
 Slot 'content' is already defined
 ## END
+
+When an undefined slot is referenced, the typechecker outputs an error.
 
 ## BEGIN
 -- main.hop --
@@ -51,6 +70,9 @@ Slot 'content' is already defined
 Slot 'invalid' is not defined in this component
 ## END
 
+When slot-default is defined, it must be the only slot, otherwise the typechecker
+outputs an error.
+
 ## BEGIN
 -- main.hop --
 <mixed-comp>
@@ -60,6 +82,8 @@ Slot 'invalid' is not defined in this component
 -- out --
 When using slot-default, it must be the only slot in the component
 ## END
+
+When a variable shadows another variable, the typechecker outputs an error.
 
 ## BEGIN
 -- main.hop --
@@ -79,36 +103,6 @@ Variable items is already defined
 </main-comp>
 -- out --
 Variable items is already defined
-## END
-
-## BEGIN
--- main.hop --
-<main-comp params-as="params">
-	<for each="params" as="item">
-		<cond if="item.k">
-		</cond>
-	</for>
-	<for each="params" as="item">
-		<for each="item.k" as="inner">
-			<div set-inner-text="inner"></div>
-		</for>
-	</for>
-</main-comp>
--- out --
-Can not unify types
-## END
-
-## BEGIN
--- main.hop --
-<main-comp params-as="params">
-	<cond if="params">
-	</cond>
-	<for each="params" as="item">
-		<div set-inner-text="item"></div>
-	</for>
-</main-comp>
--- out --
-Can not unify types
 ## END
 
 ## BEGIN
@@ -194,6 +188,36 @@ Unused variable p
 </main-comp>
 -- out --
 Variable item is already defined
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+	<for each="params" as="item">
+		<cond if="item.k">
+		</cond>
+	</for>
+	<for each="params" as="item">
+		<for each="item.k" as="inner">
+			<div set-inner-text="inner"></div>
+		</for>
+	</for>
+</main-comp>
+-- out --
+Can not unify types
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="params">
+	<cond if="params">
+	</cond>
+	<for each="params" as="item">
+		<div set-inner-text="item"></div>
+	</for>
+</main-comp>
+-- out --
+Can not unify types
 ## END
 
 ## BEGIN
