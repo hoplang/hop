@@ -50,6 +50,38 @@ When a component is defined twice, the typechecker outputs an error.
 Component foo-comp is already defined
 ## END
 
+When a component is defined with the same name as an imported component, the
+typechecker outputs an error.
+
+## BEGIN
+-- other.hop --
+<foo-comp>
+</foo-comp>
+
+-- main.hop --
+<import component="foo-comp" from="other">
+
+<foo-comp>
+</foo-comp>
+-- out --
+Component foo-comp is already defined
+## END
+
+Defining a component with the same name in two different modules is allowed.
+
+## BEGIN
+-- other.hop --
+<foo-comp>
+</foo-comp>
+
+-- main.hop --
+<foo-comp>
+</foo-comp>
+-- out --
+other::foo-comp : void
+main::foo-comp : void
+## END
+
 When a slot is defined twice, the typechecker outputs an error.
 
 ## BEGIN
