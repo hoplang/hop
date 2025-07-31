@@ -1,3 +1,10 @@
+The tokenizer allows empty files, and no tokens are emitted.
+
+## BEGIN
+-- in --
+-- out --
+## END
+
 ## BEGIN
 -- in --
 <input type="" value="" disabled="">

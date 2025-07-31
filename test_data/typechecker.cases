@@ -1,3 +1,20 @@
+The typechecker allows empty files, and no types are emitted.
+
+## BEGIN
+-- main.hop --
+-- out --
+## END
+
+The parameter type of a single component without any content is `void`.
+
+## BEGIN
+-- main.hop --
+<main-comp>
+</main-comp>
+-- out --
+main::main-comp : void
+## END
+
 When an undefined component is referenced, the typechecker outputs an error.
 
 ## BEGIN
