@@ -330,7 +330,8 @@ component
 				a
 ## END
 
-## The content of textareas should be parsed as raw text.
+The content of textareas should be parsed as raw text.
+
 ## BEGIN
 -- main.hop --
 <main-comp>
