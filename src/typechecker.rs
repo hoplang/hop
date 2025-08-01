@@ -11,15 +11,27 @@ use std::collections::{HashMap, HashSet};
 pub struct TypeAnnotation(pub Range, pub Type);
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ComponentInfo {
+    pub parameter_type: Type,
+    pub slots: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypeResult {
     pub parameter_types: HashMap<String, Type>,
+    pub component_info: HashMap<String, ComponentInfo>,
     pub annotations: Vec<TypeAnnotation>,
 }
 
 impl TypeResult {
-    pub fn new(parameter_types: HashMap<String, Type>, annotations: Vec<TypeAnnotation>) -> Self {
+    pub fn new(
+        parameter_types: HashMap<String, Type>,
+        component_info: HashMap<String, ComponentInfo>,
+        annotations: Vec<TypeAnnotation>,
+    ) -> Self {
         TypeResult {
             parameter_types,
+            component_info,
             annotations,
         }
     }
@@ -28,13 +40,20 @@ impl TypeResult {
 pub fn typecheck(
     module: &Module,
     import_types: &HashMap<String, Type>,
+    import_component_info: &HashMap<String, ComponentInfo>,
     errors: &mut Vec<RangeError>,
 ) -> TypeResult {
     let mut unifier = Unifier::new();
     let mut annotations: Vec<TypeAnnotation> = Vec::new();
     let mut parameter_types = import_types.clone();
+    let mut component_info = HashMap::new();
     let mut component_slots: HashMap<String, Vec<String>> = HashMap::new();
     let mut env = Environment::new();
+
+    // Load imported component slots
+    for (name, info) in import_component_info {
+        component_slots.insert(name.clone(), info.slots.clone());
+    }
 
     let mut imported_names = HashSet::new();
     for ImportNode {
@@ -83,7 +102,7 @@ pub fn typecheck(
         // Store component slots for validation
         component_slots.insert(name.clone(), slots.clone());
 
-        if let Some(params_as_attr) = params_as_attr {
+        let final_type = if let Some(params_as_attr) = params_as_attr {
             let t1 = unifier.new_type_var();
             if !env.push(params_as_attr.value.clone(), t1.clone()) {
                 panic!("Variable name for component parameter was unexpectedly in use")
@@ -108,7 +127,7 @@ pub fn typecheck(
                     params_as_attr.range,
                 ));
             }
-            parameter_types.insert(name.clone(), final_type);
+            final_type
         } else {
             for child in children {
                 typecheck_node(
@@ -121,8 +140,14 @@ pub fn typecheck(
                     errors,
                 );
             }
-            parameter_types.insert(name.clone(), Type::Void);
-        }
+            Type::Void
+        };
+
+        parameter_types.insert(name.clone(), final_type.clone());
+        component_info.insert(name.clone(), ComponentInfo {
+            parameter_type: final_type,
+            slots: slots.clone(),
+        });
     }
 
     let final_annotations = annotations
@@ -130,7 +155,7 @@ pub fn typecheck(
         .map(|TypeAnnotation(range, t)| TypeAnnotation(range, unifier.query(&t)))
         .collect();
 
-    TypeResult::new(parameter_types, final_annotations)
+    TypeResult::new(parameter_types, component_info, final_annotations)
 }
 
 fn typecheck_node(
@@ -406,6 +431,7 @@ mod tests {
             let mut all_errors = Vec::new();
             let mut all_output_lines = Vec::new();
             let mut module_component_types: HashMap<String, HashMap<String, Type>> = HashMap::new();
+            let mut module_component_info: HashMap<String, HashMap<String, ComponentInfo>> = HashMap::new();
 
             println!("Test case {} (line {})", case_num + 1, line_number);
 
@@ -421,8 +447,9 @@ mod tests {
                         continue;
                     }
 
-                    // Build import types from previously processed modules
+                    // Build import types and component info from previously processed modules
                     let mut import_types = HashMap::new();
+                    let mut import_component_info = HashMap::new();
                     for import_node in &module.imports {
                         let from_module = &import_node.from_attr.value;
                         let component_name = &import_node.component_attr.value;
@@ -439,10 +466,23 @@ mod tests {
                                 )
                             });
 
+                        let module_info = module_component_info
+                            .get(from_module)
+                            .unwrap_or_else(|| panic!("Module info '{}' not found", from_module));
+
+                        let component_info =
+                            module_info.get(component_name).unwrap_or_else(|| {
+                                panic!(
+                                    "Component info '{}' not found in module '{}'",
+                                    component_name, from_module
+                                )
+                            });
+
                         import_types.insert(component_name.clone(), component_type.clone());
+                        import_component_info.insert(component_name.clone(), component_info.clone());
                     }
 
-                    let type_result = typecheck(&module, &import_types, &mut errors);
+                    let type_result = typecheck(&module, &import_types, &import_component_info, &mut errors);
 
                     if !errors.is_empty() {
                         all_errors.extend(errors);
@@ -450,9 +490,11 @@ mod tests {
                         // Get module name from filename (without .hop extension)
                         let module_name = file.name.trim_end_matches(".hop");
 
-                        // Store this module's component types
+                        // Store this module's component types and info
                         module_component_types
                             .insert(module_name.to_string(), type_result.parameter_types.clone());
+                        module_component_info
+                            .insert(module_name.to_string(), type_result.component_info.clone());
 
                         for c in module.components {
                             all_output_lines.push(format!(

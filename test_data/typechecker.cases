@@ -167,6 +167,26 @@ When an undefined slot is referenced, the typechecker outputs an error.
 -- out --
 Slot 'invalid' is not defined in component main-comp
 ## END
+## BEGIN
+-- other.hop --
+<foo-comp>
+    <strong>
+        <slot-data></slot-data>
+    </strong>
+</foo-comp>
+-- main.hop --
+<import component="foo-comp" from="other">
+
+<bar-comp>
+    <foo-comp>
+        <with-invalid>
+            This slot doesn't exist
+        </with-invalid>
+    </foo-comp>
+</bar-comp>
+-- out --
+Slot 'invalid' is not defined in component foo-comp
+## END
 
 When slot-default is defined, it must be the only slot, otherwise the typechecker
 outputs an error.
