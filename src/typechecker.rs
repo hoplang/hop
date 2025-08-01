@@ -41,16 +41,8 @@ pub fn typecheck(
 ) -> TypeResult {
     let mut unifier = Unifier::new();
     let mut annotations: Vec<TypeAnnotation> = Vec::new();
-    let mut component_info = HashMap::new();
-    let mut component_slots: HashMap<String, Vec<String>> = HashMap::new();
+    let mut component_info = import_component_info.clone();
     let mut env = Environment::new();
-
-    // Load imported component info (both types and slots)
-    let mut parameter_types = HashMap::new();
-    for (name, info) in import_component_info {
-        parameter_types.insert(name.clone(), info.parameter_type.clone());
-        component_slots.insert(name.clone(), info.slots.clone());
-    }
 
     let mut imported_names = HashSet::new();
     for ImportNode {
@@ -71,8 +63,7 @@ pub fn typecheck(
         for child in children {
             typecheck_node(
                 child,
-                &parameter_types,
-                &component_slots,
+                &component_info,
                 &mut env,
                 &mut unifier,
                 &mut annotations,
@@ -91,13 +82,10 @@ pub fn typecheck(
     } in &module.components
     {
         // Check for duplicate component names
-        if parameter_types.contains_key(name) {
+        if component_info.contains_key(name) {
             errors.push(RangeError::component_already_defined(name, *range));
             continue;
         }
-
-        // Store component slots for validation
-        component_slots.insert(name.clone(), slots.clone());
 
         let parameter_type = if let Some(params_as_attr) = params_as_attr {
             let t1 = unifier.new_type_var();
@@ -106,8 +94,7 @@ pub fn typecheck(
             for child in children {
                 typecheck_node(
                     child,
-                    &parameter_types,
-                    &component_slots,
+                    &component_info,
                     &mut env,
                     &mut unifier,
                     &mut annotations,
@@ -125,8 +112,7 @@ pub fn typecheck(
             for child in children {
                 typecheck_node(
                     child,
-                    &parameter_types,
-                    &component_slots,
+                    &component_info,
                     &mut env,
                     &mut unifier,
                     &mut annotations,
@@ -136,7 +122,6 @@ pub fn typecheck(
             Type::Void
         };
 
-        parameter_types.insert(name.clone(), parameter_type.clone());
         component_info.insert(
             name.clone(),
             ComponentInfo {
@@ -156,8 +141,7 @@ pub fn typecheck(
 
 fn typecheck_node(
     node: &Node,
-    parameter_types: &HashMap<String, Type>,
-    component_slots: &HashMap<String, Vec<String>>,
+    component_info: &HashMap<String, ComponentInfo>,
     env: &mut Environment<Type>,
     unifier: &mut Unifier,
     annotations: &mut Vec<TypeAnnotation>,
@@ -195,15 +179,7 @@ fn typecheck_node(
             }
 
             for child in children {
-                typecheck_node(
-                    child,
-                    parameter_types,
-                    component_slots,
-                    env,
-                    unifier,
-                    annotations,
-                    errors,
-                );
+                typecheck_node(child, component_info, env, unifier, annotations, errors);
             }
 
             if pushed {
@@ -220,15 +196,7 @@ fn typecheck_node(
             typecheck_expr(&Type::Bool, if_attr, env, unifier, annotations, errors);
 
             for child in children {
-                typecheck_node(
-                    child,
-                    parameter_types,
-                    component_slots,
-                    env,
-                    unifier,
-                    annotations,
-                    errors,
-                );
+                typecheck_node(child, component_info, env, unifier, annotations, errors);
             }
         }
         Node::ComponentReference(ComponentReferenceNode {
@@ -238,35 +206,32 @@ fn typecheck_node(
             range,
             ..
         }) => {
-            if let Some(t1) = parameter_types.get(component) {
+            if let Some(comp_info) = component_info.get(component) {
                 if let Some(params_attr) = params_attr {
-                    typecheck_expr(&t1.clone(), params_attr, env, unifier, annotations, errors);
+                    typecheck_expr(
+                        &comp_info.parameter_type,
+                        params_attr,
+                        env,
+                        unifier,
+                        annotations,
+                        errors,
+                    );
+                }
+
+                // Validate slots
+                for child in children {
+                    if let Node::SupplySlot(SupplySlotNode { name, range, .. }) = child {
+                        if !comp_info.slots.contains(name) {
+                            errors.push(RangeError::undefined_slot(name, component, *range));
+                        }
+                    }
                 }
             } else {
                 errors.push(RangeError::undefined_component(component, *range));
             }
 
-            // Validate slots
-            if let Some(defined_slots) = component_slots.get(component) {
-                for child in children {
-                    if let Node::SupplySlot(SupplySlotNode { name, range, .. }) = child {
-                        if !defined_slots.contains(name) {
-                            errors.push(RangeError::undefined_slot(name, component, *range));
-                        }
-                    }
-                }
-            }
-
             for child in children {
-                typecheck_node(
-                    child,
-                    parameter_types,
-                    component_slots,
-                    env,
-                    unifier,
-                    annotations,
-                    errors,
-                );
+                typecheck_node(child, component_info, env, unifier, annotations, errors);
             }
         }
         Node::NativeHTML(NativeHTMLNode {
@@ -284,15 +249,7 @@ fn typecheck_node(
             }
 
             for child in children {
-                typecheck_node(
-                    child,
-                    parameter_types,
-                    component_slots,
-                    env,
-                    unifier,
-                    annotations,
-                    errors,
-                );
+                typecheck_node(child, component_info, env, unifier, annotations, errors);
             }
         }
         Node::DefineSlot(DefineSlotNode { children, .. })
@@ -300,15 +257,7 @@ fn typecheck_node(
         | Node::Render(RenderNode { children, .. })
         | Node::Error(ErrorNode { children, .. }) => {
             for child in children {
-                typecheck_node(
-                    child,
-                    parameter_types,
-                    component_slots,
-                    env,
-                    unifier,
-                    annotations,
-                    errors,
-                );
+                typecheck_node(child, component_info, env, unifier, annotations, errors);
             }
         }
         Node::Text(_) | Node::Doctype(_) => {
