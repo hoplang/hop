@@ -274,7 +274,10 @@ fn typecheck_node(
                 );
             }
         }
-        Node::Error(ErrorNode { children, .. }) => {
+        Node::DefineSlot(DefineSlotNode { children, .. })
+        | Node::SupplySlot(SupplySlotNode { children, .. })
+        | Node::BuildRender(BuildRenderNode { children, .. })
+        | Node::Error(ErrorNode { children, .. }) => {
             for child in children {
                 typecheck_node(
                     child,
@@ -289,45 +292,6 @@ fn typecheck_node(
         }
         Node::Text(_) | Node::Doctype(_) => {
             // No typechecking needed
-        }
-        Node::DefineSlot(DefineSlotNode { children, .. }) => {
-            for child in children {
-                typecheck_node(
-                    child,
-                    parameter_types,
-                    component_slots,
-                    env,
-                    unifier,
-                    annotations,
-                    errors,
-                );
-            }
-        }
-        Node::SupplySlot(SupplySlotNode { children, .. }) => {
-            for child in children {
-                typecheck_node(
-                    child,
-                    parameter_types,
-                    component_slots,
-                    env,
-                    unifier,
-                    annotations,
-                    errors,
-                );
-            }
-        }
-        Node::BuildRender(BuildRenderNode { children, .. }) => {
-            for child in children {
-                typecheck_node(
-                    child,
-                    parameter_types,
-                    component_slots,
-                    env,
-                    unifier,
-                    annotations,
-                    errors,
-                );
-            }
         }
         Node::Import(_) | Node::Component(_) => {
             panic!("Unexpected node")
