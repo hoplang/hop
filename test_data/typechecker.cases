@@ -179,7 +179,6 @@ When a variable shadows another variable, the typechecker outputs an error.
 -- out --
 Variable items is already defined
 ## END
-
 ## BEGIN
 -- main.hop --
 <main-comp params-as="items">
@@ -189,6 +188,20 @@ Variable items is already defined
 -- out --
 Variable items is already defined
 ## END
+## BEGIN
+-- main.hop --
+<main-comp params-as="items">
+  <for each="items.a" as="item">
+    <for each="items.b" as="item">
+      <div set-inner-text="item"></div>
+    </for>
+  </for>
+</main-comp>
+-- out --
+Variable item is already defined
+## END
+
+When an undefined variable is referenced, the typechecker outputs an error.
 
 ## BEGIN
 -- main.hop --
@@ -203,7 +216,6 @@ Variable items is already defined
 -- out --
 Undefined variable: item
 ## END
-
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
@@ -228,7 +240,6 @@ Undefined variable: item
 -- out --
 Unused variable item
 ## END
-
 ## BEGIN
 -- main.hop --
 <main-comp params-as="items">
@@ -241,7 +252,6 @@ Unused variable item
 -- out --
 Unused variable item
 ## END
-
 ## BEGIN
 -- main.hop --
 <main-comp params-as="items">
@@ -251,7 +261,6 @@ Unused variable item
 -- out --
 Unused variable item
 ## END
-
 ## BEGIN
 -- main.hop --
 <bar-comp params-as="p">
@@ -260,19 +269,6 @@ Unused variable item
 </bar-comp>
 -- out --
 Unused variable p
-## END
-
-## BEGIN
--- main.hop --
-<main-comp params-as="items">
-  <for each="items.a" as="item">
-    <for each="items.b" as="item">
-      <div set-inner-text="item"></div>
-    </for>
-  </for>
-</main-comp>
--- out --
-Variable item is already defined
 ## END
 
 ## BEGIN
@@ -291,7 +287,6 @@ Variable item is already defined
 -- out --
 Can not unify types
 ## END
-
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
