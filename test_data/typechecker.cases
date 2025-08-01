@@ -12,7 +12,9 @@ The parameter type of a single component without any content is `void`.
 <main-comp>
 </main-comp>
 -- out --
-main::main-comp : void
+main::main-comp
+	void
+	[]
 ## END
 
 When an undefined component is referenced, the typechecker outputs an error.
@@ -99,8 +101,12 @@ an error.
 <main-comp>
 </main-comp>
 -- out --
-other::foo-comp : void
-main::main-comp : void
+other::foo-comp
+	void
+	[]
+main::main-comp
+	void
+	[]
 ## END
 
 The typechecker collects all errors rather than returning at the first error.
@@ -127,8 +133,12 @@ Defining a component with the same name in two different modules is allowed.
 <foo-comp>
 </foo-comp>
 -- out --
-other::foo-comp : void
-main::foo-comp : void
+other::foo-comp
+	void
+	[]
+main::foo-comp
+	void
+	[]
 ## END
 
 When a slot is defined twice in a component, the typechecker outputs an error.
@@ -162,8 +172,12 @@ Two components are allowed to have slots with the same name.
     </slot-content>
 </foo-comp>
 -- out --
-main::main-comp : void
-main::foo-comp : void
+main::main-comp
+	void
+	["content"]
+main::foo-comp
+	void
+	["content"]
 ## END
 
 When an undefined slot is referenced, the typechecker outputs an error.
@@ -363,7 +377,9 @@ Can not unify types
 	</for>
 </main-comp>
 -- out --
-main::main-comp : {items: {active: boolean, name: boolean}[]}
+main::main-comp
+	{items: {active: boolean, name: boolean}[]}
+	[]
 ## END
 
 ## BEGIN
@@ -374,7 +390,9 @@ main::main-comp : {items: {active: boolean, name: boolean}[]}
   </cond>
 </main-comp>
 -- out --
-main::main-comp : {a: string, b: boolean}
+main::main-comp
+	{a: string, b: boolean}
+	[]
 ## END
 
 ## BEGIN
@@ -392,7 +410,9 @@ main::main-comp : {a: string, b: boolean}
 	</cond>
 </main-comp>
 -- out --
-main::main-comp : {enabled: boolean, users: {posts: {published: boolean}[], profile: {verified: boolean}}[]}
+main::main-comp
+	{enabled: boolean, users: {posts: {published: boolean}[], profile: {verified: boolean}}[]}
+	[]
 ## END
 
 ## BEGIN
@@ -408,7 +428,9 @@ main::main-comp : {enabled: boolean, users: {posts: {published: boolean}[], prof
 	</for>
 </main-comp>
 -- out --
-main::main-comp : {sections: {header: {visible: boolean}, items: {data: {valid: boolean}}[]}[]}
+main::main-comp
+	{sections: {header: {visible: boolean}, items: {data: {valid: boolean}}[]}[]}
+	[]
 ## END
 
 ## BEGIN
@@ -418,7 +440,9 @@ main::main-comp : {sections: {header: {visible: boolean}, items: {data: {valid: 
 	</cond>
 </main-comp>
 -- out --
-main::main-comp : {i: {j: {k: {l: boolean}}}}
+main::main-comp
+	{i: {j: {k: {l: boolean}}}}
+	[]
 ## END
 
 ## BEGIN
@@ -432,7 +456,9 @@ main::main-comp : {i: {j: {k: {l: boolean}}}}
 	</cond>
 </main-comp>
 -- out --
-main::main-comp : {app: {api: {endpoints: {users: {enabled: boolean}}}, database: {connection: {ssl: boolean}}, ui: {theme: {dark: boolean}}}}
+main::main-comp
+	{app: {api: {endpoints: {users: {enabled: boolean}}}, database: {connection: {ssl: boolean}}, ui: {theme: {dark: boolean}}}}
+	[]
 ## END
 
 ## BEGIN
@@ -446,7 +472,9 @@ main::main-comp : {app: {api: {endpoints: {users: {enabled: boolean}}}, database
     </style>
 </main-comp>
 -- out --
-main::main-comp : void
+main::main-comp
+	void
+	[]
 ## END
 
 ## BEGIN
@@ -456,7 +484,9 @@ main::main-comp : void
     <p set-inner-text="data.message"></p>
 </main-comp>
 -- out --
-main::main-comp : {message: string}
+main::main-comp
+	{message: string}
+	[]
 ## END
 
 ## BEGIN
@@ -470,7 +500,9 @@ main::main-comp : {message: string}
   </cond>
 </main-comp>
 -- out --
-main::main-comp : {data: {x: ?t21, y: ?t21}, other_user: {name: ?t8}, user: {name: ?t8}}
+main::main-comp
+	{data: {x: ?t21, y: ?t21}, other_user: {name: ?t8}, user: {name: ?t8}}
+	[]
 ## END
 
 ## BEGIN
@@ -481,7 +513,9 @@ main::main-comp : {data: {x: ?t21, y: ?t21}, other_user: {name: ?t8}, user: {nam
   </cond>
 </main-comp>
 -- out --
-main::main-comp : {x: ?t3, y: ?t3}
+main::main-comp
+	{x: ?t3, y: ?t3}
+	[]
 ## END
 
 ## BEGIN
@@ -493,7 +527,9 @@ main::main-comp : {x: ?t3, y: ?t3}
 	</for>
 </main-comp>
 -- out --
-main::main-comp : {foo: {bar: boolean[]}}
+main::main-comp
+	{foo: {bar: boolean[]}}
+	[]
 ## END
 
 ## BEGIN
@@ -509,7 +545,9 @@ main::main-comp : {foo: {bar: boolean[]}}
 	</for>
 </main-comp>
 -- out --
-main::main-comp : {a: boolean, b: boolean}[]
+main::main-comp
+	{a: boolean, b: boolean}[]
+	[]
 ## END
 
 ## BEGIN
@@ -523,7 +561,9 @@ main::main-comp : {a: boolean, b: boolean}[]
 	</for>
 </main-comp>
 -- out --
-main::main-comp : boolean[][]
+main::main-comp
+	boolean[][]
+	[]
 ## END
 
 ## BEGIN
@@ -535,7 +575,9 @@ main::main-comp : boolean[][]
 	</for>
 </main-comp>
 -- out --
-main::main-comp : boolean[]
+main::main-comp
+	boolean[]
+	[]
 ## END
 
 ## BEGIN
@@ -552,8 +594,12 @@ main::main-comp : boolean[]
 </main-comp>
 
 -- out --
-utils::button-comp : string
-main::main-comp : string
+utils::button-comp
+	string
+	[]
+main::main-comp
+	string
+	[]
 ## END
 
 ## BEGIN
@@ -581,9 +627,15 @@ main::main-comp : string
 </main-comp>
 
 -- out --
-bar::widget-comp : {enabled: boolean, title: string}
-foo::panel-comp : {items: {enabled: boolean, title: string}[]}
-main::main-comp : {dashboard: {items: {enabled: boolean, title: string}[]}}
+bar::widget-comp
+	{enabled: boolean, title: string}
+	[]
+foo::panel-comp
+	{items: {enabled: boolean, title: string}[]}
+	[]
+main::main-comp
+	{dashboard: {items: {enabled: boolean, title: string}[]}}
+	[]
 ## END
 
 ## BEGIN
@@ -592,7 +644,9 @@ main::main-comp : {dashboard: {items: {enabled: boolean, title: string}[]}}
 	<div set-inner-text="params"></div>
 </main-comp>
 -- out --
-main::main-comp : string
+main::main-comp
+	string
+	[]
 ## END
 
 ## BEGIN
@@ -610,7 +664,9 @@ main::main-comp : string
 	</for>
 </main-comp>
 -- out --
-main::main-comp : {config: {debug: boolean}, data: {attributes: boolean[], id: boolean}[]}
+main::main-comp
+	{config: {debug: boolean}, data: {attributes: boolean[], id: boolean}[]}
+	[]
 ## END
 
 ## BEGIN
@@ -632,10 +688,18 @@ main::main-comp : {config: {debug: boolean}, data: {attributes: boolean[], id: b
 	<step1-comp params="params"/>
 </main-comp>
 -- out --
-main::step3-comp : {enabled: boolean}
-main::step2-comp : {settings: {enabled: boolean}}
-main::step1-comp : {config: {settings: {enabled: boolean}}}
-main::main-comp : {config: {settings: {enabled: boolean}}}
+main::step3-comp
+	{enabled: boolean}
+	[]
+main::step2-comp
+	{settings: {enabled: boolean}}
+	[]
+main::step1-comp
+	{config: {settings: {enabled: boolean}}}
+	[]
+main::main-comp
+	{config: {settings: {enabled: boolean}}}
+	[]
 ## END
 
 ## BEGIN
@@ -659,18 +723,15 @@ main::main-comp : {config: {settings: {enabled: boolean}}}
   <main-list params="data.items"/>
 </main-comp>
 -- out --
-main::main-card : {active: boolean, status: string, title: string}
-main::main-list : {active: boolean, status: string, title: string}[]
-main::main-comp : {items: {active: boolean, status: string, title: string}[]}
-## END
-
-## BEGIN
--- main.hop --
-<main-comp>
-	<div></div>
-</main-comp>
--- out --
-main::main-comp : void
+main::main-card
+	{active: boolean, status: string, title: string}
+	[]
+main::main-list
+	{active: boolean, status: string, title: string}[]
+	[]
+main::main-comp
+	{items: {active: boolean, status: string, title: string}[]}
+	[]
 ## END
 
 ## BEGIN
@@ -682,7 +743,9 @@ main::main-comp : void
 	</cond>
 </main-comp>
 -- out --
-main::main-comp : {i: {j: {k: {l: boolean}}, k: boolean}}
+main::main-comp
+	{i: {j: {k: {l: boolean}}, k: boolean}}
+	[]
 ## END
 
 ## BEGIN
@@ -694,7 +757,9 @@ main::main-comp : {i: {j: {k: {l: boolean}}, k: boolean}}
 	</cond>
 </main-comp>
 -- out --
-main::main-comp : {i: {j: {k: {l: boolean}}, k: boolean}}
+main::main-comp
+	{i: {j: {k: {l: boolean}}, k: boolean}}
+	[]
 ## END
 
 ## BEGIN
@@ -712,7 +777,9 @@ main::main-comp : {i: {j: {k: {l: boolean}}, k: boolean}}
 	</cond>
 </main-comp>
 -- out --
-main::main-comp : {categories: boolean[], metadata: {title: boolean}, tags: boolean[]}
+main::main-comp
+	{categories: boolean[], metadata: {title: boolean}, tags: boolean[]}
+	[]
 ## END
 
 ## BEGIN
@@ -730,9 +797,15 @@ main::main-comp : {categories: boolean[], metadata: {title: boolean}, tags: bool
   <main-foo params="i"/>
 </main-comp>
 -- out --
-main::main-bar : boolean
-main::main-foo : boolean
-main::main-comp : boolean
+main::main-bar
+	boolean
+	[]
+main::main-foo
+	boolean
+	[]
+main::main-comp
+	boolean
+	[]
 ## END
 
 ## BEGIN
@@ -756,9 +829,15 @@ main::main-comp : boolean
 	</for>
 </main-comp>
 -- out --
-main::execute-step : {condition: boolean}
-main::execute-workflow : {enabled: boolean, steps: {condition: boolean}[]}
-main::main-comp : {workflows: {enabled: boolean, steps: {condition: boolean}[]}[]}
+main::execute-step
+	{condition: boolean}
+	[]
+main::execute-workflow
+	{enabled: boolean, steps: {condition: boolean}[]}
+	[]
+main::main-comp
+	{workflows: {enabled: boolean, steps: {condition: boolean}[]}[]}
+	[]
 ## END
 
 ## BEGIN
@@ -772,8 +851,12 @@ main::main-comp : {workflows: {enabled: boolean, steps: {condition: boolean}[]}[
   <foo-comp params="i"/>
 </main-comp>
 -- out --
-main::foo-comp : boolean
-main::main-comp : boolean
+main::foo-comp
+	boolean
+	[]
+main::main-comp
+	boolean
+	[]
 ## END
 
 ## BEGIN
@@ -793,8 +876,12 @@ main::main-comp : boolean
 	</for>
 </main-comp>
 -- out --
-main::process-item : {children: {visible: boolean}[], status: {active: boolean}}
-main::main-comp : {items: {children: {visible: boolean}[], status: {active: boolean}}[]}
+main::process-item
+	{children: {visible: boolean}[], status: {active: boolean}}
+	[]
+main::main-comp
+	{items: {children: {visible: boolean}[], status: {active: boolean}}[]}
+	[]
 ## END
 
 ## BEGIN
@@ -803,7 +890,9 @@ main::main-comp : {items: {children: {visible: boolean}[], status: {active: bool
   <a set-href="user.url" set-class="user.theme">Link</a>
 </main-comp>
 -- out --
-main::main-comp : {theme: string, url: string}
+main::main-comp
+	{theme: string, url: string}
+	[]
 ## END
 
 ## BEGIN
@@ -822,8 +911,12 @@ main::main-comp : {theme: string, url: string}
     </main-comp>
 </bar-comp>
 -- out --
-main::main-comp : void
-main::bar-comp : void
+main::main-comp
+	void
+	["data"]
+main::bar-comp
+	void
+	[]
 ## END
 
 ## BEGIN
@@ -833,7 +926,9 @@ main::bar-comp : void
   </div>
 </main-comp>
 -- out --
-main::main-comp : {message: string}
+main::main-comp
+	{message: string}
+	[]
 ## END
 
 ## BEGIN
@@ -844,7 +939,9 @@ main::main-comp : {message: string}
   </cond>
 </main-comp>
 -- out --
-main::main-comp : {role: string}
+main::main-comp
+	{role: string}
+	[]
 ## END
 
 ## BEGIN
@@ -860,5 +957,7 @@ main::main-comp : {role: string}
 	</for>
 </main-comp>
 -- out --
-main::main-comp : boolean[][][]
+main::main-comp
+	boolean[][][]
+	[]
 ## END

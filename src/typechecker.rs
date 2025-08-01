@@ -477,14 +477,19 @@ mod tests {
 
                         for c in module.components {
                             all_output_lines.push(format!(
-                                "{}::{} : {}",
+                                "{}::{}\n\t{}\n\t{:?}",
                                 module_name,
                                 c.name,
                                 type_result
                                     .component_info
                                     .get(&c.name)
                                     .expect("Component info not found")
-                                    .parameter_type
+                                    .parameter_type,
+                                type_result
+                                    .component_info
+                                    .get(&c.name)
+                                    .expect("Component info not found")
+                                    .slots
                             ));
                         }
                     }
