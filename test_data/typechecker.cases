@@ -131,7 +131,7 @@ other::foo-comp : void
 main::foo-comp : void
 ## END
 
-When a slot is defined twice, the typechecker outputs an error.
+When a slot is defined twice in a component, the typechecker outputs an error.
 
 ## BEGIN
 -- main.hop --
@@ -145,6 +145,25 @@ When a slot is defined twice, the typechecker outputs an error.
 </main-comp>
 -- out --
 Slot 'content' is already defined
+## END
+
+Two components are allowed to have slots with the same name.
+
+## BEGIN
+-- main.hop --
+<main-comp>
+    <slot-content>
+        First definition
+    </slot-content>
+</main-comp>
+<foo-comp>
+    <slot-content>
+        First definition
+    </slot-content>
+</foo-comp>
+-- out --
+main::main-comp : void
+main::foo-comp : void
 ## END
 
 When an undefined slot is referenced, the typechecker outputs an error.
@@ -194,8 +213,8 @@ outputs an error.
 ## BEGIN
 -- main.hop --
 <mixed-comp>
-    <slot-default>Default content</slot-default>
-    <slot-other>Other content</slot-other>
+    <slot-default>Default slot</slot-default>
+    <slot-other>Other slot</slot-other>
 </mixed-comp>
 -- out --
 When using slot-default, it must be the only slot in the component
