@@ -213,9 +213,9 @@ impl RangeError {
         Self::new(message.to_string(), range)
     }
 
-    pub fn undefined_slot(slot: &str, range: Range) -> Self {
+    pub fn undefined_slot(slot: &str, component: &str, range: Range) -> Self {
         Self::new(
-            format!("Slot '{slot}' is not defined in this component"),
+            format!("Slot '{slot}' is not defined in component {component}"),
             range,
         )
     }

@@ -165,7 +165,7 @@ When an undefined slot is referenced, the typechecker outputs an error.
     </main-comp>
 </bar-comp>
 -- out --
-Slot 'invalid' is not defined in this component
+Slot 'invalid' is not defined in component main-comp
 ## END
 
 When slot-default is defined, it must be the only slot, otherwise the typechecker

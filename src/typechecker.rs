@@ -230,7 +230,7 @@ fn typecheck_node(
                 for child in children {
                     if let Node::SupplySlot(SupplySlotNode { name, range, .. }) = child {
                         if !defined_slots.contains(name) {
-                            errors.push(RangeError::undefined_slot(name, *range));
+                            errors.push(RangeError::undefined_slot(name, component, *range));
                         }
                     }
                 }
