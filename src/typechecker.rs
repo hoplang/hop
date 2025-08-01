@@ -1,5 +1,5 @@
 use crate::common::{
-    BinaryOp, BuildRenderNode, ComponentDefinitionNode, CondNode, DefineSlotNode, Environment, ErrorNode,
+    BinaryOp, RenderNode, ComponentDefinitionNode, CondNode, DefineSlotNode, Environment, ErrorNode,
     ExprAttribute, Expression, ForNode, ImportNode, NativeHTMLNode, Node, Range, RangeError,
     ComponentReferenceNode, SupplySlotNode, Type,
 };
@@ -51,7 +51,7 @@ pub fn typecheck(
         }
     }
 
-    for BuildRenderNode { children, .. } in &module.build_renders {
+    for RenderNode { children, .. } in &module.renders {
         for child in children {
             typecheck_node(
                 child,
@@ -276,7 +276,7 @@ fn typecheck_node(
         }
         Node::DefineSlot(DefineSlotNode { children, .. })
         | Node::SupplySlot(SupplySlotNode { children, .. })
-        | Node::BuildRender(BuildRenderNode { children, .. })
+        | Node::Render(RenderNode { children, .. })
         | Node::Error(ErrorNode { children, .. }) => {
             for child in children {
                 typecheck_node(

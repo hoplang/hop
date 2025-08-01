@@ -421,7 +421,7 @@ pub struct SupplySlotNode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct BuildRenderNode {
+pub struct RenderNode {
     pub file_attr: Attribute,
     pub range: Range,
     pub children: Vec<Node>,
@@ -440,7 +440,7 @@ pub enum Node {
     Error(ErrorNode),
     DefineSlot(DefineSlotNode),
     SupplySlot(SupplySlotNode),
-    BuildRender(BuildRenderNode),
+    Render(RenderNode),
 }
 
 // Environment entry that holds both value and access status

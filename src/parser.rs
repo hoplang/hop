@@ -1,5 +1,5 @@
 use crate::common::{
-    BuildRenderNode, ComponentDefinitionNode, CondNode, DefineSlotNode, DoctypeNode, ErrorNode,
+    RenderNode, ComponentDefinitionNode, CondNode, DefineSlotNode, DoctypeNode, ErrorNode,
     ExprAttribute, ForNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError,
     ComponentReferenceNode, SupplySlotNode, TextNode, Token, TokenKind, VarNameAttr, is_void_element,
 };
@@ -17,7 +17,7 @@ fn is_valid_component_name(name: &str) -> bool {
 pub struct Module {
     pub components: Vec<ComponentDefinitionNode>,
     pub imports: Vec<ImportNode>,
-    pub build_renders: Vec<BuildRenderNode>,
+    pub renders: Vec<RenderNode>,
 }
 
 pub fn parse(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> Module {
@@ -25,14 +25,14 @@ pub fn parse(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> Module {
 
     let mut components = Vec::new();
     let mut imports = Vec::new();
-    let mut build_renders = Vec::new();
+    let mut renders = Vec::new();
 
     for child in &tree.children {
         let node = construct_node(child, 0, errors);
         match node {
             Node::Import(import_data) => imports.push(import_data),
             Node::ComponentDefinition(component_data) => components.push(component_data),
-            Node::BuildRender(build_render_data) => build_renders.push(build_render_data),
+            Node::Render(render_data) => renders.push(render_data),
             _ => {} // ignore other node types at root level
         }
     }
@@ -40,7 +40,7 @@ pub fn parse(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> Module {
     Module {
         components,
         imports,
-        build_renders,
+        renders,
     }
 }
 
@@ -190,7 +190,7 @@ fn collect_slots_from_children(
             Node::SupplySlot(SupplySlotNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
-            Node::BuildRender(BuildRenderNode { children, .. }) => {
+            Node::Render(RenderNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
             Node::Error(ErrorNode { children, .. }) => {
@@ -371,7 +371,7 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                     });
 
                     match file_attr {
-                        Some(file_attr) => Node::BuildRender(BuildRenderNode {
+                        Some(file_attr) => Node::Render(RenderNode {
                             file_attr,
                             range: t.range,
                             children,
@@ -511,7 +511,7 @@ mod tests {
                         format_node(child, depth + 1, lines);
                     }
                 }
-                Node::BuildRender(BuildRenderNode { children, .. }) => {
+                Node::Render(RenderNode { children, .. }) => {
                     lines.push(format!("{}build-render", indent));
                     for child in children {
                         format_node(child, depth + 1, lines);

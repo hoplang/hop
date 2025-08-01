@@ -253,20 +253,19 @@ fn render_build_files(
     let mut rendered_files = HashMap::new();
     let mut env = Environment::new();
 
-    // Process BuildRender nodes from all modules
-    for build_renders in program.get_build_renders().values() {
-        for build_render in build_renders {
+    for render_nodes in program.get_render_nodes().values() {
+        for node in render_nodes {
             // Evaluate the children to get the rendered content
             let mut content = String::new();
 
-            for child in &build_render.children {
+            for child in &node.children {
                 let rendered = program
                     .evaluate_node_entrypoint(child, &mut env, "build")
                     .map_err(|e| anyhow::anyhow!("Failed to evaluate render content: {}", e))?;
                 content.push_str(&rendered);
             }
 
-            rendered_files.insert(build_render.file_attr.value.clone(), content);
+            rendered_files.insert(node.file_attr.value.clone(), content);
         }
     }
 

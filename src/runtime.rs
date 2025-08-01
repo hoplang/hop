@@ -1,5 +1,5 @@
 use crate::common::{
-    BinaryOp, BuildRenderNode, ComponentDefinitionNode, CondNode, DefineSlotNode, Environment, ErrorNode,
+    BinaryOp, RenderNode, ComponentDefinitionNode, CondNode, DefineSlotNode, Environment, ErrorNode,
     Expression, ForNode, NativeHTMLNode, Node, ComponentReferenceNode, SupplySlotNode, Type, escape_html,
     is_void_element,
 };
@@ -11,7 +11,7 @@ pub struct Program {
     component_maps: HashMap<String, HashMap<String, ComponentDefinitionNode>>,
     import_maps: HashMap<String, HashMap<String, String>>,
     parameter_types: HashMap<String, HashMap<String, Type>>,
-    build_renders: HashMap<String, Vec<BuildRenderNode>>,
+    render_nodes: HashMap<String, Vec<RenderNode>>,
     scripts: String,
 }
 
@@ -20,20 +20,20 @@ impl Program {
         component_maps: HashMap<String, HashMap<String, ComponentDefinitionNode>>,
         import_maps: HashMap<String, HashMap<String, String>>,
         parameter_types: HashMap<String, HashMap<String, Type>>,
-        build_renders: HashMap<String, Vec<BuildRenderNode>>,
+        render_maps: HashMap<String, Vec<RenderNode>>,
         scripts: String,
     ) -> Self {
         Program {
             component_maps,
             import_maps,
             parameter_types,
-            build_renders,
+            render_nodes: render_maps,
             scripts,
         }
     }
 
-    pub fn get_build_renders(&self) -> &HashMap<String, Vec<BuildRenderNode>> {
-        &self.build_renders
+    pub fn get_render_nodes(&self) -> &HashMap<String, Vec<RenderNode>> {
+        &self.render_nodes
     }
 
     /// Get the collected scripts from the program
@@ -379,7 +379,7 @@ impl Program {
                 }
                 Ok(result)
             }
-            Node::BuildRender(BuildRenderNode { children, .. }) => {
+            Node::Render(RenderNode { children, .. }) => {
                 let mut result = String::new();
                 for child in children {
                     result.push_str(&self.evaluate_node(
