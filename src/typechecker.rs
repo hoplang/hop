@@ -18,19 +18,16 @@ pub struct ComponentInfo {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeResult {
-    pub parameter_types: HashMap<String, Type>,
     pub component_info: HashMap<String, ComponentInfo>,
     pub annotations: Vec<TypeAnnotation>,
 }
 
 impl TypeResult {
     pub fn new(
-        parameter_types: HashMap<String, Type>,
         component_info: HashMap<String, ComponentInfo>,
         annotations: Vec<TypeAnnotation>,
     ) -> Self {
         TypeResult {
-            parameter_types,
             component_info,
             annotations,
         }
@@ -39,19 +36,19 @@ impl TypeResult {
 
 pub fn typecheck(
     module: &Module,
-    import_types: &HashMap<String, Type>,
     import_component_info: &HashMap<String, ComponentInfo>,
     errors: &mut Vec<RangeError>,
 ) -> TypeResult {
     let mut unifier = Unifier::new();
     let mut annotations: Vec<TypeAnnotation> = Vec::new();
-    let mut parameter_types = import_types.clone();
     let mut component_info = HashMap::new();
     let mut component_slots: HashMap<String, Vec<String>> = HashMap::new();
     let mut env = Environment::new();
 
-    // Load imported component slots
+    // Load imported component info (both types and slots)
+    let mut parameter_types = HashMap::new();
     for (name, info) in import_component_info {
+        parameter_types.insert(name.clone(), info.parameter_type.clone());
         component_slots.insert(name.clone(), info.slots.clone());
     }
 
@@ -155,7 +152,7 @@ pub fn typecheck(
         .map(|TypeAnnotation(range, t)| TypeAnnotation(range, unifier.query(&t)))
         .collect();
 
-    TypeResult::new(parameter_types, component_info, final_annotations)
+    TypeResult::new(component_info, final_annotations)
 }
 
 fn typecheck_node(
@@ -430,7 +427,6 @@ mod tests {
                 .trim();
             let mut all_errors = Vec::new();
             let mut all_output_lines = Vec::new();
-            let mut module_component_types: HashMap<String, HashMap<String, Type>> = HashMap::new();
             let mut module_component_info: HashMap<String, HashMap<String, ComponentInfo>> = HashMap::new();
 
             println!("Test case {} (line {})", case_num + 1, line_number);
@@ -447,24 +443,11 @@ mod tests {
                         continue;
                     }
 
-                    // Build import types and component info from previously processed modules
-                    let mut import_types = HashMap::new();
+                    // Build import component info from previously processed modules
                     let mut import_component_info = HashMap::new();
                     for import_node in &module.imports {
                         let from_module = &import_node.from_attr.value;
                         let component_name = &import_node.component_attr.value;
-
-                        let module_types = module_component_types
-                            .get(from_module)
-                            .unwrap_or_else(|| panic!("Module '{}' not found", from_module));
-
-                        let component_type =
-                            module_types.get(component_name).unwrap_or_else(|| {
-                                panic!(
-                                    "Component '{}' not found in module '{}'",
-                                    component_name, from_module
-                                )
-                            });
 
                         let module_info = module_component_info
                             .get(from_module)
@@ -478,11 +461,10 @@ mod tests {
                                 )
                             });
 
-                        import_types.insert(component_name.clone(), component_type.clone());
                         import_component_info.insert(component_name.clone(), component_info.clone());
                     }
 
-                    let type_result = typecheck(&module, &import_types, &import_component_info, &mut errors);
+                    let type_result = typecheck(&module, &import_component_info, &mut errors);
 
                     if !errors.is_empty() {
                         all_errors.extend(errors);
@@ -490,9 +472,6 @@ mod tests {
                         // Get module name from filename (without .hop extension)
                         let module_name = file.name.trim_end_matches(".hop");
 
-                        // Store this module's component types and info
-                        module_component_types
-                            .insert(module_name.to_string(), type_result.parameter_types.clone());
                         module_component_info
                             .insert(module_name.to_string(), type_result.component_info.clone());
 
@@ -502,9 +481,10 @@ mod tests {
                                 module_name,
                                 c.name,
                                 type_result
-                                    .parameter_types
+                                    .component_info
                                     .get(&c.name)
-                                    .expect("Type not found")
+                                    .expect("Component info not found")
+                                    .parameter_type
                             ));
                         }
                     }

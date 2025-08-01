@@ -78,7 +78,6 @@ impl Server {
             None => return,
         };
 
-        let mut import_types = HashMap::new();
         let mut import_component_info: HashMap<String, ComponentInfo> = HashMap::new();
 
         let mut type_errors = Vec::new();
@@ -93,24 +92,18 @@ impl Server {
             match self
                 .type_results
                 .get(&from_attr.value)
-                .and_then(|result| result.parameter_types.get(&component_attr.value))
+                .and_then(|result| result.component_info.get(&component_attr.value))
             {
-                Some(t) => {
-                    import_types.insert(component_attr.value.clone(), t.clone());
+                Some(component_info) => {
+                    import_component_info.insert(component_attr.value.clone(), component_info.clone());
                 }
                 None => {
                     type_errors.push(RangeError::unresolved_import(&component_attr.value, *range))
                 }
             }
-
-            if let Some(result) = self.type_results.get(&from_attr.value) {
-                if let Some(component_info) = result.component_info.get(&component_attr.value) {
-                    import_component_info.insert(component_attr.value.clone(), component_info.clone());
-                }
-            }
         }
 
-        let type_result = typecheck(module, &import_types, &import_component_info, &mut type_errors);
+        let type_result = typecheck(module, &import_component_info, &mut type_errors);
 
         self.type_results
             .insert(module_name.to_string(), type_result);

@@ -523,16 +523,10 @@ mod tests {
             let tokens = tokenize(source_code, &mut errors);
             let module = parse(tokens, &mut errors);
 
-            let mut import_types = HashMap::new();
             let mut import_component_info = HashMap::new();
             for n in &module.imports {
                 let from_module = &n.from_attr.value;
                 let component_name = &n.component_attr.value;
-                if let Some(types) = module_parameter_types.get(from_module) {
-                    if let Some(component_type) = types.get(component_name) {
-                        import_types.insert(component_name.clone(), component_type.clone());
-                    }
-                }
                 if let Some(info) = module_component_info.get(from_module) {
                     if let Some(component_info) = info.get(component_name) {
                         import_component_info.insert(component_name.clone(), component_info.clone());
@@ -540,7 +534,7 @@ mod tests {
                 }
             }
 
-            let type_info = typecheck(&module, &import_types, &import_component_info, &mut errors);
+            let type_info = typecheck(&module, &import_component_info, &mut errors);
             if !errors.is_empty() {
                 return Err(format!("Errors in {}: {:?}", module_name, errors));
             }
@@ -558,7 +552,12 @@ mod tests {
 
             component_maps.insert(module_name.clone(), component_map);
             import_maps.insert(module_name.clone(), import_map);
-            module_parameter_types.insert(module_name.clone(), type_info.parameter_types);
+            // Extract parameter types from component info for backward compatibility
+            let mut parameter_types = HashMap::new();
+            for (name, info) in &type_info.component_info {
+                parameter_types.insert(name.clone(), info.parameter_type.clone());
+            }
+            module_parameter_types.insert(module_name.clone(), parameter_types);
             module_component_info.insert(module_name.clone(), type_info.component_info);
         }
 

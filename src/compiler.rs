@@ -74,16 +74,15 @@ impl Compiler {
             let Some(module) = modules.get(&module_name) else {
                 continue;
             };
-            let mut import_types = HashMap::new();
             let mut import_component_info = HashMap::new();
 
             for import_node in &module.imports {
                 let from_module = &import_node.from_attr.value;
                 let component_name = &import_node.component_attr.value;
 
-                if let Some(from_module_types) = module_parameter_types.get(from_module) {
-                    if let Some(component_type) = from_module_types.get(component_name) {
-                        import_types.insert(component_name.clone(), component_type.clone());
+                if let Some(from_module_info) = module_component_info.get(from_module) {
+                    if let Some(component_info) = from_module_info.get(component_name) {
+                        import_component_info.insert(component_name.clone(), component_info.clone());
                     } else {
                         return Err(format!(
                             "Component {} not found in module {}",
@@ -93,21 +92,10 @@ impl Compiler {
                 } else {
                     return Err(format!("Module {} not found", from_module));
                 }
-
-                if let Some(from_module_info) = module_component_info.get(from_module) {
-                    if let Some(component_info) = from_module_info.get(component_name) {
-                        import_component_info.insert(component_name.clone(), component_info.clone());
-                    } else {
-                        return Err(format!(
-                            "Component info {} not found in module {}",
-                            component_name, from_module
-                        ));
-                    }
-                }
             }
 
             let mut errors = Vec::new();
-            let type_info = typecheck(module, &import_types, &import_component_info, &mut errors);
+            let type_info = typecheck(module, &import_component_info, &mut errors);
             if !errors.is_empty() {
                 let source_code = self.modules.get(&module_name).unwrap();
                 let formatter =
@@ -141,7 +129,12 @@ impl Compiler {
 
             component_maps.insert(module_name.clone(), component_map);
             import_maps.insert(module_name.clone(), import_map);
-            module_parameter_types.insert(module_name.clone(), type_info.parameter_types);
+            // Extract parameter types from component info for backward compatibility
+            let mut parameter_types = HashMap::new();
+            for (name, info) in &type_info.component_info {
+                parameter_types.insert(name.clone(), info.parameter_type.clone());
+            }
+            module_parameter_types.insert(module_name.clone(), parameter_types);
             module_component_info.insert(module_name.clone(), type_info.component_info);
 
             // Collect scripts from this module
