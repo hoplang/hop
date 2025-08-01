@@ -99,12 +99,10 @@ pub fn typecheck(
         // Store component slots for validation
         component_slots.insert(name.clone(), slots.clone());
 
-        let final_type = if let Some(params_as_attr) = params_as_attr {
+        let parameter_type = if let Some(params_as_attr) = params_as_attr {
             let t1 = unifier.new_type_var();
-            if !env.push(params_as_attr.value.clone(), t1.clone()) {
-                panic!("Variable name for component parameter was unexpectedly in use")
-            }
             annotations.push(TypeAnnotation(params_as_attr.range, t1.clone()));
+            env.push(params_as_attr.value.clone(), t1.clone());
             for child in children {
                 typecheck_node(
                     child,
@@ -116,15 +114,13 @@ pub fn typecheck(
                     errors,
                 );
             }
-
-            let final_type = unifier.query(&t1);
             if !env.pop() {
                 errors.push(RangeError::unused_variable(
                     &params_as_attr.value,
                     params_as_attr.range,
                 ));
             }
-            final_type
+            unifier.query(&t1)
         } else {
             for child in children {
                 typecheck_node(
@@ -140,9 +136,9 @@ pub fn typecheck(
             Type::Void
         };
 
-        parameter_types.insert(name.clone(), final_type.clone());
+        parameter_types.insert(name.clone(), parameter_type.clone());
         component_info.insert(name.clone(), ComponentInfo {
-            parameter_type: final_type,
+            parameter_type,
             slots: slots.clone(),
         });
     }
