@@ -95,7 +95,8 @@ impl Server {
                 .and_then(|result| result.component_info.get(&component_attr.value))
             {
                 Some(component_info) => {
-                    import_component_info.insert(component_attr.value.clone(), component_info.clone());
+                    import_component_info
+                        .insert(component_attr.value.clone(), component_info.clone());
                 }
                 None => {
                     type_errors.push(RangeError::unresolved_import(&component_attr.value, *range))

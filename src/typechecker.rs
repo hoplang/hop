@@ -1,7 +1,7 @@
 use crate::common::{
-    BinaryOp, RenderNode, ComponentDefinitionNode, CondNode, DefineSlotNode, Environment, ErrorNode,
-    ExprAttribute, Expression, ForNode, ImportNode, NativeHTMLNode, Node, Range, RangeError,
-    ComponentReferenceNode, SupplySlotNode, Type,
+    BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, CondNode, DefineSlotNode,
+    Environment, ErrorNode, ExprAttribute, Expression, ForNode, ImportNode, NativeHTMLNode, Node,
+    Range, RangeError, RenderNode, SupplySlotNode, Type,
 };
 use crate::parser::Module;
 use crate::unifier::Unifier;
@@ -137,10 +137,13 @@ pub fn typecheck(
         };
 
         parameter_types.insert(name.clone(), parameter_type.clone());
-        component_info.insert(name.clone(), ComponentInfo {
-            parameter_type,
-            slots: slots.clone(),
-        });
+        component_info.insert(
+            name.clone(),
+            ComponentInfo {
+                parameter_type,
+                slots: slots.clone(),
+            },
+        );
     }
 
     let final_annotations = annotations
@@ -423,7 +426,8 @@ mod tests {
                 .trim();
             let mut all_errors = Vec::new();
             let mut all_output_lines = Vec::new();
-            let mut module_component_info: HashMap<String, HashMap<String, ComponentInfo>> = HashMap::new();
+            let mut module_component_info: HashMap<String, HashMap<String, ComponentInfo>> =
+                HashMap::new();
 
             println!("Test case {} (line {})", case_num + 1, line_number);
 
@@ -449,15 +453,15 @@ mod tests {
                             .get(from_module)
                             .unwrap_or_else(|| panic!("Module info '{}' not found", from_module));
 
-                        let component_info =
-                            module_info.get(component_name).unwrap_or_else(|| {
-                                panic!(
-                                    "Component info '{}' not found in module '{}'",
-                                    component_name, from_module
-                                )
-                            });
+                        let component_info = module_info.get(component_name).unwrap_or_else(|| {
+                            panic!(
+                                "Component info '{}' not found in module '{}'",
+                                component_name, from_module
+                            )
+                        });
 
-                        import_component_info.insert(component_name.clone(), component_info.clone());
+                        import_component_info
+                            .insert(component_name.clone(), component_info.clone());
                     }
 
                     let type_result = typecheck(&module, &import_component_info, &mut errors);

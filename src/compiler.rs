@@ -5,7 +5,7 @@ use crate::runtime::Program;
 use crate::scriptcollector::ScriptCollector;
 use crate::tokenizer::tokenize;
 use crate::toposorter::TopoSorter;
-use crate::typechecker::{typecheck, ComponentInfo};
+use crate::typechecker::{ComponentInfo, typecheck};
 use std::collections::HashMap;
 
 /// Compiler compiles hop modules into a Program that can execute components
@@ -30,7 +30,8 @@ impl Compiler {
         let mut render_maps = HashMap::new();
         let mut modules = HashMap::new();
         let mut module_parameter_types: HashMap<String, HashMap<String, Type>> = HashMap::new();
-        let mut module_component_info: HashMap<String, HashMap<String, ComponentInfo>> = HashMap::new();
+        let mut module_component_info: HashMap<String, HashMap<String, ComponentInfo>> =
+            HashMap::new();
         let mut module_sorter = TopoSorter::new();
         let mut script_collector = ScriptCollector::new();
 
@@ -82,7 +83,8 @@ impl Compiler {
 
                 if let Some(from_module_info) = module_component_info.get(from_module) {
                     if let Some(component_info) = from_module_info.get(component_name) {
-                        import_component_info.insert(component_name.clone(), component_info.clone());
+                        import_component_info
+                            .insert(component_name.clone(), component_info.clone());
                     } else {
                         return Err(format!(
                             "Component {} not found in module {}",

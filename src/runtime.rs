@@ -1,7 +1,7 @@
 use crate::common::{
-    BinaryOp, RenderNode, ComponentDefinitionNode, CondNode, DefineSlotNode, Environment, ErrorNode,
-    Expression, ForNode, NativeHTMLNode, Node, ComponentReferenceNode, SupplySlotNode, Type, escape_html,
-    is_void_element,
+    BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, CondNode, DefineSlotNode,
+    Environment, ErrorNode, Expression, ForNode, NativeHTMLNode, Node, RenderNode, SupplySlotNode,
+    Type, escape_html, is_void_element,
 };
 use std::collections::HashMap;
 
@@ -505,7 +505,7 @@ mod tests {
     use crate::common::{Position, Range, Token, TokenKind};
     use crate::parser::parse;
     use crate::tokenizer::tokenize;
-    use crate::typechecker::{typecheck, ComponentInfo};
+    use crate::typechecker::{ComponentInfo, typecheck};
     use pretty_assertions::assert_eq;
     use simple_txtar::Archive;
     use std::fs;
@@ -515,7 +515,8 @@ mod tests {
         let mut component_maps = HashMap::new();
         let mut import_maps = HashMap::new();
         let mut module_parameter_types: HashMap<String, HashMap<String, Type>> = HashMap::new();
-        let mut module_component_info: HashMap<String, HashMap<String, ComponentInfo>> = HashMap::new();
+        let mut module_component_info: HashMap<String, HashMap<String, ComponentInfo>> =
+            HashMap::new();
 
         // Parse and typecheck modules in order
         for (module_name, source_code) in &modules_source {
@@ -529,7 +530,8 @@ mod tests {
                 let component_name = &n.component_attr.value;
                 if let Some(info) = module_component_info.get(from_module) {
                     if let Some(component_info) = info.get(component_name) {
-                        import_component_info.insert(component_name.clone(), component_info.clone());
+                        import_component_info
+                            .insert(component_name.clone(), component_info.clone());
                     }
                 }
             }
