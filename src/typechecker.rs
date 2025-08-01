@@ -1,11 +1,11 @@
 use crate::common::{
     BinaryOp, BuildRenderNode, ComponentNode, CondNode, DefineSlotNode, Environment, ErrorNode,
-    ExprAttribute, Expression, ForNode, NativeHTMLNode, Node, Range, RangeError, RenderNode,
-    SupplySlotNode, Type,
+    ExprAttribute, Expression, ForNode, ImportNode, NativeHTMLNode, Node, Range, RangeError,
+    RenderNode, SupplySlotNode, Type,
 };
 use crate::parser::Module;
 use crate::unifier::Unifier;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeAnnotation(pub Range, pub Type);
@@ -35,6 +35,21 @@ pub fn typecheck(
     let mut parameter_types = import_types.clone();
     let mut component_slots: HashMap<String, Vec<String>> = HashMap::new();
     let mut env = Environment::new();
+
+    let mut imported_names = HashSet::new();
+    for ImportNode {
+        component_attr,
+        range,
+        ..
+    } in &module.imports
+    {
+        let name = component_attr.value.clone();
+        if imported_names.contains(&name) {
+            errors.push(RangeError::component_already_defined(&name, *range));
+        } else {
+            imported_names.insert(name);
+        }
+    }
 
     for BuildRenderNode { children, .. } in &module.build_renders {
         for child in children {

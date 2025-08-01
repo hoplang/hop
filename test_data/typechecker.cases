@@ -67,8 +67,7 @@ typechecker outputs an error.
 Component foo-comp is already defined
 ## END
 
-TODO: When a component is imported twice, the
-typechecker outputs an error.
+When a component is imported twice, the typechecker outputs an error.
 
 ## BEGIN
 -- other.hop --
@@ -83,8 +82,7 @@ typechecker outputs an error.
 	<foo-comp></foo-comp>
 </main-comp>
 -- out --
-other::foo-comp : void
-main::main-comp : void
+Component foo-comp is already defined
 ## END
 
 TODO: When a component is imported without being used the typechecker outputs
