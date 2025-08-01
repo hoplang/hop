@@ -1,4 +1,4 @@
-The typechecker allows empty files, and no types are emitted.
+The typechecker allows empty files, and no types are emitted for them.
 
 ## BEGIN
 -- main.hop --
@@ -65,6 +65,44 @@ typechecker outputs an error.
 </foo-comp>
 -- out --
 Component foo-comp is already defined
+## END
+
+TODO: When a component is imported twice, the
+typechecker outputs an error.
+
+## BEGIN
+-- other.hop --
+<foo-comp>
+</foo-comp>
+
+-- main.hop --
+<import component="foo-comp" from="other">
+<import component="foo-comp" from="other">
+
+<main-comp>
+	<foo-comp></foo-comp>
+</main-comp>
+-- out --
+other::foo-comp : void
+main::main-comp : void
+## END
+
+TODO: When a component is imported without being used the typechecker outputs
+an error.
+
+## BEGIN
+-- other.hop --
+<foo-comp>
+</foo-comp>
+
+-- main.hop --
+<import component="foo-comp" from="other">
+
+<main-comp>
+</main-comp>
+-- out --
+other::foo-comp : void
+main::main-comp : void
 ## END
 
 Defining a component with the same name in two different modules is allowed.
