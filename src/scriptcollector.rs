@@ -1,8 +1,8 @@
-use crate::common::{ComponentNode, Node};
+use crate::common::{ComponentDefinitionNode, Node};
 use std::collections::HashMap;
 
 pub struct ScriptCollector {
-    modules: HashMap<String, Vec<ComponentNode>>,
+    modules: HashMap<String, Vec<ComponentDefinitionNode>>,
 }
 
 impl ScriptCollector {
@@ -12,7 +12,7 @@ impl ScriptCollector {
         }
     }
 
-    pub fn add_module(&mut self, module_name: String, components: Vec<ComponentNode>) {
+    pub fn add_module(&mut self, module_name: String, components: Vec<ComponentDefinitionNode>) {
         self.modules.insert(module_name, components);
     }
 
@@ -21,7 +21,7 @@ impl ScriptCollector {
         for node in nodes {
             result.push(node.clone());
             match node {
-                Node::Component(component_node) => {
+                Node::ComponentDefinition(component_node) => {
                     result.extend(self.get_all_descendants(&component_node.children));
                 }
                 Node::NativeHTML(native_html_node) => {
@@ -33,7 +33,7 @@ impl ScriptCollector {
                 Node::Cond(cond_node) => {
                     result.extend(self.get_all_descendants(&cond_node.children));
                 }
-                Node::Render(render_node) => {
+                Node::ComponentReference(render_node) => {
                     result.extend(self.get_all_descendants(&render_node.children));
                 }
                 _ => {

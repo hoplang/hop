@@ -349,7 +349,7 @@ pub struct TextNode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct RenderNode {
+pub struct ComponentReferenceNode {
     pub component: String,
     pub params_attr: Option<ExprAttribute>,
     pub range: Range,
@@ -379,7 +379,7 @@ pub struct ImportNode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ComponentNode {
+pub struct ComponentDefinitionNode {
     pub name: String,
     pub params_as_attr: Option<VarNameAttr>,
     pub as_attr: Option<Attribute>,
@@ -431,11 +431,11 @@ pub struct BuildRenderNode {
 pub enum Node {
     Doctype(DoctypeNode),
     Text(TextNode),
-    Render(RenderNode),
+    ComponentReference(ComponentReferenceNode),
     For(ForNode),
     Cond(CondNode),
     Import(ImportNode),
-    Component(ComponentNode),
+    ComponentDefinition(ComponentDefinitionNode),
     NativeHTML(NativeHTMLNode),
     Error(ErrorNode),
     DefineSlot(DefineSlotNode),

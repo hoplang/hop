@@ -1,6 +1,6 @@
 use crate::common::{
-    BinaryOp, BuildRenderNode, ComponentNode, CondNode, DefineSlotNode, Environment, ErrorNode,
-    Expression, ForNode, NativeHTMLNode, Node, RenderNode, SupplySlotNode, Type, escape_html,
+    BinaryOp, BuildRenderNode, ComponentDefinitionNode, CondNode, DefineSlotNode, Environment, ErrorNode,
+    Expression, ForNode, NativeHTMLNode, Node, ComponentReferenceNode, SupplySlotNode, Type, escape_html,
     is_void_element,
 };
 use std::collections::HashMap;
@@ -8,7 +8,7 @@ use std::collections::HashMap;
 /// Program represents a compiled hop program that can execute components and entrypoints
 #[derive(Clone)]
 pub struct Program {
-    component_maps: HashMap<String, HashMap<String, ComponentNode>>,
+    component_maps: HashMap<String, HashMap<String, ComponentDefinitionNode>>,
     import_maps: HashMap<String, HashMap<String, String>>,
     parameter_types: HashMap<String, HashMap<String, Type>>,
     build_renders: HashMap<String, Vec<BuildRenderNode>>,
@@ -17,7 +17,7 @@ pub struct Program {
 
 impl Program {
     pub fn new(
-        component_maps: HashMap<String, HashMap<String, ComponentNode>>,
+        component_maps: HashMap<String, HashMap<String, ComponentDefinitionNode>>,
         import_maps: HashMap<String, HashMap<String, String>>,
         parameter_types: HashMap<String, HashMap<String, Type>>,
         build_renders: HashMap<String, Vec<BuildRenderNode>>,
@@ -203,7 +203,7 @@ impl Program {
                     Ok(String::new())
                 }
             }
-            Node::Render(RenderNode {
+            Node::ComponentReference(ComponentReferenceNode {
                 component,
                 params_attr,
                 children,
@@ -391,7 +391,7 @@ impl Program {
                 }
                 Ok(result)
             }
-            Node::Import(_) | Node::Component(_) => {
+            Node::Import(_) | Node::ComponentDefinition(_) => {
                 panic!("Unexpected node")
             }
         }

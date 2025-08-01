@@ -1,7 +1,7 @@
 use crate::common::{
-    BuildRenderNode, ComponentNode, CondNode, DefineSlotNode, DoctypeNode, ErrorNode,
+    BuildRenderNode, ComponentDefinitionNode, CondNode, DefineSlotNode, DoctypeNode, ErrorNode,
     ExprAttribute, ForNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError,
-    RenderNode, SupplySlotNode, TextNode, Token, TokenKind, VarNameAttr, is_void_element,
+    ComponentReferenceNode, SupplySlotNode, TextNode, Token, TokenKind, VarNameAttr, is_void_element,
 };
 use crate::expression_parser::parse_expression;
 use std::collections::HashSet;
@@ -15,7 +15,7 @@ fn is_valid_component_name(name: &str) -> bool {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module {
-    pub components: Vec<ComponentNode>,
+    pub components: Vec<ComponentDefinitionNode>,
     pub imports: Vec<ImportNode>,
     pub build_renders: Vec<BuildRenderNode>,
 }
@@ -31,7 +31,7 @@ pub fn parse(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> Module {
         let node = construct_node(child, 0, errors);
         match node {
             Node::Import(import_data) => imports.push(import_data),
-            Node::Component(component_data) => components.push(component_data),
+            Node::ComponentDefinition(component_data) => components.push(component_data),
             Node::BuildRender(build_render_data) => build_renders.push(build_render_data),
             _ => {} // ignore other node types at root level
         }
@@ -172,7 +172,7 @@ fn collect_slots_from_children(
                     }
                 }
             }
-            Node::Component(ComponentNode { children, .. }) => {
+            Node::ComponentDefinition(ComponentDefinitionNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
             Node::For(ForNode { children, .. }) => {
@@ -184,7 +184,7 @@ fn collect_slots_from_children(
             Node::NativeHTML(NativeHTMLNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
-            Node::Render(RenderNode { children, .. }) => {
+            Node::ComponentReference(ComponentReferenceNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
             Node::SupplySlot(SupplySlotNode { children, .. }) => {
@@ -261,7 +261,7 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
 
                     let mut slots = HashSet::new();
                     collect_slots_from_children(&children, &mut slots, errors);
-                    Node::Component(ComponentNode {
+                    Node::ComponentDefinition(ComponentDefinitionNode {
                         name: name.to_string(),
                         params_as_attr,
                         as_attr,
@@ -404,7 +404,7 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                         parse_expr_attribute(&attr.name, &attr.value, attr.range, errors)
                     });
 
-                    Node::Render(RenderNode {
+                    Node::ComponentReference(ComponentReferenceNode {
                         component: tag_name.to_string(),
                         params_attr,
                         range: t.range,
@@ -467,7 +467,7 @@ mod tests {
                 Node::Doctype(_) => {
                     lines.push(format!("{}doctype", indent));
                 }
-                Node::Render(RenderNode { children, .. }) => {
+                Node::ComponentReference(ComponentReferenceNode { children, .. }) => {
                     lines.push(format!("{}render", indent));
                     for child in children {
                         format_node(child, depth + 1, lines);
@@ -485,7 +485,7 @@ mod tests {
                         format_node(child, depth + 1, lines);
                     }
                 }
-                Node::Component(ComponentNode { children, .. }) => {
+                Node::ComponentDefinition(ComponentDefinitionNode { children, .. }) => {
                     lines.push(format!("{}component", indent));
                     for child in children {
                         format_node(child, depth + 1, lines);
@@ -570,7 +570,7 @@ mod tests {
             } else {
                 for component in module.components {
                     if component.name == "main-comp" {
-                        let output = format_tree(&Node::Component(component));
+                        let output = format_tree(&Node::ComponentDefinition(component));
                         assert_eq!(
                             output,
                             expected,

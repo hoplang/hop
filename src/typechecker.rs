@@ -1,7 +1,7 @@
 use crate::common::{
-    BinaryOp, BuildRenderNode, ComponentNode, CondNode, DefineSlotNode, Environment, ErrorNode,
+    BinaryOp, BuildRenderNode, ComponentDefinitionNode, CondNode, DefineSlotNode, Environment, ErrorNode,
     ExprAttribute, Expression, ForNode, ImportNode, NativeHTMLNode, Node, Range, RangeError,
-    RenderNode, SupplySlotNode, Type,
+    ComponentReferenceNode, SupplySlotNode, Type,
 };
 use crate::parser::Module;
 use crate::unifier::Unifier;
@@ -65,7 +65,7 @@ pub fn typecheck(
         }
     }
 
-    for ComponentNode {
+    for ComponentDefinitionNode {
         name,
         params_as_attr,
         children,
@@ -210,7 +210,7 @@ fn typecheck_node(
                 );
             }
         }
-        Node::Render(RenderNode {
+        Node::ComponentReference(ComponentReferenceNode {
             component,
             params_attr,
             children,
@@ -293,7 +293,7 @@ fn typecheck_node(
         Node::Text(_) | Node::Doctype(_) => {
             // No typechecking needed
         }
-        Node::Import(_) | Node::Component(_) => {
+        Node::Import(_) | Node::ComponentDefinition(_) => {
             panic!("Unexpected node")
         }
     }
