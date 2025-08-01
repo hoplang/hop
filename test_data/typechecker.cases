@@ -103,6 +103,19 @@ other::foo-comp : void
 main::main-comp : void
 ## END
 
+The typechecker collects all errors rather than returning at the first error.
+
+## BEGIN
+-- main.hop --
+<main-comp>
+	<h1>Hello, <render-name></render-name>!</h1>
+	<h1>Hello, <other-comp></other-comp>!</h1>
+</main-comp>
+-- out --
+Component render-name not found
+Component other-comp not found
+## END
+
 Defining a component with the same name in two different modules is allowed.
 
 ## BEGIN
