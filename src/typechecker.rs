@@ -11,25 +11,37 @@ use std::collections::{HashMap, HashSet};
 pub struct TypeAnnotation(pub Range, pub Type);
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct DefinitionLink {
+    pub reference_range: Range,
+    pub definition_module: String,
+    pub definition_range: Range,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ComponentInfo {
     pub parameter_type: Type,
     pub slots: Vec<String>,
+    pub definition_module: String,
+    pub definition_range: Range,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeResult {
     pub component_info: HashMap<String, ComponentInfo>,
     pub annotations: Vec<TypeAnnotation>,
+    pub definition_links: Vec<DefinitionLink>,
 }
 
 impl TypeResult {
     pub fn new(
         component_info: HashMap<String, ComponentInfo>,
         annotations: Vec<TypeAnnotation>,
+        definition_links: Vec<DefinitionLink>,
     ) -> Self {
         TypeResult {
             component_info,
             annotations,
+            definition_links,
         }
     }
 }
@@ -41,6 +53,7 @@ pub fn typecheck(
 ) -> TypeResult {
     let mut unifier = Unifier::new();
     let mut annotations: Vec<TypeAnnotation> = Vec::new();
+    let mut definition_links: Vec<DefinitionLink> = Vec::new();
     let mut component_info = import_component_info.clone();
     let mut env = Environment::new();
 
@@ -67,6 +80,7 @@ pub fn typecheck(
                 &mut env,
                 &mut unifier,
                 &mut annotations,
+                &mut definition_links,
                 errors,
             );
         }
@@ -98,6 +112,7 @@ pub fn typecheck(
                     &mut env,
                     &mut unifier,
                     &mut annotations,
+                    &mut definition_links,
                     errors,
                 );
             }
@@ -116,6 +131,7 @@ pub fn typecheck(
                     &mut env,
                     &mut unifier,
                     &mut annotations,
+                    &mut definition_links,
                     errors,
                 );
             }
@@ -127,6 +143,8 @@ pub fn typecheck(
             ComponentInfo {
                 parameter_type,
                 slots: slots.clone(),
+                definition_module: module.name.clone(),
+                definition_range: *range,
             },
         );
     }
@@ -136,7 +154,7 @@ pub fn typecheck(
         .map(|TypeAnnotation(range, t)| TypeAnnotation(range, unifier.query(&t)))
         .collect();
 
-    TypeResult::new(component_info, final_annotations)
+    TypeResult::new(component_info, final_annotations, definition_links)
 }
 
 fn typecheck_node(
@@ -145,6 +163,7 @@ fn typecheck_node(
     env: &mut Environment<Type>,
     unifier: &mut Unifier,
     annotations: &mut Vec<TypeAnnotation>,
+    definition_links: &mut Vec<DefinitionLink>,
     errors: &mut Vec<RangeError>,
 ) {
     match node {
@@ -179,7 +198,7 @@ fn typecheck_node(
             }
 
             for child in children {
-                typecheck_node(child, component_info, env, unifier, annotations, errors);
+                typecheck_node(child, component_info, env, unifier, annotations, definition_links, errors);
             }
 
             if pushed {
@@ -196,7 +215,7 @@ fn typecheck_node(
             typecheck_expr(&Type::Bool, if_attr, env, unifier, annotations, errors);
 
             for child in children {
-                typecheck_node(child, component_info, env, unifier, annotations, errors);
+                typecheck_node(child, component_info, env, unifier, annotations, definition_links, errors);
             }
         }
         Node::ComponentReference(ComponentReferenceNode {
@@ -207,6 +226,13 @@ fn typecheck_node(
             ..
         }) => {
             if let Some(comp_info) = component_info.get(component) {
+                // Add definition link for go-to-definition
+                definition_links.push(DefinitionLink {
+                    reference_range: *range,
+                    definition_module: comp_info.definition_module.clone(),
+                    definition_range: comp_info.definition_range,
+                });
+
                 if let Some(params_attr) = params_attr {
                     typecheck_expr(
                         &comp_info.parameter_type,
@@ -231,7 +257,7 @@ fn typecheck_node(
             }
 
             for child in children {
-                typecheck_node(child, component_info, env, unifier, annotations, errors);
+                typecheck_node(child, component_info, env, unifier, annotations, definition_links, errors);
             }
         }
         Node::NativeHTML(NativeHTMLNode {
@@ -249,7 +275,7 @@ fn typecheck_node(
             }
 
             for child in children {
-                typecheck_node(child, component_info, env, unifier, annotations, errors);
+                typecheck_node(child, component_info, env, unifier, annotations, definition_links, errors);
             }
         }
         Node::DefineSlot(DefineSlotNode { children, .. })
@@ -257,7 +283,7 @@ fn typecheck_node(
         | Node::Render(RenderNode { children, .. })
         | Node::Error(ErrorNode { children, .. }) => {
             for child in children {
-                typecheck_node(child, component_info, env, unifier, annotations, errors);
+                typecheck_node(child, component_info, env, unifier, annotations, definition_links, errors);
             }
         }
         Node::Text(_) | Node::Doctype(_) => {
@@ -385,7 +411,8 @@ mod tests {
                 if file.name.ends_with(".hop") {
                     let mut errors = Vec::new();
                     let tokens = tokenize(file.content.trim(), &mut errors);
-                    let module = parse(tokens, &mut errors);
+                    let module_name = file.name.trim_end_matches(".hop");
+                    let module = parse(module_name.to_string(), tokens, &mut errors);
 
                     if !errors.is_empty() {
                         all_errors.extend(errors);
@@ -418,16 +445,14 @@ mod tests {
                     if !errors.is_empty() {
                         all_errors.extend(errors);
                     } else {
-                        // Get module name from filename (without .hop extension)
-                        let module_name = file.name.trim_end_matches(".hop");
 
                         module_component_info
-                            .insert(module_name.to_string(), type_result.component_info.clone());
+                            .insert(module.name.clone(), type_result.component_info.clone());
 
                         for c in module.components {
                             all_output_lines.push(format!(
                                 "{}::{}\n\t{}\n\t{:?}",
-                                module_name,
+                                module.name,
                                 c.name,
                                 type_result
                                     .component_info

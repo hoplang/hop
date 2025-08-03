@@ -2,12 +2,21 @@ use crate::common::{ImportNode, Position, RangeError};
 use crate::parser::{Module, parse};
 use crate::tokenizer::tokenize;
 use crate::toposorter::TopoSorter;
-use crate::typechecker::{ComponentInfo, TypeAnnotation, TypeResult, typecheck};
+use crate::typechecker::{ComponentInfo, DefinitionLink, TypeAnnotation, TypeResult, typecheck};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct HoverInfo {
     pub type_str: String,
+    pub start_line: usize,
+    pub start_column: usize,
+    pub end_line: usize,
+    pub end_column: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DefinitionLocation {
+    pub module: String,
     pub start_line: usize,
     pub start_column: usize,
     pub end_line: usize,
@@ -49,7 +58,7 @@ impl Server {
     pub fn update_module(&mut self, name: String, source_code: &str) {
         let mut parse_errors = Vec::new();
         let tokens = tokenize(source_code, &mut parse_errors);
-        let module = parse(tokens, &mut parse_errors);
+        let module = parse(name.clone(), tokens, &mut parse_errors);
 
         self.topo_sorter.clear_dependencies(&name);
         self.topo_sorter.add_node(name.clone());
@@ -129,6 +138,35 @@ impl Server {
                     start_column: range.start.column,
                     end_line: range.end.line,
                     end_column: range.end.column,
+                });
+            }
+        }
+
+        None
+    }
+
+    pub fn get_definition(
+        &self,
+        module_name: &str,
+        line: usize,
+        column: usize,
+    ) -> Option<DefinitionLocation> {
+        let type_result = self.type_results.get(module_name)?;
+        let pos = Position::new(line, column);
+
+        for DefinitionLink {
+            reference_range,
+            definition_module,
+            definition_range,
+        } in &type_result.definition_links
+        {
+            if reference_range.contains_position(pos) {
+                return Some(DefinitionLocation {
+                    module: definition_module.clone(),
+                    start_line: definition_range.start.line,
+                    start_column: definition_range.start.column,
+                    end_line: definition_range.end.line,
+                    end_column: definition_range.end.column,
                 });
             }
         }

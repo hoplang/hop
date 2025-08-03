@@ -168,6 +168,7 @@ impl LanguageServer for HopLanguageServer {
                     TextDocumentSyncKind::FULL,
                 )),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
+                definition_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
@@ -273,6 +274,54 @@ impl LanguageServer for HopLanguageServer {
                     end: Self::rust_position_to_lsp(hover_info.end_line, hover_info.end_column),
                 }),
             }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn goto_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+        let module_name = self.uri_to_module_name(&uri);
+
+        let (line, column) = Self::lsp_position_to_rust(position);
+        let server = self.server.read().await;
+        
+        if let Some(definition) = server.get_definition(&module_name, line, column) {
+            // Convert the definition module name to a URI
+            let def_uri = if definition.module == module_name {
+                // Same module
+                uri.clone()
+            } else {
+                // Different module - construct URI from module name
+                let current_path = std::path::Path::new(uri.path());
+                let parent_dir = current_path.parent().unwrap_or(std::path::Path::new("."));
+                let def_path = parent_dir.join(format!("{}.hop", definition.module));
+                
+                match Url::from_file_path(&def_path) {
+                    Ok(url) => url,
+                    Err(_) => return Ok(None),
+                }
+            };
+
+            let location = Location {
+                uri: def_uri,
+                range: Range {
+                    start: Self::rust_position_to_lsp(
+                        definition.start_line,
+                        definition.start_column,
+                    ),
+                    end: Self::rust_position_to_lsp(
+                        definition.end_line,
+                        definition.end_column,
+                    ),
+                },
+            };
+
+            Ok(Some(GotoDefinitionResponse::Scalar(location)))
         } else {
             Ok(None)
         }

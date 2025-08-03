@@ -39,7 +39,7 @@ impl Compiler {
         for (module_name, source_code) in &self.modules {
             let mut errors = Vec::new();
             let tokens = tokenize(source_code, &mut errors);
-            let module = parse(tokens, &mut errors);
+            let module = parse(module_name.clone(), tokens, &mut errors);
             if !errors.is_empty() {
                 let formatter =
                     ErrorFormatter::new(source_code.clone(), format!("{}.hop", module_name));

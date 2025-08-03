@@ -522,7 +522,7 @@ mod tests {
         for (module_name, source_code) in &modules_source {
             let mut errors = Vec::new();
             let tokens = tokenize(source_code, &mut errors);
-            let module = parse(tokens, &mut errors);
+            let module = parse(module_name.clone(), tokens, &mut errors);
 
             let mut import_component_info = HashMap::new();
             for n in &module.imports {

@@ -16,12 +16,13 @@ fn is_valid_component_name(name: &str) -> bool {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module {
+    pub name: String,
     pub components: Vec<ComponentDefinitionNode>,
     pub imports: Vec<ImportNode>,
     pub renders: Vec<RenderNode>,
 }
 
-pub fn parse(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> Module {
+pub fn parse(module_name: String, tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> Module {
     let tree = build_tree(tokens, errors);
 
     let mut components = Vec::new();
@@ -39,6 +40,7 @@ pub fn parse(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> Module {
     }
 
     Module {
+        name: module_name,
         components,
         imports,
         renders,
@@ -553,7 +555,7 @@ mod tests {
             let mut errors = Vec::new();
             let tokens = tokenize(input, &mut errors);
             assert!(errors.is_empty());
-            let module = parse(tokens, &mut errors);
+            let module = parse("test".to_string(), tokens, &mut errors);
 
             if !errors.is_empty() {
                 let output = errors
