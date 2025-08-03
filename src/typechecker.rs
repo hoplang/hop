@@ -198,7 +198,15 @@ fn typecheck_node(
             }
 
             for child in children {
-                typecheck_node(child, component_info, env, unifier, annotations, definition_links, errors);
+                typecheck_node(
+                    child,
+                    component_info,
+                    env,
+                    unifier,
+                    annotations,
+                    definition_links,
+                    errors,
+                );
             }
 
             if pushed {
@@ -215,7 +223,15 @@ fn typecheck_node(
             typecheck_expr(&Type::Bool, if_attr, env, unifier, annotations, errors);
 
             for child in children {
-                typecheck_node(child, component_info, env, unifier, annotations, definition_links, errors);
+                typecheck_node(
+                    child,
+                    component_info,
+                    env,
+                    unifier,
+                    annotations,
+                    definition_links,
+                    errors,
+                );
             }
         }
         Node::ComponentReference(ComponentReferenceNode {
@@ -257,7 +273,15 @@ fn typecheck_node(
             }
 
             for child in children {
-                typecheck_node(child, component_info, env, unifier, annotations, definition_links, errors);
+                typecheck_node(
+                    child,
+                    component_info,
+                    env,
+                    unifier,
+                    annotations,
+                    definition_links,
+                    errors,
+                );
             }
         }
         Node::NativeHTML(NativeHTMLNode {
@@ -275,7 +299,15 @@ fn typecheck_node(
             }
 
             for child in children {
-                typecheck_node(child, component_info, env, unifier, annotations, definition_links, errors);
+                typecheck_node(
+                    child,
+                    component_info,
+                    env,
+                    unifier,
+                    annotations,
+                    definition_links,
+                    errors,
+                );
             }
         }
         Node::DefineSlot(DefineSlotNode { children, .. })
@@ -283,7 +315,15 @@ fn typecheck_node(
         | Node::Render(RenderNode { children, .. })
         | Node::Error(ErrorNode { children, .. }) => {
             for child in children {
-                typecheck_node(child, component_info, env, unifier, annotations, definition_links, errors);
+                typecheck_node(
+                    child,
+                    component_info,
+                    env,
+                    unifier,
+                    annotations,
+                    definition_links,
+                    errors,
+                );
             }
         }
         Node::Text(_) | Node::Doctype(_) => {
@@ -445,7 +485,6 @@ mod tests {
                     if !errors.is_empty() {
                         all_errors.extend(errors);
                     } else {
-
                         module_component_info
                             .insert(module.name.clone(), type_result.component_info.clone());
 

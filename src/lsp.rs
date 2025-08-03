@@ -289,7 +289,7 @@ impl LanguageServer for HopLanguageServer {
 
         let (line, column) = Self::lsp_position_to_rust(position);
         let server = self.server.read().await;
-        
+
         if let Some(definition) = server.get_definition(&module_name, line, column) {
             // Convert the definition module name to a URI
             let def_uri = if definition.module == module_name {
@@ -300,7 +300,7 @@ impl LanguageServer for HopLanguageServer {
                 let current_path = std::path::Path::new(uri.path());
                 let parent_dir = current_path.parent().unwrap_or(std::path::Path::new("."));
                 let def_path = parent_dir.join(format!("{}.hop", definition.module));
-                
+
                 match Url::from_file_path(&def_path) {
                     Ok(url) => url,
                     Err(_) => return Ok(None),
@@ -314,10 +314,7 @@ impl LanguageServer for HopLanguageServer {
                         definition.start_line,
                         definition.start_column,
                     ),
-                    end: Self::rust_position_to_lsp(
-                        definition.end_line,
-                        definition.end_column,
-                    ),
+                    end: Self::rust_position_to_lsp(definition.end_line, definition.end_column),
                 },
             };
 
