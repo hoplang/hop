@@ -93,21 +93,6 @@ pub fn typecheck(
     }
     let mut env = Environment::new();
 
-    for RenderNode { children, .. } in &module.renders {
-        for child in children {
-            typecheck_node(
-                child,
-                &component_info,
-                &mut env,
-                &mut unifier,
-                &mut annotations,
-                &mut definition_links,
-                &mut referenced_components,
-                errors,
-            );
-        }
-    }
-
     for ComponentDefinitionNode {
         name,
         params_as_attr,
@@ -171,6 +156,21 @@ pub fn typecheck(
                 definition_range: *range,
             },
         );
+    }
+
+    for RenderNode { children, .. } in &module.renders {
+        for child in children {
+            typecheck_node(
+                child,
+                &component_info,
+                &mut env,
+                &mut unifier,
+                &mut annotations,
+                &mut definition_links,
+                &mut referenced_components,
+                errors,
+            );
+        }
     }
 
     // Check for unused imports
