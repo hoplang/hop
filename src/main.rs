@@ -671,9 +671,9 @@ mod tests {
 <render file="index.html">
   hello world!
 </render>
--- static/style.css --
+-- static/css/style.css --
 body { background: blue; }
--- static/script.js --
+-- static/js/script.js --
 console.log("Hello from static file");
 "#,
         )
@@ -695,12 +695,12 @@ console.log("Hello from static file");
         let body = response.text();
         assert!(body.contains("hello world!"));
 
-        let response = server.get("/style.css").await;
+        let response = server.get("/css/style.css").await;
         response.assert_status_ok();
         let body = response.text();
         assert!(body.contains("body { background: blue; }"));
 
-        let response = server.get("/script.js").await;
+        let response = server.get("/js/script.js").await;
         response.assert_status_ok();
         let body = response.text();
         assert!(body.contains("console.log(\"Hello from static file\");"));
