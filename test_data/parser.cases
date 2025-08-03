@@ -1,3 +1,12 @@
+The parser allows empty file and the resulting output is empty.
+
+## BEGIN
+-- main.hop --
+-- out --
+## END
+
+When a tag is not properly closed the parser outputs an error.
+
 ## BEGIN
 -- main.hop --
 <main-comp>
@@ -7,6 +16,8 @@
 Unclosed <div>
 ## END
 
+When a void tag is closed with an end tag the parser outputs an error.
+
 ## BEGIN
 -- main.hop --
 <main-comp>
@@ -15,6 +26,9 @@ Unclosed <div>
 -- out --
 <hr> should not be closed using a closing tag
 ## END
+
+When a closing tag does not have a matching opening tag, the parser outputs an
+error.
 
 ## BEGIN
 -- main.hop --
