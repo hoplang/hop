@@ -69,7 +69,14 @@ pub fn typecheck(
 
         if let Some(type_result) = import_type_results.get(from_module) {
             if let Some(comp_info) = type_result.component_info.get(component_name) {
-                component_info.insert(component_name.clone(), comp_info.clone());
+                if component_info.contains_key(component_name) {
+                    errors.push(RangeError::component_already_defined(
+                        component_name,
+                        *range,
+                    ));
+                } else {
+                    component_info.insert(component_name.clone(), comp_info.clone());
+                }
             } else {
                 errors.push(RangeError::undeclared_component(
                     from_module,
@@ -82,21 +89,6 @@ pub fn typecheck(
         }
     }
     let mut env = Environment::new();
-
-    let mut imported_names = HashSet::new();
-    for ImportNode {
-        component_attr,
-        range,
-        ..
-    } in &module.imports
-    {
-        let name = component_attr.value.clone();
-        if imported_names.contains(&name) {
-            errors.push(RangeError::component_already_defined(&name, *range));
-        } else {
-            imported_names.insert(name);
-        }
-    }
 
     for RenderNode { children, .. } in &module.renders {
         for child in children {
