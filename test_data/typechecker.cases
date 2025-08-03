@@ -65,6 +65,10 @@ typechecker outputs an error.
 
 <foo-comp>
 </foo-comp>
+
+<bar-comp>
+	<foo-comp/>
+</bar-comp>
 -- out --
 Component foo-comp is already defined
 ## END
@@ -114,7 +118,7 @@ the typechecker outputs an error.
 Module other does not declare a component named foo-comp
 ## END
 
-TODO: When a component is imported without being used the typechecker outputs
+When a component is imported without being used the typechecker outputs
 an error.
 
 ## BEGIN
@@ -128,12 +132,7 @@ an error.
 <main-comp>
 </main-comp>
 -- out --
-other::foo-comp
-	void
-	[]
-main::main-comp
-	void
-	[]
+Unused import: foo-comp
 ## END
 
 The typechecker collects all errors rather than returning at the first error.

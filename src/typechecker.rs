@@ -55,6 +55,8 @@ pub fn typecheck(
     let mut annotations: Vec<TypeAnnotation> = Vec::new();
     let mut definition_links: Vec<DefinitionLink> = Vec::new();
     let mut component_info = HashMap::new();
+    let mut imported_components: HashMap<String, Range> = HashMap::new();
+    let mut referenced_components: HashSet<String> = HashSet::new();
 
     // Build component_info from all imported components
     for ImportNode {
@@ -76,6 +78,7 @@ pub fn typecheck(
                     ));
                 } else {
                     component_info.insert(component_name.clone(), comp_info.clone());
+                    imported_components.insert(component_name.clone(), *range);
                 }
             } else {
                 errors.push(RangeError::undeclared_component(
@@ -99,6 +102,7 @@ pub fn typecheck(
                 &mut unifier,
                 &mut annotations,
                 &mut definition_links,
+                &mut referenced_components,
                 errors,
             );
         }
@@ -131,6 +135,7 @@ pub fn typecheck(
                     &mut unifier,
                     &mut annotations,
                     &mut definition_links,
+                    &mut referenced_components,
                     errors,
                 );
             }
@@ -150,6 +155,7 @@ pub fn typecheck(
                     &mut unifier,
                     &mut annotations,
                     &mut definition_links,
+                    &mut referenced_components,
                     errors,
                 );
             }
@@ -167,6 +173,13 @@ pub fn typecheck(
         );
     }
 
+    // Check for unused imports
+    for (component_name, import_range) in imported_components {
+        if !referenced_components.contains(&component_name) {
+            errors.push(RangeError::unused_import(&component_name, import_range));
+        }
+    }
+
     let final_annotations = annotations
         .into_iter()
         .map(|TypeAnnotation(range, t)| TypeAnnotation(range, unifier.query(&t)))
@@ -182,6 +195,7 @@ fn typecheck_node(
     unifier: &mut Unifier,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
+    referenced_components: &mut HashSet<String>,
     errors: &mut Vec<RangeError>,
 ) {
     match node {
@@ -223,6 +237,7 @@ fn typecheck_node(
                     unifier,
                     annotations,
                     definition_links,
+                    referenced_components,
                     errors,
                 );
             }
@@ -248,6 +263,7 @@ fn typecheck_node(
                     unifier,
                     annotations,
                     definition_links,
+                    referenced_components,
                     errors,
                 );
             }
@@ -259,6 +275,9 @@ fn typecheck_node(
             range,
             ..
         }) => {
+            // Track that this component is being referenced
+            referenced_components.insert(component.clone());
+
             if let Some(comp_info) = component_info.get(component) {
                 // Add definition link for go-to-definition
                 definition_links.push(DefinitionLink {
@@ -298,6 +317,7 @@ fn typecheck_node(
                     unifier,
                     annotations,
                     definition_links,
+                    referenced_components,
                     errors,
                 );
             }
@@ -324,6 +344,7 @@ fn typecheck_node(
                     unifier,
                     annotations,
                     definition_links,
+                    referenced_components,
                     errors,
                 );
             }
@@ -340,6 +361,7 @@ fn typecheck_node(
                     unifier,
                     annotations,
                     definition_links,
+                    referenced_components,
                     errors,
                 );
             }

@@ -238,6 +238,10 @@ impl RangeError {
             range,
         )
     }
+
+    pub fn unused_import(component: &str, range: Range) -> Self {
+        Self::new(format!("Unused import: {component}"), range)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
