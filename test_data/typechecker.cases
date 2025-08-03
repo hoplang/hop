@@ -25,7 +25,7 @@ When an undefined component is referenced, the typechecker outputs an error.
 	<h1>Hello, <render-name></render-name>!</h1>
 </main-comp>
 -- out --
-Component render-name not found
+Component render-name is not defined
 ## END
 
 When a component references itself, the typechecker outputs an error.
@@ -36,7 +36,7 @@ When a component references itself, the typechecker outputs an error.
 	<h1>Hello, <main-comp></main-comp>!</h1>
 </main-comp>
 -- out --
-Component main-comp not found
+Component main-comp is not defined
 ## END
 
 When a component is defined twice, the typechecker outputs an error.
@@ -87,6 +87,33 @@ When a component is imported twice, the typechecker outputs an error.
 Component foo-comp is already defined
 ## END
 
+When a component is imported from a module that doesn't exist the typechecker
+outputs an error. TODO: Improve error message
+
+## BEGIN
+-- main.hop --
+<import component="foo-comp" from="other">
+
+<main-comp>
+</main-comp>
+-- out --
+Module other is not defined
+## END
+
+When a component that doesn't exist is imported from a module that does exist
+the typechecker outputs an error.
+
+## BEGIN
+-- other.hop --
+-- main.hop --
+<import component="foo-comp" from="other">
+
+<main-comp>
+</main-comp>
+-- out --
+Module other does not declare a component named foo-comp
+## END
+
 TODO: When a component is imported without being used the typechecker outputs
 an error.
 
@@ -118,8 +145,8 @@ The typechecker collects all errors rather than returning at the first error.
 	<h1>Hello, <other-comp></other-comp>!</h1>
 </main-comp>
 -- out --
-Component render-name not found
-Component other-comp not found
+Component render-name is not defined
+Component other-comp is not defined
 ## END
 
 Defining a component with the same name in two different modules is allowed.

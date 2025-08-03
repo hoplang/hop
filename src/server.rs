@@ -1,8 +1,8 @@
-use crate::common::{ImportNode, Position, RangeError};
+use crate::common::{Position, RangeError};
 use crate::parser::{Module, parse};
 use crate::tokenizer::tokenize;
 use crate::toposorter::TopoSorter;
-use crate::typechecker::{ComponentInfo, DefinitionLink, TypeAnnotation, TypeResult, typecheck};
+use crate::typechecker::{DefinitionLink, TypeAnnotation, TypeResult, typecheck};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -87,33 +87,8 @@ impl Server {
             None => return,
         };
 
-        let mut import_component_info: HashMap<String, ComponentInfo> = HashMap::new();
-
         let mut type_errors = Vec::new();
-
-        for ImportNode {
-            from_attr,
-            component_attr,
-            range,
-            ..
-        } in &module.imports
-        {
-            match self
-                .type_results
-                .get(&from_attr.value)
-                .and_then(|result| result.component_info.get(&component_attr.value))
-            {
-                Some(component_info) => {
-                    import_component_info
-                        .insert(component_attr.value.clone(), component_info.clone());
-                }
-                None => {
-                    type_errors.push(RangeError::unresolved_import(&component_attr.value, *range))
-                }
-            }
-        }
-
-        let type_result = typecheck(module, &import_component_info, &mut type_errors);
+        let type_result = typecheck(module, &self.type_results, &mut type_errors);
 
         self.type_results
             .insert(module_name.to_string(), type_result);

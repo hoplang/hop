@@ -505,7 +505,7 @@ mod tests {
     use crate::common::{Position, Range, Token, TokenKind};
     use crate::parser::parse;
     use crate::tokenizer::tokenize;
-    use crate::typechecker::{ComponentInfo, typecheck};
+    use crate::typechecker::{TypeResult, typecheck};
     use pretty_assertions::assert_eq;
     use simple_txtar::Archive;
     use std::fs;
@@ -515,8 +515,7 @@ mod tests {
         let mut component_maps = HashMap::new();
         let mut import_maps = HashMap::new();
         let mut module_parameter_types: HashMap<String, HashMap<String, Type>> = HashMap::new();
-        let mut module_component_info: HashMap<String, HashMap<String, ComponentInfo>> =
-            HashMap::new();
+        let mut module_type_results: HashMap<String, TypeResult> = HashMap::new();
 
         // Parse and typecheck modules in order
         for (module_name, source_code) in &modules_source {
@@ -524,19 +523,7 @@ mod tests {
             let tokens = tokenize(source_code, &mut errors);
             let module = parse(module_name.clone(), tokens, &mut errors);
 
-            let mut import_component_info = HashMap::new();
-            for n in &module.imports {
-                let from_module = &n.from_attr.value;
-                let component_name = &n.component_attr.value;
-                if let Some(info) = module_component_info.get(from_module) {
-                    if let Some(component_info) = info.get(component_name) {
-                        import_component_info
-                            .insert(component_name.clone(), component_info.clone());
-                    }
-                }
-            }
-
-            let type_info = typecheck(&module, &import_component_info, &mut errors);
+            let type_info = typecheck(&module, &module_type_results, &mut errors);
             if !errors.is_empty() {
                 return Err(format!("Errors in {}: {:?}", module_name, errors));
             }
@@ -560,7 +547,7 @@ mod tests {
                 parameter_types.insert(name.clone(), info.parameter_type.clone());
             }
             module_parameter_types.insert(module_name.clone(), parameter_types);
-            module_component_info.insert(module_name.clone(), type_info.component_info);
+            module_type_results.insert(module_name.clone(), type_info);
         }
 
         Ok(Program::new(

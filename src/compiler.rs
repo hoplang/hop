@@ -5,7 +5,7 @@ use crate::runtime::Program;
 use crate::scriptcollector::ScriptCollector;
 use crate::tokenizer::tokenize;
 use crate::toposorter::TopoSorter;
-use crate::typechecker::{ComponentInfo, typecheck};
+use crate::typechecker::{TypeResult, typecheck};
 use std::collections::HashMap;
 
 /// Compiler compiles hop modules into a Program that can execute components
@@ -30,8 +30,7 @@ impl Compiler {
         let mut render_maps = HashMap::new();
         let mut modules = HashMap::new();
         let mut module_parameter_types: HashMap<String, HashMap<String, Type>> = HashMap::new();
-        let mut module_component_info: HashMap<String, HashMap<String, ComponentInfo>> =
-            HashMap::new();
+        let mut module_type_results: HashMap<String, TypeResult> = HashMap::new();
         let mut module_sorter = TopoSorter::new();
         let mut script_collector = ScriptCollector::new();
 
@@ -75,29 +74,8 @@ impl Compiler {
             let Some(module) = modules.get(&module_name) else {
                 continue;
             };
-            let mut import_component_info = HashMap::new();
-
-            for import_node in &module.imports {
-                let from_module = &import_node.from_attr.value;
-                let component_name = &import_node.component_attr.value;
-
-                if let Some(from_module_info) = module_component_info.get(from_module) {
-                    if let Some(component_info) = from_module_info.get(component_name) {
-                        import_component_info
-                            .insert(component_name.clone(), component_info.clone());
-                    } else {
-                        return Err(format!(
-                            "Component {} not found in module {}",
-                            component_name, from_module
-                        ));
-                    }
-                } else {
-                    return Err(format!("Module {} not found", from_module));
-                }
-            }
-
             let mut errors = Vec::new();
-            let type_info = typecheck(module, &import_component_info, &mut errors);
+            let type_info = typecheck(module, &module_type_results, &mut errors);
             if !errors.is_empty() {
                 let source_code = self.modules.get(&module_name).unwrap();
                 let formatter =
@@ -137,7 +115,7 @@ impl Compiler {
                 parameter_types.insert(name.clone(), info.parameter_type.clone());
             }
             module_parameter_types.insert(module_name.clone(), parameter_types);
-            module_component_info.insert(module_name.clone(), type_info.component_info);
+            module_type_results.insert(module_name.clone(), type_info);
 
             // Collect scripts from this module
             script_collector.add_module(module_name.clone(), module.components.clone());

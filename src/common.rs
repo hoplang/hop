@@ -186,7 +186,16 @@ impl RangeError {
 
     // Typechecker error functions
     pub fn undefined_component(component: &str, range: Range) -> Self {
-        Self::new(format!("Component {component} not found"), range)
+        Self::new(format!("Component {component} is not defined"), range)
+    }
+    pub fn undeclared_component(module: &str, component: &str, range: Range) -> Self {
+        Self::new(
+            format!("Module {module} does not declare a component named {component}"),
+            range,
+        )
+    }
+    pub fn undefined_module(module: &str, range: Range) -> Self {
+        Self::new(format!("Module {module} is not defined"), range)
     }
 
     pub fn component_already_defined(component: &str, range: Range) -> Self {

@@ -48,13 +48,39 @@ impl TypeResult {
 
 pub fn typecheck(
     module: &Module,
-    import_component_info: &HashMap<String, ComponentInfo>,
+    import_type_results: &HashMap<String, TypeResult>,
     errors: &mut Vec<RangeError>,
 ) -> TypeResult {
     let mut unifier = Unifier::new();
     let mut annotations: Vec<TypeAnnotation> = Vec::new();
     let mut definition_links: Vec<DefinitionLink> = Vec::new();
-    let mut component_info = import_component_info.clone();
+    let mut component_info = HashMap::new();
+
+    // Build component_info from all imported components
+    for ImportNode {
+        from_attr,
+        component_attr,
+        range,
+        ..
+    } in &module.imports
+    {
+        let from_module = &from_attr.value;
+        let component_name = &component_attr.value;
+
+        if let Some(type_result) = import_type_results.get(from_module) {
+            if let Some(comp_info) = type_result.component_info.get(component_name) {
+                component_info.insert(component_name.clone(), comp_info.clone());
+            } else {
+                errors.push(RangeError::undeclared_component(
+                    from_module,
+                    component_name,
+                    *range,
+                ));
+            }
+        } else {
+            errors.push(RangeError::undefined_module(from_module, *range));
+        }
+    }
     let mut env = Environment::new();
 
     let mut imported_names = HashSet::new();
@@ -441,8 +467,7 @@ mod tests {
                 .trim();
             let mut all_errors = Vec::new();
             let mut all_output_lines = Vec::new();
-            let mut module_component_info: HashMap<String, HashMap<String, ComponentInfo>> =
-                HashMap::new();
+            let mut module_type_results: HashMap<String, TypeResult> = HashMap::new();
 
             println!("Test case {} (line {})", case_num + 1, line_number);
 
@@ -459,34 +484,12 @@ mod tests {
                         continue;
                     }
 
-                    // Build import component info from previously processed modules
-                    let mut import_component_info = HashMap::new();
-                    for import_node in &module.imports {
-                        let from_module = &import_node.from_attr.value;
-                        let component_name = &import_node.component_attr.value;
-
-                        let module_info = module_component_info
-                            .get(from_module)
-                            .unwrap_or_else(|| panic!("Module info '{}' not found", from_module));
-
-                        let component_info = module_info.get(component_name).unwrap_or_else(|| {
-                            panic!(
-                                "Component info '{}' not found in module '{}'",
-                                component_name, from_module
-                            )
-                        });
-
-                        import_component_info
-                            .insert(component_name.clone(), component_info.clone());
-                    }
-
-                    let type_result = typecheck(&module, &import_component_info, &mut errors);
+                    let type_result = typecheck(&module, &module_type_results, &mut errors);
 
                     if !errors.is_empty() {
                         all_errors.extend(errors);
                     } else {
-                        module_component_info
-                            .insert(module.name.clone(), type_result.component_info.clone());
+                        module_type_results.insert(module.name.clone(), type_result.clone());
 
                         for c in module.components {
                             all_output_lines.push(format!(
