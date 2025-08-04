@@ -1,3 +1,4 @@
+use crate::files;
 use crate::server::Server;
 use std::collections::HashMap;
 use std::path::Path;
@@ -36,16 +37,8 @@ impl HopLanguageServer {
     }
 
     fn find_build_file(&self, uri: &Url) -> Option<std::path::PathBuf> {
-        let mut current_dir = std::path::Path::new(uri.path()).parent()?;
-
-        loop {
-            let build_file = current_dir.join("build.hop");
-            if build_file.exists() {
-                return Some(build_file);
-            }
-
-            current_dir = current_dir.parent()?;
-        }
+        let file_path = std::path::Path::new(uri.path());
+        files::find_build_file(file_path)
     }
 
     fn uri_to_module_name(&self, uri: &Url) -> String {
@@ -54,11 +47,8 @@ impl HopLanguageServer {
         // Find the build.hop file to determine base directory
         if let Some(build_file) = self.find_build_file(uri) {
             if let Some(base_dir) = build_file.parent() {
-                if let Ok(relative_path) = file_path.strip_prefix(base_dir) {
-                    return relative_path
-                        .with_extension("")
-                        .to_string_lossy()
-                        .replace(std::path::MAIN_SEPARATOR, "/");
+                if let Ok(module_name) = files::path_to_module_name(file_path, base_dir) {
+                    return module_name;
                 }
             }
         }
@@ -73,51 +63,23 @@ impl HopLanguageServer {
 
     async fn load_dependency_modules(&self, uri: &Url) -> std::io::Result<()> {
         // Find the build.hop file to determine base directory
-        let base_dir = self
-            .find_build_file(uri)
-            .unwrap()
-            .parent()
-            .unwrap_or_else(|| Path::new("."))
-            .to_path_buf();
+        let base_dir = if let Some(build_file) = self.find_build_file(uri) {
+            build_file
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .to_path_buf()
+        } else {
+            // Fallback to current file's directory if no build.hop found
+            let file_path = Path::new(uri.path());
+            file_path
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .to_path_buf()
+        };
 
-        // Recursively find and load all .hop files from the base directory
-        fn find_hop_files(dir: &Path) -> std::io::Result<Vec<std::path::PathBuf>> {
-            let mut hop_files = Vec::new();
-
-            if !dir.exists() || !dir.is_dir() {
-                return Ok(hop_files);
-            }
-
-            let entries = std::fs::read_dir(dir)?;
-
-            for entry in entries {
-                let path = entry?.path();
-
-                if path.is_dir() {
-                    hop_files.extend(find_hop_files(&path)?);
-                } else if path.extension().and_then(|s| s.to_str()) == Some("hop") {
-                    hop_files.push(path);
-                }
-            }
-            Ok(hop_files)
-        }
-
-        let all_hop_files = find_hop_files(&base_dir)?;
-
-        // Convert to (module_name, content) pairs
-        let mut all_modules = Vec::new();
-        for path in all_hop_files {
-            if let Ok(relative_path) = path.strip_prefix(&base_dir) {
-                let module_name = relative_path
-                    .with_extension("")
-                    .to_string_lossy()
-                    .replace(std::path::MAIN_SEPARATOR, "/");
-
-                if let Ok(content) = std::fs::read_to_string(&path) {
-                    all_modules.push((module_name, content));
-                }
-            }
-        }
+        // Load all hop modules from the base directory
+        let all_modules = files::load_all_hop_modules(&base_dir)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
         // Now load all the modules we found
         self.client
@@ -328,11 +290,7 @@ impl LanguageServer for HopLanguageServer {
                 // Different module - construct URI from module name using base directory
                 if let Some(build_file) = self.find_build_file(&uri) {
                     if let Some(base_dir) = build_file.parent() {
-                        // Module name uses '/' separators, need to convert to path
-                        let module_path = definition
-                            .module
-                            .replace('/', std::path::MAIN_SEPARATOR_STR);
-                        let def_path = base_dir.join(format!("{}.hop", module_path));
+                        let def_path = files::module_name_to_path(&definition.module, base_dir);
 
                         match Url::from_file_path(&def_path) {
                             Ok(url) => url,

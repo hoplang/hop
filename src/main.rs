@@ -2,6 +2,7 @@ mod common;
 mod compiler;
 mod error_formatter;
 mod expression_parser;
+mod files;
 mod lsp;
 mod parser;
 mod runtime;
@@ -17,9 +18,7 @@ use compiler::Compiler;
 use std::path::Path;
 
 pub fn compile_hop_program(build_file: Option<&Path>) -> anyhow::Result<runtime::Program> {
-    use anyhow::Context;
     use compiler::Compiler;
-    use std::fs;
 
     let mut compiler = Compiler::new();
 
@@ -30,37 +29,10 @@ pub fn compile_hop_program(build_file: Option<&Path>) -> anyhow::Result<runtime:
         Path::new(".")
     };
 
-    // Recursively find and add all .hop files from the base directory
-    fn find_hop_files(dir: &Path) -> anyhow::Result<Vec<std::path::PathBuf>> {
-        let mut hop_files = Vec::new();
-        let entries =
-            fs::read_dir(dir).with_context(|| format!("Failed to read directory {:?}", dir))?;
+    // Load all hop modules from the base directory
+    let modules = files::load_all_hop_modules(base_dir)?;
 
-        for entry in entries {
-            let path = entry.context("Failed to read directory entry")?.path();
-
-            if path.is_dir() {
-                hop_files.extend(find_hop_files(&path)?);
-            } else if path.extension().and_then(|s| s.to_str()) == Some("hop") {
-                hop_files.push(path);
-            }
-        }
-        Ok(hop_files)
-    }
-
-    // Find all .hop files recursively
-    for path in find_hop_files(base_dir)? {
-        let relative_path = path
-            .strip_prefix(base_dir)
-            .with_context(|| format!("Failed to strip prefix from path {:?}", path))?;
-
-        let module_name = relative_path
-            .with_extension("")
-            .to_string_lossy()
-            .replace(std::path::MAIN_SEPARATOR, "/");
-
-        let content =
-            fs::read_to_string(&path).with_context(|| format!("Failed to read file {:?}", path))?;
+    for (module_name, content) in modules {
         compiler.add_module(module_name, content);
     }
 
