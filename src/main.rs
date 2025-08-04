@@ -378,7 +378,7 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
 
 fn create_file_watcher(
     hop_dir: Option<&Path>,
-    manifest_file: &Path,
+    build_file: &Path,
 ) -> anyhow::Result<(
     notify::RecommendedWatcher,
     tokio::sync::broadcast::Sender<()>,
@@ -403,7 +403,7 @@ fn create_file_watcher(
     if let Some(hop_dir) = hop_dir {
         watcher.watch(hop_dir, RecursiveMode::Recursive)?;
     }
-    watcher.watch(manifest_file, RecursiveMode::NonRecursive)?;
+    watcher.watch(build_file, RecursiveMode::NonRecursive)?;
 
     Ok((watcher, channel))
 }
