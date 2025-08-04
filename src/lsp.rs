@@ -35,60 +35,89 @@ impl HopLanguageServer {
         }
     }
 
+    fn find_build_file(&self, uri: &Url) -> Option<std::path::PathBuf> {
+        let mut current_dir = std::path::Path::new(uri.path()).parent()?;
+
+        loop {
+            let build_file = current_dir.join("build.hop");
+            if build_file.exists() {
+                return Some(build_file);
+            }
+
+            current_dir = current_dir.parent()?;
+        }
+    }
+
     fn uri_to_module_name(&self, uri: &Url) -> String {
-        let path = std::path::Path::new(uri.path());
-        path.file_stem()
+        let file_path = std::path::Path::new(uri.path());
+
+        // Find the build.hop file to determine base directory
+        if let Some(build_file) = self.find_build_file(uri) {
+            if let Some(base_dir) = build_file.parent() {
+                if let Ok(relative_path) = file_path.strip_prefix(base_dir) {
+                    return relative_path
+                        .with_extension("")
+                        .to_string_lossy()
+                        .replace(std::path::MAIN_SEPARATOR, "/");
+                }
+            }
+        }
+
+        // Fallback to just the file stem if we can't find build.hop
+        file_path
+            .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown")
             .to_string()
     }
 
     async fn load_dependency_modules(&self, uri: &Url) -> std::io::Result<()> {
-        let file_path = Path::new(uri.path());
-        let directory = file_path.parent().ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "Could not find parent directory",
-            )
-        })?;
+        // Find the build.hop file to determine base directory
+        let base_dir = self
+            .find_build_file(uri)
+            .unwrap()
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf();
 
-        // Helper function to load .hop files from a directory
-        let load_from_directory = |dir_path: &Path| -> std::io::Result<Vec<(String, String)>> {
-            let mut modules = Vec::new();
+        // Recursively find and load all .hop files from the base directory
+        fn find_hop_files(dir: &Path) -> std::io::Result<Vec<std::path::PathBuf>> {
+            let mut hop_files = Vec::new();
 
-            if !dir_path.exists() || !dir_path.is_dir() {
-                return Ok(modules);
+            if !dir.exists() || !dir.is_dir() {
+                return Ok(hop_files);
             }
 
-            let entries = std::fs::read_dir(dir_path)?;
+            let entries = std::fs::read_dir(dir)?;
 
             for entry in entries {
-                let entry = entry?;
-                let path = entry.path();
+                let path = entry?.path();
 
-                if path.extension().and_then(|s| s.to_str()) == Some("hop") {
-                    let module_name = path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("unknown")
-                        .to_string();
-
-                    // Load the module content
-                    if let Ok(content) = std::fs::read_to_string(&path) {
-                        modules.push((module_name, content));
-                    }
+                if path.is_dir() {
+                    hop_files.extend(find_hop_files(&path)?);
+                } else if path.extension().and_then(|s| s.to_str()) == Some("hop") {
+                    hop_files.push(path);
                 }
             }
+            Ok(hop_files)
+        }
 
-            Ok(modules)
-        };
+        let all_hop_files = find_hop_files(&base_dir)?;
 
-        // Read all .hop files in the same directory as the current file
-        let mut all_modules = load_from_directory(directory)?;
+        // Convert to (module_name, content) pairs
+        let mut all_modules = Vec::new();
+        for path in all_hop_files {
+            if let Ok(relative_path) = path.strip_prefix(&base_dir) {
+                let module_name = relative_path
+                    .with_extension("")
+                    .to_string_lossy()
+                    .replace(std::path::MAIN_SEPARATOR, "/");
 
-        // Also look for hop files in a "hop" subdirectory
-        let hop_subdir = directory.join("hop");
-        all_modules.extend(load_from_directory(&hop_subdir)?);
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    all_modules.push((module_name, content));
+                }
+            }
+        }
 
         // Now load all the modules we found
         self.client
@@ -296,14 +325,32 @@ impl LanguageServer for HopLanguageServer {
                 // Same module
                 uri.clone()
             } else {
-                // Different module - construct URI from module name
-                let current_path = std::path::Path::new(uri.path());
-                let parent_dir = current_path.parent().unwrap_or(std::path::Path::new("."));
-                let def_path = parent_dir.join(format!("{}.hop", definition.module));
+                // Different module - construct URI from module name using base directory
+                if let Some(build_file) = self.find_build_file(&uri) {
+                    if let Some(base_dir) = build_file.parent() {
+                        // Module name uses '/' separators, need to convert to path
+                        let module_path = definition
+                            .module
+                            .replace('/', std::path::MAIN_SEPARATOR_STR);
+                        let def_path = base_dir.join(format!("{}.hop", module_path));
 
-                match Url::from_file_path(&def_path) {
-                    Ok(url) => url,
-                    Err(_) => return Ok(None),
+                        match Url::from_file_path(&def_path) {
+                            Ok(url) => url,
+                            Err(_) => return Ok(None),
+                        }
+                    } else {
+                        return Ok(None);
+                    }
+                } else {
+                    // Fallback to old behavior if no build.hop found
+                    let current_path = std::path::Path::new(uri.path());
+                    let parent_dir = current_path.parent().unwrap_or(std::path::Path::new("."));
+                    let def_path = parent_dir.join(format!("{}.hop", definition.module));
+
+                    match Url::from_file_path(&def_path) {
+                        Ok(url) => url,
+                        Err(_) => return Ok(None),
+                    }
                 }
             };
 
