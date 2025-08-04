@@ -17,17 +17,14 @@ use clap::{CommandFactory, Parser, Subcommand};
 use compiler::Compiler;
 use std::path::Path;
 
-pub fn compile_hop_program(build_file: Option<&Path>) -> anyhow::Result<runtime::Program> {
+pub fn compile_hop_program(build_file: &Path) -> anyhow::Result<runtime::Program> {
     use compiler::Compiler;
 
     let mut compiler = Compiler::new();
 
     // Determine the base directory for finding source files
-    let base_dir = if let Some(build_path) = build_file {
-        build_path.parent().unwrap_or_else(|| Path::new("."))
-    } else {
-        Path::new(".")
-    };
+    let canonicalized = build_file.canonicalize().unwrap();
+    let base_dir = canonicalized.parent().unwrap();
 
     // Load all hop modules from the base directory
     let modules = files::load_all_hop_modules(base_dir)?;
@@ -205,7 +202,7 @@ fn build_from_hop(
 
     // Handle script collection if requested
     if let Some(script_file_name) = script_file {
-        let program = compile_hop_program(Some(build_file))?;
+        let program = compile_hop_program(build_file)?;
         let combined_script = program.get_scripts();
         let script_path = output_dir.join(script_file_name);
         fs::write(&script_path, combined_script)
@@ -222,7 +219,7 @@ fn render_build_files(
     use std::collections::HashMap;
 
     // Compile the hop program including the build file
-    let program = compile_hop_program(Some(build_file))?;
+    let program = compile_hop_program(build_file)?;
     let mut rendered_files = HashMap::new();
     let mut env = Environment::new();
 
@@ -421,7 +418,7 @@ async fn serve_from_hop(
         router = router.route(
             &script_path,
             get(
-                async move || match compile_hop_program(Some(&build_file_for_script)) {
+                async move || match compile_hop_program(&build_file_for_script) {
                     Ok(program) => {
                         use axum::body::Body;
                         Ok(axum::response::Response::builder()
@@ -685,7 +682,6 @@ console.log("Hello from static file");
         .unwrap();
 
         let result = build_from_hop(&dir.join("build.hop"), &dir.join("out"), None);
-
         assert!(result.is_ok());
         let outputs = result.unwrap();
         assert_eq!(outputs.len(), 1);
