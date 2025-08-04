@@ -290,8 +290,13 @@ impl Program {
                 set_attributes,
                 ..
             }) => {
-                // Skip script and style nodes
-                if tag_name == "script" || tag_name == "style" {
+                // Skip style nodes
+                if tag_name == "style" {
+                    return Ok(String::new());
+                }
+
+                // Skip script nodes without a src attribute
+                if tag_name == "script" && !attributes.iter().any(|e| e.name == "src") {
                     return Ok(String::new());
                 }
 
