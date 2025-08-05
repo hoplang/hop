@@ -186,7 +186,7 @@ fn build_from_hop(
         fs::write(&output_path, &content)
             .with_context(|| format!("Failed to write file {}", output_path.display()))?;
 
-        file_outputs.push((file_path, content.len()));
+        file_outputs.push((format!("{}", output_path.to_string_lossy()), content.len()));
     }
 
     // Handle script collection if requested
