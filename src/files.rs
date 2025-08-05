@@ -7,9 +7,13 @@ pub struct ProjectRoot(PathBuf);
 impl ProjectRoot {
     /// Find the project root by traversing upwards.
     pub fn find_upwards(start_path: &Path) -> anyhow::Result<ProjectRoot> {
-        let canonicalized = start_path.canonicalize().with_context(|| format!("Failed to canonicalize path {:?}", &start_path))?;
+        let canonicalized = start_path
+            .canonicalize()
+            .with_context(|| format!("Failed to canonicalize path {:?}", &start_path))?;
         let mut current_dir = if canonicalized.is_file() {
-            canonicalized.parent().ok_or_else(|| anyhow::anyhow!("Can't get parent of path {:?}", &canonicalized))?
+            canonicalized
+                .parent()
+                .ok_or_else(|| anyhow::anyhow!("Can't get parent of path {:?}", &canonicalized))?
         } else {
             &canonicalized
         };
@@ -19,7 +23,9 @@ impl ProjectRoot {
             if build_file.exists() {
                 return Ok(ProjectRoot(current_dir.to_path_buf()));
             }
-            current_dir = current_dir.parent().ok_or_else(|| anyhow::anyhow!("Can't get parent of {:?}", &current_dir))?
+            current_dir = current_dir
+                .parent()
+                .ok_or_else(|| anyhow::anyhow!("Can't get parent of {:?}", &current_dir))?
         }
     }
     /// Construct the project root from a path. The path should be a directory and contain the
@@ -28,7 +34,9 @@ impl ProjectRoot {
         if !path.is_dir() {
             anyhow::bail!("{:?} is not a directory", &path)
         }
-        let canonicalized = path.canonicalize().with_context(|| format!("Failed to canonicalize path {:?}", &path))?;
+        let canonicalized = path
+            .canonicalize()
+            .with_context(|| format!("Failed to canonicalize path {:?}", &path))?;
         let build_file = canonicalized.join("build.hop");
         if !build_file.exists() {
             anyhow::bail!("Expected to find build.hop in {:?}", &path)
@@ -56,7 +64,8 @@ pub fn find_hop_files(root: &ProjectRoot) -> anyhow::Result<Vec<PathBuf>> {
 
     while let Some(path) = paths.pop() {
         if path.is_dir() {
-            let entries = std::fs::read_dir(&path).with_context(|| format!("Failed to read directory {:?}", &path))?;
+            let entries = std::fs::read_dir(&path)
+                .with_context(|| format!("Failed to read directory {:?}", &path))?;
             for entry in entries {
                 let p = entry.context("Failed to read directory entry")?.path();
                 paths.push(p);

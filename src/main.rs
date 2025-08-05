@@ -19,13 +19,10 @@ use files::ProjectRoot;
 use std::path::Path;
 
 pub fn compile_hop_program(root: &ProjectRoot) -> anyhow::Result<runtime::Program> {
-
     let mut compiler = compiler::Compiler::new();
-
     for (module_name, content) in files::load_all_hop_modules(&root)? {
         compiler.add_module(module_name, content);
     }
-
     compiler
         .compile()
         .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
@@ -111,13 +108,9 @@ async fn main() -> anyhow::Result<()> {
             let start_time = Instant::now();
             let root = match projectdir {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
-                None => ProjectRoot::find_upwards(Path::new("."))?
+                None => ProjectRoot::find_upwards(Path::new("."))?,
             };
-            let mut outputs = build_from_hop(
-                &root,
-                Path::new(outdir),
-                scriptfile.as_deref(),
-            )?;
+            let mut outputs = build_from_hop(&root, Path::new(outdir), scriptfile.as_deref())?;
             let elapsed = start_time.elapsed();
 
             print_header("built", elapsed.as_millis());
@@ -143,7 +136,7 @@ async fn main() -> anyhow::Result<()> {
             let start_time = Instant::now();
             let root = match projectdir {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
-                None => ProjectRoot::find_upwards(Path::new("."))?
+                None => ProjectRoot::find_upwards(Path::new("."))?,
             };
             let (router, _watcher) = serve_from_hop(
                 &root,
@@ -213,23 +206,19 @@ fn render_build_files(
     use crate::common::Environment;
     use std::collections::HashMap;
 
-    // Compile the hop program including the build file
     let program = compile_hop_program(root)?;
     let mut rendered_files = HashMap::new();
     let mut env = Environment::new();
 
     for render_nodes in program.get_render_nodes().values() {
         for node in render_nodes {
-            // Evaluate the children to get the rendered content
             let mut content = String::new();
-
             for child in &node.children {
                 let rendered = program
                     .evaluate_node_entrypoint(child, &mut env, "build")
                     .map_err(|e| anyhow::anyhow!("Failed to evaluate render content: {}", e))?;
                 content.push_str(&rendered);
             }
-
             rendered_files.insert(node.file_attr.value.clone(), content);
         }
     }
@@ -412,21 +401,19 @@ async fn serve_from_hop(
         let local_root = root.clone();
         router = router.route(
             &script_path,
-            get(
-                async move || match compile_hop_program(&local_root) {
-                    Ok(program) => {
-                        use axum::body::Body;
-                        Ok(axum::response::Response::builder()
-                            .header("Content-Type", "application/javascript")
-                            .body(Body::from(program.get_scripts().to_string()))
-                            .unwrap())
-                    }
-                    Err(e) => Err((
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        format!("Failed to compile hop program: {}", e),
-                    )),
-                },
-            ),
+            get(async move || match compile_hop_program(&local_root) {
+                Ok(program) => {
+                    use axum::body::Body;
+                    Ok(axum::response::Response::builder()
+                        .header("Content-Type", "application/javascript")
+                        .body(Body::from(program.get_scripts().to_string()))
+                        .unwrap())
+                }
+                Err(e) => Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to compile hop program: {}", e),
+                )),
+            }),
         );
     }
 
@@ -539,9 +526,7 @@ mod tests {
         .unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
-        let (router, _watcher) = serve_from_hop(&root, None, None)
-            .await
-            .unwrap();
+        let (router, _watcher) = serve_from_hop(&root, None, None).await.unwrap();
 
         let server = TestServer::new(router).unwrap();
 
@@ -619,10 +604,9 @@ console.log("Hello from static file");
         .unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
-        let (router, _watcher) =
-            serve_from_hop(&root, Some(&dir.join("static")), None)
-                .await
-                .unwrap();
+        let (router, _watcher) = serve_from_hop(&root, Some(&dir.join("static")), None)
+            .await
+            .unwrap();
 
         let server = TestServer::new(router).unwrap();
 
@@ -697,9 +681,7 @@ console.log("Hello from static file");
         .unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
-        let (router, _watcher) = serve_from_hop(&root, None, None)
-            .await
-            .unwrap();
+        let (router, _watcher) = serve_from_hop(&root, None, None).await.unwrap();
 
         let server = TestServer::new(router).unwrap();
 
