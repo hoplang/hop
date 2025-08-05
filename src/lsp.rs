@@ -1,6 +1,7 @@
 use crate::files::{self, ProjectRoot};
 use crate::server::Server;
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_lsp::jsonrpc::Result;
@@ -39,22 +40,11 @@ impl HopLanguageServer {
         ProjectRoot::find_upwards(std::path::Path::new(uri.path()))
     }
 
-    fn uri_to_module_name(&self, uri: &Url) -> String {
-        let file_path = std::path::Path::new(uri.path());
-
-        // Find the build.hop file to determine base directory
-        if let Ok(root) = self.find_root(uri) {
-            if let Ok(module_name) = files::path_to_module_name(file_path, &root) {
-                return module_name;
-            }
+    fn uri_to_module_name(&self, uri: &Url, root: ProjectRoot) -> String {
+        match files::path_to_module_name(Path::new(uri.path()), &root) {
+            Ok(s) => s,
+            Err(_) => "error".to_string()
         }
-
-        // Fallback to just the file stem if we can't find build.hop
-        file_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("unknown")
-            .to_string()
     }
 
     async fn load_dependency_modules(&self, uri: &Url) -> std::io::Result<()> {
@@ -106,7 +96,8 @@ impl HopLanguageServer {
     }
 
     async fn publish_diagnostics(&self, uri: &Url) {
-        let module_name = self.uri_to_module_name(uri);
+        let root = self.find_root(&uri).unwrap();
+        let module_name = self.uri_to_module_name(uri, root);
         let server = self.server.read().await;
         let diagnostics = server.get_error_diagnostics(&module_name);
 
@@ -163,7 +154,8 @@ impl LanguageServer for HopLanguageServer {
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri;
         let text = params.text_document.text;
-        let module_name = self.uri_to_module_name(&uri);
+        let root = self.find_root(&uri).unwrap();
+        let module_name = self.uri_to_module_name(&uri, root);
 
         self.client
             .log_message(
@@ -201,7 +193,8 @@ impl LanguageServer for HopLanguageServer {
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
 
         let uri = params.text_document.uri;
-        let module_name = self.uri_to_module_name(&uri);
+        let root = self.find_root(&uri).unwrap();
+        let module_name = self.uri_to_module_name(&uri, root);
         let changes = params.content_changes;
 
         self.client
@@ -242,7 +235,8 @@ impl LanguageServer for HopLanguageServer {
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
-        let module_name = self.uri_to_module_name(&uri);
+        let root = self.find_root(&uri).unwrap();
+        let module_name = self.uri_to_module_name(&uri, root);
 
         let (line, column) = Self::from_lsp_position(position);
         let server = self.server.read().await;
@@ -268,7 +262,8 @@ impl LanguageServer for HopLanguageServer {
     ) -> Result<Option<GotoDefinitionResponse>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
-        let module_name = self.uri_to_module_name(&uri);
+        let root = self.find_root(&uri).unwrap();
+        let module_name = self.uri_to_module_name(&uri, root);
 
         let (line, column) = Self::from_lsp_position(position);
         let server = self.server.read().await;
