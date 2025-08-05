@@ -46,21 +46,21 @@ enum Commands {
     Lsp,
     /// Build hop templates from a manifest to files
     Build {
-        /// Path to build.hop file
-        #[arg(short, long, default_value = "build.hop")]
-        build_file: String,
+        /// Path to project root
+        #[arg(long, default_value = ".")]
+        projectdir: String,
         /// Output directory
         #[arg(long)]
         outdir: String,
         /// Optional script file name to output collected scripts
         #[arg(long)]
-        script_file: Option<String>,
+        scriptfile: Option<String>,
     },
     /// Start an HTTP server for serving hop templates from a manifest
     Serve {
-        /// Path to build.hop file
-        #[arg(short, long, default_value = "build.hop")]
-        build_file: String,
+        /// Path to project root
+        #[arg(long, default_value = ".")]
+        projectdir: String,
         /// Port to serve on
         #[arg(short, long, default_value = "3000")]
         port: u16,
@@ -72,7 +72,7 @@ enum Commands {
         servedir: Option<String>,
         /// Optional script file name to make scripts available over HTTP
         #[arg(long)]
-        script_file: Option<String>,
+        scriptfile: Option<String>,
     },
 }
 
@@ -103,17 +103,17 @@ async fn main() -> anyhow::Result<()> {
             lsp::run_lsp().await;
         }
         Some(Commands::Build {
-            build_file,
+            projectdir,
             outdir,
-            script_file,
+            scriptfile,
         }) => {
             use std::time::Instant;
             let start_time = Instant::now();
-            let root = ProjectRoot::find(Path::new(build_file))?;
+            let root = ProjectRoot::find(Path::new(projectdir))?;
             let mut outputs = build_from_hop(
                 &root,
                 Path::new(outdir),
-                script_file.as_deref(),
+                scriptfile.as_deref(),
             )?;
             let elapsed = start_time.elapsed();
 
@@ -129,20 +129,20 @@ async fn main() -> anyhow::Result<()> {
             println!();
         }
         Some(Commands::Serve {
-            build_file,
+            projectdir,
             port,
             host,
             servedir,
-            script_file,
+            scriptfile,
         }) => {
             use colored::*;
             use std::time::Instant;
             let start_time = Instant::now();
-            let root = ProjectRoot::find(Path::new(build_file))?;
+            let root = ProjectRoot::find(Path::new(projectdir))?;
             let (router, _watcher) = serve_from_hop(
                 &root,
                 servedir.as_deref().map(Path::new),
-                script_file.as_deref(),
+                scriptfile.as_deref(),
             )
             .await?;
             let elapsed = start_time.elapsed();
