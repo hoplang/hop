@@ -36,8 +36,7 @@ impl HopLanguageServer {
     }
 
     fn find_root(&self, uri: &Url) -> anyhow::Result<ProjectRoot> {
-        let file_path = std::path::Path::new(uri.path());
-        ProjectRoot::find_upwards(file_path)
+        ProjectRoot::find_upwards(std::path::Path::new(uri.path()))
     }
 
     fn uri_to_module_name(&self, uri: &Url) -> String {
@@ -200,12 +199,20 @@ impl LanguageServer for HopLanguageServer {
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
+
         let uri = params.text_document.uri;
+        let module_name = self.uri_to_module_name(&uri);
         let changes = params.content_changes;
+
+        self.client
+            .log_message(
+                MessageType::INFO,
+                format!("Changing file: {} (module: {})", uri.path(), module_name),
+            )
+            .await;
 
         if let Some(change) = changes.into_iter().next() {
             let text = change.text;
-            let module_name = self.uri_to_module_name(&uri);
 
             {
                 let mut document_map = self.document_map.write().await;
