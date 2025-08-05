@@ -23,12 +23,12 @@ impl HopLanguageServer {
     }
 
     // Convert from LSP position (0-based) to Rust Position (1-based)
-    fn lsp_position_to_rust(position: tower_lsp::lsp_types::Position) -> (usize, usize) {
+    fn from_lsp_position(position: tower_lsp::lsp_types::Position) -> (usize, usize) {
         (position.line as usize + 1, position.character as usize + 1)
     }
 
     // Convert from Rust position (1-based) to LSP position (0-based)
-    fn rust_position_to_lsp(line: usize, column: usize) -> tower_lsp::lsp_types::Position {
+    fn to_lsp_position(line: usize, column: usize) -> tower_lsp::lsp_types::Position {
         tower_lsp::lsp_types::Position {
             line: (line - 1) as u32,
             character: (column - 1) as u32,
@@ -114,8 +114,8 @@ impl HopLanguageServer {
             .into_iter()
             .map(|d| tower_lsp::lsp_types::Diagnostic {
                 range: Range {
-                    start: Self::rust_position_to_lsp(d.start_line, d.start_column),
-                    end: Self::rust_position_to_lsp(d.end_line, d.end_column),
+                    start: Self::to_lsp_position(d.start_line, d.start_column),
+                    end: Self::to_lsp_position(d.end_line, d.end_column),
                 },
                 severity: Some(DiagnosticSeverity::ERROR),
                 code: None,
@@ -244,17 +244,17 @@ impl LanguageServer for HopLanguageServer {
         let position = params.text_document_position_params.position;
         let module_name = self.uri_to_module_name(&uri);
 
-        let (line, column) = Self::lsp_position_to_rust(position);
+        let (line, column) = Self::from_lsp_position(position);
         let server = self.server.read().await;
         if let Some(hover_info) = server.get_hover_info(&module_name, line, column) {
             Ok(Some(Hover {
                 contents: HoverContents::Scalar(MarkedString::String(hover_info.type_str)),
                 range: Some(Range {
-                    start: Self::rust_position_to_lsp(
+                    start: Self::to_lsp_position(
                         hover_info.start_line,
                         hover_info.start_column,
                     ),
-                    end: Self::rust_position_to_lsp(hover_info.end_line, hover_info.end_column),
+                    end: Self::to_lsp_position(hover_info.end_line, hover_info.end_column),
                 }),
             }))
         } else {
@@ -270,7 +270,7 @@ impl LanguageServer for HopLanguageServer {
         let position = params.text_document_position_params.position;
         let module_name = self.uri_to_module_name(&uri);
 
-        let (line, column) = Self::lsp_position_to_rust(position);
+        let (line, column) = Self::from_lsp_position(position);
         let server = self.server.read().await;
 
         if let Some(definition) = server.get_definition(&module_name, line, column) {
@@ -303,11 +303,11 @@ impl LanguageServer for HopLanguageServer {
             let location = Location {
                 uri: def_uri,
                 range: Range {
-                    start: Self::rust_position_to_lsp(
+                    start: Self::to_lsp_position(
                         definition.start_line,
                         definition.start_column,
                     ),
-                    end: Self::rust_position_to_lsp(definition.end_line, definition.end_column),
+                    end: Self::to_lsp_position(definition.end_line, definition.end_column),
                 },
             };
 
