@@ -1,7 +1,6 @@
-use crate::files;
+use crate::files::{self, ProjectRoot};
 use crate::server::Server;
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_lsp::jsonrpc::Result;
@@ -36,20 +35,18 @@ impl HopLanguageServer {
         }
     }
 
-    fn find_build_file(&self, uri: &Url) -> Option<std::path::PathBuf> {
+    fn find_root(&self, uri: &Url) -> Option<ProjectRoot> {
         let file_path = std::path::Path::new(uri.path());
-        files::find_build_file(file_path)
+        ProjectRoot::find(file_path)
     }
 
     fn uri_to_module_name(&self, uri: &Url) -> String {
         let file_path = std::path::Path::new(uri.path());
 
         // Find the build.hop file to determine base directory
-        if let Some(build_file) = self.find_build_file(uri) {
-            if let Some(base_dir) = build_file.parent() {
-                if let Ok(module_name) = files::path_to_module_name(file_path, base_dir) {
-                    return module_name;
-                }
+        if let Some(root) = self.find_root(uri) {
+            if let Ok(module_name) = files::path_to_module_name(file_path, &root) {
+                return module_name;
             }
         }
 
@@ -63,22 +60,10 @@ impl HopLanguageServer {
 
     async fn load_dependency_modules(&self, uri: &Url) -> std::io::Result<()> {
         // Find the build.hop file to determine base directory
-        let base_dir = if let Some(build_file) = self.find_build_file(uri) {
-            build_file
-                .parent()
-                .unwrap_or_else(|| Path::new("."))
-                .to_path_buf()
-        } else {
-            // Fallback to current file's directory if no build.hop found
-            let file_path = Path::new(uri.path());
-            file_path
-                .parent()
-                .unwrap_or_else(|| Path::new("."))
-                .to_path_buf()
-        };
+        let root = self.find_root(uri).expect("Could not find hop root");
 
         // Load all hop modules from the base directory
-        let all_modules = files::load_all_hop_modules(&base_dir)
+        let all_modules = files::load_all_hop_modules(&root)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
         // Now load all the modules we found
@@ -288,16 +273,12 @@ impl LanguageServer for HopLanguageServer {
                 uri.clone()
             } else {
                 // Different module - construct URI from module name using base directory
-                if let Some(build_file) = self.find_build_file(&uri) {
-                    if let Some(base_dir) = build_file.parent() {
-                        let def_path = files::module_name_to_path(&definition.module, base_dir);
+                if let Some(root) = self.find_root(&uri) {
+                    let def_path = files::module_name_to_path(&definition.module, &root);
 
-                        match Url::from_file_path(&def_path) {
-                            Ok(url) => url,
-                            Err(_) => return Ok(None),
-                        }
-                    } else {
-                        return Ok(None);
+                    match Url::from_file_path(&def_path) {
+                        Ok(url) => url,
+                        Err(_) => return Ok(None),
                     }
                 } else {
                     // Fallback to old behavior if no build.hop found

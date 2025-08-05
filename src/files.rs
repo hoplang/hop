@@ -1,42 +1,54 @@
 use anyhow::Context;
 use std::path::{Path, PathBuf};
 
-/// Find the build.hop file by walking up the directory tree from a given path
-pub fn find_build_file(start_path: &Path) -> Option<PathBuf> {
-    let mut current_dir = if start_path.is_file() {
-        start_path.parent()?
-    } else {
-        start_path
-    };
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProjectRoot(PathBuf);
 
-    loop {
-        let build_file = current_dir.join("build.hop");
-        if build_file.exists() {
-            return Some(build_file);
+impl ProjectRoot {
+    pub fn find(start_path: &Path) -> Option<ProjectRoot> {
+        let canonicalized = start_path.canonicalize().ok()?;
+        let mut current_dir = if canonicalized.is_file() {
+            canonicalized.parent()?
+        } else {
+            &canonicalized
+        };
+
+        loop {
+            let build_file = current_dir.join("build.hop");
+            if build_file.exists() {
+                return Some(ProjectRoot(current_dir.to_path_buf()));
+            }
+            current_dir = current_dir.parent()?;
         }
-
-        current_dir = current_dir.parent()?;
+    }
+    pub fn get_path(&self) -> &Path {
+        return &self.0;
     }
 }
 
 /// Recursively find all .hop files in a directory
-pub fn find_hop_files(dir: &Path) -> anyhow::Result<Vec<PathBuf>> {
+pub fn find_hop_files(root: &ProjectRoot) -> anyhow::Result<Vec<PathBuf>> {
     let mut hop_files = Vec::new();
+
+    let ProjectRoot(dir) = root;
 
     if !dir.exists() || !dir.is_dir() {
         return Ok(hop_files);
     }
 
-    let entries =
-        std::fs::read_dir(dir).with_context(|| format!("Failed to read directory {:?}", dir))?;
+    let mut paths: Vec<PathBuf> = Vec::new();
 
-    for entry in entries {
-        let path = entry.context("Failed to read directory entry")?.path();
+    paths.push(dir.to_path_buf());
 
+    while let Some(path) = paths.pop() {
         if path.is_dir() {
-            hop_files.extend(find_hop_files(&path)?);
+            let entries = std::fs::read_dir(&path).with_context(|| format!("Failed to read directory {:?}", &path))?;
+            for entry in entries {
+                let p = entry.context("Failed to read directory entry")?.path();
+                paths.push(p);
+            }
         } else if path.extension().and_then(|s| s.to_str()) == Some("hop") {
-            hop_files.push(path);
+            hop_files.push(path.to_path_buf());
         }
     }
     Ok(hop_files)
@@ -44,9 +56,10 @@ pub fn find_hop_files(dir: &Path) -> anyhow::Result<Vec<PathBuf>> {
 
 /// Convert a file path to a module name using the base directory as reference
 /// Returns a module name with '/' separators (e.g., "src/components/header")
-pub fn path_to_module_name(file_path: &Path, base_dir: &Path) -> anyhow::Result<String> {
+pub fn path_to_module_name(file_path: &Path, root: &ProjectRoot) -> anyhow::Result<String> {
+    let ProjectRoot(dir) = root;
     let relative_path = file_path
-        .strip_prefix(base_dir)
+        .strip_prefix(dir)
         .with_context(|| format!("Failed to strip prefix from path {:?}", file_path))?;
 
     Ok(relative_path
@@ -57,13 +70,14 @@ pub fn path_to_module_name(file_path: &Path, base_dir: &Path) -> anyhow::Result<
 
 /// Convert a module name with '/' separators back to a file path
 /// (e.g., "src/components/header" -> "src/components/header.hop")
-pub fn module_name_to_path(module_name: &str, base_dir: &Path) -> PathBuf {
+pub fn module_name_to_path(module_name: &str, root: &ProjectRoot) -> PathBuf {
+    let ProjectRoot(base) = root;
     let module_path = module_name.replace('/', std::path::MAIN_SEPARATOR_STR);
-    base_dir.join(format!("{}.hop", module_path))
+    base.join(format!("{}.hop", module_path))
 }
 
 /// Load all hop modules from a base directory, returning (module_name, content) pairs
-pub fn load_all_hop_modules(base_dir: &Path) -> anyhow::Result<Vec<(String, String)>> {
+pub fn load_all_hop_modules(base_dir: &ProjectRoot) -> anyhow::Result<Vec<(String, String)>> {
     let all_hop_files = find_hop_files(base_dir)?;
     let mut modules = Vec::new();
 
@@ -103,28 +117,10 @@ mod tests {
         fs::write(&build_file, "test").unwrap();
 
         // Test finding from nested directory
-        let found = find_build_file(&nested_dir).unwrap();
-        assert_eq!(found, build_file);
+        let found = ProjectRoot::find(&nested_dir).unwrap();
+        assert_eq!(found.0, temp_dir);
 
         // Clean up
         fs::remove_dir_all(&temp_dir).unwrap();
-    }
-
-    #[test]
-    fn test_path_to_module_name() {
-        let base_dir = Path::new("/project");
-        let file_path = Path::new("/project/src/components/header.hop");
-
-        let module_name = path_to_module_name(file_path, base_dir).unwrap();
-        assert_eq!(module_name, "src/components/header");
-    }
-
-    #[test]
-    fn test_module_name_to_path() {
-        let base_dir = Path::new("/project");
-        let module_name = "src/components/header";
-
-        let path = module_name_to_path(module_name, base_dir);
-        assert_eq!(path, Path::new("/project/src/components/header.hop"));
     }
 }

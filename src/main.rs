@@ -15,21 +15,14 @@ mod unifier;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use compiler::Compiler;
+use files::ProjectRoot;
 use std::path::Path;
 
-pub fn compile_hop_program(build_file: &Path) -> anyhow::Result<runtime::Program> {
-    use compiler::Compiler;
+pub fn compile_hop_program(root: &ProjectRoot) -> anyhow::Result<runtime::Program> {
 
-    let mut compiler = Compiler::new();
+    let mut compiler = compiler::Compiler::new();
 
-    // Determine the base directory for finding source files
-    let canonicalized = build_file.canonicalize().unwrap();
-    let base_dir = canonicalized.parent().unwrap();
-
-    // Load all hop modules from the base directory
-    let modules = files::load_all_hop_modules(base_dir)?;
-
-    for (module_name, content) in modules {
+    for (module_name, content) in files::load_all_hop_modules(&root)? {
         compiler.add_module(module_name, content);
     }
 
@@ -116,8 +109,9 @@ async fn main() -> anyhow::Result<()> {
         }) => {
             use std::time::Instant;
             let start_time = Instant::now();
+            let root = ProjectRoot::find(Path::new(build_file)).expect("hop root not found");
             let mut outputs = build_from_hop(
-                Path::new(build_file),
+                &root,
                 Path::new(outdir),
                 script_file.as_deref(),
             )?;
@@ -144,8 +138,9 @@ async fn main() -> anyhow::Result<()> {
             use colored::*;
             use std::time::Instant;
             let start_time = Instant::now();
+            let root = ProjectRoot::find(Path::new(build_file)).expect("hop root not found");
             let (router, _watcher) = serve_from_hop(
-                Path::new(build_file),
+                &root,
                 servedir.as_deref().map(Path::new),
                 script_file.as_deref(),
             )
@@ -168,23 +163,17 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn build_from_hop(
-    build_file: &Path,
+    root: &ProjectRoot,
     output_dir: &Path,
     script_file: Option<&str>,
 ) -> anyhow::Result<Vec<(String, usize)>> {
     use anyhow::Context;
     use std::fs;
 
-    // Check that build file exists
-    if !build_file.exists() {
-        anyhow::bail!("Failed to read build file");
-    }
-
     // Create output directory if it doesn't exist
     fs::create_dir_all(output_dir)?;
 
-    // Use render_build_files to get all rendered content
-    let rendered_files = render_build_files(build_file)?;
+    let rendered_files = render_build_files(root)?;
     let mut file_outputs = Vec::new();
 
     // Write each rendered file to the output directory
@@ -202,7 +191,7 @@ fn build_from_hop(
 
     // Handle script collection if requested
     if let Some(script_file_name) = script_file {
-        let program = compile_hop_program(build_file)?;
+        let program = compile_hop_program(root)?;
         let combined_script = program.get_scripts();
         let script_path = output_dir.join(script_file_name);
         fs::write(&script_path, combined_script)
@@ -213,13 +202,13 @@ fn build_from_hop(
 }
 
 fn render_build_files(
-    build_file: &Path,
+    root: &ProjectRoot,
 ) -> anyhow::Result<std::collections::HashMap<String, String>> {
     use crate::common::Environment;
     use std::collections::HashMap;
 
     // Compile the hop program including the build file
-    let program = compile_hop_program(build_file)?;
+    let program = compile_hop_program(root)?;
     let mut rendered_files = HashMap::new();
     let mut env = Environment::new();
 
@@ -347,7 +336,7 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
 }
 
 fn create_file_watcher(
-    build_file: &Path,
+    root: &ProjectRoot,
 ) -> anyhow::Result<(
     notify::RecommendedWatcher,
     tokio::sync::broadcast::Sender<()>,
@@ -369,7 +358,7 @@ fn create_file_watcher(
         Config::default(),
     )?;
 
-    watcher.watch(build_file, RecursiveMode::NonRecursive)?;
+    watcher.watch(root.get_path(), RecursiveMode::Recursive)?;
 
     Ok((watcher, channel))
 }
@@ -386,7 +375,7 @@ fn create_file_watcher(
 /// The client may change the build.hop file while the server is running as the server will reread the
 /// build file whenever a new request comes in.
 async fn serve_from_hop(
-    build_file: &Path,
+    root: &ProjectRoot,
     serve_dir: Option<&Path>,
     script_file: Option<&str>,
 ) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher)> {
@@ -400,7 +389,7 @@ async fn serve_from_hop(
     let mut router = axum::Router::new();
 
     // Add SSE endpoint for hot reload events
-    let (watcher, channel) = create_file_watcher(build_file)?;
+    let (watcher, channel) = create_file_watcher(root)?;
     router = router.route(
         "/__hop_hot_reload",
         get(async move || {
@@ -414,11 +403,11 @@ async fn serve_from_hop(
     // Add script serving endpoint if script_file is specified
     if let Some(script_filename) = script_file {
         let script_path = format!("/{}", script_filename);
-        let build_file_for_script = build_file.to_path_buf();
+        let local_root = root.clone();
         router = router.route(
             &script_path,
             get(
-                async move || match compile_hop_program(&build_file_for_script) {
+                async move || match compile_hop_program(&local_root) {
                     Ok(program) => {
                         use axum::body::Body;
                         Ok(axum::response::Response::builder()
@@ -435,13 +424,13 @@ async fn serve_from_hop(
         );
     }
 
-    let build_file_path = build_file.to_path_buf();
+    let local_root = root.clone();
     let request_handler = async move |req: axum::extract::Request| -> Result<
         axum::response::Html<String>,
         (StatusCode, axum::response::Html<String>),
     > {
         // Render all build files into a HashMap
-        let rendered_files = match render_build_files(&build_file_path) {
+        let rendered_files = match render_build_files(&local_root) {
             Ok(files) => files,
             Err(e) => {
                 return Err((
@@ -530,21 +519,6 @@ mod tests {
         Ok(temp_dir)
     }
 
-    /// When the user calls `hop build` and the build file does not exist, an error should be
-    /// returned stating the the build file could not be read.
-    #[test]
-    fn test_build_nonexistent_build_file() {
-        let dir = temp_dir_from_txtar("").unwrap();
-        let result = build_from_hop(&dir.join("build.hop"), &dir.join("out"), None);
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("Failed to read build file")
-        );
-    }
-
     /// When the user calls `hop serve` and has a entry for `index.html` in the manifest file, the
     /// index.html entry should be rendered when the user issues a GET to /.
     #[tokio::test]
@@ -558,8 +532,9 @@ mod tests {
 "#,
         )
         .unwrap();
+        let root = ProjectRoot::find(&dir).expect("hop root not found");
 
-        let (router, _watcher) = serve_from_hop(&dir.join("build.hop"), None, None)
+        let (router, _watcher) = serve_from_hop(&root, None, None)
             .await
             .unwrap();
 
@@ -593,8 +568,9 @@ mod tests {
 </render>
 "#,
         )?;
+        let root = ProjectRoot::find(&dir).expect("hop root not found");
 
-        let (router, _watcher) = serve_from_hop(&dir.join("build.hop"), None, None).await?;
+        let (router, _watcher) = serve_from_hop(&root, None, None).await?;
 
         let server = TestServer::new(router).unwrap();
 
@@ -636,9 +612,10 @@ console.log("Hello from static file");
 "#,
         )
         .unwrap();
+        let root = ProjectRoot::find(&dir).expect("hop root not found");
 
         let (router, _watcher) =
-            serve_from_hop(&dir.join("build.hop"), Some(&dir.join("static")), None)
+            serve_from_hop(&root, Some(&dir.join("static")), None)
                 .await
                 .unwrap();
 
@@ -680,8 +657,9 @@ console.log("Hello from static file");
 "#,
         )
         .unwrap();
+        let root = ProjectRoot::find(&dir).expect("hop root not found");
 
-        let result = build_from_hop(&dir.join("build.hop"), &dir.join("out"), None);
+        let result = build_from_hop(&root, &dir.join("out"), None);
         assert!(result.is_ok());
         let outputs = result.unwrap();
         assert_eq!(outputs.len(), 1);
@@ -712,8 +690,9 @@ console.log("Hello from static file");
 "#,
         )
         .unwrap();
+        let root = ProjectRoot::find(&dir).expect("hop root not found");
 
-        let (router, _watcher) = serve_from_hop(&dir.join("build.hop"), None, None)
+        let (router, _watcher) = serve_from_hop(&root, None, None)
             .await
             .unwrap();
 
