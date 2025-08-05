@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 pub struct ProjectRoot(PathBuf);
 
 impl ProjectRoot {
-    pub fn find(start_path: &Path) -> anyhow::Result<ProjectRoot> {
+    /// Find the project root by traversing upwards.
+    pub fn find_upwards(start_path: &Path) -> anyhow::Result<ProjectRoot> {
         let canonicalized = start_path.canonicalize().with_context(|| format!("Failed to canonicalize path {:?}", &start_path))?;
         let mut current_dir = if canonicalized.is_file() {
             canonicalized.parent().ok_or_else(|| anyhow::anyhow!("Can't get parent of path {:?}", &canonicalized))?
@@ -20,6 +21,19 @@ impl ProjectRoot {
             }
             current_dir = current_dir.parent().ok_or_else(|| anyhow::anyhow!("Can't get parent of {:?}", &current_dir))?
         }
+    }
+    /// Construct the project root from a path. The path should be a directory and contain the
+    /// build file.
+    pub fn from(path: &Path) -> anyhow::Result<ProjectRoot> {
+        if !path.is_dir() {
+            anyhow::bail!("{:?} is not a directory", &path)
+        }
+        let canonicalized = path.canonicalize().with_context(|| format!("Failed to canonicalize path {:?}", &path))?;
+        let build_file = canonicalized.join("build.hop");
+        if !build_file.exists() {
+            anyhow::bail!("Expected to find build.hop in {:?}", &path)
+        }
+        return Ok(ProjectRoot(canonicalized.to_path_buf()));
     }
     pub fn get_path(&self) -> &Path {
         return &self.0;
@@ -117,7 +131,7 @@ mod tests {
         fs::write(&build_file, "test").unwrap();
 
         // Test finding from nested directory
-        let found = ProjectRoot::find(&nested_dir).unwrap();
+        let found = ProjectRoot::find_upwards(&nested_dir).unwrap();
         assert_eq!(found.0, temp_dir);
 
         // Clean up

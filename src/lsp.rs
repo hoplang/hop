@@ -37,7 +37,7 @@ impl HopLanguageServer {
 
     fn find_root(&self, uri: &Url) -> anyhow::Result<ProjectRoot> {
         let file_path = std::path::Path::new(uri.path());
-        ProjectRoot::find(file_path)
+        ProjectRoot::find_upwards(file_path)
     }
 
     fn uri_to_module_name(&self, uri: &Url) -> String {

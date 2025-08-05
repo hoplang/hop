@@ -47,8 +47,8 @@ enum Commands {
     /// Build hop templates from a manifest to files
     Build {
         /// Path to project root
-        #[arg(long, default_value = ".")]
-        projectdir: String,
+        #[arg(long)]
+        projectdir: Option<String>,
         /// Output directory
         #[arg(long)]
         outdir: String,
@@ -59,8 +59,8 @@ enum Commands {
     /// Start an HTTP server for serving hop templates from a manifest
     Serve {
         /// Path to project root
-        #[arg(long, default_value = ".")]
-        projectdir: String,
+        #[arg(long)]
+        projectdir: Option<String>,
         /// Port to serve on
         #[arg(short, long, default_value = "3000")]
         port: u16,
@@ -109,7 +109,10 @@ async fn main() -> anyhow::Result<()> {
         }) => {
             use std::time::Instant;
             let start_time = Instant::now();
-            let root = ProjectRoot::find(Path::new(projectdir))?;
+            let root = match projectdir {
+                Some(d) => ProjectRoot::from(Path::new(d))?,
+                None => ProjectRoot::find_upwards(Path::new("."))?
+            };
             let mut outputs = build_from_hop(
                 &root,
                 Path::new(outdir),
@@ -138,7 +141,10 @@ async fn main() -> anyhow::Result<()> {
             use colored::*;
             use std::time::Instant;
             let start_time = Instant::now();
-            let root = ProjectRoot::find(Path::new(projectdir))?;
+            let root = match projectdir {
+                Some(d) => ProjectRoot::from(Path::new(d))?,
+                None => ProjectRoot::find_upwards(Path::new("."))?
+            };
             let (router, _watcher) = serve_from_hop(
                 &root,
                 staticdir.as_deref().map(Path::new),
@@ -531,7 +537,7 @@ mod tests {
 "#,
         )
         .unwrap();
-        let root = ProjectRoot::find(&dir).unwrap();
+        let root = ProjectRoot::find_upwards(&dir).unwrap();
 
         let (router, _watcher) = serve_from_hop(&root, None, None)
             .await
@@ -567,7 +573,7 @@ mod tests {
 </render>
 "#,
         )?;
-        let root = ProjectRoot::find(&dir).unwrap();
+        let root = ProjectRoot::find_upwards(&dir).unwrap();
 
         let (router, _watcher) = serve_from_hop(&root, None, None).await?;
 
@@ -611,7 +617,7 @@ console.log("Hello from static file");
 "#,
         )
         .unwrap();
-        let root = ProjectRoot::find(&dir).unwrap();
+        let root = ProjectRoot::find_upwards(&dir).unwrap();
 
         let (router, _watcher) =
             serve_from_hop(&root, Some(&dir.join("static")), None)
@@ -656,7 +662,7 @@ console.log("Hello from static file");
 "#,
         )
         .unwrap();
-        let root = ProjectRoot::find(&dir).unwrap();
+        let root = ProjectRoot::find_upwards(&dir).unwrap();
 
         let result = build_from_hop(&root, &dir.join("out"), None);
         assert!(result.is_ok());
@@ -689,7 +695,7 @@ console.log("Hello from static file");
 "#,
         )
         .unwrap();
-        let root = ProjectRoot::find(&dir).unwrap();
+        let root = ProjectRoot::find_upwards(&dir).unwrap();
 
         let (router, _watcher) = serve_from_hop(&root, None, None)
             .await
