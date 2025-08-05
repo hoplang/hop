@@ -109,7 +109,7 @@ async fn main() -> anyhow::Result<()> {
         }) => {
             use std::time::Instant;
             let start_time = Instant::now();
-            let root = ProjectRoot::find(Path::new(build_file)).expect("hop root not found");
+            let root = ProjectRoot::find(Path::new(build_file))?;
             let mut outputs = build_from_hop(
                 &root,
                 Path::new(outdir),
@@ -138,7 +138,7 @@ async fn main() -> anyhow::Result<()> {
             use colored::*;
             use std::time::Instant;
             let start_time = Instant::now();
-            let root = ProjectRoot::find(Path::new(build_file)).expect("hop root not found");
+            let root = ProjectRoot::find(Path::new(build_file))?;
             let (router, _watcher) = serve_from_hop(
                 &root,
                 servedir.as_deref().map(Path::new),
@@ -532,7 +532,7 @@ mod tests {
 "#,
         )
         .unwrap();
-        let root = ProjectRoot::find(&dir).expect("hop root not found");
+        let root = ProjectRoot::find(&dir).unwrap();
 
         let (router, _watcher) = serve_from_hop(&root, None, None)
             .await
@@ -568,7 +568,7 @@ mod tests {
 </render>
 "#,
         )?;
-        let root = ProjectRoot::find(&dir).expect("hop root not found");
+        let root = ProjectRoot::find(&dir).unwrap();
 
         let (router, _watcher) = serve_from_hop(&root, None, None).await?;
 
@@ -612,7 +612,7 @@ console.log("Hello from static file");
 "#,
         )
         .unwrap();
-        let root = ProjectRoot::find(&dir).expect("hop root not found");
+        let root = ProjectRoot::find(&dir).unwrap();
 
         let (router, _watcher) =
             serve_from_hop(&root, Some(&dir.join("static")), None)
@@ -657,7 +657,7 @@ console.log("Hello from static file");
 "#,
         )
         .unwrap();
-        let root = ProjectRoot::find(&dir).expect("hop root not found");
+        let root = ProjectRoot::find(&dir).unwrap();
 
         let result = build_from_hop(&root, &dir.join("out"), None);
         assert!(result.is_ok());
@@ -690,7 +690,7 @@ console.log("Hello from static file");
 "#,
         )
         .unwrap();
-        let root = ProjectRoot::find(&dir).expect("hop root not found");
+        let root = ProjectRoot::find(&dir).unwrap();
 
         let (router, _watcher) = serve_from_hop(&root, None, None)
             .await

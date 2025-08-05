@@ -35,7 +35,7 @@ impl HopLanguageServer {
         }
     }
 
-    fn find_root(&self, uri: &Url) -> Option<ProjectRoot> {
+    fn find_root(&self, uri: &Url) -> anyhow::Result<ProjectRoot> {
         let file_path = std::path::Path::new(uri.path());
         ProjectRoot::find(file_path)
     }
@@ -44,7 +44,7 @@ impl HopLanguageServer {
         let file_path = std::path::Path::new(uri.path());
 
         // Find the build.hop file to determine base directory
-        if let Some(root) = self.find_root(uri) {
+        if let Ok(root) = self.find_root(uri) {
             if let Ok(module_name) = files::path_to_module_name(file_path, &root) {
                 return module_name;
             }
@@ -273,7 +273,7 @@ impl LanguageServer for HopLanguageServer {
                 uri.clone()
             } else {
                 // Different module - construct URI from module name using base directory
-                if let Some(root) = self.find_root(&uri) {
+                if let Ok(root) = self.find_root(&uri) {
                     let def_path = files::module_name_to_path(&definition.module, &root);
 
                     match Url::from_file_path(&def_path) {

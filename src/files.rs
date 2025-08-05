@@ -5,10 +5,10 @@ use std::path::{Path, PathBuf};
 pub struct ProjectRoot(PathBuf);
 
 impl ProjectRoot {
-    pub fn find(start_path: &Path) -> Option<ProjectRoot> {
-        let canonicalized = start_path.canonicalize().ok()?;
+    pub fn find(start_path: &Path) -> anyhow::Result<ProjectRoot> {
+        let canonicalized = start_path.canonicalize().with_context(|| format!("Failed to canonicalize path {:?}", &start_path))?;
         let mut current_dir = if canonicalized.is_file() {
-            canonicalized.parent()?
+            canonicalized.parent().ok_or_else(|| anyhow::anyhow!("Can't get parent of path {:?}", &canonicalized))?
         } else {
             &canonicalized
         };
@@ -16,9 +16,9 @@ impl ProjectRoot {
         loop {
             let build_file = current_dir.join("build.hop");
             if build_file.exists() {
-                return Some(ProjectRoot(current_dir.to_path_buf()));
+                return Ok(ProjectRoot(current_dir.to_path_buf()));
             }
-            current_dir = current_dir.parent()?;
+            current_dir = current_dir.parent().ok_or_else(|| anyhow::anyhow!("Can't get parent of {:?}", &current_dir))?
         }
     }
     pub fn get_path(&self) -> &Path {
