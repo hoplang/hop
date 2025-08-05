@@ -69,7 +69,7 @@ enum Commands {
         host: String,
         /// Directory to serve static files from
         #[arg(long)]
-        servedir: Option<String>,
+        staticdir: Option<String>,
         /// Optional script file name to make scripts available over HTTP
         #[arg(long)]
         scriptfile: Option<String>,
@@ -132,7 +132,7 @@ async fn main() -> anyhow::Result<()> {
             projectdir,
             port,
             host,
-            servedir,
+            staticdir,
             scriptfile,
         }) => {
             use colored::*;
@@ -141,7 +141,7 @@ async fn main() -> anyhow::Result<()> {
             let root = ProjectRoot::find(Path::new(projectdir))?;
             let (router, _watcher) = serve_from_hop(
                 &root,
-                servedir.as_deref().map(Path::new),
+                staticdir.as_deref().map(Path::new),
                 scriptfile.as_deref(),
             )
             .await?;
@@ -370,13 +370,13 @@ fn create_file_watcher(
 /// script on in all `html` files that listens to SSE-events on that route and performs
 /// hot-reloading when an event is emitted.
 ///
-/// If `servedir` is specified the server serves static files from the given directory as well.
+/// If `static_dir` is specified the server serves static files from the given directory as well.
 ///
 /// The client may change the build.hop file while the server is running as the server will reread the
 /// build file whenever a new request comes in.
 async fn serve_from_hop(
     root: &ProjectRoot,
-    serve_dir: Option<&Path>,
+    static_dir: Option<&Path>,
     script_file: Option<&str>,
 ) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher)> {
     use axum::http::StatusCode;
@@ -481,14 +481,13 @@ async fn serve_from_hop(
     };
 
     // Set up static file serving if specified
-    if let Some(serve_dir) = serve_dir {
+    if let Some(static_dir) = static_dir {
         use axum::routing::get;
-        let servedir_path = serve_dir;
-        if !servedir_path.is_dir() {
-            anyhow::bail!("servedir '{}' is not a directory", servedir_path.display());
+        if !static_dir.is_dir() {
+            anyhow::bail!("servedir '{}' is not a directory", static_dir.display());
         }
         router = router.fallback_service(
-            tower_http::services::ServeDir::new(servedir_path).fallback(get(request_handler)),
+            tower_http::services::ServeDir::new(static_dir).fallback(get(request_handler)),
         );
     } else {
         router = router.fallback(request_handler);
