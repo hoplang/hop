@@ -40,16 +40,14 @@ impl HopLanguageServer {
         ProjectRoot::find_upwards(std::path::Path::new(uri.path()))
     }
 
-    fn uri_to_module_name(&self, uri: &Url, root: ProjectRoot) -> String {
+    fn uri_to_module_name(&self, uri: &Url, root: &ProjectRoot) -> String {
         match files::path_to_module_name(Path::new(uri.path()), &root) {
             Ok(s) => s,
             Err(_) => "error".to_string()
         }
     }
 
-    async fn load_dependency_modules(&self, uri: &Url) -> std::io::Result<()> {
-        // Find the build.hop file to determine base directory
-        let root = self.find_root(uri).expect("Could not find hop root");
+    async fn load_modules(&self, root: &ProjectRoot) -> std::io::Result<()> {
 
         // Load all hop modules from the base directory
         let all_modules = files::load_all_hop_modules(&root)
@@ -97,7 +95,7 @@ impl HopLanguageServer {
 
     async fn publish_diagnostics(&self, uri: &Url) {
         let root = self.find_root(&uri).unwrap();
-        let module_name = self.uri_to_module_name(uri, root);
+        let module_name = self.uri_to_module_name(uri, &root);
         let server = self.server.read().await;
         let diagnostics = server.get_error_diagnostics(&module_name);
 
@@ -155,7 +153,7 @@ impl LanguageServer for HopLanguageServer {
         let uri = params.text_document.uri;
         let text = params.text_document.text;
         let root = self.find_root(&uri).unwrap();
-        let module_name = self.uri_to_module_name(&uri, root);
+        let module_name = self.uri_to_module_name(&uri, &root);
 
         self.client
             .log_message(
@@ -173,7 +171,7 @@ impl LanguageServer for HopLanguageServer {
         self.client
             .log_message(MessageType::INFO, "Loading dependency modules...")
             .await;
-        let _ = self.load_dependency_modules(&uri).await;
+        let _ = self.load_modules(&root).await;
 
         {
             let mut server = self.server.write().await;
@@ -194,7 +192,7 @@ impl LanguageServer for HopLanguageServer {
 
         let uri = params.text_document.uri;
         let root = self.find_root(&uri).unwrap();
-        let module_name = self.uri_to_module_name(&uri, root);
+        let module_name = self.uri_to_module_name(&uri, &root);
         let changes = params.content_changes;
 
         self.client
@@ -236,7 +234,7 @@ impl LanguageServer for HopLanguageServer {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
         let root = self.find_root(&uri).unwrap();
-        let module_name = self.uri_to_module_name(&uri, root);
+        let module_name = self.uri_to_module_name(&uri, &root);
 
         let (line, column) = Self::from_lsp_position(position);
         let server = self.server.read().await;
@@ -263,7 +261,7 @@ impl LanguageServer for HopLanguageServer {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
         let root = self.find_root(&uri).unwrap();
-        let module_name = self.uri_to_module_name(&uri, root);
+        let module_name = self.uri_to_module_name(&uri, &root);
 
         let (line, column) = Self::from_lsp_position(position);
         let server = self.server.read().await;
