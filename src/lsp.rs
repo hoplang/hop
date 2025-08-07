@@ -90,8 +90,7 @@ impl HopLanguageServer {
         Ok(())
     }
 
-    async fn publish_diagnostics(&self, uri: &Url) {
-        let root = self.find_root(&uri).unwrap();
+    async fn publish_diagnostics(&self, root: &ProjectRoot, uri: &Url) {
         let module_name = self.uri_to_module_name(uri, &root);
         let server = self.server.read().await;
         let diagnostics = server.get_error_diagnostics(&module_name);
@@ -177,7 +176,7 @@ impl LanguageServer for HopLanguageServer {
             )
             .await;
 
-        self.publish_diagnostics(&uri).await;
+        self.publish_diagnostics(&root, &uri).await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
@@ -202,13 +201,11 @@ impl LanguageServer for HopLanguageServer {
                 server.update_module(module_name, &text);
             }
 
-            self.publish_diagnostics(&uri).await;
+            self.publish_diagnostics(&root, &uri).await;
         }
     }
 
-    async fn did_save(&self, params: DidSaveTextDocumentParams) {
-        let uri = params.text_document.uri;
-        self.publish_diagnostics(&uri).await;
+    async fn did_save(&self, _params: DidSaveTextDocumentParams) {
     }
 
     async fn did_close(&self, _params: DidCloseTextDocumentParams) {
@@ -251,34 +248,16 @@ impl LanguageServer for HopLanguageServer {
         let server = self.server.read().await;
 
         if let Some(definition) = server.get_definition(&module_name, line, column) {
-            // Convert the definition module name to a URI
-            let def_uri = if definition.module == module_name {
-                // Same module
-                uri.clone()
-            } else {
-                // Different module - construct URI from module name using base directory
-                if let Ok(root) = self.find_root(&uri) {
-                    let def_path = files::module_name_to_path(&definition.module, &root);
-
-                    match Url::from_file_path(&def_path) {
-                        Ok(url) => url,
-                        Err(_) => return Ok(None),
-                    }
-                } else {
-                    // Fallback to old behavior if no build.hop found
-                    let current_path = std::path::Path::new(uri.path());
-                    let parent_dir = current_path.parent().unwrap_or(std::path::Path::new("."));
-                    let def_path = parent_dir.join(format!("{}.hop", definition.module));
-
-                    match Url::from_file_path(&def_path) {
-                        Ok(url) => url,
-                        Err(_) => return Ok(None),
-                    }
+            let definition_uri = {
+                let def_path = files::module_name_to_path(&definition.module, &root);
+                match Url::from_file_path(&def_path) {
+                    Ok(url) => url,
+                    Err(_) => return Ok(None),
                 }
             };
 
             let location = Location {
-                uri: def_uri,
+                uri: definition_uri,
                 range: Range {
                     start: Self::to_lsp_position(
                         definition.start_line,
