@@ -1,5 +1,5 @@
 use crate::files::{self, ProjectRoot};
-use crate::server::Server;
+use crate::server::{HoverInfo, Server};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -40,12 +40,21 @@ impl HopLanguageServer {
     fn uri_to_module_name(&self, uri: &Url, root: &ProjectRoot) -> String {
         match files::path_to_module_name(Path::new(uri.path()), &root) {
             Ok(s) => s,
-            Err(_) => "error".to_string()
+            Err(_) => "error".to_string(),
+        }
+    }
+
+    fn convert_hover(&self, hover_info: HoverInfo) -> Hover {
+        Hover {
+            contents: HoverContents::Scalar(MarkedString::String(hover_info.type_str)),
+            range: Some(Range {
+                start: Self::to_lsp_position(hover_info.start_line, hover_info.start_column),
+                end: Self::to_lsp_position(hover_info.end_line, hover_info.end_column),
+            }),
         }
     }
 
     async fn load_modules(&self, root: &ProjectRoot) -> std::io::Result<()> {
-
         // Load all hop modules from the base directory
         let all_modules = files::load_all_hop_modules(&root)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
@@ -180,7 +189,6 @@ impl LanguageServer for HopLanguageServer {
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
-
         let uri = params.text_document.uri;
         let root = self.find_root(&uri).unwrap();
         let module_name = self.uri_to_module_name(&uri, &root);
@@ -205,11 +213,9 @@ impl LanguageServer for HopLanguageServer {
         }
     }
 
-    async fn did_save(&self, _params: DidSaveTextDocumentParams) {
-    }
+    async fn did_save(&self, _params: DidSaveTextDocumentParams) {}
 
-    async fn did_close(&self, _params: DidCloseTextDocumentParams) {
-    }
+    async fn did_close(&self, _params: DidCloseTextDocumentParams) {}
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
         let uri = params.text_document_position_params.text_document.uri;
@@ -219,20 +225,9 @@ impl LanguageServer for HopLanguageServer {
 
         let (line, column) = Self::from_lsp_position(position);
         let server = self.server.read().await;
-        if let Some(hover_info) = server.get_hover_info(&module_name, line, column) {
-            Ok(Some(Hover {
-                contents: HoverContents::Scalar(MarkedString::String(hover_info.type_str)),
-                range: Some(Range {
-                    start: Self::to_lsp_position(
-                        hover_info.start_line,
-                        hover_info.start_column,
-                    ),
-                    end: Self::to_lsp_position(hover_info.end_line, hover_info.end_column),
-                }),
-            }))
-        } else {
-            Ok(None)
-        }
+        Ok(server
+            .get_hover_info(&module_name, line, column)
+            .map(|h| self.convert_hover(h)))
     }
 
     async fn goto_definition(
@@ -259,10 +254,7 @@ impl LanguageServer for HopLanguageServer {
             let location = Location {
                 uri: definition_uri,
                 range: Range {
-                    start: Self::to_lsp_position(
-                        definition.start_line,
-                        definition.start_column,
-                    ),
+                    start: Self::to_lsp_position(definition.start_line, definition.start_column),
                     end: Self::to_lsp_position(definition.end_line, definition.end_column),
                 },
             };
