@@ -1,6 +1,5 @@
 use crate::files::{self, ProjectRoot};
 use crate::server::Server;
-use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -11,7 +10,6 @@ use tower_lsp::{Client, LanguageServer, LspService, Server as LspServer};
 pub struct HopLanguageServer {
     client: Client,
     server: Arc<RwLock<Server>>,
-    document_map: Arc<RwLock<HashMap<Url, String>>>,
 }
 
 impl HopLanguageServer {
@@ -19,7 +17,6 @@ impl HopLanguageServer {
         Self {
             client,
             server: Arc::new(RwLock::new(Server::new())),
-            document_map: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -162,11 +159,6 @@ impl LanguageServer for HopLanguageServer {
             )
             .await;
 
-        {
-            let mut document_map = self.document_map.write().await;
-            document_map.insert(uri.clone(), text.clone());
-        }
-
         // Load any missing dependency modules from the same directory
         self.client
             .log_message(MessageType::INFO, "Loading dependency modules...")
@@ -206,11 +198,6 @@ impl LanguageServer for HopLanguageServer {
             let text = change.text;
 
             {
-                let mut document_map = self.document_map.write().await;
-                document_map.insert(uri.clone(), text.clone());
-            }
-
-            {
                 let mut server = self.server.write().await;
                 server.update_module(module_name, &text);
             }
@@ -224,10 +211,7 @@ impl LanguageServer for HopLanguageServer {
         self.publish_diagnostics(&uri).await;
     }
 
-    async fn did_close(&self, params: DidCloseTextDocumentParams) {
-        let uri = params.text_document.uri;
-        let mut document_map = self.document_map.write().await;
-        document_map.remove(&uri);
+    async fn did_close(&self, _params: DidCloseTextDocumentParams) {
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
