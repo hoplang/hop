@@ -1,7 +1,6 @@
 use crate::files::{self, ProjectRoot};
 use crate::server::{HoverInfo, Server};
 use std::path::Path;
-use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
@@ -9,14 +8,14 @@ use tower_lsp::{Client, LanguageServer, LspService, Server as LspServer};
 
 pub struct HopLanguageServer {
     client: Client,
-    server: Arc<RwLock<Server>>,
+    server: RwLock<Server>,
 }
 
 impl HopLanguageServer {
     pub fn new(client: Client) -> Self {
         Self {
             client,
-            server: Arc::new(RwLock::new(Server::new())),
+            server: RwLock::new(Server::new()),
         }
     }
 
