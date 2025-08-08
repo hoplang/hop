@@ -39,7 +39,15 @@ impl HopLanguageServer {
     fn uri_to_module_name(&self, uri: &Url, root: &ProjectRoot) -> String {
         match files::path_to_module_name(Path::new(uri.path()), &root) {
             Ok(s) => s,
-            Err(_) => "error".to_string(),
+            Err(_) => panic!(),
+        }
+    }
+
+    fn module_name_to_uri(&self, name: &str, root: &ProjectRoot) -> Url {
+        let p = files::module_name_to_path(&name, &root);
+        match Url::from_file_path(&p) {
+            Ok(url) => url,
+            Err(_) => panic!(),
         }
     }
 
@@ -150,11 +158,7 @@ impl LanguageServer for HopLanguageServer {
                 changed_modules = server.update_module(module_name, &change.text);
             }
             for c in changed_modules {
-                let def_path = files::module_name_to_path(&c, &root);
-                let uri = match Url::from_file_path(&def_path) {
-                    Ok(url) => url,
-                    Err(_) => continue,
-                };
+                let uri = self.module_name_to_uri(&c, &root);
                 self.publish_diagnostics(&root, &uri).await;
             }
         }
@@ -186,16 +190,8 @@ impl LanguageServer for HopLanguageServer {
         let server = self.server.read().await;
 
         if let Some(definition) = server.get_definition(&module_name, line, column) {
-            let definition_uri = {
-                let def_path = files::module_name_to_path(&definition.module, &root);
-                match Url::from_file_path(&def_path) {
-                    Ok(url) => url,
-                    Err(_) => return Ok(None),
-                }
-            };
-
             let location = Location {
-                uri: definition_uri,
+                uri: self.module_name_to_uri(&definition.module, &root),
                 range: Range {
                     start: Self::to_lsp_position(definition.start_line, definition.start_column),
                     end: Self::to_lsp_position(definition.end_line, definition.end_column),
