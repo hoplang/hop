@@ -210,22 +210,18 @@ impl LanguageServer for HopLanguageServer {
             .await;
 
         if let Some(change) = changes.into_iter().next() {
-            let text = change.text;
-
+            let changed_modules: Vec<String>;
             {
-                let changed: Vec<String>;
-                {
-                    let mut server = self.server.write().await;
-                    changed = server.update_module(module_name, &text);
-                }
-                for c in changed {
-                    let def_path = files::module_name_to_path(&c, &root);
-                    let uri = match Url::from_file_path(&def_path) {
-                        Ok(url) => url,
-                        Err(_) => continue,
-                    };
-                    self.publish_diagnostics(&root, &uri).await;
-                }
+                let mut server = self.server.write().await;
+                changed_modules = server.update_module(module_name, &change.text);
+            }
+            for c in changed_modules {
+                let def_path = files::module_name_to_path(&c, &root);
+                let uri = match Url::from_file_path(&def_path) {
+                    Ok(url) => url,
+                    Err(_) => continue,
+                };
+                self.publish_diagnostics(&root, &uri).await;
             }
         }
     }
