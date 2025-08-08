@@ -32,18 +32,18 @@ impl HopLanguageServer {
         }
     }
 
-    fn find_root(&self, uri: &Url) -> anyhow::Result<ProjectRoot> {
+    fn find_root(uri: &Url) -> anyhow::Result<ProjectRoot> {
         ProjectRoot::find_upwards(std::path::Path::new(uri.path()))
     }
 
-    fn uri_to_module_name(&self, uri: &Url, root: &ProjectRoot) -> String {
+    fn uri_to_module_name(uri: &Url, root: &ProjectRoot) -> String {
         match files::path_to_module_name(Path::new(uri.path()), &root) {
             Ok(s) => s,
             Err(_) => panic!(),
         }
     }
 
-    fn module_name_to_uri(&self, name: &str, root: &ProjectRoot) -> Url {
+    fn module_name_to_uri(name: &str, root: &ProjectRoot) -> Url {
         let p = files::module_name_to_path(&name, &root);
         match Url::from_file_path(&p) {
             Ok(url) => url,
@@ -79,7 +79,7 @@ impl HopLanguageServer {
     }
 
     async fn publish_diagnostics(&self, root: &ProjectRoot, uri: &Url) {
-        let module_name = self.uri_to_module_name(uri, &root);
+        let module_name = Self::uri_to_module_name(uri, &root);
         let server = self.server.read().await;
         let diagnostics = server.get_error_diagnostics(&module_name);
 
@@ -135,30 +135,23 @@ impl LanguageServer for HopLanguageServer {
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri;
-        let text = params.text_document.text;
-        let root = self.find_root(&uri).unwrap();
-        let module_name = self.uri_to_module_name(&uri, &root);
+        let root = Self::find_root(&uri).unwrap();
         let _ = self.load_all_modules_from_fs(&root).await;
-        {
-            let mut server = self.server.write().await;
-            server.update_module(module_name.clone(), &text);
-        }
         self.publish_diagnostics(&root, &uri).await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
-        let root = self.find_root(&uri).unwrap();
-        let module_name = self.uri_to_module_name(&uri, &root);
-        let changes = params.content_changes;
-        if let Some(change) = changes.into_iter().next() {
+        let root = Self::find_root(&uri).unwrap();
+        let module_name = Self::uri_to_module_name(&uri, &root);
+        if let Some(change) = params.content_changes.into_iter().next() {
             let changed_modules: Vec<String>;
             {
                 let mut server = self.server.write().await;
                 changed_modules = server.update_module(module_name, &change.text);
             }
             for c in changed_modules {
-                let uri = self.module_name_to_uri(&c, &root);
+                let uri = Self::module_name_to_uri(&c, &root);
                 self.publish_diagnostics(&root, &uri).await;
             }
         }
@@ -167,8 +160,8 @@ impl LanguageServer for HopLanguageServer {
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
-        let root = self.find_root(&uri).unwrap();
-        let module_name = self.uri_to_module_name(&uri, &root);
+        let root = Self::find_root(&uri).unwrap();
+        let module_name = Self::uri_to_module_name(&uri, &root);
 
         let (line, column) = Self::from_lsp_position(position);
         let server = self.server.read().await;
@@ -183,25 +176,21 @@ impl LanguageServer for HopLanguageServer {
     ) -> Result<Option<GotoDefinitionResponse>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
-        let root = self.find_root(&uri).unwrap();
-        let module_name = self.uri_to_module_name(&uri, &root);
+        let root = Self::find_root(&uri).unwrap();
+        let module_name = Self::uri_to_module_name(&uri, &root);
 
         let (line, column) = Self::from_lsp_position(position);
         let server = self.server.read().await;
 
-        if let Some(definition) = server.get_definition(&module_name, line, column) {
-            let location = Location {
-                uri: self.module_name_to_uri(&definition.module, &root),
+        Ok(server.get_definition(&module_name, line, column).map(|d| {
+            GotoDefinitionResponse::Scalar(Location {
+                uri: Self::module_name_to_uri(&d.module, &root),
                 range: Range {
-                    start: Self::to_lsp_position(definition.start_line, definition.start_column),
-                    end: Self::to_lsp_position(definition.end_line, definition.end_column),
+                    start: Self::to_lsp_position(d.start_line, d.start_column),
+                    end: Self::to_lsp_position(d.end_line, d.end_column),
                 },
-            };
-
-            Ok(Some(GotoDefinitionResponse::Scalar(location)))
-        } else {
-            Ok(None)
-        }
+            })
+        }))
     }
 
     async fn shutdown(&self) -> Result<()> {
