@@ -53,7 +53,7 @@ impl HopLanguageServer {
         }
     }
 
-    async fn load_modules(&self, root: &ProjectRoot) -> std::io::Result<()> {
+    async fn load_all_modules_from_fs(&self, root: &ProjectRoot) -> std::io::Result<()> {
         // Load all hop modules from the base directory
         let all_modules = files::load_all_hop_modules(&root)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
@@ -100,6 +100,16 @@ impl HopLanguageServer {
 
     async fn publish_diagnostics(&self, root: &ProjectRoot, uri: &Url) {
         let module_name = self.uri_to_module_name(uri, &root);
+        self.client
+            .log_message(
+                MessageType::INFO,
+                format!(
+                    "Publishing diagnostics for file: {} (module: {})",
+                    uri.path(),
+                    module_name
+                ),
+            )
+            .await;
         let server = self.server.read().await;
         let diagnostics = server.get_error_diagnostics(&module_name);
 
@@ -166,11 +176,10 @@ impl LanguageServer for HopLanguageServer {
             )
             .await;
 
-        // Load any missing dependency modules from the same directory
         self.client
             .log_message(MessageType::INFO, "Loading dependency modules...")
             .await;
-        let _ = self.load_modules(&root).await;
+        let _ = self.load_all_modules_from_fs(&root).await;
 
         {
             let mut server = self.server.write().await;
@@ -204,11 +213,20 @@ impl LanguageServer for HopLanguageServer {
             let text = change.text;
 
             {
-                let mut server = self.server.write().await;
-                server.update_module(module_name, &text);
+                let changed: Vec<String>;
+                {
+                    let mut server = self.server.write().await;
+                    changed = server.update_module(module_name, &text);
+                }
+                for c in changed {
+                    let def_path = files::module_name_to_path(&c, &root);
+                    let uri = match Url::from_file_path(&def_path) {
+                        Ok(url) => url,
+                        Err(_) => continue,
+                    };
+                    self.publish_diagnostics(&root, &uri).await;
+                }
             }
-
-            self.publish_diagnostics(&root, &uri).await;
         }
     }
 

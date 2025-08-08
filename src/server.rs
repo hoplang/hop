@@ -55,7 +55,7 @@ impl Server {
         self.modules.contains_key(module_name)
     }
 
-    pub fn update_module(&mut self, name: String, source_code: &str) {
+    pub fn update_module(&mut self, name: String, source_code: &str) -> Vec<String> {
         let mut parse_errors = Vec::new();
         let tokens = tokenize(source_code, &mut parse_errors);
         let module = parse(name.clone(), tokens, &mut parse_errors);
@@ -76,24 +76,22 @@ impl Server {
             Err(_) => vec![name],
         };
 
-        for module_name in dependent_modules {
-            self.typecheck_module(&module_name);
+        for module_name in &dependent_modules {
+            let module = match self.modules.get(module_name) {
+                Some(module) => module,
+                None => continue,
+            };
+
+            let mut type_errors = Vec::new();
+            let type_result = typecheck(module, &self.type_results, &mut type_errors);
+
+            self.type_results
+                .insert(module_name.to_string(), type_result);
+            self.type_errors
+                .insert(module_name.to_string(), type_errors);
         }
-    }
 
-    fn typecheck_module(&mut self, module_name: &str) {
-        let module = match self.modules.get(module_name) {
-            Some(module) => module,
-            None => return,
-        };
-
-        let mut type_errors = Vec::new();
-        let type_result = typecheck(module, &self.type_results, &mut type_errors);
-
-        self.type_results
-            .insert(module_name.to_string(), type_result);
-        self.type_errors
-            .insert(module_name.to_string(), type_errors);
+        return dependent_modules;
     }
 
     pub fn get_hover_info(
