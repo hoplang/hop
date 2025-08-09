@@ -507,3 +507,37 @@
   <div>Active User</div>
 </div>
 ## END
+
+
+## BEGIN
+-- main.hop --
+<main-comp>
+	<hop-raw>foo bar</hop-raw>
+</main-comp>
+-- data.json --
+{}
+-- output.html --
+<div data-hop-id="main/main-comp">
+	foo bar
+</div>
+## END
+
+
+## BEGIN
+-- main.hop --
+<main-comp>
+	<hop-raw>
+		<div>some html</div>
+		<p>more content</p>
+	</hop-raw>
+</main-comp>
+-- data.json --
+{}
+-- output.html --
+<div data-hop-id="main/main-comp">
+	
+		<div>some html</div>
+		<p>more content</p>
+	
+</div>
+## END

@@ -11,6 +11,10 @@ fn is_valid_component_name(name: &str) -> bool {
     if name.is_empty() || name.starts_with('-') || name.ends_with('-') {
         return false;
     }
+    // hop-raw is treated as a native HTML element, not a component
+    if name == "hop-raw" {
+        return false;
+    }
     name.contains('-')
 }
 

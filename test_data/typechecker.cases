@@ -1008,3 +1008,44 @@ main::main-comp
 	boolean[][][]
 	[]
 ## END
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="data">
+	<hop-raw>foo bar</hop-raw>
+	<div set-inner-text="data.message"></div>
+</main-comp>
+-- out --
+main::main-comp
+	{message: string}
+	[]
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp>
+	<hop-raw>
+		<div>some html</div>
+		<p>more content</p>
+	</hop-raw>
+</main-comp>
+-- out --
+main::main-comp
+	void
+	[]
+## END
+
+## BEGIN
+-- main.hop --
+<main-comp>
+	<hop-raw>
+		<undefined-component params="nonexistent.field">
+			<another-undefined params="also.nonexistent" />
+		</undefined-component>
+	</hop-raw>
+</main-comp>
+-- out --
+main::main-comp
+	void
+	[]
+## END

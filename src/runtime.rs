@@ -300,6 +300,20 @@ impl Program {
                     return Ok(String::new());
                 }
 
+                // For hop-raw tags, just render the inner content without the tags
+                if tag_name == "hop-raw" {
+                    let mut result = String::new();
+                    for child in children {
+                        result.push_str(&self.evaluate_node(
+                            child,
+                            slot_content,
+                            env,
+                            current_module,
+                        )?);
+                    }
+                    return Ok(result);
+                }
+
                 let mut result = format!("<{}", tag_name);
                 for attr in attributes {
                     if !attr.name.starts_with("set-") {
