@@ -420,14 +420,14 @@ pub struct ErrorNode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct DefineSlotNode {
+pub struct SlotDefinitionNode {
     pub name: String,
     pub range: Range,
     pub children: Vec<Node>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct SupplySlotNode {
+pub struct SlotReferenceNode {
     pub name: String,
     pub range: Range,
     pub children: Vec<Node>,
@@ -445,14 +445,14 @@ pub enum Node {
     Doctype(DoctypeNode),
     Text(TextNode),
     ComponentReference(ComponentReferenceNode),
+    ComponentDefinition(ComponentDefinitionNode),
+    SlotDefinition(SlotDefinitionNode),
+    SlotReference(SlotReferenceNode),
     For(ForNode),
     Cond(CondNode),
     Import(ImportNode),
-    ComponentDefinition(ComponentDefinitionNode),
     NativeHTML(NativeHTMLNode),
     Error(ErrorNode),
-    DefineSlot(DefineSlotNode),
-    SupplySlot(SupplySlotNode),
     Render(RenderNode),
 }
 

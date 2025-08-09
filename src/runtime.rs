@@ -1,6 +1,6 @@
 use crate::common::{
-    BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, CondNode, DefineSlotNode,
-    Environment, ErrorNode, Expression, ForNode, NativeHTMLNode, Node, RenderNode, SupplySlotNode,
+    BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, CondNode, Environment, ErrorNode,
+    Expression, ForNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode, SlotReferenceNode,
     Type, escape_html, is_void_element,
 };
 use std::collections::HashMap;
@@ -240,7 +240,7 @@ impl Program {
                 let mut non_slot_children = Vec::new();
 
                 for child in children {
-                    if let Node::SupplySlot(SupplySlotNode { name, children, .. }) = child {
+                    if let Node::SlotReference(SlotReferenceNode { name, children, .. }) = child {
                         let mut slot_html = String::new();
                         for slot_child in children {
                             slot_html.push_str(&self.evaluate_node(
@@ -353,7 +353,7 @@ impl Program {
             }
             Node::Text(text_node) => Ok(text_node.value.clone()),
             Node::Doctype(doctype_node) => Ok(format!("<!DOCTYPE {}>", doctype_node.value)),
-            Node::DefineSlot(DefineSlotNode { name, children, .. }) => {
+            Node::SlotDefinition(SlotDefinitionNode { name, children, .. }) => {
                 // Check if we have supply-slot content for this slot
                 if let Some(supplied_html) = slot_content.get(name) {
                     // Use the pre-evaluated supplied content
@@ -372,7 +372,7 @@ impl Program {
                     Ok(result)
                 }
             }
-            Node::SupplySlot(SupplySlotNode { children, .. }) => {
+            Node::SlotReference(SlotReferenceNode { children, .. }) => {
                 let mut result = String::new();
                 for child in children {
                     result.push_str(&self.evaluate_node(

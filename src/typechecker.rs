@@ -1,7 +1,7 @@
 use crate::common::{
-    BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, CondNode, DefineSlotNode,
-    Environment, ErrorNode, ExprAttribute, Expression, ForNode, ImportNode, NativeHTMLNode, Node,
-    Range, RangeError, RenderNode, SupplySlotNode, Type,
+    BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, CondNode, Environment, ErrorNode,
+    ExprAttribute, Expression, ForNode, ImportNode, NativeHTMLNode, Node, Range, RangeError,
+    RenderNode, SlotDefinitionNode, SlotReferenceNode, Type,
 };
 use crate::parser::Module;
 use crate::unifier::Unifier;
@@ -299,7 +299,7 @@ fn typecheck_node(
 
                 // Validate slots
                 for child in children {
-                    if let Node::SupplySlot(SupplySlotNode { name, range, .. }) = child {
+                    if let Node::SlotReference(SlotReferenceNode { name, range, .. }) = child {
                         if !comp_info.slots.contains(name) {
                             errors.push(RangeError::undefined_slot(name, component, *range));
                         }
@@ -349,8 +349,8 @@ fn typecheck_node(
                 );
             }
         }
-        Node::DefineSlot(DefineSlotNode { children, .. })
-        | Node::SupplySlot(SupplySlotNode { children, .. })
+        Node::SlotDefinition(SlotDefinitionNode { children, .. })
+        | Node::SlotReference(SlotReferenceNode { children, .. })
         | Node::Render(RenderNode { children, .. })
         | Node::Error(ErrorNode { children, .. }) => {
             for child in children {

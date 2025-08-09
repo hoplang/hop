@@ -1,7 +1,7 @@
 use crate::common::{
-    ComponentDefinitionNode, ComponentReferenceNode, CondNode, DefineSlotNode, DoctypeNode,
-    ErrorNode, ExprAttribute, ForNode, ImportNode, NativeHTMLNode, Node, Position, Range,
-    RangeError, RenderNode, SupplySlotNode, TextNode, Token, TokenKind, VarNameAttr,
+    ComponentDefinitionNode, ComponentReferenceNode, CondNode, DoctypeNode, ErrorNode,
+    ExprAttribute, ForNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError,
+    RenderNode, SlotDefinitionNode, SlotReferenceNode, TextNode, Token, TokenKind, VarNameAttr,
     is_void_element,
 };
 use crate::expression_parser::parse_expression;
@@ -161,7 +161,7 @@ fn collect_slots_from_children(
 ) {
     for child in children {
         match child {
-            Node::DefineSlot(DefineSlotNode { name, range, .. }) => {
+            Node::SlotDefinition(SlotDefinitionNode { name, range, .. }) => {
                 if slots.contains(name) {
                     errors.push(RangeError::slot_already_defined(name, *range));
                 } else {
@@ -190,7 +190,7 @@ fn collect_slots_from_children(
             Node::ComponentReference(ComponentReferenceNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
-            Node::SupplySlot(SupplySlotNode { children, .. }) => {
+            Node::SlotReference(SlotReferenceNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
             Node::Render(RenderNode { children, .. }) => {
@@ -241,8 +241,8 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
             }
 
             match t.value.as_str() {
+                // Handle as component definition
                 name if depth == 0 && name != "import" && name != "render" => {
-                    // Handle component at root level
                     let as_attr = t.get_attribute("as");
                     let entrypoint = t.get_attribute("entrypoint").is_some();
                     let params_as_attr = t.get_attribute("params-as").and_then(|attr| {
@@ -383,7 +383,7 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                 }
                 tag_name if tag_name.starts_with("slot-") => {
                     let slot_name = &tag_name[5..]; // Remove "slot-" prefix
-                    Node::DefineSlot(DefineSlotNode {
+                    Node::SlotDefinition(SlotDefinitionNode {
                         name: slot_name.to_string(),
                         range: t.range,
                         children,
@@ -391,7 +391,7 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                 }
                 tag_name if tag_name.starts_with("with-") => {
                     let slot_name = &tag_name[5..]; // Remove "with-" prefix
-                    Node::SupplySlot(SupplySlotNode {
+                    Node::SlotReference(SlotReferenceNode {
                         name: slot_name.to_string(),
                         range: t.range,
                         children,
@@ -498,13 +498,13 @@ mod tests {
                         format_node(child, depth + 1, lines);
                     }
                 }
-                Node::DefineSlot(DefineSlotNode { name, children, .. }) => {
+                Node::SlotDefinition(SlotDefinitionNode { name, children, .. }) => {
                     lines.push(format!("{}slot-{}", indent, name));
                     for child in children {
                         format_node(child, depth + 1, lines);
                     }
                 }
-                Node::SupplySlot(SupplySlotNode { name, children, .. }) => {
+                Node::SlotReference(SlotReferenceNode { name, children, .. }) => {
                     lines.push(format!("{}with-{}", indent, name));
                     for child in children {
                         format_node(child, depth + 1, lines);
