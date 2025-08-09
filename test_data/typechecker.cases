@@ -1012,7 +1012,7 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="data">
-	<hop-raw>foo bar</hop-raw>
+	<hop-x-raw>foo bar</hop-x-raw>
 	<div set-inner-text="data.message"></div>
 </main-comp>
 -- out --
@@ -1024,10 +1024,10 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp>
-	<hop-raw>
+	<hop-x-raw>
 		<div>some html</div>
 		<p>more content</p>
-	</hop-raw>
+	</hop-x-raw>
 </main-comp>
 -- out --
 main::main-comp
@@ -1038,11 +1038,11 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp>
-	<hop-raw>
+	<hop-x-raw>
 		<undefined-component params="nonexistent.field">
 			<another-undefined params="also.nonexistent" />
 		</undefined-component>
-	</hop-raw>
+	</hop-x-raw>
 </main-comp>
 -- out --
 main::main-comp

@@ -1,7 +1,7 @@
 use crate::common::{
     BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, CondNode, Environment, ErrorNode,
     ExprAttribute, Expression, ForNode, ImportNode, NativeHTMLNode, Node, Range, RangeError,
-    RenderNode, SlotDefinitionNode, SlotReferenceNode, Type,
+    RenderNode, SlotDefinitionNode, SlotReferenceNode, Type, XExecNode,
 };
 use crate::parser::Module;
 use crate::unifier::Unifier;
@@ -352,6 +352,7 @@ fn typecheck_node(
         Node::SlotDefinition(SlotDefinitionNode { children, .. })
         | Node::SlotReference(SlotReferenceNode { children, .. })
         | Node::Render(RenderNode { children, .. })
+        | Node::XExec(XExecNode { children, .. })
         | Node::Error(ErrorNode { children, .. }) => {
             for child in children {
                 typecheck_node(

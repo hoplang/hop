@@ -198,22 +198,22 @@ EndTag(script) 4:1-4:10
 
 ## BEGIN
 -- in --
-<hop-raw>foo bar</hop-raw>
+<hop-x-raw>foo bar</hop-x-raw>
 -- out --
-StartTag(hop-raw) [] 1:1-1:10
-Text 1:10-1:17
-EndTag(hop-raw) 1:17-1:27
+StartTag(hop-x-raw) [] 1:1-1:12
+Text 1:12-1:19
+EndTag(hop-x-raw) 1:19-1:31
 ## END
 
 ## BEGIN
 -- in --
-<hop-raw>
+<hop-x-raw>
   <div>some html</div>
-</hop-raw>
+</hop-x-raw>
 -- out --
-StartTag(hop-raw) [] 1:1-1:10
-Text 1:10-3:1
-EndTag(hop-raw) 3:1-3:11
+StartTag(hop-x-raw) [] 1:1-1:12
+Text 1:12-3:1
+EndTag(hop-x-raw) 3:1-3:13
 ## END
 
 ## BEGIN

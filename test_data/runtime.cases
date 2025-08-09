@@ -512,7 +512,7 @@
 ## BEGIN
 -- main.hop --
 <main-comp>
-	<hop-raw>foo bar</hop-raw>
+	<hop-x-raw>foo bar</hop-x-raw>
 </main-comp>
 -- data.json --
 {}
@@ -526,10 +526,10 @@
 ## BEGIN
 -- main.hop --
 <main-comp>
-	<hop-raw>
+	<hop-x-raw>
 		<div>some html</div>
 		<p>more content</p>
-	</hop-raw>
+	</hop-x-raw>
 </main-comp>
 -- data.json --
 {}

@@ -2,7 +2,7 @@ use crate::common::{
     ComponentDefinitionNode, ComponentReferenceNode, CondNode, DoctypeNode, ErrorNode,
     ExprAttribute, ForNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError,
     RenderNode, SlotDefinitionNode, SlotReferenceNode, TextNode, Token, TokenKind, VarNameAttr,
-    is_void_element,
+    XExecNode, is_void_element,
 };
 use crate::expression_parser::parse_expression;
 use std::collections::HashSet;
@@ -11,8 +11,8 @@ fn is_valid_component_name(name: &str) -> bool {
     if name.is_empty() || name.starts_with('-') || name.ends_with('-') {
         return false;
     }
-    // hop-raw is treated as a native HTML element, not a component
-    if name == "hop-raw" {
+    // hop-x-raw and hop-x-exec are treated as special tags, not components
+    if name == "hop-x-raw" || name == "hop-x-exec" {
         return false;
     }
     name.contains('-')
@@ -165,6 +165,9 @@ fn collect_slots_from_children(
 ) {
     for child in children {
         match child {
+            Node::Text(_) => {}
+            Node::Doctype(_) => {}
+            Node::Import(_) => {}
             Node::SlotDefinition(SlotDefinitionNode { name, range, .. }) => {
                 if slots.contains(name) {
                     errors.push(RangeError::slot_already_defined(name, *range));
@@ -178,6 +181,9 @@ fn collect_slots_from_children(
                         slots.insert(name.clone());
                     }
                 }
+            }
+            Node::XExec(XExecNode { children, .. }) => {
+                collect_slots_from_children(children, slots, errors);
             }
             Node::ComponentDefinition(ComponentDefinitionNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
@@ -203,7 +209,6 @@ fn collect_slots_from_children(
             Node::Error(ErrorNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
-            _ => {}
         }
     }
 }
@@ -385,6 +390,26 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                         }),
                     }
                 }
+                "hop-x-exec" => {
+                    let cmd_attr = t.get_attribute("cmd").or_else(|| {
+                        errors.push(RangeError::missing_required_attribute(
+                            &t.value, "cmd", t.range,
+                        ));
+                        None
+                    });
+
+                    match cmd_attr {
+                        Some(cmd_attr) => Node::XExec(XExecNode {
+                            cmd_attr,
+                            range: t.range,
+                            children,
+                        }),
+                        None => Node::Error(ErrorNode {
+                            range: t.range,
+                            children,
+                        }),
+                    }
+                }
                 tag_name if tag_name.starts_with("slot-") => {
                     let slot_name = &tag_name[5..]; // Remove "slot-" prefix
                     Node::SlotDefinition(SlotDefinitionNode {
@@ -516,6 +541,12 @@ mod tests {
                 }
                 Node::Render(RenderNode { children, .. }) => {
                     lines.push(format!("{}build-render", indent));
+                    for child in children {
+                        format_node(child, depth + 1, lines);
+                    }
+                }
+                Node::XExec(XExecNode { children, .. }) => {
+                    lines.push(format!("{}hop-x-exec", indent));
                     for child in children {
                         format_node(child, depth + 1, lines);
                     }

@@ -1,9 +1,11 @@
 use crate::common::{
     BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, CondNode, Environment, ErrorNode,
     Expression, ForNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode, SlotReferenceNode,
-    Type, escape_html, is_void_element,
+    Type, XExecNode, escape_html, is_void_element,
 };
 use std::collections::HashMap;
+use std::process::{Command, Stdio};
+use std::io::Write;
 
 /// Program represents a compiled hop program that can execute components and entrypoints
 #[derive(Clone)]
@@ -300,8 +302,8 @@ impl Program {
                     return Ok(String::new());
                 }
 
-                // For hop-raw tags, just render the inner content without the tags
-                if tag_name == "hop-raw" {
+                // For hop-x-raw tags, just render the inner content without the tags
+                if tag_name == "hop-x-raw" {
                     let mut result = String::new();
                     for child in children {
                         result.push_str(&self.evaluate_node(
@@ -397,6 +399,22 @@ impl Program {
                     )?);
                 }
                 Ok(result)
+            }
+            Node::XExec(XExecNode { cmd_attr, children, .. }) => {
+                // Collect child content as stdin
+                let mut stdin_content = String::new();
+                for child in children {
+                    stdin_content.push_str(&self.evaluate_node(
+                        child,
+                        slot_content,
+                        env,
+                        current_module,
+                    )?);
+                }
+
+                // Execute the command with stdin
+                let command = &cmd_attr.value;
+                self.execute_command(command, &stdin_content)
             }
             Node::Render(RenderNode { children, .. }) => {
                 let mut result = String::new();
@@ -514,6 +532,47 @@ impl Program {
 
                 Ok(serde_json::Value::Bool(left_value == right_value))
             }
+        }
+    }
+
+    fn execute_command(&self, command: &str, stdin_content: &str) -> Result<String, String> {
+        // Parse the command and arguments
+        let parts: Vec<&str> = command.split_whitespace().collect();
+        if parts.is_empty() {
+            return Err("Empty command".to_string());
+        }
+
+        let cmd = parts[0];
+        let args = &parts[1..];
+
+        // Execute the command
+        let mut child = Command::new(cmd)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to execute command '{}': {}", command, e))?;
+
+        // Write stdin content to the child process
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(stdin_content.as_bytes())
+                .map_err(|e| format!("Failed to write to stdin: {}", e))?;
+        }
+
+        // Wait for the command to complete and get output
+        let output = child.wait_with_output()
+            .map_err(|e| format!("Failed to read command output: {}", e))?;
+
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        } else {
+            Err(format!(
+                "Command '{}' failed with exit code {}: {}",
+                command,
+                output.status.code().unwrap_or(-1),
+                String::from_utf8_lossy(&output.stderr)
+            ))
         }
     }
 }
