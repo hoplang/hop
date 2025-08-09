@@ -51,7 +51,10 @@ EndTag(p) 2:1-2:5
 </textarea>
 -- out --
 StartTag(textarea) [] 1:1-1:11
-Text 1:11-3:1
+Text 1:11-2:2
+StartTag(div) [] 2:2-2:7
+EndTag(div) 2:7-2:13
+Text 2:13-3:1
 EndTag(textarea) 3:1-3:12
 ## END
 

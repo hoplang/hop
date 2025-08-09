@@ -344,20 +344,6 @@ component
 				a
 ## END
 
-The content of textareas should be parsed as raw text.
-
-## BEGIN
--- main.hop --
-<main-comp>
-	<textarea>
-		<div></div>
-	</textarea>
-</main-comp>
--- out --
-component
-	textarea
-## END
-
 ## BEGIN
 -- main.hop --
 <main-comp>
