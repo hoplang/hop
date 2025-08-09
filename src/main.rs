@@ -53,8 +53,8 @@ enum Commands {
         #[arg(long)]
         scriptfile: Option<String>,
     },
-    /// Start an HTTP server for serving hop templates from a manifest
-    Serve {
+    /// Start development server for serving hop templates from a manifest
+    Dev {
         /// Path to project root
         #[arg(long)]
         projectdir: Option<String>,
@@ -110,7 +110,7 @@ async fn main() -> anyhow::Result<()> {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
-            let mut outputs = build_from_hop(&root, Path::new(outdir), scriptfile.as_deref())?;
+            let mut outputs = hop_build(&root, Path::new(outdir), scriptfile.as_deref())?;
             let elapsed = start_time.elapsed();
 
             print_header("built", elapsed.as_millis());
@@ -124,7 +124,7 @@ async fn main() -> anyhow::Result<()> {
             println!("  {:<50} {}", "total", format_file_size(total_size));
             println!();
         }
-        Some(Commands::Serve {
+        Some(Commands::Dev {
             projectdir,
             port,
             host,
@@ -138,7 +138,7 @@ async fn main() -> anyhow::Result<()> {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
-            let (router, _watcher) = serve_from_hop(
+            let (router, _watcher) = hop_dev(
                 &root,
                 staticdir.as_deref().map(Path::new),
                 scriptfile.as_deref(),
@@ -161,7 +161,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn build_from_hop(
+fn hop_build(
     root: &ProjectRoot,
     output_dir: &Path,
     script_file: Option<&str>,
@@ -369,7 +369,7 @@ fn create_file_watcher(
 ///
 /// The client may change the build.hop file while the server is running as the server will reread the
 /// build file whenever a new request comes in.
-async fn serve_from_hop(
+async fn hop_dev(
     root: &ProjectRoot,
     static_dir: Option<&Path>,
     script_file: Option<&str>,
@@ -511,10 +511,10 @@ mod tests {
         Ok(temp_dir)
     }
 
-    /// When the user calls `hop serve` and has a entry for `index.html` in the manifest file, the
+    /// When the user calls `hop dev` and has a entry for `index.html` in the manifest file, the
     /// index.html entry should be rendered when the user issues a GET to /.
     #[tokio::test]
-    async fn test_serve_and_get_index() {
+    async fn test_dev_and_get_index() {
         let dir = temp_dir_from_txtar(
             r#"
 -- build.hop --
@@ -526,7 +526,7 @@ mod tests {
         .unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
-        let (router, _watcher) = serve_from_hop(&root, None, None).await.unwrap();
+        let (router, _watcher) = hop_dev(&root, None, None).await.unwrap();
 
         let server = TestServer::new(router).unwrap();
 
@@ -537,10 +537,10 @@ mod tests {
         assert!(body.contains("Hello from build.hop!"));
     }
 
-    /// When the user changes the contents of the build.hop file after running `hop serve` the
+    /// When the user changes the contents of the build.hop file after running `hop dev` the
     /// changes should be reflected when the user sends a request to the server.
     #[tokio::test]
-    async fn test_serve_from_hop_dynamic_update() -> anyhow::Result<()> {
+    async fn test_dev_from_hop_dynamic_update() -> anyhow::Result<()> {
         let dir = temp_dir_from_txtar(
             r#"
 -- src/test.hop --
@@ -560,7 +560,7 @@ mod tests {
         )?;
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
-        let (router, _watcher) = serve_from_hop(&root, None, None).await?;
+        let (router, _watcher) = hop_dev(&root, None, None).await?;
 
         let server = TestServer::new(router).unwrap();
 
@@ -585,10 +585,10 @@ mod tests {
         Ok(())
     }
 
-    /// When the user calls `hop serve` with a servedir parameter, static files should be served
+    /// When the user calls `hop dev` with a servedir parameter, static files should be served
     /// from the given directory.
     #[tokio::test]
-    async fn test_serve_from_hop_static_files() {
+    async fn test_dev_from_hop_static_files() {
         let dir = temp_dir_from_txtar(
             r#"
 -- build.hop --
@@ -604,7 +604,7 @@ console.log("Hello from static file");
         .unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
-        let (router, _watcher) = serve_from_hop(&root, Some(&dir.join("static")), None)
+        let (router, _watcher) = hop_dev(&root, Some(&dir.join("static")), None)
             .await
             .unwrap();
 
@@ -648,7 +648,7 @@ console.log("Hello from static file");
         .unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
-        let result = build_from_hop(&root, &dir.join("out"), None);
+        let result = hop_build(&root, &dir.join("out"), None);
         assert!(result.is_ok());
         let outputs = result.unwrap();
         assert_eq!(outputs.len(), 1);
@@ -660,10 +660,10 @@ console.log("Hello from static file");
         assert!(content.contains("This content comes from a build.hop file"));
     }
 
-    /// When the user calls `hop serve` and requests a path that doesn't exist in the manifest,
+    /// When the user calls `hop dev` and requests a path that doesn't exist in the manifest,
     /// a 404 page should be returned with available routes.
     #[tokio::test]
-    async fn test_serve_404_with_helpful_message() {
+    async fn test_dev_404_with_helpful_message() {
         let dir = temp_dir_from_txtar(
             r#"
 -- build.hop --
@@ -681,7 +681,7 @@ console.log("Hello from static file");
         .unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
-        let (router, _watcher) = serve_from_hop(&root, None, None).await.unwrap();
+        let (router, _watcher) = hop_dev(&root, None, None).await.unwrap();
 
         let server = TestServer::new(router).unwrap();
 
