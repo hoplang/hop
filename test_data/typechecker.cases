@@ -320,6 +320,8 @@ Undefined variable: item
 Undefined variable: item
 ## END
 
+When a variable is unused, the typechecker outputs an error.
+
 ## BEGIN
 -- main.hop --
 <main-comp params-as="items">
@@ -392,6 +394,9 @@ Can not unify types
 Can not unify types
 ## END
 
+When successful, the typechecker identifies the parameter type of the component
+as well as the defined slots.
+
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
@@ -406,6 +411,22 @@ Can not unify types
 main::main-comp
 	{items: {active: boolean, name: boolean}[]}
 	[]
+## END
+
+A component should be able to define the <head> tag and define a slot for
+the <title> tag.
+
+## BEGIN
+-- main.hop --
+<custom-head>
+	<head>
+		<title><slot-title/></title>
+	</head>
+</custom-head>
+-- out --
+main::custom-head
+	void
+	["title"]
 ## END
 
 ## BEGIN

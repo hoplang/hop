@@ -187,7 +187,7 @@ impl TokenBuilder {
 }
 
 fn is_special_tag_name(name: &str) -> bool {
-    matches!(name, "textarea" | "title" | "script" | "style" | "template")
+    matches!(name, "textarea" | "script" | "style" | "template")
 }
 
 fn is_alphabetic(ch: char) -> bool {
