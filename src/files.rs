@@ -41,10 +41,11 @@ impl ProjectRoot {
         if !build_file.exists() {
             anyhow::bail!("Expected to find build.hop in {:?}", &path)
         }
-        return Ok(ProjectRoot(canonicalized.to_path_buf()));
+        Ok(ProjectRoot(canonicalized.to_path_buf()))
     }
+
     pub fn get_path(&self) -> &Path {
-        return &self.0;
+        &self.0
     }
 }
 

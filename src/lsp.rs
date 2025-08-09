@@ -37,14 +37,14 @@ impl HopLanguageServer {
     }
 
     fn uri_to_module_name(uri: &Url, root: &ProjectRoot) -> String {
-        match files::path_to_module_name(Path::new(uri.path()), &root) {
+        match files::path_to_module_name(Path::new(uri.path()), root) {
             Ok(s) => s,
             Err(_) => panic!(),
         }
     }
 
     fn module_name_to_uri(name: &str, root: &ProjectRoot) -> Url {
-        let p = files::module_name_to_path(&name, &root);
+        let p = files::module_name_to_path(name, root);
         match Url::from_file_path(&p) {
             Ok(url) => url,
             Err(_) => panic!(),
@@ -62,7 +62,7 @@ impl HopLanguageServer {
     }
 
     async fn load_all_modules_from_fs(&self, root: &ProjectRoot) -> std::io::Result<()> {
-        let all_modules = files::load_all_hop_modules(&root)
+        let all_modules = files::load_all_hop_modules(root)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         for (module_name, content) in all_modules {
             {
@@ -79,7 +79,7 @@ impl HopLanguageServer {
     }
 
     async fn publish_diagnostics(&self, root: &ProjectRoot, uri: &Url) {
-        let module_name = Self::uri_to_module_name(uri, &root);
+        let module_name = Self::uri_to_module_name(uri, root);
         let server = self.server.read().await;
         let diagnostics = server.get_error_diagnostics(&module_name);
 
@@ -123,7 +123,6 @@ impl LanguageServer for HopLanguageServer {
                 name: "hop-language-server".to_string(),
                 version: Some("0.1.0".to_string()),
             }),
-            ..Default::default()
         })
     }
 

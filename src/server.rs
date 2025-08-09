@@ -91,7 +91,7 @@ impl Server {
                 .insert(module_name.to_string(), type_errors);
         }
 
-        return dependent_modules;
+        dependent_modules
     }
 
     pub fn get_hover_info(

@@ -166,9 +166,9 @@ fn collect_slots_from_children(
                     errors.push(RangeError::slot_already_defined(name, *range));
                 } else {
                     // Check if trying to mix default slot with other slots
-                    if name == "default" && !slots.is_empty() {
-                        errors.push(RangeError::default_slot_with_other_slots(*range));
-                    } else if slots.contains("default") && name != "default" {
+                    if (name == "default" && !slots.is_empty())
+                        || (slots.contains("default") && name != "default")
+                    {
                         errors.push(RangeError::default_slot_with_other_slots(*range));
                     } else {
                         slots.insert(name.clone());
@@ -228,11 +228,7 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
             range: t.range,
         }),
         TokenKind::SelfClosingTag | TokenKind::StartTag => {
-            if t.value == "import" {
-                if depth > 0 {
-                    errors.push(RangeError::unexpected_tag_outside_root(&t.value, t.range));
-                }
-            } else if t.value == "render" {
+            if t.value == "import" || t.value == "render" {
                 if depth > 0 {
                     errors.push(RangeError::unexpected_tag_outside_root(&t.value, t.range));
                 }

@@ -20,7 +20,7 @@ use std::path::Path;
 
 pub fn compile_hop_program(root: &ProjectRoot) -> anyhow::Result<runtime::Program> {
     let mut compiler = compiler::Compiler::new();
-    for (module_name, content) in files::load_all_hop_modules(&root)? {
+    for (module_name, content) in files::load_all_hop_modules(root)? {
         compiler.add_module(module_name, content);
     }
     compiler

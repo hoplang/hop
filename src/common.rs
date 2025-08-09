@@ -470,7 +470,7 @@ pub struct Environment<T> {
     operations: Vec<String>,
 }
 
-impl<T: Clone> Environment<T> {
+impl<V> Environment<V> {
     pub fn new() -> Self {
         Environment {
             entries: HashMap::new(),
@@ -480,7 +480,7 @@ impl<T: Clone> Environment<T> {
 
     // Bind the key to the given value
     // Returns true if successful, false if the variable already exists (shadowing not allowed)
-    pub fn push(&mut self, key: String, value: T) -> bool {
+    pub fn push(&mut self, key: String, value: V) -> bool {
         if self.entries.contains_key(&key) {
             return false;
         }
@@ -508,13 +508,19 @@ impl<T: Clone> Environment<T> {
     }
 
     // Look up a key in the environment
-    pub fn lookup(&mut self, key: &str) -> Option<&T> {
+    pub fn lookup(&mut self, key: &str) -> Option<&V> {
         if let Some(entry) = self.entries.get_mut(key) {
             entry.accessed = true;
             Some(&entry.value)
         } else {
             None
         }
+    }
+}
+
+impl<V> Default for Environment<V> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
