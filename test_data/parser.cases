@@ -341,3 +341,46 @@ form
 	input
 	button
 ## END
+
+Test basic <if> tag with simple variable expression.
+
+## BEGIN
+-- main.hop --
+<main-comp>
+	<if {isVisible}>
+		<div>This is visible</div>
+	</if>
+</main-comp>
+-- out --
+if
+	div
+## END
+
+Test <if> tag with complex expression.
+
+## BEGIN
+-- main.hop --
+<main-comp>
+	<if {user.name == 'admin'}>
+		<div>Admin panel</div>
+		<button>Settings</button>
+	</if>
+</main-comp>
+-- out --
+if
+	div
+	button
+## END
+
+Test <if> tag without expression should produce error.
+
+## BEGIN
+-- main.hop --
+<main-comp>
+	<if>
+		<div>Content</div>
+	</if>
+</main-comp>
+-- out --
+Missing expression in <if> tag
+## END

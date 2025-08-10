@@ -1,6 +1,6 @@
 use crate::common::{
     ComponentDefinitionNode, ComponentReferenceNode, CondNode, DoctypeNode, ErrorNode,
-    ExprAttribute, ForNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError,
+    ExprAttribute, ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError,
     RenderNode, SlotDefinitionNode, SlotReferenceNode, TextNode, Token, TokenKind, VarNameAttr,
     XExecNode, is_void_element,
 };
@@ -197,6 +197,9 @@ fn collect_slots_from_children(
                 collect_slots_from_children(children, slots, errors);
             }
             Node::Cond(CondNode { children, .. }) => {
+                collect_slots_from_children(children, slots, errors);
+            }
+            Node::If(IfNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
             Node::NativeHTML(NativeHTMLNode { children, .. }) => {
@@ -401,6 +404,25 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                         }),
                     }
                 }
+                "if" => {
+                    match &t.expression {
+                        Some(condition) => Node::If(IfNode {
+                            condition: condition.clone(),
+                            range: t.range,
+                            children,
+                        }),
+                        None => {
+                            errors.push(RangeError::new(
+                                "Missing expression in <if> tag".to_string(),
+                                t.range,
+                            ));
+                            Node::Error(ErrorNode {
+                                range: t.range,
+                                children,
+                            })
+                        }
+                    }
+                }
                 "hop-x-exec" => {
                     let cmd_attr = t.get_attribute("cmd").or_else(|| {
                         errors.push(RangeError::missing_required_attribute(
@@ -522,6 +544,12 @@ mod tests {
                 }
                 Node::Cond(CondNode { children, .. }) => {
                     lines.push(format!("{}cond", indent));
+                    for child in children {
+                        format_node(child, depth + 1, lines);
+                    }
+                }
+                Node::If(IfNode { children, .. }) => {
+                    lines.push(format!("{}if", indent));
                     for child in children {
                         format_node(child, depth + 1, lines);
                     }

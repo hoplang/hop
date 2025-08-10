@@ -30,6 +30,9 @@ impl ScriptCollector {
                 Node::Cond(cond_node) => {
                     result.extend(self.get_all_descendants(&cond_node.children));
                 }
+                Node::If(if_node) => {
+                    result.extend(self.get_all_descendants(&if_node.children));
+                }
                 Node::ComponentReference(render_node) => {
                     result.extend(self.get_all_descendants(&render_node.children));
                 }

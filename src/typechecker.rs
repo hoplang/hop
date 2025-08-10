@@ -1,6 +1,6 @@
 use crate::common::{
     BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, CondNode, Environment, ErrorNode,
-    ExprAttribute, Expression, ForNode, ImportNode, NativeHTMLNode, Node, Range, RangeError,
+    ExprAttribute, Expression, ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Range, RangeError,
     RenderNode, SlotDefinitionNode, SlotReferenceNode, Type, XExecNode,
 };
 use crate::parser::Module;
@@ -254,6 +254,28 @@ fn typecheck_node(
             if_attr, children, ..
         }) => {
             typecheck_expr(&Type::Bool, if_attr, env, unifier, annotations, errors);
+
+            for child in children {
+                typecheck_node(
+                    child,
+                    component_info,
+                    env,
+                    unifier,
+                    annotations,
+                    definition_links,
+                    referenced_components,
+                    errors,
+                );
+            }
+        }
+        Node::If(IfNode {
+            condition, children, range, ..
+        }) => {
+            // Typecheck the condition expression to ensure it's a boolean
+            let condition_type = typecheck_expression(condition, env, unifier, annotations, errors, *range);
+            if let Some(err) = unifier.unify(&Type::Bool, &condition_type) {
+                errors.push(RangeError::unification_error(&err.message, *range));
+            }
 
             for child in children {
                 typecheck_node(

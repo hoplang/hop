@@ -1,6 +1,6 @@
 use crate::common::{
     BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, CondNode, Environment, ErrorNode,
-    Expression, ForNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode, SlotReferenceNode,
+    Expression, ForNode, IfNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode, SlotReferenceNode,
     Type, XExecNode, escape_html, is_void_element,
 };
 use std::collections::HashMap;
@@ -190,6 +190,25 @@ impl Program {
                 if_attr, children, ..
             }) => {
                 let condition_value = self.evaluate_expr(&if_attr.expression, env)?;
+                if condition_value.as_bool().unwrap_or(false) {
+                    let mut result = String::new();
+                    for child in children {
+                        result.push_str(&self.evaluate_node(
+                            child,
+                            slot_content,
+                            env,
+                            current_module,
+                        )?);
+                    }
+                    Ok(result)
+                } else {
+                    Ok(String::new())
+                }
+            }
+            Node::If(IfNode {
+                condition, children, ..
+            }) => {
+                let condition_value = self.evaluate_expr(condition, env)?;
                 if condition_value.as_bool().unwrap_or(false) {
                     let mut result = String::new();
                     for child in children {

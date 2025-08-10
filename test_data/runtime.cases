@@ -541,3 +541,65 @@
 	
 </div>
 ## END
+
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="user">
+  <if {user.isActive}>
+    <div>Welcome active user!</div>
+  </if>
+  <if {user.role == 'admin'}>
+    <div>Admin panel access</div>
+  </if>
+</main-comp>
+-- data.json --
+{
+  "isActive": true,
+  "role": "admin"
+}
+-- output.html --
+<div data-hop-id="main/main-comp">
+  <div>Welcome active user!</div>
+  <div>Admin panel access</div>
+</div>
+## END
+
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="config">
+  <if {config.enabled}>
+    <div>Feature is enabled</div>
+    <if {config.debug}>
+      <div>Debug mode on</div>
+    </if>
+  </if>
+</main-comp>
+-- data.json --
+{
+  "enabled": true,
+  "debug": false
+}
+-- output.html --
+<div data-hop-id="main/main-comp">
+  <div>Feature is enabled</div>
+</div>
+## END
+
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="status">
+  <if {status.visible}>
+    <div>Content is visible</div>
+  </if>
+</main-comp>
+-- data.json --
+{
+  "visible": false
+}
+-- output.html --
+<div data-hop-id="main/main-comp">
+</div>
+## END

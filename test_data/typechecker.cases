@@ -1049,3 +1049,51 @@ main::main-comp
 	void
 	[]
 ## END
+
+Test <if> tag with boolean expression.
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="user">
+  <if {user.isActive}>
+    <div>User is active</div>
+  </if>
+</main-comp>
+-- out --
+main::main-comp
+	{isActive: boolean}
+	[]
+## END
+
+Test <if> tag with comparison expression.
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="data">
+  <if {data.status == 'approved'}>
+    <div>Status is approved</div>
+  </if>
+</main-comp>
+-- out --
+main::main-comp
+	{status: string}
+	[]
+## END
+
+Test <if> tag with nested conditionals.
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="config">
+  <if {config.enabled}>
+    <div>Feature enabled</div>
+    <if {config.debug}>
+      <div>Debug mode on</div>
+    </if>
+  </if>
+</main-comp>
+-- out --
+main::main-comp
+	{debug: boolean, enabled: boolean}
+	[]
+## END

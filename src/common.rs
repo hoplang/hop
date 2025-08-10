@@ -403,6 +403,13 @@ pub struct CondNode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct IfNode {
+    pub condition: Expression,
+    pub range: Range,
+    pub children: Vec<Node>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ImportNode {
     pub component_attr: Attribute,
     pub from_attr: Attribute,
@@ -474,6 +481,7 @@ pub enum Node {
     SlotReference(SlotReferenceNode),
     For(ForNode),
     Cond(CondNode),
+    If(IfNode),
     NativeHTML(NativeHTMLNode),
     Error(ErrorNode),
     XExec(XExecNode),
