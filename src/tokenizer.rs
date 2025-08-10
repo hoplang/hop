@@ -1,6 +1,7 @@
 use std::mem;
 
-use crate::common::{Attribute, Position, Range, RangeError, Token, TokenKind};
+use crate::common::{Attribute, Position, Range, RangeError, Token, TokenKind, Expression};
+use crate::expression_parser::parse_expression;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum TokenizerState {
@@ -22,6 +23,7 @@ enum TokenizerState {
     BeforeDoctypeName,
     DoctypeName,
     RawtextData,
+    ExpressionContent,
 }
 
 struct Cursor {
@@ -103,6 +105,8 @@ struct TokenBuilder {
     token_kind: TokenKind,
     token_start: Position,
     token_attributes: Vec<Attribute>,
+    token_expression: Option<Expression>,
+    expression_content: String,
     attribute_name: String,
     attribute_value: String,
     attribute_start: Position,
@@ -116,6 +120,8 @@ impl TokenBuilder {
             token_kind: TokenKind::Text,
             token_start: Position { line: 1, column: 1 },
             token_attributes: Vec::new(),
+            token_expression: None,
+            expression_content: String::new(),
             attribute_name: String::new(),
             attribute_value: String::new(),
             attribute_start: Position { line: 1, column: 1 },
@@ -124,10 +130,11 @@ impl TokenBuilder {
     }
 
     fn push_current_token(&mut self, cursor: &Cursor) {
-        self.tokens.push(Token::new(
+        self.tokens.push(Token::new_with_expression(
             self.token_kind,
             mem::take(&mut self.token_value),
             mem::take(&mut self.token_attributes),
+            mem::take(&mut self.token_expression),
             Range {
                 start: self.token_start,
                 end: cursor.get_position(),
@@ -176,9 +183,19 @@ impl TokenBuilder {
     fn reset(&mut self, cursor: &Cursor) {
         self.token_value = String::new();
         self.token_attributes = Vec::new();
+        self.token_expression = None;
+        self.expression_content = String::new();
         self.token_kind = TokenKind::Text;
         self.token_start = cursor.get_position();
         self.attribute_start = cursor.get_position();
+    }
+
+    fn append_to_expression(&mut self, ch: char) {
+        self.expression_content.push(ch);
+    }
+
+    fn set_token_expression(&mut self, expr: Expression) {
+        self.token_expression = Some(expr);
     }
 
     fn get_tokens(self) -> Vec<Token> {
@@ -201,6 +218,7 @@ fn is_alphanumeric_or_dash(ch: char) -> bool {
 fn is_whitespace(ch: char) -> bool {
     ch.is_whitespace()
 }
+
 
 pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
     let mut cursor = Cursor::new(input);
@@ -260,6 +278,9 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
                 } else if is_whitespace(ch) {
                     cursor.advance();
                     state = TokenizerState::BeforeAttrName;
+                } else if ch == '{' {
+                    cursor.advance();
+                    state = TokenizerState::ExpressionContent;
                 } else if ch == '>' {
                     if is_special_tag_name(builder.get_current_token_value()) {
                         stored_tag_name = builder.get_current_token_value().to_string();
@@ -357,6 +378,9 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
                     builder.append_to_current_attribute_name(&ch.to_string());
                     cursor.advance();
                     state = TokenizerState::AttrName;
+                } else if ch == '{' {
+                    cursor.advance();
+                    state = TokenizerState::ExpressionContent;
                 } else if ch == '/' {
                     builder.set_current_token_kind(TokenKind::SelfClosingTag);
                     cursor.advance();
@@ -606,6 +630,31 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
                     state = TokenizerState::RawtextData;
                 }
             }
+
+            TokenizerState::ExpressionContent => {
+                if ch == '}' {
+                    // Parse the collected expression content using the proper expression parser
+                    match parse_expression(&builder.expression_content) {
+                        Ok(expr) => {
+                            builder.set_token_expression(expr);
+                        }
+                        Err(err) => {
+                            let start_pos = cursor.get_position();
+                            errors.push(RangeError::new(
+                                format!("Invalid expression: {}", err),
+                                Range::new(start_pos, cursor.get_position()),
+                            ));
+                        }
+                    }
+                    builder.expression_content.clear();
+                    cursor.advance();
+                    state = TokenizerState::BeforeAttrName;
+                } else {
+                    builder.append_to_expression(ch);
+                    cursor.advance();
+                    state = TokenizerState::ExpressionContent;
+                }
+            }
         }
     }
 
@@ -661,11 +710,19 @@ mod tests {
                     .map(format_attr)
                     .collect::<Vec<_>>()
                     .join(" ");
+                
+                let expr_part = if let Some(ref expr) = token.expression {
+                    format!(" {{{:?}}}", expr)
+                } else {
+                    String::new()
+                };
+                
                 format!(
-                    "{:?}({}) [{}] {}",
+                    "{:?}({}) [{}]{} {}",
                     token.kind,
                     token.value,
                     attrs,
+                    expr_part,
                     format_range(token.range)
                 )
             }

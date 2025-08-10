@@ -95,6 +95,7 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
         kind: TokenKind::StartTag,
         value: "root".to_string(),
         attributes: Vec::new(),
+        expression: None,
         range: Range {
             start: Position { line: 0, column: 0 },
             end: Position { line: 0, column: 0 },

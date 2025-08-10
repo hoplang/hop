@@ -328,6 +328,7 @@ pub struct Token {
     pub kind: TokenKind,
     pub value: String,
     pub attributes: Vec<Attribute>,
+    pub expression: Option<Expression>,
     pub range: Range,
 }
 
@@ -337,6 +338,23 @@ impl Token {
             kind,
             value,
             attributes,
+            expression: None,
+            range,
+        }
+    }
+
+    pub fn new_with_expression(
+        kind: TokenKind,
+        value: String,
+        attributes: Vec<Attribute>,
+        expression: Option<Expression>,
+        range: Range,
+    ) -> Self {
+        Token {
+            kind,
+            value,
+            attributes,
+            expression,
             range,
         }
     }
