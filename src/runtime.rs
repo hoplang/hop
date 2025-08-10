@@ -418,21 +418,6 @@ impl Program {
                 let command = &cmd_attr.value;
                 self.execute_command(command, &stdin_content)
             }
-            Node::Render(RenderNode { children, .. }) => {
-                let mut result = String::new();
-                for child in children {
-                    result.push_str(&self.evaluate_node(
-                        child,
-                        slot_content,
-                        env,
-                        current_module,
-                    )?);
-                }
-                Ok(result)
-            }
-            Node::Import(_) | Node::ComponentDefinition(_) => {
-                panic!("Unexpected node")
-            }
         }
     }
 

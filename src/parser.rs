@@ -26,6 +26,13 @@ pub struct Module {
     pub renders: Vec<RenderNode>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+enum ToplevelNode {
+    Import(ImportNode),
+    ComponentDefinition(ComponentDefinitionNode),
+    Render(RenderNode),
+}
+
 pub fn parse(module_name: String, tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> Module {
     let tree = build_tree(tokens, errors);
 
@@ -34,12 +41,14 @@ pub fn parse(module_name: String, tokens: Vec<Token>, errors: &mut Vec<RangeErro
     let mut renders = Vec::new();
 
     for child in &tree.children {
-        let node = construct_node(child, 0, errors);
-        match node {
-            Node::Import(import_data) => imports.push(import_data),
-            Node::ComponentDefinition(component_data) => components.push(component_data),
-            Node::Render(render_data) => renders.push(render_data),
-            _ => {} // ignore other node types at root level
+        if let Some(toplevel_node) = construct_toplevel_node(child, errors) {
+            match toplevel_node {
+                ToplevelNode::Import(import_data) => imports.push(import_data),
+                ToplevelNode::ComponentDefinition(component_data) => {
+                    components.push(component_data)
+                }
+                ToplevelNode::Render(render_data) => renders.push(render_data),
+            }
         }
     }
 
@@ -167,7 +176,6 @@ fn collect_slots_from_children(
         match child {
             Node::Text(_) => {}
             Node::Doctype(_) => {}
-            Node::Import(_) => {}
             Node::SlotDefinition(SlotDefinitionNode { name, range, .. }) => {
                 if slots.contains(name) {
                     errors.push(RangeError::slot_already_defined(name, *range));
@@ -185,9 +193,6 @@ fn collect_slots_from_children(
             Node::XExec(XExecNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
-            Node::ComponentDefinition(ComponentDefinitionNode { children, .. }) => {
-                collect_slots_from_children(children, slots, errors);
-            }
             Node::For(ForNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
@@ -203,9 +208,6 @@ fn collect_slots_from_children(
             Node::SlotReference(SlotReferenceNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
-            Node::Render(RenderNode { children, .. }) => {
-                collect_slots_from_children(children, slots, errors);
-            }
             Node::Error(ErrorNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
@@ -213,45 +215,75 @@ fn collect_slots_from_children(
     }
 }
 
-fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) -> Node {
-    let children: Vec<Node> = tree
-        .children
-        .iter()
-        .map(|child| construct_node(child, depth + 1, errors))
-        .collect();
-
+fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Option<ToplevelNode> {
     let t = &tree.token;
 
     match t.kind {
-        TokenKind::Doctype => {
-            if depth == 0 {
-                errors.push(RangeError::unexpected_doctype_at_root(t.range));
-            }
-            Node::Doctype(DoctypeNode {
-                value: t.value.clone(),
-                range: t.range,
-            })
-        }
-        TokenKind::Text => Node::Text(TextNode {
-            value: t.value.clone(),
-            range: t.range,
-        }),
         TokenKind::SelfClosingTag | TokenKind::StartTag => {
-            if t.value == "import" || t.value == "render" {
-                if depth > 0 {
-                    errors.push(RangeError::unexpected_tag_outside_root(&t.value, t.range));
-                }
-            } else if depth == 0 && t.value != "import" && t.value != "render" {
-                // At root level, non-import/non-render tags are treated as components
-                // Validate component name format
-                if !is_valid_component_name(&t.value) {
-                    errors.push(RangeError::invalid_component_name(&t.value, t.range));
-                }
-            }
-
             match t.value.as_str() {
-                // Handle as component definition
-                name if depth == 0 && name != "import" && name != "render" => {
+                "import" => {
+                    let component_attr = t.get_attribute("component").or_else(|| {
+                        errors.push(RangeError::missing_required_attribute(
+                            &t.value,
+                            "component",
+                            t.range,
+                        ));
+                        None
+                    });
+                    let from_attr = t.get_attribute("from").or_else(|| {
+                        errors.push(RangeError::missing_required_attribute(
+                            &t.value, "from", t.range,
+                        ));
+                        None
+                    });
+
+                    match (component_attr, from_attr) {
+                        (Some(component_attr), Some(from_attr)) => {
+                            Some(ToplevelNode::Import(ImportNode {
+                                component_attr,
+                                from_attr,
+                                range: t.range,
+                            }))
+                        }
+                        _ => None,
+                    }
+                }
+                "render" => {
+                    let children: Vec<Node> = tree
+                        .children
+                        .iter()
+                        .map(|child| construct_node(child, errors))
+                        .collect();
+
+                    let file_attr = t.get_attribute("file").or_else(|| {
+                        errors.push(RangeError::missing_required_attribute(
+                            &t.value, "file", t.range,
+                        ));
+                        None
+                    });
+
+                    match file_attr {
+                        Some(file_attr) => Some(ToplevelNode::Render(RenderNode {
+                            file_attr,
+                            range: t.range,
+                            children,
+                        })),
+                        None => None,
+                    }
+                }
+                name => {
+                    // Handle as component definition
+                    if !is_valid_component_name(name) {
+                        errors.push(RangeError::invalid_component_name(name, t.range));
+                        return None;
+                    }
+
+                    let children: Vec<Node> = tree
+                        .children
+                        .iter()
+                        .map(|child| construct_node(child, errors))
+                        .collect();
+
                     let as_attr = t.get_attribute("as");
                     let entrypoint = t.get_attribute("entrypoint").is_some();
                     let params_as_attr = t.get_attribute("params-as").and_then(|attr| {
@@ -269,7 +301,8 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
 
                     let mut slots = HashSet::new();
                     collect_slots_from_children(&children, &mut slots, errors);
-                    Node::ComponentDefinition(ComponentDefinitionNode {
+
+                    Some(ToplevelNode::ComponentDefinition(ComponentDefinitionNode {
                         name: name.to_string(),
                         params_as_attr,
                         as_attr,
@@ -278,8 +311,34 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                         children,
                         entrypoint,
                         slots: slots.into_iter().collect(),
-                    })
+                    }))
                 }
+            }
+        }
+        _ => None,
+    }
+}
+
+fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
+    let children: Vec<Node> = tree
+        .children
+        .iter()
+        .map(|child| construct_node(child, errors))
+        .collect();
+
+    let t = &tree.token;
+
+    match t.kind {
+        TokenKind::Doctype => Node::Doctype(DoctypeNode {
+            value: t.value.clone(),
+            range: t.range,
+        }),
+        TokenKind::Text => Node::Text(TextNode {
+            value: t.value.clone(),
+            range: t.range,
+        }),
+        TokenKind::SelfClosingTag | TokenKind::StartTag => {
+            match t.value.as_str() {
                 "for" => {
                     let each_attr = t
                         .get_attribute("each")
@@ -333,54 +392,6 @@ fn construct_node(tree: &TokenTree, depth: usize, errors: &mut Vec<RangeError>) 
                     match if_attr {
                         Some(if_attr) => Node::Cond(CondNode {
                             if_attr,
-                            range: t.range,
-                            children,
-                        }),
-                        None => Node::Error(ErrorNode {
-                            range: t.range,
-                            children,
-                        }),
-                    }
-                }
-                "import" => {
-                    let component_attr = t.get_attribute("component").or_else(|| {
-                        errors.push(RangeError::missing_required_attribute(
-                            &t.value,
-                            "component",
-                            t.range,
-                        ));
-                        None
-                    });
-                    let from_attr = t.get_attribute("from").or_else(|| {
-                        errors.push(RangeError::missing_required_attribute(
-                            &t.value, "from", t.range,
-                        ));
-                        None
-                    });
-
-                    match (component_attr, from_attr) {
-                        (Some(component_attr), Some(from_attr)) => Node::Import(ImportNode {
-                            component_attr,
-                            from_attr,
-                            range: t.range,
-                        }),
-                        _ => Node::Error(ErrorNode {
-                            range: t.range,
-                            children,
-                        }),
-                    }
-                }
-                "render" => {
-                    let file_attr = t.get_attribute("file").or_else(|| {
-                        errors.push(RangeError::missing_required_attribute(
-                            &t.value, "file", t.range,
-                        ));
-                        None
-                    });
-
-                    match file_attr {
-                        Some(file_attr) => Node::Render(RenderNode {
-                            file_attr,
                             range: t.range,
                             children,
                         }),
@@ -482,16 +493,24 @@ mod tests {
 
     use crate::tokenizer::tokenize;
 
-    pub fn format_tree(root: &Node) -> String {
+    pub fn format_component_definition(d: &ComponentDefinitionNode) -> String {
+        let mut lines = Vec::new();
+        for child in &d.children {
+            let s = format_tree(&child, 0);
+            if s != "" {
+                lines.push(s);
+            }
+        }
+        lines.join("\n")
+    }
+
+    pub fn format_tree(root: &Node, depth: usize) -> String {
         let mut lines = Vec::new();
 
         fn format_node(node: &Node, depth: usize, lines: &mut Vec<String>) {
             let indent = "\t".repeat(depth);
 
             match node {
-                Node::Import(_) => {
-                    lines.push(format!("{}import", indent));
-                }
                 Node::Doctype(_) => {
                     lines.push(format!("{}doctype", indent));
                 }
@@ -509,12 +528,6 @@ mod tests {
                 }
                 Node::For(ForNode { children, .. }) => {
                     lines.push(format!("{}for", indent));
-                    for child in children {
-                        format_node(child, depth + 1, lines);
-                    }
-                }
-                Node::ComponentDefinition(ComponentDefinitionNode { children, .. }) => {
-                    lines.push(format!("{}component", indent));
                     for child in children {
                         format_node(child, depth + 1, lines);
                     }
@@ -539,12 +552,6 @@ mod tests {
                         format_node(child, depth + 1, lines);
                     }
                 }
-                Node::Render(RenderNode { children, .. }) => {
-                    lines.push(format!("{}build-render", indent));
-                    for child in children {
-                        format_node(child, depth + 1, lines);
-                    }
-                }
                 Node::XExec(XExecNode { children, .. }) => {
                     lines.push(format!("{}hop-x-exec", indent));
                     for child in children {
@@ -555,7 +562,7 @@ mod tests {
             }
         }
 
-        format_node(root, 0, &mut lines);
+        format_node(root, depth, &mut lines);
         lines.join("\n")
     }
 
@@ -604,10 +611,10 @@ mod tests {
             } else {
                 for component in module.components {
                     if component.name == "main-comp" {
-                        let output = format_tree(&Node::ComponentDefinition(component));
+                        let output = format_component_definition(&component);
                         assert_eq!(
-                            output,
-                            expected,
+                            output.trim(),
+                            expected.trim(),
                             "Mismatch in test case {} (line {})",
                             case_num + 1,
                             line_number

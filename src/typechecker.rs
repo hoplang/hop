@@ -351,7 +351,6 @@ fn typecheck_node(
         }
         Node::SlotDefinition(SlotDefinitionNode { children, .. })
         | Node::SlotReference(SlotReferenceNode { children, .. })
-        | Node::Render(RenderNode { children, .. })
         | Node::XExec(XExecNode { children, .. })
         | Node::Error(ErrorNode { children, .. }) => {
             for child in children {
@@ -369,9 +368,6 @@ fn typecheck_node(
         }
         Node::Text(_) | Node::Doctype(_) => {
             // No typechecking needed
-        }
-        Node::Import(_) | Node::ComponentDefinition(_) => {
-            panic!("Unexpected node")
         }
     }
 }

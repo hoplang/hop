@@ -21,9 +21,6 @@ impl ScriptCollector {
         for node in nodes {
             result.push(node.clone());
             match node {
-                Node::ComponentDefinition(component_node) => {
-                    result.extend(self.get_all_descendants(&component_node.children));
-                }
                 Node::NativeHTML(native_html_node) => {
                     result.extend(self.get_all_descendants(&native_html_node.children));
                 }

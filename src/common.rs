@@ -452,15 +452,12 @@ pub enum Node {
     Doctype(DoctypeNode),
     Text(TextNode),
     ComponentReference(ComponentReferenceNode),
-    ComponentDefinition(ComponentDefinitionNode),
     SlotDefinition(SlotDefinitionNode),
     SlotReference(SlotReferenceNode),
     For(ForNode),
     Cond(CondNode),
-    Import(ImportNode),
     NativeHTML(NativeHTMLNode),
     Error(ErrorNode),
-    Render(RenderNode),
     XExec(XExecNode),
 }
 

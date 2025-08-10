@@ -82,13 +82,12 @@ Invalid variable name 'item_name'. Variable names must match [a-z][a-z0-9]*
 	</div>
 </main-comp>
 -- out --
-component
-	div
-		for
-			div
-				h2
-				for
-					p
+div
+	for
+		div
+			h2
+			for
+				p
 ## END
 
 ## BEGIN
@@ -102,11 +101,10 @@ component
 	</html>
 </main-comp>
 -- out --
-component
-	doctype
-	html
-		body
-			div
+doctype
+html
+	body
+		div
 ## END
 
 ## BEGIN
@@ -120,9 +118,8 @@ component
     </style>
 </main-comp>
 -- out --
-component
-	script
-	style
+script
+style
 ## END
 
 ## BEGIN
@@ -132,9 +129,8 @@ component
     <p set-inner-text="data.message"></p>
 </main-comp>
 -- out --
-component
-	h1
-	p
+h1
+p
 ## END
 
 ## BEGIN
@@ -151,13 +147,12 @@ component
   </cond>
 </main-comp>
 -- out --
-component
-	cond
-		div
-	cond
-		div
-	cond
-		div
+cond
+	div
+cond
+	div
+cond
+	div
 ## END
 
 ## BEGIN
@@ -168,9 +163,8 @@ component
   </cond>
 </main-comp>
 -- out --
-component
-	cond
-		div
+cond
+	div
 ## END
 
 ## BEGIN
@@ -190,13 +184,12 @@ component
 	</for>
 </main-comp>
 -- out --
-component
+for
+	for
+		cond
+for
 	for
 		for
-			cond
-	for
-		for
-			for
 ## END
 
 ## BEGIN
@@ -208,9 +201,8 @@ component
 	</cond>
 </main-comp>
 -- out --
-component
-	cond
-		for
+cond
+	for
 ## END
 
 ## BEGIN
@@ -221,9 +213,8 @@ component
 	</for>
 </main-comp>
 -- out --
-component
-	for
-		div
+for
+	div
 ## END
 
 ## BEGIN
@@ -233,9 +224,8 @@ component
 	<foo-comp></foo-comp>
 </main-comp>
 -- out --
-component
-	render
-	render
+render
+render
 ## END
 
 ## BEGIN
@@ -246,9 +236,8 @@ component
 	</for>
 </main-comp>
 -- out --
-component
-	for
-		div
+for
+	div
 ## END
 
 ## BEGIN
@@ -259,8 +248,7 @@ component
 	</script>
 </main-comp>
 -- out --
-component
-	script
+script
 ## END
 
 ## BEGIN
@@ -269,8 +257,7 @@ component
   <a set-href="user.url" set-class="user.theme">Link</a>
 </main-comp>
 -- out --
-component
-	a
+a
 ## END
 
 ## BEGIN
@@ -292,10 +279,9 @@ component
     </slot-data>
 </other-comp>
 -- out --
-component
-	slot-content
-	render
-		with-data
+slot-content
+render
+	with-data
 ## END
 
 ## BEGIN
@@ -309,10 +295,9 @@ component
     </button-comp>
 </main-comp>
 -- out --
-component
-	slot-default
-	render
-		with-default
+slot-default
+render
+	with-default
 ## END
 
 ## BEGIN
@@ -332,16 +317,15 @@ component
 	</div>
 </main-comp>
 -- out --
-component
-	div
-		svg
-			g
-				path
-				path
-				path
-		ul
-			li
-				a
+div
+	svg
+		g
+			path
+			path
+			path
+	ul
+		li
+			a
 ## END
 
 ## BEGIN
@@ -353,8 +337,7 @@ component
 	</form>
 </main-comp>
 -- out --
-component
-	form
-		input
-		button
+form
+	input
+	button
 ## END
