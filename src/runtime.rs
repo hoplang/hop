@@ -4,8 +4,8 @@ use crate::common::{
     Type, XExecNode, escape_html, is_void_element,
 };
 use std::collections::HashMap;
-use std::process::{Command, Stdio};
 use std::io::Write;
+use std::process::{Command, Stdio};
 
 /// Program represents a compiled hop program that can execute components and entrypoints
 #[derive(Clone)]
@@ -400,7 +400,9 @@ impl Program {
                 }
                 Ok(result)
             }
-            Node::XExec(XExecNode { cmd_attr, children, .. }) => {
+            Node::XExec(XExecNode {
+                cmd_attr, children, ..
+            }) => {
                 // Collect child content as stdin
                 let mut stdin_content = String::new();
                 for child in children {
@@ -556,12 +558,14 @@ impl Program {
 
         // Write stdin content to the child process
         if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(stdin_content.as_bytes())
+            stdin
+                .write_all(stdin_content.as_bytes())
                 .map_err(|e| format!("Failed to write to stdin: {}", e))?;
         }
 
         // Wait for the command to complete and get output
-        let output = child.wait_with_output()
+        let output = child
+            .wait_with_output()
             .map_err(|e| format!("Failed to read command output: {}", e))?;
 
         if output.status.success() {

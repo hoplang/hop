@@ -14,19 +14,9 @@ mod typechecker;
 mod unifier;
 
 use clap::{CommandFactory, Parser, Subcommand};
-use compiler::Compiler;
+use compiler::compile;
 use files::ProjectRoot;
 use std::path::Path;
-
-pub fn compile_hop_program(root: &ProjectRoot) -> anyhow::Result<runtime::Program> {
-    let mut compiler = compiler::Compiler::new();
-    for (module_name, content) in files::load_all_hop_modules(root)? {
-        compiler.add_module(module_name, content);
-    }
-    compiler
-        .compile()
-        .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
-}
 
 #[derive(Parser)]
 #[command(name = "hop")]
@@ -190,7 +180,8 @@ fn hop_build(
 
     // Handle script collection if requested
     if let Some(script_file_name) = script_file {
-        let program = compile_hop_program(root)?;
+        let modules = files::load_all_hop_modules(root)?;
+        let program = compile(modules).map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))?;
         let combined_script = program.get_scripts();
         let script_path = output_dir.join(script_file_name);
         fs::write(&script_path, combined_script)
@@ -206,7 +197,8 @@ fn render_build_files(
     use crate::common::Environment;
     use std::collections::HashMap;
 
-    let program = compile_hop_program(root)?;
+    let modules = files::load_all_hop_modules(root)?;
+    let program = compile(modules).map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))?;
     let mut rendered_files = HashMap::new();
     let mut env = Environment::new();
 
@@ -292,10 +284,9 @@ window.addEventListener("beforeunload", function() {
 const ERROR_TEMPLATES: &str = include_str!("../hop/error_pages.hop");
 
 fn create_error_page(error: &anyhow::Error) -> String {
-    let mut compiler = Compiler::new();
-    compiler.add_module("error_pages".to_string(), ERROR_TEMPLATES.to_string());
+    let modules = vec![("error_pages".to_string(), ERROR_TEMPLATES.to_string())];
 
-    let program = match compiler.compile() {
+    let program = match compile(modules) {
         Ok(program) => program,
         Err(e) => return format!("Template compilation error: {}", e),
     };
@@ -311,10 +302,9 @@ fn create_error_page(error: &anyhow::Error) -> String {
 }
 
 fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
-    let mut compiler = Compiler::new();
-    compiler.add_module("error_pages".to_string(), ERROR_TEMPLATES.to_string());
+    let modules = vec![("error_pages".to_string(), ERROR_TEMPLATES.to_string())];
 
-    let program = match compiler.compile() {
+    let program = match compile(modules) {
         Ok(program) => program,
         Err(e) => return format!("Template compilation error: {}", e),
     };
@@ -401,18 +391,22 @@ async fn hop_dev(
         let local_root = root.clone();
         router = router.route(
             &script_path,
-            get(async move || match compile_hop_program(&local_root) {
-                Ok(program) => {
-                    use axum::body::Body;
-                    Ok(axum::response::Response::builder()
-                        .header("Content-Type", "application/javascript")
-                        .body(Body::from(program.get_scripts().to_string()))
-                        .unwrap())
+            get(async move || {
+                match files::load_all_hop_modules(&local_root).and_then(|modules| {
+                    compile(modules).map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
+                }) {
+                    Ok(program) => {
+                        use axum::body::Body;
+                        Ok(axum::response::Response::builder()
+                            .header("Content-Type", "application/javascript")
+                            .body(Body::from(program.get_scripts().to_string()))
+                            .unwrap())
+                    }
+                    Err(e) => Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("Failed to compile hop program: {}", e),
+                    )),
                 }
-                Err(e) => Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Failed to compile hop program: {}", e),
-                )),
             }),
         );
     }
