@@ -11,8 +11,7 @@ fn is_valid_component_name(name: &str) -> bool {
     if name.is_empty() || name.starts_with('-') || name.ends_with('-') {
         return false;
     }
-    // hop-x-raw and hop-x-exec are treated as special tags, not components
-    if name == "hop-x-raw" || name == "hop-x-exec" {
+    if name.starts_with("hop-") {
         return false;
     }
     name.contains('-')
