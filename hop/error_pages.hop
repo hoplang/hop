@@ -26,9 +26,9 @@
 			
 			<h2 style="font-size: 18px; margin-bottom: 12px;">Available Routes</h2>
 			<ul style="padding-left: 0px; margin-left: 20px; margin-bottom: 24px;">
-				<for each="params.available_routes" as="route">
+				<foreach {route in params.available_routes}>
 					<li><a set-href="route" style="color: #60a5fa;" set-inner-text="route"></a></li>
-				</for>
+				</foreach>
 			</ul>
 			
 			<p style="color: #9ca3af;">

@@ -400,13 +400,6 @@ pub struct ComponentReferenceNode {
     pub children: Vec<Node>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct ForNode {
-    pub each_attr: ExprAttribute,
-    pub as_attr: Option<VarNameAttr>,
-    pub range: Range,
-    pub children: Vec<Node>,
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IfNode {
@@ -493,7 +486,6 @@ pub enum Node {
     ComponentReference(ComponentReferenceNode),
     SlotDefinition(SlotDefinitionNode),
     SlotReference(SlotReferenceNode),
-    For(ForNode),
     If(IfNode),
     Foreach(ForeachNode),
     NativeHTML(NativeHTMLNode),

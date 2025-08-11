@@ -1,6 +1,6 @@
 use crate::common::{
     BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode,
-    ExprAttribute, Expression, ForNode, ForeachNode, IfNode, ImportNode, NativeHTMLNode, Node,
+    ExprAttribute, Expression, ForeachNode, IfNode, ImportNode, NativeHTMLNode, Node,
     Range, RangeError, RenderNode, SlotDefinitionNode, SlotReferenceNode, Type, XExecNode,
 };
 use crate::parser::Module;
@@ -199,60 +199,6 @@ fn typecheck_node(
     errors: &mut Vec<RangeError>,
 ) {
     match node {
-        Node::For(ForNode {
-            as_attr,
-            each_attr,
-            children,
-            ..
-        }) => {
-            let t1 = unifier.new_type_var();
-            typecheck_expr(
-                &Type::Array(Box::new(t1.clone())),
-                each_attr,
-                env,
-                unifier,
-                annotations,
-                errors,
-            );
-
-            let mut pushed = false;
-
-            if let Some(attr) = as_attr {
-                annotations.push(TypeAnnotation(attr.range, t1.clone()));
-                if env.push(attr.var_name.value.clone(), t1.clone()) {
-                    pushed = true;
-                } else {
-                    errors.push(RangeError::variable_already_defined(
-                        &attr.var_name.value,
-                        attr.range,
-                    ));
-                }
-            }
-
-            for child in children {
-                typecheck_node(
-                    child,
-                    component_info,
-                    env,
-                    unifier,
-                    annotations,
-                    definition_links,
-                    referenced_components,
-                    errors,
-                );
-            }
-
-            if pushed {
-                if let Some(attr) = as_attr {
-                    if !env.pop() {
-                        errors.push(RangeError::unused_variable(
-                            &attr.var_name.value,
-                            attr.range,
-                        ));
-                    }
-                }
-            }
-        }
         Node::If(IfNode {
             condition,
             children,

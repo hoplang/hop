@@ -1,6 +1,6 @@
 use crate::common::{
     BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode, Expression,
-    ForNode, ForeachNode, IfNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode, SlotReferenceNode, Type,
+    ForeachNode, IfNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode, SlotReferenceNode, Type,
     XExecNode, escape_html, is_void_element,
 };
 use std::collections::HashMap;
@@ -154,38 +154,6 @@ impl Program {
         current_module: &str,
     ) -> Result<String, String> {
         match node {
-            Node::For(ForNode {
-                as_attr,
-                each_attr,
-                children,
-                ..
-            }) => {
-                let array_value = self.evaluate_expr(&each_attr.expression, env)?;
-
-                let array = array_value
-                    .as_array()
-                    .ok_or_else(|| "For loop expects an array".to_string())?;
-
-                let mut result = String::new();
-                for item in array {
-                    if let Some(attr) = as_attr {
-                        env.push(attr.var_name.value.clone(), item.clone());
-                    }
-                    for child in children {
-                        result.push_str(&self.evaluate_node(
-                            child,
-                            slot_content,
-                            env,
-                            current_module,
-                        )?);
-                    }
-                    if as_attr.is_some() {
-                        env.pop();
-                    }
-                }
-
-                Ok(result)
-            }
             Node::If(IfNode {
                 condition,
                 children,

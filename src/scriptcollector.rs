@@ -24,11 +24,11 @@ impl ScriptCollector {
                 Node::NativeHTML(native_html_node) => {
                     result.extend(self.get_all_descendants(&native_html_node.children));
                 }
-                Node::For(for_node) => {
-                    result.extend(self.get_all_descendants(&for_node.children));
-                }
                 Node::If(if_node) => {
                     result.extend(self.get_all_descendants(&if_node.children));
+                }
+                Node::Foreach(foreach_node) => {
+                    result.extend(self.get_all_descendants(&foreach_node.children));
                 }
                 Node::ComponentReference(render_node) => {
                     result.extend(self.get_all_descendants(&render_node.children));

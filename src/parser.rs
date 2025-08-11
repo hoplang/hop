@@ -1,6 +1,6 @@
 use crate::common::{
     ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, ErrorNode, Expression, ExprAttribute,
-    ForNode, ForeachNode, IfNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode,
+    ForeachNode, IfNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode,
     SlotDefinitionNode, SlotReferenceNode, TextNode, Token, TokenKind, VarName, VarNameAttr, XExecNode,
     is_void_element,
 };
@@ -193,9 +193,6 @@ fn collect_slots_from_children(
             Node::XExec(XExecNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
-            Node::For(ForNode { children, .. }) => {
-                collect_slots_from_children(children, slots, errors);
-            }
             Node::If(IfNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
@@ -342,43 +339,6 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
         }),
         TokenKind::SelfClosingTag | TokenKind::StartTag => {
             match t.value.as_str() {
-                "for" => {
-                    let each_attr = t
-                        .get_attribute("each")
-                        .or_else(|| {
-                            errors.push(RangeError::missing_required_attribute(
-                                &t.value, "each", t.range,
-                            ));
-                            None
-                        })
-                        .and_then(|attr| {
-                            parse_expr_attribute(&attr.name, &attr.value, attr.range, errors)
-                        });
-                    let as_attr =
-                        t.get_attribute("as")
-                            .and_then(|attr| match VarNameAttr::new(&attr) {
-                                Some(var_attr) => Some(var_attr),
-                                None => {
-                                    errors.push(RangeError::invalid_variable_name(
-                                        &attr.value,
-                                        attr.range,
-                                    ));
-                                    None
-                                }
-                            });
-                    match each_attr {
-                        Some(each_attr) => Node::For(ForNode {
-                            each_attr,
-                            as_attr,
-                            range: t.range,
-                            children,
-                        }),
-                        None => Node::Error(ErrorNode {
-                            range: t.range,
-                            children,
-                        }),
-                    }
-                }
                 "if" => match &t.expression {
                     Some(condition) => Node::If(IfNode {
                         condition: condition.clone(),
@@ -561,12 +521,6 @@ mod tests {
                 }
                 Node::If(IfNode { children, .. }) => {
                     lines.push(format!("{}if", indent));
-                    for child in children {
-                        format_node(child, depth + 1, lines);
-                    }
-                }
-                Node::For(ForNode { children, .. }) => {
-                    lines.push(format!("{}for", indent));
                     for child in children {
                         format_node(child, depth + 1, lines);
                     }
