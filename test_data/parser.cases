@@ -59,9 +59,9 @@ Invalid variable name 'Data123'. Variable names must match [a-z][a-z0-9]*
 ## BEGIN
 -- main.hop --
 <main-comp params-as="data">
-	<for each="data" as="item_name">
+	<foreach {item_name in data}>
 		<div></div>
-	</for>
+	</foreach>
 </main-comp>
 -- out --
 Invalid variable name 'item_name'. Variable names must match [a-z][a-z0-9]*
@@ -71,22 +71,22 @@ Invalid variable name 'item_name'. Variable names must match [a-z][a-z0-9]*
 -- main.hop --
 <main-comp params-as="sections">
 	<div>
-		<for each="sections" as="section">
+		<foreach {section in sections}>
 			<div>
 				<h2 set-inner-text="section.title"></h2>
-				<for each="section.items" as="item">
+				<foreach {item in section.items}>
 					<p set-inner-text="item"></p>
-				</for>
+				</foreach>
 			</div>
-		</for>
+		</foreach>
 	</div>
 </main-comp>
 -- out --
 div
-	for
+	foreach
 		div
 			h2
-			for
+			foreach
 				p
 ## END
 
@@ -170,50 +170,50 @@ if
 ## BEGIN
 -- main.hop --
 <main-comp params-as="i">
-	<for each="i" as="j">
-		<for each="j.s.t" as="k">
+	<foreach {j in i}>
+		<foreach {k in j.s.t}>
 			<if {k}>
 			</if>
-		</for>
-	</for>
-	<for each="i" as="p">
-		<for each="p.s.t" as="k">
-			<for each="k">
-			</for>
-		</for>
-	</for>
+		</foreach>
+	</foreach>
+	<foreach {p in i}>
+		<foreach {k in p.s.t}>
+			<foreach {item in k}>
+			</foreach>
+		</foreach>
+	</foreach>
 </main-comp>
 -- out --
-for
-	for
+foreach
+	foreach
 		if
-for
-	for
-		for
+foreach
+	foreach
+		foreach
 ## END
 
 ## BEGIN
 -- main.hop --
 <main-comp params-as="data">
 	<if {data}>
-		<for each="data" as="d">
-		</for>
+		<foreach {d in data}>
+		</foreach>
 	</if>
 </main-comp>
 -- out --
 if
-	for
+	foreach
 ## END
 
 ## BEGIN
 -- main.hop --
 <main-comp params-as="foo">
-	<for each="foo" as="bar">
+	<foreach {bar in foo}>
 	  <div></div>
-	</for>
+	</foreach>
 </main-comp>
 -- out --
-for
+foreach
 	div
 ## END
 
@@ -231,12 +231,12 @@ render
 ## BEGIN
 -- main.hop --
 <main-comp params-as="foo">
-	<for each="foo" as="v">
+	<foreach {v in foo}>
 		<div set-inner-text="v"></div>
-	</for>
+	</foreach>
 </main-comp>
 -- out --
-for
+foreach
 	div
 ## END
 

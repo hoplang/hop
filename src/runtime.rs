@@ -107,7 +107,7 @@ impl Program {
 
         let mut env = Environment::new();
         if let Some(params_as_attr) = &component.params_as_attr {
-            env.push(params_as_attr.value.clone(), params);
+            env.push(params_as_attr.var_name.value.clone(), params);
         }
 
         if component.entrypoint {
@@ -169,7 +169,7 @@ impl Program {
                 let mut result = String::new();
                 for item in array {
                     if let Some(attr) = as_attr {
-                        env.push(attr.value.clone(), item.clone());
+                        env.push(attr.var_name.value.clone(), item.clone());
                     }
                     for child in children {
                         result.push_str(&self.evaluate_node(
@@ -429,7 +429,7 @@ impl Program {
 
                 let mut result = String::new();
                 for item in array {
-                    env.push(var_name.clone(), item.clone());
+                    env.push(var_name.value.clone(), item.clone());
                     for child in children {
                         result.push_str(&self.evaluate_node(
                             child,

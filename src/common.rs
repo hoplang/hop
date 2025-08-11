@@ -252,14 +252,13 @@ pub struct Attribute {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct VarNameAttr {
+pub struct VarName {
     pub value: String,
-    pub range: Range,
 }
 
-impl VarNameAttr {
-    pub fn new(attr: &Attribute) -> Option<Self> {
-        let mut chars = attr.value.chars();
+impl VarName {
+    pub fn new(value: String) -> Option<Self> {
+        let mut chars = value.chars();
         if let Some(first_char) = chars.next() {
             if !first_char.is_ascii_lowercase() {
                 return None;
@@ -270,8 +269,21 @@ impl VarNameAttr {
         } else {
             return None;
         }
+        Some(VarName { value })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VarNameAttr {
+    pub var_name: VarName,
+    pub range: Range,
+}
+
+impl VarNameAttr {
+    pub fn new(attr: &Attribute) -> Option<Self> {
+        let var_name = VarName::new(attr.value.clone())?;
         Some(VarNameAttr {
-            value: attr.value.clone(),
+            var_name,
             range: attr.range,
         })
     }
@@ -468,7 +480,7 @@ pub struct XExecNode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForeachNode {
-    pub var_name: String,
+    pub var_name: VarName,
     pub array_expr: Expression,
     pub range: Range,
     pub children: Vec<Node>,

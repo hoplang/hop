@@ -111,7 +111,7 @@ pub fn typecheck(
         let parameter_type = if let Some(params_as_attr) = params_as_attr {
             let t1 = unifier.new_type_var();
             annotations.push(TypeAnnotation(params_as_attr.range, t1.clone()));
-            env.push(params_as_attr.value.clone(), t1.clone());
+            env.push(params_as_attr.var_name.value.clone(), t1.clone());
             for child in children {
                 typecheck_node(
                     child,
@@ -126,7 +126,7 @@ pub fn typecheck(
             }
             if !env.pop() {
                 errors.push(RangeError::unused_variable(
-                    &params_as_attr.value,
+                    &params_as_attr.var_name.value,
                     params_as_attr.range,
                 ));
             }
@@ -219,11 +219,11 @@ fn typecheck_node(
 
             if let Some(attr) = as_attr {
                 annotations.push(TypeAnnotation(attr.range, t1.clone()));
-                if env.push(attr.value.clone(), t1.clone()) {
+                if env.push(attr.var_name.value.clone(), t1.clone()) {
                     pushed = true;
                 } else {
                     errors.push(RangeError::variable_already_defined(
-                        &attr.value,
+                        &attr.var_name.value,
                         attr.range,
                     ));
                 }
@@ -245,7 +245,7 @@ fn typecheck_node(
             if pushed {
                 if let Some(attr) = as_attr {
                     if !env.pop() {
-                        errors.push(RangeError::unused_variable(&attr.value, attr.range));
+                        errors.push(RangeError::unused_variable(&attr.var_name.value, attr.range));
                     }
                 }
             }
@@ -388,11 +388,11 @@ fn typecheck_node(
 
             // Push the loop variable into scope for the children
             let mut pushed = false;
-            if env.push(var_name.clone(), element_type) {
+            if env.push(var_name.value.clone(), element_type) {
                 pushed = true;
             } else {
                 errors.push(RangeError::variable_already_defined(
-                    var_name,
+                    &var_name.value,
                     *range,
                 ));
             }

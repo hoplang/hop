@@ -1,7 +1,7 @@
 use crate::common::{
     ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, ErrorNode, Expression, ExprAttribute,
     ForNode, ForeachNode, IfNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode,
-    SlotDefinitionNode, SlotReferenceNode, TextNode, Token, TokenKind, VarNameAttr, XExecNode,
+    SlotDefinitionNode, SlotReferenceNode, TextNode, Token, TokenKind, VarName, VarNameAttr, XExecNode,
     is_void_element,
 };
 use crate::expression_parser::parse_expression;
@@ -400,12 +400,23 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     Some(loop_generator) => {
                         // Verify that the expression is actually a LoopGenerator
                         match loop_generator {
-                            Expression::LoopGenerator(var_name, array_expr) => Node::Foreach(ForeachNode {
-                                var_name: var_name.clone(),
-                                array_expr: (**array_expr).clone(),
-                                range: t.range,
-                                children,
-                            }),
+                            Expression::LoopGenerator(var_name, array_expr) => {
+                                match VarName::new(var_name.clone()) {
+                                    Some(validated_var_name) => Node::Foreach(ForeachNode {
+                                        var_name: validated_var_name,
+                                        array_expr: (**array_expr).clone(),
+                                        range: t.range,
+                                        children,
+                                    }),
+                                    None => {
+                                        errors.push(RangeError::invalid_variable_name(var_name, t.range));
+                                        Node::Error(ErrorNode {
+                                            range: t.range,
+                                            children,
+                                        })
+                                    }
+                                }
+                            },
                             _ => {
                                 errors.push(RangeError::new(
                                     "Expected loop generator expression (var in array) in <foreach> tag".to_string(),
