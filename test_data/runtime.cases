@@ -29,12 +29,12 @@
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-  <cond if="params.user.name == params.admin.name">
+  <if {params.user.name == params.admin.name}>
     <div>Is Admin</div>
-  </cond>
-  <cond if="params.status == params.expected_status">
+  </if>
+  <if {params.status == params.expected_status}>
     <div>Status OK</div>
-  </cond>
+  </if>
 </main-comp>
 -- data.json --
 {
@@ -54,9 +54,9 @@
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-  <cond if="params.x == params.y">
+  <if {params.x == params.y}>
     <span>Equal</span>
-  </cond>
+  </if>
 </main-comp>
 -- data.json --
 {
@@ -74,9 +74,9 @@
 -- main.hop --
 <main-comp params-as="items">
 	<for each="items" as="item">
-		<cond if="item.show">
+		<if {item.show}>
 			<div></div>
-		</cond>
+		</if>
 	</for>
 </main-comp>
 -- data.json --
@@ -99,12 +99,12 @@
   <for each="items" as="item">
     <div>
       <span set-inner-text="item.name"></span>
-      <cond if="item.type == 'admin'">
+      <if {item.type == 'admin'}>
         <strong> [Admin]</strong>
-      </cond>
-      <cond if="item.type == 'user'">
+      </if>
+      <if {item.type == 'user'}>
         <em> [User]</em>
-      </cond>
+      </if>
     </div>
   </for>
 </main-comp>
@@ -409,14 +409,14 @@
         </with-header>
         <with-content>
             <for each="data.users" as="user">
-                <cond if="user.active">
+                <if {user.active}>
                     <div class="user-item">
                         <span set-inner-text="user.name"></span>
-                        <cond if="user.admin">
+                        <if {user.admin}>
                             <strong> (Admin)</strong>
-                        </cond>
+                        </if>
                     </div>
-                </cond>
+                </if>
             </for>
         </with-content>
         <with-footer>
@@ -486,15 +486,15 @@
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-  <cond if="params.role == 'admin'">
+  <if {params.role == 'admin'}>
     <div>Admin Access</div>
-  </cond>
-  <cond if="params.status == 'active'">
+  </if>
+  <if {params.status == 'active'}>
     <div>Active User</div>
-  </cond>
-  <cond if="params.status == 'inactive'">
+  </if>
+  <if {params.status == 'inactive'}>
     <div>Inactive User</div>
-  </cond>
+  </if>
 </main-comp>
 -- data.json --
 {

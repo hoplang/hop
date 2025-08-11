@@ -396,13 +396,6 @@ pub struct ForNode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct CondNode {
-    pub if_attr: ExprAttribute,
-    pub range: Range,
-    pub children: Vec<Node>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct IfNode {
     pub condition: Expression,
     pub range: Range,
@@ -480,7 +473,6 @@ pub enum Node {
     SlotDefinition(SlotDefinitionNode),
     SlotReference(SlotReferenceNode),
     For(ForNode),
-    Cond(CondNode),
     If(IfNode),
     NativeHTML(NativeHTMLNode),
     Error(ErrorNode),

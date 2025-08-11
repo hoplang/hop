@@ -136,34 +136,34 @@ p
 ## BEGIN
 -- main.hop --
 <main-comp>
-  <cond if="user.name == other_user.name">
+  <if {user.name == other_user.name}>
     <div>Same name</div>
-  </cond>
-  <cond if="(data.x == data.y)">
+  </if>
+  <if {(data.x == data.y)}>
     <div>Parentheses work</div>
-  </cond>
-  <cond if="a == b == c">
+  </if>
+  <if {a == b == c}>
     <div>Chained equality</div>
-  </cond>
+  </if>
 </main-comp>
 -- out --
-cond
+if
 	div
-cond
+if
 	div
-cond
+if
 	div
 ## END
 
 ## BEGIN
 -- main.hop --
 <main-comp>
-  <cond if="x == y">
+  <if {x == y}>
     <div>Equal</div>
-  </cond>
+  </if>
 </main-comp>
 -- out --
-cond
+if
 	div
 ## END
 
@@ -172,8 +172,8 @@ cond
 <main-comp params-as="i">
 	<for each="i" as="j">
 		<for each="j.s.t" as="k">
-			<cond if="k">
-			</cond>
+			<if {k}>
+			</if>
 		</for>
 	</for>
 	<for each="i" as="p">
@@ -186,7 +186,7 @@ cond
 -- out --
 for
 	for
-		cond
+		if
 for
 	for
 		for
@@ -195,13 +195,13 @@ for
 ## BEGIN
 -- main.hop --
 <main-comp params-as="data">
-	<cond if="data">
+	<if {data}>
 		<for each="data" as="d">
 		</for>
-	</cond>
+	</if>
 </main-comp>
 -- out --
-cond
+if
 	for
 ## END
 

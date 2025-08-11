@@ -27,9 +27,6 @@ impl ScriptCollector {
                 Node::For(for_node) => {
                     result.extend(self.get_all_descendants(&for_node.children));
                 }
-                Node::Cond(cond_node) => {
-                    result.extend(self.get_all_descendants(&cond_node.children));
-                }
                 Node::If(if_node) => {
                     result.extend(self.get_all_descendants(&if_node.children));
                 }

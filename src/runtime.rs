@@ -1,7 +1,7 @@
 use crate::common::{
-    BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, CondNode, Environment, ErrorNode,
-    Expression, ForNode, IfNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode, SlotReferenceNode,
-    Type, XExecNode, escape_html, is_void_element,
+    BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode, Expression,
+    ForNode, IfNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode, SlotReferenceNode, Type,
+    XExecNode, escape_html, is_void_element,
 };
 use std::collections::HashMap;
 use std::io::Write;
@@ -186,27 +186,10 @@ impl Program {
 
                 Ok(result)
             }
-            Node::Cond(CondNode {
-                if_attr, children, ..
-            }) => {
-                let condition_value = self.evaluate_expr(&if_attr.expression, env)?;
-                if condition_value.as_bool().unwrap_or(false) {
-                    let mut result = String::new();
-                    for child in children {
-                        result.push_str(&self.evaluate_node(
-                            child,
-                            slot_content,
-                            env,
-                            current_module,
-                        )?);
-                    }
-                    Ok(result)
-                } else {
-                    Ok(String::new())
-                }
-            }
             Node::If(IfNode {
-                condition, children, ..
+                condition,
+                children,
+                ..
             }) => {
                 let condition_value = self.evaluate_expr(condition, env)?;
                 if condition_value.as_bool().unwrap_or(false) {

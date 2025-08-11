@@ -1,6 +1,6 @@
 use std::mem;
 
-use crate::common::{Attribute, Position, Range, RangeError, Token, TokenKind, Expression};
+use crate::common::{Attribute, Expression, Position, Range, RangeError, Token, TokenKind};
 use crate::expression_parser::parse_expression;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -218,7 +218,6 @@ fn is_alphanumeric_or_dash(ch: char) -> bool {
 fn is_whitespace(ch: char) -> bool {
     ch.is_whitespace()
 }
-
 
 pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
     let mut cursor = Cursor::new(input);
@@ -710,13 +709,13 @@ mod tests {
                     .map(format_attr)
                     .collect::<Vec<_>>()
                     .join(" ");
-                
+
                 let expr_part = if let Some(ref expr) = token.expression {
                     format!(" {{{:?}}}", expr)
                 } else {
                     String::new()
                 };
-                
+
                 format!(
                     "{:?}({}) [{}]{} {}",
                     token.kind,

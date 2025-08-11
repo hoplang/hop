@@ -1,8 +1,8 @@
 use crate::common::{
-    ComponentDefinitionNode, ComponentReferenceNode, CondNode, DoctypeNode, ErrorNode,
-    ExprAttribute, ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError,
-    RenderNode, SlotDefinitionNode, SlotReferenceNode, TextNode, Token, TokenKind, VarNameAttr,
-    XExecNode, is_void_element,
+    ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, ErrorNode, ExprAttribute,
+    ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode,
+    SlotDefinitionNode, SlotReferenceNode, TextNode, Token, TokenKind, VarNameAttr, XExecNode,
+    is_void_element,
 };
 use crate::expression_parser::parse_expression;
 use std::collections::HashSet;
@@ -196,9 +196,6 @@ fn collect_slots_from_children(
             Node::For(ForNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
-            Node::Cond(CondNode { children, .. }) => {
-                collect_slots_from_children(children, slots, errors);
-            }
             Node::If(IfNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
@@ -379,50 +376,23 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                         }),
                     }
                 }
-                "cond" => {
-                    let if_attr = t
-                        .get_attribute("if")
-                        .or_else(|| {
-                            errors.push(RangeError::missing_required_attribute(
-                                &t.value, "if", t.range,
-                            ));
-                            None
+                "if" => match &t.expression {
+                    Some(condition) => Node::If(IfNode {
+                        condition: condition.clone(),
+                        range: t.range,
+                        children,
+                    }),
+                    None => {
+                        errors.push(RangeError::new(
+                            "Missing expression in <if> tag".to_string(),
+                            t.range,
+                        ));
+                        Node::Error(ErrorNode {
+                            range: t.range,
+                            children,
                         })
-                        .and_then(|attr| {
-                            parse_expr_attribute(&attr.name, &attr.value, attr.range, errors)
-                        });
-
-                    match if_attr {
-                        Some(if_attr) => Node::Cond(CondNode {
-                            if_attr,
-                            range: t.range,
-                            children,
-                        }),
-                        None => Node::Error(ErrorNode {
-                            range: t.range,
-                            children,
-                        }),
                     }
-                }
-                "if" => {
-                    match &t.expression {
-                        Some(condition) => Node::If(IfNode {
-                            condition: condition.clone(),
-                            range: t.range,
-                            children,
-                        }),
-                        None => {
-                            errors.push(RangeError::new(
-                                "Missing expression in <if> tag".to_string(),
-                                t.range,
-                            ));
-                            Node::Error(ErrorNode {
-                                range: t.range,
-                                children,
-                            })
-                        }
-                    }
-                }
+                },
                 "hop-x-exec" => {
                     let cmd_attr = t.get_attribute("cmd").or_else(|| {
                         errors.push(RangeError::missing_required_attribute(
@@ -538,12 +508,6 @@ mod tests {
                 }
                 Node::ComponentReference(ComponentReferenceNode { children, .. }) => {
                     lines.push(format!("{}render", indent));
-                    for child in children {
-                        format_node(child, depth + 1, lines);
-                    }
-                }
-                Node::Cond(CondNode { children, .. }) => {
-                    lines.push(format!("{}cond", indent));
                     for child in children {
                         format_node(child, depth + 1, lines);
                     }

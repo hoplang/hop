@@ -1,7 +1,7 @@
 use crate::common::{
-    BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, CondNode, Environment, ErrorNode,
-    ExprAttribute, Expression, ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Range, RangeError,
-    RenderNode, SlotDefinitionNode, SlotReferenceNode, Type, XExecNode,
+    BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode,
+    ExprAttribute, Expression, ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Range,
+    RangeError, RenderNode, SlotDefinitionNode, SlotReferenceNode, Type, XExecNode,
 };
 use crate::parser::Module;
 use crate::unifier::Unifier;
@@ -250,29 +250,14 @@ fn typecheck_node(
                 }
             }
         }
-        Node::Cond(CondNode {
-            if_attr, children, ..
-        }) => {
-            typecheck_expr(&Type::Bool, if_attr, env, unifier, annotations, errors);
-
-            for child in children {
-                typecheck_node(
-                    child,
-                    component_info,
-                    env,
-                    unifier,
-                    annotations,
-                    definition_links,
-                    referenced_components,
-                    errors,
-                );
-            }
-        }
         Node::If(IfNode {
-            condition, children, range, ..
+            condition,
+            children,
+            range,
+            ..
         }) => {
-            // Typecheck the condition expression to ensure it's a boolean
-            let condition_type = typecheck_expression(condition, env, unifier, annotations, errors, *range);
+            let condition_type =
+                typecheck_expression(condition, env, unifier, annotations, errors, *range);
             if let Some(err) = unifier.unify(&Type::Bool, &condition_type) {
                 errors.push(RangeError::unification_error(&err.message, *range));
             }

@@ -299,11 +299,11 @@ When an undefined variable is referenced, the typechecker outputs an error.
 -- main.hop --
 <main-comp params-as="params">
 	<for each="params" as="item">
-	  <cond if="item.active">
-	  </cond>
+	  <if {item.active}>
+	  </if>
 	</for>
-	<cond if="item.active">
-	</cond>
+	<if {item.active}>
+	</if>
 </main-comp>
 -- out --
 Undefined variable: item
@@ -311,8 +311,8 @@ Undefined variable: item
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<cond if="item.active">
-	</cond>
+	<if {item.active}>
+	</if>
 	<for each="params">
 	</for>
 </main-comp>
@@ -369,8 +369,8 @@ Unused variable p
 -- main.hop --
 <main-comp params-as="params">
 	<for each="params" as="item">
-		<cond if="item.k">
-		</cond>
+		<if {item.k}>
+		</if>
 	</for>
 	<for each="params" as="item">
 		<for each="item.k" as="inner">
@@ -384,8 +384,8 @@ Can not unify types
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<cond if="params">
-	</cond>
+	<if {params}>
+	</if>
 	<for each="params" as="item">
 		<div set-inner-text="item"></div>
 	</for>
@@ -401,10 +401,10 @@ as well as the defined slots.
 -- main.hop --
 <main-comp params-as="params">
 	<for each="params.items" as="item">
-		<cond if="item.active">
-		</cond>
-		<cond if="item.name">
-		</cond>
+		<if {item.active}>
+		</if>
+		<if {item.name}>
+		</if>
 	</for>
 </main-comp>
 -- out --
@@ -432,9 +432,9 @@ main::custom-head
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-  <cond if="(params.a == 'str') == params.b">
+  <if {(params.a == 'str') == params.b}>
     <div>Match</div>
-  </cond>
+  </if>
 </main-comp>
 -- out --
 main::main-comp
@@ -445,16 +445,17 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<cond if="params.enabled">
+	<if {params.enabled}>
 		<for each="params.users" as="user">
-			<cond if="user.profile.verified">
+			<if {user.profile.verified}>
 				<for each="user.posts" as="post">
-					<cond if="post.published">
-					</cond>
+					<if {post.published}>
+					  published
+					</if>
 				</for>
-			</cond>
+			</if>
 		</for>
-	</cond>
+	</if>
 </main-comp>
 -- out --
 main::main-comp
@@ -466,12 +467,12 @@ main::main-comp
 -- main.hop --
 <main-comp params-as="params">
 	<for each="params.sections" as="section">
-		<cond if="section.header.visible">
+		<if {section.header.visible}>
 			<for each="section.items" as="item">
-				<cond if="item.data.valid">
-				</cond>
+				<if {item.data.valid}>
+				</if>
 			</for>
-		</cond>
+		</if>
 	</for>
 </main-comp>
 -- out --
@@ -483,8 +484,8 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<cond if="params.i.j.k.l">
-	</cond>
+	<if {params.i.j.k.l}>
+	</if>
 </main-comp>
 -- out --
 main::main-comp
@@ -495,12 +496,12 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<cond if="params.app.ui.theme.dark">
-	</cond>
-	<cond if="params.app.api.endpoints.users.enabled">
-	</cond>
-	<cond if="params.app.database.connection.ssl">
-	</cond>
+	<if {params.app.ui.theme.dark}>
+	</if>
+	<if {params.app.api.endpoints.users.enabled}>
+	</if>
+	<if {params.app.database.connection.ssl}>
+	</if>
 </main-comp>
 -- out --
 main::main-comp
@@ -539,12 +540,12 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-  <cond if="params.user.name == params.other_user.name">
+  <if {params.user.name == params.other_user.name}>
     <div>Same name</div>
-  </cond>
-  <cond if="(params.data.x == params.data.y)">
+  </if>
+  <if {(params.data.x == params.data.y)}>
     <div>Parentheses work</div>
-  </cond>
+  </if>
 </main-comp>
 -- out --
 main::main-comp
@@ -555,9 +556,9 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-  <cond if="params.x == params.y">
+  <if {params.x == params.y}>
     <div>Values are equal</div>
-  </cond>
+  </if>
 </main-comp>
 -- out --
 main::main-comp
@@ -569,8 +570,8 @@ main::main-comp
 -- main.hop --
 <main-comp params-as="params">
 	<for each="params.foo.bar" as="j">
-		<cond if="j">
-		</cond>
+		<if {j}>
+		</if>
 	</for>
 </main-comp>
 -- out --
@@ -583,12 +584,12 @@ main::main-comp
 -- main.hop --
 <main-comp params-as="params">
 	<for each="params" as="j">
-		<cond if="j.a">
-		</cond>
+		<if {j.a}>
+		</if>
 	</for>
 	<for each="params" as="j">
-		<cond if="j.b">
-		</cond>
+		<if {j.b}>
+		</if>
 	</for>
 </main-comp>
 -- out --
@@ -602,8 +603,8 @@ main::main-comp
 <main-comp params-as="i">
 	<for each="i" as="j">
 		<for each="j" as="k">
-			<cond if="k">
-			</cond>
+			<if {k}>
+			</if>
 		</for>
 	</for>
 </main-comp>
@@ -617,8 +618,8 @@ main::main-comp
 -- main.hop --
 <main-comp params-as="i">
 	<for each="i" as="j">
-		<cond if="j">
-		</cond>
+		<if {j}>
+		</if>
 	</for>
 </main-comp>
 -- out --
@@ -652,9 +653,9 @@ main::main-comp
 ## BEGIN
 -- bar.hop --
 <widget-comp params-as="config">
-  <cond if="config.enabled">
+  <if {config.enabled}>
     <div set-inner-text="config.title"/>
-  </cond>
+  </if>
 </widget-comp>
 
 -- foo.hop --
@@ -699,14 +700,14 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<cond if="params.config.debug">
-	</cond>
+	<if {params.config.debug}>
+	</if>
 	<for each="params.data" as="item">
-		<cond if="item.id">
-		</cond>
+		<if {item.id}>
+		</if>
 		<for each="item.attributes" as="attr">
-			<cond if="attr">
-			</cond>
+			<if {attr}>
+			</if>
 		</for>
 	</for>
 </main-comp>
@@ -719,8 +720,8 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <step3-comp params-as="settings">
-	<cond if="settings.enabled">
-	</cond>
+	<if {settings.enabled}>
+	</if>
 </step3-comp>
 
 <step2-comp params-as="config">
@@ -754,10 +755,10 @@ main::main-comp
 <main-card params-as="item">
   <div set-inner-text="item.title">
   </div>
-  <cond if="item.active">
+  <if {item.active}>
     <span set-inner-text="item.status">
     </span>
-  </cond>
+  </if>
 </main-card>
 
 <main-list params-as="items">
@@ -784,10 +785,10 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<cond if="params.i.j.k.l">
-		<cond if="params.i.k">
-		</cond>
-	</cond>
+	<if {params.i.j.k.l}>
+		<if {params.i.k}>
+		</if>
+	</if>
 </main-comp>
 -- out --
 main::main-comp
@@ -798,10 +799,10 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<cond if="params.i.j.k.l">
-	</cond>
-	<cond if="params.i.k">
-	</cond>
+	<if {params.i.j.k.l}>
+	</if>
+	<if {params.i.k}>
+	</if>
 </main-comp>
 -- out --
 main::main-comp
@@ -813,15 +814,15 @@ main::main-comp
 -- main.hop --
 <main-comp params-as="params">
 	<for each="params.tags" as="tag">
-		<cond if="tag">
-		</cond>
+		<if {tag}>
+		</if>
 	</for>
 	<for each="params.categories" as="category">
-		<cond if="category">
-		</cond>
+		<if {category}>
+		</if>
 	</for>
-	<cond if="params.metadata.title">
-	</cond>
+	<if {params.metadata.title}>
+	</if>
 </main-comp>
 -- out --
 main::main-comp
@@ -832,8 +833,8 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-bar params-as="p">
-  <cond if="p">
-  </cond>
+  <if {p}>
+  </if>
 </main-bar>
 
 <main-foo params-as="p">
@@ -858,16 +859,16 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <execute-step params-as="step">
-	<cond if="step.condition">
-	</cond>
+	<if {step.condition}>
+	</if>
 </execute-step>
 
 <execute-workflow params-as="workflow">
-	<cond if="workflow.enabled">
+	<if {workflow.enabled}>
 		<for each="workflow.steps" as="step">
 			<execute-step params="step"/>
 		</for>
-	</cond>
+	</if>
 </execute-workflow>
 
 <main-comp params-as="params">
@@ -890,8 +891,8 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <foo-comp params-as="p">
-  <cond if="p">
-  </cond>
+  <if {p}>
+  </if>
 </foo-comp>
 
 <main-comp params-as="i">
@@ -909,11 +910,11 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <process-item params-as="item">
-	<cond if="item.status.active">
-	</cond>
+	<if {item.status.active}>
+	</if>
 	<for each="item.children" as="child">
-		<cond if="child.visible">
-		</cond>
+		<if {child.visible}>
+		</if>
 	</for>
 </process-item>
 
@@ -981,9 +982,9 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-  <cond if="params.role == 'admin'">
+  <if {params.role == 'admin'}>
     <div>Admin</div>
-  </cond>
+  </if>
 </main-comp>
 -- out --
 main::main-comp
@@ -997,8 +998,8 @@ main::main-comp
 	<for each="params" as="level1">
 		<for each="level1" as="level2">
 			<for each="level2" as="level3">
-				<cond if="level3">
-				</cond>
+				<if {level3}>
+				</if>
 			</for>
 		</for>
 	</for>
