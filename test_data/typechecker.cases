@@ -265,8 +265,8 @@ When a variable shadows another variable, the typechecker outputs an error.
 ## BEGIN
 -- main.hop --
 <main-comp params-as="items">
-  <for each="items.foo" as="items">
-  </for>
+  <foreach {items in items.foo}>
+  </foreach>
 </main-comp>
 -- out --
 Variable items is already defined
@@ -274,8 +274,8 @@ Variable items is already defined
 ## BEGIN
 -- main.hop --
 <main-comp params-as="items">
-  <for each="items" as="items">
-  </for>
+  <foreach {items in items}>
+  </foreach>
 </main-comp>
 -- out --
 Variable items is already defined
@@ -283,11 +283,11 @@ Variable items is already defined
 ## BEGIN
 -- main.hop --
 <main-comp params-as="items">
-  <for each="items.a" as="item">
-    <for each="items.b" as="item">
+  <foreach {item in items.a}>
+    <foreach {item in items.b}>
       <div set-inner-text="item"></div>
-    </for>
-  </for>
+    </foreach>
+  </foreach>
 </main-comp>
 -- out --
 Variable item is already defined
@@ -298,23 +298,12 @@ When an undefined variable is referenced, the typechecker outputs an error.
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<for each="params" as="item">
+	<foreach {item in params}>
 	  <if {item.active}>
 	  </if>
-	</for>
+	</foreach>
 	<if {item.active}>
 	</if>
-</main-comp>
--- out --
-Undefined variable: item
-## END
-## BEGIN
--- main.hop --
-<main-comp params-as="params">
-	<if {item.active}>
-	</if>
-	<for each="params">
-	</for>
 </main-comp>
 -- out --
 Undefined variable: item
@@ -325,11 +314,11 @@ When a variable is unused, the typechecker outputs an error.
 ## BEGIN
 -- main.hop --
 <main-comp params-as="items">
-  <for each="items" as="item">
+  <foreach {item in items}>
       <div set-inner-text="item"></div>
-  </for>
-  <for each="items" as="item">
-  </for>
+  </foreach>
+  <foreach {item in items}>
+  </foreach>
 </main-comp>
 -- out --
 Unused variable item
@@ -337,11 +326,11 @@ Unused variable item
 ## BEGIN
 -- main.hop --
 <main-comp params-as="items">
-  <for each="items" as="item">
-  </for>
-  <for each="items" as="item">
+  <foreach {item in items}>
+  </foreach>
+  <foreach {item in items}>
       <div set-inner-text="item"></div>
-  </for>
+  </foreach>
 </main-comp>
 -- out --
 Unused variable item
@@ -349,8 +338,8 @@ Unused variable item
 ## BEGIN
 -- main.hop --
 <main-comp params-as="items">
-  <for each="items" as="item">
-  </for>
+  <foreach {item in items}>
+  </foreach>
 </main-comp>
 -- out --
 Unused variable item
@@ -368,15 +357,15 @@ Unused variable p
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<for each="params" as="item">
+	<foreach {item in params}>
 		<if {item.k}>
 		</if>
-	</for>
-	<for each="params" as="item">
-		<for each="item.k" as="inner">
+	</foreach>
+	<foreach {item in params}>
+		<foreach {inner in item.k}>
 			<div set-inner-text="inner"></div>
-		</for>
-	</for>
+		</foreach>
+	</foreach>
 </main-comp>
 -- out --
 Can not unify types
@@ -386,9 +375,9 @@ Can not unify types
 <main-comp params-as="params">
 	<if {params}>
 	</if>
-	<for each="params" as="item">
+	<foreach {item in params}>
 		<div set-inner-text="item"></div>
-	</for>
+	</foreach>
 </main-comp>
 -- out --
 Can not unify types
@@ -400,12 +389,12 @@ as well as the defined slots.
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<for each="params.items" as="item">
+	<foreach {item in params.items}>
 		<if {item.active}>
 		</if>
 		<if {item.name}>
 		</if>
-	</for>
+	</foreach>
 </main-comp>
 -- out --
 main::main-comp
@@ -446,15 +435,15 @@ main::main-comp
 -- main.hop --
 <main-comp params-as="params">
 	<if {params.enabled}>
-		<for each="params.users" as="user">
+		<foreach {user in params.users}>
 			<if {user.profile.verified}>
-				<for each="user.posts" as="post">
+				<foreach {post in user.posts}>
 					<if {post.published}>
 					  published
 					</if>
-				</for>
+				</foreach>
 			</if>
-		</for>
+		</foreach>
 	</if>
 </main-comp>
 -- out --
@@ -466,14 +455,14 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<for each="params.sections" as="section">
+	<foreach {section in params.sections}>
 		<if {section.header.visible}>
-			<for each="section.items" as="item">
+			<foreach {item in section.items}>
 				<if {item.data.valid}>
 				</if>
-			</for>
+			</foreach>
 		</if>
-	</for>
+	</foreach>
 </main-comp>
 -- out --
 main::main-comp
@@ -569,10 +558,10 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<for each="params.foo.bar" as="j">
+	<foreach {j in params.foo.bar}>
 		<if {j}>
 		</if>
-	</for>
+	</foreach>
 </main-comp>
 -- out --
 main::main-comp
@@ -583,14 +572,14 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<for each="params" as="j">
+	<foreach {j in params}>
 		<if {j.a}>
 		</if>
-	</for>
-	<for each="params" as="j">
+	</foreach>
+	<foreach {j in params}>
 		<if {j.b}>
 		</if>
-	</for>
+	</foreach>
 </main-comp>
 -- out --
 main::main-comp
@@ -601,12 +590,12 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="i">
-	<for each="i" as="j">
-		<for each="j" as="k">
+	<foreach {j in i}>
+		<foreach {k in j}>
 			<if {k}>
 			</if>
-		</for>
-	</for>
+		</foreach>
+	</foreach>
 </main-comp>
 -- out --
 main::main-comp
@@ -617,10 +606,10 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="i">
-	<for each="i" as="j">
+	<foreach {j in i}>
 		<if {j}>
 		</if>
-	</for>
+	</foreach>
 </main-comp>
 -- out --
 main::main-comp
@@ -662,9 +651,9 @@ main::main-comp
 <import component="widget-comp" from="bar">
 
 <panel-comp params-as="data">
-  <for each="data.items" as="item">
+  <foreach {item in data.items}>
     <widget-comp params="item"/>
-  </for>
+  </foreach>
 </panel-comp>
 
 -- main.hop --
@@ -702,14 +691,14 @@ main::main-comp
 <main-comp params-as="params">
 	<if {params.config.debug}>
 	</if>
-	<for each="params.data" as="item">
+	<foreach {item in params.data}>
 		<if {item.id}>
 		</if>
-		<for each="item.attributes" as="attr">
+		<foreach {attr in item.attributes}>
 			<if {attr}>
 			</if>
-		</for>
-	</for>
+		</foreach>
+	</foreach>
 </main-comp>
 -- out --
 main::main-comp
@@ -762,9 +751,9 @@ main::main-comp
 </main-card>
 
 <main-list params-as="items">
-  <for each="items" as="item">
+  <foreach {item in items}>
     <main-card params="item"/>
-  </for>
+  </foreach>
 </main-list>
 
 <main-comp params-as="data">
@@ -813,14 +802,14 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<for each="params.tags" as="tag">
+	<foreach {tag in params.tags}>
 		<if {tag}>
 		</if>
-	</for>
-	<for each="params.categories" as="category">
+	</foreach>
+	<foreach {category in params.categories}>
 		<if {category}>
 		</if>
-	</for>
+	</foreach>
 	<if {params.metadata.title}>
 	</if>
 </main-comp>
@@ -865,16 +854,16 @@ main::main-comp
 
 <execute-workflow params-as="workflow">
 	<if {workflow.enabled}>
-		<for each="workflow.steps" as="step">
+		<foreach {step in workflow.steps}>
 			<execute-step params="step"/>
-		</for>
+		</foreach>
 	</if>
 </execute-workflow>
 
 <main-comp params-as="params">
-	<for each="params.workflows" as="workflow">
+	<foreach {workflow in params.workflows}>
 		<execute-workflow params="workflow"/>
-	</for>
+	</foreach>
 </main-comp>
 -- out --
 main::execute-step
@@ -912,16 +901,16 @@ main::main-comp
 <process-item params-as="item">
 	<if {item.status.active}>
 	</if>
-	<for each="item.children" as="child">
+	<foreach {child in item.children}>
 		<if {child.visible}>
 		</if>
-	</for>
+	</foreach>
 </process-item>
 
 <main-comp params-as="params">
-	<for each="params.items" as="item">
+	<foreach {item in params.items}>
 		<process-item params="item"/>
-	</for>
+	</foreach>
 </main-comp>
 -- out --
 main::process-item
@@ -995,14 +984,14 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<for each="params" as="level1">
-		<for each="level1" as="level2">
-			<for each="level2" as="level3">
+	<foreach {level1 in params}>
+		<foreach {level2 in level1}>
+			<foreach {level3 in level2}>
 				<if {level3}>
 				</if>
-			</for>
-		</for>
-	</for>
+			</foreach>
+		</foreach>
+	</foreach>
 </main-comp>
 -- out --
 main::main-comp

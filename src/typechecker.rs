@@ -1,7 +1,7 @@
 use crate::common::{
     BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode,
-    ExprAttribute, Expression, ForNode, ForeachNode, IfNode, ImportNode, NativeHTMLNode, Node, Range,
-    RangeError, RenderNode, SlotDefinitionNode, SlotReferenceNode, Type, XExecNode,
+    ExprAttribute, Expression, ForNode, ForeachNode, IfNode, ImportNode, NativeHTMLNode, Node,
+    Range, RangeError, RenderNode, SlotDefinitionNode, SlotReferenceNode, Type, XExecNode,
 };
 use crate::parser::Module;
 use crate::unifier::Unifier;
@@ -245,7 +245,10 @@ fn typecheck_node(
             if pushed {
                 if let Some(attr) = as_attr {
                     if !env.pop() {
-                        errors.push(RangeError::unused_variable(&attr.var_name.value, attr.range));
+                        errors.push(RangeError::unused_variable(
+                            &attr.var_name.value,
+                            attr.range,
+                        ));
                     }
                 }
             }
@@ -373,17 +376,20 @@ fn typecheck_node(
                 );
             }
         }
-        Node::Foreach(ForeachNode { var_name, array_expr, children, range }) => {
+        Node::Foreach(ForeachNode {
+            var_name,
+            array_expr,
+            children,
+            range,
+        }) => {
             // Typecheck the array expression
-            let array_type = typecheck_expression(array_expr, env, unifier, annotations, errors, *range);
+            let array_type =
+                typecheck_expression(array_expr, env, unifier, annotations, errors, *range);
             let element_type = unifier.new_type_var();
             let expected_array_type = Type::Array(Box::new(element_type.clone()));
-            
+
             if let Some(err) = unifier.unify(&array_type, &expected_array_type) {
-                errors.push(RangeError::unification_error(
-                    &format!("Expected array type in foreach loop, got: {}", err.message),
-                    *range,
-                ));
+                errors.push(RangeError::unification_error(&err.message, *range));
             }
 
             // Push the loop variable into scope for the children
@@ -413,7 +419,9 @@ fn typecheck_node(
 
             // Pop the loop variable from scope
             if pushed {
-                env.pop();
+                if !env.pop() {
+                    errors.push(RangeError::unused_variable(&var_name.value, *range));
+                }
             }
         }
         Node::Text(_) | Node::Doctype(_) => {
@@ -497,15 +505,13 @@ fn typecheck_expression(
             Type::Bool
         }
         Expression::LoopGenerator(_var_name, array_expr) => {
-            let array_type = typecheck_expression(array_expr, env, unifier, annotations, errors, range);
+            let array_type =
+                typecheck_expression(array_expr, env, unifier, annotations, errors, range);
             let element_type = unifier.new_type_var();
             let expected_array_type = Type::Array(Box::new(element_type.clone()));
-            
+
             if let Some(err) = unifier.unify(&array_type, &expected_array_type) {
-                errors.push(RangeError::unification_error(
-                    &format!("Expected array type in loop generator, got: {}", err.message),
-                    range,
-                ));
+                errors.push(RangeError::unification_error(&err.message, range));
             }
 
             // For now, return the element type - this will be handled properly in foreach nodes
