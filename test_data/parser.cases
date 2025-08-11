@@ -384,3 +384,59 @@ Test <if> tag without expression should produce error.
 -- out --
 Missing expression in <if> tag
 ## END
+
+Test basic <foreach> tag with simple loop generator expression.
+
+## BEGIN
+-- main.hop --
+<main-comp>
+	<foreach {item in items}>
+		<div>Item content</div>
+	</foreach>
+</main-comp>
+-- out --
+foreach
+	div
+## END
+
+Test <foreach> tag with complex array expression.
+
+## BEGIN
+-- main.hop --
+<main-comp>
+	<foreach {user in users.active}>
+		<div>User: {user.name}</div>
+		<p>Role: {user.role}</p>
+	</foreach>
+</main-comp>
+-- out --
+foreach
+	div
+	p
+## END
+
+Test <foreach> tag without expression should produce error.
+
+## BEGIN
+-- main.hop --
+<main-comp>
+	<foreach>
+		<div>Content</div>
+	</foreach>
+</main-comp>
+-- out --
+Missing loop generator expression in <foreach> tag
+## END
+
+Test <foreach> tag with non-loop-generator expression should produce error.
+
+## BEGIN
+-- main.hop --
+<main-comp>
+	<foreach {someVariable}>
+		<div>Content</div>
+	</foreach>
+</main-comp>
+-- out --
+Expected loop generator expression (var in array) in <foreach> tag
+## END

@@ -294,6 +294,7 @@ pub enum Expression {
     PropertyAccess(Box<Expression>, String),
     StringLiteral(String),
     BinaryOp(Box<Expression>, BinaryOp, Box<Expression>),
+    LoopGenerator(String, Box<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -466,6 +467,14 @@ pub struct XExecNode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ForeachNode {
+    pub var_name: String,
+    pub array_expr: Expression,
+    pub range: Range,
+    pub children: Vec<Node>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Node {
     Doctype(DoctypeNode),
     Text(TextNode),
@@ -474,6 +483,7 @@ pub enum Node {
     SlotReference(SlotReferenceNode),
     For(ForNode),
     If(IfNode),
+    Foreach(ForeachNode),
     NativeHTML(NativeHTMLNode),
     Error(ErrorNode),
     XExec(XExecNode),

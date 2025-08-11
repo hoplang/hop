@@ -603,3 +603,27 @@
 <div data-hop-id="main/main-comp">
 </div>
 ## END
+
+
+## BEGIN
+-- main.hop --
+<main-comp params-as="data">
+  <foreach {user in data.users}>
+    <div set-inner-text="user.name"></div>
+  </foreach>
+</main-comp>
+-- data.json --
+{
+  "users": [
+    {"name": "Alice"},
+    {"name": "Bob"},
+    {"name": "Charlie"}
+  ]
+}
+-- output.html --
+<div data-hop-id="main/main-comp">
+  <div>Alice</div>
+  <div>Bob</div>
+  <div>Charlie</div>
+</div>
+## END

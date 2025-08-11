@@ -8,6 +8,7 @@ enum ExprToken {
     Dot,
     LeftParen,
     RightParen,
+    In,
     Eof,
 }
 
@@ -122,6 +123,8 @@ impl ExprTokenizer {
                 let identifier = self.read_identifier();
                 if identifier.is_empty() {
                     Err("Invalid identifier".to_string())
+                } else if identifier == "in" {
+                    Ok(ExprToken::In)
                 } else {
                     Ok(ExprToken::Identifier(identifier))
                 }
@@ -152,6 +155,31 @@ impl ExprParser {
     }
 
     fn parse(&mut self) -> Result<Expression, String> {
+        self.parse_loop_generator()
+    }
+
+    // loop_generator -> IDENTIFIER "in" equality | equality
+    fn parse_loop_generator(&mut self) -> Result<Expression, String> {
+        // Check if we have an identifier followed by "in"
+        if let ExprToken::Identifier(var_name) = &self.current_token {
+            let var_name = var_name.clone();
+            let mut temp_parser = ExprTokenizer::new(""); // Create a temporary tokenizer to peek ahead
+            temp_parser.input = self.tokenizer.input.clone();
+            temp_parser.position = self.tokenizer.position;
+            
+            // Try to advance and see if next token is "in"
+            if let Ok(next_token) = temp_parser.next_token() {
+                if matches!(next_token, ExprToken::In) {
+                    // This is a loop generator
+                    self.advance()?; // consume identifier
+                    self.advance()?; // consume "in"
+                    let array_expr = self.parse_equality()?;
+                    return Ok(Expression::LoopGenerator(var_name, Box::new(array_expr)));
+                }
+            }
+        }
+        
+        // Not a loop generator, parse as regular equality
         self.parse_equality()
     }
 

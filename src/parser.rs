@@ -1,6 +1,6 @@
 use crate::common::{
-    ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, ErrorNode, ExprAttribute,
-    ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode,
+    ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, ErrorNode, Expression, ExprAttribute,
+    ForNode, ForeachNode, IfNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode,
     SlotDefinitionNode, SlotReferenceNode, TextNode, Token, TokenKind, VarNameAttr, XExecNode,
     is_void_element,
 };
@@ -199,6 +199,9 @@ fn collect_slots_from_children(
             Node::If(IfNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
+            Node::Foreach(ForeachNode { children, .. }) => {
+                collect_slots_from_children(children, slots, errors);
+            }
             Node::NativeHTML(NativeHTMLNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
@@ -393,6 +396,39 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                         })
                     }
                 },
+                "foreach" => match &t.expression {
+                    Some(loop_generator) => {
+                        // Verify that the expression is actually a LoopGenerator
+                        match loop_generator {
+                            Expression::LoopGenerator(var_name, array_expr) => Node::Foreach(ForeachNode {
+                                var_name: var_name.clone(),
+                                array_expr: (**array_expr).clone(),
+                                range: t.range,
+                                children,
+                            }),
+                            _ => {
+                                errors.push(RangeError::new(
+                                    "Expected loop generator expression (var in array) in <foreach> tag".to_string(),
+                                    t.range,
+                                ));
+                                Node::Error(ErrorNode {
+                                    range: t.range,
+                                    children,
+                                })
+                            }
+                        }
+                    }
+                    None => {
+                        errors.push(RangeError::new(
+                            "Missing loop generator expression in <foreach> tag".to_string(),
+                            t.range,
+                        ));
+                        Node::Error(ErrorNode {
+                            range: t.range,
+                            children,
+                        })
+                    }
+                },
                 "hop-x-exec" => {
                     let cmd_attr = t.get_attribute("cmd").or_else(|| {
                         errors.push(RangeError::missing_required_attribute(
@@ -520,6 +556,12 @@ mod tests {
                 }
                 Node::For(ForNode { children, .. }) => {
                     lines.push(format!("{}for", indent));
+                    for child in children {
+                        format_node(child, depth + 1, lines);
+                    }
+                }
+                Node::Foreach(ForeachNode { children, .. }) => {
+                    lines.push(format!("{}foreach", indent));
                     for child in children {
                         format_node(child, depth + 1, lines);
                     }

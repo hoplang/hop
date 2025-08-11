@@ -1,6 +1,6 @@
 use crate::common::{
     BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode, Expression,
-    ForNode, IfNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode, SlotReferenceNode, Type,
+    ForNode, ForeachNode, IfNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode, SlotReferenceNode, Type,
     XExecNode, escape_html, is_void_element,
 };
 use std::collections::HashMap;
@@ -420,6 +420,29 @@ impl Program {
                 let command = &cmd_attr.value;
                 self.execute_command(command, &stdin_content)
             }
+            Node::Foreach(ForeachNode { var_name, array_expr, children, .. }) => {
+                let array_value = self.evaluate_expr(array_expr, env)?;
+                
+                let array = array_value
+                    .as_array()
+                    .ok_or_else(|| "Foreach loop expects an array".to_string())?;
+
+                let mut result = String::new();
+                for item in array {
+                    env.push(var_name.clone(), item.clone());
+                    for child in children {
+                        result.push_str(&self.evaluate_node(
+                            child,
+                            slot_content,
+                            env,
+                            current_module,
+                        )?);
+                    }
+                    env.pop();
+                }
+
+                Ok(result)
+            }
         }
     }
 
@@ -520,6 +543,9 @@ impl Program {
                 let right_value = self.evaluate_expr(right, env)?;
 
                 Ok(serde_json::Value::Bool(left_value == right_value))
+            }
+            Expression::LoopGenerator(_, _) => {
+                Err("Loop generators can only be used within foreach expressions".to_string())
             }
         }
     }

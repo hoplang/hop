@@ -427,3 +427,24 @@ StartTag(form) [] {BinaryOp(PropertyAccess(Variable("user"), "role"), Equal, Str
 -- out --
 StartTag(section) [] {BinaryOp(BinaryOp(Variable("a"), Equal, Variable("b")), Equal, Variable("c"))} 1:1-1:24
 ## END
+
+## BEGIN
+-- in --
+<foreach {user in users}>
+-- out --
+StartTag(foreach) [] {LoopGenerator("user", Variable("users"))} 1:1-1:26
+## END
+
+## BEGIN
+-- in --
+<foreach {item in user.items}>
+-- out --
+StartTag(foreach) [] {LoopGenerator("item", PropertyAccess(Variable("user"), "items"))} 1:1-1:31
+## END
+
+## BEGIN
+-- in --
+<div {foo in bars}>
+-- out --
+StartTag(div) [] {LoopGenerator("foo", Variable("bars"))} 1:1-1:20
+## END
