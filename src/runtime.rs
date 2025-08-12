@@ -324,6 +324,10 @@ impl Program {
                 Ok(result)
             }
             Node::Text(text_node) => Ok(text_node.value.clone()),
+            Node::TextExpression(text_expr_node) => {
+                let result = self.evaluate_expr(&text_expr_node.expression, env)?;
+                Ok(result.as_str().unwrap_or("").to_string())
+            },
             Node::Doctype(doctype_node) => Ok(format!("<!DOCTYPE {}>", doctype_node.value)),
             Node::SlotDefinition(SlotDefinitionNode { name, children, .. }) => {
                 // Check if we have supply-slot content for this slot

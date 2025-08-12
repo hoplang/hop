@@ -1,7 +1,7 @@
 use crate::common::{
     BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode,
     ExprAttribute, Expression, ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Range,
-    RangeError, RenderNode, SlotDefinitionNode, SlotReferenceNode, Type, XExecNode, XRawNode,
+    RangeError, RenderNode, SlotDefinitionNode, SlotReferenceNode, TextExpressionNode, Type, XExecNode, XRawNode,
 };
 use crate::parser::Module;
 use crate::unifier::Unifier;
@@ -373,6 +373,21 @@ fn typecheck_node(
         }
         Node::Text(_) | Node::Doctype(_) => {
             // No typechecking needed
+        }
+        Node::TextExpression(text_expr_node) => {
+            // Typecheck the expression and ensure it's a string
+            let expr_type = typecheck_expression(
+                &text_expr_node.expression,
+                env,
+                unifier,
+                annotations,
+                errors,
+                text_expr_node.range,
+            );
+            if let Some(err) = unifier.unify(&Type::String, &expr_type) {
+                errors.push(RangeError::unification_error(&err.message, text_expr_node.range));
+            }
+            annotations.push(TypeAnnotation(text_expr_node.range, Type::String));
         }
     }
 }

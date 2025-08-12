@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(nix develop:*)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "Bash(rustc:*)",
+      "Bash(./debug_tokenizer3)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }

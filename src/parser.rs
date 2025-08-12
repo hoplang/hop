@@ -1,7 +1,7 @@
 use crate::common::{
     ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, ErrorNode, ExprAttribute,
     ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError,
-    RenderNode, SlotDefinitionNode, SlotReferenceNode, TextNode, Token, TokenKind,
+    RenderNode, SlotDefinitionNode, SlotReferenceNode, TextNode, TextExpressionNode, Token, TokenKind,
     VarNameAttr, XExecNode, XRawNode, is_void_element,
 };
 use crate::expression_parser::{parse_expression, parse_loop_header, parse_variable_name};
@@ -109,7 +109,7 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
                 // skip comments
                 continue;
             }
-            TokenKind::Doctype | TokenKind::Text | TokenKind::SelfClosingTag => {
+            TokenKind::Doctype | TokenKind::Text | TokenKind::SelfClosingTag | TokenKind::Expression => {
                 stack.last_mut().unwrap().append_node(token);
             }
             TokenKind::StartTag => {
@@ -176,6 +176,7 @@ fn collect_slots_from_children(
     for child in children {
         match child {
             Node::Text(_) => {}
+            Node::TextExpression(_) => {}
             Node::Doctype(_) => {}
             Node::SlotDefinition(SlotDefinitionNode { name, range, .. }) => {
                 if slots.contains(name) {
@@ -339,6 +340,37 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
             value: t.value.clone(),
             range: t.range,
         }),
+        TokenKind::Expression => {
+            // Expression tokens represent {expression} in text content
+            match &t.expression {
+                Some(expr_string) => match parse_expression(expr_string) {
+                    Ok(expression) => Node::TextExpression(TextExpressionNode {
+                        expression,
+                        range: t.range,
+                    }),
+                    Err(err) => {
+                        errors.push(RangeError::new(
+                            format!("Invalid expression: {}", err),
+                            t.range,
+                        ));
+                        Node::Error(ErrorNode {
+                            range: t.range,
+                            children: vec![],
+                        })
+                    }
+                },
+                None => {
+                    errors.push(RangeError::new(
+                        "Missing expression in Expression token".to_string(),
+                        t.range,
+                    ));
+                    Node::Error(ErrorNode {
+                        range: t.range,
+                        children: vec![],
+                    })
+                }
+            }
+        },
         TokenKind::SelfClosingTag | TokenKind::StartTag => {
             match t.value.as_str() {
                 "if" => match &t.expression {

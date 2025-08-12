@@ -321,6 +321,7 @@ pub enum TokenKind {
     SelfClosingTag,
     Text,
     Comment,
+    Expression,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -473,9 +474,16 @@ pub struct ForNode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct TextExpressionNode {
+    pub expression: Expression,
+    pub range: Range,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Node {
     Doctype(DoctypeNode),
     Text(TextNode),
+    TextExpression(TextExpressionNode),
     ComponentReference(ComponentReferenceNode),
     SlotDefinition(SlotDefinitionNode),
     SlotReference(SlotReferenceNode),

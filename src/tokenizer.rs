@@ -22,7 +22,8 @@ enum TokenizerState {
     BeforeDoctypeName,
     DoctypeName,
     RawtextData,
-    ExpressionContent,
+    TextExpressionContent,
+    TagExpressionContent,
 }
 
 struct Cursor {
@@ -243,6 +244,15 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
                     }
                     cursor.advance();
                     state = TokenizerState::TagOpen;
+                } else if ch == '{' {
+                    // Push any accumulated text before the expression
+                    if !builder.get_current_token_value().is_empty() {
+                        builder.push_current_token(&cursor);
+                    }
+                    // Start collecting the expression
+                    builder.set_current_expression_start(cursor.get_position());
+                    cursor.advance();
+                    state = TokenizerState::TextExpressionContent;
                 } else {
                     builder.append_to_current_token_value(ch);
                     cursor.advance();
@@ -286,7 +296,7 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
                 } else if ch == '{' {
                     builder.set_current_expression_start(cursor.get_position());
                     cursor.advance();
-                    state = TokenizerState::ExpressionContent;
+                    state = TokenizerState::TagExpressionContent;
                 } else if ch == '>' {
                     if is_special_tag_name(builder.get_current_token_value()) {
                         stored_tag_name = builder.get_current_token_value().to_string();
@@ -387,7 +397,7 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
                 } else if ch == '{' {
                     builder.set_current_expression_start(cursor.get_position());
                     cursor.advance();
-                    state = TokenizerState::ExpressionContent;
+                    state = TokenizerState::TagExpressionContent;
                 } else if ch == '/' {
                     builder.set_current_token_kind(TokenKind::SelfClosingTag);
                     cursor.advance();
@@ -638,15 +648,31 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
                 }
             }
 
-            TokenizerState::ExpressionContent => {
+            TokenizerState::TextExpressionContent => {
                 if ch == '}' {
                     builder.push_current_expression(&cursor);
                     cursor.advance();
+                    // Create an expression token and go back to Text state
+                    builder.set_current_token_kind(TokenKind::Expression);
+                    builder.push_current_token(&cursor);
+                    state = TokenizerState::Text;
+                } else {
+                    builder.append_to_expression(ch);
+                    cursor.advance();
+                    state = TokenizerState::TextExpressionContent;
+                }
+            }
+
+            TokenizerState::TagExpressionContent => {
+                if ch == '}' {
+                    builder.push_current_expression(&cursor);
+                    cursor.advance();
+                    // Go back to processing attributes in the tag
                     state = TokenizerState::BeforeAttrName;
                 } else {
                     builder.append_to_expression(ch);
                     cursor.advance();
-                    state = TokenizerState::ExpressionContent;
+                    state = TokenizerState::TagExpressionContent;
                 }
             }
         }
@@ -686,7 +712,33 @@ mod tests {
 
     fn format_token(token: &Token) -> String {
         match token.kind {
-            TokenKind::Text | TokenKind::Doctype | TokenKind::Comment => {
+            TokenKind::Text => {
+                if let Some(ref expr_string) = token.expression {
+                    let attrs = token
+                        .attributes
+                        .iter()
+                        .map(format_attr)
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    format!("{:?} [{}] {{{}}} {}", token.kind, attrs, expr_string, format_range(token.range))
+                } else {
+                    format!("{:?} {}", token.kind, format_range(token.range))
+                }
+            }
+            TokenKind::Expression => {
+                if let Some(ref expr_string) = token.expression {
+                    let attrs = token
+                        .attributes
+                        .iter()
+                        .map(format_attr)
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    format!("{:?} [{}] {{{}}} {}", token.kind, attrs, expr_string, format_range(token.range))
+                } else {
+                    format!("{:?} {}", token.kind, format_range(token.range))
+                }
+            }
+            TokenKind::Doctype | TokenKind::Comment => {
                 format!("{:?} {}", token.kind, format_range(token.range))
             }
             TokenKind::EndTag => {
