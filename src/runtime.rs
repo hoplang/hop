@@ -321,7 +321,7 @@ impl Program {
             Node::TextExpression(text_expr_node) => {
                 let result = self.evaluate_expr(&text_expr_node.expression, env)?;
                 Ok(escape_html(result.as_str().unwrap_or("")))
-            },
+            }
             Node::Doctype(doctype_node) => Ok(format!("<!DOCTYPE {}>", doctype_node.value)),
             Node::SlotDefinition(SlotDefinitionNode { name, children, .. }) => {
                 // Check if we have supply-slot content for this slot

@@ -334,20 +334,14 @@ pub fn parse_variable_name(
     let var_name = match &tokenizer.current_token {
         ExprToken::Identifier(name) => name.clone(),
         _ => {
-            errors.push(RangeError::new(
-                "Expected variable name".to_string(),
-                range,
-            ));
+            errors.push(RangeError::new("Expected variable name".to_string(), range));
             return None;
         }
     };
 
     // Advance past the identifier
     if tokenizer.advance().is_err() {
-        errors.push(RangeError::new(
-            "Invalid expression".to_string(),
-            range,
-        ));
+        errors.push(RangeError::new("Invalid expression".to_string(), range));
         return None;
     }
 

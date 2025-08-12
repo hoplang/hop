@@ -1,7 +1,7 @@
 use crate::common::{
     BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode,
     ExprAttribute, Expression, ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Range,
-    RangeError, RenderNode, SlotDefinitionNode, SlotReferenceNode, TextExpressionNode, Type, XExecNode, XRawNode,
+    RangeError, RenderNode, SlotDefinitionNode, SlotReferenceNode, Type, XExecNode, XRawNode,
 };
 use crate::parser::Module;
 use crate::unifier::Unifier;
@@ -360,10 +360,8 @@ fn typecheck_node(
             }
 
             // Pop the loop variable from scope
-            if pushed {
-                if !env.pop() {
-                    errors.push(RangeError::unused_variable(&var_name.value, *range));
-                }
+            if pushed && !env.pop() {
+                errors.push(RangeError::unused_variable(&var_name.value, *range));
             }
         }
         Node::Text(_) | Node::Doctype(_) => {
@@ -380,7 +378,10 @@ fn typecheck_node(
                 text_expr_node.range,
             );
             if let Some(err) = unifier.unify(&Type::String, &expr_type) {
-                errors.push(RangeError::unification_error(&err.message, text_expr_node.range));
+                errors.push(RangeError::unification_error(
+                    &err.message,
+                    text_expr_node.range,
+                ));
             }
             annotations.push(TypeAnnotation(text_expr_node.range, Type::String));
         }

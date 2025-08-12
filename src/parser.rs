@@ -1,7 +1,7 @@
 use crate::common::{
     ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, ErrorNode, ExprAttribute,
-    ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError,
-    RenderNode, SlotDefinitionNode, SlotReferenceNode, TextNode, TextExpressionNode, Token, TokenKind,
+    ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode,
+    SlotDefinitionNode, SlotReferenceNode, TextExpressionNode, TextNode, Token, TokenKind,
     VarNameAttr, XExecNode, XRawNode, is_void_element,
 };
 use crate::expression_parser::{parse_expression, parse_loop_header, parse_variable_name};
@@ -109,7 +109,10 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
                 // skip comments
                 continue;
             }
-            TokenKind::Doctype | TokenKind::Text | TokenKind::SelfClosingTag | TokenKind::Expression => {
+            TokenKind::Doctype
+            | TokenKind::Text
+            | TokenKind::SelfClosingTag
+            | TokenKind::Expression => {
                 stack.last_mut().unwrap().append_node(token);
             }
             TokenKind::StartTag => {
@@ -166,7 +169,6 @@ fn parse_expr_attribute(
         }
     }
 }
-
 
 fn collect_slots_from_children(
     children: &[Node],
@@ -267,14 +269,13 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                         None
                     });
 
-                    match file_attr {
-                        Some(file_attr) => Some(ToplevelNode::Render(RenderNode {
+                    file_attr.map(|file_attr| {
+                        ToplevelNode::Render(RenderNode {
                             file_attr,
                             range: t.range,
                             children,
-                        })),
-                        None => None,
-                    }
+                        })
+                    })
                 }
                 name => {
                     // Handle as component definition
@@ -291,16 +292,14 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
 
                     let as_attr = t.get_attribute("as");
                     let entrypoint = t.get_attribute("entrypoint").is_some();
-                    let params_as_attr = match &t.expression {
-                        Some(expr_string) => match parse_variable_name(expr_string, t.range, errors) {
-                            Some(var_name) => Some(VarNameAttr {
+                    let params_as_attr = t.expression.as_ref().and_then(|expr_string| {
+                        parse_variable_name(expr_string, t.range, errors).map(|var_name| {
+                            VarNameAttr {
                                 var_name,
                                 range: t.range,
-                            }),
-                            None => None,
-                        },
-                        None => None,
-                    };
+                            }
+                        })
+                    });
 
                     let mut slots = HashSet::new();
                     collect_slots_from_children(&children, &mut slots, errors);
@@ -370,7 +369,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     })
                 }
             }
-        },
+        }
         TokenKind::SelfClosingTag | TokenKind::StartTag => {
             match t.value.as_str() {
                 "if" => match &t.expression {
@@ -403,20 +402,18 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     }
                 },
                 "for" => match &t.expression {
-                    Some(expr_string) => {
-                        match parse_loop_header(expr_string, t.range, errors) {
-                            Some((var_name, array_expr)) => Node::For(ForNode {
-                                var_name,
-                                array_expr,
-                                range: t.range,
-                                children,
-                            }),
-                            None => Node::Error(ErrorNode {
-                                range: t.range,
-                                children,
-                            })
-                        }
-                    }
+                    Some(expr_string) => match parse_loop_header(expr_string, t.range, errors) {
+                        Some((var_name, array_expr)) => Node::For(ForNode {
+                            var_name,
+                            array_expr,
+                            range: t.range,
+                            children,
+                        }),
+                        None => Node::Error(ErrorNode {
+                            range: t.range,
+                            children,
+                        }),
+                    },
                     None => {
                         errors.push(RangeError::new(
                             "Missing loop generator expression in <for> tag".to_string(),
@@ -476,7 +473,11 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     // This is a component render (contains dash)
                     let params_attr = match &t.expression {
                         Some(expr_string) => match parse_expression(expr_string) {
-                            Ok(expression) => Some(ExprAttribute::new("params".to_string(), expression, t.range)),
+                            Ok(expression) => Some(ExprAttribute::new(
+                                "params".to_string(),
+                                expression,
+                                t.range,
+                            )),
                             Err(err) => {
                                 errors.push(RangeError::new(
                                     format!("Invalid expression in <{}> tag: {}", tag_name, err),

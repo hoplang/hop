@@ -720,7 +720,13 @@ mod tests {
                         .map(format_attr)
                         .collect::<Vec<_>>()
                         .join(" ");
-                    format!("{:?} [{}] {{{}}} {}", token.kind, attrs, expr_string, format_range(token.range))
+                    format!(
+                        "{:?} [{}] {{{}}} {}",
+                        token.kind,
+                        attrs,
+                        expr_string,
+                        format_range(token.range)
+                    )
                 } else {
                     format!("{:?} {}", token.kind, format_range(token.range))
                 }
@@ -733,7 +739,13 @@ mod tests {
                         .map(format_attr)
                         .collect::<Vec<_>>()
                         .join(" ");
-                    format!("{:?} [{}] {{{}}} {}", token.kind, attrs, expr_string, format_range(token.range))
+                    format!(
+                        "{:?} [{}] {{{}}} {}",
+                        token.kind,
+                        attrs,
+                        expr_string,
+                        format_range(token.range)
+                    )
                 } else {
                     format!("{:?} {}", token.kind, format_range(token.range))
                 }
