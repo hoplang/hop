@@ -31,3 +31,5 @@ rand = "0.9"
 
 [lints.clippy]
 only_used_in_recursion = "allow"
+too_many_arguments = "allow"
+enum_variant_names = "allow"
