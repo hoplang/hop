@@ -430,16 +430,16 @@ StartTag(section) [] {BinaryOp(BinaryOp(Variable("a"), Equal, Variable("b")), Eq
 
 ## BEGIN
 -- in --
-<foreach {user in users}>
+<for {user in users}>
 -- out --
-StartTag(foreach) [] {LoopGenerator("user", Variable("users"))} 1:1-1:26
+StartTag(for) [] {LoopGenerator("user", Variable("users"))} 1:1-1:22
 ## END
 
 ## BEGIN
 -- in --
-<foreach {item in user.items}>
+<for {item in user.items}>
 -- out --
-StartTag(foreach) [] {LoopGenerator("item", PropertyAccess(Variable("user"), "items"))} 1:1-1:31
+StartTag(for) [] {LoopGenerator("item", PropertyAccess(Variable("user"), "items"))} 1:1-1:27
 ## END
 
 ## BEGIN

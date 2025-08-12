@@ -1,6 +1,6 @@
 use crate::common::{
     BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode,
-    ExprAttribute, Expression, ForeachNode, IfNode, ImportNode, NativeHTMLNode, Node,
+    ExprAttribute, Expression, ForNode, IfNode, ImportNode, NativeHTMLNode, Node,
     Range, RangeError, RenderNode, SlotDefinitionNode, SlotReferenceNode, Type, XExecNode,
 };
 use crate::parser::Module;
@@ -322,7 +322,7 @@ fn typecheck_node(
                 );
             }
         }
-        Node::Foreach(ForeachNode {
+        Node::For(ForNode {
             var_name,
             array_expr,
             children,
@@ -460,7 +460,7 @@ fn typecheck_expression(
                 errors.push(RangeError::unification_error(&err.message, range));
             }
 
-            // For now, return the element type - this will be handled properly in foreach nodes
+            // For now, return the element type - this will be handled properly in for nodes
             element_type
         }
     }

@@ -73,11 +73,11 @@
 ## BEGIN
 -- main.hop --
 <main-comp params-as="items">
-	<foreach {item in items}>
+	<for {item in items}>
 		<if {item.show}>
 			<div></div>
 		</if>
-	</foreach>
+	</for>
 </main-comp>
 -- data.json --
 [
@@ -96,7 +96,7 @@
 ## BEGIN
 -- main.hop --
 <main-comp params-as="items">
-  <foreach {item in items}>
+  <for {item in items}>
     <div>
       <span set-inner-text="item.name"></span>
       <if {item.type == 'admin'}>
@@ -106,7 +106,7 @@
         <em> [User]</em>
       </if>
     </div>
-  </foreach>
+  </for>
 </main-comp>
 -- data.json --
 [
@@ -408,7 +408,7 @@
             <h1 set-inner-text="data.title"></h1>
         </with-header>
         <with-content>
-            <foreach {user in data.users}>
+            <for {user in data.users}>
                 <if {user.active}>
                     <div class="user-item">
                         <span set-inner-text="user.name"></span>
@@ -417,7 +417,7 @@
                         </if>
                     </div>
                 </if>
-            </foreach>
+            </for>
         </with-content>
         <with-footer>
             <p>Total active users: <span set-inner-text="data.active_count"></span></p>
@@ -608,9 +608,9 @@
 ## BEGIN
 -- main.hop --
 <main-comp params-as="data">
-  <foreach {user in data.users}>
+  <for {user in data.users}>
     <div set-inner-text="user.name"></div>
-  </foreach>
+  </for>
 </main-comp>
 -- data.json --
 {

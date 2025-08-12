@@ -265,8 +265,8 @@ When a variable shadows another variable, the typechecker outputs an error.
 ## BEGIN
 -- main.hop --
 <main-comp params-as="items">
-  <foreach {items in items.foo}>
-  </foreach>
+  <for {items in items.foo}>
+  </for>
 </main-comp>
 -- out --
 Variable items is already defined
@@ -274,8 +274,8 @@ Variable items is already defined
 ## BEGIN
 -- main.hop --
 <main-comp params-as="items">
-  <foreach {items in items}>
-  </foreach>
+  <for {items in items}>
+  </for>
 </main-comp>
 -- out --
 Variable items is already defined
@@ -283,11 +283,11 @@ Variable items is already defined
 ## BEGIN
 -- main.hop --
 <main-comp params-as="items">
-  <foreach {item in items.a}>
-    <foreach {item in items.b}>
+  <for {item in items.a}>
+    <for {item in items.b}>
       <div set-inner-text="item"></div>
-    </foreach>
-  </foreach>
+    </for>
+  </for>
 </main-comp>
 -- out --
 Variable item is already defined
@@ -298,10 +298,10 @@ When an undefined variable is referenced, the typechecker outputs an error.
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<foreach {item in params}>
+	<for {item in params}>
 	  <if {item.active}>
 	  </if>
-	</foreach>
+	</for>
 	<if {item.active}>
 	</if>
 </main-comp>
@@ -314,11 +314,11 @@ When a variable is unused, the typechecker outputs an error.
 ## BEGIN
 -- main.hop --
 <main-comp params-as="items">
-  <foreach {item in items}>
+  <for {item in items}>
       <div set-inner-text="item"></div>
-  </foreach>
-  <foreach {item in items}>
-  </foreach>
+  </for>
+  <for {item in items}>
+  </for>
 </main-comp>
 -- out --
 Unused variable item
@@ -326,11 +326,11 @@ Unused variable item
 ## BEGIN
 -- main.hop --
 <main-comp params-as="items">
-  <foreach {item in items}>
-  </foreach>
-  <foreach {item in items}>
+  <for {item in items}>
+  </for>
+  <for {item in items}>
       <div set-inner-text="item"></div>
-  </foreach>
+  </for>
 </main-comp>
 -- out --
 Unused variable item
@@ -338,8 +338,8 @@ Unused variable item
 ## BEGIN
 -- main.hop --
 <main-comp params-as="items">
-  <foreach {item in items}>
-  </foreach>
+  <for {item in items}>
+  </for>
 </main-comp>
 -- out --
 Unused variable item
@@ -357,15 +357,15 @@ Unused variable p
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<foreach {item in params}>
+	<for {item in params}>
 		<if {item.k}>
 		</if>
-	</foreach>
-	<foreach {item in params}>
-		<foreach {inner in item.k}>
+	</for>
+	<for {item in params}>
+		<for {inner in item.k}>
 			<div set-inner-text="inner"></div>
-		</foreach>
-	</foreach>
+		</for>
+	</for>
 </main-comp>
 -- out --
 Can not unify types
@@ -375,9 +375,9 @@ Can not unify types
 <main-comp params-as="params">
 	<if {params}>
 	</if>
-	<foreach {item in params}>
+	<for {item in params}>
 		<div set-inner-text="item"></div>
-	</foreach>
+	</for>
 </main-comp>
 -- out --
 Can not unify types
@@ -389,12 +389,12 @@ as well as the defined slots.
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<foreach {item in params.items}>
+	<for {item in params.items}>
 		<if {item.active}>
 		</if>
 		<if {item.name}>
 		</if>
-	</foreach>
+	</for>
 </main-comp>
 -- out --
 main::main-comp
@@ -435,15 +435,15 @@ main::main-comp
 -- main.hop --
 <main-comp params-as="params">
 	<if {params.enabled}>
-		<foreach {user in params.users}>
+		<for {user in params.users}>
 			<if {user.profile.verified}>
-				<foreach {post in user.posts}>
+				<for {post in user.posts}>
 					<if {post.published}>
 					  published
 					</if>
-				</foreach>
+				</for>
 			</if>
-		</foreach>
+		</for>
 	</if>
 </main-comp>
 -- out --
@@ -455,14 +455,14 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<foreach {section in params.sections}>
+	<for {section in params.sections}>
 		<if {section.header.visible}>
-			<foreach {item in section.items}>
+			<for {item in section.items}>
 				<if {item.data.valid}>
 				</if>
-			</foreach>
+			</for>
 		</if>
-	</foreach>
+	</for>
 </main-comp>
 -- out --
 main::main-comp
@@ -558,10 +558,10 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<foreach {j in params.foo.bar}>
+	<for {j in params.foo.bar}>
 		<if {j}>
 		</if>
-	</foreach>
+	</for>
 </main-comp>
 -- out --
 main::main-comp
@@ -572,14 +572,14 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<foreach {j in params}>
+	<for {j in params}>
 		<if {j.a}>
 		</if>
-	</foreach>
-	<foreach {j in params}>
+	</for>
+	<for {j in params}>
 		<if {j.b}>
 		</if>
-	</foreach>
+	</for>
 </main-comp>
 -- out --
 main::main-comp
@@ -590,12 +590,12 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="i">
-	<foreach {j in i}>
-		<foreach {k in j}>
+	<for {j in i}>
+		<for {k in j}>
 			<if {k}>
 			</if>
-		</foreach>
-	</foreach>
+		</for>
+	</for>
 </main-comp>
 -- out --
 main::main-comp
@@ -606,10 +606,10 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="i">
-	<foreach {j in i}>
+	<for {j in i}>
 		<if {j}>
 		</if>
-	</foreach>
+	</for>
 </main-comp>
 -- out --
 main::main-comp
@@ -651,9 +651,9 @@ main::main-comp
 <import component="widget-comp" from="bar">
 
 <panel-comp params-as="data">
-  <foreach {item in data.items}>
+  <for {item in data.items}>
     <widget-comp params="item"/>
-  </foreach>
+  </for>
 </panel-comp>
 
 -- main.hop --
@@ -691,14 +691,14 @@ main::main-comp
 <main-comp params-as="params">
 	<if {params.config.debug}>
 	</if>
-	<foreach {item in params.data}>
+	<for {item in params.data}>
 		<if {item.id}>
 		</if>
-		<foreach {attr in item.attributes}>
+		<for {attr in item.attributes}>
 			<if {attr}>
 			</if>
-		</foreach>
-	</foreach>
+		</for>
+	</for>
 </main-comp>
 -- out --
 main::main-comp
@@ -751,9 +751,9 @@ main::main-comp
 </main-card>
 
 <main-list params-as="items">
-  <foreach {item in items}>
+  <for {item in items}>
     <main-card params="item"/>
-  </foreach>
+  </for>
 </main-list>
 
 <main-comp params-as="data">
@@ -802,14 +802,14 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<foreach {tag in params.tags}>
+	<for {tag in params.tags}>
 		<if {tag}>
 		</if>
-	</foreach>
-	<foreach {category in params.categories}>
+	</for>
+	<for {category in params.categories}>
 		<if {category}>
 		</if>
-	</foreach>
+	</for>
 	<if {params.metadata.title}>
 	</if>
 </main-comp>
@@ -854,16 +854,16 @@ main::main-comp
 
 <execute-workflow params-as="workflow">
 	<if {workflow.enabled}>
-		<foreach {step in workflow.steps}>
+		<for {step in workflow.steps}>
 			<execute-step params="step"/>
-		</foreach>
+		</for>
 	</if>
 </execute-workflow>
 
 <main-comp params-as="params">
-	<foreach {workflow in params.workflows}>
+	<for {workflow in params.workflows}>
 		<execute-workflow params="workflow"/>
-	</foreach>
+	</for>
 </main-comp>
 -- out --
 main::execute-step
@@ -901,16 +901,16 @@ main::main-comp
 <process-item params-as="item">
 	<if {item.status.active}>
 	</if>
-	<foreach {child in item.children}>
+	<for {child in item.children}>
 		<if {child.visible}>
 		</if>
-	</foreach>
+	</for>
 </process-item>
 
 <main-comp params-as="params">
-	<foreach {item in params.items}>
+	<for {item in params.items}>
 		<process-item params="item"/>
-	</foreach>
+	</for>
 </main-comp>
 -- out --
 main::process-item
@@ -984,14 +984,14 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp params-as="params">
-	<foreach {level1 in params}>
-		<foreach {level2 in level1}>
-			<foreach {level3 in level2}>
+	<for {level1 in params}>
+		<for {level2 in level1}>
+			<for {level3 in level2}>
 				<if {level3}>
 				</if>
-			</foreach>
-		</foreach>
-	</foreach>
+			</for>
+		</for>
+	</for>
 </main-comp>
 -- out --
 main::main-comp

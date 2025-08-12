@@ -1,6 +1,6 @@
 use crate::common::{
     ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, ErrorNode, Expression, ExprAttribute,
-    ForeachNode, IfNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode,
+    ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode,
     SlotDefinitionNode, SlotReferenceNode, TextNode, Token, TokenKind, VarName, VarNameAttr, XExecNode,
     is_void_element,
 };
@@ -196,7 +196,7 @@ fn collect_slots_from_children(
             Node::If(IfNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
-            Node::Foreach(ForeachNode { children, .. }) => {
+            Node::For(ForNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
             Node::NativeHTML(NativeHTMLNode { children, .. }) => {
@@ -356,13 +356,13 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                         })
                     }
                 },
-                "foreach" => match &t.expression {
+                "for" => match &t.expression {
                     Some(loop_generator) => {
                         // Verify that the expression is actually a LoopGenerator
                         match loop_generator {
                             Expression::LoopGenerator(var_name, array_expr) => {
                                 match VarName::new(var_name.clone()) {
-                                    Some(validated_var_name) => Node::Foreach(ForeachNode {
+                                    Some(validated_var_name) => Node::For(ForNode {
                                         var_name: validated_var_name,
                                         array_expr: (**array_expr).clone(),
                                         range: t.range,
@@ -379,7 +379,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                             },
                             _ => {
                                 errors.push(RangeError::new(
-                                    "Expected loop generator expression (var in array) in <foreach> tag".to_string(),
+                                    "Expected loop generator expression (var in array) in <for> tag".to_string(),
                                     t.range,
                                 ));
                                 Node::Error(ErrorNode {
@@ -391,7 +391,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     }
                     None => {
                         errors.push(RangeError::new(
-                            "Missing loop generator expression in <foreach> tag".to_string(),
+                            "Missing loop generator expression in <for> tag".to_string(),
                             t.range,
                         ));
                         Node::Error(ErrorNode {
@@ -525,8 +525,8 @@ mod tests {
                         format_node(child, depth + 1, lines);
                     }
                 }
-                Node::Foreach(ForeachNode { children, .. }) => {
-                    lines.push(format!("{}foreach", indent));
+                Node::For(ForNode { children, .. }) => {
+                    lines.push(format!("{}for", indent));
                     for child in children {
                         format_node(child, depth + 1, lines);
                     }

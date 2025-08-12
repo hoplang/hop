@@ -1,6 +1,6 @@
 use crate::common::{
     BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode, Expression,
-    ForeachNode, IfNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode, SlotReferenceNode, Type,
+    ForNode, IfNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode, SlotReferenceNode, Type,
     XExecNode, escape_html, is_void_element,
 };
 use std::collections::HashMap;
@@ -388,12 +388,12 @@ impl Program {
                 let command = &cmd_attr.value;
                 self.execute_command(command, &stdin_content)
             }
-            Node::Foreach(ForeachNode { var_name, array_expr, children, .. }) => {
+            Node::For(ForNode { var_name, array_expr, children, .. }) => {
                 let array_value = self.evaluate_expr(array_expr, env)?;
                 
                 let array = array_value
                     .as_array()
-                    .ok_or_else(|| "Foreach loop expects an array".to_string())?;
+                    .ok_or_else(|| "For loop expects an array".to_string())?;
 
                 let mut result = String::new();
                 for item in array {
@@ -513,7 +513,7 @@ impl Program {
                 Ok(serde_json::Value::Bool(left_value == right_value))
             }
             Expression::LoopGenerator(_, _) => {
-                Err("Loop generators can only be used within foreach expressions".to_string())
+                Err("Loop generators can only be used within for expressions".to_string())
             }
         }
     }

@@ -59,9 +59,9 @@ Invalid variable name 'Data123'. Variable names must match [a-z][a-z0-9]*
 ## BEGIN
 -- main.hop --
 <main-comp params-as="data">
-	<foreach {item_name in data}>
+	<for {item_name in data}>
 		<div></div>
-	</foreach>
+	</for>
 </main-comp>
 -- out --
 Invalid variable name 'item_name'. Variable names must match [a-z][a-z0-9]*
@@ -71,22 +71,22 @@ Invalid variable name 'item_name'. Variable names must match [a-z][a-z0-9]*
 -- main.hop --
 <main-comp params-as="sections">
 	<div>
-		<foreach {section in sections}>
+		<for {section in sections}>
 			<div>
 				<h2 set-inner-text="section.title"></h2>
-				<foreach {item in section.items}>
+				<for {item in section.items}>
 					<p set-inner-text="item"></p>
-				</foreach>
+				</for>
 			</div>
-		</foreach>
+		</for>
 	</div>
 </main-comp>
 -- out --
 div
-	foreach
+	for
 		div
 			h2
-			foreach
+			for
 				p
 ## END
 
@@ -170,50 +170,50 @@ if
 ## BEGIN
 -- main.hop --
 <main-comp params-as="i">
-	<foreach {j in i}>
-		<foreach {k in j.s.t}>
+	<for {j in i}>
+		<for {k in j.s.t}>
 			<if {k}>
 			</if>
-		</foreach>
-	</foreach>
-	<foreach {p in i}>
-		<foreach {k in p.s.t}>
-			<foreach {item in k}>
-			</foreach>
-		</foreach>
-	</foreach>
+		</for>
+	</for>
+	<for {p in i}>
+		<for {k in p.s.t}>
+			<for {item in k}>
+			</for>
+		</for>
+	</for>
 </main-comp>
 -- out --
-foreach
-	foreach
+for
+	for
 		if
-foreach
-	foreach
-		foreach
+for
+	for
+		for
 ## END
 
 ## BEGIN
 -- main.hop --
 <main-comp params-as="data">
 	<if {data}>
-		<foreach {d in data}>
-		</foreach>
+		<for {d in data}>
+		</for>
 	</if>
 </main-comp>
 -- out --
 if
-	foreach
+	for
 ## END
 
 ## BEGIN
 -- main.hop --
 <main-comp params-as="foo">
-	<foreach {bar in foo}>
+	<for {bar in foo}>
 	  <div></div>
-	</foreach>
+	</for>
 </main-comp>
 -- out --
-foreach
+for
 	div
 ## END
 
@@ -231,12 +231,12 @@ render
 ## BEGIN
 -- main.hop --
 <main-comp params-as="foo">
-	<foreach {v in foo}>
+	<for {v in foo}>
 		<div set-inner-text="v"></div>
-	</foreach>
+	</for>
 </main-comp>
 -- out --
-foreach
+for
 	div
 ## END
 
@@ -385,58 +385,58 @@ Test <if> tag without expression should produce error.
 Missing expression in <if> tag
 ## END
 
-Test basic <foreach> tag with simple loop generator expression.
+Test basic <for> tag with simple loop generator expression.
 
 ## BEGIN
 -- main.hop --
 <main-comp>
-	<foreach {item in items}>
+	<for {item in items}>
 		<div>Item content</div>
-	</foreach>
+	</for>
 </main-comp>
 -- out --
-foreach
+for
 	div
 ## END
 
-Test <foreach> tag with complex array expression.
+Test <for> tag with complex array expression.
 
 ## BEGIN
 -- main.hop --
 <main-comp>
-	<foreach {user in users.active}>
+	<for {user in users.active}>
 		<div>User: {user.name}</div>
 		<p>Role: {user.role}</p>
-	</foreach>
+	</for>
 </main-comp>
 -- out --
-foreach
+for
 	div
 	p
 ## END
 
-Test <foreach> tag without expression should produce error.
+Test <for> tag without expression should produce error.
 
 ## BEGIN
 -- main.hop --
 <main-comp>
-	<foreach>
+	<for>
 		<div>Content</div>
-	</foreach>
+	</for>
 </main-comp>
 -- out --
-Missing loop generator expression in <foreach> tag
+Missing loop generator expression in <for> tag
 ## END
 
-Test <foreach> tag with non-loop-generator expression should produce error.
+Test <for> tag with non-loop-generator expression should produce error.
 
 ## BEGIN
 -- main.hop --
 <main-comp>
-	<foreach {someVariable}>
+	<for {someVariable}>
 		<div>Content</div>
-	</foreach>
+	</for>
 </main-comp>
 -- out --
-Expected loop generator expression (var in array) in <foreach> tag
+Expected loop generator expression (var in array) in <for> tag
 ## END

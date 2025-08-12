@@ -459,7 +459,7 @@ pub struct XExecNode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ForeachNode {
+pub struct ForNode {
     pub var_name: VarName,
     pub array_expr: Expression,
     pub range: Range,
@@ -474,7 +474,7 @@ pub enum Node {
     SlotDefinition(SlotDefinitionNode),
     SlotReference(SlotReferenceNode),
     If(IfNode),
-    Foreach(ForeachNode),
+    For(ForNode),
     NativeHTML(NativeHTMLNode),
     Error(ErrorNode),
     XExec(XExecNode),
