@@ -155,11 +155,6 @@ impl ExprParser {
     }
 
     fn parse(&mut self) -> Result<Expression, String> {
-        self.parse_loop_generator()
-    }
-
-    // Since LoopGenerator is removed, this now just parses equality expressions
-    fn parse_loop_generator(&mut self) -> Result<Expression, String> {
         self.parse_equality()
     }
 
