@@ -374,7 +374,7 @@ impl Program {
                 let command = &cmd_attr.value;
                 self.execute_command(command, &stdin_content)
             }
-            Node::XRaw(XRawNode { children, .. }) => {
+            Node::XRaw(XRawNode { trim, children, .. }) => {
                 // For hop-x-raw nodes, just render the inner content without the tags
                 let mut result = String::new();
                 for child in children {
@@ -385,7 +385,12 @@ impl Program {
                         current_module,
                     )?);
                 }
-                Ok(result)
+
+                if *trim {
+                    Ok(Self::trim_raw_string(&result))
+                } else {
+                    Ok(result)
+                }
             }
             Node::For(ForNode {
                 var_name,
@@ -563,6 +568,63 @@ impl Program {
                 String::from_utf8_lossy(&output.stderr)
             ))
         }
+    }
+
+    fn trim_raw_string(input: &str) -> String {
+        let lines: Vec<&str> = input.lines().collect();
+        if lines.is_empty() {
+            return String::new();
+        }
+
+        // Find the first line with non-whitespace content
+        let first_content_line_index = lines.iter().position(|line| !line.trim().is_empty());
+
+        let first_content_line_index = match first_content_line_index {
+            Some(index) => index,
+            None => return String::new(), // All lines are whitespace-only
+        };
+
+        // Find the last line with non-whitespace content
+        let last_content_line_index = lines
+            .iter()
+            .rposition(|line| !line.trim().is_empty())
+            .unwrap();
+
+        // Get the lines from first content to last content
+        let content_lines = &lines[first_content_line_index..=last_content_line_index];
+
+        if content_lines.is_empty() {
+            return String::new();
+        }
+
+        // Determine the common leading whitespace from the first content line
+        let first_line = content_lines[0];
+        let leading_whitespace_count = first_line.len()
+            - first_line
+                .trim_start_matches(|c: char| c.is_whitespace())
+                .len();
+
+        // Remove the common leading whitespace from all lines
+        let mut result_lines = Vec::new();
+        for line in content_lines {
+            if line.trim().is_empty() {
+                // For whitespace-only lines, just add an empty line
+                result_lines.push("");
+            } else if line.len() >= leading_whitespace_count
+                && line
+                    .chars()
+                    .take(leading_whitespace_count)
+                    .all(|c| c.is_whitespace())
+            {
+                // Remove the common leading whitespace
+                result_lines.push(&line[leading_whitespace_count..]);
+            } else {
+                // Line has less whitespace than expected, just trim what we can
+                result_lines.push(line.trim_start_matches(|c: char| c.is_whitespace()));
+            }
+        }
+
+        result_lines.join("\n")
     }
 }
 

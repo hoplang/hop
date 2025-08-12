@@ -460,6 +460,7 @@ pub struct XExecNode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct XRawNode {
+    pub trim: bool,
     pub range: Range,
     pub children: Vec<Node>,
 }

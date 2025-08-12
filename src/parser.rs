@@ -451,10 +451,14 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                         }),
                     }
                 }
-                "hop-x-raw" => Node::XRaw(XRawNode {
-                    range: t.range,
-                    children,
-                }),
+                "hop-x-raw" => {
+                    let has_trim = t.attributes.iter().any(|attr| attr.name == "trim");
+                    Node::XRaw(XRawNode {
+                        trim: has_trim,
+                        range: t.range,
+                        children,
+                    })
+                }
                 tag_name if tag_name.starts_with("slot-") => {
                     let slot_name = &tag_name[5..]; // Remove "slot-" prefix
                     Node::SlotDefinition(SlotDefinitionNode {

@@ -545,6 +545,34 @@
 
 ## BEGIN
 -- main.hop --
+<main-comp>
+	<hop-x-raw trim>  trimmed  </hop-x-raw>
+</main-comp>
+-- data.json --
+{}
+-- output.html --
+<div data-hop-id="main/main-comp">
+	trimmed  
+</div>
+## END
+
+
+## BEGIN
+-- main.hop --
+<main-comp>
+	<hop-x-raw>  not trimmed  </hop-x-raw>
+</main-comp>
+-- data.json --
+{}
+-- output.html --
+<div data-hop-id="main/main-comp">
+	  not trimmed  
+</div>
+## END
+
+
+## BEGIN
+-- main.hop --
 <main-comp params-as="user">
   <if {user.isActive}>
     <div>Welcome active user!</div>
