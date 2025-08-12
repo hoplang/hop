@@ -444,9 +444,19 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                 }
                 tag_name if is_valid_component_name(tag_name) => {
                     // This is a component render (contains dash)
-                    let params_attr = t.get_attribute("params").and_then(|attr| {
-                        parse_expr_attribute(&attr.name, &attr.value, attr.range, errors)
-                    });
+                    let params_attr = match &t.expression {
+                        Some(expr_string) => match parse_expression(expr_string) {
+                            Ok(expression) => Some(ExprAttribute::new("params".to_string(), expression, t.range)),
+                            Err(err) => {
+                                errors.push(RangeError::new(
+                                    format!("Invalid expression in <{}> tag: {}", tag_name, err),
+                                    t.range,
+                                ));
+                                None
+                            }
+                        },
+                        None => None,
+                    };
 
                     Node::ComponentReference(ComponentReferenceNode {
                         component: tag_name.to_string(),

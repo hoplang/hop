@@ -230,6 +230,17 @@ render
 
 ## BEGIN
 -- main.hop --
+<main-comp params-as="data">
+	<foo-comp {data}></foo-comp>
+	<bar-comp {data.user}></bar-comp>
+</main-comp>
+-- out --
+render
+render
+## END
+
+## BEGIN
+-- main.hop --
 <main-comp params-as="foo">
 	<for {v in foo}>
 		<div set-inner-text="v"></div>

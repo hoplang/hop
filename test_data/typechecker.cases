@@ -627,7 +627,7 @@ main::main-comp
 <import component="button-comp" from="utils">
 
 <main-comp params-as="label">
-  <button-comp params="label"/>
+  <button-comp {label}/>
 </main-comp>
 
 -- out --
@@ -652,7 +652,7 @@ main::main-comp
 
 <panel-comp params-as="data">
   <for {item in data.items}>
-    <widget-comp params="item"/>
+    <widget-comp {item}/>
   </for>
 </panel-comp>
 
@@ -660,7 +660,7 @@ main::main-comp
 <import component="panel-comp" from="foo">
 
 <main-comp params-as="settings">
-  <panel-comp params="settings.dashboard"/>
+  <panel-comp {settings.dashboard}/>
 </main-comp>
 
 -- out --
@@ -714,15 +714,15 @@ main::main-comp
 </step3-comp>
 
 <step2-comp params-as="config">
-	<step3-comp params="config.settings"/>
+	<step3-comp {config.settings}/>
 </step2-comp>
 
 <step1-comp params-as="data">
-	<step2-comp params="data.config"/>
+	<step2-comp {data.config}/>
 </step1-comp>
 
 <main-comp params-as="params">
-	<step1-comp params="params"/>
+	<step1-comp {params}/>
 </main-comp>
 -- out --
 main::step3-comp
@@ -752,12 +752,12 @@ main::main-comp
 
 <main-list params-as="items">
   <for {item in items}>
-    <main-card params="item"/>
+    <main-card {item}/>
   </for>
 </main-list>
 
 <main-comp params-as="data">
-  <main-list params="data.items"/>
+  <main-list {data.items}/>
 </main-comp>
 -- out --
 main::main-card
@@ -827,11 +827,11 @@ main::main-comp
 </main-bar>
 
 <main-foo params-as="p">
-  <main-bar params="p"/>
+  <main-bar {p}/>
 </main-foo>
 
 <main-comp params-as="i">
-  <main-foo params="i"/>
+  <main-foo {i}/>
 </main-comp>
 -- out --
 main::main-bar
@@ -855,14 +855,14 @@ main::main-comp
 <execute-workflow params-as="workflow">
 	<if {workflow.enabled}>
 		<for {step in workflow.steps}>
-			<execute-step params="step"/>
+			<execute-step {step}/>
 		</for>
 	</if>
 </execute-workflow>
 
 <main-comp params-as="params">
 	<for {workflow in params.workflows}>
-		<execute-workflow params="workflow"/>
+		<execute-workflow {workflow}/>
 	</for>
 </main-comp>
 -- out --
@@ -885,7 +885,7 @@ main::main-comp
 </foo-comp>
 
 <main-comp params-as="i">
-  <foo-comp params="i"/>
+  <foo-comp {i}/>
 </main-comp>
 -- out --
 main::foo-comp
@@ -909,7 +909,7 @@ main::main-comp
 
 <main-comp params-as="params">
 	<for {item in params.items}>
-		<process-item params="item"/>
+		<process-item {item}/>
 	</for>
 </main-comp>
 -- out --
@@ -1029,8 +1029,8 @@ main::main-comp
 -- main.hop --
 <main-comp>
 	<hop-x-raw>
-		<undefined-component params="nonexistent.field">
-			<another-undefined params="also.nonexistent" />
+		<undefined-component {nonexistent.field}>
+			<another-undefined {also.nonexistent} />
 		</undefined-component>
 	</hop-x-raw>
 </main-comp>
