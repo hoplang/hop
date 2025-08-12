@@ -255,7 +255,6 @@ impl Program {
                 )
             }
             Node::NativeHTML(NativeHTMLNode {
-                inner_text_attr,
                 children,
                 tag_name,
                 attributes,
@@ -293,18 +292,13 @@ impl Program {
                 result.push('>');
 
                 if !is_void_element(tag_name) {
-                    if let Some(attr) = inner_text_attr {
-                        let evaluated = self.evaluate_expr(&attr.expression, env)?;
-                        result.push_str(&escape_html(evaluated.as_str().unwrap()));
-                    } else {
-                        for child in children {
-                            result.push_str(&self.evaluate_node(
-                                child,
-                                slot_content,
-                                env,
-                                current_module,
-                            )?);
-                        }
+                    for child in children {
+                        result.push_str(&self.evaluate_node(
+                            child,
+                            slot_content,
+                            env,
+                            current_module,
+                        )?);
                     }
                     result.push_str(&format!("</{}>", tag_name));
                 }
@@ -326,7 +320,7 @@ impl Program {
             Node::Text(text_node) => Ok(text_node.value.clone()),
             Node::TextExpression(text_expr_node) => {
                 let result = self.evaluate_expr(&text_expr_node.expression, env)?;
-                Ok(result.as_str().unwrap_or("").to_string())
+                Ok(escape_html(result.as_str().unwrap_or("")))
             },
             Node::Doctype(doctype_node) => Ok(format!("<!DOCTYPE {}>", doctype_node.value)),
             Node::SlotDefinition(SlotDefinitionNode { name, children, .. }) => {
@@ -438,7 +432,6 @@ impl Program {
                 tag_name,
                 attributes,
                 children,
-                inner_text_attr,
                 set_attributes,
                 ..
             }) => {
@@ -464,17 +457,12 @@ impl Program {
                 result.push('>');
 
                 if !is_void_element(tag_name) {
-                    if let Some(attr) = inner_text_attr {
-                        let evaluated = self.evaluate_expr(&attr.expression, env)?;
-                        result.push_str(&escape_html(evaluated.as_str().unwrap()));
-                    } else {
-                        for child in children {
-                            result.push_str(&self.evaluate_node_entrypoint(
-                                child,
-                                env,
-                                current_module,
-                            )?);
-                        }
+                    for child in children {
+                        result.push_str(&self.evaluate_node_entrypoint(
+                            child,
+                            env,
+                            current_module,
+                        )?);
                     }
                     result.push_str(&format!("</{}>", tag_name));
                 }

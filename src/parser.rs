@@ -496,13 +496,9 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     })
                 }
                 _ => {
-                    let inner_text_attr = t.get_attribute("set-inner-text").and_then(|attr| {
-                        parse_expr_attribute(&attr.name, &attr.value, attr.range, errors)
-                    });
-
                     let mut set_attributes = Vec::new();
                     for attr in &t.attributes {
-                        if attr.name.starts_with("set-") && attr.name != "set-inner-text" {
+                        if attr.name.starts_with("set-") {
                             if let Some(expr_attr) =
                                 parse_expr_attribute(&attr.name, &attr.value, attr.range, errors)
                             {
@@ -516,7 +512,6 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                         attributes: t.attributes.clone(),
                         range: t.range,
                         children,
-                        inner_text_attr,
                         set_attributes,
                     })
                 }

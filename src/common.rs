@@ -420,7 +420,6 @@ pub struct NativeHTMLNode {
     pub attributes: Vec<Attribute>,
     pub range: Range,
     pub children: Vec<Node>,
-    pub inner_text_attr: Option<ExprAttribute>,
     pub set_attributes: Vec<ExprAttribute>,
 }
 

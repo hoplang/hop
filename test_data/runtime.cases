@@ -15,7 +15,7 @@
 ## BEGIN
 -- main.hop --
 <main-comp {p}>
-	<div set-inner-text="p"></div>
+	<div>{p}</div>
 </main-comp>
 -- data.json --
 "<script>alert(1);</script>"
@@ -98,7 +98,7 @@
 <main-comp {items}>
   <for {item in items}>
     <div>
-      <span set-inner-text="item.name"></span>
+      <span>{item.name}</span>
       <if {item.type == 'admin'}>
         <strong> [Admin]</strong>
       </if>
@@ -166,7 +166,7 @@
 ## BEGIN
 -- main.hop --
 <main-comp {p}>
-	<div set-inner-text="p"></div>
+	<div>{p}</div>
 </main-comp>
 -- data.json --
 "foo bar"
@@ -238,8 +238,8 @@
 <main-comp entrypoint {data}>
     <main-card>
         <with-content>
-            <h1 set-inner-text="data.title"></h1>
-            <p set-inner-text="data.message"></p>
+            <h1>{data.title}</h1>
+            <p>{data.message}</p>
         </with-content>
     </main-card>
 </main-comp>
@@ -347,7 +347,7 @@
 <main-comp entrypoint {data}>
     <page-layout>
         <with-content>
-            <h1 set-inner-text="data.page_title"></h1>
+            <h1>{data.page_title}</h1>
             <modal-wrapper>
                 <with-modal>
                     <modal-comp>
@@ -405,13 +405,13 @@
 <main-comp entrypoint {data}>
     <main-card>
         <with-header>
-            <h1 set-inner-text="data.title"></h1>
+            <h1>{data.title}</h1>
         </with-header>
         <with-content>
             <for {user in data.users}>
                 <if {user.active}>
                     <div class="user-item">
-                        <span set-inner-text="user.name"></span>
+                        <span>{user.name}</span>
                         <if {user.admin}>
                             <strong> (Admin)</strong>
                         </if>
@@ -420,7 +420,7 @@
             </for>
         </with-content>
         <with-footer>
-            <p>Total active users: <span set-inner-text="data.active_count"></span></p>
+            <p>Total active users: <span>{data.active_count}</span></p>
         </with-footer>
     </main-card>
 </main-comp>
@@ -637,7 +637,7 @@
 -- main.hop --
 <main-comp {data}>
   <for {user in data.users}>
-    <div set-inner-text="user.name"></div>
+    <div>{user.name}</div>
   </for>
 </main-comp>
 -- data.json --

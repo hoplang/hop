@@ -285,7 +285,7 @@ Variable items is already defined
 <main-comp {items}>
   <for {item in items.a}>
     <for {item in items.b}>
-      <div set-inner-text="item"></div>
+      <div>{item}</div>
     </for>
   </for>
 </main-comp>
@@ -315,7 +315,7 @@ When a variable is unused, the typechecker outputs an error.
 -- main.hop --
 <main-comp {items}>
   <for {item in items}>
-      <div set-inner-text="item"></div>
+      <div>{item}</div>
   </for>
   <for {item in items}>
   </for>
@@ -329,7 +329,7 @@ Unused variable item
   <for {item in items}>
   </for>
   <for {item in items}>
-      <div set-inner-text="item"></div>
+      <div>{item}</div>
   </for>
 </main-comp>
 -- out --
@@ -363,7 +363,7 @@ Unused variable p
 	</for>
 	<for {item in params}>
 		<for {inner in item.k}>
-			<div set-inner-text="inner"></div>
+			<div>{inner}</div>
 		</for>
 	</for>
 </main-comp>
@@ -376,7 +376,7 @@ Can not unify types
 	<if {params}>
 	</if>
 	<for {item in params}>
-		<div set-inner-text="item"></div>
+		<div>{item}</div>
 	</for>
 </main-comp>
 -- out --
@@ -518,7 +518,7 @@ main::main-comp
 -- main.hop --
 <main-comp {data} entrypoint>
     <h1>Hello World</h1>
-    <p set-inner-text="data.message"></p>
+    <p>{data.message}</p>
 </main-comp>
 -- out --
 main::main-comp
@@ -620,7 +620,7 @@ main::main-comp
 ## BEGIN
 -- utils.hop --
 <button-comp {text}>
-  <div set-inner-text="text"/>
+  <div>{text}</div>
 </button-comp>
 
 -- main.hop --
@@ -643,7 +643,7 @@ main::main-comp
 -- bar.hop --
 <widget-comp {config}>
   <if {config.enabled}>
-    <div set-inner-text="config.title"/>
+    <div>{config.title}</div>
   </if>
 </widget-comp>
 
@@ -678,7 +678,7 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-comp {params}>
-	<div set-inner-text="params"></div>
+	<div>{params}</div>
 </main-comp>
 -- out --
 main::main-comp
@@ -742,10 +742,10 @@ main::main-comp
 ## BEGIN
 -- main.hop --
 <main-card {item}>
-  <div set-inner-text="item.title">
+  <div>{item.title}
   </div>
   <if {item.active}>
-    <span set-inner-text="item.status">
+    <span>{item.status}
     </span>
   </if>
 </main-card>
@@ -959,7 +959,7 @@ main::bar-comp
 ## BEGIN
 -- main.hop --
 <main-comp {data}>
-  <div set-inner-text="data.message">
+  <div>{data.message}
   </div>
 </main-comp>
 -- out --
@@ -1003,7 +1003,7 @@ main::main-comp
 -- main.hop --
 <main-comp {data}>
 	<hop-x-raw>foo bar</hop-x-raw>
-	<div set-inner-text="data.message"></div>
+	<div>{data.message}</div>
 </main-comp>
 -- out --
 main::main-comp
