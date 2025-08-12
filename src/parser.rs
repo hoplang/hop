@@ -340,11 +340,25 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
         TokenKind::SelfClosingTag | TokenKind::StartTag => {
             match t.value.as_str() {
                 "if" => match &t.expression {
-                    Some(condition) => Node::If(IfNode {
-                        condition: condition.clone(),
-                        range: t.range,
-                        children,
-                    }),
+                    Some(expr_string) => {
+                        match parse_expression(expr_string) {
+                            Ok(condition) => Node::If(IfNode {
+                                condition,
+                                range: t.range,
+                                children,
+                            }),
+                            Err(err) => {
+                                errors.push(RangeError::new(
+                                    format!("Invalid expression in <if> tag: {}", err),
+                                    t.range,
+                                ));
+                                Node::Error(ErrorNode {
+                                    range: t.range,
+                                    children,
+                                })
+                            }
+                        }
+                    },
                     None => {
                         errors.push(RangeError::new(
                             "Missing expression in <if> tag".to_string(),
@@ -357,19 +371,33 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     }
                 },
                 "for" => match &t.expression {
-                    Some(loop_generator) => {
-                        // Verify that the expression is actually a LoopGenerator
-                        match loop_generator {
-                            Expression::LoopGenerator(var_name, array_expr) => {
-                                match VarName::new(var_name.clone()) {
-                                    Some(validated_var_name) => Node::For(ForNode {
-                                        var_name: validated_var_name,
-                                        array_expr: (**array_expr).clone(),
-                                        range: t.range,
-                                        children,
-                                    }),
-                                    None => {
-                                        errors.push(RangeError::invalid_variable_name(var_name, t.range));
+                    Some(expr_string) => {
+                        match parse_expression(expr_string) {
+                            Ok(loop_generator) => {
+                                // Verify that the expression is actually a LoopGenerator
+                                match loop_generator {
+                                    Expression::LoopGenerator(var_name, array_expr) => {
+                                        match VarName::new(var_name.clone()) {
+                                            Some(validated_var_name) => Node::For(ForNode {
+                                                var_name: validated_var_name,
+                                                array_expr: (*array_expr).clone(),
+                                                range: t.range,
+                                                children,
+                                            }),
+                                            None => {
+                                                errors.push(RangeError::invalid_variable_name(&var_name, t.range));
+                                                Node::Error(ErrorNode {
+                                                    range: t.range,
+                                                    children,
+                                                })
+                                            }
+                                        }
+                                    },
+                                    _ => {
+                                        errors.push(RangeError::new(
+                                            "Expected loop generator expression (var in array) in <for> tag".to_string(),
+                                            t.range,
+                                        ));
                                         Node::Error(ErrorNode {
                                             range: t.range,
                                             children,
@@ -377,9 +405,9 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                                     }
                                 }
                             },
-                            _ => {
+                            Err(err) => {
                                 errors.push(RangeError::new(
-                                    "Expected loop generator expression (var in array) in <for> tag".to_string(),
+                                    format!("Invalid expression in <for> tag: {}", err),
                                     t.range,
                                 ));
                                 Node::Error(ErrorNode {

@@ -1,7 +1,6 @@
 use std::mem;
 
-use crate::common::{Attribute, Expression, Position, Range, RangeError, Token, TokenKind};
-use crate::expression_parser::parse_expression;
+use crate::common::{Attribute, Position, Range, RangeError, Token, TokenKind};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum TokenizerState {
@@ -105,7 +104,7 @@ struct TokenBuilder {
     token_kind: TokenKind,
     token_start: Position,
     token_attributes: Vec<Attribute>,
-    token_expression: Option<Expression>,
+    token_expression: Option<String>,
     expression_content: String,
     attribute_name: String,
     attribute_value: String,
@@ -194,8 +193,8 @@ impl TokenBuilder {
         self.expression_content.push(ch);
     }
 
-    fn set_token_expression(&mut self, expr: Expression) {
-        self.token_expression = Some(expr);
+    fn set_token_expression(&mut self, expr_string: String) {
+        self.token_expression = Some(expr_string);
     }
 
     fn get_tokens(self) -> Vec<Token> {
@@ -632,19 +631,8 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
 
             TokenizerState::ExpressionContent => {
                 if ch == '}' {
-                    // Parse the collected expression content using the proper expression parser
-                    match parse_expression(&builder.expression_content) {
-                        Ok(expr) => {
-                            builder.set_token_expression(expr);
-                        }
-                        Err(err) => {
-                            let start_pos = cursor.get_position();
-                            errors.push(RangeError::new(
-                                format!("Invalid expression: {}", err),
-                                Range::new(start_pos, cursor.get_position()),
-                            ));
-                        }
-                    }
+                    // Store the collected expression content as a string (parsing will be done in parser)
+                    builder.set_token_expression(builder.expression_content.clone());
                     builder.expression_content.clear();
                     cursor.advance();
                     state = TokenizerState::BeforeAttrName;
@@ -710,8 +698,8 @@ mod tests {
                     .collect::<Vec<_>>()
                     .join(" ");
 
-                let expr_part = if let Some(ref expr) = token.expression {
-                    format!(" {{{:?}}}", expr)
+                let expr_part = if let Some(ref expr_string) = token.expression {
+                    format!(" {{{}}}", expr_string)
                 } else {
                     String::new()
                 };
