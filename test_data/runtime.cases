@@ -11,6 +11,7 @@
 </div>
 ## END
 
+Expressions should be safe against XSS.
 
 ## BEGIN
 -- main.hop --
@@ -24,7 +25,6 @@
 	<div>&lt;script&gt;alert(1);&lt;/script&gt;</div>
 </div>
 ## END
-
 
 ## BEGIN
 -- main.hop --
@@ -75,20 +75,20 @@
 <main-comp {items}>
 	<for {item in items}>
 		<if {item.show}>
-			<div></div>
+			<div>{item.data}</div>
 		</if>
 	</for>
 </main-comp>
 -- data.json --
 [
-	{"show": true},
-	{"show": false},
-	{"show": true}
+	{"show": true, "data": "foo"},
+	{"show": false, "data": "bar"},
+	{"show": true, "data": "baz"}
 ]
 -- output.html --
 <div data-hop-id="main/main-comp">
-	<div></div>
-	<div></div>
+	<div>foo</div>
+	<div>baz</div>
 </div>
 ## END
 
