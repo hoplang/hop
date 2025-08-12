@@ -2,7 +2,7 @@ use crate::common::{
     ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, ErrorNode, ExprAttribute,
     Expression, ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError,
     RenderNode, SlotDefinitionNode, SlotReferenceNode, TextNode, Token, TokenKind, VarName,
-    VarNameAttr, XExecNode, is_void_element,
+    VarNameAttr, XExecNode, XRawNode, is_void_element,
 };
 use crate::expression_parser::parse_expression;
 use std::collections::HashSet;
@@ -209,6 +209,9 @@ fn collect_slots_from_children(
                 collect_slots_from_children(children, slots, errors);
             }
             Node::Error(ErrorNode { children, .. }) => {
+                collect_slots_from_children(children, slots, errors);
+            }
+            Node::XRaw(XRawNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
         }
@@ -448,6 +451,10 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                         }),
                     }
                 }
+                "hop-x-raw" => Node::XRaw(XRawNode {
+                    range: t.range,
+                    children,
+                }),
                 tag_name if tag_name.starts_with("slot-") => {
                     let slot_name = &tag_name[5..]; // Remove "slot-" prefix
                     Node::SlotDefinition(SlotDefinitionNode {
@@ -581,6 +588,12 @@ mod tests {
                 }
                 Node::XExec(XExecNode { children, .. }) => {
                     lines.push(format!("{}hop-x-exec", indent));
+                    for child in children {
+                        format_node(child, depth + 1, lines);
+                    }
+                }
+                Node::XRaw(XRawNode { children, .. }) => {
+                    lines.push(format!("{}hop-x-raw", indent));
                     for child in children {
                         format_node(child, depth + 1, lines);
                     }

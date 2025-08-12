@@ -459,6 +459,12 @@ pub struct XExecNode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct XRawNode {
+    pub range: Range,
+    pub children: Vec<Node>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ForNode {
     pub var_name: VarName,
     pub array_expr: Expression,
@@ -478,6 +484,7 @@ pub enum Node {
     NativeHTML(NativeHTMLNode),
     Error(ErrorNode),
     XExec(XExecNode),
+    XRaw(XRawNode),
 }
 
 // Environment entry that holds both value and access status

@@ -33,6 +33,9 @@ impl ScriptCollector {
                 Node::ComponentReference(render_node) => {
                     result.extend(self.get_all_descendants(&render_node.children));
                 }
+                Node::XRaw(xraw_node) => {
+                    result.extend(self.get_all_descendants(&xraw_node.children));
+                }
                 _ => {
                     // leaf nodes
                 }
