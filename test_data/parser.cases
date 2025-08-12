@@ -438,5 +438,5 @@ Test <for> tag with non-loop-generator expression should produce error.
 	</for>
 </main-comp>
 -- out --
-Expected loop generator expression (var in array) in <for> tag
+Expected 'in' keyword in <for> tag
 ## END

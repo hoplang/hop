@@ -451,19 +451,6 @@ fn typecheck_expression(
             // The result of == is always boolean
             Type::Bool
         }
-        Expression::LoopGenerator(_var_name, array_expr) => {
-            let array_type =
-                typecheck_expression(array_expr, env, unifier, annotations, errors, range);
-            let element_type = unifier.new_type_var();
-            let expected_array_type = Type::Array(Box::new(element_type.clone()));
-
-            if let Some(err) = unifier.unify(&array_type, &expected_array_type) {
-                errors.push(RangeError::unification_error(&err.message, range));
-            }
-
-            // For now, return the element type - this will be handled properly in for nodes
-            element_type
-        }
     }
 }
 

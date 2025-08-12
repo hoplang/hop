@@ -1,10 +1,10 @@
 use crate::common::{
     ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, ErrorNode, ExprAttribute,
-    Expression, ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError,
-    RenderNode, SlotDefinitionNode, SlotReferenceNode, TextNode, Token, TokenKind, VarName,
+    ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError,
+    RenderNode, SlotDefinitionNode, SlotReferenceNode, TextNode, Token, TokenKind,
     VarNameAttr, XExecNode, XRawNode, is_void_element,
 };
-use crate::expression_parser::parse_expression;
+use crate::expression_parser::{parse_expression, parse_loop_header};
 use std::collections::HashSet;
 
 fn is_valid_component_name(name: &str) -> bool {
@@ -166,6 +166,7 @@ fn parse_expr_attribute(
         }
     }
 }
+
 
 fn collect_slots_from_children(
     children: &[Node],
@@ -373,51 +374,17 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                 },
                 "for" => match &t.expression {
                     Some(expr_string) => {
-                        match parse_expression(expr_string) {
-                            Ok(loop_generator) => {
-                                // Verify that the expression is actually a LoopGenerator
-                                match loop_generator {
-                                    Expression::LoopGenerator(var_name, array_expr) => {
-                                        match VarName::new(var_name.clone()) {
-                                            Some(validated_var_name) => Node::For(ForNode {
-                                                var_name: validated_var_name,
-                                                array_expr: (*array_expr).clone(),
-                                                range: t.range,
-                                                children,
-                                            }),
-                                            None => {
-                                                errors.push(RangeError::invalid_variable_name(
-                                                    &var_name, t.range,
-                                                ));
-                                                Node::Error(ErrorNode {
-                                                    range: t.range,
-                                                    children,
-                                                })
-                                            }
-                                        }
-                                    }
-                                    _ => {
-                                        errors.push(RangeError::new(
-                                            "Expected loop generator expression (var in array) in <for> tag".to_string(),
-                                            t.range,
-                                        ));
-                                        Node::Error(ErrorNode {
-                                            range: t.range,
-                                            children,
-                                        })
-                                    }
-                                }
-                            }
-                            Err(err) => {
-                                errors.push(RangeError::new(
-                                    format!("Invalid expression in <for> tag: {}", err),
-                                    t.range,
-                                ));
-                                Node::Error(ErrorNode {
-                                    range: t.range,
-                                    children,
-                                })
-                            }
+                        match parse_loop_header(expr_string, t.range, errors) {
+                            Some((var_name, array_expr)) => Node::For(ForNode {
+                                var_name,
+                                array_expr,
+                                range: t.range,
+                                children,
+                            }),
+                            None => Node::Error(ErrorNode {
+                                range: t.range,
+                                children,
+                            })
                         }
                     }
                     None => {

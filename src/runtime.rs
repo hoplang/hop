@@ -521,9 +521,6 @@ impl Program {
 
                 Ok(serde_json::Value::Bool(left_value == right_value))
             }
-            Expression::LoopGenerator(_, _) => {
-                Err("Loop generators can only be used within for expressions".to_string())
-            }
         }
     }
 

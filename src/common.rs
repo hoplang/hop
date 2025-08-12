@@ -294,7 +294,6 @@ pub enum Expression {
     PropertyAccess(Box<Expression>, String),
     StringLiteral(String),
     BinaryOp(Box<Expression>, BinaryOp, Box<Expression>),
-    LoopGenerator(String, Box<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

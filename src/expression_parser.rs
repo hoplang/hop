@@ -1,4 +1,4 @@
-use crate::common::{BinaryOp, Expression};
+use crate::common::{BinaryOp, Expression, Range, RangeError, VarName};
 
 #[derive(Debug, Clone, PartialEq)]
 enum ExprToken {
@@ -158,28 +158,8 @@ impl ExprParser {
         self.parse_loop_generator()
     }
 
-    // loop_generator -> IDENTIFIER "in" equality | equality
+    // Since LoopGenerator is removed, this now just parses equality expressions
     fn parse_loop_generator(&mut self) -> Result<Expression, String> {
-        // Check if we have an identifier followed by "in"
-        if let ExprToken::Identifier(var_name) = &self.current_token {
-            let var_name = var_name.clone();
-            let mut temp_parser = ExprTokenizer::new(""); // Create a temporary tokenizer to peek ahead
-            temp_parser.input = self.tokenizer.input.clone();
-            temp_parser.position = self.tokenizer.position;
-
-            // Try to advance and see if next token is "in"
-            if let Ok(next_token) = temp_parser.next_token() {
-                if matches!(next_token, ExprToken::In) {
-                    // This is a loop generator
-                    self.advance()?; // consume identifier
-                    self.advance()?; // consume "in"
-                    let array_expr = self.parse_equality()?;
-                    return Ok(Expression::LoopGenerator(var_name, Box::new(array_expr)));
-                }
-            }
-        }
-
-        // Not a loop generator, parse as regular equality
         self.parse_equality()
     }
 
@@ -253,6 +233,102 @@ pub fn parse_expression(expr: &str) -> Result<Expression, String> {
     }
 
     Ok(result)
+}
+
+pub fn parse_loop_header(
+    header: &str,
+    range: Range,
+    errors: &mut Vec<RangeError>,
+) -> Option<(VarName, Expression)> {
+    let header = header.trim();
+    if header.is_empty() {
+        errors.push(RangeError::new(
+            "Empty loop header".to_string(),
+            range,
+        ));
+        return None;
+    }
+
+    // Create parser for the loop header
+    let mut parser = match ExprParser::new(header) {
+        Ok(parser) => parser,
+        Err(err) => {
+            errors.push(RangeError::new(
+                format!("Invalid expression in <for> tag: {}", err),
+                range,
+            ));
+            return None;
+        }
+    };
+
+    // Expect: IDENTIFIER "in" expression
+    let var_name = match &parser.current_token {
+        ExprToken::Identifier(name) => name.clone(),
+        _ => {
+            errors.push(RangeError::new(
+                "Expected variable name in <for> tag".to_string(),
+                range,
+            ));
+            return None;
+        }
+    };
+
+    // Advance past the identifier
+    if parser.advance().is_err() {
+        errors.push(RangeError::new(
+            "Invalid expression in <for> tag".to_string(),
+            range,
+        ));
+        return None;
+    }
+
+    // Expect "in" keyword
+    if !matches!(parser.current_token, ExprToken::In) {
+        errors.push(RangeError::new(
+            "Expected 'in' keyword in <for> tag".to_string(),
+            range,
+        ));
+        return None;
+    }
+
+    // Advance past "in"
+    if parser.advance().is_err() {
+        errors.push(RangeError::new(
+            "Invalid expression in <for> tag".to_string(),
+            range,
+        ));
+        return None;
+    }
+
+    // Parse the array expression
+    let array_expr = match parser.parse_equality() {
+        Ok(expr) => expr,
+        Err(err) => {
+            errors.push(RangeError::new(
+                format!("Invalid array expression in <for> tag: {}", err),
+                range,
+            ));
+            return None;
+        }
+    };
+
+    // Ensure we've consumed all tokens
+    if !matches!(parser.current_token, ExprToken::Eof) {
+        errors.push(RangeError::new(
+            "Unexpected tokens at end of <for> expression".to_string(),
+            range,
+        ));
+        return None;
+    }
+
+    // Validate the variable name
+    match VarName::new(var_name.clone()) {
+        Some(validated_var_name) => Some((validated_var_name, array_expr)),
+        None => {
+            errors.push(RangeError::invalid_variable_name(&var_name, range));
+            None
+        }
+    }
 }
 
 #[cfg(test)]
