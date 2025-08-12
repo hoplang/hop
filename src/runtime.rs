@@ -388,9 +388,14 @@ impl Program {
                 let command = &cmd_attr.value;
                 self.execute_command(command, &stdin_content)
             }
-            Node::For(ForNode { var_name, array_expr, children, .. }) => {
+            Node::For(ForNode {
+                var_name,
+                array_expr,
+                children,
+                ..
+            }) => {
                 let array_value = self.evaluate_expr(array_expr, env)?;
-                
+
                 let array = array_value
                     .as_array()
                     .ok_or_else(|| "For loop expects an array".to_string())?;

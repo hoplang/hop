@@ -166,7 +166,7 @@ impl ExprParser {
             let mut temp_parser = ExprTokenizer::new(""); // Create a temporary tokenizer to peek ahead
             temp_parser.input = self.tokenizer.input.clone();
             temp_parser.position = self.tokenizer.position;
-            
+
             // Try to advance and see if next token is "in"
             if let Ok(next_token) = temp_parser.next_token() {
                 if matches!(next_token, ExprToken::In) {
@@ -178,7 +178,7 @@ impl ExprParser {
                 }
             }
         }
-        
+
         // Not a loop generator, parse as regular equality
         self.parse_equality()
     }

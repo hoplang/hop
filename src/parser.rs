@@ -1,8 +1,8 @@
 use crate::common::{
-    ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, ErrorNode, Expression, ExprAttribute,
-    ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode,
-    SlotDefinitionNode, SlotReferenceNode, TextNode, Token, TokenKind, VarName, VarNameAttr, XExecNode,
-    is_void_element,
+    ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, ErrorNode, ExprAttribute,
+    Expression, ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError,
+    RenderNode, SlotDefinitionNode, SlotReferenceNode, TextNode, Token, TokenKind, VarName,
+    VarNameAttr, XExecNode, is_void_element,
 };
 use crate::expression_parser::parse_expression;
 use std::collections::HashSet;
@@ -340,23 +340,21 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
         TokenKind::SelfClosingTag | TokenKind::StartTag => {
             match t.value.as_str() {
                 "if" => match &t.expression {
-                    Some(expr_string) => {
-                        match parse_expression(expr_string) {
-                            Ok(condition) => Node::If(IfNode {
-                                condition,
+                    Some(expr_string) => match parse_expression(expr_string) {
+                        Ok(condition) => Node::If(IfNode {
+                            condition,
+                            range: t.range,
+                            children,
+                        }),
+                        Err(err) => {
+                            errors.push(RangeError::new(
+                                format!("Invalid expression in <if> tag: {}", err),
+                                t.range,
+                            ));
+                            Node::Error(ErrorNode {
                                 range: t.range,
                                 children,
-                            }),
-                            Err(err) => {
-                                errors.push(RangeError::new(
-                                    format!("Invalid expression in <if> tag: {}", err),
-                                    t.range,
-                                ));
-                                Node::Error(ErrorNode {
-                                    range: t.range,
-                                    children,
-                                })
-                            }
+                            })
                         }
                     },
                     None => {
@@ -385,14 +383,16 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                                                 children,
                                             }),
                                             None => {
-                                                errors.push(RangeError::invalid_variable_name(&var_name, t.range));
+                                                errors.push(RangeError::invalid_variable_name(
+                                                    &var_name, t.range,
+                                                ));
                                                 Node::Error(ErrorNode {
                                                     range: t.range,
                                                     children,
                                                 })
                                             }
                                         }
-                                    },
+                                    }
                                     _ => {
                                         errors.push(RangeError::new(
                                             "Expected loop generator expression (var in array) in <for> tag".to_string(),
@@ -404,7 +404,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                                         })
                                     }
                                 }
-                            },
+                            }
                             Err(err) => {
                                 errors.push(RangeError::new(
                                     format!("Invalid expression in <for> tag: {}", err),

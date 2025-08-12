@@ -1,7 +1,7 @@
 use crate::common::{
     BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode,
-    ExprAttribute, Expression, ForNode, IfNode, ImportNode, NativeHTMLNode, Node,
-    Range, RangeError, RenderNode, SlotDefinitionNode, SlotReferenceNode, Type, XExecNode,
+    ExprAttribute, Expression, ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Range,
+    RangeError, RenderNode, SlotDefinitionNode, SlotReferenceNode, Type, XExecNode,
 };
 use crate::parser::Module;
 use crate::unifier::Unifier;

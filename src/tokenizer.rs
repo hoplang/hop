@@ -106,6 +106,7 @@ struct TokenBuilder {
     token_attributes: Vec<Attribute>,
     token_expression: Option<String>,
     expression_content: String,
+    expression_start: Position,
     attribute_name: String,
     attribute_value: String,
     attribute_start: Position,
@@ -121,6 +122,7 @@ impl TokenBuilder {
             token_attributes: Vec::new(),
             token_expression: None,
             expression_content: String::new(),
+            expression_start: Position { line: 1, column: 1 },
             attribute_name: String::new(),
             attribute_value: String::new(),
             attribute_start: Position { line: 1, column: 1 },
@@ -193,8 +195,13 @@ impl TokenBuilder {
         self.expression_content.push(ch);
     }
 
-    fn set_token_expression(&mut self, expr_string: String) {
-        self.token_expression = Some(expr_string);
+    fn push_current_expression(&mut self, cursor: &Cursor) {
+        self.token_expression = Some(mem::take(&mut self.expression_content));
+        self.expression_start = cursor.get_position();
+    }
+
+    fn set_current_expression_start(&mut self, pos: Position) {
+        self.expression_start = pos;
     }
 
     fn get_tokens(self) -> Vec<Token> {
@@ -277,6 +284,7 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
                     cursor.advance();
                     state = TokenizerState::BeforeAttrName;
                 } else if ch == '{' {
+                    builder.set_current_expression_start(cursor.get_position());
                     cursor.advance();
                     state = TokenizerState::ExpressionContent;
                 } else if ch == '>' {
@@ -377,6 +385,7 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
                     cursor.advance();
                     state = TokenizerState::AttrName;
                 } else if ch == '{' {
+                    builder.set_current_expression_start(cursor.get_position());
                     cursor.advance();
                     state = TokenizerState::ExpressionContent;
                 } else if ch == '/' {
@@ -631,9 +640,7 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
 
             TokenizerState::ExpressionContent => {
                 if ch == '}' {
-                    // Store the collected expression content as a string (parsing will be done in parser)
-                    builder.set_token_expression(builder.expression_content.clone());
-                    builder.expression_content.clear();
+                    builder.push_current_expression(&cursor);
                     cursor.advance();
                     state = TokenizerState::BeforeAttrName;
                 } else {
