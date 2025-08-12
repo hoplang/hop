@@ -14,7 +14,7 @@
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="p">
+<main-comp {p}>
 	<div set-inner-text="p"></div>
 </main-comp>
 -- data.json --
@@ -28,7 +28,7 @@
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
   <if {params.user.name == params.admin.name}>
     <div>Is Admin</div>
   </if>
@@ -53,7 +53,7 @@
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
   <if {params.x == params.y}>
     <span>Equal</span>
   </if>
@@ -72,7 +72,7 @@
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="items">
+<main-comp {items}>
 	<for {item in items}>
 		<if {item.show}>
 			<div></div>
@@ -95,7 +95,7 @@
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="items">
+<main-comp {items}>
   <for {item in items}>
     <div>
       <span set-inner-text="item.name"></span>
@@ -165,7 +165,7 @@
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="p">
+<main-comp {p}>
 	<div set-inner-text="p"></div>
 </main-comp>
 -- data.json --
@@ -215,7 +215,7 @@
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="user">
+<main-comp {user}>
   <a set-href="user.profile_url" set-title="user.name">Click here</a>
 </main-comp>
 -- data.json --
@@ -235,7 +235,7 @@
     </div>
 </main-card>
 
-<main-comp entrypoint params-as="data">
+<main-comp entrypoint {data}>
     <main-card>
         <with-content>
             <h1 set-inner-text="data.title"></h1>
@@ -344,7 +344,7 @@
     </div>
 </modal-comp>
 
-<main-comp entrypoint params-as="data">
+<main-comp entrypoint {data}>
     <page-layout>
         <with-content>
             <h1 set-inner-text="data.page_title"></h1>
@@ -402,7 +402,7 @@
     </div>
 </main-card>
 
-<main-comp entrypoint params-as="data">
+<main-comp entrypoint {data}>
     <main-card>
         <with-header>
             <h1 set-inner-text="data.title"></h1>
@@ -485,7 +485,7 @@
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
   <if {params.role == 'admin'}>
     <div>Admin Access</div>
   </if>
@@ -573,7 +573,7 @@
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="user">
+<main-comp {user}>
   <if {user.isActive}>
     <div>Welcome active user!</div>
   </if>
@@ -596,7 +596,7 @@
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="config">
+<main-comp {config}>
   <if {config.enabled}>
     <div>Feature is enabled</div>
     <if {config.debug}>
@@ -618,7 +618,7 @@
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="status">
+<main-comp {status}>
   <if {status.visible}>
     <div>Content is visible</div>
   </if>
@@ -635,7 +635,7 @@
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="data">
+<main-comp {data}>
   <for {user in data.users}>
     <div set-inner-text="user.name"></div>
   </for>

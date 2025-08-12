@@ -228,14 +228,14 @@ EndTag(p) 1:11-1:15
 
 ## BEGIN
 -- in --
-<main-comp params-as="foo">
+<main-comp {foo}>
 	<script>
 		const x = "<div></div>";
 	</script>
 </main-comp>
 -- out --
-StartTag(main-comp) [params-as=[foo] 1:12-1:27] 1:1-1:28
-Text 1:28-2:2
+StartTag(main-comp) [] {foo} 1:1-1:18
+Text 1:18-2:2
 StartTag(script) [] 2:2-2:10
 Text 2:10-4:2
 EndTag(script) 4:2-4:11

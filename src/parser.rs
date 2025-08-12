@@ -4,7 +4,7 @@ use crate::common::{
     RenderNode, SlotDefinitionNode, SlotReferenceNode, TextNode, Token, TokenKind,
     VarNameAttr, XExecNode, XRawNode, is_void_element,
 };
-use crate::expression_parser::{parse_expression, parse_loop_header};
+use crate::expression_parser::{parse_expression, parse_loop_header, parse_variable_name};
 use std::collections::HashSet;
 
 fn is_valid_component_name(name: &str) -> bool {
@@ -290,18 +290,16 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
 
                     let as_attr = t.get_attribute("as");
                     let entrypoint = t.get_attribute("entrypoint").is_some();
-                    let params_as_attr = t.get_attribute("params-as").and_then(|attr| {
-                        match VarNameAttr::new(&attr) {
-                            Some(var_attr) => Some(var_attr),
-                            None => {
-                                errors.push(RangeError::invalid_variable_name(
-                                    &attr.value,
-                                    attr.range,
-                                ));
-                                None
-                            }
-                        }
-                    });
+                    let params_as_attr = match &t.expression {
+                        Some(expr_string) => match parse_variable_name(expr_string, t.range, errors) {
+                            Some(var_name) => Some(VarNameAttr {
+                                var_name,
+                                range: t.range,
+                            }),
+                            None => None,
+                        },
+                        None => None,
+                    };
 
                     let mut slots = HashSet::new();
                     collect_slots_from_children(&children, &mut slots, errors);

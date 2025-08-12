@@ -49,7 +49,7 @@ Invalid component name 'div'. Component names must contain a dash and not start 
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="Data123">
+<main-comp {Data123}>
 	<div></div>
 </main-comp>
 -- out --
@@ -58,7 +58,7 @@ Invalid variable name 'Data123'. Variable names must match [a-z][a-z0-9]*
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="data">
+<main-comp {data}>
 	<for {item_name in data}>
 		<div></div>
 	</for>
@@ -69,7 +69,7 @@ Invalid variable name 'item_name'. Variable names must match [a-z][a-z0-9]*
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="sections">
+<main-comp {sections}>
 	<div>
 		<for {section in sections}>
 			<div>
@@ -92,7 +92,7 @@ div
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="foo">
+<main-comp {foo}>
 	<!DOCTYPE html>
 	<html>
 	<body>
@@ -124,7 +124,7 @@ style
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="data" entrypoint>
+<main-comp {data} entrypoint>
     <h1>Hello World</h1>
     <p set-inner-text="data.message"></p>
 </main-comp>
@@ -169,7 +169,7 @@ if
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="i">
+<main-comp {i}>
 	<for {j in i}>
 		<for {k in j.s.t}>
 			<if {k}>
@@ -194,7 +194,7 @@ for
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="data">
+<main-comp {data}>
 	<if {data}>
 		<for {d in data}>
 		</for>
@@ -207,7 +207,7 @@ if
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="foo">
+<main-comp {foo}>
 	<for {bar in foo}>
 	  <div></div>
 	</for>
@@ -219,7 +219,7 @@ for
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="p">
+<main-comp {p}>
 	<foo-comp></foo-comp>
 	<foo-comp></foo-comp>
 </main-comp>
@@ -230,7 +230,7 @@ render
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="data">
+<main-comp {data}>
 	<foo-comp {data}></foo-comp>
 	<bar-comp {data.user}></bar-comp>
 </main-comp>
@@ -241,7 +241,7 @@ render
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="foo">
+<main-comp {foo}>
 	<for {v in foo}>
 		<div set-inner-text="v"></div>
 	</for>
@@ -253,7 +253,7 @@ for
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="foo">
+<main-comp {foo}>
 	<script>
 		const x = "<div></div>";
 	</script>
@@ -264,7 +264,7 @@ script
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="user">
+<main-comp {user}>
   <a set-href="user.url" set-class="user.theme">Link</a>
 </main-comp>
 -- out --

@@ -264,7 +264,7 @@ When a variable shadows another variable, the typechecker outputs an error.
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="items">
+<main-comp {items}>
   <for {items in items.foo}>
   </for>
 </main-comp>
@@ -273,7 +273,7 @@ Variable items is already defined
 ## END
 ## BEGIN
 -- main.hop --
-<main-comp params-as="items">
+<main-comp {items}>
   <for {items in items}>
   </for>
 </main-comp>
@@ -282,7 +282,7 @@ Variable items is already defined
 ## END
 ## BEGIN
 -- main.hop --
-<main-comp params-as="items">
+<main-comp {items}>
   <for {item in items.a}>
     <for {item in items.b}>
       <div set-inner-text="item"></div>
@@ -297,7 +297,7 @@ When an undefined variable is referenced, the typechecker outputs an error.
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
 	<for {item in params}>
 	  <if {item.active}>
 	  </if>
@@ -313,7 +313,7 @@ When a variable is unused, the typechecker outputs an error.
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="items">
+<main-comp {items}>
   <for {item in items}>
       <div set-inner-text="item"></div>
   </for>
@@ -325,7 +325,7 @@ Unused variable item
 ## END
 ## BEGIN
 -- main.hop --
-<main-comp params-as="items">
+<main-comp {items}>
   <for {item in items}>
   </for>
   <for {item in items}>
@@ -337,7 +337,7 @@ Unused variable item
 ## END
 ## BEGIN
 -- main.hop --
-<main-comp params-as="items">
+<main-comp {items}>
   <for {item in items}>
   </for>
 </main-comp>
@@ -346,7 +346,7 @@ Unused variable item
 ## END
 ## BEGIN
 -- main.hop --
-<bar-comp params-as="p">
+<bar-comp {p}>
   <div>
   </div>
 </bar-comp>
@@ -356,7 +356,7 @@ Unused variable p
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
 	<for {item in params}>
 		<if {item.k}>
 		</if>
@@ -372,7 +372,7 @@ Can not unify types
 ## END
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
 	<if {params}>
 	</if>
 	<for {item in params}>
@@ -388,7 +388,7 @@ as well as the defined slots.
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
 	<for {item in params.items}>
 		<if {item.active}>
 		</if>
@@ -420,7 +420,7 @@ main::custom-head
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
   <if {(params.a == 'str') == params.b}>
     <div>Match</div>
   </if>
@@ -433,7 +433,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
 	<if {params.enabled}>
 		<for {user in params.users}>
 			<if {user.profile.verified}>
@@ -454,7 +454,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
 	<for {section in params.sections}>
 		<if {section.header.visible}>
 			<for {item in section.items}>
@@ -472,7 +472,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
 	<if {params.i.j.k.l}>
 	</if>
 </main-comp>
@@ -484,7 +484,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
 	<if {params.app.ui.theme.dark}>
 	</if>
 	<if {params.app.api.endpoints.users.enabled}>
@@ -516,7 +516,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="data" entrypoint>
+<main-comp {data} entrypoint>
     <h1>Hello World</h1>
     <p set-inner-text="data.message"></p>
 </main-comp>
@@ -528,7 +528,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
   <if {params.user.name == params.other_user.name}>
     <div>Same name</div>
   </if>
@@ -544,7 +544,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
   <if {params.x == params.y}>
     <div>Values are equal</div>
   </if>
@@ -557,7 +557,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
 	<for {j in params.foo.bar}>
 		<if {j}>
 		</if>
@@ -571,7 +571,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
 	<for {j in params}>
 		<if {j.a}>
 		</if>
@@ -589,7 +589,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="i">
+<main-comp {i}>
 	<for {j in i}>
 		<for {k in j}>
 			<if {k}>
@@ -605,7 +605,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="i">
+<main-comp {i}>
 	<for {j in i}>
 		<if {j}>
 		</if>
@@ -619,14 +619,14 @@ main::main-comp
 
 ## BEGIN
 -- utils.hop --
-<button-comp params-as="text">
+<button-comp {text}>
   <div set-inner-text="text"/>
 </button-comp>
 
 -- main.hop --
 <import component="button-comp" from="utils">
 
-<main-comp params-as="label">
+<main-comp {label}>
   <button-comp {label}/>
 </main-comp>
 
@@ -641,7 +641,7 @@ main::main-comp
 
 ## BEGIN
 -- bar.hop --
-<widget-comp params-as="config">
+<widget-comp {config}>
   <if {config.enabled}>
     <div set-inner-text="config.title"/>
   </if>
@@ -650,7 +650,7 @@ main::main-comp
 -- foo.hop --
 <import component="widget-comp" from="bar">
 
-<panel-comp params-as="data">
+<panel-comp {data}>
   <for {item in data.items}>
     <widget-comp {item}/>
   </for>
@@ -659,7 +659,7 @@ main::main-comp
 -- main.hop --
 <import component="panel-comp" from="foo">
 
-<main-comp params-as="settings">
+<main-comp {settings}>
   <panel-comp {settings.dashboard}/>
 </main-comp>
 
@@ -677,7 +677,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
 	<div set-inner-text="params"></div>
 </main-comp>
 -- out --
@@ -688,7 +688,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
 	<if {params.config.debug}>
 	</if>
 	<for {item in params.data}>
@@ -708,20 +708,20 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<step3-comp params-as="settings">
+<step3-comp {settings}>
 	<if {settings.enabled}>
 	</if>
 </step3-comp>
 
-<step2-comp params-as="config">
+<step2-comp {config}>
 	<step3-comp {config.settings}/>
 </step2-comp>
 
-<step1-comp params-as="data">
+<step1-comp {data}>
 	<step2-comp {data.config}/>
 </step1-comp>
 
-<main-comp params-as="params">
+<main-comp {params}>
 	<step1-comp {params}/>
 </main-comp>
 -- out --
@@ -741,7 +741,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-card params-as="item">
+<main-card {item}>
   <div set-inner-text="item.title">
   </div>
   <if {item.active}>
@@ -750,13 +750,13 @@ main::main-comp
   </if>
 </main-card>
 
-<main-list params-as="items">
+<main-list {items}>
   <for {item in items}>
     <main-card {item}/>
   </for>
 </main-list>
 
-<main-comp params-as="data">
+<main-comp {data}>
   <main-list {data.items}/>
 </main-comp>
 -- out --
@@ -773,7 +773,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
 	<if {params.i.j.k.l}>
 		<if {params.i.k}>
 		</if>
@@ -787,7 +787,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
 	<if {params.i.j.k.l}>
 	</if>
 	<if {params.i.k}>
@@ -801,7 +801,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
 	<for {tag in params.tags}>
 		<if {tag}>
 		</if>
@@ -821,16 +821,16 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-bar params-as="p">
+<main-bar {p}>
   <if {p}>
   </if>
 </main-bar>
 
-<main-foo params-as="p">
+<main-foo {p}>
   <main-bar {p}/>
 </main-foo>
 
-<main-comp params-as="i">
+<main-comp {i}>
   <main-foo {i}/>
 </main-comp>
 -- out --
@@ -847,12 +847,12 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<execute-step params-as="step">
+<execute-step {step}>
 	<if {step.condition}>
 	</if>
 </execute-step>
 
-<execute-workflow params-as="workflow">
+<execute-workflow {workflow}>
 	<if {workflow.enabled}>
 		<for {step in workflow.steps}>
 			<execute-step {step}/>
@@ -860,7 +860,7 @@ main::main-comp
 	</if>
 </execute-workflow>
 
-<main-comp params-as="params">
+<main-comp {params}>
 	<for {workflow in params.workflows}>
 		<execute-workflow {workflow}/>
 	</for>
@@ -879,12 +879,12 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<foo-comp params-as="p">
+<foo-comp {p}>
   <if {p}>
   </if>
 </foo-comp>
 
-<main-comp params-as="i">
+<main-comp {i}>
   <foo-comp {i}/>
 </main-comp>
 -- out --
@@ -898,7 +898,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<process-item params-as="item">
+<process-item {item}>
 	<if {item.status.active}>
 	</if>
 	<for {child in item.children}>
@@ -907,7 +907,7 @@ main::main-comp
 	</for>
 </process-item>
 
-<main-comp params-as="params">
+<main-comp {params}>
 	<for {item in params.items}>
 		<process-item {item}/>
 	</for>
@@ -923,7 +923,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="user">
+<main-comp {user}>
   <a set-href="user.url" set-class="user.theme">Link</a>
 </main-comp>
 -- out --
@@ -958,7 +958,7 @@ main::bar-comp
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="data">
+<main-comp {data}>
   <div set-inner-text="data.message">
   </div>
 </main-comp>
@@ -970,7 +970,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
   <if {params.role == 'admin'}>
     <div>Admin</div>
   </if>
@@ -983,7 +983,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="params">
+<main-comp {params}>
 	<for {level1 in params}>
 		<for {level2 in level1}>
 			<for {level3 in level2}>
@@ -1001,7 +1001,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="data">
+<main-comp {data}>
 	<hop-x-raw>foo bar</hop-x-raw>
 	<div set-inner-text="data.message"></div>
 </main-comp>
@@ -1044,7 +1044,7 @@ Test <if> tag with boolean expression.
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="user">
+<main-comp {user}>
   <if {user.isActive}>
     <div>User is active</div>
   </if>
@@ -1059,7 +1059,7 @@ Test <if> tag with comparison expression.
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="data">
+<main-comp {data}>
   <if {data.status == 'approved'}>
     <div>Status is approved</div>
   </if>
@@ -1074,7 +1074,7 @@ Test <if> tag with nested conditionals.
 
 ## BEGIN
 -- main.hop --
-<main-comp params-as="config">
+<main-comp {config}>
   <if {config.enabled}>
     <div>Feature enabled</div>
     <if {config.debug}>

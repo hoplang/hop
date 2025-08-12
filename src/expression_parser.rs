@@ -307,6 +307,69 @@ pub fn parse_loop_header(
     }
 }
 
+pub fn parse_variable_name(
+    var_expr: &str,
+    range: Range,
+    errors: &mut Vec<RangeError>,
+) -> Option<VarName> {
+    let var_expr = var_expr.trim();
+    if var_expr.is_empty() {
+        errors.push(RangeError::new("Empty variable name".to_string(), range));
+        return None;
+    }
+
+    // Create tokenizer for the variable expression
+    let mut tokenizer = match ExprTokenizer::new(var_expr) {
+        Ok(tokenizer) => tokenizer,
+        Err(err) => {
+            errors.push(RangeError::new(
+                format!("Invalid expression: {}", err),
+                range,
+            ));
+            return None;
+        }
+    };
+
+    // Expect: IDENTIFIER (and nothing else)
+    let var_name = match &tokenizer.current_token {
+        ExprToken::Identifier(name) => name.clone(),
+        _ => {
+            errors.push(RangeError::new(
+                "Expected variable name".to_string(),
+                range,
+            ));
+            return None;
+        }
+    };
+
+    // Advance past the identifier
+    if tokenizer.advance().is_err() {
+        errors.push(RangeError::new(
+            "Invalid expression".to_string(),
+            range,
+        ));
+        return None;
+    }
+
+    // Ensure we've consumed all tokens (should only be a single identifier)
+    if !matches!(tokenizer.current_token, ExprToken::Eof) {
+        errors.push(RangeError::new(
+            "Expected only a variable name, found additional tokens".to_string(),
+            range,
+        ));
+        return None;
+    }
+
+    // Validate the variable name
+    match VarName::new(var_name.clone()) {
+        Some(validated_var_name) => Some(validated_var_name),
+        None => {
+            errors.push(RangeError::invalid_variable_name(&var_name, range));
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
