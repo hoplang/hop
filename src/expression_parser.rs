@@ -15,14 +15,18 @@ enum ExprToken {
 struct ExprTokenizer {
     input: Vec<char>,
     position: usize,
+    current_token: ExprToken,
 }
 
 impl ExprTokenizer {
-    fn new(input: &str) -> Self {
-        ExprTokenizer {
+    fn new(input: &str) -> Result<Self, String> {
+        let mut tokenizer = ExprTokenizer {
             input: input.chars().collect(),
             position: 0,
-        }
+            current_token: ExprToken::Eof, // temporary value
+        };
+        tokenizer.current_token = tokenizer.next_token()?;
+        Ok(tokenizer)
     }
 
     fn peek(&self) -> char {
@@ -33,7 +37,7 @@ impl ExprTokenizer {
         }
     }
 
-    fn advance(&mut self) -> char {
+    fn advance_char(&mut self) -> char {
         let ch = self.peek();
         if ch != '\0' {
             self.position += 1;
@@ -43,7 +47,7 @@ impl ExprTokenizer {
 
     fn skip_whitespace(&mut self) {
         while self.peek().is_whitespace() {
-            self.advance();
+            self.advance_char();
         }
     }
 
@@ -53,14 +57,14 @@ impl ExprTokenizer {
         // First character must be letter or underscore
         let first = self.peek();
         if first.is_ascii_alphabetic() || first == '_' {
-            result.push(self.advance());
+            result.push(self.advance_char());
         } else {
             return result;
         }
 
         // Subsequent characters can be letters, digits, or underscores
         while self.peek().is_ascii_alphanumeric() || self.peek() == '_' {
-            result.push(self.advance());
+            result.push(self.advance_char());
         }
 
         result
@@ -73,10 +77,10 @@ impl ExprTokenizer {
         if self.peek() != '\'' {
             return Err("Expected opening single quote".to_string());
         }
-        self.advance();
+        self.advance_char();
 
         while self.peek() != '\'' && self.peek() != '\0' {
-            result.push(self.advance());
+            result.push(self.advance_char());
         }
 
         if self.peek() != '\'' {
@@ -84,9 +88,14 @@ impl ExprTokenizer {
         }
 
         // Consume closing quote
-        self.advance();
+        self.advance_char();
 
         Ok(result)
+    }
+
+    fn advance(&mut self) -> Result<(), String> {
+        self.current_token = self.next_token()?;
+        Ok(())
     }
 
     fn next_token(&mut self) -> Result<ExprToken, String> {
@@ -95,21 +104,21 @@ impl ExprTokenizer {
         match self.peek() {
             '\0' => Ok(ExprToken::Eof),
             '.' => {
-                self.advance();
+                self.advance_char();
                 Ok(ExprToken::Dot)
             }
             '(' => {
-                self.advance();
+                self.advance_char();
                 Ok(ExprToken::LeftParen)
             }
             ')' => {
-                self.advance();
+                self.advance_char();
                 Ok(ExprToken::RightParen)
             }
             '=' => {
-                self.advance();
+                self.advance_char();
                 if self.peek() == '=' {
-                    self.advance();
+                    self.advance_char();
                     Ok(ExprToken::Equal)
                 } else {
                     Err("Expected '==' but found single '='".to_string())
@@ -134,82 +143,57 @@ impl ExprTokenizer {
     }
 }
 
-struct ExprParser {
-    tokenizer: ExprTokenizer,
-    current_token: ExprToken,
+// equality -> primary ( "==" primary )*
+fn parse_equality(tokenizer: &mut ExprTokenizer) -> Result<Expression, String> {
+    let mut expr = parse_primary(tokenizer)?;
+
+    while matches!(tokenizer.current_token, ExprToken::Equal) {
+        tokenizer.advance()?; // consume ==
+        let right = parse_primary(tokenizer)?;
+        expr = Expression::BinaryOp(Box::new(expr), BinaryOp::Equal, Box::new(right));
+    }
+
+    Ok(expr)
 }
 
-impl ExprParser {
-    fn new(input: &str) -> Result<Self, String> {
-        let mut tokenizer = ExprTokenizer::new(input);
-        let current_token = tokenizer.next_token()?;
-        Ok(ExprParser {
-            tokenizer,
-            current_token,
-        })
-    }
+// primary -> IDENTIFIER ( "." IDENTIFIER )* | STRING_LITERAL | "(" equality ")"
+fn parse_primary(tokenizer: &mut ExprTokenizer) -> Result<Expression, String> {
+    match &tokenizer.current_token {
+        ExprToken::Identifier(name) => {
+            let mut expr = Expression::Variable(name.clone());
+            tokenizer.advance()?;
 
-    fn advance(&mut self) -> Result<(), String> {
-        self.current_token = self.tokenizer.next_token()?;
-        Ok(())
-    }
+            // Handle property access
+            while matches!(tokenizer.current_token, ExprToken::Dot) {
+                tokenizer.advance()?; // consume .
 
-    fn parse(&mut self) -> Result<Expression, String> {
-        self.parse_equality()
-    }
-
-    // equality -> primary ( "==" primary )*
-    fn parse_equality(&mut self) -> Result<Expression, String> {
-        let mut expr = self.parse_primary()?;
-
-        while matches!(self.current_token, ExprToken::Equal) {
-            self.advance()?; // consume ==
-            let right = self.parse_primary()?;
-            expr = Expression::BinaryOp(Box::new(expr), BinaryOp::Equal, Box::new(right));
-        }
-
-        Ok(expr)
-    }
-
-    // primary -> IDENTIFIER ( "." IDENTIFIER )* | STRING_LITERAL | "(" equality ")"
-    fn parse_primary(&mut self) -> Result<Expression, String> {
-        match &self.current_token {
-            ExprToken::Identifier(name) => {
-                let mut expr = Expression::Variable(name.clone());
-                self.advance()?;
-
-                // Handle property access
-                while matches!(self.current_token, ExprToken::Dot) {
-                    self.advance()?; // consume .
-
-                    if let ExprToken::Identifier(prop) = &self.current_token {
-                        expr = Expression::PropertyAccess(Box::new(expr), prop.clone());
-                        self.advance()?;
-                    } else {
-                        return Err("Expected identifier after '.'".to_string());
-                    }
-                }
-
-                Ok(expr)
-            }
-            ExprToken::StringLiteral(value) => {
-                let expr = Expression::StringLiteral(value.clone());
-                self.advance()?;
-                Ok(expr)
-            }
-            ExprToken::LeftParen => {
-                self.advance()?; // consume (
-                let expr = self.parse_equality()?;
-
-                if matches!(self.current_token, ExprToken::RightParen) {
-                    self.advance()?; // consume )
-                    Ok(expr)
+                if let ExprToken::Identifier(prop) = &tokenizer.current_token {
+                    expr = Expression::PropertyAccess(Box::new(expr), prop.clone());
+                    tokenizer.advance()?;
                 } else {
-                    Err("Expected closing parenthesis".to_string())
+                    return Err("Expected identifier after '.'".to_string());
                 }
             }
-            _ => Err("Expected identifier, string literal, or opening parenthesis".to_string()),
+
+            Ok(expr)
         }
+        ExprToken::StringLiteral(value) => {
+            let expr = Expression::StringLiteral(value.clone());
+            tokenizer.advance()?;
+            Ok(expr)
+        }
+        ExprToken::LeftParen => {
+            tokenizer.advance()?; // consume (
+            let expr = parse_equality(tokenizer)?;
+
+            if matches!(tokenizer.current_token, ExprToken::RightParen) {
+                tokenizer.advance()?; // consume )
+                Ok(expr)
+            } else {
+                Err("Expected closing parenthesis".to_string())
+            }
+        }
+        _ => Err("Expected identifier, string literal, or opening parenthesis".to_string()),
     }
 }
 
@@ -219,11 +203,11 @@ pub fn parse_expression(expr: &str) -> Result<Expression, String> {
         return Err("Empty expression".to_string());
     }
 
-    let mut parser = ExprParser::new(expr)?;
-    let result = parser.parse()?;
+    let mut tokenizer = ExprTokenizer::new(expr)?;
+    let result = parse_equality(&mut tokenizer)?;
 
     // Ensure we've consumed all tokens
-    if !matches!(parser.current_token, ExprToken::Eof) {
+    if !matches!(tokenizer.current_token, ExprToken::Eof) {
         return Err("Unexpected tokens at end of expression".to_string());
     }
 
@@ -237,16 +221,13 @@ pub fn parse_loop_header(
 ) -> Option<(VarName, Expression)> {
     let header = header.trim();
     if header.is_empty() {
-        errors.push(RangeError::new(
-            "Empty loop header".to_string(),
-            range,
-        ));
+        errors.push(RangeError::new("Empty loop header".to_string(), range));
         return None;
     }
 
-    // Create parser for the loop header
-    let mut parser = match ExprParser::new(header) {
-        Ok(parser) => parser,
+    // Create tokenizer for the loop header
+    let mut tokenizer = match ExprTokenizer::new(header) {
+        Ok(tokenizer) => tokenizer,
         Err(err) => {
             errors.push(RangeError::new(
                 format!("Invalid expression in <for> tag: {}", err),
@@ -257,7 +238,7 @@ pub fn parse_loop_header(
     };
 
     // Expect: IDENTIFIER "in" expression
-    let var_name = match &parser.current_token {
+    let var_name = match &tokenizer.current_token {
         ExprToken::Identifier(name) => name.clone(),
         _ => {
             errors.push(RangeError::new(
@@ -269,7 +250,7 @@ pub fn parse_loop_header(
     };
 
     // Advance past the identifier
-    if parser.advance().is_err() {
+    if tokenizer.advance().is_err() {
         errors.push(RangeError::new(
             "Invalid expression in <for> tag".to_string(),
             range,
@@ -278,7 +259,7 @@ pub fn parse_loop_header(
     }
 
     // Expect "in" keyword
-    if !matches!(parser.current_token, ExprToken::In) {
+    if !matches!(tokenizer.current_token, ExprToken::In) {
         errors.push(RangeError::new(
             "Expected 'in' keyword in <for> tag".to_string(),
             range,
@@ -287,7 +268,7 @@ pub fn parse_loop_header(
     }
 
     // Advance past "in"
-    if parser.advance().is_err() {
+    if tokenizer.advance().is_err() {
         errors.push(RangeError::new(
             "Invalid expression in <for> tag".to_string(),
             range,
@@ -296,7 +277,7 @@ pub fn parse_loop_header(
     }
 
     // Parse the array expression
-    let array_expr = match parser.parse_equality() {
+    let array_expr = match parse_equality(&mut tokenizer) {
         Ok(expr) => expr,
         Err(err) => {
             errors.push(RangeError::new(
@@ -308,7 +289,7 @@ pub fn parse_loop_header(
     };
 
     // Ensure we've consumed all tokens
-    if !matches!(parser.current_token, ExprToken::Eof) {
+    if !matches!(tokenizer.current_token, ExprToken::Eof) {
         errors.push(RangeError::new(
             "Unexpected tokens at end of <for> expression".to_string(),
             range,
