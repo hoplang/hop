@@ -154,14 +154,6 @@ impl RangeError {
         )
     }
 
-    pub fn unexpected_tag_outside_root(tag: &str, range: Range) -> Self {
-        Self::new(format!("<{tag}> must be placed at module root"), range)
-    }
-
-    pub fn unexpected_doctype_at_root(range: Range) -> Self {
-        Self::new("Unexpected doctype at module root".to_string(), range)
-    }
-
     pub fn missing_required_attribute(tag: &str, attr: &str, range: Range) -> Self {
         Self::new(
             format!("<{tag}> is missing required attribute {attr}"),
@@ -204,10 +196,6 @@ impl RangeError {
 
     pub fn undefined_variable(var: &str, range: Range) -> Self {
         Self::new(format!("Undefined variable: {var}"), range)
-    }
-
-    pub fn unresolved_import(component: &str, range: Range) -> Self {
-        Self::new(format!("Unresolved import: {component}"), range)
     }
 
     pub fn unused_variable(var: &str, range: Range) -> Self {
@@ -399,7 +387,6 @@ pub struct ComponentReferenceNode {
     pub range: Range,
     pub children: Vec<Node>,
 }
-
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IfNode {
