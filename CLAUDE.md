@@ -45,23 +45,30 @@ hop is a HTML-like templating language with built-in type checking.
 
 hop supports dynamic attributes on native HTML elements using the `set-` prefix:
 
-- `set-inner-text="expression"` - Sets the inner text content of an element
 - `set-<attribute>="expression"` - Sets any HTML attribute dynamically (e.g., `set-href`, `set-class`, `set-title`)
 
 Examples:
 ```html
-<page-main params-as="user">
-  <a set-href="user.profile_url" set-title="user.name">Profile</a>
-  <div set-inner-text="user.greeting"></div>
+<main-comp {user}>
+  <a set-href="user.profile_url" set-title="user.name">Click here</a>
+  <div>{user.greeting}</div>
   <img set-src="user.avatar" set-alt="user.name" />
-</page-main>
+</main-comp>
 ```
 
-All `set-*` attributes are:
-- Evaluated as expressions at runtime
-- Type-checked to ensure they produce strings
-- HTML-escaped for safety
-- Rendered as the target attribute (without the `set-` prefix)
+Additional hop language features include conditional rendering and loops:
+```html
+<main-comp {params}>
+  <if {params.user.name == params.admin.name}>
+    <div>Is Admin</div>
+  </if>
+  <for {item in params.items}>
+    <if {item.show}>
+      <div>{item.data}</div>
+    </if>
+  </for>
+</main-comp>
+```
 
 The reference implementation is divided into modules where each file
 corresponds to a module.
