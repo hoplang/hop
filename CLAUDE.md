@@ -17,17 +17,18 @@ For example:
 
 ## Testing
 
-The project uses txtar format for test cases located in `test_data/` directories organized by module:
-- `test_data/tokenizer/` - Tokenizer tests
-- `test_data/parser/` - Parser tests  
-- `test_data/typechecker/` - Typechecker tests
-- `test_data/compiler/` - Compiler tests
-- `test_data/unifier/` - Unifier tests
-- `test_data/toposorter/` - Toposorter tests
+The project uses txtar format for test cases located in the `test_data/` directory:
+- `test_data/tokenizer.cases` - Tokenizer tests
+- `test_data/parser.cases` - Parser tests  
+- `test_data/typechecker.cases` - Typechecker tests
+- `test_data/runtime.cases` - Runtime tests
+- `test_data/unifier.cases` - Unifier tests
+- `test_data/toposorter.cases` - Toposorter tests
+- `test_data/expression_parser.cases` - Expression parser tests
 
 ### Test File Format
 
-Each test file uses the txtar format with.
+Each test file uses the txtar format with test cases marked by `## BEGIN` and `## END` blocks.
 
 Run specific module tests with:
 - `nix develop --command cargo test test_parser`
