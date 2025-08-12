@@ -1,12 +1,38 @@
+<error-heading class="text-red-600 text-2xl font-medium">
+	<slot-default />
+</error-heading>
+
+<code-text as="code" class="rounded bg-zinc-700 px-1 py-0.5"><slot-default /></code-text>
+
+<route-error-message {params}>
+	<div>
+		<error-heading>Route not found</error-heading>
+		<p>
+			The requested route <code-text>{params.path}</code-text> was not found in the build file.
+		</p>
+		
+		<h2 class="text-md">Available Routes</h2>
+		<ul>
+			<for {route in params.available_routes}>
+			  <li><a set-href="route">{route}</a></li>
+			</for>
+		</ul>
+		<p>
+			To add this route, update your <code-text>build.hop</code-text> file with an entry for this path.
+		</p>
+	</div>
+</route-error-message>
+
 <generic-error {error} entrypoint>
 	<!DOCTYPE html>
 	<html>
 	<head>
 		<title>Error</title>
+		<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 	</head>
 	<body style="background: black; color: white; max-width: 1200px; margin: 0px auto; padding: 32px; font-family: sans-serif;">
 		<div>
-			<h1 style="color: #ff4444; margin-bottom: 16px;">Error</h1>
+			<error-heading>Error</error-heading>
 			<pre>{error.message}</pre>
 		</div>
 	</body>
@@ -18,23 +44,10 @@
 	<html>
 	<head>
 		<title>404 Not Found</title>
+		<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 	</head>
 	<body style="background: black; color: white; max-width: 1200px; margin: 0px auto; padding: 32px; font-family: sans-serif;">
-		<div>
-			<h1 style="color: #ff4444; margin-bottom: 16px;">Route not found</h1>
-			<p style="margin-bottom: 24px;">The requested route <code style="background: #374151; padding: 2px 4px; border-radius: 4px;" set-inner-text="params.path"></code> was not found in the build file.</p>
-			
-			<h2 style="font-size: 18px; margin-bottom: 12px;">Available Routes</h2>
-			<ul style="padding-left: 0px; margin-left: 20px; margin-bottom: 24px;">
-				<for {route in params.available_routes}>
-				  <li><a set-href="route" style="color: #60a5fa;">{route}</a></li>
-				</for>
-			</ul>
-			
-			<p style="color: #9ca3af;">
-				To add this route, update your <code style="background: #374151; padding: 2px 4px; border-radius: 4px;">build.hop</code> file with an entry for this path.
-			</p>
-		</div>
+		<route-error-message {params} />
 	</body>
 	</html>
 </not-found-error>

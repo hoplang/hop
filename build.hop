@@ -1,0 +1,23 @@
+<import component="error-heading" from="hop/error_pages">
+<import component="code-text" from="hop/error_pages">
+
+<render file="index.html">
+	<!DOCTYPE html>
+	<html>
+	<head>
+		<title>404 Not Found</title>
+		<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+	</head>
+	<body style="background: black; color: white;">
+		<error-heading>Route not found</error-heading>
+		
+		<h2 style="font-size: 18px; margin-bottom: 12px;">Available Routes</h2>
+		<ul style="padding-left: 0px; margin-left: 20px; margin-bottom: 24px;">
+		</ul>
+		
+		<p style="color: #9ca3af;">
+			To add this route, update your <code-text>build.hop</code-text> file with an entry for this path.
+		</p>
+	</body>
+	</html>
+</render>
