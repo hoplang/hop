@@ -1,10 +1,11 @@
-use crate::common::{BinaryOp, Expression, Range, RangeError, VarName};
+use crate::common::{BinaryOp, Expression, Range, RangeError, UnaryOp, VarName};
 
 #[derive(Debug, Clone, PartialEq)]
 enum ExprToken {
     Identifier(String),
     StringLiteral(String),
     Equal,
+    Not,
     Dot,
     LeftParen,
     RightParen,
@@ -124,6 +125,10 @@ impl ExprTokenizer {
                     Err("Expected '==' but found single '='".to_string())
                 }
             }
+            '!' => {
+                self.advance_char();
+                Ok(ExprToken::Not)
+            }
             '\'' => {
                 let string_value = self.read_string_literal()?;
                 Ok(ExprToken::StringLiteral(string_value))
@@ -143,17 +148,28 @@ impl ExprTokenizer {
     }
 }
 
-// equality -> primary ( "==" primary )*
+// equality -> unary ( "==" unary )*
 fn parse_equality(tokenizer: &mut ExprTokenizer) -> Result<Expression, String> {
-    let mut expr = parse_primary(tokenizer)?;
+    let mut expr = parse_unary(tokenizer)?;
 
     while matches!(tokenizer.current_token, ExprToken::Equal) {
         tokenizer.advance()?; // consume ==
-        let right = parse_primary(tokenizer)?;
+        let right = parse_unary(tokenizer)?;
         expr = Expression::BinaryOp(Box::new(expr), BinaryOp::Equal, Box::new(right));
     }
 
     Ok(expr)
+}
+
+// unary -> ( "!" )* primary
+fn parse_unary(tokenizer: &mut ExprTokenizer) -> Result<Expression, String> {
+    if matches!(tokenizer.current_token, ExprToken::Not) {
+        tokenizer.advance()?; // consume !
+        let expr = parse_unary(tokenizer)?; // Right associative for multiple !
+        Ok(Expression::UnaryOp(UnaryOp::Not, Box::new(expr)))
+    } else {
+        parse_primary(tokenizer)
+    }
 }
 
 // primary -> IDENTIFIER ( "." IDENTIFIER )* | STRING_LITERAL | "(" equality ")"

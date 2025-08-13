@@ -1,7 +1,7 @@
 use crate::common::{
     BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode,
     ExprAttribute, Expression, ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Range,
-    RangeError, RenderNode, SlotDefinitionNode, SlotReferenceNode, Type, XExecNode, XRawNode,
+    RangeError, RenderNode, SlotDefinitionNode, SlotReferenceNode, Type, UnaryOp, XExecNode, XRawNode,
 };
 use crate::parser::Module;
 use crate::unifier::Unifier;
@@ -500,6 +500,20 @@ fn typecheck_expression(
             }
 
             // The result of == is always boolean
+            Type::Bool
+        }
+        Expression::UnaryOp(UnaryOp::Not, expr) => {
+            let expr_type = typecheck_expression(expr, env, unifier, annotations, errors, range);
+
+            // Negation only works on boolean expressions
+            if let Some(err) = unifier.unify(&expr_type, &Type::Bool) {
+                errors.push(RangeError::unification_error(
+                    &format!("Negation operator can only be applied to boolean values: {}", err.message),
+                    range,
+                ));
+            }
+
+            // The result of ! is always boolean
             Type::Bool
         }
     }

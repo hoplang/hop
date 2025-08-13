@@ -50,30 +50,30 @@
 				<for {component in module.components}>
 					<if {component.has_preview}>
 						<a set-href="component.link">
-						<component-item-clickable>
+							<component-item-clickable>
+								<with-name>{component.name}</with-name>
+								<with-details>
+									<strong>Parameters:</strong> <param-type>{component.parameter_type}</param-type><br>
+									<if {component.is_entrypoint}>
+										<strong>Type:</strong> Entrypoint component<br>
+									</if>
+									<strong>Slots:</strong> {component.slots_text}<br>
+								</with-details>
+							</component-item-clickable>
+						</a>
+					</if>
+					<if {!component.has_preview}>
+						<component-item>
 							<with-name>{component.name}</with-name>
 							<with-details>
 								<strong>Parameters:</strong> <param-type>{component.parameter_type}</param-type><br>
 								<if {component.is_entrypoint}>
 									<strong>Type:</strong> Entrypoint component<br>
 								</if>
-								<strong>Preview:</strong> Custom preview available<br>
 								<strong>Slots:</strong> {component.slots_text}<br>
 							</with-details>
-						</component-item-clickable>
-						</a>
+						</component-item>
 					</if>
-					
-					<component-item>
-						<with-name>{component.name}</with-name>
-						<with-details>
-							<strong>Parameters:</strong> <param-type>{component.parameter_type}</param-type><br>
-							<if {component.is_entrypoint}>
-								<strong>Type:</strong> Entrypoint component<br>
-							</if>
-							<strong>Slots:</strong> {component.slots_text}<br>
-						</with-details>
-					</component-item>
 				</for>
 			</div>
 		</for>

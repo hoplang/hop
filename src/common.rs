@@ -289,11 +289,17 @@ pub enum BinaryOp {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum UnaryOp {
+    Not,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     Variable(String),
     PropertyAccess(Box<Expression>, String),
     StringLiteral(String),
     BinaryOp(Box<Expression>, BinaryOp, Box<Expression>),
+    UnaryOp(UnaryOp, Box<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

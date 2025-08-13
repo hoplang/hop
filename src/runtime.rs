@@ -1,7 +1,7 @@
 use crate::common::{
     BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode, Expression,
     ForNode, IfNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode, SlotReferenceNode, Type,
-    XExecNode, XRawNode, escape_html, is_void_element,
+    UnaryOp, XExecNode, XRawNode, escape_html, is_void_element,
 };
 use std::collections::HashMap;
 use std::io::Write;
@@ -561,6 +561,14 @@ impl Program {
                 let right_value = self.evaluate_expr(right, env)?;
 
                 Ok(serde_json::Value::Bool(left_value == right_value))
+            }
+            Expression::UnaryOp(UnaryOp::Not, expr) => {
+                let value = self.evaluate_expr(expr, env)?;
+                
+                match value {
+                    serde_json::Value::Bool(b) => Ok(serde_json::Value::Bool(!b)),
+                    _ => Err("Negation operator can only be applied to boolean values".to_string()),
+                }
             }
         }
     }
