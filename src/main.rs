@@ -14,6 +14,7 @@ mod typechecker;
 mod unifier;
 
 use clap::{CommandFactory, Parser, Subcommand};
+use common::escape_html;
 use compiler::compile;
 use files::ProjectRoot;
 use std::path::Path;
@@ -320,6 +321,99 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
     }
 }
 
+fn create_inspect_page(program: &runtime::Program) -> String {
+    
+    let mut html = String::new();
+    html.push_str("<!DOCTYPE html>\n");
+    html.push_str("<html>\n<head>\n");
+    html.push_str("<title>hop dev - Module Inspector</title>\n");
+    html.push_str("<style>\n");
+    html.push_str("body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 40px; background: #f9f9f9; }\n");
+    html.push_str("h1 { color: #333; border-bottom: 2px solid #007acc; padding-bottom: 10px; }\n");
+    html.push_str("h2 { color: #555; margin-top: 30px; }\n");
+    html.push_str("h3 { color: #666; margin-top: 20px; }\n");
+    html.push_str(".module { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }\n");
+    html.push_str(".component { background: #f5f5f5; padding: 15px; margin: 15px 0; border-radius: 6px; border-left: 4px solid #007acc; }\n");
+    html.push_str(".component-name { font-weight: bold; color: #007acc; font-size: 1.1em; }\n");
+    html.push_str(".component-details { margin-top: 10px; font-size: 0.9em; color: #666; }\n");
+    html.push_str(".param-type { background: #e8f4fd; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 0.85em; }\n");
+    html.push_str(".stats { background: #e8f4fd; padding: 15px; border-radius: 6px; margin-bottom: 20px; }\n");
+    html.push_str(".no-components { color: #999; font-style: italic; }\n");
+    html.push_str("</style>\n");
+    html.push_str("</head>\n<body>\n");
+    html.push_str("<h1>🔍 hop dev - Module Inspector</h1>\n");
+    
+    // Get component maps from the program
+    let component_maps = program.get_component_maps();
+    let parameter_types = program.get_parameter_types();
+    
+    // Calculate statistics
+    let total_modules = component_maps.len();
+    let total_components: usize = component_maps.values().map(|components| components.len()).sum();
+    
+    html.push_str(&format!("<div class=\"stats\">\n"));
+    html.push_str(&format!("<strong>📊 Statistics:</strong> {} modules, {} components total\n", total_modules, total_components));
+    html.push_str("</div>\n");
+    
+    if component_maps.is_empty() {
+        html.push_str("<p class=\"no-components\">No modules found.</p>\n");
+    } else {
+        // Sort modules for consistent output
+        let mut sorted_modules: Vec<_> = component_maps.iter().collect();
+        sorted_modules.sort_by_key(|(name, _)| *name);
+        
+        for (module_name, components) in sorted_modules {
+            html.push_str(&format!("<div class=\"module\">\n"));
+            html.push_str(&format!("<h2>📦 Module: <code>{}</code></h2>\n", escape_html(module_name)));
+            
+            if components.is_empty() {
+                html.push_str("<p class=\"no-components\">No components in this module.</p>\n");
+            } else {
+                html.push_str(&format!("<p>{} component{}</p>\n", components.len(), if components.len() == 1 { "" } else { "s" }));
+                
+                // Sort components for consistent output  
+                let mut sorted_components: Vec<_> = components.iter().collect();
+                sorted_components.sort_by_key(|(name, _)| *name);
+                
+                for (component_name, component_def) in sorted_components {
+                    html.push_str("<div class=\"component\">\n");
+                    html.push_str(&format!("<div class=\"component-name\">🧩 {}</div>\n", escape_html(component_name)));
+                    
+                    html.push_str("<div class=\"component-details\">\n");
+                    
+                    // Show parameter type if available
+                    if let Some(module_types) = parameter_types.get(module_name) {
+                        if let Some(param_type) = module_types.get(component_name) {
+                            html.push_str(&format!("<strong>Parameters:</strong> <span class=\"param-type\">{}</span><br>\n", escape_html(&param_type.to_string())));
+                        }
+                    }
+                    
+                    // Show if it's an entrypoint
+                    if component_def.entrypoint {
+                        html.push_str("<strong>Type:</strong> Entrypoint component<br>\n");
+                    }
+                    
+                    // Show slots if any
+                    if !component_def.slots.is_empty() {
+                        let slots = component_def.slots.iter()
+                            .map(|s| escape_html(s))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        html.push_str(&format!("<strong>Slots:</strong> {}<br>\n", slots));
+                    }
+                    
+                    html.push_str("</div>\n");
+                    html.push_str("</div>\n");
+                }
+            }
+            html.push_str("</div>\n");
+        }
+    }
+    
+    html.push_str("</body>\n</html>");
+    inject_hot_reload_script(&html)
+}
+
 fn create_file_watcher(
     root: &ProjectRoot,
 ) -> anyhow::Result<(
@@ -382,6 +476,26 @@ async fn hop_dev(
                 BroadcastStream::new(channel.subscribe())
                     .map(|_| Ok::<Event, axum::Error>(Event::default().data("reload"))),
             )
+        }),
+    );
+
+    // Add inspect endpoint for listing modules and components
+    let inspect_root = root.clone();
+    router = router.route(
+        "/_inspect",
+        get(async move || {
+            match files::load_all_hop_modules(&inspect_root).and_then(|modules| {
+                compile(modules).map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
+            }) {
+                Ok(program) => {
+                    let html = create_inspect_page(&program);
+                    Ok(axum::response::Html(html))
+                }
+                Err(e) => Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    axum::response::Html(create_error_page(&e)),
+                )),
+            }
         }),
     );
 

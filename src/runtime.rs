@@ -43,6 +43,16 @@ impl Program {
         &self.scripts
     }
 
+    /// Get the component maps for inspection
+    pub fn get_component_maps(&self) -> &HashMap<String, HashMap<String, ComponentDefinitionNode>> {
+        &self.component_maps
+    }
+
+    /// Get the parameter types for inspection
+    pub fn get_parameter_types(&self) -> &HashMap<String, HashMap<String, Type>> {
+        &self.parameter_types
+    }
+
     pub fn execute_simple(
         &self,
         module_name: &str,
