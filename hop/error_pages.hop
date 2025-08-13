@@ -66,7 +66,7 @@
 		<title>Error</title>
 		<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 	</head>
-	<body style="background: black; color: white;">
+	<body>
 		<page-container>
 			<error-heading>Error</error-heading>
 			<pre>{error.message}</pre>
@@ -82,7 +82,7 @@
 		<title>404 Not Found</title>
 		<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 	</head>
-	<body style="background: black; color: white;">
+	<body>
 		<page-container>
 			<route-not-found-error>
 				<with-requested-path>{params.path}</with-requested-path>
