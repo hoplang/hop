@@ -364,25 +364,14 @@ fn create_inspect_page(program: &runtime::Program) -> String {
                 sorted_components.sort_by_key(|(name, _)| *name);
                 
                 for (component_name, component_def) in sorted_components {
-                    // Check if component has no parameters (void type or no parameters)
-                    let has_no_params = if let Some(module_types) = parameter_types.get(module_name) {
-                        if let Some(param_type) = module_types.get(component_name) {
-                            matches!(param_type, common::Type::Void)
-                        } else {
-                            true // No type info means no parameters
-                        }
-                    } else {
-                        true // No type info means no parameters
-                    };
-                    
                     let has_preview = component_def.preview.is_some();
                     
-                    let component_classes = if has_no_params { 
+                    let component_classes = if has_preview { 
                         "bg-gray-50 p-4 my-4 rounded-lg border-l-4 border-blue-600 cursor-pointer transition-all duration-200 hover:bg-blue-50 hover:-translate-y-0.5 hover:shadow-md" 
                     } else { 
                         "bg-gray-50 p-4 my-4 rounded-lg border-l-4 border-blue-600" 
                     };
-                    let onclick = if has_no_params {
+                    let onclick = if has_preview {
                         let encoded_module = module_name.replace("/", "%2F");
                         let encoded_component = component_name.replace("/", "%2F");
                         format!(" onclick=\"window.open('/_inspect/{}/{}', '_blank', 'width=800,height=600,scrollbars=yes')\"", 
@@ -424,8 +413,8 @@ fn create_inspect_page(program: &runtime::Program) -> String {
                         html.push_str(&format!("<strong>Slots:</strong> {}<br>\n", slots));
                     }
                     
-                    // Add clickable hint for components without parameters
-                    if has_no_params {
+                    // Add clickable hint for components with preview
+                    if has_preview {
                         html.push_str("<div class=\"text-blue-600 text-xs mt-2 italic\">💡 Click to preview this component</div>\n");
                     }
                     
@@ -444,27 +433,15 @@ fn create_inspect_page(program: &runtime::Program) -> String {
 fn create_component_preview(program: &runtime::Program, module_name: &str, component_name: &str) -> Result<String, String> {
     // Check if component exists
     let component_maps = program.get_component_maps();
-    let parameter_types = program.get_parameter_types();
     
     let component_map = component_maps.get(module_name)
         .ok_or_else(|| format!("Module '{}' not found", module_name))?;
     
-    let _component_def = component_map.get(component_name)
+    let component_def = component_map.get(component_name)
         .ok_or_else(|| format!("Component '{}' not found in module '{}'", component_name, module_name))?;
     
-    // Check if component has no parameters
-    let has_no_params = if let Some(module_types) = parameter_types.get(module_name) {
-        if let Some(param_type) = module_types.get(component_name) {
-            matches!(param_type, common::Type::Void)
-        } else {
-            true
-        }
-    } else {
-        true
-    };
-    
-    if !has_no_params {
-        return Err("Component has parameters and cannot be previewed without parameter values".to_string());
+    if component_def.preview.is_none() {
+        return Err("Component does not have preview content defined".to_string());
     }
     
     // Render the component using preview content if available

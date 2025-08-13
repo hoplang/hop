@@ -1,10 +1,14 @@
-<page-container class="max-w-6xl px-4 my-12 mx-auto">
-	<slot-default />
-</page-container>
-
 <error-heading class="text-rose-600 text-2xl font-medium">
 	<slot-default />
 </error-heading>
+
+<pretty-error>
+	<div class="uppercase tracking-widest text-sm font-medium">Error</div>
+	<error-heading><slot-default /></error-heading>
+	<hop-x-preview>
+		<pretty-error>An error occurred</pretty-error>
+	</hop-x-preview>
+</pretty-error>
 
 <code-text as="span">
 	<code class="rounded border border-gray-300 px-1 py-0.5"><slot-default /></code>
@@ -13,21 +17,47 @@
 	</hop-x-preview>
 </code-text>
 
-<route-error-message {params}>
-	<error-heading>Route not found</error-heading>
+<route-not-found-error class="flex flex-col gap-4">
+	<pretty-error>Route not found</pretty-error>
 	<p>
-		The requested route <code-text>{params.path}</code-text> was not found in the build file.
+		The requested route <code-text><slot-requested-path /></code-text> was not found in the build file.
 	</p>
-	<h2 class="text-md">Available Routes</h2>
-	<ul>
-		<for {route in params.available_routes}>
-		  <li><a set-href="route">{route}</a></li>
-		</for>
-	</ul>
+	<div class="p-3 border border-zinc-300 rounded">
+		<h2 class="text-md">Available Routes</h2>
+		<ul class="list-disc ml-6 py-2">
+			<slot-available-routes/>
+		</ul>
+	</div>
 	<p>
 		To add this route, update your <code-text>build.hop</code-text> file with an entry for this path.
 	</p>
-</route-error-message>
+	<hop-x-preview>
+		<div class="p-8">
+			<route-not-found-error>
+				<with-requested-path>/foo-bar</with-requested-path>
+				<with-available-routes>
+					<li><a href="#foo">/foo</a></li>
+					<li><a href="#bar">/bar</a></li>
+				</with-available-routes>
+			</route-not-found-error>
+		</div>
+	</hop-x-preview>
+</route-not-found-error>
+
+<page-container class="max-w-6xl px-4 my-12 mx-auto">
+	<slot-default />
+	<hop-x-preview>
+		<page-container>
+			<route-not-found-error>
+				<with-requested-path>/foo-bar</with-requested-path>
+				<with-available-routes>
+					<li><a href="#foo">/foo</a></li>
+					<li><a href="#bar">/bar</a></li>
+				</with-available-routes>
+			</route-not-found-error>
+		</page-container>
+	</hop-x-preview>
+</page-container>
 
 <generic-error {error} entrypoint>
 	<!DOCTYPE html>
@@ -54,7 +84,14 @@
 	</head>
 	<body style="background: black; color: white;">
 		<page-container>
-			<route-error-message {params} />
+			<route-not-found-error>
+				<with-requested-path>{params.path}</with-requested-path>
+				<with-available-routes>
+					<for {route in params.available_routes}>
+					  <li><a set-href="route">{route}</a></li>
+					</for>
+				</with-available-routes>
+			</route-not-found-error>
 		</page-container>
 	</body>
 	</html>
