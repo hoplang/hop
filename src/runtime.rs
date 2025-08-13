@@ -63,6 +63,45 @@ impl Program {
         self.execute(module_name, component_name, params, &empty_slots)
     }
 
+    pub fn execute_preview(
+        &self,
+        module_name: &str,
+        component_name: &str,
+        params: serde_json::Value,
+    ) -> Result<String, String> {
+        let component_map = self
+            .component_maps
+            .get(module_name)
+            .ok_or_else(|| format!("Module '{}' not found", module_name))?;
+
+        let component = component_map
+            .get(component_name)
+            .ok_or_else(|| format!("Component '{}' not found", component_name))?;
+
+        // Use preview content if available, otherwise fall back to regular content
+        let content_to_render = match &component.preview {
+            Some(preview_nodes) => preview_nodes,
+            None => &component.children,
+        };
+
+        let mut result = String::new();
+        let mut env = Environment::new();
+        
+        // Set up environment with parameters if the component has params
+        if let Some(params_as_attr) = &component.params_as_attr {
+            env.push(params_as_attr.var_name.value.clone(), params);
+        }
+
+        // Render each node in the preview content
+        let empty_slots = HashMap::new();
+        for node in content_to_render {
+            let rendered = self.evaluate_node(node, &empty_slots, &mut env, module_name)?;
+            result.push_str(&rendered);
+        }
+
+        Ok(result)
+    }
+
     /// Validate that the provided parameters match the expected JSON schema for the component
     pub fn validate(
         &self,

@@ -410,6 +410,7 @@ pub struct ComponentDefinitionNode {
     pub attributes: Vec<Attribute>,
     pub range: Range,
     pub children: Vec<Node>,
+    pub preview: Option<Vec<Node>>,
     pub entrypoint: bool,
     pub slots: Vec<String>,
 }

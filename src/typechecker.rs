@@ -97,6 +97,7 @@ pub fn typecheck(
         name,
         params_as_attr,
         children,
+        preview,
         slots,
         range,
         ..
@@ -124,6 +125,7 @@ pub fn typecheck(
                     errors,
                 );
             }
+            
             if !env.pop() {
                 errors.push(RangeError::unused_variable(
                     &params_as_attr.var_name.value,
@@ -144,18 +146,53 @@ pub fn typecheck(
                     errors,
                 );
             }
+            
             Type::Void
         };
 
+        // Add the component to component_info BEFORE typechecking preview content
         component_info.insert(
             name.clone(),
             ComponentInfo {
-                parameter_type,
+                parameter_type: parameter_type.clone(),
                 slots: slots.clone(),
                 definition_module: module.name.clone(),
                 definition_range: *range,
             },
         );
+
+        // Now typecheck preview content with the component available in component_info
+        if let Some(preview_nodes) = preview {
+            if let Some(params_as_attr) = params_as_attr {
+                env.push(params_as_attr.var_name.value.clone(), parameter_type.clone());
+                for child in preview_nodes {
+                    typecheck_node(
+                        child,
+                        &component_info,
+                        &mut env,
+                        &mut unifier,
+                        &mut annotations,
+                        &mut definition_links,
+                        &mut referenced_components,
+                        errors,
+                    );
+                }
+                env.pop();
+            } else {
+                for child in preview_nodes {
+                    typecheck_node(
+                        child,
+                        &component_info,
+                        &mut env,
+                        &mut unifier,
+                        &mut annotations,
+                        &mut definition_links,
+                        &mut referenced_components,
+                        errors,
+                    );
+                }
+            }
+        }
     }
 
     for RenderNode { children, .. } in &module.renders {

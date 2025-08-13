@@ -375,6 +375,8 @@ fn create_inspect_page(program: &runtime::Program) -> String {
                         true // No type info means no parameters
                     };
                     
+                    let has_preview = component_def.preview.is_some();
+                    
                     let component_classes = if has_no_params { 
                         "bg-gray-50 p-4 my-4 rounded-lg border-l-4 border-blue-600 cursor-pointer transition-all duration-200 hover:bg-blue-50 hover:-translate-y-0.5 hover:shadow-md" 
                     } else { 
@@ -391,7 +393,8 @@ fn create_inspect_page(program: &runtime::Program) -> String {
                     };
                     
                     html.push_str(&format!("<div class=\"{}\"{}>\n", component_classes, onclick));
-                    html.push_str(&format!("<div class=\"font-bold text-blue-600 text-lg\">🧩 {}</div>\n", escape_html(component_name)));
+                    let preview_indicator = if has_preview { " 🎨" } else { "" };
+                    html.push_str(&format!("<div class=\"font-bold text-blue-600 text-lg\">🧩 {}{}</div>\n", escape_html(component_name), preview_indicator));
                     
                     html.push_str("<div class=\"mt-2 text-sm text-gray-600\">\n");
                     
@@ -405,6 +408,11 @@ fn create_inspect_page(program: &runtime::Program) -> String {
                     // Show if it's an entrypoint
                     if component_def.entrypoint {
                         html.push_str("<strong>Type:</strong> Entrypoint component<br>\n");
+                    }
+                    
+                    // Show if it has preview content
+                    if has_preview {
+                        html.push_str("<strong>Preview:</strong> Custom preview available<br>\n");
                     }
                     
                     // Show slots if any
@@ -459,8 +467,8 @@ fn create_component_preview(program: &runtime::Program, module_name: &str, compo
         return Err("Component has parameters and cannot be previewed without parameter values".to_string());
     }
     
-    // Render the component with empty parameters
-    match program.execute_simple(module_name, component_name, serde_json::json!({})) {
+    // Render the component using preview content if available
+    match program.execute_preview(module_name, component_name, serde_json::json!({})) {
         Ok(rendered_content) => {
             let mut html = String::new();
             html.push_str("<!DOCTYPE html>\n");
