@@ -327,24 +327,9 @@ fn create_inspect_page(program: &runtime::Program) -> String {
     html.push_str("<!DOCTYPE html>\n");
     html.push_str("<html>\n<head>\n");
     html.push_str("<title>hop dev - Module Inspector</title>\n");
-    html.push_str("<style>\n");
-    html.push_str("body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 40px; background: #f9f9f9; }\n");
-    html.push_str("h1 { color: #333; border-bottom: 2px solid #007acc; padding-bottom: 10px; }\n");
-    html.push_str("h2 { color: #555; margin-top: 30px; }\n");
-    html.push_str("h3 { color: #666; margin-top: 20px; }\n");
-    html.push_str(".module { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }\n");
-    html.push_str(".component { background: #f5f5f5; padding: 15px; margin: 15px 0; border-radius: 6px; border-left: 4px solid #007acc; }\n");
-    html.push_str(".component.clickable { cursor: pointer; transition: all 0.2s ease; }\n");
-    html.push_str(".component.clickable:hover { background: #e8f4fd; transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0,0,0,0.15); }\n");
-    html.push_str(".component-name { font-weight: bold; color: #007acc; font-size: 1.1em; }\n");
-    html.push_str(".component-details { margin-top: 10px; font-size: 0.9em; color: #666; }\n");
-    html.push_str(".clickable-hint { color: #007acc; font-size: 0.8em; margin-top: 8px; font-style: italic; }\n");
-    html.push_str(".param-type { background: #e8f4fd; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 0.85em; }\n");
-    html.push_str(".stats { background: #e8f4fd; padding: 15px; border-radius: 6px; margin-bottom: 20px; }\n");
-    html.push_str(".no-components { color: #999; font-style: italic; }\n");
-    html.push_str("</style>\n");
-    html.push_str("</head>\n<body>\n");
-    html.push_str("<h1>🔍 hop dev - Module Inspector</h1>\n");
+    html.push_str("<script src=\"https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4\"></script>\n");
+    html.push_str("</head>\n<body class=\"font-sans m-10 bg-gray-100\">\n");
+    html.push_str("<h1 class=\"text-3xl font-bold text-gray-800 border-b-2 border-blue-600 pb-2\">🔍 hop dev - Module Inspector</h1>\n");
     
     // Get component maps from the program
     let component_maps = program.get_component_maps();
@@ -354,25 +339,25 @@ fn create_inspect_page(program: &runtime::Program) -> String {
     let total_modules = component_maps.len();
     let total_components: usize = component_maps.values().map(|components| components.len()).sum();
     
-    html.push_str(&format!("<div class=\"stats\">\n"));
+    html.push_str(&format!("<div class=\"bg-blue-50 p-4 rounded-lg mb-5\">\n"));
     html.push_str(&format!("<strong>📊 Statistics:</strong> {} modules, {} components total\n", total_modules, total_components));
     html.push_str("</div>\n");
     
     if component_maps.is_empty() {
-        html.push_str("<p class=\"no-components\">No modules found.</p>\n");
+        html.push_str("<p class=\"text-gray-500 italic\">No modules found.</p>\n");
     } else {
         // Sort modules for consistent output
         let mut sorted_modules: Vec<_> = component_maps.iter().collect();
         sorted_modules.sort_by_key(|(name, _)| *name);
         
         for (module_name, components) in sorted_modules {
-            html.push_str(&format!("<div class=\"module\">\n"));
-            html.push_str(&format!("<h2>📦 Module: <code>{}</code></h2>\n", escape_html(module_name)));
+            html.push_str(&format!("<div class=\"bg-white p-5 my-5 rounded-lg shadow-sm\">\n"));
+            html.push_str(&format!("<h2 class=\"text-gray-700 text-xl mt-0\">📦 Module: <code class=\"font-mono bg-gray-100 px-2 py-1 rounded\">{}</code></h2>\n", escape_html(module_name)));
             
             if components.is_empty() {
-                html.push_str("<p class=\"no-components\">No components in this module.</p>\n");
+                html.push_str("<p class=\"text-gray-500 italic\">No components in this module.</p>\n");
             } else {
-                html.push_str(&format!("<p>{} component{}</p>\n", components.len(), if components.len() == 1 { "" } else { "s" }));
+                html.push_str(&format!("<p class=\"text-gray-600\">{} component{}</p>\n", components.len(), if components.len() == 1 { "" } else { "s" }));
                 
                 // Sort components for consistent output  
                 let mut sorted_components: Vec<_> = components.iter().collect();
@@ -390,7 +375,11 @@ fn create_inspect_page(program: &runtime::Program) -> String {
                         true // No type info means no parameters
                     };
                     
-                    let component_class = if has_no_params { "component clickable" } else { "component" };
+                    let component_classes = if has_no_params { 
+                        "bg-gray-50 p-4 my-4 rounded-lg border-l-4 border-blue-600 cursor-pointer transition-all duration-200 hover:bg-blue-50 hover:-translate-y-0.5 hover:shadow-md" 
+                    } else { 
+                        "bg-gray-50 p-4 my-4 rounded-lg border-l-4 border-blue-600" 
+                    };
                     let onclick = if has_no_params {
                         let encoded_module = module_name.replace("/", "%2F");
                         let encoded_component = component_name.replace("/", "%2F");
@@ -401,15 +390,15 @@ fn create_inspect_page(program: &runtime::Program) -> String {
                         String::new()
                     };
                     
-                    html.push_str(&format!("<div class=\"{}\"{}>\n", component_class, onclick));
-                    html.push_str(&format!("<div class=\"component-name\">🧩 {}</div>\n", escape_html(component_name)));
+                    html.push_str(&format!("<div class=\"{}\"{}>\n", component_classes, onclick));
+                    html.push_str(&format!("<div class=\"font-bold text-blue-600 text-lg\">🧩 {}</div>\n", escape_html(component_name)));
                     
-                    html.push_str("<div class=\"component-details\">\n");
+                    html.push_str("<div class=\"mt-2 text-sm text-gray-600\">\n");
                     
                     // Show parameter type if available
                     if let Some(module_types) = parameter_types.get(module_name) {
                         if let Some(param_type) = module_types.get(component_name) {
-                            html.push_str(&format!("<strong>Parameters:</strong> <span class=\"param-type\">{}</span><br>\n", escape_html(&param_type.to_string())));
+                            html.push_str(&format!("<strong>Parameters:</strong> <span class=\"bg-blue-50 px-2 py-1 rounded font-mono text-xs\">{}</span><br>\n", escape_html(&param_type.to_string())));
                         }
                     }
                     
@@ -429,7 +418,7 @@ fn create_inspect_page(program: &runtime::Program) -> String {
                     
                     // Add clickable hint for components without parameters
                     if has_no_params {
-                        html.push_str("<div class=\"clickable-hint\">💡 Click to preview this component</div>\n");
+                        html.push_str("<div class=\"text-blue-600 text-xs mt-2 italic\">💡 Click to preview this component</div>\n");
                     }
                     
                     html.push_str("</div>\n");
@@ -478,21 +467,14 @@ fn create_component_preview(program: &runtime::Program, module_name: &str, compo
             html.push_str("<html>\n<head>\n");
             html.push_str(&format!("<title>Preview: {} from {}</title>\n", escape_html(component_name), escape_html(module_name)));
             html.push_str("<script src=\"https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4\"></script>\n");
-            html.push_str("<style>\n");
-            html.push_str("body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 20px; background: #f9f9f9; }\n");
-            html.push_str(".preview-header { background: white; padding: 15px 20px; margin: -20px -20px 20px -20px; border-bottom: 1px solid #ddd; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }\n");
-            html.push_str(".preview-title { margin: 0; color: #333; font-size: 1.2em; }\n");
-            html.push_str(".preview-subtitle { margin: 5px 0 0 0; color: #666; font-size: 0.9em; }\n");
-            html.push_str(".preview-content { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }\n");
-            html.push_str("</style>\n");
-            html.push_str("</head>\n<body>\n");
+            html.push_str("</head>\n<body class=\"font-sans m-0 p-5 bg-gray-100\">\n");
             
-            html.push_str("<div class=\"preview-header\">\n");
-            html.push_str(&format!("<h1 class=\"preview-title\">🧩 Preview: {}</h1>\n", escape_html(component_name)));
-            html.push_str(&format!("<p class=\"preview-subtitle\">From module: {}</p>\n", escape_html(module_name)));
+            html.push_str("<div class=\"bg-white px-5 py-4 -mx-5 -mt-5 mb-5 border-b border-gray-300 shadow-sm\">\n");
+            html.push_str(&format!("<h1 class=\"text-xl font-bold text-gray-800 m-0\">🧩 Preview: {}</h1>\n", escape_html(component_name)));
+            html.push_str(&format!("<p class=\"text-gray-600 text-sm mt-1 mb-0\">From module: {}</p>\n", escape_html(module_name)));
             html.push_str("</div>\n");
             
-            html.push_str("<div class=\"preview-content\">\n");
+            html.push_str("<div class=\"preview-content bg-white p-5 rounded-lg shadow-sm\">\n");
             html.push_str(&rendered_content);
             html.push_str("</div>\n");
             
