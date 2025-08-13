@@ -8,16 +8,25 @@
 	<head>
 		<title>404 Not Found</title>
 		<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+		<link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+		<style>
+			.font-inter { font-family: Inter; }
+		</style>
 	</head>
-	<body style="background: black; color: white;">
+	<body class="font-inter">
 		<page-container>
-			<error-heading>Route not found</error-heading>
+			<div class="pb-4">
+				<div class="uppercase tracking-widest text-sm font-medium">Error</div>
+				<error-heading>Route not found</error-heading>
+			</div>
 			
-			<h2 style="font-size: 18px; margin-bottom: 12px;">Available Routes</h2>
-			<ul style="padding-left: 0px; margin-left: 20px; margin-bottom: 24px;">
+			<h2>Available Routes</h2>
+			<ul class="ml-4 p-4 list-disc">
+		  		<li><a href="/foo">/foo</a></li>
+		  		<li><a href="/bar">/bar</a></li>
 			</ul>
 			
-			<p style="color: #9ca3af;">
+			<p>
 				To add this route, update your <code-text>build.hop</code-text> file with an entry for this path.
 			</p>
 		</page-container>
