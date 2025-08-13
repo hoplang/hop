@@ -283,6 +283,7 @@ window.addEventListener("beforeunload", function() {
 // Function to build hop modules and execute a specific entrypoint
 
 const ERROR_TEMPLATES: &str = include_str!("../hop/error_pages.hop");
+const INSPECT_TEMPLATES: &str = include_str!("../hop/inspect_pages.hop");
 
 fn create_error_page(error: &anyhow::Error) -> String {
     let modules = vec![("error_pages".to_string(), ERROR_TEMPLATES.to_string())];
@@ -322,149 +323,140 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
 }
 
 fn create_inspect_page(program: &runtime::Program) -> String {
-    
-    let mut html = String::new();
-    html.push_str("<!DOCTYPE html>\n");
-    html.push_str("<html>\n<head>\n");
-    html.push_str("<title>hop dev - Module Inspector</title>\n");
-    html.push_str("<script src=\"https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4\"></script>\n");
-    html.push_str("</head>\n<body class=\"font-sans m-10 bg-gray-100\">\n");
-    html.push_str("<h1 class=\"text-3xl font-bold text-gray-800 border-b-2 border-blue-600 pb-2\">🔍 hop dev - Module Inspector</h1>\n");
-    
+    let modules = vec![("inspect_pages".to_string(), INSPECT_TEMPLATES.to_string())];
+
+    let inspect_program = match compile(modules) {
+        Ok(program) => program,
+        Err(e) => return format!("Template compilation error: {}", e),
+    };
+
     // Get component maps from the program
     let component_maps = program.get_component_maps();
     let parameter_types = program.get_parameter_types();
-    
+
     // Calculate statistics
     let total_modules = component_maps.len();
-    let total_components: usize = component_maps.values().map(|components| components.len()).sum();
-    
-    html.push_str(&format!("<div class=\"bg-blue-50 p-4 rounded-lg mb-5\">\n"));
-    html.push_str(&format!("<strong>📊 Statistics:</strong> {} modules, {} components total\n", total_modules, total_components));
-    html.push_str("</div>\n");
-    
-    if component_maps.is_empty() {
-        html.push_str("<p class=\"text-gray-500 italic\">No modules found.</p>\n");
-    } else {
-        // Sort modules for consistent output
-        let mut sorted_modules: Vec<_> = component_maps.iter().collect();
-        sorted_modules.sort_by_key(|(name, _)| *name);
-        
-        for (module_name, components) in sorted_modules {
-            html.push_str(&format!("<div class=\"bg-white p-5 my-5 rounded-lg shadow-sm\">\n"));
-            html.push_str(&format!("<h2 class=\"text-gray-700 text-xl mt-0\">📦 Module: <code class=\"font-mono bg-gray-100 px-2 py-1 rounded\">{}</code></h2>\n", escape_html(module_name)));
-            
-            if components.is_empty() {
-                html.push_str("<p class=\"text-gray-500 italic\">No components in this module.</p>\n");
+    let total_components: usize = component_maps
+        .values()
+        .map(|components| components.len())
+        .sum();
+
+    // Build data structure for the template
+    let mut modules_data = Vec::new();
+
+    // Sort modules for consistent output
+    let mut sorted_modules: Vec<_> = component_maps.iter().collect();
+    sorted_modules.sort_by_key(|(name, _)| *name);
+
+    for (module_name, components) in sorted_modules {
+        let mut components_data = Vec::new();
+
+        // Sort components for consistent output
+        let mut sorted_components: Vec<_> = components.iter().collect();
+        sorted_components.sort_by_key(|(name, _)| *name);
+
+        for (component_name, component_def) in sorted_components {
+            let has_preview = component_def.preview.is_some();
+            let encoded_module = module_name.replace("/", "%2F");
+            let encoded_component = component_name.replace("/", "%2F");
+
+            let parameter_type = if let Some(module_types) = parameter_types.get(module_name) {
+                module_types.get(component_name).map(|t| t.to_string())
             } else {
-                html.push_str(&format!("<p class=\"text-gray-600\">{} component{}</p>\n", components.len(), if components.len() == 1 { "" } else { "s" }));
-                
-                // Sort components for consistent output  
-                let mut sorted_components: Vec<_> = components.iter().collect();
-                sorted_components.sort_by_key(|(name, _)| *name);
-                
-                for (component_name, component_def) in sorted_components {
-                    let has_preview = component_def.preview.is_some();
-                    
-                    let component_classes = if has_preview { 
-                        "bg-gray-50 p-4 my-4 rounded-lg border-l-4 border-blue-600 cursor-pointer transition-all duration-200 hover:bg-blue-50 hover:-translate-y-0.5 hover:shadow-md" 
-                    } else { 
-                        "bg-gray-50 p-4 my-4 rounded-lg border-l-4 border-blue-600" 
-                    };
-                    let onclick = if has_preview {
-                        let encoded_module = module_name.replace("/", "%2F");
-                        let encoded_component = component_name.replace("/", "%2F");
-                        format!(" onclick=\"window.open('/_inspect/{}/{}', '_blank', 'width=800,height=600,scrollbars=yes')\"", 
-                            escape_html(&encoded_module), 
-                            escape_html(&encoded_component))
-                    } else {
-                        String::new()
-                    };
-                    
-                    html.push_str(&format!("<div class=\"{}\"{}>\n", component_classes, onclick));
-                    let preview_indicator = if has_preview { " 🎨" } else { "" };
-                    html.push_str(&format!("<div class=\"font-bold text-blue-600 text-lg\">🧩 {}{}</div>\n", escape_html(component_name), preview_indicator));
-                    
-                    html.push_str("<div class=\"mt-2 text-sm text-gray-600\">\n");
-                    
-                    // Show parameter type if available
-                    if let Some(module_types) = parameter_types.get(module_name) {
-                        if let Some(param_type) = module_types.get(component_name) {
-                            html.push_str(&format!("<strong>Parameters:</strong> <span class=\"bg-blue-50 px-2 py-1 rounded font-mono text-xs\">{}</span><br>\n", escape_html(&param_type.to_string())));
-                        }
-                    }
-                    
-                    // Show if it's an entrypoint
-                    if component_def.entrypoint {
-                        html.push_str("<strong>Type:</strong> Entrypoint component<br>\n");
-                    }
-                    
-                    // Show if it has preview content
-                    if has_preview {
-                        html.push_str("<strong>Preview:</strong> Custom preview available<br>\n");
-                    }
-                    
-                    // Show slots if any
-                    if !component_def.slots.is_empty() {
-                        let slots = component_def.slots.iter()
-                            .map(|s| escape_html(s))
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        html.push_str(&format!("<strong>Slots:</strong> {}<br>\n", slots));
-                    }
-                    
-                    // Add clickable hint for components with preview
-                    if has_preview {
-                        html.push_str("<div class=\"text-blue-600 text-xs mt-2 italic\">💡 Click to preview this component</div>\n");
-                    }
-                    
-                    html.push_str("</div>\n");
-                    html.push_str("</div>\n");
-                }
-            }
-            html.push_str("</div>\n");
+                None
+            };
+
+            let slots_text = if component_def.slots.is_empty() {
+                None
+            } else {
+                Some(component_def.slots.join(", "))
+            };
+
+            components_data.push(serde_json::json!({
+                "name": component_name,
+                "has_preview": has_preview,
+                "link": format!("/_inspect/{encoded_module}/{encoded_component}"),
+                "parameter_type": parameter_type,
+                "is_entrypoint": component_def.entrypoint,
+                "slots": component_def.slots,
+                "slots_text": slots_text
+            }));
         }
+
+        modules_data.push(serde_json::json!({
+            "name": module_name,
+            "components": components_data
+        }));
     }
-    
-    html.push_str("</body>\n</html>");
-    inject_hot_reload_script(&html)
+
+    let inspect_data = serde_json::json!({
+        "total_modules": total_modules,
+        "total_components": total_components,
+        "modules": modules_data
+    });
+
+    match inspect_program.execute_simple("inspect_pages", "inspect-page", inspect_data) {
+        Ok(html) => inject_hot_reload_script(&html),
+        Err(e) => format!("Error rendering inspect template: {}", e),
+    }
 }
 
-fn create_component_preview(program: &runtime::Program, module_name: &str, component_name: &str) -> Result<String, String> {
+fn create_component_preview(
+    program: &runtime::Program,
+    module_name: &str,
+    component_name: &str,
+) -> Result<String, String> {
     // Check if component exists
     let component_maps = program.get_component_maps();
-    
-    let component_map = component_maps.get(module_name)
+
+    let component_map = component_maps
+        .get(module_name)
         .ok_or_else(|| format!("Module '{}' not found", module_name))?;
-    
-    let component_def = component_map.get(component_name)
-        .ok_or_else(|| format!("Component '{}' not found in module '{}'", component_name, module_name))?;
-    
+
+    let component_def = component_map.get(component_name).ok_or_else(|| {
+        format!(
+            "Component '{}' not found in module '{}'",
+            component_name, module_name
+        )
+    })?;
+
     if component_def.preview.is_none() {
         return Err("Component does not have preview content defined".to_string());
     }
-    
+
     // Render the component using preview content if available
     match program.execute_preview(module_name, component_name, serde_json::json!({})) {
         Ok(rendered_content) => {
             let mut html = String::new();
             html.push_str("<!DOCTYPE html>\n");
             html.push_str("<html>\n<head>\n");
-            html.push_str(&format!("<title>Preview: {} from {}</title>\n", escape_html(component_name), escape_html(module_name)));
-            html.push_str("<script src=\"https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4\"></script>\n");
+            html.push_str(&format!(
+                "<title>Preview: {} from {}</title>\n",
+                escape_html(component_name),
+                escape_html(module_name)
+            ));
+            html.push_str(
+                "<script src=\"https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4\"></script>\n",
+            );
             html.push_str("</head>\n<body class=\"font-sans m-0 p-5 bg-gray-100\">\n");
-            
+
             html.push_str("<div class=\"bg-white px-5 py-4 -mx-5 -mt-5 mb-5 border-b border-gray-300 shadow-sm\">\n");
-            html.push_str(&format!("<h1 class=\"text-xl font-bold text-gray-800 m-0\">🧩 Preview: {}</h1>\n", escape_html(component_name)));
-            html.push_str(&format!("<p class=\"text-gray-600 text-sm mt-1 mb-0\">From module: {}</p>\n", escape_html(module_name)));
+            html.push_str(&format!(
+                "<h1 class=\"text-xl font-bold text-gray-800 m-0\">🧩 Preview: {}</h1>\n",
+                escape_html(component_name)
+            ));
+            html.push_str(&format!(
+                "<p class=\"text-gray-600 text-sm mt-1 mb-0\">From module: {}</p>\n",
+                escape_html(module_name)
+            ));
             html.push_str("</div>\n");
-            
+
             html.push_str("<div class=\"preview-content bg-white p-5 rounded-lg shadow-sm\">\n");
             html.push_str(&rendered_content);
             html.push_str("</div>\n");
-            
+
             html.push_str("</body>\n</html>");
-            
+
             // Use the existing hot reload injection function
             Ok(inject_hot_reload_script(&html))
         }
@@ -557,7 +549,7 @@ async fn hop_dev(
         }),
     );
 
-    // Add preview endpoint for rendering individual components  
+    // Add preview endpoint for rendering individual components
     let preview_root = root.clone();
     router = router.route(
         "/_inspect/{module}/{component}",

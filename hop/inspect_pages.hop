@@ -1,0 +1,82 @@
+<module-header class="text-gray-700 text-xl mt-0">
+	📦 Module: <code class="font-mono bg-gray-100 px-2 py-1 rounded"><slot-default /></code>
+</module-header>
+
+<component-item class="bg-gray-50 p-4 my-4 rounded-lg border-l-4 border-blue-600">
+	<div class="font-bold text-blue-600 text-lg">🧩 <slot-name /></div>
+	<div class="mt-2 text-sm text-gray-600">
+		<slot-details />
+	</div>
+	<hop-x-preview>
+		<component-item>
+			<with-name>test-component</with-name>
+			<with-details>component details</with-details>
+		</component-item>
+	</hop-x-preview>
+</component-item>
+
+<component-item-clickable class="bg-gray-50 p-4 my-4 rounded-lg border-l-4 border-blue-600 cursor-pointer transition-all duration-200 hover:bg-blue-50 hover:-translate-y-0.5 hover:shadow-md">
+	<div class="font-bold text-blue-600 text-lg">🧩 <slot-name /> 🎨</div>
+	<div class="mt-2 text-sm text-gray-600">
+		<slot-details />
+		<div class="text-blue-600 text-xs mt-2 italic">💡 Click to preview this component</div>
+	</div>
+</component-item-clickable>
+
+<stats-box class="bg-blue-50 p-4 rounded-lg mb-5">
+	<strong>📊 Statistics:</strong> <slot-default />
+</stats-box>
+
+<param-type class="bg-blue-50 px-2 py-1 rounded font-mono text-xs">
+	<slot-default />
+</param-type>
+
+<inspect-page {data} entrypoint>
+	<!DOCTYPE html>
+	<html>
+	<head>
+		<title>hop dev - Module Inspector</title>
+		<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+	</head>
+	<body class="font-sans m-10 bg-gray-100">
+		<h1 class="text-3xl font-bold text-gray-800 border-b-2 border-blue-600 pb-2">🔍 hop dev - Module Inspector</h1>
+		
+		<stats-box>{data.total_modules} modules, {data.total_components} components total</stats-box>
+		
+		<for {module in data.modules}>
+			<div class="bg-white p-5 my-5 rounded-lg shadow-sm">
+				<module-header>{module.name}</module-header>
+				
+				<for {component in module.components}>
+					<if {component.has_preview}>
+						<a set-href="component.link">
+						<component-item-clickable>
+							<with-name>{component.name}</with-name>
+							<with-details>
+								<strong>Parameters:</strong> <param-type>{component.parameter_type}</param-type><br>
+								<if {component.is_entrypoint}>
+									<strong>Type:</strong> Entrypoint component<br>
+								</if>
+								<strong>Preview:</strong> Custom preview available<br>
+								<strong>Slots:</strong> {component.slots_text}<br>
+							</with-details>
+						</component-item-clickable>
+						</a>
+					</if>
+					
+					<component-item>
+						<with-name>{component.name}</with-name>
+						<with-details>
+							<strong>Parameters:</strong> <param-type>{component.parameter_type}</param-type><br>
+							<if {component.is_entrypoint}>
+								<strong>Type:</strong> Entrypoint component<br>
+							</if>
+							<strong>Slots:</strong> {component.slots_text}<br>
+						</with-details>
+					</component-item>
+				</for>
+			</div>
+		</for>
+	</body>
+	</html>
+</inspect-page>

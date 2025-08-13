@@ -287,21 +287,23 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                     // Separate preview content from main children
                     let mut main_children = Vec::new();
                     let mut preview_children = None;
-                    
+
                     for child in &tree.children {
                         if let TokenKind::StartTag = child.token.kind {
                             if child.token.value == "hop-x-preview" {
                                 preview_children = Some(
-                                    child.children.iter()
+                                    child
+                                        .children
+                                        .iter()
                                         .map(|c| construct_node(c, errors))
-                                        .collect()
+                                        .collect(),
                                 );
                                 continue; // Don't add to main children
                             }
                         }
                         main_children.push(construct_node(child, errors));
                     }
-                    
+
                     let children = main_children;
 
                     let as_attr = t.get_attribute("as");

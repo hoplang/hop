@@ -86,7 +86,7 @@ impl Program {
 
         let mut result = String::new();
         let mut env = Environment::new();
-        
+
         // Set up environment with parameters if the component has params
         if let Some(params_as_attr) = &component.params_as_attr {
             env.push(params_as_attr.var_name.value.clone(), params);

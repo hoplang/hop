@@ -125,7 +125,7 @@ pub fn typecheck(
                     errors,
                 );
             }
-            
+
             if !env.pop() {
                 errors.push(RangeError::unused_variable(
                     &params_as_attr.var_name.value,
@@ -146,7 +146,7 @@ pub fn typecheck(
                     errors,
                 );
             }
-            
+
             Type::Void
         };
 
@@ -164,7 +164,10 @@ pub fn typecheck(
         // Now typecheck preview content with the component available in component_info
         if let Some(preview_nodes) = preview {
             if let Some(params_as_attr) = params_as_attr {
-                env.push(params_as_attr.var_name.value.clone(), parameter_type.clone());
+                env.push(
+                    params_as_attr.var_name.value.clone(),
+                    parameter_type.clone(),
+                );
                 for child in preview_nodes {
                     typecheck_node(
                         child,
