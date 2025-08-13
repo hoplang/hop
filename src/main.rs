@@ -334,8 +334,11 @@ fn create_inspect_page(program: &runtime::Program) -> String {
     html.push_str("h3 { color: #666; margin-top: 20px; }\n");
     html.push_str(".module { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }\n");
     html.push_str(".component { background: #f5f5f5; padding: 15px; margin: 15px 0; border-radius: 6px; border-left: 4px solid #007acc; }\n");
+    html.push_str(".component.clickable { cursor: pointer; transition: all 0.2s ease; }\n");
+    html.push_str(".component.clickable:hover { background: #e8f4fd; transform: translateY(-1px); box-shadow: 0 4px 8px rgba(0,0,0,0.15); }\n");
     html.push_str(".component-name { font-weight: bold; color: #007acc; font-size: 1.1em; }\n");
     html.push_str(".component-details { margin-top: 10px; font-size: 0.9em; color: #666; }\n");
+    html.push_str(".clickable-hint { color: #007acc; font-size: 0.8em; margin-top: 8px; font-style: italic; }\n");
     html.push_str(".param-type { background: #e8f4fd; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 0.85em; }\n");
     html.push_str(".stats { background: #e8f4fd; padding: 15px; border-radius: 6px; margin-bottom: 20px; }\n");
     html.push_str(".no-components { color: #999; font-style: italic; }\n");
@@ -376,7 +379,29 @@ fn create_inspect_page(program: &runtime::Program) -> String {
                 sorted_components.sort_by_key(|(name, _)| *name);
                 
                 for (component_name, component_def) in sorted_components {
-                    html.push_str("<div class=\"component\">\n");
+                    // Check if component has no parameters (void type or no parameters)
+                    let has_no_params = if let Some(module_types) = parameter_types.get(module_name) {
+                        if let Some(param_type) = module_types.get(component_name) {
+                            matches!(param_type, common::Type::Void)
+                        } else {
+                            true // No type info means no parameters
+                        }
+                    } else {
+                        true // No type info means no parameters
+                    };
+                    
+                    let component_class = if has_no_params { "component clickable" } else { "component" };
+                    let onclick = if has_no_params {
+                        let encoded_module = module_name.replace("/", "%2F");
+                        let encoded_component = component_name.replace("/", "%2F");
+                        format!(" onclick=\"window.open('/_inspect/{}/{}', '_blank', 'width=800,height=600,scrollbars=yes')\"", 
+                            escape_html(&encoded_module), 
+                            escape_html(&encoded_component))
+                    } else {
+                        String::new()
+                    };
+                    
+                    html.push_str(&format!("<div class=\"{}\"{}>\n", component_class, onclick));
                     html.push_str(&format!("<div class=\"component-name\">🧩 {}</div>\n", escape_html(component_name)));
                     
                     html.push_str("<div class=\"component-details\">\n");
@@ -402,6 +427,11 @@ fn create_inspect_page(program: &runtime::Program) -> String {
                         html.push_str(&format!("<strong>Slots:</strong> {}<br>\n", slots));
                     }
                     
+                    // Add clickable hint for components without parameters
+                    if has_no_params {
+                        html.push_str("<div class=\"clickable-hint\">💡 Click to preview this component</div>\n");
+                    }
+                    
                     html.push_str("</div>\n");
                     html.push_str("</div>\n");
                 }
@@ -412,6 +442,67 @@ fn create_inspect_page(program: &runtime::Program) -> String {
     
     html.push_str("</body>\n</html>");
     inject_hot_reload_script(&html)
+}
+
+fn create_component_preview(program: &runtime::Program, module_name: &str, component_name: &str) -> Result<String, String> {
+    // Check if component exists
+    let component_maps = program.get_component_maps();
+    let parameter_types = program.get_parameter_types();
+    
+    let component_map = component_maps.get(module_name)
+        .ok_or_else(|| format!("Module '{}' not found", module_name))?;
+    
+    let _component_def = component_map.get(component_name)
+        .ok_or_else(|| format!("Component '{}' not found in module '{}'", component_name, module_name))?;
+    
+    // Check if component has no parameters
+    let has_no_params = if let Some(module_types) = parameter_types.get(module_name) {
+        if let Some(param_type) = module_types.get(component_name) {
+            matches!(param_type, common::Type::Void)
+        } else {
+            true
+        }
+    } else {
+        true
+    };
+    
+    if !has_no_params {
+        return Err("Component has parameters and cannot be previewed without parameter values".to_string());
+    }
+    
+    // Render the component with empty parameters
+    match program.execute_simple(module_name, component_name, serde_json::json!({})) {
+        Ok(rendered_content) => {
+            let mut html = String::new();
+            html.push_str("<!DOCTYPE html>\n");
+            html.push_str("<html>\n<head>\n");
+            html.push_str(&format!("<title>Preview: {} from {}</title>\n", escape_html(component_name), escape_html(module_name)));
+            html.push_str("<script src=\"https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4\"></script>\n");
+            html.push_str("<style>\n");
+            html.push_str("body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 0; padding: 20px; background: #f9f9f9; }\n");
+            html.push_str(".preview-header { background: white; padding: 15px 20px; margin: -20px -20px 20px -20px; border-bottom: 1px solid #ddd; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }\n");
+            html.push_str(".preview-title { margin: 0; color: #333; font-size: 1.2em; }\n");
+            html.push_str(".preview-subtitle { margin: 5px 0 0 0; color: #666; font-size: 0.9em; }\n");
+            html.push_str(".preview-content { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }\n");
+            html.push_str("</style>\n");
+            html.push_str("</head>\n<body>\n");
+            
+            html.push_str("<div class=\"preview-header\">\n");
+            html.push_str(&format!("<h1 class=\"preview-title\">🧩 Preview: {}</h1>\n", escape_html(component_name)));
+            html.push_str(&format!("<p class=\"preview-subtitle\">From module: {}</p>\n", escape_html(module_name)));
+            html.push_str("</div>\n");
+            
+            html.push_str("<div class=\"preview-content\">\n");
+            html.push_str(&rendered_content);
+            html.push_str("</div>\n");
+            
+            html.push_str("</body>\n</html>");
+            
+            // Use the existing hot reload injection function
+            Ok(inject_hot_reload_script(&html))
+        }
+        Err(e) => Err(format!("Failed to render component: {}", e)),
+    }
 }
 
 fn create_file_watcher(
@@ -490,6 +581,35 @@ async fn hop_dev(
                 Ok(program) => {
                     let html = create_inspect_page(&program);
                     Ok(axum::response::Html(html))
+                }
+                Err(e) => Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    axum::response::Html(create_error_page(&e)),
+                )),
+            }
+        }),
+    );
+
+    // Add preview endpoint for rendering individual components  
+    let preview_root = root.clone();
+    router = router.route(
+        "/_inspect/{module}/{component}",
+        get(async move |axum::extract::Path((module_name, component_name)): axum::extract::Path<(String, String)>| {
+            // URL decode the parameters
+            let decoded_module = module_name.replace("%2F", "/");
+            let decoded_component = component_name.replace("%2F", "/");
+            eprintln!("DEBUG: Inspect preview route called with module='{}', component='{}'", decoded_module, decoded_component);
+            match files::load_all_hop_modules(&preview_root).and_then(|modules| {
+                compile(modules).map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
+            }) {
+                Ok(program) => {
+                    match create_component_preview(&program, &decoded_module, &decoded_component) {
+                        Ok(html) => Ok(axum::response::Html(html)),
+                        Err(e) => Err((
+                            StatusCode::NOT_FOUND,
+                            axum::response::Html(format!("<h1>Component Preview Error</h1><p>Module: {}<br>Component: {}<br>Error: {}</p>", escape_html(&decoded_module), escape_html(&decoded_component), escape_html(&e))),
+                        )),
+                    }
                 }
                 Err(e) => Err((
                     StatusCode::INTERNAL_SERVER_ERROR,
