@@ -1,0 +1,102 @@
+<heading-box class="border">
+	<div class="p-3 py-2">
+		<span class="font-medium uppercase">
+		  <slot-title/>
+		</span>
+		<slot-heading/>
+	</div>
+	<hr/>
+	<div class="p-3 flex flex-col gap-2">
+		<slot-body/>
+	</div>
+	<hop-x-preview>
+		<div class="grid grid-cols-2 gap-6">
+			<heading-box>
+				<with-title>
+					Component
+				</with-title>
+				<with-heading>
+					another-component
+				</with-heading>
+				<with-body>
+					Lorem ipsum dolor sit amet<br/>
+					Foo bar
+				</with-body>
+			</heading-box>
+			<heading-box>
+				<with-title>
+					Component
+				</with-title>
+				<with-heading>
+					another-component
+				</with-heading>
+				<with-body>
+					<div>
+						Lorem ipsum dolor sit amet<br/>
+						Foo bar
+					</div>
+					<heading-box>
+						<with-title>
+							NESTING
+						</with-title>
+						<with-heading>
+							A nested box
+						</with-heading>
+						<with-body>
+							nested
+						</with-body>
+					</heading-box>
+					<heading-box>
+						<with-title>
+							NESTING
+						</with-title>
+						<with-heading>
+							A nested box
+						</with-heading>
+						<with-body>
+							nested
+						</with-body>
+					</heading-box>
+				</with-body>
+			</heading-box>
+			<div class="col-span-2">
+				<heading-box>
+					<with-title>
+						Component
+					</with-title>
+					<with-heading>
+						another-component
+					</with-heading>
+					<with-body>
+						<div>
+							Lorem ipsum dolor sit amet<br/>
+							Foo bar
+						</div>
+						<heading-box>
+							<with-title>
+								NESTING
+							</with-title>
+							<with-heading>
+								A nested box
+							</with-heading>
+							<with-body>
+								nested
+							</with-body>
+						</heading-box>
+						<heading-box>
+							<with-title>
+								NESTING
+							</with-title>
+							<with-heading>
+								A nested box
+							</with-heading>
+							<with-body>
+								nested
+							</with-body>
+						</heading-box>
+					</with-body>
+				</heading-box>
+			</div>
+		</div>
+	</hop-x-preview>
+</heading-box>

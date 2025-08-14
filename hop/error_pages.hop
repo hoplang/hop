@@ -1,36 +1,33 @@
+<import component="heading-box" from="hop/ui">
+
 <error-heading class="text-rose-600 text-2xl font-medium">
 	<slot-default />
 </error-heading>
 
-<pretty-error>
-	<div class="uppercase tracking-widest text-sm font-medium">Error</div>
-	<error-heading><slot-default /></error-heading>
-	<hop-x-preview>
-		<pretty-error>An error occurred</pretty-error>
-	</hop-x-preview>
-</pretty-error>
-
 <code-text as="span">
-	<code class="rounded border border-gray-300 px-1 py-0.5"><slot-default /></code>
+	<code class="italic"><slot-default /></code>
 	<hop-x-preview>
 		Try to edit <code-text>file.hop</code-text> to see changes.
 	</hop-x-preview>
 </code-text>
 
 <route-not-found-error class="flex flex-col gap-4">
-	<pretty-error>Route not found</pretty-error>
-	<p>
-		The requested route <code-text><slot-requested-path /></code-text> was not found in the build file.
-	</p>
-	<div class="p-3 border border-zinc-300 rounded">
-		<h2 class="text-md">Available Routes</h2>
-		<ul class="list-disc ml-6 py-2">
-			<slot-available-routes/>
-		</ul>
-	</div>
-	<p>
-		To add this route, update your <code-text>build.hop</code-text> file with an entry for this path.
-	</p>
+	<heading-box>
+		<with-title>Error</with-title>
+		<with-heading>Route not found</with-heading>
+		<with-body>
+			<div>
+			The requested route <code-text><slot-requested-path /></code-text> was not found in the build file.
+			</div>
+			Available routes:<br/>
+			<ul class="ml-6" style="list-style-type: square;">
+				<slot-available-routes/>
+			</ul>
+			<p>
+				To add this route, update your <code-text>build.hop</code-text> file with an entry for this path.
+			</p>
+		</with-body>
+	</heading-box>
 	<hop-x-preview>
 		<div class="p-8">
 			<route-not-found-error>
@@ -65,6 +62,10 @@
 	<head>
 		<title>Error</title>
 		<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+		<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+        <style>
+          body { font-family: "JetBrains Mono"; }
+        </style>
 	</head>
 	<body>
 		<page-container>
@@ -81,6 +82,10 @@
 	<head>
 		<title>404 Not Found</title>
 		<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+		<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+        <style>
+          body { font-family: "JetBrains Mono"; }
+        </style>
 	</head>
 	<body>
 		<page-container>

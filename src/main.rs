@@ -286,7 +286,13 @@ const ERROR_TEMPLATES: &str = include_str!("../hop/error_pages.hop");
 const INSPECT_TEMPLATES: &str = include_str!("../hop/inspect_pages.hop");
 
 fn create_error_page(error: &anyhow::Error) -> String {
-    let modules = vec![("error_pages".to_string(), ERROR_TEMPLATES.to_string())];
+    let modules = vec![
+        ("hop/error_pages".to_string(), ERROR_TEMPLATES.to_string()),
+        (
+            "hop/inspect_pages".to_string(),
+            INSPECT_TEMPLATES.to_string(),
+        ),
+    ];
 
     let program = match compile(modules) {
         Ok(program) => program,
@@ -297,14 +303,20 @@ fn create_error_page(error: &anyhow::Error) -> String {
         "message": format!("{:#}", error)
     });
 
-    match program.execute_simple("error_pages", "generic-error", error_data) {
+    match program.execute_simple("hop/error_pages", "generic-error", error_data) {
         Ok(html) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
     }
 }
 
 fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
-    let modules = vec![("error_pages".to_string(), ERROR_TEMPLATES.to_string())];
+    let modules = vec![
+        ("hop/error_pages".to_string(), ERROR_TEMPLATES.to_string()),
+        (
+            "hop/inspect_pages".to_string(),
+            INSPECT_TEMPLATES.to_string(),
+        ),
+    ];
 
     let program = match compile(modules) {
         Ok(program) => program,
@@ -316,14 +328,20 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
         "available_routes": available_routes
     });
 
-    match program.execute_simple("error_pages", "not-found-error", not_found_data) {
+    match program.execute_simple("hop/error_pages", "not-found-error", not_found_data) {
         Ok(html) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
     }
 }
 
 fn create_inspect_page(program: &runtime::Program) -> String {
-    let modules = vec![("inspect_pages".to_string(), INSPECT_TEMPLATES.to_string())];
+    let modules = vec![
+        ("hop/error_pages".to_string(), ERROR_TEMPLATES.to_string()),
+        (
+            "hop/inspect_pages".to_string(),
+            INSPECT_TEMPLATES.to_string(),
+        ),
+    ];
 
     let inspect_program = match compile(modules) {
         Ok(program) => program,
@@ -395,7 +413,7 @@ fn create_inspect_page(program: &runtime::Program) -> String {
         "modules": modules_data
     });
 
-    match inspect_program.execute_simple("inspect_pages", "inspect-page", inspect_data) {
+    match inspect_program.execute_simple("hop/inspect_pages", "inspect-page", inspect_data) {
         Ok(html) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering inspect template: {}", e),
     }
