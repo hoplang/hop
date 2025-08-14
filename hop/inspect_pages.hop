@@ -71,8 +71,8 @@
 		
 		document.addEventListener('mousemove', (e) => {
 			if (isDragging) {
-				frameElement.style.left = (e.clientX - startX) + 'px';
-				frameElement.style.top = (e.clientY - startY) + 'px';
+				frameElement.style.left = (e.clientX + window.scrollX - startX) + 'px';
+				frameElement.style.top = (e.clientY + window.scrollY - startY) + 'px';
 			}
 		});
 		
