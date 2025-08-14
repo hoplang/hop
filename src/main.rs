@@ -18,6 +18,7 @@ use common::escape_html;
 use compiler::compile;
 use files::ProjectRoot;
 use std::path::Path;
+use std::sync::OnceLock;
 
 #[derive(Parser)]
 #[command(name = "hop")]
@@ -286,20 +287,25 @@ const ERROR_TEMPLATES: &str = include_str!("../hop/error_pages.hop");
 const INSPECT_TEMPLATES: &str = include_str!("../hop/inspect_pages.hop");
 const UI_TEMPLATES: &str = include_str!("../hop/ui.hop");
 
-fn create_error_page(error: &anyhow::Error) -> String {
-    let modules = vec![
-        ("hop/error_pages".to_string(), ERROR_TEMPLATES.to_string()),
-        (
-            "hop/inspect_pages".to_string(),
-            INSPECT_TEMPLATES.to_string(),
-        ),
-        ("hop/ui".to_string(), UI_TEMPLATES.to_string()),
-    ];
+static CACHED_INSPECT_PROGRAM: OnceLock<runtime::Program> = OnceLock::new();
 
-    let program = match compile(modules) {
-        Ok(program) => program,
-        Err(e) => return format!("Template compilation error: {}", e),
-    };
+fn get_inspect_program() -> &'static runtime::Program {
+    CACHED_INSPECT_PROGRAM.get_or_init(|| {
+        let modules = vec![
+            ("hop/error_pages".to_string(), ERROR_TEMPLATES.to_string()),
+            (
+                "hop/inspect_pages".to_string(),
+                INSPECT_TEMPLATES.to_string(),
+            ),
+            ("hop/ui".to_string(), UI_TEMPLATES.to_string()),
+        ];
+
+        compile(modules).expect("Failed to compile inspect program templates")
+    })
+}
+
+fn create_error_page(error: &anyhow::Error) -> String {
+    let program = get_inspect_program();
 
     let error_data = serde_json::json!({
         "message": format!("{:#}", error)
@@ -312,19 +318,7 @@ fn create_error_page(error: &anyhow::Error) -> String {
 }
 
 fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
-    let modules = vec![
-        ("hop/error_pages".to_string(), ERROR_TEMPLATES.to_string()),
-        (
-            "hop/inspect_pages".to_string(),
-            INSPECT_TEMPLATES.to_string(),
-        ),
-        ("hop/ui".to_string(), UI_TEMPLATES.to_string()),
-    ];
-
-    let program = match compile(modules) {
-        Ok(program) => program,
-        Err(e) => return format!("Template compilation error: {}", e),
-    };
+    let program = get_inspect_program();
 
     let not_found_data = serde_json::json!({
         "path": path,
@@ -338,19 +332,7 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
 }
 
 fn create_inspect_page(program: &runtime::Program) -> String {
-    let modules = vec![
-        ("hop/error_pages".to_string(), ERROR_TEMPLATES.to_string()),
-        (
-            "hop/inspect_pages".to_string(),
-            INSPECT_TEMPLATES.to_string(),
-        ),
-        ("hop/ui".to_string(), UI_TEMPLATES.to_string()),
-    ];
-
-    let inspect_program = match compile(modules) {
-        Ok(program) => program,
-        Err(e) => return format!("Template compilation error: {}", e),
-    };
+    let inspect_program = get_inspect_program();
 
     // Get component maps from the program
     let component_maps = program.get_component_maps();
@@ -635,19 +617,7 @@ async fn hop_dev(
                         if let Some(component_def) = component_map.get(&decoded_component) {
                             if component_def.preview.is_some() {
                                 // Create inspect page with iframe pointing to preview route
-                                let modules = vec![
-                                    ("hop/error_pages".to_string(), ERROR_TEMPLATES.to_string()),
-                                    (
-                                        "hop/inspect_pages".to_string(),
-                                        INSPECT_TEMPLATES.to_string(),
-                                    ),
-                                    ("hop/ui".to_string(), UI_TEMPLATES.to_string()),
-                                ];
-
-                                let inspect_program = match compile(modules) {
-                                    Ok(program) => program,
-                                    Err(_e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, axum::response::Html("Template compilation error".to_string()))),
-                                };
+                                let inspect_program = get_inspect_program();
 
                                 let combined_script = program.get_scripts();
                                 let preview_url = format!("/_preview/{}/{}", 
