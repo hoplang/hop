@@ -356,13 +356,6 @@ fn create_inspect_page(program: &runtime::Program) -> String {
     let component_maps = program.get_component_maps();
     let parameter_types = program.get_parameter_types();
 
-    // Calculate statistics
-    let total_modules = component_maps.len();
-    let total_components: usize = component_maps
-        .values()
-        .map(|components| components.len())
-        .sum();
-
     // Build data structure for the template
     let mut modules_data = Vec::new();
 
@@ -412,8 +405,6 @@ fn create_inspect_page(program: &runtime::Program) -> String {
     }
 
     let inspect_data = serde_json::json!({
-        "total_modules": total_modules,
-        "total_components": total_components,
         "modules": modules_data
     });
 
@@ -428,63 +419,49 @@ fn create_component_preview(
     module_name: &str,
     component_name: &str,
 ) -> Result<String, String> {
-    // Check if component exists
     let component_maps = program.get_component_maps();
-
     let component_map = component_maps
         .get(module_name)
         .ok_or_else(|| format!("Module '{}' not found", module_name))?;
-
     let component_def = component_map.get(component_name).ok_or_else(|| {
         format!(
             "Component '{}' not found in module '{}'",
             component_name, module_name
         )
     })?;
-
     if component_def.preview.is_none() {
         return Err("Component does not have preview content defined".to_string());
     }
 
+    // %OUTPUT%
+
     // Render the component using preview content if available
     match program.execute_preview(module_name, component_name, serde_json::json!({})) {
         Ok(rendered_content) => {
-            let mut html = String::new();
-            html.push_str("<!DOCTYPE html>\n");
-            html.push_str("<html>\n<head>\n");
-            html.push_str(&format!(
-                "<title>Preview: {} from {}</title>\n",
-                escape_html(component_name),
-                escape_html(module_name)
-            ));
-            html.push_str(
-                "<script src=\"https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4\"></script>\n",
-            );
-            html.push_str(
-                "<link href=\"https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap\" rel=\"stylesheet\">\n",
-            );
-            html.push_str("<style>body { font-family: \"JetBrains Mono\"; }</style>\n");
-            html.push_str("</head>\n<body class=\"font-sans m-0 p-5 bg-gray-100\">\n");
+            let modules = vec![
+                ("hop/error_pages".to_string(), ERROR_TEMPLATES.to_string()),
+                (
+                    "hop/inspect_pages".to_string(),
+                    INSPECT_TEMPLATES.to_string(),
+                ),
+                ("hop/ui".to_string(), UI_TEMPLATES.to_string()),
+            ];
 
-            html.push_str("<div class=\"bg-white px-5 py-4 -mx-5 -mt-5 mb-5 border-b border-gray-300 shadow-sm\">\n");
-            html.push_str(&format!(
-                "<h1 class=\"text-xl font-bold text-gray-800 m-0\">🧩 Preview: {}</h1>\n",
-                escape_html(component_name)
-            ));
-            html.push_str(&format!(
-                "<p class=\"text-gray-600 text-sm mt-1 mb-0\">From module: {}</p>\n",
-                escape_html(module_name)
-            ));
-            html.push_str("</div>\n");
+            let inspect_program = match compile(modules) {
+                Ok(program) => program,
+                Err(_e) => panic!("failed to compile"),
+            };
 
-            html.push_str("<div class=\"preview-content bg-white p-5 rounded-lg shadow-sm\">\n");
-            html.push_str(&rendered_content);
-            html.push_str("</div>\n");
-
-            html.push_str("</body>\n</html>");
-
-            // Use the existing hot reload injection function
-            Ok(inject_hot_reload_script(&html))
+            match inspect_program.execute_simple(
+                "hop/inspect_pages",
+                "preview-page",
+                serde_json::json!({}),
+            ) {
+                Ok(html) => Ok(inject_hot_reload_script(
+                    &html.replace("%OUTPUT%", &rendered_content),
+                )),
+                Err(_e) => panic!("failed"),
+            }
         }
         Err(e) => Err(format!("Failed to render component: {}", e)),
     }
