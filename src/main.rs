@@ -397,6 +397,7 @@ fn create_inspect_page(program: &runtime::Program) -> String {
                 "name": component_name,
                 "has_preview": has_preview,
                 "link": format!("/_inspect/{encoded_module}/{encoded_component}"),
+                "preview_url": format!("/_preview/{encoded_module}/{encoded_component}"),
                 "parameter_type": parameter_type,
                 "is_entrypoint": component_def.entrypoint,
                 "slots": component_def.slots,
@@ -417,10 +418,60 @@ fn create_inspect_page(program: &runtime::Program) -> String {
     let combined_script = inspect_program.get_scripts();
 
     match inspect_program.execute_simple("hop/inspect_pages", "inspect-page", inspect_data) {
-        Ok(html) => html.replace(
-            "</body>",
-            format!("<script>{}</script></body>", combined_script).as_str(),
-        ),
+        Ok(html) => {
+            let hot_reload_script = r#"
+<script type="module">
+import morphdom from 'https://unpkg.com/morphdom@2.7.0/dist/morphdom-esm.js';
+
+const eventSource = new EventSource('/__hop_hot_reload');
+eventSource.onmessage = async function(event) {
+    if (event.data === 'reload') {
+        // Reload all iframes
+        const iframes = document.querySelectorAll('iframe');
+        for (const iframe of iframes) {
+            try {
+                const previewUrl = iframe.src;
+                const response = await fetch(previewUrl);
+                const html = await response.text();
+                if (iframe.contentDocument) {
+                    // Parse the HTML to extract just the body content
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const newBody = doc.body;
+                    if (newBody && iframe.contentDocument.body) {
+                        morphdom(iframe.contentDocument.body, newBody);
+                    }
+                }
+            } catch (error) {
+                console.error('Error reloading iframe:', error);
+                // Fallback to full iframe reload
+                iframe.src = iframe.src;
+            }
+        }
+    }
+};
+eventSource.onerror = function(event) {
+    console.log('Hot reload connection error:', event);
+    setTimeout(() => {
+        eventSource.close();
+        location.reload();
+    }, 1000);
+};
+window.addEventListener("beforeunload", function() {
+    eventSource.close();
+});
+</script>
+"#;
+
+            html.replace(
+                "</body>",
+                format!(
+                    "{}<script>{}</script></body>",
+                    hot_reload_script, combined_script
+                )
+                .as_str(),
+            )
+        }
         Err(e) => format!("Error rendering inspect template: {}", e),
     }
 }
@@ -474,8 +525,7 @@ fn create_simple_component_preview(
                 combined_script
             );
 
-            // Inject hot reload script into the preview page
-            Ok(inject_hot_reload_script(&html))
+            Ok(html)
         }
         Err(e) => Err(format!("Failed to render component: {}", e)),
     }

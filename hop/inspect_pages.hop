@@ -184,30 +184,21 @@
           body { font-family: "JetBrains Mono"; }
         </style>
 	</head>
-	<body class="bg-[#f6f6f6] mb-40">
+	<body class="bg-[#f6f6f6] mb-40" style="background: repeating-conic-gradient(rgba(0,0,0,0.025) 0 25%, rgba(0,0,0,0.05) 0 50%) 50% / 16px 16px;">
 		<page-container>
-			<div class="flex flex-col gap-12 grid">
+			<div class="flex flex-col gap-12">
 				<div>
 					hop dev - Module Inspector
 				</div>
-				<module-view>
-					<with-modules>
-						<for {module in data.modules}>
-							<module-item>
-								<with-heading>{module.name}</with-heading>
-								<with-body>	
-									<for {component in module.components}>
-										<component-item>
-											<a set-href="component.link">
-													{component.name}
-											</a>
-										</component-item>
-									</for>
-								</with-body>	
-							</module-item>
+				<div class="flex flex-col gap-6">
+					<for {module in data.modules}>
+						<for {component in module.components}>
+							<inspector-view {component.preview_url}>
+								<with-title>{module.name} - {component.name}</with-title>
+							</inspector-view>
 						</for>
-					</with-modules>
-				</module-view>
+					</for>
+				</div>
 			</div>
 		</page-container>
 	</body>
