@@ -44,7 +44,7 @@
 	<hop-x-preview>
 		<div class="p-8">
 			<inspector-view {'/_preview/hop%2Ferror_pages/error-generic-error'}>
-				<with-title>hop/ui - module</with-title>
+				<with-title>hop/ui - component</with-title>
 			</inspector-view>
 		</div>
 	</hop-x-preview>
@@ -184,7 +184,9 @@
 	</head>
 	<body class="bg-[#f6f6f6] mb-40" style="background: repeating-conic-gradient(rgba(0,0,0,0.025) 0 25%, rgba(0,0,0,0.05) 0 50%) 50% / 16px 16px;">
 		<page-container>
-			<inspector-view {data.preview_url} />
+			<inspector-view {data.preview_url}>
+				<with-title>hop/ui - component</with-title>
+			</inspector-view>
 		</page-container>
 	</body>
 	</html>

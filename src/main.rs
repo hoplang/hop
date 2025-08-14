@@ -425,7 +425,6 @@ fn create_inspect_page(program: &runtime::Program) -> String {
     }
 }
 
-
 fn create_simple_component_preview(
     program: &runtime::Program,
     module_name: &str,
@@ -449,7 +448,7 @@ fn create_simple_component_preview(
     match program.execute_preview(module_name, component_name, serde_json::json!({})) {
         Ok(rendered_content) => {
             let combined_script = program.get_scripts();
-            
+
             // Create a simple HTML document with proper structure
             let html = format!(
                 r#"<!DOCTYPE html>
@@ -459,6 +458,10 @@ fn create_simple_component_preview(
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{}/{} Preview</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+    <style>
+      body {{ font-family: "JetBrains Mono"; }}
+    </style>
 </head>
 <body>
 {}
@@ -470,7 +473,7 @@ fn create_simple_component_preview(
                 rendered_content,
                 combined_script
             );
-            
+
             // Inject hot reload script into the preview page
             Ok(inject_hot_reload_script(&html))
         }
