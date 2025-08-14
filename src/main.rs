@@ -408,8 +408,16 @@ fn create_inspect_page(program: &runtime::Program) -> String {
         "modules": modules_data
     });
 
+    let combined_script = inspect_program.get_scripts();
+
     match inspect_program.execute_simple("hop/inspect_pages", "inspect-page", inspect_data) {
-        Ok(html) => inject_hot_reload_script(&html),
+        Ok(html) => {
+            let s_html = html.replace(
+                "</body>",
+                format!("<script>{}</script>", combined_script).as_str(),
+            );
+            inject_hot_reload_script(&s_html)
+        }
         Err(e) => format!("Error rendering inspect template: {}", e),
     }
 }
@@ -432,8 +440,6 @@ fn create_component_preview(
     if component_def.preview.is_none() {
         return Err("Component does not have preview content defined".to_string());
     }
-
-    // %OUTPUT%
 
     // Render the component using preview content if available
     match program.execute_preview(module_name, component_name, serde_json::json!({})) {

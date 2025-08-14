@@ -10,7 +10,7 @@
 		  <slot-name />
 		</with-heading>
 		<with-body>
-		parameters: <slot-parameters/><br/>
+		  parameters: <slot-parameters/><br/>
 		  slots: <slot-slots/>
 		</with-body>
 	</heading-box>
