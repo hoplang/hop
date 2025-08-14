@@ -10,18 +10,20 @@
 		  <slot-name />
 		</with-heading>
 		<with-body>
-		  <slot-details />
+		parameters: <slot-parameters/><br/>
+		  slots: <slot-slots/>
 		</with-body>
 	</heading-box>
 	<hop-x-preview>
 		<component-item>
 			<with-name>test-component</with-name>
-			<with-details>component details</with-details>
+			<with-parameters>void</with-parameters>
+			<with-slots>foo, bar, baz</with-slots>
 		</component-item>
 	</hop-x-preview>
 </component-item>
 
-<module-box>
+<module-item>
 	<heading-box>
 		<with-title>Module</with-title>
 		<with-heading>
@@ -32,27 +34,23 @@
 		</with-body>
 	</heading-box>
 	<hop-x-preview>
-		<module-box>
+		<module-item>
 			<with-heading>hop/test-module</with-heading>
 			<with-body>
 				<component-item>
 					<with-name>test-component</with-name>
-					<with-details>
-						parameters: void<br>
-						slots: foo, bar
-					</with-details>
+					<with-parameters>void</with-parameters>
+					<with-slots>foo, bar</with-slots>
 				</component-item>
 				<component-item>
 					<with-name>test-component</with-name>
-					<with-details>
-						parameters: void<br>
-						slots: foo, bar
-					</with-details>
+					<with-parameters>void</with-parameters>
+					<with-slots>foo, bar</with-slots>
 				</component-item>
 			</with-body>
-		</module-box>
+		</module-item>
 	</hop-x-preview>
-</module-box>
+</module-item>
 
 <inspect-page {data} entrypoint>
 	<!DOCTYPE html>
@@ -72,7 +70,7 @@
 					hop dev - Module Inspector
 				</div>
 				<for {module in data.modules}>
-					<module-box>
+					<module-item>
 						<with-heading>{module.name}</with-heading>
 						<with-body>	
 							<for {component in module.components}>
@@ -80,31 +78,29 @@
 									<a set-href="component.link">
 										<component-item>
 											<with-name>{component.name}</with-name>
-											<with-details>
-												<strong>Parameters:</strong> {component.parameter_type}<br>
-												<if {component.is_entrypoint}>
-													<strong>Type:</strong> Entrypoint component<br>
-												</if>
-												<strong>Slots:</strong> {component.slots_text}<br>
-											</with-details>
+											<with-parameters>
+												{component.parameter_type}
+											</with-parameters>
+											<with-slots>
+												{component.slots_text}
+											</with-slots>
 										</component-item>
 									</a>
 								</if>
 								<if {!component.has_preview}>
 									<component-item>
 										<with-name>{component.name}</with-name>
-										<with-details>
-											<strong>Parameters:</strong> {component.parameter_type}<br>
-											<if {component.is_entrypoint}>
-												<strong>Type:</strong> Entrypoint component<br>
-											</if>
-											<strong>Slots:</strong> {component.slots_text}<br>
-										</with-details>
+										<with-parameters>
+											{component.parameter_type}
+										</with-parameters>
+										<with-slots>
+											{component.slots_text}
+										</with-slots>
 									</component-item>
 								</if>
 							</for>
 						</with-body>	
-					</module-box>
+					</module-item>
 				</for>
 			</div>
 		</page-container>
