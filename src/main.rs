@@ -425,7 +425,8 @@ fn create_inspect_page(program: &runtime::Program) -> String {
     }
 }
 
-fn create_component_preview(
+
+fn create_simple_component_preview(
     program: &runtime::Program,
     module_name: &str,
     component_name: &str,
@@ -447,35 +448,30 @@ fn create_component_preview(
     // Render the component using preview content if available
     match program.execute_preview(module_name, component_name, serde_json::json!({})) {
         Ok(rendered_content) => {
-            let modules = vec![
-                ("hop/error_pages".to_string(), ERROR_TEMPLATES.to_string()),
-                (
-                    "hop/inspect_pages".to_string(),
-                    INSPECT_TEMPLATES.to_string(),
-                ),
-                ("hop/ui".to_string(), UI_TEMPLATES.to_string()),
-            ];
-
-            let inspect_program = match compile(modules) {
-                Ok(program) => program,
-                Err(_e) => panic!("failed to compile"),
-            };
-
             let combined_script = program.get_scripts();
-
-            match inspect_program.execute_simple(
-                "hop/inspect_pages",
-                "preview-page",
-                serde_json::json!({}),
-            ) {
-                Ok(html) => Ok(inject_hot_reload_script(
-                    &html.replace("%OUTPUT%", &rendered_content).replace(
-                        "</body>",
-                        format!("<script>{}</script></body>", combined_script).as_str(),
-                    ),
-                )),
-                Err(_e) => panic!("failed"),
-            }
+            
+            // Create a simple HTML document with proper structure
+            let html = format!(
+                r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{}/{} Preview</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body>
+{}
+<script>{}</script>
+</body>
+</html>"#,
+                escape_html(module_name),
+                escape_html(component_name),
+                rendered_content,
+                combined_script
+            );
+            
+            Ok(html)
         }
         Err(e) => Err(format!("Failed to render component: {}", e)),
     }
@@ -579,11 +575,95 @@ async fn hop_dev(
                 compile(modules).map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
             }) {
                 Ok(program) => {
-                    match create_component_preview(&program, &decoded_module, &decoded_component) {
+                    // Check if component exists and has preview
+                    let component_maps = program.get_component_maps();
+                    if let Some(component_map) = component_maps.get(&decoded_module) {
+                        if let Some(component_def) = component_map.get(&decoded_component) {
+                            if component_def.preview.is_some() {
+                                // Create inspect page with iframe pointing to preview route
+                                let modules = vec![
+                                    ("hop/error_pages".to_string(), ERROR_TEMPLATES.to_string()),
+                                    (
+                                        "hop/inspect_pages".to_string(),
+                                        INSPECT_TEMPLATES.to_string(),
+                                    ),
+                                    ("hop/ui".to_string(), UI_TEMPLATES.to_string()),
+                                ];
+
+                                let inspect_program = match compile(modules) {
+                                    Ok(program) => program,
+                                    Err(_e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, axum::response::Html("Template compilation error".to_string()))),
+                                };
+
+                                let combined_script = program.get_scripts();
+                                let preview_url = format!("/_preview/{}/{}", 
+                                    decoded_module.replace("/", "%2F"), 
+                                    decoded_component.replace("/", "%2F"));
+
+                                let preview_data = serde_json::json!({
+                                    "preview_url": preview_url
+                                });
+
+                                match inspect_program.execute_simple(
+                                    "hop/inspect_pages",
+                                    "preview-page",
+                                    preview_data,
+                                ) {
+                                    Ok(html) => {
+                                        let final_html = inject_hot_reload_script(
+                                            &html.replace(
+                                                "</body>",
+                                                format!("<script>{}</script></body>", combined_script).as_str(),
+                                            ),
+                                        );
+                                        Ok(axum::response::Html(final_html))
+                                    },
+                                    Err(_e) => Err((StatusCode::INTERNAL_SERVER_ERROR, axum::response::Html("Error rendering inspect template".to_string()))),
+                                }
+                            } else {
+                                Err((
+                                    StatusCode::NOT_FOUND,
+                                    axum::response::Html(format!("<h1>Component Preview Error</h1><p>Module: {}<br>Component: {}<br>Error: Component does not have preview content defined</p>", escape_html(&decoded_module), escape_html(&decoded_component))),
+                                ))
+                            }
+                        } else {
+                            Err((
+                                StatusCode::NOT_FOUND,
+                                axum::response::Html(format!("<h1>Component Preview Error</h1><p>Module: {}<br>Component: {}<br>Error: Component '{}' not found in module '{}'</p>", escape_html(&decoded_module), escape_html(&decoded_component), escape_html(&decoded_component), escape_html(&decoded_module))),
+                            ))
+                        }
+                    } else {
+                        Err((
+                            StatusCode::NOT_FOUND,
+                            axum::response::Html(format!("<h1>Component Preview Error</h1><p>Module: {}<br>Component: {}<br>Error: Module '{}' not found</p>", escape_html(&decoded_module), escape_html(&decoded_component), escape_html(&decoded_module))),
+                        ))
+                    }
+                }
+                Err(e) => Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    axum::response::Html(create_error_page(&e)),
+                )),
+            }
+        }),
+    );
+
+    // Add simple preview endpoint for rendering components without inspect UI
+    let simple_preview_root = root.clone();
+    router = router.route(
+        "/_preview/{module}/{component}",
+        get(async move |axum::extract::Path((module_name, component_name)): axum::extract::Path<(String, String)>| {
+            // URL decode the parameters
+            let decoded_module = module_name.replace("%2F", "/");
+            let decoded_component = component_name.replace("%2F", "/");
+            match files::load_all_hop_modules(&simple_preview_root).and_then(|modules| {
+                compile(modules).map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
+            }) {
+                Ok(program) => {
+                    match create_simple_component_preview(&program, &decoded_module, &decoded_component) {
                         Ok(html) => Ok(axum::response::Html(html)),
                         Err(e) => Err((
                             StatusCode::NOT_FOUND,
-                            axum::response::Html(format!("<h1>Component Preview Error</h1><p>Module: {}<br>Component: {}<br>Error: {}</p>", escape_html(&decoded_module), escape_html(&decoded_component), escape_html(&e))),
+                            axum::response::Html(format!("<!DOCTYPE html><html><head><title>Preview Error</title></head><body><h1>Component Preview Error</h1><p>Module: {}<br>Component: {}<br>Error: {}</p></body></html>", escape_html(&decoded_module), escape_html(&decoded_component), escape_html(&e))),
                         )),
                     }
                 }

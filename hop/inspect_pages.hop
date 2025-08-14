@@ -154,7 +154,7 @@
 	</html>
 </inspect-page>
 
-<preview-page entrypoint>
+<preview-page {data} entrypoint>
 	<!DOCTYPE html>
 	<html>
 	<head>
@@ -166,7 +166,16 @@
         </style>
 	</head>
 	<body class="bg-[#f6f6f6] mb-40" style="background: repeating-conic-gradient(rgba(0,0,0,0.025) 0 25%, rgba(0,0,0,0.05) 0 50%) 50% / 16px 16px;">
-		<inspector-view/>
+		<page-container>
+			<div>
+				INSPECTING	
+			</div>
+		</page-container>
+		<div class="p-6">
+			<page-container>
+				<iframe set-src="data.preview_url" style="width: 100%; height: 100%; border: none;" title="Component Preview"></iframe>
+			</page-container>
+		</div>
 	</body>
 	</html>
 </preview-page>
