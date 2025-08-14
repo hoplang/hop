@@ -677,6 +677,7 @@ async fn hop_dev(
             // URL decode the parameters
             let decoded_module = module_name.replace("%2F", "/");
             let decoded_component = component_name.replace("%2F", "/");
+
             match files::load_all_hop_modules(&simple_preview_root).and_then(|modules| {
                 compile(modules).map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
             }) {

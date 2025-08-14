@@ -49,6 +49,31 @@ impl ProjectRoot {
     }
 }
 
+/// Check if a directory should be skipped during .hop file search
+fn should_skip_directory(dir_name: &str) -> bool {
+    matches!(
+        dir_name,
+        "target"
+            | ".git"
+            | "node_modules"
+            | ".cargo"
+            | ".rustup"
+            | "dist"
+            | "build"
+            | ".next"
+            | ".nuxt"
+            | "coverage"
+            | ".nyc_output"
+            | ".pytest_cache"
+            | "__pycache__"
+            | ".venv"
+            | "vendor"
+            | ".idea"
+            | ".vscode"
+            | ".direnv"
+    )
+}
+
 /// Recursively find all .hop files in a directory
 pub fn find_hop_files(root: &ProjectRoot) -> anyhow::Result<Vec<PathBuf>> {
     let mut hop_files = Vec::new();
@@ -60,11 +85,17 @@ pub fn find_hop_files(root: &ProjectRoot) -> anyhow::Result<Vec<PathBuf>> {
     }
 
     let mut paths: Vec<PathBuf> = Vec::new();
-
     paths.push(dir.to_path_buf());
 
     while let Some(path) = paths.pop() {
         if path.is_dir() {
+            // Check if we should skip this directory
+            if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
+                if should_skip_directory(dir_name) {
+                    continue;
+                }
+            }
+
             let entries = std::fs::read_dir(&path)
                 .with_context(|| format!("Failed to read directory {:?}", &path))?;
             for entry in entries {
@@ -75,6 +106,7 @@ pub fn find_hop_files(root: &ProjectRoot) -> anyhow::Result<Vec<PathBuf>> {
             hop_files.push(path.to_path_buf());
         }
     }
+
     Ok(hop_files)
 }
 
