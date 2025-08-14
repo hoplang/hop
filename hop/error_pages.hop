@@ -1,4 +1,5 @@
 <import component="heading-box" from="hop/ui">
+<import component="page-container" from="hop/ui">
 
 <error-heading class="text-rose-600 text-2xl font-medium">
 	<slot-default />
@@ -40,21 +41,6 @@
 		</div>
 	</hop-x-preview>
 </route-not-found-error>
-
-<page-container class="max-w-6xl px-4 my-12 mx-auto">
-	<slot-default />
-	<hop-x-preview>
-		<page-container>
-			<route-not-found-error>
-				<with-requested-path>/foo-bar</with-requested-path>
-				<with-available-routes>
-					<li><a href="#foo">/foo</a></li>
-					<li><a href="#bar">/bar</a></li>
-				</with-available-routes>
-			</route-not-found-error>
-		</page-container>
-	</hop-x-preview>
-</page-container>
 
 <generic-error {error} entrypoint>
 	<!DOCTYPE html>

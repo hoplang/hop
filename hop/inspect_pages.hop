@@ -1,4 +1,5 @@
 <import component="heading-box" from="hop/ui">
+<import component="page-container" from="hop/ui">
 
 <component-item>
 	<heading-box>
@@ -64,44 +65,49 @@
           body { font-family: "JetBrains Mono"; }
         </style>
 	</head>
-	<body class="font-sans m-10 bg-[#f6f6f6] flex flex-col gap-12">
-		hop dev - Module Inspector
-		
-		<for {module in data.modules}>
-			<module-box>
-				<with-heading>{module.name}</with-heading>
-				<with-body>	
-					<for {component in module.components}>
-						<if {component.has_preview}>
-							<a set-href="component.link">
-								<component-item>
-									<with-name>{component.name}</with-name>
-									<with-details>
-										<strong>Parameters:</strong> {component.parameter_type}<br>
-										<if {component.is_entrypoint}>
-											<strong>Type:</strong> Entrypoint component<br>
-										</if>
-										<strong>Slots:</strong> {component.slots_text}<br>
-									</with-details>
-								</component-item>
-							</a>
-						</if>
-						<if {!component.has_preview}>
-							<component-item>
-								<with-name>{component.name}</with-name>
-								<with-details>
-									<strong>Parameters:</strong> {component.parameter_type}<br>
-									<if {component.is_entrypoint}>
-										<strong>Type:</strong> Entrypoint component<br>
-									</if>
-									<strong>Slots:</strong> {component.slots_text}<br>
-								</with-details>
-							</component-item>
-						</if>
-					</for>
-				</with-body>	
-			</module-box>
-		</for>
+	<body class="bg-[#f6f6f6] mb-40">
+		<page-container>
+			<div class="flex flex-col gap-12">
+				<div>
+					hop dev - Module Inspector
+				</div>
+				<for {module in data.modules}>
+					<module-box>
+						<with-heading>{module.name}</with-heading>
+						<with-body>	
+							<for {component in module.components}>
+								<if {component.has_preview}>
+									<a set-href="component.link">
+										<component-item>
+											<with-name>{component.name}</with-name>
+											<with-details>
+												<strong>Parameters:</strong> {component.parameter_type}<br>
+												<if {component.is_entrypoint}>
+													<strong>Type:</strong> Entrypoint component<br>
+												</if>
+												<strong>Slots:</strong> {component.slots_text}<br>
+											</with-details>
+										</component-item>
+									</a>
+								</if>
+								<if {!component.has_preview}>
+									<component-item>
+										<with-name>{component.name}</with-name>
+										<with-details>
+											<strong>Parameters:</strong> {component.parameter_type}<br>
+											<if {component.is_entrypoint}>
+												<strong>Type:</strong> Entrypoint component<br>
+											</if>
+											<strong>Slots:</strong> {component.slots_text}<br>
+										</with-details>
+									</component-item>
+								</if>
+							</for>
+						</with-body>	
+					</module-box>
+				</for>
+			</div>
+		</page-container>
 	</body>
 	</html>
 </inspect-page>

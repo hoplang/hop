@@ -284,6 +284,7 @@ window.addEventListener("beforeunload", function() {
 
 const ERROR_TEMPLATES: &str = include_str!("../hop/error_pages.hop");
 const INSPECT_TEMPLATES: &str = include_str!("../hop/inspect_pages.hop");
+const UI_TEMPLATES: &str = include_str!("../hop/ui.hop");
 
 fn create_error_page(error: &anyhow::Error) -> String {
     let modules = vec![
@@ -292,6 +293,7 @@ fn create_error_page(error: &anyhow::Error) -> String {
             "hop/inspect_pages".to_string(),
             INSPECT_TEMPLATES.to_string(),
         ),
+        ("hop/ui".to_string(), UI_TEMPLATES.to_string()),
     ];
 
     let program = match compile(modules) {
@@ -316,6 +318,7 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
             "hop/inspect_pages".to_string(),
             INSPECT_TEMPLATES.to_string(),
         ),
+        ("hop/ui".to_string(), UI_TEMPLATES.to_string()),
     ];
 
     let program = match compile(modules) {
@@ -341,6 +344,7 @@ fn create_inspect_page(program: &runtime::Program) -> String {
             "hop/inspect_pages".to_string(),
             INSPECT_TEMPLATES.to_string(),
         ),
+        ("hop/ui".to_string(), UI_TEMPLATES.to_string()),
     ];
 
     let inspect_program = match compile(modules) {
