@@ -375,6 +375,9 @@ fn create_inspect_page(program: &runtime::Program) -> String {
 
         for (component_name, component_def) in sorted_components {
             let has_preview = component_def.preview.is_some();
+            if !has_preview {
+                continue;
+            }
             let encoded_module = module_name.replace("/", "%2F");
             let encoded_component = component_name.replace("/", "%2F");
 
