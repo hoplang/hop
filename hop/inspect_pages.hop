@@ -62,7 +62,9 @@
 			frameElement.style.opacity = '0.5';
 			
 			// Disable pointer events on iframe to prevent drag interference
-			iframe.style.pointerEvents = 'none';
+			document.querySelectorAll('iframe').forEach((frm) => {
+				frm.style.pointerEvents = 'none';
+			})
 			
 			e.preventDefault();
 		});
@@ -80,7 +82,9 @@
 				frameElement.style.opacity = '1';
 				
 				// Re-enable pointer events on iframe
-				iframe.style.pointerEvents = 'auto';
+				document.querySelectorAll('iframe').forEach((frm) => {
+					frm.style.pointerEvents = 'auto';
+				})
 			}
 		});
 	</script>
@@ -186,20 +190,13 @@
 	</head>
 	<body class="bg-[#f6f6f6] mb-40" style="background: repeating-conic-gradient(rgba(0,0,0,0.025) 0 25%, rgba(0,0,0,0.05) 0 50%) 50% / 16px 16px;">
 		<page-container>
-			<div class="flex flex-col gap-12">
-				<div>
-					hop dev - Module Inspector
-				</div>
-				<div class="flex flex-col gap-6">
-					<for {module in data.modules}>
-						<for {component in module.components}>
-							<inspector-view {component.preview_url}>
-								<with-title>{module.name} - {component.name}</with-title>
-							</inspector-view>
-						</for>
-					</for>
-				</div>
-			</div>
+			<for {module in data.modules}>
+				<for {component in module.components}>
+					<inspector-view {component.preview_url}>
+						<with-title>{module.name} - {component.name}</with-title>
+					</inspector-view>
+				</for>
+			</for>
 		</page-container>
 	</body>
 	</html>
