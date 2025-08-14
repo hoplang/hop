@@ -52,6 +52,92 @@
 	</hop-x-preview>
 </module-item>
 
+<inspector-view>
+	<page-container>
+		<div>
+			INSPECTING	
+		</div>
+	</page-container>
+	<div class="p-6">
+		<page-container>
+			%OUTPUT%
+		</page-container>
+	</div>
+	<hop-x-preview>
+		<inspector-view />
+	</hop-x-preview>
+</inspector-view>
+
+<module-view>
+	<div class="flex gap-4">
+		<slot-modules />
+	</div>
+	<hop-x-preview>
+		<module-view>
+			<with-modules>
+				<module-item>
+					<with-heading>
+						hop/ui
+					</with-heading>
+					<with-body>
+						<component-item>
+							<with-name>my-component</with-name>
+							<with-parameters>void</with-parameters>
+							<with-slots>foo, bar, baz</with-slots>
+						</component-item>
+						<component-item>
+							<with-name>my-component</with-name>
+							<with-parameters>void</with-parameters>
+							<with-slots>foo, bar, baz</with-slots>
+						</component-item>
+						<component-item>
+							<with-name>my-component</with-name>
+							<with-parameters>void</with-parameters>
+							<with-slots>foo, bar, baz</with-slots>
+						</component-item>
+					</with-body>
+				</module-item>
+				<module-item>
+					<with-heading>
+						hop/error_pages
+					</with-heading>
+					<with-body>
+						<component-item>
+							<with-name>my-component</with-name>
+							<with-parameters>void</with-parameters>
+							<with-slots>foo, bar, baz</with-slots>
+						</component-item>
+						<component-item>
+							<with-name>my-component</with-name>
+							<with-parameters>void</with-parameters>
+							<with-slots>foo, bar, baz</with-slots>
+						</component-item>
+					</with-body>
+				</module-item>
+				<module-item>
+					<with-heading>
+						hop/inspect_pages
+					</with-heading>
+					<with-body>
+						<component-item>
+							<with-name>my-component</with-name>
+							<with-parameters>void</with-parameters>
+							<with-slots>foo, bar, baz</with-slots>
+						</component-item>
+						<component-item>
+							<with-name>my-component</with-name>
+							<with-parameters>void</with-parameters>
+							<with-slots>foo, bar, baz</with-slots>
+						</component-item>
+					</with-body>
+				</module-item>
+			</with-modules>
+		</module-view>
+	</hop-x-preview>
+</module-view>
+
+<!---------------------------------------------------------------------------->
+
 <inspect-page {data} entrypoint>
 	<!DOCTYPE html>
 	<html>
@@ -65,64 +151,52 @@
 	</head>
 	<body class="bg-[#f6f6f6] mb-40">
 		<page-container>
-			<div class="flex flex-col gap-12">
+			<div class="flex flex-col gap-12 grid">
 				<div>
 					hop dev - Module Inspector
 				</div>
-				<for {module in data.modules}>
-					<module-item>
-						<with-heading>{module.name}</with-heading>
-						<with-body>	
-							<for {component in module.components}>
-								<if {component.has_preview}>
-									<a set-href="component.link">
-										<component-item>
-											<with-name>{component.name}</with-name>
-											<with-parameters>
-												{component.parameter_type}
-											</with-parameters>
-											<with-slots>
-												{component.slots_text}
-											</with-slots>
-										</component-item>
-									</a>
-								</if>
-								<if {!component.has_preview}>
-									<component-item>
-										<with-name>{component.name}</with-name>
-										<with-parameters>
-											{component.parameter_type}
-										</with-parameters>
-										<with-slots>
-											{component.slots_text}
-										</with-slots>
-									</component-item>
-								</if>
-							</for>
-						</with-body>	
-					</module-item>
-				</for>
+				<module-view>
+					<with-modules>
+						<for {module in data.modules}>
+							<module-item>
+								<with-heading>{module.name}</with-heading>
+								<with-body>	
+									<for {component in module.components}>
+										<if {component.has_preview}>
+											<a set-href="component.link">
+												<component-item>
+													<with-name>{component.name}</with-name>
+													<with-parameters>
+														{component.parameter_type}
+													</with-parameters>
+													<with-slots>
+														{component.slots_text}
+													</with-slots>
+												</component-item>
+											</a>
+										</if>
+										<if {!component.has_preview}>
+											<component-item>
+												<with-name>{component.name}</with-name>
+												<with-parameters>
+													{component.parameter_type}
+												</with-parameters>
+												<with-slots>
+													{component.slots_text}
+												</with-slots>
+											</component-item>
+										</if>
+									</for>
+								</with-body>	
+							</module-item>
+						</for>
+					</with-modules>
+				</module-view>
 			</div>
 		</page-container>
 	</body>
 	</html>
 </inspect-page>
-
-<d-inspector>
-	<page-container>
-		<div>
-			INSPECTING	
-		</div>
-	</page-container>
-	<page-container>
-		<div class="bg-white p-8">
-			%OUTPUT%
-		</div>
-	</page-container>
-	<hop-x-preview>
-		<d-inspector />
-	</hop-x-preview>
-</d-inspector>
 
 <preview-page entrypoint>
 	<!DOCTYPE html>
@@ -135,8 +209,8 @@
           body { font-family: "JetBrains Mono"; }
         </style>
 	</head>
-	<body class="bg-[#f6f6f6] mb-40">
-		<d-inspector/>
+	<body class="bg-[#f6f6f6] mb-40" style="background: repeating-conic-gradient(rgba(0,0,0,0.025) 0 25%, rgba(0,0,0,0.05) 0 50%) 50% / 16px 16px;">
+		<inspector-view/>
 	</body>
 	</html>
 </preview-page>

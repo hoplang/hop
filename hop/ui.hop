@@ -9,7 +9,7 @@
 	</hop-x-preview>
 </page-container>
 
-<heading-box {toggleable} class="border">
+<heading-box {toggleable} class="border border-2 shadow-[2px_2px_rgba(0,0,0,0.1)]">
 	<div class="p-3 py-2 flex justify-between">
 		<div>
 			<span class="font-medium uppercase">
@@ -23,8 +23,8 @@
 			</div>
 		</if>
 	</div>
-	<hr/>
-	<div class="p-3 flex flex-col gap-2" data-id="body">
+	<hr class="border-1" />
+	<div class="p-5 gap-5 flex flex-col" data-id="body">
 		<slot-body/>
 	</div>
 	<script>

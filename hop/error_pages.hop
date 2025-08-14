@@ -12,7 +12,27 @@
 	</hop-x-preview>
 </code-text>
 
-<route-not-found-error class="flex flex-col gap-4">
+<error-generic-error class="flex flex-col gap-4">
+	<heading-box>
+		<with-title>Error</with-title>
+		<with-body>
+			<slot-default/>
+		</with-body>
+	</heading-box>
+	<hop-x-preview>
+		<error-generic-error>
+			<pre><hop-x-raw trim>
+				Compilation failed: error: Unclosed &lt;hop-x-preview&gt;
+				  --&gt; hop/error_pages.hop (line 32, col 2)
+				 31 |     &lt;/heading-box&gt;
+				 32 |     &lt;hop-x-preview&gt;
+					|     ^^^^^^^^^^^^^^^
+			</hop-x-raw></pre>
+		</error-generic-error>
+	</hop-x-preview>
+</error-generic-error>
+
+<error-not-found-error class="flex flex-col gap-4">
 	<heading-box>
 		<with-title>Error</with-title>
 		<with-heading>Route not found</with-heading>
@@ -31,16 +51,16 @@
 	</heading-box>
 	<hop-x-preview>
 		<div class="p-8">
-			<route-not-found-error>
+			<error-not-found-error>
 				<with-requested-path>/foo-bar</with-requested-path>
 				<with-available-routes>
 					<li><a href="#foo">/foo</a></li>
 					<li><a href="#bar">/bar</a></li>
 				</with-available-routes>
-			</route-not-found-error>
+			</error-not-found-error>
 		</div>
 	</hop-x-preview>
-</route-not-found-error>
+</error-not-found-error>
 
 <generic-error {error} entrypoint>
 	<!DOCTYPE html>
@@ -55,8 +75,9 @@
 	</head>
 	<body>
 		<page-container>
-			<error-heading>Error</error-heading>
-			<pre>{error.message}</pre>
+			<error-generic-error>
+				<pre>{error.message}</pre>
+			</error-generic-error>
 		</page-container>
 	</body>
 	</html>
@@ -75,14 +96,14 @@
 	</head>
 	<body>
 		<page-container>
-			<route-not-found-error>
+			<error-not-found-error>
 				<with-requested-path>{params.path}</with-requested-path>
 				<with-available-routes>
 					<for {route in params.available_routes}>
 					  <li><a set-href="route">{route}</a></li>
 					</for>
 				</with-available-routes>
-			</route-not-found-error>
+			</error-not-found-error>
 		</page-container>
 	</body>
 	</html>
