@@ -414,13 +414,10 @@ fn create_inspect_page(program: &runtime::Program) -> String {
     let combined_script = inspect_program.get_scripts();
 
     match inspect_program.execute_simple("hop/inspect_pages", "inspect-page", inspect_data) {
-        Ok(html) => {
-            let s_html = html.replace(
-                "</body>",
-                format!("<script>{}</script>", combined_script).as_str(),
-            );
-            inject_hot_reload_script(&s_html)
-        }
+        Ok(html) => html.replace(
+            "</body>",
+            format!("<script>{}</script>", combined_script).as_str(),
+        ),
         Err(e) => format!("Error rendering inspect template: {}", e),
     }
 }
