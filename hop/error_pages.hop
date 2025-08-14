@@ -1,10 +1,6 @@
 <import component="heading-box" from="hop/ui">
 <import component="page-container" from="hop/ui">
 
-<error-heading class="text-rose-600 text-2xl font-medium">
-	<slot-default />
-</error-heading>
-
 <code-text as="span">
 	<code class="italic"><slot-default /></code>
 	<hop-x-preview>
