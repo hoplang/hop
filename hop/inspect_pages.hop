@@ -1,12 +1,118 @@
-<module-header class="text-gray-700 text-xl mt-0">
-	📦 Module: <code class="font-mono bg-gray-100 px-2 py-1 rounded"><slot-default /></code>
-</module-header>
-
-<component-item class="bg-gray-50 p-4 my-4 rounded-lg border-l-4 border-blue-600">
-	<div class="font-bold text-blue-600 text-lg">🧩 <slot-name /></div>
-	<div class="mt-2 text-sm text-gray-600">
-		<slot-details />
+<heading-box class="border">
+	<div class="p-3 py-2">
+		<span class="font-medium uppercase">
+		  <slot-title/>
+		</span>
+		<slot-heading/>
 	</div>
+	<hr/>
+	<div class="p-3 flex flex-col gap-2">
+		<slot-body/>
+	</div>
+	<hop-x-preview>
+		<div class="grid grid-cols-2 gap-6">
+			<heading-box>
+				<with-title>
+					Component
+				</with-title>
+				<with-heading>
+					another-component
+				</with-heading>
+				<with-body>
+					Lorem ipsum dolor sit amet<br/>
+					Foo bar
+				</with-body>
+			</heading-box>
+			<heading-box>
+				<with-title>
+					Component
+				</with-title>
+				<with-heading>
+					another-component
+				</with-heading>
+				<with-body>
+					<div>
+						Lorem ipsum dolor sit amet<br/>
+						Foo bar
+					</div>
+					<heading-box>
+						<with-title>
+							NESTING
+						</with-title>
+						<with-heading>
+							A nested box
+						</with-heading>
+						<with-body>
+							nested
+						</with-body>
+					</heading-box>
+					<heading-box>
+						<with-title>
+							NESTING
+						</with-title>
+						<with-heading>
+							A nested box
+						</with-heading>
+						<with-body>
+							nested
+						</with-body>
+					</heading-box>
+				</with-body>
+			</heading-box>
+			<div class="col-span-2">
+				<heading-box>
+					<with-title>
+						Component
+					</with-title>
+					<with-heading>
+						another-component
+					</with-heading>
+					<with-body>
+						<div>
+							Lorem ipsum dolor sit amet<br/>
+							Foo bar
+						</div>
+						<heading-box>
+							<with-title>
+								NESTING
+							</with-title>
+							<with-heading>
+								A nested box
+							</with-heading>
+							<with-body>
+								nested
+							</with-body>
+						</heading-box>
+						<heading-box>
+							<with-title>
+								NESTING
+							</with-title>
+							<with-heading>
+								A nested box
+							</with-heading>
+							<with-body>
+								nested
+							</with-body>
+						</heading-box>
+					</with-body>
+				</heading-box>
+			</div>
+		</div>
+	</hop-x-preview>
+</heading-box>
+
+<component-item>
+	<heading-box>
+		<with-title>
+		  Component
+		</with-title>
+		<with-heading>
+		  <slot-name />
+		</with-heading>
+		<with-body>
+		  <slot-details />
+		</with-body>
+	</heading-box>
 	<hop-x-preview>
 		<component-item>
 			<with-name>test-component</with-name>
@@ -15,21 +121,63 @@
 	</hop-x-preview>
 </component-item>
 
-<component-item-clickable class="bg-gray-50 p-4 my-4 rounded-lg border-l-4 border-blue-600 cursor-pointer transition-all duration-200 hover:bg-blue-50 hover:-translate-y-0.5 hover:shadow-md">
-	<div class="font-bold text-blue-600 text-lg">🧩 <slot-name /> 🎨</div>
-	<div class="mt-2 text-sm text-gray-600">
-		<slot-details />
-		<div class="text-blue-600 text-xs mt-2 italic">💡 Click to preview this component</div>
-	</div>
+<component-item-clickable>
+	<heading-box>
+		<with-title>
+		  Component
+		</with-title>
+		<with-heading>
+		  <slot-name />
+		</with-heading>
+		<with-body>
+			<slot-details />
+			<button class="border p-2 w-84">Click to preview this component</button>
+		</with-body>
+	</heading-box>
+	<hop-x-preview>
+		<component-item-clickable>
+			<with-name>test-component</with-name>
+			<with-details>component details</with-details>
+		</component-item-clickable>
+	</hop-x-preview>
 </component-item-clickable>
 
 <stats-box class="bg-blue-50 p-4 rounded-lg mb-5">
 	<strong>📊 Statistics:</strong> <slot-default />
 </stats-box>
 
-<param-type class="bg-blue-50 px-2 py-1 rounded font-mono text-xs">
-	<slot-default />
-</param-type>
+<module-box>
+	<heading-box>
+		<with-title>Module</with-title>
+		<with-heading>
+			<slot-heading />
+		</with-heading>
+		<with-body>
+			<slot-body />
+		</with-body>
+	</heading-box>
+	<hop-x-preview>
+		<module-box>
+			<with-heading>hop/test-module</with-heading>
+			<with-body>
+				<component-item>
+					<with-name>test-component</with-name>
+					<with-details>
+						parameters: void<br>
+						slots: foo, bar
+					</with-details>
+				</component-item>
+				<component-item>
+					<with-name>test-component</with-name>
+					<with-details>
+						parameters: void<br>
+						slots: foo, bar
+					</with-details>
+				</component-item>
+			</with-body>
+		</module-box>
+	</hop-x-preview>
+</module-box>
 
 <inspect-page {data} entrypoint>
 	<!DOCTYPE html>
@@ -37,6 +185,10 @@
 	<head>
 		<title>hop dev - Module Inspector</title>
 		<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+		<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+        <style>
+          body { font-family: "JetBrains Mono"; }
+        </style>
 	</head>
 	<body class="font-sans m-10 bg-gray-100">
 		<h1 class="text-3xl font-bold text-gray-800 border-b-2 border-blue-600 pb-2">🔍 hop dev - Module Inspector</h1>
@@ -44,38 +196,39 @@
 		<stats-box>{data.total_modules} modules, {data.total_components} components total</stats-box>
 		
 		<for {module in data.modules}>
-			<div class="bg-white p-5 my-5 rounded-lg shadow-sm">
-				<module-header>{module.name}</module-header>
-				
-				<for {component in module.components}>
-					<if {component.has_preview}>
-						<a set-href="component.link">
-							<component-item-clickable>
+			<module-box>
+				<with-heading>{module.name}</with-heading>
+				<with-body>	
+					<for {component in module.components}>
+						<if {component.has_preview}>
+							<a set-href="component.link">
+								<component-item-clickable>
+									<with-name>{component.name}</with-name>
+									<with-details>
+										<strong>Parameters:</strong>{component.parameter_type}<br>
+										<if {component.is_entrypoint}>
+											<strong>Type:</strong> Entrypoint component<br>
+										</if>
+										<strong>Slots:</strong> {component.slots_text}<br>
+									</with-details>
+								</component-item-clickable>
+							</a>
+						</if>
+						<if {!component.has_preview}>
+							<component-item>
 								<with-name>{component.name}</with-name>
 								<with-details>
-									<strong>Parameters:</strong> <param-type>{component.parameter_type}</param-type><br>
+									<strong>Parameters:</strong> {component.parameter_type}<br>
 									<if {component.is_entrypoint}>
 										<strong>Type:</strong> Entrypoint component<br>
 									</if>
 									<strong>Slots:</strong> {component.slots_text}<br>
 								</with-details>
-							</component-item-clickable>
-						</a>
-					</if>
-					<if {!component.has_preview}>
-						<component-item>
-							<with-name>{component.name}</with-name>
-							<with-details>
-								<strong>Parameters:</strong> <param-type>{component.parameter_type}</param-type><br>
-								<if {component.is_entrypoint}>
-									<strong>Type:</strong> Entrypoint component<br>
-								</if>
-								<strong>Slots:</strong> {component.slots_text}<br>
-							</with-details>
-						</component-item>
-					</if>
-				</for>
-			</div>
+							</component-item>
+						</if>
+					</for>
+				</with-body>	
+			</module-box>
 		</for>
 	</body>
 	</html>

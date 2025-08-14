@@ -438,6 +438,10 @@ fn create_component_preview(
             html.push_str(
                 "<script src=\"https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4\"></script>\n",
             );
+            html.push_str(
+                "<link href=\"https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap\" rel=\"stylesheet\">\n",
+            );
+            html.push_str("<style>body { font-family: \"JetBrains Mono\"; }</style>\n");
             html.push_str("</head>\n<body class=\"font-sans m-0 p-5 bg-gray-100\">\n");
 
             html.push_str("<div class=\"bg-white px-5 py-4 -mx-5 -mt-5 mb-5 border-b border-gray-300 shadow-sm\">\n");

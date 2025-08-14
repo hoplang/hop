@@ -564,7 +564,7 @@ impl Program {
             }
             Expression::UnaryOp(UnaryOp::Not, expr) => {
                 let value = self.evaluate_expr(expr, env)?;
-                
+
                 match value {
                     serde_json::Value::Bool(b) => Ok(serde_json::Value::Bool(!b)),
                     _ => Err("Negation operator can only be applied to boolean values".to_string()),
