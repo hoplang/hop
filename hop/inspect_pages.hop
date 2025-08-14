@@ -14,13 +14,6 @@
 		  slots: <slot-slots/>
 		</with-body>
 	</heading-box>
-	<hop-x-preview>
-		<component-item>
-			<with-name>test-component</with-name>
-			<with-parameters>void</with-parameters>
-			<with-slots>foo, bar, baz</with-slots>
-		</component-item>
-	</hop-x-preview>
 </component-item>
 
 <module-item>
@@ -33,23 +26,6 @@
 			<slot-body />
 		</with-body>
 	</heading-box>
-	<hop-x-preview>
-		<module-item>
-			<with-heading>hop/test-module</with-heading>
-			<with-body>
-				<component-item>
-					<with-name>test-component</with-name>
-					<with-parameters>void</with-parameters>
-					<with-slots>foo, bar</with-slots>
-				</component-item>
-				<component-item>
-					<with-name>test-component</with-name>
-					<with-parameters>void</with-parameters>
-					<with-slots>foo, bar</with-slots>
-				</component-item>
-			</with-body>
-		</module-item>
-	</hop-x-preview>
 </module-item>
 
 <inspector-view>
@@ -63,9 +39,6 @@
 			%OUTPUT%
 		</page-container>
 	</div>
-	<hop-x-preview>
-		<inspector-view />
-	</hop-x-preview>
 </inspector-view>
 
 <module-view>

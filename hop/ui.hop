@@ -121,11 +121,4 @@
 
 <page-container class="max-w-6xl px-4 my-12 mx-auto">
 	<slot-default />
-	<hop-x-preview>
-		<page-container>
-			<div class="border p-2">
-				page content
-			</div>
-		</page-container>
-	</hop-x-preview>
 </page-container>

@@ -3,9 +3,6 @@
 
 <code-text as="span">
 	<code class="italic"><slot-default /></code>
-	<hop-x-preview>
-		Try to edit <code-text>file.hop</code-text> to see changes.
-	</hop-x-preview>
 </code-text>
 
 <error-generic-error class="flex flex-col gap-4">
@@ -46,15 +43,13 @@
 		</with-body>
 	</heading-box>
 	<hop-x-preview>
-		<div class="p-8">
-			<error-not-found-error>
-				<with-requested-path>/foo-bar</with-requested-path>
-				<with-available-routes>
-					<li><a href="#foo">/foo</a></li>
-					<li><a href="#bar">/bar</a></li>
-				</with-available-routes>
-			</error-not-found-error>
-		</div>
+		<error-not-found-error>
+			<with-requested-path>/foo-bar</with-requested-path>
+			<with-available-routes>
+				<li><a href="#foo">/foo</a></li>
+				<li><a href="#bar">/bar</a></li>
+			</with-available-routes>
+		</error-not-found-error>
 	</hop-x-preview>
 </error-not-found-error>
 
