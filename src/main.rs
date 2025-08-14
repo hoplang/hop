@@ -461,7 +461,7 @@ fn create_component_preview(
                 Err(_e) => panic!("failed to compile"),
             };
 
-            let combined_script = inspect_program.get_scripts();
+            let combined_script = program.get_scripts();
 
             match inspect_program.execute_simple(
                 "hop/inspect_pages",

@@ -35,6 +35,33 @@
 	<div class="grid auto-cols-fr grid-flow-col gap-6">
 		<slot-modules />
 	</div>
+	<script>
+		// Make draggable
+		const elements = frameElement.querySelectorAll('& > * > *');
+		elements.forEach(element => {
+			element.draggable = true;
+			element.style.cursor = 'move';
+			
+			let isDragging = false;
+			let startX, startY, initialX, initialY;
+			
+			element.addEventListener('dragstart', (e) => {
+				isDragging = true;
+				const rect = element.getBoundingClientRect();
+				startX = e.clientX - rect.left;
+				startY = e.clientY - rect.top;
+				element.style.opacity = '0.5';
+			});
+			
+			element.addEventListener('dragend', (e) => {
+				isDragging = false;
+				element.style.opacity = '1';
+				element.style.position = 'absolute';
+				element.style.left = (e.clientX - startX) + 'px';
+				element.style.top = (e.clientY - startY) + 'px';
+			});
+		});
+	</script>
 	<hop-x-preview>
 		<div class="bg-white p-8">
 			<module-view>
