@@ -419,7 +419,7 @@ fn create_inspect_page(program: &runtime::Program) -> String {
     match inspect_program.execute_simple("hop/inspect_pages", "inspect-page", inspect_data) {
         Ok(html) => html.replace(
             "</body>",
-            format!("<script>{}</script>", combined_script).as_str(),
+            format!("<script>{}</script></body>", combined_script).as_str(),
         ),
         Err(e) => format!("Error rendering inspect template: {}", e),
     }
@@ -461,13 +461,18 @@ fn create_component_preview(
                 Err(_e) => panic!("failed to compile"),
             };
 
+            let combined_script = inspect_program.get_scripts();
+
             match inspect_program.execute_simple(
                 "hop/inspect_pages",
                 "preview-page",
                 serde_json::json!({}),
             ) {
                 Ok(html) => Ok(inject_hot_reload_script(
-                    &html.replace("%OUTPUT%", &rendered_content),
+                    &html.replace("%OUTPUT%", &rendered_content).replace(
+                        "</body>",
+                        format!("<script>{}</script></body>", combined_script).as_str(),
+                    ),
                 )),
                 Err(_e) => panic!("failed"),
             }
