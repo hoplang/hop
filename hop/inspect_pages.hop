@@ -24,7 +24,7 @@
 </component-item>
 
 <module-item>
-	<heading-box>
+	<heading-box {true}>
 		<with-title>Module</with-title>
 		<with-heading>
 			<slot-heading />

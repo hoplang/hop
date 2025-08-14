@@ -4,6 +4,7 @@ use crate::common::{BinaryOp, Expression, Range, RangeError, UnaryOp, VarName};
 enum ExprToken {
     Identifier(String),
     StringLiteral(String),
+    BooleanLiteral(bool),
     Equal,
     Not,
     Dot,
@@ -139,6 +140,10 @@ impl ExprTokenizer {
                     Err("Invalid identifier".to_string())
                 } else if identifier == "in" {
                     Ok(ExprToken::In)
+                } else if identifier == "true" {
+                    Ok(ExprToken::BooleanLiteral(true))
+                } else if identifier == "false" {
+                    Ok(ExprToken::BooleanLiteral(false))
                 } else {
                     Ok(ExprToken::Identifier(identifier))
                 }
@@ -191,6 +196,11 @@ fn parse_primary(tokenizer: &mut ExprTokenizer) -> Result<Expression, String> {
                 }
             }
 
+            Ok(expr)
+        }
+        ExprToken::BooleanLiteral(value) => {
+            let expr = Expression::BooleanLiteral(*value);
+            tokenizer.advance()?;
             Ok(expr)
         }
         ExprToken::StringLiteral(value) => {

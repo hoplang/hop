@@ -471,10 +471,8 @@ fn typecheck_expression(
                 unifier.new_type_var()
             }
         }
-        Expression::StringLiteral(_) => {
-            // String literals always have type String
-            Type::String
-        }
+        Expression::BooleanLiteral(_) => Type::Bool,
+        Expression::StringLiteral(_) => Type::String,
         Expression::PropertyAccess(base_expr, property) => {
             let base_type =
                 typecheck_expression(base_expr, env, unifier, annotations, errors, range);

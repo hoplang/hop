@@ -540,6 +540,7 @@ impl Program {
                 }
             }
             Expression::StringLiteral(value) => Ok(serde_json::Value::String(value.clone())),
+            Expression::BooleanLiteral(value) => Ok(serde_json::Value::Bool(value.clone())),
             Expression::PropertyAccess(base_expr, property) => {
                 let base_value = self.evaluate_expr(base_expr, env)?;
 

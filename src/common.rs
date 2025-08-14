@@ -298,6 +298,7 @@ pub enum Expression {
     Variable(String),
     PropertyAccess(Box<Expression>, String),
     StringLiteral(String),
+    BooleanLiteral(bool),
     BinaryOp(Box<Expression>, BinaryOp, Box<Expression>),
     UnaryOp(UnaryOp, Box<Expression>),
 }

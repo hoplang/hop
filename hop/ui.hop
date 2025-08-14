@@ -9,7 +9,7 @@
 	</hop-x-preview>
 </page-container>
 
-<heading-box class="border">
+<heading-box {toggleable} class="border">
 	<div class="p-3 py-2 flex justify-between">
 		<div>
 			<span class="font-medium uppercase">
@@ -17,9 +17,11 @@
 			</span>
 			<slot-heading/>
 		</div>
-		<div data-id="toggle">
-			▼
-		</div>
+		<if {toggleable}>
+			<div data-id="toggle">
+				▼
+			</div>
+		</if>
 	</div>
 	<hr/>
 	<div class="p-3 flex flex-col gap-2" data-id="body">
@@ -28,6 +30,7 @@
 	<script>
 		let open = true;
 		const toggle = frameElement.querySelector('[data-id="toggle"]');
+		if (!toggle) return;
 		const body = frameElement.querySelector('[data-id="body"]');
 		toggle.addEventListener('click', () => {
 			body.classList.toggle('hidden');
@@ -37,7 +40,7 @@
 	</script>
 	<hop-x-preview>
 		<div class="grid grid-cols-2 gap-6">
-			<heading-box>
+			<heading-box {true}>
 				<with-title>
 					Component
 				</with-title>

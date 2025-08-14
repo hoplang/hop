@@ -888,7 +888,7 @@ console.log("Hello from static file");
         let body = response.text();
         assert!(body.contains("404 Not Found"));
         assert!(body.contains("/nonexistent"));
-        assert!(body.contains("Available Routes"));
+        assert!(body.contains("Available routes"));
         assert!(body.contains("href=\"/\""));
         assert!(body.contains("href=\"/about\""));
         assert!(body.contains("href=\"/foo/bar\""));
