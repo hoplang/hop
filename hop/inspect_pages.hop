@@ -1,29 +1,19 @@
 <import component="heading-box" from="hop/ui">
 <import component="page-container" from="hop/ui">
 
-<component-item>
-	<heading-box>
-		<with-title>
-		  Component
-		</with-title>
-		<with-heading>
-		  <slot-name />
-		</with-heading>
-		<with-body>
-		  parameters: <slot-parameters/><br/>
-		  slots: <slot-slots/>
-		</with-body>
-	</heading-box>
+<component-item as="li">
+	<slot-default />
 </component-item>
 
 <module-item>
 	<heading-box {true}>
-		<with-title>Module</with-title>
 		<with-heading>
 			<slot-heading />
 		</with-heading>
 		<with-body>
-			<slot-body />
+			<ul style="list-style: square; margin-left: 12px;">
+				<slot-body />
+			</ul>
 		</with-body>
 	</heading-box>
 </module-item>
@@ -42,70 +32,55 @@
 </inspector-view>
 
 <module-view>
-	<div class="flex gap-4">
+	<div class="grid auto-cols-fr grid-flow-col gap-6">
 		<slot-modules />
 	</div>
 	<hop-x-preview>
-		<module-view>
-			<with-modules>
-				<module-item>
-					<with-heading>
-						hop/ui
-					</with-heading>
-					<with-body>
-						<component-item>
-							<with-name>my-component</with-name>
-							<with-parameters>void</with-parameters>
-							<with-slots>foo, bar, baz</with-slots>
-						</component-item>
-						<component-item>
-							<with-name>my-component</with-name>
-							<with-parameters>void</with-parameters>
-							<with-slots>foo, bar, baz</with-slots>
-						</component-item>
-						<component-item>
-							<with-name>my-component</with-name>
-							<with-parameters>void</with-parameters>
-							<with-slots>foo, bar, baz</with-slots>
-						</component-item>
-					</with-body>
-				</module-item>
-				<module-item>
-					<with-heading>
-						hop/error_pages
-					</with-heading>
-					<with-body>
-						<component-item>
-							<with-name>my-component</with-name>
-							<with-parameters>void</with-parameters>
-							<with-slots>foo, bar, baz</with-slots>
-						</component-item>
-						<component-item>
-							<with-name>my-component</with-name>
-							<with-parameters>void</with-parameters>
-							<with-slots>foo, bar, baz</with-slots>
-						</component-item>
-					</with-body>
-				</module-item>
-				<module-item>
-					<with-heading>
-						hop/inspect_pages
-					</with-heading>
-					<with-body>
-						<component-item>
-							<with-name>my-component</with-name>
-							<with-parameters>void</with-parameters>
-							<with-slots>foo, bar, baz</with-slots>
-						</component-item>
-						<component-item>
-							<with-name>my-component</with-name>
-							<with-parameters>void</with-parameters>
-							<with-slots>foo, bar, baz</with-slots>
-						</component-item>
-					</with-body>
-				</module-item>
-			</with-modules>
-		</module-view>
+		<div class="bg-white p-8">
+			<module-view>
+				<with-modules>
+					<module-item>
+						<with-heading>
+							hop/ui
+						</with-heading>
+						<with-body>
+							<component-item>
+								my-foo
+							</component-item>
+							<component-item>
+								my-other-bar
+							</component-item>
+							<component-item>
+								my-baz
+							</component-item>
+						</with-body>
+					</module-item>
+					<module-item>
+						<with-heading>
+							hop/error_pages
+						</with-heading>
+						<with-body>
+							<component-item>
+								my-baz-foo
+							</component-item>
+						</with-body>
+					</module-item>
+					<module-item>
+						<with-heading>
+							hop/inspect_pages
+						</with-heading>
+						<with-body>
+							<component-item>
+								foo-bar-baz
+							</component-item>
+							<component-item>
+								my-bar-foo
+							</component-item>
+						</with-body>
+					</module-item>
+				</with-modules>
+			</module-view>
+		</div>
 	</hop-x-preview>
 </module-view>
 
@@ -135,30 +110,11 @@
 								<with-heading>{module.name}</with-heading>
 								<with-body>	
 									<for {component in module.components}>
-										<if {component.has_preview}>
+										<component-item>
 											<a set-href="component.link">
-												<component-item>
-													<with-name>{component.name}</with-name>
-													<with-parameters>
-														{component.parameter_type}
-													</with-parameters>
-													<with-slots>
-														{component.slots_text}
-													</with-slots>
-												</component-item>
+													{component.name}
 											</a>
-										</if>
-										<if {!component.has_preview}>
-											<component-item>
-												<with-name>{component.name}</with-name>
-												<with-parameters>
-													{component.parameter_type}
-												</with-parameters>
-												<with-slots>
-													{component.slots_text}
-												</with-slots>
-											</component-item>
-										</if>
+										</component-item>
 									</for>
 								</with-body>	
 							</module-item>
