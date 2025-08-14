@@ -21,10 +21,10 @@
 <inspector-view {preview}>
 	<div class="flex flex-col gap-1">
 		<div class="flex justify-between items-center">
-			<div>
+			<div data-id="title-area">
 				<slot-title />
 			</div>
-				<button data-id="bg-toggler" class="bg-white border border-2 size-4"></button>
+			<button data-id="bg-toggler" class="bg-white border border-2 size-4"></button>
 		</div>
 		<div class="bg-white" data-id="iframe-wrapper">
 			<iframe set-src="preview" style="width: 100%; height: 480px; border: none;" title="Component Preview"></iframe>
@@ -33,13 +33,56 @@
 	<script>
 		const wrapper = frameElement.querySelector('[data-id="iframe-wrapper"]');
 		const bgToggler = frameElement.querySelector('[data-id="bg-toggler"]');
+		const titleArea = frameElement.querySelector('[data-id="title-area"]');
+		const iframe = frameElement.querySelector('iframe');
+		
+		// Background toggle functionality
 		bgToggler.addEventListener('click', () => {
 			bgToggler.classList.toggle('bg-white');
 			bgToggler.classList.toggle('bg-transparent');
 			wrapper.classList.toggle('bg-white');
 			wrapper.classList.toggle('bg-transparent');
 			wrapper.classList.toggle('outline');
-		})
+		});
+		
+		// Draggable functionality
+		titleArea.style.cursor = 'move';
+		let isDragging = false;
+		let startX, startY;
+		
+		titleArea.addEventListener('mousedown', (e) => {
+			isDragging = true;
+			const rect = frameElement.getBoundingClientRect();
+			startX = e.clientX - rect.left;
+			startY = e.clientY - rect.top;
+			
+			// Preserve the width before making it absolute
+			frameElement.style.width = rect.width + 'px';
+			frameElement.style.position = 'absolute';
+			frameElement.style.opacity = '0.5';
+			
+			// Disable pointer events on iframe to prevent drag interference
+			iframe.style.pointerEvents = 'none';
+			
+			e.preventDefault();
+		});
+		
+		document.addEventListener('mousemove', (e) => {
+			if (isDragging) {
+				frameElement.style.left = (e.clientX - startX) + 'px';
+				frameElement.style.top = (e.clientY - startY) + 'px';
+			}
+		});
+		
+		document.addEventListener('mouseup', () => {
+			if (isDragging) {
+				isDragging = false;
+				frameElement.style.opacity = '1';
+				
+				// Re-enable pointer events on iframe
+				iframe.style.pointerEvents = 'auto';
+			}
+		});
 	</script>
 	<hop-x-preview>
 		<div class="p-8">
