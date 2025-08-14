@@ -471,7 +471,8 @@ fn create_simple_component_preview(
                 combined_script
             );
             
-            Ok(html)
+            // Inject hot reload script into the preview page
+            Ok(inject_hot_reload_script(&html))
         }
         Err(e) => Err(format!("Failed to render component: {}", e)),
     }
@@ -610,11 +611,9 @@ async fn hop_dev(
                                     preview_data,
                                 ) {
                                     Ok(html) => {
-                                        let final_html = inject_hot_reload_script(
-                                            &html.replace(
-                                                "</body>",
-                                                format!("<script>{}</script></body>", combined_script).as_str(),
-                                            ),
+                                        let final_html = html.replace(
+                                            "</body>",
+                                            format!("<script>{}</script></body>", combined_script).as_str(),
                                         );
                                         Ok(axum::response::Html(final_html))
                                     },

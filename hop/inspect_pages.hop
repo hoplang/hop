@@ -18,17 +18,36 @@
 	</heading-box>
 </module-item>
 
-<inspector-view>
-	<page-container>
-		<div>
-			INSPECTING	
+<inspector-view {preview}>
+	<div class="flex flex-col gap-1">
+		<div class="flex justify-between items-center">
+			<div>
+				<slot-title />
+			</div>
+				<button data-id="bg-toggler" class="bg-white border border-2 size-4"></button>
 		</div>
-	</page-container>
-	<div class="p-6">
-		<page-container>
-			%OUTPUT%
-		</page-container>
+		<div class="bg-white" data-id="iframe-wrapper">
+			<iframe set-src="preview" style="width: 100%; height: 480px; border: none;" title="Component Preview"></iframe>
+		</div>
 	</div>
+	<script>
+		const wrapper = frameElement.querySelector('[data-id="iframe-wrapper"]');
+		const bgToggler = frameElement.querySelector('[data-id="bg-toggler"]');
+		bgToggler.addEventListener('click', () => {
+			bgToggler.classList.toggle('bg-white');
+			bgToggler.classList.toggle('bg-transparent');
+			wrapper.classList.toggle('bg-white');
+			wrapper.classList.toggle('bg-transparent');
+			wrapper.classList.toggle('outline');
+		})
+	</script>
+	<hop-x-preview>
+		<div class="p-8">
+			<inspector-view {'/_preview/hop%2Ferror_pages/error-generic-error'}>
+				<with-title>hop/ui - module</with-title>
+			</inspector-view>
+		</div>
+	</hop-x-preview>
 </inspector-view>
 
 <module-view>
@@ -63,51 +82,49 @@
 		});
 	</script>
 	<hop-x-preview>
-		<div class="bg-white p-8">
-			<module-view>
-				<with-modules>
-					<module-item>
-						<with-heading>
-							hop/ui
-						</with-heading>
-						<with-body>
-							<component-item>
-								my-foo
-							</component-item>
-							<component-item>
-								my-other-bar
-							</component-item>
-							<component-item>
-								my-baz
-							</component-item>
-						</with-body>
-					</module-item>
-					<module-item>
-						<with-heading>
-							hop/error_pages
-						</with-heading>
-						<with-body>
-							<component-item>
-								my-baz-foo
-							</component-item>
-						</with-body>
-					</module-item>
-					<module-item>
-						<with-heading>
-							hop/inspect_pages
-						</with-heading>
-						<with-body>
-							<component-item>
-								foo-bar-baz
-							</component-item>
-							<component-item>
-								my-bar-foo
-							</component-item>
-						</with-body>
-					</module-item>
-				</with-modules>
-			</module-view>
-		</div>
+		<module-view>
+			<with-modules>
+				<module-item>
+					<with-heading>
+						hop/ui
+					</with-heading>
+					<with-body>
+						<component-item>
+							my-foo
+						</component-item>
+						<component-item>
+							my-other-bar
+						</component-item>
+						<component-item>
+							my-baz
+						</component-item>
+					</with-body>
+				</module-item>
+				<module-item>
+					<with-heading>
+						hop/error_pages
+					</with-heading>
+					<with-body>
+						<component-item>
+							my-baz-foo
+						</component-item>
+					</with-body>
+				</module-item>
+				<module-item>
+					<with-heading>
+						hop/inspect_pages
+					</with-heading>
+					<with-body>
+						<component-item>
+							foo-bar-baz
+						</component-item>
+						<component-item>
+							my-bar-foo
+						</component-item>
+					</with-body>
+				</module-item>
+			</with-modules>
+		</module-view>
 	</hop-x-preview>
 </module-view>
 
@@ -167,15 +184,8 @@
 	</head>
 	<body class="bg-[#f6f6f6] mb-40" style="background: repeating-conic-gradient(rgba(0,0,0,0.025) 0 25%, rgba(0,0,0,0.05) 0 50%) 50% / 16px 16px;">
 		<page-container>
-			<div>
-				INSPECTING	
-			</div>
+			<inspector-view {data.preview_url} />
 		</page-container>
-		<div class="p-6">
-			<page-container>
-				<iframe set-src="data.preview_url" style="width: 100%; height: 100%; border: none;" title="Component Preview"></iframe>
-			</page-container>
-		</div>
 	</body>
 	</html>
 </preview-page>
