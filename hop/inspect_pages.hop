@@ -24,19 +24,10 @@
 		let panStartCanvasY = 0;
 		
 		const canvas = frameElement.querySelector('[data-id="canvas"]');
-		const zoomLevelElement = document.getElementById('zoom-level');
-		const zoomInBtn = document.getElementById('zoom-in');
-		const zoomOutBtn = document.getElementById('zoom-out');
-		const zoomResetBtn = document.getElementById('zoom-reset');
-		
-		function updateZoomDisplay() {
-			zoomLevelElement.textContent = Math.round(currentZoom * 100) + '%';
-		}
 		
 		function applyTransform() {
 			canvas.style.transformOrigin = '0 0';
 			canvas.style.transform = `translate(${canvasX}px, ${canvasY}px) scale(${currentZoom})`;
-			updateZoomDisplay();
 		}
 		
 		function setZoom(newZoom, centerX = null, centerY = null) {
@@ -53,8 +44,6 @@
 			
 			applyTransform();
 			
-			// Save zoom to localStorage
-			localStorage.setItem('hop-inspector-zoom', currentZoom.toString());
 		}
 		
 		function setCanvasPosition(x, y) {
@@ -66,20 +55,6 @@
 			localStorage.setItem('hop-inspector-canvas-x', canvasX.toString());
 			localStorage.setItem('hop-inspector-canvas-y', canvasY.toString());
 		}
-		
-		// Zoom controls
-		zoomInBtn.addEventListener('click', () => {
-			setZoom(currentZoom * 1.2);
-		});
-		
-		zoomOutBtn.addEventListener('click', () => {
-			setZoom(currentZoom * 0.8);
-		});
-		
-		zoomResetBtn.addEventListener('click', () => {
-			setZoom(1.0);
-			setCanvasPosition(0, 0);
-		});
 		
 		// Scroll wheel zoom and pan
 		frameElement.addEventListener('wheel', (e) => {
@@ -171,19 +146,14 @@
 		});
 		
 		// Restore zoom and canvas position from localStorage
-		const savedZoom = localStorage.getItem('hop-inspector-zoom');
 		const savedCanvasX = localStorage.getItem('hop-inspector-canvas-x');
 		const savedCanvasY = localStorage.getItem('hop-inspector-canvas-y');
 		
 		if (savedCanvasX !== null) canvasX = parseFloat(savedCanvasX);
 		if (savedCanvasY !== null) canvasY = parseFloat(savedCanvasY);
 		
-		if (savedZoom) {
-			setZoom(parseFloat(savedZoom));
-		} else {
-			window.hopInspectorZoom = currentZoom;
-			applyTransform();
-		}
+		window.hopInspectorZoom = currentZoom;
+		applyTransform();
 	</script>
 </canvas-view>
 
@@ -421,13 +391,6 @@
         </style>
 	</head>
 	<body class="bg-[#f6f6f6] h-screen w-screen" style="background: repeating-conic-gradient(rgba(0,0,0,0.025) 0 25%, rgba(0,0,0,0.05) 0 50%) 50% / 16px 16px;">
-		<!-- Zoom Controls -->
-		<div class="fixed top-4 right-4 z-50 bg-white border border-gray-300 rounded-lg shadow-md p-2 flex items-center gap-2">
-			<button id="zoom-out" class="px-2 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded">-</button>
-			<span id="zoom-level" class="text-sm font-mono min-w-12 text-center">100%</span>
-			<button id="zoom-in" class="px-2 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded">+</button>
-			<button id="zoom-reset" class="px-2 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded text-xs">Reset</button>
-		</div>
 		<div class="flex">
 			<div class="bg-white p-3 w-80 h-screen">
 				<side-bar>
