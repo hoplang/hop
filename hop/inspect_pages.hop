@@ -2,7 +2,7 @@
 <import component="side-bar" from="hop/ui">
 <import component="side-bar-group" from="hop/ui">
 
-<inspector-view {preview}>
+<inspector-view {preview} style="position: absolute;">
 	<div class="flex flex-col gap-1 relative group p-4" data-id="resizable-container">
 		<div class="flex justify-between items-center">
 			<div data-id="title-area">
@@ -19,6 +19,7 @@
 		<div data-id="resize-handle-e" class="absolute right-0 top-1/2 transform -translate-y-1/2 w-3 h-8 bg-gray-500 border border-white cursor-e-resize opacity-0 group-hover:opacity-70 hover:!opacity-100 rounded-sm transition-opacity duration-200"></div>
 	</div>
 	<script>
+		/* Note that frameElement is the div that represents the <inspector-view> */
 		const wrapper = frameElement.querySelector('[data-id="iframe-wrapper"]');
 		const bgToggler = frameElement.querySelector('[data-id="bg-toggler"]');
 		const titleArea = frameElement.querySelector('[data-id="title-area"]');
@@ -48,13 +49,9 @@
 			startX = e.clientX - rect.left;
 			startY = e.clientY - rect.top;
 			
-			// Preserve the width before making it absolute
-			frameElement.style.width = rect.width + 'px';
-			frameElement.style.height = rect.height + 'px';
-			frameElement.style.position = 'absolute';
 			frameElement.style.opacity = '0.5';
 			
-			// Disable pointer events on iframe to prevent drag interference
+			// Disable pointer events on all iframes to prevent drag interference
 			document.querySelectorAll('iframe').forEach((frm) => {
 				frm.style.pointerEvents = 'none';
 			})
@@ -74,12 +71,11 @@
 				isDragging = false;
 				frameElement.style.opacity = '1';
 				
-				// Re-enable pointer events on iframe
+				// Re-enable pointer events on iframes
 				document.querySelectorAll('iframe').forEach((frm) => {
 					frm.style.pointerEvents = 'auto';
 				});
 				
-				updateViewportExpander();
 				saveElementState();
 			}
 		});
@@ -139,26 +135,9 @@
 					frm.style.pointerEvents = 'auto';
 				});
 				
-				updateViewportExpander();
 				saveElementState();
 			}
 		});
-		
-		function updateViewportExpander() {
-			const rect = frameElement.getBoundingClientRect();
-			const elementRight = rect.left + rect.width;
-			const elementBottom = rect.top + rect.height;
-			
-			const expander = document.getElementById('viewport-expander');
-			const currentWidth = parseInt(expander.style.width) || 3000;
-			const currentHeight = parseInt(expander.style.height) || 3000;
-			
-			const newWidth = Math.max(3000, currentWidth, elementRight + 50);
-			const newHeight = Math.max(3000, currentHeight, elementBottom + 50);
-			
-			expander.style.width = newWidth + 'px';
-			expander.style.height = newHeight + 'px';
-		}
 		
 		// localStorage functionality
 		function getElementId() {
@@ -195,9 +174,6 @@
 				if (state.width) frameElement.style.width = state.width;
 				if (state.height) frameElement.style.height = state.height;
 				if (state.iframeHeight) iframe.style.height = state.iframeHeight;
-				
-				// Update viewport expander to accommodate restored position
-				setTimeout(updateViewportExpander, 100);
 			}
 		}
 		
@@ -259,7 +235,6 @@
 				</with-layers>
 			</side-bar>
 		</div>
-		<div id="viewport-expander" style="position: absolute; top: 0; left: 0; width: 3000px; height: 3000px; pointer-events: none; z-index: -1;"></div>
 		<page-container>
 			<for {module in data.modules}>
 				<for {component in module.components}>
