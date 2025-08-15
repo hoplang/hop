@@ -244,7 +244,7 @@
           body { font-family: "JetBrains Mono"; }
         </style>
 	</head>
-	<body class="bg-[#f6f6f6] mb-40" style="background: repeating-conic-gradient(rgba(0,0,0,0.025) 0 25%, rgba(0,0,0,0.05) 0 50%) 50% / 16px 16px;">
+	<body class="bg-[#f6f6f6] h-screen w-screen" style="background: repeating-conic-gradient(rgba(0,0,0,0.025) 0 25%, rgba(0,0,0,0.05) 0 50%) 50% / 16px 16px;">
 		<!-- Zoom Controls -->
 		<div class="fixed top-4 right-4 z-50 bg-white border border-gray-300 rounded-lg shadow-md p-2 flex items-center gap-2">
 			<button id="zoom-out" class="px-2 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded">-</button>
@@ -252,49 +252,52 @@
 			<button id="zoom-in" class="px-2 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded">+</button>
 			<button id="zoom-reset" class="px-2 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded text-xs">Reset</button>
 		</div>
-		
-		<div class="bg-white p-3 w-80 h-screen fixed top-0 z-50">
-			<side-bar>
-				<with-layers>
-					<side-bar-group>
-						<with-title>
-							hop/ui
-						</with-title>
-						<with-body>
-							<div>
-								side-bar
-							</div>
-							<div>
-								heading-box
-							</div>
-						</with-body>
-					</side-bar-group>
-					<side-bar-group>
-						<with-title>
-							hop/ui
-						</with-title>
-						<with-body>
-							<div>
-								side-bar
-							</div>
-							<div>
-								heading-box
-							</div>
-						</with-body>
-					</side-bar-group>
-				</with-layers>
-			</side-bar>
-		</div>
-		<div data-id="canvas">
-			<page-container>
-				<for {module in data.modules}>
-					<for {component in module.components}>
-						<inspector-view {component.preview_url}>
-							<with-title>{module.name} - {component.name}</with-title>
-						</inspector-view>
-					</for>
-				</for>
-			</page-container>
+		<div class="flex">
+			<div class="bg-white p-3 w-80 h-screen">
+				<side-bar>
+					<with-layers>
+						<side-bar-group>
+							<with-title>
+								hop/ui
+							</with-title>
+							<with-body>
+								<div>
+									side-bar
+								</div>
+								<div>
+									heading-box
+								</div>
+							</with-body>
+						</side-bar-group>
+						<side-bar-group>
+							<with-title>
+								hop/ui
+							</with-title>
+							<with-body>
+								<div>
+									side-bar
+								</div>
+								<div>
+									heading-box
+								</div>
+							</with-body>
+						</side-bar-group>
+					</with-layers>
+				</side-bar>
+			</div>
+			<div class="flex-grow h-screen overflow-hidden">
+				<div data-id="canvas">
+					<page-container>
+						<for {module in data.modules}>
+							<for {component in module.components}>
+								<inspector-view {component.preview_url}>
+									<with-title>{module.name} - {component.name}</with-title>
+								</inspector-view>
+							</for>
+						</for>
+					</page-container>
+				</div>
+			</div>
 		</div>
 		
 		<script>
@@ -304,6 +307,16 @@
 			const minZoom = 0.1;
 			const maxZoom = 5.0;
 			const zoomStep = 0.1;
+			
+			// Canvas panning state
+			let canvasX = 0;
+			let canvasY = 0;
+			let isPanning = false;
+			let spacePressed = false;
+			let panStartX = 0;
+			let panStartY = 0;
+			let panStartCanvasX = 0;
+			let panStartCanvasY = 0;
 			
 			const canvas = document.querySelector('[data-id="canvas"]');
 			const zoomLevelElement = document.getElementById('zoom-level');
@@ -315,8 +328,8 @@
 				zoomLevelElement.textContent = Math.round(currentZoom * 100) + '%';
 			}
 			
-			function applyZoom() {
-				canvas.style.transform = `scale(${currentZoom})`;
+			function applyTransform() {
+				canvas.style.transform = `translate(${canvasX}px, ${canvasY}px) scale(${currentZoom})`;
 				canvas.style.transformOrigin = 'top left';
 				updateZoomDisplay();
 			}
@@ -324,10 +337,20 @@
 			function setZoom(newZoom) {
 				currentZoom = Math.max(minZoom, Math.min(maxZoom, newZoom));
 				window.hopInspectorZoom = currentZoom;
-				applyZoom();
+				applyTransform();
 				
 				// Save zoom to localStorage
 				localStorage.setItem('hop-inspector-zoom', currentZoom.toString());
+			}
+			
+			function setCanvasPosition(x, y) {
+				canvasX = x;
+				canvasY = y;
+				applyTransform();
+				
+				// Save canvas position to localStorage
+				localStorage.setItem('hop-inspector-canvas-x', canvasX.toString());
+				localStorage.setItem('hop-inspector-canvas-y', canvasY.toString());
 			}
 			
 			// Zoom controls
@@ -341,6 +364,7 @@
 			
 			zoomResetBtn.addEventListener('click', () => {
 				setZoom(1.0);
+				setCanvasPosition(0, 0);
 			});
 			
 			// Ctrl+scroll wheel zoom
@@ -352,13 +376,74 @@
 				}
 			}, { passive: false });
 			
-			// Restore zoom from localStorage
+			// Space key panning functionality
+			document.addEventListener('keydown', (e) => {
+				if (e.code === 'Space' && !spacePressed && !e.target.matches('input, textarea, [contenteditable]')) {
+					e.preventDefault();
+					spacePressed = true;
+					document.body.style.setProperty('cursor', 'grab', 'important');
+				}
+			});
+			
+			document.addEventListener('keyup', (e) => {
+				if (e.code === 'Space') {
+					spacePressed = false;
+					isPanning = false;
+					document.body.style.removeProperty('cursor');
+				}
+			});
+			
+			document.addEventListener('mousedown', (e) => {
+				if (spacePressed && e.button === 0) {
+					e.preventDefault();
+					isPanning = true;
+					panStartX = e.clientX;
+					panStartY = e.clientY;
+					panStartCanvasX = canvasX;
+					panStartCanvasY = canvasY;
+					document.body.style.setProperty('cursor', 'grabbing', 'important');
+				}
+			});
+			
+			document.addEventListener('mousemove', (e) => {
+				if (isPanning && spacePressed) {
+					const deltaX = e.clientX - panStartX;
+					const deltaY = e.clientY - panStartY;
+					setCanvasPosition(panStartCanvasX + deltaX, panStartCanvasY + deltaY);
+				}
+			});
+			
+			document.addEventListener('mouseup', (e) => {
+				if (isPanning) {
+					isPanning = false;
+					if (spacePressed) {
+						document.body.style.setProperty('cursor', 'grab', 'important');
+					} else {
+						document.body.style.removeProperty('cursor');
+					}
+				}
+			});
+			
+			// Handle window blur to reset space key state
+			window.addEventListener('blur', () => {
+				spacePressed = false;
+				isPanning = false;
+				document.body.style.removeProperty('cursor');
+			});
+			
+			// Restore zoom and canvas position from localStorage
 			const savedZoom = localStorage.getItem('hop-inspector-zoom');
+			const savedCanvasX = localStorage.getItem('hop-inspector-canvas-x');
+			const savedCanvasY = localStorage.getItem('hop-inspector-canvas-y');
+			
+			if (savedCanvasX !== null) canvasX = parseFloat(savedCanvasX);
+			if (savedCanvasY !== null) canvasY = parseFloat(savedCanvasY);
+			
 			if (savedZoom) {
 				setZoom(parseFloat(savedZoom));
 			} else {
 				window.hopInspectorZoom = currentZoom;
-				applyZoom();
+				applyTransform();
 			}
 		</script>
 	</body>
