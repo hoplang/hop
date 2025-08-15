@@ -155,7 +155,7 @@
 
 <!---------------------------------------------------------------------------->
 
-<inspector-view {preview} style="position: absolute;">
+<canvas-element {preview} style="position: absolute;">
 	<div class="flex flex-col gap-1 relative group p-4" data-id="resizable-container">
 		<div class="flex justify-between items-center">
 			<div data-id="title-area">
@@ -172,7 +172,7 @@
 		<div data-id="resize-handle-e" class="absolute right-0 top-1/2 transform -translate-y-1/2 w-3 h-8 bg-gray-500 border border-white cursor-e-resize opacity-0 group-hover:opacity-70 hover:!opacity-100 rounded-sm transition-opacity duration-200"></div>
 	</div>
 	<script>
-		/* Note that frameElement is the div that represents the <inspector-view> */
+		/* Note that frameElement is the div that represents the <canvas-element> */
 		const wrapper = frameElement.querySelector('[data-id="iframe-wrapper"]');
 		const bgToggler = frameElement.querySelector('[data-id="bg-toggler"]');
 		const titleArea = frameElement.querySelector('[data-id="title-area"]');
@@ -371,12 +371,12 @@
 	</script>
 	<hop-x-preview>
 		<div class="p-8">
-			<inspector-view {'/_preview/hop%2Ferror_pages/error-generic-error'}>
+			<canvas-element {'/_preview/hop%2Ferror_pages/error-generic-error'}>
 				<with-title>hop/ui - component</with-title>
-			</inspector-view>
+			</canvas-element>
 		</div>
 	</hop-x-preview>
-</inspector-view>
+</canvas-element>
 
 <!---------------------------------------------------------------------------->
 
@@ -396,32 +396,20 @@
 			<div class="bg-white p-3 w-80 h-screen">
 				<side-bar>
 					<with-layers>
-						<side-bar-group>
-							<with-title>
-								hop/ui
-							</with-title>
-							<with-body>
-								<div>
-									side-bar
-								</div>
-								<div>
-									heading-box
-								</div>
-							</with-body>
-						</side-bar-group>
-						<side-bar-group>
-							<with-title>
-								hop/ui
-							</with-title>
-							<with-body>
-								<div>
-									side-bar
-								</div>
-								<div>
-									heading-box
-								</div>
-							</with-body>
-						</side-bar-group>
+						<for {module in data.modules}>
+							<side-bar-group>
+								<with-title>
+									{module.name}
+								</with-title>
+								<with-body>
+									<for {component in module.components}>
+										<div>
+											{component.name}
+										</div>
+									</for>
+								</with-body>
+							</side-bar-group>
+						</for>
 					</with-layers>
 				</side-bar>
 			</div>
@@ -429,9 +417,9 @@
 				<canvas-view>
 					<for {module in data.modules}>
 						<for {component in module.components}>
-							<inspector-view {component.preview_url}>
+							<canvas-element {component.preview_url}>
 								<with-title>{module.name} - {component.name}</with-title>
-							</inspector-view>
+							</canvas-element>
 						</for>
 					</for>
 				</canvas-view>
