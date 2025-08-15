@@ -417,9 +417,11 @@
 				<canvas-view>
 					<for {module in data.modules}>
 						<for {component in module.components}>
-							<canvas-element {component.preview_url}>
-								<with-title>{module.name} - {component.name}</with-title>
-							</canvas-element>
+							<if {component.has_preview}>
+								<canvas-element {component.preview_url}>
+									<with-title>{module.name} - {component.name}</with-title>
+								</canvas-element>
+							</if>
 						</for>
 					</for>
 				</canvas-view>

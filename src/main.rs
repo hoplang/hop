@@ -284,8 +284,9 @@ window.addEventListener("beforeunload", function() {
 // Function to build hop modules and execute a specific entrypoint
 
 const ERROR_TEMPLATES: &str = include_str!("../hop/error_pages.hop");
-const INSPECT_TEMPLATES: &str = include_str!("../hop/inspect_pages.hop");
+const INSPECT_TEMPLATES: &str = include_str!("../hop/inspector.hop");
 const UI_TEMPLATES: &str = include_str!("../hop/ui.hop");
+const ICONS_TEMPLATES: &str = include_str!("../hop/icons.hop");
 
 static CACHED_INSPECT_PROGRAM: OnceLock<runtime::Program> = OnceLock::new();
 
@@ -293,11 +294,9 @@ fn get_inspect_program() -> &'static runtime::Program {
     CACHED_INSPECT_PROGRAM.get_or_init(|| {
         let modules = vec![
             ("hop/error_pages".to_string(), ERROR_TEMPLATES.to_string()),
-            (
-                "hop/inspect_pages".to_string(),
-                INSPECT_TEMPLATES.to_string(),
-            ),
+            ("hop/inspector".to_string(), INSPECT_TEMPLATES.to_string()),
             ("hop/ui".to_string(), UI_TEMPLATES.to_string()),
+            ("hop/icons".to_string(), ICONS_TEMPLATES.to_string()),
         ];
 
         compile(modules).expect("Failed to compile inspect program templates")
@@ -357,9 +356,6 @@ fn create_inspect_page(program: &runtime::Program) -> String {
 
         for (component_name, component_def) in sorted_components {
             let has_preview = component_def.preview.is_some();
-            if !has_preview {
-                continue;
-            }
             let encoded_module = module_name.replace("/", "%2F");
             let encoded_component = component_name.replace("/", "%2F");
 
@@ -399,7 +395,7 @@ fn create_inspect_page(program: &runtime::Program) -> String {
 
     let combined_script = inspect_program.get_scripts();
 
-    match inspect_program.execute_simple("hop/inspect_pages", "inspect-page", inspect_data) {
+    match inspect_program.execute_simple("hop/inspector", "inspect-page", inspect_data) {
         Ok(html) => {
             let hot_reload_script = r#"
 <script type="module">
