@@ -13,47 +13,59 @@
 		const minZoom = 0.1;
 		const maxZoom = 5.0;
 		
+		// Canvas transformation matrix
+		let transformMatrix = new DOMMatrix();
+		
 		// Canvas panning state
-		let canvasX = 0;
-		let canvasY = 0;
 		let isPanning = false;
 		let spacePressed = false;
 		let panStartX = 0;
 		let panStartY = 0;
-		let panStartCanvasX = 0;
-		let panStartCanvasY = 0;
+		let panStartMatrix = null;
 		
 		const canvas = frameElement.querySelector('[data-id="canvas"]');
 		
 		function applyTransform() {
-			canvas.style.transformOrigin = '0 0';
-			canvas.style.transform = `translate(${canvasX}px, ${canvasY}px) scale(${currentZoom})`;
+			canvas.style.transform = transformMatrix.toString();
 		}
 		
-		function setZoom(newZoom, centerX = null, centerY = null) {
+		function setZoom(newZoom, centerX = 0, centerY = 0) {
 			const oldZoom = currentZoom;
 			currentZoom = Math.max(minZoom, Math.min(maxZoom, newZoom));
 			window.hopInspectorZoom = currentZoom;
 			
-			// If center point is provided, adjust canvas position to zoom around that point
-			if (centerX !== null && centerY !== null) {
-				const scale = window.hopInspectorZoom / oldZoom;
-				canvasX = centerX - (centerX - canvasX) * scale;
-				canvasY = centerY - (centerY - canvasY) * scale;
-			}
+			// Calculate the scale factor
+			const scaleFactor = currentZoom / oldZoom;
+			
+			// Create a matrix that scales around the center point
+			const scaleMatrix = new DOMMatrix()
+				.translate(centerX, centerY)
+				.scale(scaleFactor)
+				.translate(-centerX, -centerY);
+			
+			transformMatrix = transformMatrix.multiply(scaleMatrix);
 			
 			applyTransform();
-			
 		}
 		
-		function setCanvasPosition(x, y) {
-			canvasX = x;
-			canvasY = y;
+		function setCanvasPosition(deltaX, deltaY) {
+			// Apply translation to the current matrix
+			const translateMatrix = new DOMMatrix().translate(deltaX, deltaY);
+			transformMatrix = transformMatrix.multiply(translateMatrix);
 			applyTransform();
 			
 			// Save canvas position to localStorage
-			localStorage.setItem('hop-inspector-canvas-x', canvasX.toString());
-			localStorage.setItem('hop-inspector-canvas-y', canvasY.toString());
+			localStorage.setItem('hop-inspector-transform-matrix', transformMatrix.toString());
+		}
+		
+		function setAbsoluteCanvasPosition(x, y) {
+			// Reset translation components while preserving scale
+			const scale = currentZoom;
+			transformMatrix = new DOMMatrix().translate(x, y).scale(scale);
+			applyTransform();
+			
+			// Save canvas position to localStorage
+			localStorage.setItem('hop-inspector-transform-matrix', transformMatrix.toString());
 		}
 		
 		// Scroll wheel zoom and pan
@@ -79,13 +91,13 @@
 				
 				if (e.shiftKey) {
 					// Horizontal panning with Shift+scroll
-					const deltaX = e.deltaY * panSpeed; // Use deltaY for horizontal movement
-					setCanvasPosition(canvasX - deltaX, canvasY);
+					const deltaX = -e.deltaY * panSpeed; // Use deltaY for horizontal movement
+					setCanvasPosition(deltaX, 0);
 				} else {
 					// Regular panning
-					const deltaX = e.deltaX * panSpeed;
-					const deltaY = e.deltaY * panSpeed;
-					setCanvasPosition(canvasX - deltaX, canvasY - deltaY);
+					const deltaX = -e.deltaX * panSpeed;
+					const deltaY = -e.deltaY * panSpeed;
+					setCanvasPosition(deltaX, deltaY);
 				}
 			}
 		}, { passive: false });
@@ -113,8 +125,7 @@
 				isPanning = true;
 				panStartX = e.clientX;
 				panStartY = e.clientY;
-				panStartCanvasX = canvasX;
-				panStartCanvasY = canvasY;
+				panStartMatrix = new DOMMatrix(transformMatrix);
 				document.body.style.setProperty('cursor', 'grabbing', 'important');
 			}
 		});
@@ -123,7 +134,11 @@
 			if (isPanning && spacePressed) {
 				const deltaX = e.clientX - panStartX;
 				const deltaY = e.clientY - panStartY;
-				setCanvasPosition(panStartCanvasX + deltaX, panStartCanvasY + deltaY);
+				
+				// Apply translation to the starting matrix
+				const translateMatrix = new DOMMatrix().translate(deltaX, deltaY);
+				transformMatrix = panStartMatrix.multiply(translateMatrix);
+				applyTransform();
 			}
 		});
 		
@@ -135,6 +150,9 @@
 				} else {
 					document.body.style.removeProperty('cursor');
 				}
+				
+				// Save final position
+				localStorage.setItem('hop-inspector-transform-matrix', transformMatrix.toString());
 			}
 		});
 		
@@ -145,15 +163,39 @@
 			document.body.style.removeProperty('cursor');
 		});
 		
-		// Restore zoom and canvas position from localStorage
-		const savedCanvasX = localStorage.getItem('hop-inspector-canvas-x');
-		const savedCanvasY = localStorage.getItem('hop-inspector-canvas-y');
-		
-		if (savedCanvasX !== null) canvasX = parseFloat(savedCanvasX);
-		if (savedCanvasY !== null) canvasY = parseFloat(savedCanvasY);
+		// Restore transform matrix from localStorage
+		const savedMatrix = localStorage.getItem('hop-inspector-transform-matrix');
+		if (savedMatrix) {
+			try {
+				transformMatrix = new DOMMatrix(savedMatrix);
+				// Extract current zoom from the matrix
+				currentZoom = Math.sqrt(transformMatrix.a * transformMatrix.a + transformMatrix.b * transformMatrix.b);
+				window.hopInspectorZoom = currentZoom;
+			} catch (e) {
+				// If parsing fails, use default matrix
+				transformMatrix = new DOMMatrix();
+			}
+		}
 		
 		window.hopInspectorZoom = currentZoom;
 		applyTransform();
+		
+		// Utility functions for external access
+		window.canvasViewUtils = {
+			getTransformMatrix: () => new DOMMatrix(transformMatrix),
+			setTransformMatrix: (matrix) => {
+				transformMatrix = new DOMMatrix(matrix);
+				currentZoom = Math.sqrt(transformMatrix.a * transformMatrix.a + transformMatrix.b * transformMatrix.b);
+				window.hopInspectorZoom = currentZoom;
+				applyTransform();
+			},
+			resetTransform: () => {
+				transformMatrix = new DOMMatrix();
+				currentZoom = 1.0;
+				window.hopInspectorZoom = currentZoom;
+				applyTransform();
+			}
+		};
 	</script>
 </canvas-view>
 
