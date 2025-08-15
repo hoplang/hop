@@ -7,195 +7,149 @@
 	</div>
 	
 	<script>
-		// Zoom state management - make globally accessible
-		window.hopInspectorZoom = 1.0;
-		let currentZoom = 1.0;
-		const minZoom = 0.1;
-		const maxZoom = 5.0;
-		
-		// Canvas transformation matrix
-		let transformMatrix = new DOMMatrix();
-		
-		// Canvas panning state
-		let isPanning = false;
-		let spacePressed = false;
-		let panStartX = 0;
-		let panStartY = 0;
-		let panStartMatrix = null;
-		
+		const MIN_ZOOM = 0.1;
+		const MAX_ZOOM = 5.0;
+
 		const canvas = frameElement.querySelector('[data-id="canvas"]');
-		
-		function applyTransform() {
-			canvas.style.transform = transformMatrix.toString();
+
+		class Matrix {
+			constructor(mat) {
+				this.mat = mat;
+				this.persist();
+			}
+			update(fn) {
+				this.mat = fn(this.mat);
+				this.persist();
+			}
+			get() {
+				return this.mat;
+			}
+			persist() {
+				const result = this.mat.toString();
+				canvas.style.transform = result;
+				localStorage.setItem('hop-inspector-transform-matrix', result);
+				window.canvasMatrix = this.mat;
+			}
 		}
 		
-		function setZoom(newZoom, centerX = 0, centerY = 0) {
-			const oldZoom = currentZoom;
-			currentZoom = Math.max(minZoom, Math.min(maxZoom, newZoom));
-			window.hopInspectorZoom = currentZoom;
-			
-			// Calculate the scale factor
-			const scaleFactor = currentZoom / oldZoom;
-			
-			// Create a matrix that scales around the center point
-			const scaleMatrix = new DOMMatrix()
-				.translate(centerX, centerY)
-				.scale(scaleFactor)
-				.translate(-centerX, -centerY);
-			
-			transformMatrix = transformMatrix.multiply(scaleMatrix);
-			
-			applyTransform();
-		}
+		let mat = new Matrix(restoreFromLocalStorage());
 		
-		function setCanvasPosition(deltaX, deltaY) {
-			// Apply translation to the current matrix
-			const translateMatrix = new DOMMatrix().translate(deltaX, deltaY);
-			transformMatrix = transformMatrix.multiply(translateMatrix);
-			applyTransform();
-			
-			// Save canvas position to localStorage
-			localStorage.setItem('hop-inspector-transform-matrix', transformMatrix.toString());
-		}
-		
-		function setAbsoluteCanvasPosition(x, y) {
-			// Reset translation components while preserving scale
-			const scale = currentZoom;
-			transformMatrix = new DOMMatrix().translate(x, y).scale(scale);
-			applyTransform();
-			
-			// Save canvas position to localStorage
-			localStorage.setItem('hop-inspector-transform-matrix', transformMatrix.toString());
-		}
-		
-		// Scroll wheel zoom and pan
-		frameElement.addEventListener('wheel', (e) => {
-			if (e.ctrlKey) {
-				// Zoom with Ctrl+scroll
-				e.preventDefault();
-				
-				// Use a multiplicative zoom for smoother experience
-				const zoomFactor = e.deltaY > 0 ? 0.85 : 1.15;
-				const newZoom = currentZoom * zoomFactor;
-				
-				// Get mouse position relative to the frameElement (canvas-view wrapper)
-				const frameRect = frameElement.getBoundingClientRect();
-				const mouseX = e.clientX - frameRect.left;
-				const mouseY = e.clientY - frameRect.top;
-				
-				setZoom(newZoom, mouseX, mouseY);
-			} else {
-				// Pan with regular scroll
-				e.preventDefault();
-				const panSpeed = 0.7;
-				
-				if (e.shiftKey) {
-					// Horizontal panning with Shift+scroll
-					const deltaX = -e.deltaY * panSpeed; // Use deltaY for horizontal movement
-					setCanvasPosition(deltaX, 0);
+		function handleScrollWheel() {
+			frameElement.addEventListener('wheel', (e) => {
+				if (e.ctrlKey) {
+					// Zoom with Ctrl+scroll
+					e.preventDefault();
+					
+					const scaleFactor = e.deltaY > 0 ? 0.85 : 1.15;
+					
+					// Get mouse position relative to the canvas wrapper
+					// and convert to canvas coords
+					const rect = frameElement.getBoundingClientRect();
+					const point = new DOMPointReadOnly(
+						e.clientX - rect.left,
+						e.clientY - rect.top
+					);
+					const center = mat.get().inverse().transformPoint(point);
+					
+					mat.update(m => {
+						return m.translate(center.x, center.y)
+								.scale(scaleFactor)
+								.translate(-center.x, -center.y);
+					});
+
 				} else {
-					// Regular panning
-					const deltaX = -e.deltaX * panSpeed;
-					const deltaY = -e.deltaY * panSpeed;
-					setCanvasPosition(deltaX, deltaY);
+					// Pan with regular scroll
+					e.preventDefault();
+					const panSpeed = 0.7;
+					
+					if (e.shiftKey) {
+						const deltaX = -e.deltaY * panSpeed;
+						mat.update(m => m.translate(deltaX, 0));
+					} else {
+						const deltaY = -e.deltaY * panSpeed;
+						mat.update(m => m.translate(0, deltaY));
+					}
 				}
-			}
-		}, { passive: false });
-		
-		// Space key panning functionality
-		document.addEventListener('keydown', (e) => {
-			if (e.code === 'Space' && !spacePressed && !e.target.matches('input, textarea, [contenteditable]')) {
-				e.preventDefault();
-				spacePressed = true;
-				document.body.style.setProperty('cursor', 'grab', 'important');
-			}
-		});
-		
-		document.addEventListener('keyup', (e) => {
-			if (e.code === 'Space') {
+			}, { passive: false });
+		}
+		handleScrollWheel();
+	
+		function handlePanning() {
+
+			let spacePressed = false;
+			let isPanning = false;
+			let panStartX = 0;
+			let panStartY = 0;
+			let panStartMatrix = null;
+
+			document.addEventListener('keydown', (e) => {
+				if (e.code === 'Space' && !spacePressed && !e.target.matches('input, textarea, [contenteditable]')) {
+					e.preventDefault();
+					spacePressed = true;
+					document.body.style.setProperty('cursor', 'grab', 'important');
+				}
+			});
+
+			document.addEventListener('keyup', (e) => {
+				if (e.code === 'Space') {
+					spacePressed = false;
+					isPanning = false;
+					document.body.style.removeProperty('cursor');
+				}
+			});
+
+			// Handle window blur to reset space key state
+			window.addEventListener('blur', () => {
 				spacePressed = false;
 				isPanning = false;
 				document.body.style.removeProperty('cursor');
-			}
-		});
-		
-		document.addEventListener('mousedown', (e) => {
-			if (spacePressed && e.button === 0) {
-				e.preventDefault();
-				isPanning = true;
-				panStartX = e.clientX;
-				panStartY = e.clientY;
-				panStartMatrix = new DOMMatrix(transformMatrix);
-				document.body.style.setProperty('cursor', 'grabbing', 'important');
-			}
-		});
-		
-		document.addEventListener('mousemove', (e) => {
-			if (isPanning && spacePressed) {
-				const deltaX = e.clientX - panStartX;
-				const deltaY = e.clientY - panStartY;
-				
-				// Apply translation to the starting matrix
-				const translateMatrix = new DOMMatrix().translate(deltaX, deltaY);
-				transformMatrix = panStartMatrix.multiply(translateMatrix);
-				applyTransform();
-			}
-		});
-		
-		document.addEventListener('mouseup', (e) => {
-			if (isPanning) {
-				isPanning = false;
-				if (spacePressed) {
-					document.body.style.setProperty('cursor', 'grab', 'important');
-				} else {
-					document.body.style.removeProperty('cursor');
+			});
+
+			document.addEventListener('mousedown', (e) => {
+				if (spacePressed && e.button === 0) {
+					e.preventDefault();
+					isPanning = true;
+					panStartX = e.clientX;
+					panStartY = e.clientY;
+					panStartMatrix = new DOMMatrix(mat.get());
+					document.body.style.setProperty('cursor', 'grabbing');
 				}
-				
-				// Save final position
-				localStorage.setItem('hop-inspector-transform-matrix', transformMatrix.toString());
+			});
+			
+			document.addEventListener('mousemove', (e) => {
+				if (isPanning && spacePressed) {
+					const deltaX = e.clientX - panStartX;
+					const deltaY = e.clientY - panStartY;
+					mat.update(() => panStartMatrix.translate(deltaX, deltaY));
+				}
+			});
+			
+			document.addEventListener('mouseup', (e) => {
+				if (isPanning) {
+					isPanning = false;
+					if (spacePressed) {
+						document.body.style.setProperty('cursor', 'grab', 'important');
+					} else {
+						document.body.style.removeProperty('cursor');
+					}
+				}
+			});
+
+		}
+		handlePanning();
+
+		function restoreFromLocalStorage() {
+			const savedMatrix = localStorage.getItem('hop-inspector-transform-matrix');
+			if (savedMatrix) {
+				try {
+					return new DOMMatrix(savedMatrix);
+				} catch (e) {
+					return new DOMMatrix();
+				}
 			}
-		});
-		
-		// Handle window blur to reset space key state
-		window.addEventListener('blur', () => {
-			spacePressed = false;
-			isPanning = false;
-			document.body.style.removeProperty('cursor');
-		});
-		
-		// Restore transform matrix from localStorage
-		const savedMatrix = localStorage.getItem('hop-inspector-transform-matrix');
-		if (savedMatrix) {
-			try {
-				transformMatrix = new DOMMatrix(savedMatrix);
-				// Extract current zoom from the matrix
-				currentZoom = Math.sqrt(transformMatrix.a * transformMatrix.a + transformMatrix.b * transformMatrix.b);
-				window.hopInspectorZoom = currentZoom;
-			} catch (e) {
-				// If parsing fails, use default matrix
-				transformMatrix = new DOMMatrix();
-			}
+			return new DOMMatrix();
 		}
 		
-		window.hopInspectorZoom = currentZoom;
-		applyTransform();
-		
-		// Utility functions for external access
-		window.canvasViewUtils = {
-			getTransformMatrix: () => new DOMMatrix(transformMatrix),
-			setTransformMatrix: (matrix) => {
-				transformMatrix = new DOMMatrix(matrix);
-				currentZoom = Math.sqrt(transformMatrix.a * transformMatrix.a + transformMatrix.b * transformMatrix.b);
-				window.hopInspectorZoom = currentZoom;
-				applyTransform();
-			},
-			resetTransform: () => {
-				transformMatrix = new DOMMatrix();
-				currentZoom = 1.0;
-				window.hopInspectorZoom = currentZoom;
-				applyTransform();
-			}
-		};
 	</script>
 </canvas-view>
 
@@ -229,16 +183,17 @@
 		const resizeHandleE = frameElement.querySelector('[data-id="resize-handle-e"]');
 		
 		// Coordinate transformation utilities
-		function getCurrentZoom() {
-			return window.hopInspectorZoom || 1.0;
+		function getCanvasMatrix() {
+			return window.canvasMatrix;
 		}
 		
 		function screenToCanvas(screenX, screenY) {
-			const zoom = getCurrentZoom();
-			return {
-				x: screenX / zoom,
-				y: screenY / zoom
-			};
+			const mat = getCanvasMatrix();
+			const point = new DOMPointReadOnly(
+				screenX,
+				screenY
+			);
+			return mat.inverse().transformPoint(point);
 		}
 		
 		// Background toggle functionality
@@ -250,124 +205,128 @@
 			wrapper.classList.toggle('outline');
 		});
 		
-		// Draggable functionality
-		titleArea.style.cursor = 'move';
-		let isDragging = false;
-		let startX, startY;
-		
-		titleArea.addEventListener('mousedown', (e) => {
-			isDragging = true;
+		// Draggable functionality by dragging the title area
+		function handleDragging() {
+			titleArea.style.cursor = 'move';
+			let isDragging = false;
+			let startX;
+			let startY;
 			
-			// Get current mouse position in canvas coordinates
-			const currentMouseCanvas = screenToCanvas(e.clientX, e.clientY);
-			
-			// Get current element position (already in canvas space)
-			const currentLeft = parseFloat(frameElement.style.left) || 0;
-			const currentTop = parseFloat(frameElement.style.top) || 0;
-			
-			// Calculate offset from mouse to element origin
-			startX = currentMouseCanvas.x - currentLeft;
-			startY = currentMouseCanvas.y - currentTop;
-			
-			frameElement.style.opacity = '0.5';
-			
-			// Disable pointer events on all iframes to prevent drag interference
-			document.querySelectorAll('iframe').forEach((frm) => {
-				frm.style.pointerEvents = 'none';
-			})
-			
-			e.preventDefault();
-		});
-		
-		document.addEventListener('mousemove', (e) => {
-			if (isDragging) {
-				// Convert screen coordinates to canvas coordinates for positioning
-				const canvasCoords = screenToCanvas(e.clientX, e.clientY);
-				frameElement.style.left = (canvasCoords.x - startX) + 'px';
-				frameElement.style.top = (canvasCoords.y - startY) + 'px';
-			}
-		});
-		
-		document.addEventListener('mouseup', () => {
-			if (isDragging) {
-				isDragging = false;
-				frameElement.style.opacity = '1';
+			titleArea.addEventListener('mousedown', (e) => {
+				isDragging = true;
 				
-				// Re-enable pointer events on iframes
+				// Get current mouse position in canvas coordinates
+				const currentMouseCanvas = screenToCanvas(e.clientX, e.clientY);
+				
+				// Get current element position (already in canvas space)
+				const currentLeft = parseFloat(frameElement.style.left) || 0;
+				const currentTop = parseFloat(frameElement.style.top) || 0;
+				
+				// Calculate offset from mouse to element origin
+				startX = currentMouseCanvas.x - currentLeft;
+				startY = currentMouseCanvas.y - currentTop;
+				
+				frameElement.style.opacity = '0.5';
+				
+				// Disable pointer events on all iframes to prevent drag interference
 				document.querySelectorAll('iframe').forEach((frm) => {
-					frm.style.pointerEvents = 'auto';
-				});
+					frm.style.pointerEvents = 'none';
+				})
 				
-				saveElementState();
-			}
-		});
-		
-		// Resize functionality
-		let isResizing = false;
-		let resizeType = '';
-		let resizeStartX, resizeStartY, startWidth, startHeight;
-		
-		function initResize(e, type) {
-			isResizing = true;
-			resizeType = type;
-			
-			// Convert screen coordinates to canvas coordinates
-			const canvasCoords = screenToCanvas(e.clientX, e.clientY);
-			resizeStartX = canvasCoords.x;
-			resizeStartY = canvasCoords.y;
-			
-			startWidth = frameElement.offsetWidth;
-			startHeight = frameElement.offsetHeight;
-			
-			// Disable pointer events on iframe during resize
-			document.querySelectorAll('iframe').forEach((frm) => {
-				frm.style.pointerEvents = 'none';
+				e.preventDefault();
 			});
 			
-			e.preventDefault();
-			e.stopPropagation();
+			document.addEventListener('mousemove', (e) => {
+				if (isDragging) {
+					// Convert screen coordinates to canvas coordinates for positioning
+					const canvasCoords = screenToCanvas(e.clientX, e.clientY);
+					frameElement.style.left = (canvasCoords.x - startX) + 'px';
+					frameElement.style.top = (canvasCoords.y - startY) + 'px';
+				}
+			});
+			
+			document.addEventListener('mouseup', () => {
+				if (isDragging) {
+					isDragging = false;
+					frameElement.style.opacity = '1';
+					
+					// Re-enable pointer events on iframes
+					document.querySelectorAll('iframe').forEach((frm) => {
+						frm.style.pointerEvents = 'auto';
+					});
+					
+					saveElementState();
+				}
+			});
 		}
-		
-		resizeHandleSE.addEventListener('mousedown', (e) => initResize(e, 'se'));
-		resizeHandleS.addEventListener('mousedown', (e) => initResize(e, 's'));
-		resizeHandleE.addEventListener('mousedown', (e) => initResize(e, 'e'));
-		
-		document.addEventListener('mousemove', (e) => {
-			if (isResizing) {
-				// Convert current mouse position to canvas coordinates
+		handleDragging();
+	
+		// Resize functionality
+		function handleResize() {
+			let isResizing = false;
+			let resizeType = '';
+			let resizeStartX, resizeStartY, startWidth, startHeight;
+			
+			function initResize(e, type) {
+				isResizing = true;
+				resizeType = type;
+				
+				// Convert screen coordinates to canvas coordinates
 				const canvasCoords = screenToCanvas(e.clientX, e.clientY);
-				const deltaX = canvasCoords.x - resizeStartX;
-				const deltaY = canvasCoords.y - resizeStartY;
+				resizeStartX = canvasCoords.x;
+				resizeStartY = canvasCoords.y;
 				
-				// Convert minimum sizes to canvas space
-				const minCanvasSize = screenToCanvas(200, 150);
+				startWidth = frameElement.offsetWidth;
+				startHeight = frameElement.offsetHeight;
 				
-				if (resizeType.includes('e')) {
-					const newWidth = Math.max(minCanvasSize.x, startWidth + deltaX);
-					frameElement.style.width = newWidth + 'px';
-				}
-				
-				if (resizeType.includes('s')) {
-					const newHeight = Math.max(minCanvasSize.y, startHeight + deltaY);
-					frameElement.style.height = newHeight + 'px';
-					iframe.style.height = (newHeight - 60) + 'px'; // Adjust for header
-				}
-			}
-		});
-		
-		document.addEventListener('mouseup', () => {
-			if (isResizing) {
-				isResizing = false;
-				resizeType = '';
-				
-				// Re-enable pointer events on iframe
+				// Disable pointer events on iframe during resize
 				document.querySelectorAll('iframe').forEach((frm) => {
-					frm.style.pointerEvents = 'auto';
+					frm.style.pointerEvents = 'none';
 				});
 				
-				saveElementState();
+				e.preventDefault();
+				e.stopPropagation();
 			}
-		});
+			
+			resizeHandleSE.addEventListener('mousedown', (e) => initResize(e, 'se'));
+			resizeHandleS.addEventListener('mousedown', (e) => initResize(e, 's'));
+			resizeHandleE.addEventListener('mousedown', (e) => initResize(e, 'e'));
+			
+			document.addEventListener('mousemove', (e) => {
+				if (isResizing) {
+					// Convert current mouse position to canvas coordinates
+					const canvasCoords = screenToCanvas(e.clientX, e.clientY);
+					const deltaX = canvasCoords.x - resizeStartX;
+					const deltaY = canvasCoords.y - resizeStartY;
+					
+					if (resizeType.includes('e')) {
+						const newWidth = startWidth + deltaX;
+						frameElement.style.width = newWidth + 'px';
+					}
+					
+					if (resizeType.includes('s')) {
+						const newHeight = startHeight + deltaY;
+						frameElement.style.height = newHeight + 'px';
+						iframe.style.height = (newHeight - 60) + 'px'; // Adjust for header
+					}
+				}
+			});
+			
+			document.addEventListener('mouseup', () => {
+				if (isResizing) {
+					isResizing = false;
+					resizeType = '';
+					
+					// Re-enable pointer events on iframe
+					document.querySelectorAll('iframe').forEach((frm) => {
+						frm.style.pointerEvents = 'auto';
+					});
+					
+					saveElementState();
+				}
+			});
+		}
+		handleResize();
 		
 		// localStorage functionality
 		function getElementId() {
