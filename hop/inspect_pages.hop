@@ -1,7 +1,7 @@
 <import component="side-bar" from="hop/ui">
 <import component="side-bar-group" from="hop/ui">
 
-<canvas-view>
+<canvas-view class="w-full h-full">
 	<div data-id="canvas">
 		<slot-default />
 	</div>
@@ -40,9 +40,20 @@
 			updateZoomDisplay();
 		}
 		
-		function setZoom(newZoom) {
+		function setZoom(newZoom, centerX = null, centerY = null) {
+			const oldZoom = currentZoom;
 			currentZoom = Math.max(minZoom, Math.min(maxZoom, newZoom));
 			window.hopInspectorZoom = currentZoom;
+			
+			// If center point is provided, adjust canvas position to zoom around that point
+			if (centerX !== null && centerY !== null) {
+				const zoomRatio = currentZoom / oldZoom;
+				const newCanvasX = centerX - (centerX - canvasX) * zoomRatio;
+				const newCanvasY = centerY - (centerY - canvasY) * zoomRatio;
+				canvasX = newCanvasX;
+				canvasY = newCanvasY;
+			}
+			
 			applyTransform();
 			
 			// Save zoom to localStorage
@@ -74,11 +85,17 @@
 		});
 		
 		// Ctrl+scroll wheel zoom
-		document.addEventListener('wheel', (e) => {
+		frameElement.addEventListener('wheel', (e) => {
 			if (e.ctrlKey) {
 				e.preventDefault();
 				const delta = e.deltaY > 0 ? -zoomStep : zoomStep;
-				setZoom(currentZoom + delta);
+				
+				// Get mouse position relative to the frameElement (canvas-view wrapper)
+				const frameRect = frameElement.getBoundingClientRect();
+				const mouseX = e.clientX - frameRect.left;
+				const mouseY = e.clientY - frameRect.top;
+				
+				setZoom(currentZoom + delta, mouseX, mouseY);
 			}
 		}, { passive: false });
 		
