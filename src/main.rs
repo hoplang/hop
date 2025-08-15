@@ -8,6 +8,7 @@ mod parser;
 mod runtime;
 mod scriptcollector;
 mod server;
+mod timing;
 mod tokenizer;
 mod toposorter;
 mod typechecker;
@@ -211,13 +212,17 @@ fn hop_build(
     // Create output directory if it doesn't exist
     fs::create_dir_all(output_dir)?;
 
-    // Render build files
+    let mut timer = timing::TimingCollector::new();
+
+    timer.start_phase("loading modules");
     let modules = files::load_all_hop_modules(root)?;
+
+    timer.start_phase("compiling");
     let program = compile(modules, HopMode::Build)
         .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))?;
-    let mut rendered_files = HashMap::new();
 
-    // Get all file paths and render each one
+    timer.start_phase("rendering");
+    let mut rendered_files = HashMap::new();
     for file_path in program.get_render_file_paths() {
         let content = program
             .render_file(&file_path)
@@ -227,7 +232,7 @@ fn hop_build(
 
     let mut file_outputs = Vec::new();
 
-    // Write each rendered file to the output directory
+    timer.start_phase("writing files");
     for (file_path, content) in rendered_files {
         let output_path = output_dir.join(&file_path);
         if let Some(parent) = output_path.parent() {
@@ -240,19 +245,19 @@ fn hop_build(
         file_outputs.push((format!("{}", output_path.to_string_lossy()), content.len()));
     }
 
-    // Handle script collection if requested
     if let Some(script_file_name) = script_file {
-        let modules = files::load_all_hop_modules(root)?;
-        let program = compile(modules, HopMode::Build)
-            .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))?;
         let combined_script = program.get_scripts();
         let script_path = output_dir.join(script_file_name);
         fs::write(&script_path, combined_script)
             .with_context(|| format!("Failed to write script file {}", script_path.display()))?;
+        file_outputs.push((
+            format!("{}", script_path.to_string_lossy()),
+            combined_script.len(),
+        ));
     }
 
-    // Handle copying files from static directory if requested
     if let Some(static_dir_str) = static_dir {
+        timer.start_phase("copying static files");
         let static_path = Path::new(static_dir_str);
         if !static_path.exists() {
             anyhow::bail!("staticdir '{}' does not exist", static_path.display());
@@ -263,7 +268,10 @@ fn hop_build(
 
         copy_dir_recursive(static_path, output_dir, &mut file_outputs)
             .with_context(|| format!("Failed to copy files from {}", static_path.display()))?;
+        timer.end_phase();
     }
+
+    timer.print();
 
     Ok(file_outputs)
 }
