@@ -44,6 +44,9 @@ enum Commands {
         /// Optional script file name to output collected scripts
         #[arg(long)]
         scriptfile: Option<String>,
+        /// Directory to copy static files from
+        #[arg(long)]
+        staticdir: Option<String>,
     },
     /// Start development server for serving hop templates from a manifest
     Dev {
@@ -95,6 +98,7 @@ async fn main() -> anyhow::Result<()> {
             projectdir,
             outdir,
             scriptfile,
+            staticdir,
         }) => {
             use std::time::Instant;
             let start_time = Instant::now();
@@ -102,7 +106,7 @@ async fn main() -> anyhow::Result<()> {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
-            let mut outputs = hop_build(&root, Path::new(outdir), scriptfile.as_deref())?;
+            let mut outputs = hop_build(&root, Path::new(outdir), scriptfile.as_deref(), staticdir.as_deref())?;
             let elapsed = start_time.elapsed();
 
             print_header("built", elapsed.as_millis());
@@ -153,10 +157,42 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+fn copy_dir_recursive(
+    src: &Path,
+    dst: &Path,
+    file_outputs: &mut Vec<(String, usize)>,
+) -> anyhow::Result<()> {
+    use anyhow::Context;
+    use std::fs;
+
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let file_name = entry.file_name();
+        let dst_path = dst.join(&file_name);
+
+        if src_path.is_dir() {
+            fs::create_dir_all(&dst_path)?;
+            copy_dir_recursive(&src_path, &dst_path, file_outputs)?;
+        } else {
+            if let Some(parent) = dst_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(&src_path, &dst_path)
+                .with_context(|| format!("Failed to copy file from {} to {}", src_path.display(), dst_path.display()))?;
+            
+            let file_size = fs::metadata(&dst_path)?.len() as usize;
+            file_outputs.push((format!("{}", dst_path.to_string_lossy()), file_size));
+        }
+    }
+    Ok(())
+}
+
 fn hop_build(
     root: &ProjectRoot,
     output_dir: &Path,
     script_file: Option<&str>,
+    static_dir: Option<&str>,
 ) -> anyhow::Result<Vec<(String, usize)>> {
     use anyhow::Context;
     use std::fs;
@@ -188,6 +224,20 @@ fn hop_build(
         let script_path = output_dir.join(script_file_name);
         fs::write(&script_path, combined_script)
             .with_context(|| format!("Failed to write script file {}", script_path.display()))?;
+    }
+
+    // Handle copying files from static directory if requested
+    if let Some(static_dir_str) = static_dir {
+        let static_path = Path::new(static_dir_str);
+        if !static_path.exists() {
+            anyhow::bail!("staticdir '{}' does not exist", static_path.display());
+        }
+        if !static_path.is_dir() {
+            anyhow::bail!("staticdir '{}' is not a directory", static_path.display());
+        }
+        
+        copy_dir_recursive(static_path, output_dir, &mut file_outputs)
+            .with_context(|| format!("Failed to copy files from {}", static_path.display()))?;
     }
 
     Ok(file_outputs)
@@ -882,7 +932,7 @@ console.log("Hello from static file");
         .unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
-        let result = hop_build(&root, &dir.join("out"), None);
+        let result = hop_build(&root, &dir.join("out"), None, None);
         assert!(result.is_ok());
         let outputs = result.unwrap();
         assert_eq!(outputs.len(), 1);
@@ -892,6 +942,61 @@ console.log("Hello from static file");
         let content = std::fs::read_to_string(&output_path).unwrap();
         assert!(content.contains("Build.hop Test"));
         assert!(content.contains("This content comes from a build.hop file"));
+    }
+
+    /// When the user calls `hop build` with a staticdir parameter, files should be copied
+    /// from the static directory to the output directory.
+    #[test]
+    fn test_build_with_staticdir() {
+        let dir = temp_dir_from_txtar(
+            r#"
+-- build.hop --
+<render file="index.html">
+  Hello from build.hop!
+</render>
+-- static/style.css --
+body { color: red; }
+-- static/script.js --
+console.log('hello world');
+-- static/images/logo.png --
+fake image data
+"#,
+        )
+        .unwrap();
+        let root = ProjectRoot::find_upwards(&dir).unwrap();
+        let output_dir = dir.join("out");
+        let static_dir = dir.join("static");
+
+        let result = hop_build(&root, &output_dir, None, Some(static_dir.to_str().unwrap()));
+        assert!(result.is_ok());
+        let outputs = result.unwrap();
+
+        // Should have 4 files: index.html + 3 static files
+        assert_eq!(outputs.len(), 4);
+
+        // Check that all files were copied correctly
+        let index_path = output_dir.join("index.html");
+        let style_path = output_dir.join("style.css");
+        let script_path = output_dir.join("script.js");
+        let image_path = output_dir.join("images").join("logo.png");
+
+        assert!(index_path.exists());
+        assert!(style_path.exists());
+        assert!(script_path.exists());
+        assert!(image_path.exists());
+
+        // Verify content
+        let index_content = std::fs::read_to_string(&index_path).unwrap();
+        assert!(index_content.contains("Hello from build.hop!"));
+
+        let style_content = std::fs::read_to_string(&style_path).unwrap();
+        assert!(style_content.contains("body { color: red; }"));
+
+        let script_content = std::fs::read_to_string(&script_path).unwrap();
+        assert!(script_content.contains("console.log('hello world');"));
+
+        let image_content = std::fs::read_to_string(&image_path).unwrap();
+        assert!(image_content.contains("fake image data"));
     }
 
     /// When the user calls `hop dev` and requests a path that doesn't exist in the manifest,
