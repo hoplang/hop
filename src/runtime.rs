@@ -56,6 +56,37 @@ impl Program {
         &self.parameter_types
     }
 
+    /// Get all file_attr values from render nodes across all modules
+    pub fn get_render_file_paths(&self) -> Vec<String> {
+        self.render_nodes
+            .values()
+            .flatten()
+            .map(|render_node| render_node.file_attr.value.clone())
+            .collect()
+    }
+
+    /// Render the content for a specific file path
+    pub fn render_file(&self, file_path: &str) -> Result<String, String> {
+        // Find the render node with the matching file_attr.value
+        for render_nodes in self.render_nodes.values() {
+            for node in render_nodes {
+                if node.file_attr.value == file_path {
+                    let mut env = self.init_environment();
+                    let mut content = String::new();
+                    for child in &node.children {
+                        let rendered = self.evaluate_node_entrypoint(child, &mut env, "build")?;
+                        content.push_str(&rendered);
+                    }
+                    return Ok(content);
+                }
+            }
+        }
+        Err(format!(
+            "File path '{}' not found in render nodes",
+            file_path
+        ))
+    }
+
     /// Initialize an environment with global variables like HOP_MODE
     fn init_environment(&self) -> Environment<serde_json::Value> {
         let mut env = Environment::new();
@@ -483,7 +514,7 @@ impl Program {
         }
     }
 
-    pub fn evaluate_node_entrypoint(
+    fn evaluate_node_entrypoint(
         &self,
         node: &Node,
         env: &mut Environment<serde_json::Value>,

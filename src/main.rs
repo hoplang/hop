@@ -205,12 +205,26 @@ fn hop_build(
     static_dir: Option<&str>,
 ) -> anyhow::Result<Vec<(String, usize)>> {
     use anyhow::Context;
+    use std::collections::HashMap;
     use std::fs;
 
     // Create output directory if it doesn't exist
     fs::create_dir_all(output_dir)?;
 
-    let rendered_files = render_build_files(root, HopMode::Build)?;
+    // Render build files
+    let modules = files::load_all_hop_modules(root)?;
+    let program = compile(modules, HopMode::Build)
+        .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))?;
+    let mut rendered_files = HashMap::new();
+
+    // Get all file paths and render each one
+    for file_path in program.get_render_file_paths() {
+        let content = program
+            .render_file(&file_path)
+            .map_err(|e| anyhow::anyhow!("Failed to render file '{}': {}", file_path, e))?;
+        rendered_files.insert(file_path, content);
+    }
+
     let mut file_outputs = Vec::new();
 
     // Write each rendered file to the output directory
@@ -252,39 +266,6 @@ fn hop_build(
     }
 
     Ok(file_outputs)
-}
-
-fn render_build_files(
-    root: &ProjectRoot,
-    mode: HopMode,
-) -> anyhow::Result<std::collections::HashMap<String, String>> {
-    use crate::common::Environment;
-    use std::collections::HashMap;
-
-    let modules = files::load_all_hop_modules(root)?;
-    let program =
-        compile(modules, mode).map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))?;
-    let mut rendered_files = HashMap::new();
-    let mut env = Environment::new();
-    env.push(
-        "HOP_MODE".to_string(),
-        serde_json::Value::String(mode.as_str().to_string()),
-    );
-
-    for render_nodes in program.get_render_nodes().values() {
-        for node in render_nodes {
-            let mut content = String::new();
-            for child in &node.children {
-                let rendered = program
-                    .evaluate_node_entrypoint(child, &mut env, "build")
-                    .map_err(|e| anyhow::anyhow!("Failed to evaluate render content: {}", e))?;
-                content.push_str(&rendered);
-            }
-            rendered_files.insert(node.file_attr.value.clone(), content);
-        }
-    }
-
-    Ok(rendered_files)
 }
 
 // Function to inject hot reload script into HTML
@@ -725,9 +706,12 @@ async fn hop_dev(
         axum::response::Html<String>,
         (StatusCode, axum::response::Html<String>),
     > {
-        // Render all build files into a HashMap
-        let rendered_files = match render_build_files(&local_root, HopMode::Dev) {
-            Ok(files) => files,
+        // Compile the program
+        let program = match (|| -> anyhow::Result<runtime::Program> {
+            let modules = files::load_all_hop_modules(&local_root)?;
+            compile(modules, HopMode::Dev).map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
+        })() {
+            Ok(program) => program,
             Err(e) => {
                 return Err((
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -745,18 +729,14 @@ async fn hop_dev(
             path => path,
         };
 
-        // Look up the file in our rendered files
-        if let Some(content) = rendered_files.get(file_path) {
-            Ok(axum::response::Html(inject_hot_reload_script(content)))
-        } else {
-            // Try without .html extension for paths that might have it
-            let html_file_path = format!("{}.html", file_path);
-            if let Some(content) = rendered_files.get(&html_file_path) {
-                Ok(axum::response::Html(inject_hot_reload_script(content)))
-            } else {
+        // Try to render the requested file
+        match program.render_file(file_path) {
+            Ok(content) => Ok(axum::response::Html(inject_hot_reload_script(&content))),
+            Err(_) => {
                 // Create available paths list for 404 page
-                let available_paths: Vec<String> = rendered_files
-                    .keys()
+                let available_paths: Vec<String> = program
+                    .get_render_file_paths()
+                    .iter()
                     .map(|file_path| {
                         if file_path == "index.html" {
                             "/".to_string()
