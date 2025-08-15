@@ -210,7 +210,7 @@ impl TokenBuilder {
     }
 }
 
-fn is_special_tag_name(name: &str) -> bool {
+fn is_tag_name_with_raw_content(name: &str) -> bool {
     matches!(name, "script" | "style" | "hop-x-raw")
 }
 
@@ -298,7 +298,7 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
                     cursor.advance();
                     state = TokenizerState::TagExpressionContent;
                 } else if ch == '>' {
-                    if is_special_tag_name(builder.get_current_token_value()) {
+                    if is_tag_name_with_raw_content(builder.get_current_token_value()) {
                         stored_tag_name = builder.get_current_token_value().to_string();
                         cursor.advance();
                         builder.push_current_token(&cursor);
@@ -403,7 +403,7 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
                     cursor.advance();
                     state = TokenizerState::SelfClosing;
                 } else if ch == '>' {
-                    if is_special_tag_name(builder.get_current_token_value()) {
+                    if is_tag_name_with_raw_content(builder.get_current_token_value()) {
                         stored_tag_name = builder.get_current_token_value().to_string();
                         cursor.advance();
                         builder.push_current_token(&cursor);
@@ -439,7 +439,7 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
                     state = TokenizerState::BeforeAttrName;
                 } else if ch == '>' {
                     builder.push_current_attribute(&cursor);
-                    if is_special_tag_name(builder.get_current_token_value()) {
+                    if is_tag_name_with_raw_content(builder.get_current_token_value()) {
                         stored_tag_name = builder.get_current_token_value().to_string();
                         cursor.advance();
                         builder.push_current_token(&cursor);
