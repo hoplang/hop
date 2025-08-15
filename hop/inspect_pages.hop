@@ -1,4 +1,6 @@
 <import component="page-container" from="hop/ui">
+<import component="side-bar" from="hop/ui">
+<import component="side-bar-group" from="hop/ui">
 
 <inspector-view {preview}>
 	<div class="flex flex-col gap-1 relative group p-4" data-id="resizable-container">
@@ -225,6 +227,38 @@
         </style>
 	</head>
 	<body class="bg-[#f6f6f6] mb-40" style="background: repeating-conic-gradient(rgba(0,0,0,0.025) 0 25%, rgba(0,0,0,0.05) 0 50%) 50% / 16px 16px;">
+		<div class="bg-white p-3 w-80 h-screen fixed top-0">
+			<side-bar>
+				<with-layers>
+					<side-bar-group>
+						<with-title>
+							hop/ui
+						</with-title>
+						<with-body>
+							<div>
+								side-bar
+							</div>
+							<div>
+								heading-box
+							</div>
+						</with-body>
+					</side-bar-group>
+					<side-bar-group>
+						<with-title>
+							hop/ui
+						</with-title>
+						<with-body>
+							<div>
+								side-bar
+							</div>
+							<div>
+								heading-box
+							</div>
+						</with-body>
+					</side-bar-group>
+				</with-layers>
+			</side-bar>
+		</div>
 		<div id="viewport-expander" style="position: absolute; top: 0; left: 0; width: 3000px; height: 3000px; pointer-events: none; z-index: -1;"></div>
 		<page-container>
 			<for {module in data.modules}>
