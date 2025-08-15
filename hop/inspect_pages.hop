@@ -248,7 +248,7 @@
 			isDragging = true;
 			
 			// Get current mouse position in canvas coordinates
-			const currentMouseCanvas = screenToCanvas(e.clientX + window.scrollX, e.clientY + window.scrollY);
+			const currentMouseCanvas = screenToCanvas(e.clientX, e.clientY);
 			
 			// Get current element position (already in canvas space)
 			const currentLeft = parseFloat(frameElement.style.left) || 0;
@@ -271,7 +271,7 @@
 		document.addEventListener('mousemove', (e) => {
 			if (isDragging) {
 				// Convert screen coordinates to canvas coordinates for positioning
-				const canvasCoords = screenToCanvas(e.clientX + window.scrollX, e.clientY + window.scrollY);
+				const canvasCoords = screenToCanvas(e.clientX, e.clientY);
 				frameElement.style.left = (canvasCoords.x - startX) + 'px';
 				frameElement.style.top = (canvasCoords.y - startY) + 'px';
 			}
