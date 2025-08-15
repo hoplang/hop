@@ -28,94 +28,42 @@
 		});
 	</script>
 	<hop-x-preview>
-		<div class="grid grid-cols-2 gap-6">
-			<heading-box {true}>
-				<with-title>
-					Component
-				</with-title>
-				<with-heading>
-					another-component
-				</with-heading>
-				<with-body>
+		<heading-box>
+			<with-title>
+				Component
+			</with-title>
+			<with-heading>
+				another-component
+			</with-heading>
+			<with-body>
+				<div>
 					Lorem ipsum dolor sit amet<br/>
 					Foo bar
-				</with-body>
-			</heading-box>
-			<heading-box>
-				<with-title>
-					Component
-				</with-title>
-				<with-heading>
-					another-component
-				</with-heading>
-				<with-body>
-					<div>
-						Lorem ipsum dolor sit amet<br/>
-						Foo bar
-					</div>
-					<heading-box>
-						<with-title>
-							NESTING
-						</with-title>
-						<with-heading>
-							A nested box
-						</with-heading>
-						<with-body>
-							nested
-						</with-body>
-					</heading-box>
-					<heading-box>
-						<with-title>
-							NESTING
-						</with-title>
-						<with-heading>
-							A nested box
-						</with-heading>
-						<with-body>
-							nested
-						</with-body>
-					</heading-box>
-				</with-body>
-			</heading-box>
-			<div class="col-span-2">
+				</div>
 				<heading-box>
 					<with-title>
-						Component
+						NESTING
 					</with-title>
 					<with-heading>
-						another-component
+						A nested box
 					</with-heading>
 					<with-body>
-						<div>
-							Lorem ipsum dolor sit amet<br/>
-							Foo bar
-						</div>
-						<heading-box>
-							<with-title>
-								NESTING
-							</with-title>
-							<with-heading>
-								A nested box
-							</with-heading>
-							<with-body>
-								nested
-							</with-body>
-						</heading-box>
-						<heading-box>
-							<with-title>
-								NESTING
-							</with-title>
-							<with-heading>
-								A nested box
-							</with-heading>
-							<with-body>
-								nested
-							</with-body>
-						</heading-box>
+						nested
 					</with-body>
 				</heading-box>
-			</div>
-		</div>
+				<heading-box>
+					<with-title>
+						NESTING
+					</with-title>
+					<with-heading>
+						A nested box
+					</with-heading>
+					<with-body>
+						nested
+					</with-body>
+				</heading-box>
+			</with-body>
+		</heading-box>
 	</hop-x-preview>
 </heading-box>
 
