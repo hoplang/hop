@@ -74,7 +74,7 @@
 	</hop-x-preview>
 </side-bar>
 
-<heading-box {toggleable} class="border border-2 shadow-[4px_4px_rgba(0,0,0,0.1)]">
+<heading-box class="border border-2 shadow-[4px_4px_rgba(0,0,0,0.1)]">
 	<div class="p-3 py-2 flex justify-between border-b-2">
 		<div>
 			<span class="font-medium uppercase">
@@ -82,26 +82,10 @@
 			</span>
 			<slot-heading/>
 		</div>
-		<if {toggleable}>
-			<div data-id="toggle">
-				▼
-			</div>
-		</if>
 	</div>
 	<div class="p-5 gap-5 flex flex-col" data-id="body">
 		<slot-body/>
 	</div>
-	<script>
-		let open = true;
-		const toggle = frameElement.querySelector('[data-id="toggle"]');
-		if (!toggle) return;
-		const body = frameElement.querySelector('[data-id="body"]');
-		toggle.addEventListener('click', () => {
-			body.classList.toggle('hidden');
-			toggle.innerText = open ? '▲' : '▼';
-			open = !open;
-		});
-	</script>
 	<hop-x-preview>
 		<heading-box>
 			<with-title>
