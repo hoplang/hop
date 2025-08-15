@@ -1,6 +1,158 @@
-<import component="page-container" from="hop/ui">
 <import component="side-bar" from="hop/ui">
 <import component="side-bar-group" from="hop/ui">
+
+<canvas-view>
+	<slot-default />
+	
+	<script>
+		// Zoom state management - make globally accessible
+		window.hopInspectorZoom = 1.0;
+		let currentZoom = 1.0;
+		const minZoom = 0.1;
+		const maxZoom = 5.0;
+		const zoomStep = 0.1;
+		
+		// Canvas panning state
+		let canvasX = 0;
+		let canvasY = 0;
+		let isPanning = false;
+		let spacePressed = false;
+		let panStartX = 0;
+		let panStartY = 0;
+		let panStartCanvasX = 0;
+		let panStartCanvasY = 0;
+		
+		const canvas = frameElement;
+		const zoomLevelElement = document.getElementById('zoom-level');
+		const zoomInBtn = document.getElementById('zoom-in');
+		const zoomOutBtn = document.getElementById('zoom-out');
+		const zoomResetBtn = document.getElementById('zoom-reset');
+		
+		function updateZoomDisplay() {
+			zoomLevelElement.textContent = Math.round(currentZoom * 100) + '%';
+		}
+		
+		function applyTransform() {
+			canvas.style.transform = `translate(${canvasX}px, ${canvasY}px) scale(${currentZoom})`;
+			canvas.style.transformOrigin = 'top left';
+			updateZoomDisplay();
+		}
+		
+		function setZoom(newZoom) {
+			currentZoom = Math.max(minZoom, Math.min(maxZoom, newZoom));
+			window.hopInspectorZoom = currentZoom;
+			applyTransform();
+			
+			// Save zoom to localStorage
+			localStorage.setItem('hop-inspector-zoom', currentZoom.toString());
+		}
+		
+		function setCanvasPosition(x, y) {
+			canvasX = x;
+			canvasY = y;
+			applyTransform();
+			
+			// Save canvas position to localStorage
+			localStorage.setItem('hop-inspector-canvas-x', canvasX.toString());
+			localStorage.setItem('hop-inspector-canvas-y', canvasY.toString());
+		}
+		
+		// Zoom controls
+		zoomInBtn.addEventListener('click', () => {
+			setZoom(currentZoom + zoomStep);
+		});
+		
+		zoomOutBtn.addEventListener('click', () => {
+			setZoom(currentZoom - zoomStep);
+		});
+		
+		zoomResetBtn.addEventListener('click', () => {
+			setZoom(1.0);
+			setCanvasPosition(0, 0);
+		});
+		
+		// Ctrl+scroll wheel zoom
+		document.addEventListener('wheel', (e) => {
+			if (e.ctrlKey) {
+				e.preventDefault();
+				const delta = e.deltaY > 0 ? -zoomStep : zoomStep;
+				setZoom(currentZoom + delta);
+			}
+		}, { passive: false });
+		
+		// Space key panning functionality
+		document.addEventListener('keydown', (e) => {
+			if (e.code === 'Space' && !spacePressed && !e.target.matches('input, textarea, [contenteditable]')) {
+				e.preventDefault();
+				spacePressed = true;
+				document.body.style.setProperty('cursor', 'grab', 'important');
+			}
+		});
+		
+		document.addEventListener('keyup', (e) => {
+			if (e.code === 'Space') {
+				spacePressed = false;
+				isPanning = false;
+				document.body.style.removeProperty('cursor');
+			}
+		});
+		
+		document.addEventListener('mousedown', (e) => {
+			if (spacePressed && e.button === 0) {
+				e.preventDefault();
+				isPanning = true;
+				panStartX = e.clientX;
+				panStartY = e.clientY;
+				panStartCanvasX = canvasX;
+				panStartCanvasY = canvasY;
+				document.body.style.setProperty('cursor', 'grabbing', 'important');
+			}
+		});
+		
+		document.addEventListener('mousemove', (e) => {
+			if (isPanning && spacePressed) {
+				const deltaX = e.clientX - panStartX;
+				const deltaY = e.clientY - panStartY;
+				setCanvasPosition(panStartCanvasX + deltaX, panStartCanvasY + deltaY);
+			}
+		});
+		
+		document.addEventListener('mouseup', (e) => {
+			if (isPanning) {
+				isPanning = false;
+				if (spacePressed) {
+					document.body.style.setProperty('cursor', 'grab', 'important');
+				} else {
+					document.body.style.removeProperty('cursor');
+				}
+			}
+		});
+		
+		// Handle window blur to reset space key state
+		window.addEventListener('blur', () => {
+			spacePressed = false;
+			isPanning = false;
+			document.body.style.removeProperty('cursor');
+		});
+		
+		// Restore zoom and canvas position from localStorage
+		const savedZoom = localStorage.getItem('hop-inspector-zoom');
+		const savedCanvasX = localStorage.getItem('hop-inspector-canvas-x');
+		const savedCanvasY = localStorage.getItem('hop-inspector-canvas-y');
+		
+		if (savedCanvasX !== null) canvasX = parseFloat(savedCanvasX);
+		if (savedCanvasY !== null) canvasY = parseFloat(savedCanvasY);
+		
+		if (savedZoom) {
+			setZoom(parseFloat(savedZoom));
+		} else {
+			window.hopInspectorZoom = currentZoom;
+			applyTransform();
+		}
+	</script>
+</canvas-view>
+
+<!---------------------------------------------------------------------------->
 
 <inspector-view {preview} style="position: absolute;">
 	<div class="flex flex-col gap-1 relative group p-4" data-id="resizable-container">
@@ -286,166 +438,17 @@
 				</side-bar>
 			</div>
 			<div class="flex-grow h-screen overflow-hidden">
-				<div data-id="canvas">
-					<page-container>
-						<for {module in data.modules}>
-							<for {component in module.components}>
-								<inspector-view {component.preview_url}>
-									<with-title>{module.name} - {component.name}</with-title>
-								</inspector-view>
-							</for>
+				<canvas-view>
+					<for {module in data.modules}>
+						<for {component in module.components}>
+							<inspector-view {component.preview_url}>
+								<with-title>{module.name} - {component.name}</with-title>
+							</inspector-view>
 						</for>
-					</page-container>
-				</div>
+					</for>
+				</canvas-view>
 			</div>
 		</div>
-		
-		<script>
-			// Zoom state management - make globally accessible
-			window.hopInspectorZoom = 1.0;
-			let currentZoom = 1.0;
-			const minZoom = 0.1;
-			const maxZoom = 5.0;
-			const zoomStep = 0.1;
-			
-			// Canvas panning state
-			let canvasX = 0;
-			let canvasY = 0;
-			let isPanning = false;
-			let spacePressed = false;
-			let panStartX = 0;
-			let panStartY = 0;
-			let panStartCanvasX = 0;
-			let panStartCanvasY = 0;
-			
-			const canvas = document.querySelector('[data-id="canvas"]');
-			const zoomLevelElement = document.getElementById('zoom-level');
-			const zoomInBtn = document.getElementById('zoom-in');
-			const zoomOutBtn = document.getElementById('zoom-out');
-			const zoomResetBtn = document.getElementById('zoom-reset');
-			
-			function updateZoomDisplay() {
-				zoomLevelElement.textContent = Math.round(currentZoom * 100) + '%';
-			}
-			
-			function applyTransform() {
-				canvas.style.transform = `translate(${canvasX}px, ${canvasY}px) scale(${currentZoom})`;
-				canvas.style.transformOrigin = 'top left';
-				updateZoomDisplay();
-			}
-			
-			function setZoom(newZoom) {
-				currentZoom = Math.max(minZoom, Math.min(maxZoom, newZoom));
-				window.hopInspectorZoom = currentZoom;
-				applyTransform();
-				
-				// Save zoom to localStorage
-				localStorage.setItem('hop-inspector-zoom', currentZoom.toString());
-			}
-			
-			function setCanvasPosition(x, y) {
-				canvasX = x;
-				canvasY = y;
-				applyTransform();
-				
-				// Save canvas position to localStorage
-				localStorage.setItem('hop-inspector-canvas-x', canvasX.toString());
-				localStorage.setItem('hop-inspector-canvas-y', canvasY.toString());
-			}
-			
-			// Zoom controls
-			zoomInBtn.addEventListener('click', () => {
-				setZoom(currentZoom + zoomStep);
-			});
-			
-			zoomOutBtn.addEventListener('click', () => {
-				setZoom(currentZoom - zoomStep);
-			});
-			
-			zoomResetBtn.addEventListener('click', () => {
-				setZoom(1.0);
-				setCanvasPosition(0, 0);
-			});
-			
-			// Ctrl+scroll wheel zoom
-			document.addEventListener('wheel', (e) => {
-				if (e.ctrlKey) {
-					e.preventDefault();
-					const delta = e.deltaY > 0 ? -zoomStep : zoomStep;
-					setZoom(currentZoom + delta);
-				}
-			}, { passive: false });
-			
-			// Space key panning functionality
-			document.addEventListener('keydown', (e) => {
-				if (e.code === 'Space' && !spacePressed && !e.target.matches('input, textarea, [contenteditable]')) {
-					e.preventDefault();
-					spacePressed = true;
-					document.body.style.setProperty('cursor', 'grab', 'important');
-				}
-			});
-			
-			document.addEventListener('keyup', (e) => {
-				if (e.code === 'Space') {
-					spacePressed = false;
-					isPanning = false;
-					document.body.style.removeProperty('cursor');
-				}
-			});
-			
-			document.addEventListener('mousedown', (e) => {
-				if (spacePressed && e.button === 0) {
-					e.preventDefault();
-					isPanning = true;
-					panStartX = e.clientX;
-					panStartY = e.clientY;
-					panStartCanvasX = canvasX;
-					panStartCanvasY = canvasY;
-					document.body.style.setProperty('cursor', 'grabbing', 'important');
-				}
-			});
-			
-			document.addEventListener('mousemove', (e) => {
-				if (isPanning && spacePressed) {
-					const deltaX = e.clientX - panStartX;
-					const deltaY = e.clientY - panStartY;
-					setCanvasPosition(panStartCanvasX + deltaX, panStartCanvasY + deltaY);
-				}
-			});
-			
-			document.addEventListener('mouseup', (e) => {
-				if (isPanning) {
-					isPanning = false;
-					if (spacePressed) {
-						document.body.style.setProperty('cursor', 'grab', 'important');
-					} else {
-						document.body.style.removeProperty('cursor');
-					}
-				}
-			});
-			
-			// Handle window blur to reset space key state
-			window.addEventListener('blur', () => {
-				spacePressed = false;
-				isPanning = false;
-				document.body.style.removeProperty('cursor');
-			});
-			
-			// Restore zoom and canvas position from localStorage
-			const savedZoom = localStorage.getItem('hop-inspector-zoom');
-			const savedCanvasX = localStorage.getItem('hop-inspector-canvas-x');
-			const savedCanvasY = localStorage.getItem('hop-inspector-canvas-y');
-			
-			if (savedCanvasX !== null) canvasX = parseFloat(savedCanvasX);
-			if (savedCanvasY !== null) canvasY = parseFloat(savedCanvasY);
-			
-			if (savedZoom) {
-				setZoom(parseFloat(savedZoom));
-			} else {
-				window.hopInspectorZoom = currentZoom;
-				applyTransform();
-			}
-		</script>
 	</body>
 	</html>
 </inspect-page>
