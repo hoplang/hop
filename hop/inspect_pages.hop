@@ -231,14 +231,6 @@
 			};
 		}
 		
-		function canvasToScreen(canvasX, canvasY) {
-			const zoom = getCurrentZoom();
-			return {
-				x: canvasX * zoom,
-				y: canvasY * zoom
-			};
-		}
-		
 		// Background toggle functionality
 		bgToggler.addEventListener('click', () => {
 			bgToggler.classList.toggle('bg-white');
