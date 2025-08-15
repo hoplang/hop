@@ -525,6 +525,8 @@ fn create_file_watcher(
 
     let sender = channel.clone();
 
+    // TODO: We should ignore folders such as .git, .direnv
+
     let mut watcher = RecommendedWatcher::new(
         move |res: Result<notify::Event, notify::Error>| {
             if let Ok(event) = res {
