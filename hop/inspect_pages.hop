@@ -29,6 +29,27 @@
 		const resizeHandleS = frameElement.querySelector('[data-id="resize-handle-s"]');
 		const resizeHandleE = frameElement.querySelector('[data-id="resize-handle-e"]');
 		
+		// Coordinate transformation utilities
+		function getCurrentZoom() {
+			return window.hopInspectorZoom || 1.0;
+		}
+		
+		function screenToCanvas(screenX, screenY) {
+			const zoom = getCurrentZoom();
+			return {
+				x: screenX / zoom,
+				y: screenY / zoom
+			};
+		}
+		
+		function canvasToScreen(canvasX, canvasY) {
+			const zoom = getCurrentZoom();
+			return {
+				x: canvasX * zoom,
+				y: canvasY * zoom
+			};
+		}
+		
 		// Background toggle functionality
 		bgToggler.addEventListener('click', () => {
 			bgToggler.classList.toggle('bg-white');
@@ -45,9 +66,17 @@
 		
 		titleArea.addEventListener('mousedown', (e) => {
 			isDragging = true;
-			const rect = frameElement.getBoundingClientRect();
-			startX = e.clientX - rect.left;
-			startY = e.clientY - rect.top;
+			
+			// Get current mouse position in canvas coordinates
+			const currentMouseCanvas = screenToCanvas(e.clientX + window.scrollX, e.clientY + window.scrollY);
+			
+			// Get current element position (already in canvas space)
+			const currentLeft = parseFloat(frameElement.style.left) || 0;
+			const currentTop = parseFloat(frameElement.style.top) || 0;
+			
+			// Calculate offset from mouse to element origin
+			startX = currentMouseCanvas.x - currentLeft;
+			startY = currentMouseCanvas.y - currentTop;
 			
 			frameElement.style.opacity = '0.5';
 			
@@ -61,8 +90,10 @@
 		
 		document.addEventListener('mousemove', (e) => {
 			if (isDragging) {
-				frameElement.style.left = (e.clientX + window.scrollX - startX) + 'px';
-				frameElement.style.top = (e.clientY + window.scrollY - startY) + 'px';
+				// Convert screen coordinates to canvas coordinates for positioning
+				const canvasCoords = screenToCanvas(e.clientX + window.scrollX, e.clientY + window.scrollY);
+				frameElement.style.left = (canvasCoords.x - startX) + 'px';
+				frameElement.style.top = (canvasCoords.y - startY) + 'px';
 			}
 		});
 		
@@ -88,11 +119,17 @@
 		function initResize(e, type) {
 			isResizing = true;
 			resizeType = type;
-			resizeStartX = e.clientX;
-			resizeStartY = e.clientY;
+			
+			// Convert screen coordinates to canvas coordinates
+			const canvasCoords = screenToCanvas(e.clientX, e.clientY);
+			resizeStartX = canvasCoords.x;
+			resizeStartY = canvasCoords.y;
+			
+			// Get element bounds in screen space, then convert to canvas space
 			const rect = frameElement.getBoundingClientRect();
-			startWidth = rect.width;
-			startHeight = rect.height;
+			const canvasSize = screenToCanvas(rect.width, rect.height);
+			startWidth = canvasSize.x;
+			startHeight = canvasSize.y;
 			
 			// Disable pointer events on iframe during resize
 			document.querySelectorAll('iframe').forEach((frm) => {
@@ -109,16 +146,21 @@
 		
 		document.addEventListener('mousemove', (e) => {
 			if (isResizing) {
-				const deltaX = e.clientX - resizeStartX;
-				const deltaY = e.clientY - resizeStartY;
+				// Convert current mouse position to canvas coordinates
+				const canvasCoords = screenToCanvas(e.clientX, e.clientY);
+				const deltaX = canvasCoords.x - resizeStartX;
+				const deltaY = canvasCoords.y - resizeStartY;
+				
+				// Convert minimum sizes to canvas space
+				const minCanvasSize = screenToCanvas(200, 150);
 				
 				if (resizeType.includes('e')) {
-					const newWidth = Math.max(200, startWidth + deltaX);
+					const newWidth = Math.max(minCanvasSize.x, startWidth + deltaX);
 					frameElement.style.width = newWidth + 'px';
 				}
 				
 				if (resizeType.includes('s')) {
-					const newHeight = Math.max(150, startHeight + deltaY);
+					const newHeight = Math.max(minCanvasSize.y, startHeight + deltaY);
 					frameElement.style.height = newHeight + 'px';
 					iframe.style.height = (newHeight - 60) + 'px'; // Adjust for header
 				}
@@ -203,7 +245,15 @@
         </style>
 	</head>
 	<body class="bg-[#f6f6f6] mb-40" style="background: repeating-conic-gradient(rgba(0,0,0,0.025) 0 25%, rgba(0,0,0,0.05) 0 50%) 50% / 16px 16px;">
-		<div class="bg-white p-3 w-80 h-screen fixed top-0">
+		<!-- Zoom Controls -->
+		<div class="fixed top-4 right-4 z-50 bg-white border border-gray-300 rounded-lg shadow-md p-2 flex items-center gap-2">
+			<button id="zoom-out" class="px-2 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded">-</button>
+			<span id="zoom-level" class="text-sm font-mono min-w-12 text-center">100%</span>
+			<button id="zoom-in" class="px-2 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded">+</button>
+			<button id="zoom-reset" class="px-2 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded text-xs">Reset</button>
+		</div>
+		
+		<div class="bg-white p-3 w-80 h-screen fixed top-0 z-50">
 			<side-bar>
 				<with-layers>
 					<side-bar-group>
@@ -235,15 +285,82 @@
 				</with-layers>
 			</side-bar>
 		</div>
-		<page-container>
-			<for {module in data.modules}>
-				<for {component in module.components}>
-					<inspector-view {component.preview_url}>
-						<with-title>{module.name} - {component.name}</with-title>
-					</inspector-view>
+		<div data-id="canvas">
+			<page-container>
+				<for {module in data.modules}>
+					<for {component in module.components}>
+						<inspector-view {component.preview_url}>
+							<with-title>{module.name} - {component.name}</with-title>
+						</inspector-view>
+					</for>
 				</for>
-			</for>
-		</page-container>
+			</page-container>
+		</div>
+		
+		<script>
+			// Zoom state management - make globally accessible
+			window.hopInspectorZoom = 1.0;
+			let currentZoom = 1.0;
+			const minZoom = 0.1;
+			const maxZoom = 5.0;
+			const zoomStep = 0.1;
+			
+			const canvas = document.querySelector('[data-id="canvas"]');
+			const zoomLevelElement = document.getElementById('zoom-level');
+			const zoomInBtn = document.getElementById('zoom-in');
+			const zoomOutBtn = document.getElementById('zoom-out');
+			const zoomResetBtn = document.getElementById('zoom-reset');
+			
+			function updateZoomDisplay() {
+				zoomLevelElement.textContent = Math.round(currentZoom * 100) + '%';
+			}
+			
+			function applyZoom() {
+				canvas.style.transform = `scale(${currentZoom})`;
+				canvas.style.transformOrigin = 'top left';
+				updateZoomDisplay();
+			}
+			
+			function setZoom(newZoom) {
+				currentZoom = Math.max(minZoom, Math.min(maxZoom, newZoom));
+				window.hopInspectorZoom = currentZoom;
+				applyZoom();
+				
+				// Save zoom to localStorage
+				localStorage.setItem('hop-inspector-zoom', currentZoom.toString());
+			}
+			
+			// Zoom controls
+			zoomInBtn.addEventListener('click', () => {
+				setZoom(currentZoom + zoomStep);
+			});
+			
+			zoomOutBtn.addEventListener('click', () => {
+				setZoom(currentZoom - zoomStep);
+			});
+			
+			zoomResetBtn.addEventListener('click', () => {
+				setZoom(1.0);
+			});
+			
+			// Ctrl+scroll wheel zoom
+			document.addEventListener('wheel', (e) => {
+				if (e.ctrlKey) {
+					e.preventDefault();
+					const delta = e.deltaY > 0 ? -zoomStep : zoomStep;
+					setZoom(currentZoom + delta);
+				}
+			}, { passive: false });
+			
+			// Restore zoom from localStorage
+			const savedZoom = localStorage.getItem('hop-inspector-zoom');
+			if (savedZoom) {
+				setZoom(parseFloat(savedZoom));
+			} else {
+				window.hopInspectorZoom = currentZoom;
+				applyZoom();
+			}
+		</script>
 	</body>
 	</html>
 </inspect-page>
