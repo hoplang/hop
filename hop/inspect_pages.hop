@@ -12,7 +12,6 @@
 		let currentZoom = 1.0;
 		const minZoom = 0.1;
 		const maxZoom = 5.0;
-		const zoomStep = 0.1;
 		
 		// Canvas panning state
 		let canvasX = 0;
@@ -72,11 +71,11 @@
 		
 		// Zoom controls
 		zoomInBtn.addEventListener('click', () => {
-			setZoom(currentZoom + zoomStep);
+			setZoom(currentZoom * 1.2);
 		});
 		
 		zoomOutBtn.addEventListener('click', () => {
-			setZoom(currentZoom - zoomStep);
+			setZoom(currentZoom * 0.8);
 		});
 		
 		zoomResetBtn.addEventListener('click', () => {
@@ -88,14 +87,17 @@
 		frameElement.addEventListener('wheel', (e) => {
 			if (e.ctrlKey) {
 				e.preventDefault();
-				const delta = e.deltaY > 0 ? -zoomStep : zoomStep;
+				
+				// Use a multiplicative zoom for smoother experience
+				const zoomFactor = e.deltaY > 0 ? 0.85 : 1.15;
+				const newZoom = currentZoom * zoomFactor;
 				
 				// Get mouse position relative to the frameElement (canvas-view wrapper)
 				const frameRect = frameElement.getBoundingClientRect();
 				const mouseX = e.clientX - frameRect.left;
 				const mouseY = e.clientY - frameRect.top;
 				
-				setZoom(currentZoom + delta, mouseX, mouseY);
+				setZoom(newZoom, mouseX, mouseY);
 			}
 		}, { passive: false });
 		
