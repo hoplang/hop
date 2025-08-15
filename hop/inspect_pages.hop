@@ -2,7 +2,9 @@
 <import component="side-bar-group" from="hop/ui">
 
 <canvas-view>
-	<slot-default />
+	<div data-id="canvas">
+		<slot-default />
+	</div>
 	
 	<script>
 		// Zoom state management - make globally accessible
@@ -22,7 +24,7 @@
 		let panStartCanvasX = 0;
 		let panStartCanvasY = 0;
 		
-		const canvas = frameElement;
+		const canvas = frameElement.querySelector('[data-id="canvas"]');
 		const zoomLevelElement = document.getElementById('zoom-level');
 		const zoomInBtn = document.getElementById('zoom-in');
 		const zoomOutBtn = document.getElementById('zoom-out');
