@@ -1,22 +1,4 @@
-<import component="heading-box" from="hop/ui">
 <import component="page-container" from="hop/ui">
-
-<component-item as="li">
-	<slot-default />
-</component-item>
-
-<module-item>
-	<heading-box {true}>
-		<with-heading>
-			<slot-heading />
-		</with-heading>
-		<with-body>
-			<ul style="list-style: square; margin-left: 12px;">
-				<slot-body />
-			</ul>
-		</with-body>
-	</heading-box>
-</module-item>
 
 <inspector-view {preview}>
 	<div class="flex flex-col gap-1 relative group p-4" data-id="resizable-container">
