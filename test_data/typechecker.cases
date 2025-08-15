@@ -1087,3 +1087,49 @@ main::main-comp
 	{debug: boolean, enabled: boolean}
 	[]
 ## END
+
+Test HOP_MODE global variable is available and has string type.
+
+## BEGIN
+-- main.hop --
+<main-comp>
+  <div>{HOP_MODE}</div>
+</main-comp>
+-- out --
+main::main-comp
+	void
+	[]
+## END
+
+Test HOP_MODE can be used in conditions.
+
+## BEGIN
+-- main.hop --
+<main-comp>
+  <if {HOP_MODE == 'dev'}>
+    <div>Development mode</div>
+  </if>
+  <if {HOP_MODE == 'build'}>
+    <div>Build mode</div>
+  </if>
+</main-comp>
+-- out --
+main::main-comp
+	void
+	[]
+## END
+
+Test type inference works when comparing variables to HOP_MODE.
+
+## BEGIN
+-- main.hop --
+<main-comp {params}>
+  <if {params.mode == HOP_MODE}>
+    <div>Mode matches</div>
+  </if>
+</main-comp>
+-- out --
+main::main-comp
+	{mode: string}
+	[]
+## END
