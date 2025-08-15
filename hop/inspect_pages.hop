@@ -46,11 +46,9 @@
 			
 			// If center point is provided, adjust canvas position to zoom around that point
 			if (centerX !== null && centerY !== null) {
-				const zoomRatio = currentZoom / oldZoom;
-				const newCanvasX = centerX - (centerX - canvasX) * zoomRatio;
-				const newCanvasY = centerY - (centerY - canvasY) * zoomRatio;
-				canvasX = newCanvasX;
-				canvasY = newCanvasY;
+				const scale = window.hopInspectorZoom / oldZoom;
+				canvasX = centerX - (centerX - canvasX) * scale;
+				canvasY = centerY - (centerY - canvasY) * scale;
 			}
 			
 			applyTransform();
@@ -306,11 +304,8 @@
 			resizeStartX = canvasCoords.x;
 			resizeStartY = canvasCoords.y;
 			
-			// Get element bounds in screen space, then convert to canvas space
-			const rect = frameElement.getBoundingClientRect();
-			const canvasSize = screenToCanvas(rect.width, rect.height);
-			startWidth = canvasSize.x;
-			startHeight = canvasSize.y;
+			startWidth = frameElement.offsetWidth;
+			startHeight = frameElement.offsetHeight;
 			
 			// Disable pointer events on iframe during resize
 			document.querySelectorAll('iframe').forEach((frm) => {
