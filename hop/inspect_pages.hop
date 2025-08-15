@@ -34,6 +34,7 @@
 		}
 		
 		function applyTransform() {
+			canvas.style.transformOrigin = '0 0';
 			canvas.style.transform = `translate(${canvasX}px, ${canvasY}px) scale(${currentZoom})`;
 			updateZoomDisplay();
 		}
