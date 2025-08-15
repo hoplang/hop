@@ -1,4 +1,4 @@
-use crate::common::Type;
+use crate::common::{HopMode, Type};
 use crate::error_formatter::ErrorFormatter;
 use crate::parser::parse;
 use crate::runtime::Program;
@@ -8,7 +8,7 @@ use crate::toposorter::TopoSorter;
 use crate::typechecker::{TypeResult, typecheck};
 use std::collections::HashMap;
 
-pub fn compile(modules: Vec<(String, String)>) -> Result<Program, String> {
+pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> Result<Program, String> {
     let modules_map: HashMap<String, String> = modules.into_iter().collect();
     let mut component_maps = HashMap::new();
     let mut import_maps = HashMap::new();
@@ -112,5 +112,6 @@ pub fn compile(modules: Vec<(String, String)>) -> Result<Program, String> {
         module_parameter_types,
         render_maps,
         script_collector.build(),
+        hop_mode,
     ))
 }

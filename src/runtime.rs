@@ -1,7 +1,7 @@
 use crate::common::{
     BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode, Expression,
-    ForNode, IfNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode, SlotReferenceNode, Type,
-    UnaryOp, XExecNode, XRawNode, escape_html, is_void_element,
+    ForNode, HopMode, IfNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode,
+    SlotReferenceNode, Type, UnaryOp, XExecNode, XRawNode, escape_html, is_void_element,
 };
 use std::collections::HashMap;
 use std::io::Write;
@@ -15,6 +15,7 @@ pub struct Program {
     parameter_types: HashMap<String, HashMap<String, Type>>,
     render_nodes: HashMap<String, Vec<RenderNode>>,
     scripts: String,
+    hop_mode: HopMode,
 }
 
 impl Program {
@@ -24,6 +25,7 @@ impl Program {
         parameter_types: HashMap<String, HashMap<String, Type>>,
         render_maps: HashMap<String, Vec<RenderNode>>,
         scripts: String,
+        hop_mode: HopMode,
     ) -> Self {
         Program {
             component_maps,
@@ -31,6 +33,7 @@ impl Program {
             parameter_types,
             render_nodes: render_maps,
             scripts,
+            hop_mode,
         }
     }
 
@@ -51,6 +54,16 @@ impl Program {
     /// Get the parameter types for inspection
     pub fn get_parameter_types(&self) -> &HashMap<String, HashMap<String, Type>> {
         &self.parameter_types
+    }
+
+    /// Initialize an environment with global variables like HOP_MODE
+    fn init_environment(&self) -> Environment<serde_json::Value> {
+        let mut env = Environment::new();
+        env.push(
+            "HOP_MODE".to_string(),
+            serde_json::Value::String(self.hop_mode.as_str().to_string()),
+        );
+        env
     }
 
     pub fn execute_simple(
@@ -85,7 +98,7 @@ impl Program {
         };
 
         let mut result = String::new();
-        let mut env = Environment::new();
+        let mut env = self.init_environment();
 
         // Set up environment with parameters if the component has params
         if let Some(params_as_attr) = &component.params_as_attr {
@@ -154,7 +167,7 @@ impl Program {
             )
         })?;
 
-        let mut env = Environment::new();
+        let mut env = self.init_environment();
         if let Some(params_as_attr) = &component.params_as_attr {
             env.push(params_as_attr.var_name.value.clone(), params);
         }
@@ -732,6 +745,7 @@ mod tests {
             module_parameter_types,
             HashMap::new(),
             String::new(),
+            HopMode::Build, // Default to build mode for tests
         ))
     }
 

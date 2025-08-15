@@ -93,7 +93,7 @@ pub fn typecheck(
         }
     }
     let mut env = Environment::new();
-    
+
     // Add global HOP_MODE variable
     env.push("HOP_MODE".to_string(), Type::String);
 

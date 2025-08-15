@@ -655,3 +655,38 @@ Expressions should be safe against XSS.
   <div>Charlie</div>
 </div>
 ## END
+
+Test HOP_MODE global variable is available and displays correctly.
+
+## BEGIN
+-- main.hop --
+<main-comp>
+  <div>Mode: {HOP_MODE}</div>
+</main-comp>
+-- data.json --
+{}
+-- output.html --
+<div data-hop-id="main/main-comp">
+  <div>Mode: build</div>
+</div>
+## END
+
+Test HOP_MODE can be used in conditions.
+
+## BEGIN
+-- main.hop --
+<main-comp>
+  <if {HOP_MODE == 'build'}>
+    <div>Build mode active</div>
+  </if>
+  <if {HOP_MODE == 'dev'}>
+    <div>Dev mode active</div>
+  </if>
+</main-comp>
+-- data.json --
+{}
+-- output.html --
+<div data-hop-id="main/main-comp">
+  <div>Build mode active</div>
+</div>
+## END

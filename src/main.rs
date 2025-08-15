@@ -14,7 +14,7 @@ mod typechecker;
 mod unifier;
 
 use clap::{CommandFactory, Parser, Subcommand};
-use common::escape_html;
+use common::{HopMode, escape_html};
 use compiler::compile;
 use files::ProjectRoot;
 use std::path::Path;
@@ -106,7 +106,12 @@ async fn main() -> anyhow::Result<()> {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
-            let mut outputs = hop_build(&root, Path::new(outdir), scriptfile.as_deref(), staticdir.as_deref())?;
+            let mut outputs = hop_build(
+                &root,
+                Path::new(outdir),
+                scriptfile.as_deref(),
+                staticdir.as_deref(),
+            )?;
             let elapsed = start_time.elapsed();
 
             print_header("built", elapsed.as_millis());
@@ -178,9 +183,14 @@ fn copy_dir_recursive(
             if let Some(parent) = dst_path.parent() {
                 fs::create_dir_all(parent)?;
             }
-            fs::copy(&src_path, &dst_path)
-                .with_context(|| format!("Failed to copy file from {} to {}", src_path.display(), dst_path.display()))?;
-            
+            fs::copy(&src_path, &dst_path).with_context(|| {
+                format!(
+                    "Failed to copy file from {} to {}",
+                    src_path.display(),
+                    dst_path.display()
+                )
+            })?;
+
             let file_size = fs::metadata(&dst_path)?.len() as usize;
             file_outputs.push((format!("{}", dst_path.to_string_lossy()), file_size));
         }
@@ -200,7 +210,7 @@ fn hop_build(
     // Create output directory if it doesn't exist
     fs::create_dir_all(output_dir)?;
 
-    let rendered_files = render_build_files(root)?;
+    let rendered_files = render_build_files(root, HopMode::Build)?;
     let mut file_outputs = Vec::new();
 
     // Write each rendered file to the output directory
@@ -219,7 +229,8 @@ fn hop_build(
     // Handle script collection if requested
     if let Some(script_file_name) = script_file {
         let modules = files::load_all_hop_modules(root)?;
-        let program = compile(modules).map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))?;
+        let program = compile(modules, HopMode::Build)
+            .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))?;
         let combined_script = program.get_scripts();
         let script_path = output_dir.join(script_file_name);
         fs::write(&script_path, combined_script)
@@ -235,7 +246,7 @@ fn hop_build(
         if !static_path.is_dir() {
             anyhow::bail!("staticdir '{}' is not a directory", static_path.display());
         }
-        
+
         copy_dir_recursive(static_path, output_dir, &mut file_outputs)
             .with_context(|| format!("Failed to copy files from {}", static_path.display()))?;
     }
@@ -245,14 +256,20 @@ fn hop_build(
 
 fn render_build_files(
     root: &ProjectRoot,
+    mode: HopMode,
 ) -> anyhow::Result<std::collections::HashMap<String, String>> {
     use crate::common::Environment;
     use std::collections::HashMap;
 
     let modules = files::load_all_hop_modules(root)?;
-    let program = compile(modules).map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))?;
+    let program =
+        compile(modules, mode).map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))?;
     let mut rendered_files = HashMap::new();
     let mut env = Environment::new();
+    env.push(
+        "HOP_MODE".to_string(),
+        serde_json::Value::String(mode.as_str().to_string()),
+    );
 
     for render_nodes in program.get_render_nodes().values() {
         for node in render_nodes {
@@ -349,7 +366,7 @@ fn get_inspect_program() -> &'static runtime::Program {
             ("hop/icons".to_string(), ICONS_TEMPLATES.to_string()),
         ];
 
-        compile(modules).expect("Failed to compile inspect program templates")
+        compile(modules, HopMode::Dev).expect("Failed to compile inspect program templates")
     })
 }
 
@@ -632,7 +649,8 @@ async fn hop_dev(
         "/_inspect",
         get(async move || {
             match files::load_all_hop_modules(&inspect_root).and_then(|modules| {
-                compile(modules).map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
+                compile(modules, HopMode::Dev)
+                    .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
             }) {
                 Ok(program) => {
                     let html = create_inspect_page(&program);
@@ -656,7 +674,7 @@ async fn hop_dev(
             let decoded_component = component_name.replace("%2F", "/");
 
             match files::load_all_hop_modules(&simple_preview_root).and_then(|modules| {
-                compile(modules).map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
+                compile(modules, HopMode::Dev).map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
             }) {
                 Ok(program) => {
                     match create_simple_component_preview(&program, &decoded_module, &decoded_component) {
@@ -683,7 +701,8 @@ async fn hop_dev(
             &script_path,
             get(async move || {
                 match files::load_all_hop_modules(&local_root).and_then(|modules| {
-                    compile(modules).map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
+                    compile(modules, HopMode::Dev)
+                        .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
                 }) {
                     Ok(program) => {
                         use axum::body::Body;
@@ -707,7 +726,7 @@ async fn hop_dev(
         (StatusCode, axum::response::Html<String>),
     > {
         // Render all build files into a HashMap
-        let rendered_files = match render_build_files(&local_root) {
+        let rendered_files = match render_build_files(&local_root, HopMode::Dev) {
             Ok(files) => files,
             Err(e) => {
                 return Err((
@@ -910,6 +929,31 @@ console.log("Hello from static file");
         assert!(body.contains("console.log(\"Hello from static file\");"));
     }
 
+    /// When the user calls `hop dev` the global HOP_MODE variable should
+    /// be set to 'build'.
+    #[tokio::test]
+    async fn test_dev_has_hop_mode_dev() {
+        let dir = temp_dir_from_txtar(
+            r#"
+-- build.hop --
+<render file="index.html">
+  mode: {HOP_MODE}
+</render>
+"#,
+        )
+        .unwrap();
+        let root = ProjectRoot::find_upwards(&dir).unwrap();
+
+        let (router, _watcher) = hop_dev(&root, None, None).await.unwrap();
+
+        let server = TestServer::new(router).unwrap();
+
+        let response = server.get("/").await;
+        response.assert_status_ok();
+        let body = response.text();
+        assert!(body.contains("mode: dev"));
+    }
+
     /// When the user calls `hop build` with a build.hop file, the rendered content
     /// should be written to the specified output files.
     #[test]
@@ -942,6 +986,32 @@ console.log("Hello from static file");
         let content = std::fs::read_to_string(&output_path).unwrap();
         assert!(content.contains("Build.hop Test"));
         assert!(content.contains("This content comes from a build.hop file"));
+    }
+
+    /// When the user calls `hop build` the global HOP_MODE variable should
+    /// be set to 'build'.
+    #[test]
+    fn test_build_has_hop_mode_build() {
+        let dir = temp_dir_from_txtar(
+            r#"
+-- build.hop --
+<render file="index.html">
+  mode: {HOP_MODE}
+</render>
+"#,
+        )
+        .unwrap();
+        let root = ProjectRoot::find_upwards(&dir).unwrap();
+
+        let result = hop_build(&root, &dir.join("out"), None, None);
+        assert!(result.is_ok());
+        let outputs = result.unwrap();
+        assert_eq!(outputs.len(), 1);
+
+        // Check that the output file was created with the correct content
+        let output_path = dir.join("out").join("index.html");
+        let content = std::fs::read_to_string(&output_path).unwrap();
+        assert!(content.contains("mode: build"));
     }
 
     /// When the user calls `hop build` with a staticdir parameter, files should be copied

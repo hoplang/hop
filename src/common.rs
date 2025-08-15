@@ -2,6 +2,21 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fmt;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum HopMode {
+    Build,
+    Dev,
+}
+
+impl HopMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            HopMode::Build => "build",
+            HopMode::Dev => "dev",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Object(HashMap<String, Type>, i32),
