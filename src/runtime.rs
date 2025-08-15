@@ -37,10 +37,6 @@ impl Program {
         }
     }
 
-    pub fn get_render_nodes(&self) -> &HashMap<String, Vec<RenderNode>> {
-        &self.render_nodes
-    }
-
     /// Get the collected scripts from the program
     pub fn get_scripts(&self) -> &str {
         &self.scripts
