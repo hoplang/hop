@@ -2,7 +2,7 @@
 <import component="side-bar-group" from="hop/ui">
 
 <canvas-view class="w-full h-full">
-	<div data-id="canvas">
+	<div data-id="canvas" style="width: 0; height: 0;">
 		<slot-default />
 	</div>
 	
@@ -35,7 +35,6 @@
 		
 		function applyTransform() {
 			canvas.style.transform = `translate(${canvasX}px, ${canvasY}px) scale(${currentZoom})`;
-			canvas.style.transformOrigin = 'top left';
 			updateZoomDisplay();
 		}
 		
