@@ -1,4 +1,4 @@
-use crate::common::DopType;
+use crate::dop::DopType;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]

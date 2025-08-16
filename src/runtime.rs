@@ -1,8 +1,9 @@
 use crate::common::{
-    BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, DopExpr, DopType, Environment,
+    BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, DopExpr, Environment,
     ErrorNode, ForNode, HopMode, IfNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode,
     SlotReferenceNode, UnaryOp, XExecNode, XRawNode, escape_html, is_void_element,
 };
+use crate::dop::DopType;
 use crate::parser::Module;
 use crate::typechecker::TypeResult;
 use anyhow::Result;
