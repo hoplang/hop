@@ -70,13 +70,23 @@ impl StateMachineVisitor {
         let mut actions = Vec::new();
 
         for stmt in stmts {
-            match stmt {
-                Stmt::Expr(expr, _) => {
-                    if let Some(action) = self.extract_action_from_expr(expr) {
-                        actions.push(action);
-                    }
+            if let Stmt::Expr(expr, _) = stmt {
+                if let Some(action) = self.extract_action_from_expr(expr) {
+                    actions.push(action);
                 }
-                _ => {}
+            }
+        }
+
+        // Validate that set_state is the last action if there are any actions
+        if let Some(last_action) = actions.last() {
+            if last_action != "set_state" {
+                panic!(
+                    "Last action in block is not set_state. Actions: {:?}",
+                    actions
+                );
+            } else {
+                // Remove last action from output since it is always set_state
+                actions.pop();
             }
         }
 
@@ -266,7 +276,7 @@ fn generate_graphviz(states: &[String], transitions: &[StateTransition]) -> Stri
         dot.push_str(&format!("  {};\n", state));
     }
 
-    dot.push_str("\n");
+    dot.push('\n');
 
     // Add invisible start state
     dot.push_str("  Start [style=invis];\n");
@@ -278,13 +288,22 @@ fn generate_graphviz(states: &[String], transitions: &[StateTransition]) -> Stri
         if !transition.actions.is_empty() {
             label.push_str("\\n");
             label.push_str(&transition.actions.join(", "));
+        } else {
+            panic!(
+                "Transition has no actions:\nFrom: {}\nTo: {}\nCondition: {}\n",
+                transition.from_state, transition.to_state, transition.condition
+            );
         }
 
         // Escape quotes for graphviz
         let escaped_label = label.replace("\"", "\\\"");
-        
+
         // Check if actions contain "reset" to color edge red
-        let edge_color = if transition.actions.iter().any(|action| action.contains("reset")) {
+        let edge_color = if transition
+            .actions
+            .iter()
+            .any(|action| action.contains("reset"))
+        {
             " color=red"
         } else {
             ""
