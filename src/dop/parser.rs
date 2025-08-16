@@ -59,7 +59,7 @@ impl Cursor {
 
     fn advance(&mut self) -> char {
         let ch = self.peek();
-        if !self.is_at_end() {
+        if ch != '\0' {
             let byte_len = ch.len_utf8();
             if ch == '\n' {
                 self.line += 1;
@@ -95,7 +95,7 @@ impl DopTokenizer {
                 Range::new(Position::new(1, 1), Position::new(1, 1)),
             ), // temporary value
         };
-        tokenizer.current_token = tokenizer.next_token()?;
+        tokenizer.advance()?;
         Ok(tokenizer)
     }
 
@@ -166,12 +166,11 @@ impl DopTokenizer {
             .map_err(|_| format!("Invalid number format: {}", result))
     }
 
-    fn advance(&mut self) -> Result<(), String> {
-        self.current_token = self.next_token()?;
-        Ok(())
+    fn peek(&self) -> &RangedDopToken {
+        &self.current_token
     }
 
-    fn next_token(&mut self) -> Result<RangedDopToken, String> {
+    fn advance(&mut self) -> Result<(), String> {
         let start_pos = self.cursor.get_position();
 
         // Skip whitespace
@@ -232,7 +231,8 @@ impl DopTokenizer {
         };
 
         let end_pos = self.cursor.get_position();
-        Ok(RangedDopToken::new(token, Range::new(start_pos, end_pos)))
+        self.current_token = RangedDopToken::new(token, Range::new(start_pos, end_pos));
+        Ok(())
     }
 }
 
@@ -240,7 +240,7 @@ impl DopTokenizer {
 fn parse_equality(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
     let mut expr = parse_unary(tokenizer)?;
 
-    while matches!(tokenizer.current_token.token, DopToken::Equal) {
+    while matches!(tokenizer.peek().token, DopToken::Equal) {
         tokenizer.advance()?; // consume ==
         let right = parse_unary(tokenizer)?;
         expr = DopExpr::BinaryOp(Box::new(expr), BinaryOp::Equal, Box::new(right));
@@ -251,7 +251,7 @@ fn parse_equality(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
 
 // unary -> ( "!" )* primary
 fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
-    if matches!(tokenizer.current_token.token, DopToken::Not) {
+    if matches!(tokenizer.peek().token, DopToken::Not) {
         tokenizer.advance()?; // consume !
         let expr = parse_unary(tokenizer)?; // Right associative for multiple !
         Ok(DopExpr::UnaryOp(UnaryOp::Not, Box::new(expr)))
@@ -262,16 +262,16 @@ fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
 
 // primary -> IDENTIFIER ( "." IDENTIFIER )* | STRING_LITERAL | "(" equality ")"
 fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
-    match &tokenizer.current_token.token {
+    match &tokenizer.peek().token {
         DopToken::Identifier(name) => {
             let mut expr = DopExpr::Variable(name.clone());
             tokenizer.advance()?;
 
             // Handle property access
-            while matches!(tokenizer.current_token.token, DopToken::Dot) {
+            while matches!(tokenizer.peek().token, DopToken::Dot) {
                 tokenizer.advance()?; // consume .
 
-                if let DopToken::Identifier(prop) = &tokenizer.current_token.token {
+                if let DopToken::Identifier(prop) = &tokenizer.peek().token {
                     expr = DopExpr::PropertyAccess(Box::new(expr), prop.clone());
                     tokenizer.advance()?;
                 } else {
@@ -300,7 +300,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
             tokenizer.advance()?; // consume (
             let expr = parse_equality(tokenizer)?;
 
-            if matches!(tokenizer.current_token.token, DopToken::RightParen) {
+            if matches!(tokenizer.peek().token, DopToken::RightParen) {
                 tokenizer.advance()?; // consume )
                 Ok(expr)
             } else {
@@ -324,7 +324,7 @@ pub fn parse_expr(expr: &str) -> Result<DopExpr, String> {
     let result = parse_equality(&mut tokenizer)?;
 
     // Ensure we've consumed all tokens
-    if !matches!(tokenizer.current_token.token, DopToken::Eof) {
+    if !matches!(tokenizer.peek().token, DopToken::Eof) {
         return Err("Unexpected tokens at end of expression".to_string());
     }
 
@@ -355,7 +355,7 @@ pub fn parse_loop_header(
     };
 
     // Expect: IDENTIFIER "in" expression
-    let var_name = match &tokenizer.current_token.token {
+    let var_name = match &tokenizer.peek().token {
         DopToken::Identifier(name) => name.clone(),
         _ => {
             errors.push(RangeError::new(
@@ -376,7 +376,7 @@ pub fn parse_loop_header(
     }
 
     // Expect "in" keyword
-    if !matches!(tokenizer.current_token.token, DopToken::In) {
+    if !matches!(tokenizer.peek().token, DopToken::In) {
         errors.push(RangeError::new(
             "Expected 'in' keyword in <for> tag".to_string(),
             range,
@@ -406,7 +406,7 @@ pub fn parse_loop_header(
     };
 
     // Ensure we've consumed all tokens
-    if !matches!(tokenizer.current_token.token, DopToken::Eof) {
+    if !matches!(tokenizer.peek().token, DopToken::Eof) {
         errors.push(RangeError::new(
             "Unexpected tokens at end of <for> expression".to_string(),
             range,
@@ -448,7 +448,7 @@ pub fn parse_variable_name(
     };
 
     // Expect: IDENTIFIER (and nothing else)
-    let var_name = match &tokenizer.current_token.token {
+    let var_name = match &tokenizer.peek().token {
         DopToken::Identifier(name) => name.clone(),
         _ => {
             errors.push(RangeError::new("Expected variable name".to_string(), range));
@@ -463,7 +463,7 @@ pub fn parse_variable_name(
     }
 
     // Ensure we've consumed all tokens (should only be a single identifier)
-    if !matches!(tokenizer.current_token.token, DopToken::Eof) {
+    if !matches!(tokenizer.peek().token, DopToken::Eof) {
         errors.push(RangeError::new(
             "Expected only a variable name, found additional tokens".to_string(),
             range,
