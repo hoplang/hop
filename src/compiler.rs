@@ -8,7 +8,7 @@ use crate::toposorter::TopoSorter;
 use crate::typechecker::{TypeResult, typecheck};
 use std::collections::HashMap;
 
-pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> Result<Program, String> {
+pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Result<Program> {
     let modules_map: HashMap<String, String> = modules.into_iter().collect();
     let mut component_maps = HashMap::new();
     let mut import_maps = HashMap::new();
@@ -32,7 +32,7 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> Result<Prog
                 formatted_errors.push_str(&formatter.format_error(error));
                 formatted_errors.push('\n');
             }
-            return Err(formatted_errors);
+            anyhow::bail!(formatted_errors);
         }
 
         module_sorter.add_node(module_name.clone());
@@ -47,7 +47,7 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> Result<Prog
     let sorted_modules = match module_sorter.sort() {
         Ok(nodes) => nodes,
         Err(error) => {
-            return Err(format!(
+            anyhow::bail!(format!(
                 "Circular module dependencies: {}",
                 error.cycle.join(" -> ")
             ));
@@ -70,7 +70,7 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> Result<Prog
                 formatted_errors.push_str(&formatter.format_error(error));
                 formatted_errors.push('\n');
             }
-            return Err(formatted_errors);
+            anyhow::bail!(formatted_errors);
         }
 
         let mut component_map = HashMap::new();

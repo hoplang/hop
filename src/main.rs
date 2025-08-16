@@ -611,7 +611,10 @@ async fn hop_dev(
     static_dir: Option<&Path>,
     script_file: Option<&str>,
 ) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher)> {
+    use axum::body::Body;
+    use axum::extract::Path;
     use axum::http::StatusCode;
+    use axum::response::Html;
     use axum::response::sse::{Event, Sse};
     use axum::routing::get;
     use tokio_stream::StreamExt;
@@ -637,46 +640,44 @@ async fn hop_dev(
     router = router.route(
         "/_inspect",
         get(async move || {
-            match files::load_all_hop_modules(&inspect_root).and_then(|modules| {
-                compile(modules, HopMode::Dev)
-                    .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
-            }) {
+            match files::load_all_hop_modules(&inspect_root)
+                .and_then(|modules| compile(modules, HopMode::Dev))
+            {
                 Ok(program) => {
                     let html = create_inspect_page(&program);
-                    Ok(axum::response::Html(html))
+                    Ok(Html(html))
                 }
                 Err(e) => Err((
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    axum::response::Html(create_error_page(&e)),
+                    Html(create_error_page(&e)),
                 )),
             }
         }),
     );
 
     // Add simple preview endpoint for rendering components without inspect UI
-    let simple_preview_root = root.clone();
+    let preview_root = root.clone();
     router = router.route(
         "/_preview/{module}/{component}",
-        get(async move |axum::extract::Path((module_name, component_name)): axum::extract::Path<(String, String)>| {
-            // URL decode the parameters
+        get(async move |Path((module_name, component_name)): Path<(String, String)>| {
+
+            // decode the parameters
             let decoded_module = module_name.replace("%2F", "/");
             let decoded_component = component_name.replace("%2F", "/");
 
-            match files::load_all_hop_modules(&simple_preview_root).and_then(|modules| {
-                compile(modules, HopMode::Dev).map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
-            }) {
+            match files::load_all_hop_modules(&preview_root).and_then(|modules| compile(modules, HopMode::Dev)) {
                 Ok(program) => {
                     match create_simple_component_preview(&program, &decoded_module, &decoded_component) {
-                        Ok(html) => Ok(axum::response::Html(html)),
+                        Ok(html) => Ok(Html(html)),
                         Err(e) => Err((
                             StatusCode::NOT_FOUND,
-                            axum::response::Html(format!("<!DOCTYPE html><html><head><title>Preview Error</title></head><body><h1>Component Preview Error</h1><p>Module: {}<br>Component: {}<br>Error: {}</p></body></html>", escape_html(&decoded_module), escape_html(&decoded_component), escape_html(&e))),
+                            Html(format!("<!DOCTYPE html><html><head><title>Preview Error</title></head><body><h1>Component Preview Error</h1><p>Module: {}<br>Component: {}<br>Error: {}</p></body></html>", escape_html(&decoded_module), escape_html(&decoded_component), escape_html(&e))),
                         )),
                     }
                 }
                 Err(e) => Err((
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    axum::response::Html(create_error_page(&e)),
+                    Html(create_error_page(&e)),
                 )),
             }
         }),
@@ -689,17 +690,13 @@ async fn hop_dev(
         router = router.route(
             &script_path,
             get(async move || {
-                match files::load_all_hop_modules(&local_root).and_then(|modules| {
-                    compile(modules, HopMode::Dev)
-                        .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
-                }) {
-                    Ok(program) => {
-                        use axum::body::Body;
-                        Ok(axum::response::Response::builder()
-                            .header("Content-Type", "application/javascript")
-                            .body(Body::from(program.get_scripts().to_string()))
-                            .unwrap())
-                    }
+                match files::load_all_hop_modules(&local_root)
+                    .and_then(|modules| compile(modules, HopMode::Dev))
+                {
+                    Ok(program) => Ok(axum::response::Response::builder()
+                        .header("Content-Type", "application/javascript")
+                        .body(Body::from(program.get_scripts().to_string()))
+                        .unwrap()),
                     Err(e) => Err((
                         StatusCode::INTERNAL_SERVER_ERROR,
                         format!("Failed to compile hop program: {}", e),
@@ -711,19 +708,19 @@ async fn hop_dev(
 
     let local_root = root.clone();
     let request_handler = async move |req: axum::extract::Request| -> Result<
-        axum::response::Html<String>,
-        (StatusCode, axum::response::Html<String>),
+        Html<String>,
+        (StatusCode, Html<String>),
     > {
         // Compile the program
         let program = match (|| -> anyhow::Result<runtime::Program> {
             let modules = files::load_all_hop_modules(&local_root)?;
-            compile(modules, HopMode::Dev).map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))
+            compile(modules, HopMode::Dev)
         })() {
             Ok(program) => program,
             Err(e) => {
                 return Err((
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    axum::response::Html(create_error_page(&e)),
+                    Html(create_error_page(&e)),
                 ));
             }
         };
@@ -739,7 +736,7 @@ async fn hop_dev(
 
         // Try to render the requested file
         match program.render_file(file_path) {
-            Ok(content) => Ok(axum::response::Html(inject_hot_reload_script(&content))),
+            Ok(content) => Ok(Html(inject_hot_reload_script(&content))),
             Err(_) => {
                 // Create available paths list for 404 page
                 let available_paths: Vec<String> = program
@@ -758,7 +755,7 @@ async fn hop_dev(
 
                 Err((
                     StatusCode::NOT_FOUND,
-                    axum::response::Html(create_not_found_page(req.uri().path(), &available_paths)),
+                    Html(create_not_found_page(req.uri().path(), &available_paths)),
                 ))
             }
         }
