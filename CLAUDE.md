@@ -78,7 +78,7 @@ The expression language inside the curly braces is internally referred to as `do
 
 ### Iteration
 
-The `<for>` tag iterates over an array. The content of the `<for>` tag is evaluated once for each item of the array. Example:
+The `<for>` tag iterates over a `dop` array. The content of the `<for>` tag is evaluated once for each item of the array. Example:
 
 ```
 <for {item in items}>
