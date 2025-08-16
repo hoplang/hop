@@ -1,4 +1,4 @@
-use crate::dop::DopType;
+use super::DopType;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -332,7 +332,7 @@ mod tests {
     #[test]
     fn test_unifier() {
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("test_data/unifier.cases");
+        d.push("test_data/dop/unifier.cases");
 
         let content = fs::read_to_string(&d).unwrap();
         let test_cases = parse_test_cases(&content);

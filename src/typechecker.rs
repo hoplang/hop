@@ -5,7 +5,7 @@ use crate::common::{
 };
 use crate::dop::{BinaryOp, DopExpr, DopType, UnaryOp};
 use crate::parser::Module;
-use crate::unifier::Unifier;
+use crate::dop::Unifier;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq)]

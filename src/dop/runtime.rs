@@ -1,5 +1,5 @@
 use crate::common::Environment;
-use crate::dop::{BinaryOp, DopExpr, UnaryOp, parse_expr};
+use crate::dop::{BinaryOp, DopExpr, UnaryOp};
 use anyhow::Result;
 
 pub fn evaluate_expr(
@@ -85,8 +85,8 @@ mod tests {
             println!("Test case {} (line {})", case_num + 1, line_number);
 
             // Parse the environment JSON
-            let env_json: serde_json::Value = serde_json::from_str(env_content)
-                .unwrap_or_else(|e| {
+            let env_json: serde_json::Value =
+                serde_json::from_str(env_content).unwrap_or_else(|e| {
                     panic!(
                         "Failed to parse environment JSON in test case {} (line {}): {}",
                         case_num + 1,
@@ -117,7 +117,7 @@ mod tests {
             // Check if this test case expects an error
             if let Some(error_section) = archive.get("error") {
                 let expected_error = error_section.content.trim();
-                
+
                 match evaluate_expr(&expr, &mut env) {
                     Ok(result) => {
                         panic!(
@@ -144,8 +144,8 @@ mod tests {
                 let expected_section = archive
                     .get("out")
                     .expect("Missing 'out' section in test case");
-                let expected: serde_json::Value = serde_json::from_str(expected_section.content.trim())
-                    .unwrap_or_else(|e| {
+                let expected: serde_json::Value =
+                    serde_json::from_str(expected_section.content.trim()).unwrap_or_else(|e| {
                         panic!(
                             "Failed to parse expected result JSON in test case {} (line {}): {}",
                             case_num + 1,
@@ -217,4 +217,3 @@ mod tests {
         test_cases
     }
 }
-

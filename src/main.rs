@@ -12,7 +12,6 @@ mod timing;
 mod tokenizer;
 mod toposorter;
 mod typechecker;
-mod unifier;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use files::ProjectRoot;
