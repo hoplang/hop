@@ -1,7 +1,7 @@
 use crate::common::{
-    BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode, Expression,
-    ForNode, HopMode, IfNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode,
-    SlotReferenceNode, Type, UnaryOp, XExecNode, XRawNode, escape_html, is_void_element,
+    BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, DopExpr, DopType, Environment,
+    ErrorNode, ForNode, HopMode, IfNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode,
+    SlotReferenceNode, UnaryOp, XExecNode, XRawNode, escape_html, is_void_element,
 };
 use crate::parser::Module;
 use crate::typechecker::TypeResult;
@@ -15,7 +15,7 @@ use std::process::{Command, Stdio};
 pub struct Program {
     component_maps: HashMap<String, HashMap<String, ComponentDefinitionNode>>,
     import_maps: HashMap<String, HashMap<String, String>>,
-    parameter_types: HashMap<String, HashMap<String, Type>>,
+    parameter_types: HashMap<String, HashMap<String, DopType>>,
     render_nodes: HashMap<String, Vec<RenderNode>>,
     scripts: String,
     hop_mode: HopMode,
@@ -88,7 +88,7 @@ impl Program {
     }
 
     /// Get the parameter types for inspection
-    pub fn get_parameter_types(&self) -> &HashMap<String, HashMap<String, Type>> {
+    pub fn get_parameter_types(&self) -> &HashMap<String, HashMap<String, DopType>> {
         &self.parameter_types
     }
 
@@ -610,20 +610,20 @@ impl Program {
 
     fn evaluate_expr(
         &self,
-        expr: &Expression,
+        expr: &DopExpr,
         env: &mut Environment<serde_json::Value>,
     ) -> Result<serde_json::Value> {
         match expr {
-            Expression::Variable(name) => {
+            DopExpr::Variable(name) => {
                 if let Some(val) = env.lookup(name) {
                     Ok(val.clone())
                 } else {
                     Err(anyhow::anyhow!("Undefined variable: {}", name))
                 }
             }
-            Expression::StringLiteral(value) => Ok(serde_json::Value::String(value.clone())),
-            Expression::BooleanLiteral(value) => Ok(serde_json::Value::Bool(*value)),
-            Expression::PropertyAccess(base_expr, property) => {
+            DopExpr::StringLiteral(value) => Ok(serde_json::Value::String(value.clone())),
+            DopExpr::BooleanLiteral(value) => Ok(serde_json::Value::Bool(*value)),
+            DopExpr::PropertyAccess(base_expr, property) => {
                 let base_value = self.evaluate_expr(base_expr, env)?;
 
                 if base_value.is_null() {
@@ -639,13 +639,13 @@ impl Program {
                     .ok_or_else(|| anyhow::anyhow!("Property '{}' not found", property))
                     .cloned()
             }
-            Expression::BinaryOp(left, BinaryOp::Equal, right) => {
+            DopExpr::BinaryOp(left, BinaryOp::Equal, right) => {
                 let left_value = self.evaluate_expr(left, env)?;
                 let right_value = self.evaluate_expr(right, env)?;
 
                 Ok(serde_json::Value::Bool(left_value == right_value))
             }
-            Expression::UnaryOp(UnaryOp::Not, expr) => {
+            DopExpr::UnaryOp(UnaryOp::Not, expr) => {
                 let value = self.evaluate_expr(expr, env)?;
 
                 match value {

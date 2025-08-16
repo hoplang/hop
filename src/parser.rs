@@ -1,10 +1,10 @@
 use crate::common::{
-    ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, ErrorNode, ExprAttribute,
-    ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode,
+    ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, DopAttribute, ErrorNode, ForNode,
+    IfNode, ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode,
     SlotDefinitionNode, SlotReferenceNode, TextExpressionNode, TextNode, Token, TokenKind,
     VarNameAttr, XExecNode, XRawNode, is_void_element,
 };
-use crate::expression_parser::{parse_expression, parse_loop_header, parse_variable_name};
+use crate::dop_parser::{parse_dop_expression, parse_loop_header, parse_variable_name};
 use std::collections::HashSet;
 
 fn is_valid_component_name(name: &str) -> bool {
@@ -155,14 +155,14 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
     stack.pop().unwrap()
 }
 
-fn parse_expr_attribute(
+fn parse_dop_attribute(
     name: &str,
     value: &str,
     range: Range,
     errors: &mut Vec<RangeError>,
-) -> Option<ExprAttribute> {
-    match parse_expression(value) {
-        Ok(expression) => Some(ExprAttribute::new(name.to_string(), expression, range)),
+) -> Option<DopAttribute> {
+    match parse_dop_expression(value) {
+        Ok(expression) => Some(DopAttribute::new(name.to_string(), expression, range)),
         Err(err) => {
             errors.push(RangeError::new(err, range));
             None
@@ -359,7 +359,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
         TokenKind::Expression => {
             // Expression tokens represent {expression} in text content
             match &t.expression {
-                Some(expr_string) => match parse_expression(expr_string) {
+                Some(expr_string) => match parse_dop_expression(expr_string) {
                     Ok(expression) => Node::TextExpression(TextExpressionNode {
                         expression,
                         range: t.range,
@@ -390,7 +390,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
         TokenKind::SelfClosingTag | TokenKind::StartTag => {
             match t.value.as_str() {
                 "if" => match &t.expression {
-                    Some(expr_string) => match parse_expression(expr_string) {
+                    Some(expr_string) => match parse_dop_expression(expr_string) {
                         Ok(condition) => Node::If(IfNode {
                             condition,
                             range: t.range,
@@ -489,12 +489,10 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                 tag_name if is_valid_component_name(tag_name) => {
                     // This is a component render (contains dash)
                     let params_attr = match &t.expression {
-                        Some(expr_string) => match parse_expression(expr_string) {
-                            Ok(expression) => Some(ExprAttribute::new(
-                                "params".to_string(),
-                                expression,
-                                t.range,
-                            )),
+                        Some(expr_string) => match parse_dop_expression(expr_string) {
+                            Ok(expression) => {
+                                Some(DopAttribute::new("params".to_string(), expression, t.range))
+                            }
                             Err(err) => {
                                 errors.push(RangeError::new(
                                     format!("Invalid expression in <{}> tag: {}", tag_name, err),
@@ -518,7 +516,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     for attr in &t.attributes {
                         if attr.name.starts_with("set-") {
                             if let Some(expr_attr) =
-                                parse_expr_attribute(&attr.name, &attr.value, attr.range, errors)
+                                parse_dop_attribute(&attr.name, &attr.value, attr.range, errors)
                             {
                                 set_attributes.push(expr_attr);
                             }

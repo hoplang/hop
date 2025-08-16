@@ -1,15 +1,14 @@
 use crate::common::{
-    BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode,
-    ExprAttribute, Expression, ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Range,
-    RangeError, RenderNode, SlotDefinitionNode, SlotReferenceNode, Type, UnaryOp, XExecNode,
-    XRawNode,
+    BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, DopAttribute, DopExpr, DopType,
+    Environment, ErrorNode, ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Range, RangeError,
+    RenderNode, SlotDefinitionNode, SlotReferenceNode, UnaryOp, XExecNode, XRawNode,
 };
 use crate::parser::Module;
 use crate::unifier::Unifier;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypeAnnotation(pub Range, pub Type);
+pub struct TypeAnnotation(pub Range, pub DopType);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DefinitionLink {
@@ -20,7 +19,7 @@ pub struct DefinitionLink {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentInfo {
-    pub parameter_type: Type,
+    pub parameter_type: DopType,
     pub slots: Vec<String>,
     pub definition_module: String,
     pub definition_range: Range,
@@ -95,7 +94,7 @@ pub fn typecheck(
     let mut env = Environment::new();
 
     // Add global HOP_MODE variable
-    env.push("HOP_MODE".to_string(), Type::String);
+    env.push("HOP_MODE".to_string(), DopType::String);
 
     for ComponentDefinitionNode {
         name,
@@ -151,7 +150,7 @@ pub fn typecheck(
                 );
             }
 
-            Type::Void
+            DopType::Void
         };
 
         // Add the component to component_info BEFORE typechecking preview content
@@ -235,7 +234,7 @@ pub fn typecheck(
 fn typecheck_node(
     node: &Node,
     component_info: &HashMap<String, ComponentInfo>,
-    env: &mut Environment<Type>,
+    env: &mut Environment<DopType>,
     unifier: &mut Unifier,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
@@ -250,8 +249,8 @@ fn typecheck_node(
             ..
         }) => {
             let condition_type =
-                typecheck_expression(condition, env, unifier, annotations, errors, *range);
-            if let Some(err) = unifier.unify(&Type::Bool, &condition_type) {
+                typecheck_dop_expression(condition, env, unifier, annotations, errors, *range);
+            if let Some(err) = unifier.unify(&DopType::Bool, &condition_type) {
                 errors.push(RangeError::unification_error(&err.message, *range));
             }
 
@@ -328,7 +327,14 @@ fn typecheck_node(
             ..
         }) => {
             for set_attr in set_attributes {
-                typecheck_expr(&Type::String, set_attr, env, unifier, annotations, errors);
+                typecheck_expr(
+                    &DopType::String,
+                    set_attr,
+                    env,
+                    unifier,
+                    annotations,
+                    errors,
+                );
             }
 
             for child in children {
@@ -370,9 +376,9 @@ fn typecheck_node(
         }) => {
             // Typecheck the array expression
             let array_type =
-                typecheck_expression(array_expr, env, unifier, annotations, errors, *range);
+                typecheck_dop_expression(array_expr, env, unifier, annotations, errors, *range);
             let element_type = unifier.new_type_var();
-            let expected_array_type = Type::Array(Box::new(element_type.clone()));
+            let expected_array_type = DopType::Array(Box::new(element_type.clone()));
 
             if let Some(err) = unifier.unify(&array_type, &expected_array_type) {
                 errors.push(RangeError::unification_error(&err.message, *range));
@@ -413,7 +419,7 @@ fn typecheck_node(
         }
         Node::TextExpression(text_expr_node) => {
             // Typecheck the expression and ensure it's a string
-            let expr_type = typecheck_expression(
+            let expr_type = typecheck_dop_expression(
                 &text_expr_node.expression,
                 env,
                 unifier,
@@ -421,26 +427,26 @@ fn typecheck_node(
                 errors,
                 text_expr_node.range,
             );
-            if let Some(err) = unifier.unify(&Type::String, &expr_type) {
+            if let Some(err) = unifier.unify(&DopType::String, &expr_type) {
                 errors.push(RangeError::unification_error(
                     &err.message,
                     text_expr_node.range,
                 ));
             }
-            annotations.push(TypeAnnotation(text_expr_node.range, Type::String));
+            annotations.push(TypeAnnotation(text_expr_node.range, DopType::String));
         }
     }
 }
 
 fn typecheck_expr(
-    expected_type: &Type,
-    attr: &ExprAttribute,
-    env: &mut Environment<Type>,
+    expected_type: &DopType,
+    attr: &DopAttribute,
+    env: &mut Environment<DopType>,
     unifier: &mut Unifier,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut Vec<RangeError>,
 ) {
-    let expr_type = typecheck_expression(
+    let expr_type = typecheck_dop_expression(
         &attr.expression,
         env,
         unifier,
@@ -457,16 +463,16 @@ fn typecheck_expr(
     annotations.push(TypeAnnotation(attr.range, expected_type.clone()));
 }
 
-fn typecheck_expression(
-    expr: &Expression,
-    env: &mut Environment<Type>,
+fn typecheck_dop_expression(
+    expr: &DopExpr,
+    env: &mut Environment<DopType>,
     unifier: &mut Unifier,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut Vec<RangeError>,
     range: Range,
-) -> Type {
+) -> DopType {
     match expr {
-        Expression::Variable(name) => {
+        DopExpr::Variable(name) => {
             if let Some(var_type) = env.lookup(name) {
                 var_type.clone()
             } else {
@@ -474,11 +480,11 @@ fn typecheck_expression(
                 unifier.new_type_var()
             }
         }
-        Expression::BooleanLiteral(_) => Type::Bool,
-        Expression::StringLiteral(_) => Type::String,
-        Expression::PropertyAccess(base_expr, property) => {
+        DopExpr::BooleanLiteral(_) => DopType::Bool,
+        DopExpr::StringLiteral(_) => DopType::String,
+        DopExpr::PropertyAccess(base_expr, property) => {
             let base_type =
-                typecheck_expression(base_expr, env, unifier, annotations, errors, range);
+                typecheck_dop_expression(base_expr, env, unifier, annotations, errors, range);
             let property_type = unifier.new_type_var();
             let obj_type =
                 unifier.new_object(HashMap::from([(property.clone(), property_type.clone())]));
@@ -489,9 +495,11 @@ fn typecheck_expression(
 
             property_type
         }
-        Expression::BinaryOp(left, BinaryOp::Equal, right) => {
-            let left_type = typecheck_expression(left, env, unifier, annotations, errors, range);
-            let right_type = typecheck_expression(right, env, unifier, annotations, errors, range);
+        DopExpr::BinaryOp(left, BinaryOp::Equal, right) => {
+            let left_type =
+                typecheck_dop_expression(left, env, unifier, annotations, errors, range);
+            let right_type =
+                typecheck_dop_expression(right, env, unifier, annotations, errors, range);
 
             // Both operands should have the same type for equality comparison
             if let Some(err) = unifier.unify(&left_type, &right_type) {
@@ -502,13 +510,14 @@ fn typecheck_expression(
             }
 
             // The result of == is always boolean
-            Type::Bool
+            DopType::Bool
         }
-        Expression::UnaryOp(UnaryOp::Not, expr) => {
-            let expr_type = typecheck_expression(expr, env, unifier, annotations, errors, range);
+        DopExpr::UnaryOp(UnaryOp::Not, expr) => {
+            let expr_type =
+                typecheck_dop_expression(expr, env, unifier, annotations, errors, range);
 
             // Negation only works on boolean expressions
-            if let Some(err) = unifier.unify(&expr_type, &Type::Bool) {
+            if let Some(err) = unifier.unify(&expr_type, &DopType::Bool) {
                 errors.push(RangeError::unification_error(
                     &format!(
                         "Negation operator can only be applied to boolean values: {}",
@@ -519,7 +528,7 @@ fn typecheck_expression(
             }
 
             // The result of ! is always boolean
-            Type::Bool
+            DopType::Bool
         }
     }
 }

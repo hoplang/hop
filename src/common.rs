@@ -21,19 +21,19 @@ impl HopMode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Type {
-    Object(HashMap<String, Type>, i32),
-    Array(Box<Type>),
+pub enum DopType {
+    Object(HashMap<String, DopType>, i32),
+    Array(Box<DopType>),
     Bool,
     String,
     Void,
     TypeVar(i32),
 }
 
-impl fmt::Display for Type {
+impl fmt::Display for DopType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Type::Object(properties, _rest) => {
+            DopType::Object(properties, _rest) => {
                 write!(f, "{{")?;
                 let mut first = true;
 
@@ -50,20 +50,20 @@ impl fmt::Display for Type {
                 }
                 write!(f, "}}")
             }
-            Type::Array(inner_type) => write!(f, "{}[]", inner_type),
-            Type::Bool => write!(f, "boolean"),
-            Type::String => write!(f, "string"),
-            Type::Void => write!(f, "void"),
-            Type::TypeVar(id) => write!(f, "?t{}", id),
+            DopType::Array(inner_type) => write!(f, "{}[]", inner_type),
+            DopType::Bool => write!(f, "boolean"),
+            DopType::String => write!(f, "string"),
+            DopType::Void => write!(f, "void"),
+            DopType::TypeVar(id) => write!(f, "?t{}", id),
         }
     }
 }
 
-impl Type {
+impl DopType {
     /// Convert a Type to a JSON Schema representation
     pub fn to_json_schema(&self) -> Value {
         match self {
-            Type::Object(properties, _rest) => {
+            DopType::Object(properties, _rest) => {
                 let mut schema_properties = serde_json::Map::new();
                 let mut required = Vec::new();
 
@@ -79,28 +79,28 @@ impl Type {
                     "additionalProperties": true
                 })
             }
-            Type::Array(inner_type) => {
+            DopType::Array(inner_type) => {
                 json!({
                     "type": "array",
                     "items": inner_type.to_json_schema()
                 })
             }
-            Type::Bool => {
+            DopType::Bool => {
                 json!({
                     "type": "boolean"
                 })
             }
-            Type::String => {
+            DopType::String => {
                 json!({
                     "type": "string"
                 })
             }
-            Type::Void => {
+            DopType::Void => {
                 json!({
                     "type": "null"
                 })
             }
-            Type::TypeVar(_id) => {
+            DopType::TypeVar(_id) => {
                 // Type variables are placeholders during type inference
                 // In JSON Schema, we represent them as allowing any type
                 json!({})
@@ -258,11 +258,11 @@ pub struct Attribute {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct VarName {
+pub struct DopVarName {
     pub value: String,
 }
 
-impl VarName {
+impl DopVarName {
     pub fn new(value: String) -> Option<Self> {
         let mut chars = value.chars();
         if let Some(first_char) = chars.next() {
@@ -275,19 +275,19 @@ impl VarName {
         } else {
             return None;
         }
-        Some(VarName { value })
+        Some(DopVarName { value })
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VarNameAttr {
-    pub var_name: VarName,
+    pub var_name: DopVarName,
     pub range: Range,
 }
 
 impl VarNameAttr {
     pub fn new(attr: &Attribute) -> Option<Self> {
-        let var_name = VarName::new(attr.value.clone())?;
+        let var_name = DopVarName::new(attr.value.clone())?;
         Some(VarNameAttr {
             var_name,
             range: attr.range,
@@ -312,25 +312,25 @@ pub enum UnaryOp {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Expression {
+pub enum DopExpr {
     Variable(String),
-    PropertyAccess(Box<Expression>, String),
+    PropertyAccess(Box<DopExpr>, String),
     StringLiteral(String),
     BooleanLiteral(bool),
-    BinaryOp(Box<Expression>, BinaryOp, Box<Expression>),
-    UnaryOp(UnaryOp, Box<Expression>),
+    BinaryOp(Box<DopExpr>, BinaryOp, Box<DopExpr>),
+    UnaryOp(UnaryOp, Box<DopExpr>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ExprAttribute {
+pub struct DopAttribute {
     pub name: String,
-    pub expression: Expression,
+    pub expression: DopExpr,
     pub range: Range,
 }
 
-impl ExprAttribute {
-    pub fn new(name: String, expression: Expression, range: Range) -> Self {
-        ExprAttribute {
+impl DopAttribute {
+    pub fn new(name: String, expression: DopExpr, range: Range) -> Self {
+        DopAttribute {
             name,
             expression,
             range,
@@ -408,14 +408,14 @@ pub struct TextNode {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentReferenceNode {
     pub component: String,
-    pub params_attr: Option<ExprAttribute>,
+    pub params_attr: Option<DopAttribute>,
     pub range: Range,
     pub children: Vec<Node>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IfNode {
-    pub condition: Expression,
+    pub condition: DopExpr,
     pub range: Range,
     pub children: Vec<Node>,
 }
@@ -446,7 +446,7 @@ pub struct NativeHTMLNode {
     pub attributes: Vec<Attribute>,
     pub range: Range,
     pub children: Vec<Node>,
-    pub set_attributes: Vec<ExprAttribute>,
+    pub set_attributes: Vec<DopAttribute>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -492,15 +492,15 @@ pub struct XRawNode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForNode {
-    pub var_name: VarName,
-    pub array_expr: Expression,
+    pub var_name: DopVarName,
+    pub array_expr: DopExpr,
     pub range: Range,
     pub children: Vec<Node>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextExpressionNode {
-    pub expression: Expression,
+    pub expression: DopExpr,
     pub range: Range,
 }
 

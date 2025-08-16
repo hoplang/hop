@@ -1,7 +1,7 @@
-use crate::common::{BinaryOp, Expression, Range, RangeError, UnaryOp, VarName};
+use crate::common::{BinaryOp, DopExpr, DopVarName, Range, RangeError, UnaryOp};
 
 #[derive(Debug, Clone, PartialEq)]
-enum ExprToken {
+enum DopToken {
     Identifier(String),
     StringLiteral(String),
     BooleanLiteral(bool),
@@ -14,18 +14,18 @@ enum ExprToken {
     Eof,
 }
 
-struct ExprTokenizer {
+struct DopTokenizer {
     input: Vec<char>,
     position: usize,
-    current_token: ExprToken,
+    current_token: DopToken,
 }
 
-impl ExprTokenizer {
+impl DopTokenizer {
     fn new(input: &str) -> Result<Self, String> {
-        let mut tokenizer = ExprTokenizer {
+        let mut tokenizer = DopTokenizer {
             input: input.chars().collect(),
             position: 0,
-            current_token: ExprToken::Eof, // temporary value
+            current_token: DopToken::Eof, // temporary value
         };
         tokenizer.current_token = tokenizer.next_token()?;
         Ok(tokenizer)
@@ -100,52 +100,52 @@ impl ExprTokenizer {
         Ok(())
     }
 
-    fn next_token(&mut self) -> Result<ExprToken, String> {
+    fn next_token(&mut self) -> Result<DopToken, String> {
         self.skip_whitespace();
 
         match self.peek() {
-            '\0' => Ok(ExprToken::Eof),
+            '\0' => Ok(DopToken::Eof),
             '.' => {
                 self.advance_char();
-                Ok(ExprToken::Dot)
+                Ok(DopToken::Dot)
             }
             '(' => {
                 self.advance_char();
-                Ok(ExprToken::LeftParen)
+                Ok(DopToken::LeftParen)
             }
             ')' => {
                 self.advance_char();
-                Ok(ExprToken::RightParen)
+                Ok(DopToken::RightParen)
             }
             '=' => {
                 self.advance_char();
                 if self.peek() == '=' {
                     self.advance_char();
-                    Ok(ExprToken::Equal)
+                    Ok(DopToken::Equal)
                 } else {
                     Err("Expected '==' but found single '='".to_string())
                 }
             }
             '!' => {
                 self.advance_char();
-                Ok(ExprToken::Not)
+                Ok(DopToken::Not)
             }
             '\'' => {
                 let string_value = self.read_string_literal()?;
-                Ok(ExprToken::StringLiteral(string_value))
+                Ok(DopToken::StringLiteral(string_value))
             }
             ch if ch.is_ascii_alphabetic() || ch == '_' => {
                 let identifier = self.read_identifier();
                 if identifier.is_empty() {
                     Err("Invalid identifier".to_string())
                 } else if identifier == "in" {
-                    Ok(ExprToken::In)
+                    Ok(DopToken::In)
                 } else if identifier == "true" {
-                    Ok(ExprToken::BooleanLiteral(true))
+                    Ok(DopToken::BooleanLiteral(true))
                 } else if identifier == "false" {
-                    Ok(ExprToken::BooleanLiteral(false))
+                    Ok(DopToken::BooleanLiteral(false))
                 } else {
-                    Ok(ExprToken::Identifier(identifier))
+                    Ok(DopToken::Identifier(identifier))
                 }
             }
             ch => Err(format!("Unexpected character: '{}'", ch)),
@@ -154,42 +154,42 @@ impl ExprTokenizer {
 }
 
 // equality -> unary ( "==" unary )*
-fn parse_equality(tokenizer: &mut ExprTokenizer) -> Result<Expression, String> {
+fn parse_equality(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
     let mut expr = parse_unary(tokenizer)?;
 
-    while matches!(tokenizer.current_token, ExprToken::Equal) {
+    while matches!(tokenizer.current_token, DopToken::Equal) {
         tokenizer.advance()?; // consume ==
         let right = parse_unary(tokenizer)?;
-        expr = Expression::BinaryOp(Box::new(expr), BinaryOp::Equal, Box::new(right));
+        expr = DopExpr::BinaryOp(Box::new(expr), BinaryOp::Equal, Box::new(right));
     }
 
     Ok(expr)
 }
 
 // unary -> ( "!" )* primary
-fn parse_unary(tokenizer: &mut ExprTokenizer) -> Result<Expression, String> {
-    if matches!(tokenizer.current_token, ExprToken::Not) {
+fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
+    if matches!(tokenizer.current_token, DopToken::Not) {
         tokenizer.advance()?; // consume !
         let expr = parse_unary(tokenizer)?; // Right associative for multiple !
-        Ok(Expression::UnaryOp(UnaryOp::Not, Box::new(expr)))
+        Ok(DopExpr::UnaryOp(UnaryOp::Not, Box::new(expr)))
     } else {
         parse_primary(tokenizer)
     }
 }
 
 // primary -> IDENTIFIER ( "." IDENTIFIER )* | STRING_LITERAL | "(" equality ")"
-fn parse_primary(tokenizer: &mut ExprTokenizer) -> Result<Expression, String> {
+fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
     match &tokenizer.current_token {
-        ExprToken::Identifier(name) => {
-            let mut expr = Expression::Variable(name.clone());
+        DopToken::Identifier(name) => {
+            let mut expr = DopExpr::Variable(name.clone());
             tokenizer.advance()?;
 
             // Handle property access
-            while matches!(tokenizer.current_token, ExprToken::Dot) {
+            while matches!(tokenizer.current_token, DopToken::Dot) {
                 tokenizer.advance()?; // consume .
 
-                if let ExprToken::Identifier(prop) = &tokenizer.current_token {
-                    expr = Expression::PropertyAccess(Box::new(expr), prop.clone());
+                if let DopToken::Identifier(prop) = &tokenizer.current_token {
+                    expr = DopExpr::PropertyAccess(Box::new(expr), prop.clone());
                     tokenizer.advance()?;
                 } else {
                     return Err("Expected identifier after '.'".to_string());
@@ -198,21 +198,21 @@ fn parse_primary(tokenizer: &mut ExprTokenizer) -> Result<Expression, String> {
 
             Ok(expr)
         }
-        ExprToken::BooleanLiteral(value) => {
-            let expr = Expression::BooleanLiteral(*value);
+        DopToken::BooleanLiteral(value) => {
+            let expr = DopExpr::BooleanLiteral(*value);
             tokenizer.advance()?;
             Ok(expr)
         }
-        ExprToken::StringLiteral(value) => {
-            let expr = Expression::StringLiteral(value.clone());
+        DopToken::StringLiteral(value) => {
+            let expr = DopExpr::StringLiteral(value.clone());
             tokenizer.advance()?;
             Ok(expr)
         }
-        ExprToken::LeftParen => {
+        DopToken::LeftParen => {
             tokenizer.advance()?; // consume (
             let expr = parse_equality(tokenizer)?;
 
-            if matches!(tokenizer.current_token, ExprToken::RightParen) {
+            if matches!(tokenizer.current_token, DopToken::RightParen) {
                 tokenizer.advance()?; // consume )
                 Ok(expr)
             } else {
@@ -223,17 +223,17 @@ fn parse_primary(tokenizer: &mut ExprTokenizer) -> Result<Expression, String> {
     }
 }
 
-pub fn parse_expression(expr: &str) -> Result<Expression, String> {
+pub fn parse_dop_expression(expr: &str) -> Result<DopExpr, String> {
     let expr = expr.trim();
     if expr.is_empty() {
         return Err("Empty expression".to_string());
     }
 
-    let mut tokenizer = ExprTokenizer::new(expr)?;
+    let mut tokenizer = DopTokenizer::new(expr)?;
     let result = parse_equality(&mut tokenizer)?;
 
     // Ensure we've consumed all tokens
-    if !matches!(tokenizer.current_token, ExprToken::Eof) {
+    if !matches!(tokenizer.current_token, DopToken::Eof) {
         return Err("Unexpected tokens at end of expression".to_string());
     }
 
@@ -244,7 +244,7 @@ pub fn parse_loop_header(
     header: &str,
     range: Range,
     errors: &mut Vec<RangeError>,
-) -> Option<(VarName, Expression)> {
+) -> Option<(DopVarName, DopExpr)> {
     let header = header.trim();
     if header.is_empty() {
         errors.push(RangeError::new("Empty loop header".to_string(), range));
@@ -252,7 +252,7 @@ pub fn parse_loop_header(
     }
 
     // Create tokenizer for the loop header
-    let mut tokenizer = match ExprTokenizer::new(header) {
+    let mut tokenizer = match DopTokenizer::new(header) {
         Ok(tokenizer) => tokenizer,
         Err(err) => {
             errors.push(RangeError::new(
@@ -265,7 +265,7 @@ pub fn parse_loop_header(
 
     // Expect: IDENTIFIER "in" expression
     let var_name = match &tokenizer.current_token {
-        ExprToken::Identifier(name) => name.clone(),
+        DopToken::Identifier(name) => name.clone(),
         _ => {
             errors.push(RangeError::new(
                 "Expected variable name in <for> tag".to_string(),
@@ -285,7 +285,7 @@ pub fn parse_loop_header(
     }
 
     // Expect "in" keyword
-    if !matches!(tokenizer.current_token, ExprToken::In) {
+    if !matches!(tokenizer.current_token, DopToken::In) {
         errors.push(RangeError::new(
             "Expected 'in' keyword in <for> tag".to_string(),
             range,
@@ -315,7 +315,7 @@ pub fn parse_loop_header(
     };
 
     // Ensure we've consumed all tokens
-    if !matches!(tokenizer.current_token, ExprToken::Eof) {
+    if !matches!(tokenizer.current_token, DopToken::Eof) {
         errors.push(RangeError::new(
             "Unexpected tokens at end of <for> expression".to_string(),
             range,
@@ -324,7 +324,7 @@ pub fn parse_loop_header(
     }
 
     // Validate the variable name
-    match VarName::new(var_name.clone()) {
+    match DopVarName::new(var_name.clone()) {
         Some(validated_var_name) => Some((validated_var_name, array_expr)),
         None => {
             errors.push(RangeError::invalid_variable_name(&var_name, range));
@@ -337,7 +337,7 @@ pub fn parse_variable_name(
     var_expr: &str,
     range: Range,
     errors: &mut Vec<RangeError>,
-) -> Option<VarName> {
+) -> Option<DopVarName> {
     let var_expr = var_expr.trim();
     if var_expr.is_empty() {
         errors.push(RangeError::new("Empty variable name".to_string(), range));
@@ -345,7 +345,7 @@ pub fn parse_variable_name(
     }
 
     // Create tokenizer for the variable expression
-    let mut tokenizer = match ExprTokenizer::new(var_expr) {
+    let mut tokenizer = match DopTokenizer::new(var_expr) {
         Ok(tokenizer) => tokenizer,
         Err(err) => {
             errors.push(RangeError::new(
@@ -358,7 +358,7 @@ pub fn parse_variable_name(
 
     // Expect: IDENTIFIER (and nothing else)
     let var_name = match &tokenizer.current_token {
-        ExprToken::Identifier(name) => name.clone(),
+        DopToken::Identifier(name) => name.clone(),
         _ => {
             errors.push(RangeError::new("Expected variable name".to_string(), range));
             return None;
@@ -372,7 +372,7 @@ pub fn parse_variable_name(
     }
 
     // Ensure we've consumed all tokens (should only be a single identifier)
-    if !matches!(tokenizer.current_token, ExprToken::Eof) {
+    if !matches!(tokenizer.current_token, DopToken::Eof) {
         errors.push(RangeError::new(
             "Expected only a variable name, found additional tokens".to_string(),
             range,
@@ -381,7 +381,7 @@ pub fn parse_variable_name(
     }
 
     // Validate the variable name
-    match VarName::new(var_name.clone()) {
+    match DopVarName::new(var_name.clone()) {
         Some(validated_var_name) => Some(validated_var_name),
         None => {
             errors.push(RangeError::invalid_variable_name(&var_name, range));
@@ -422,7 +422,7 @@ mod tests {
 
             println!("Test case {} (line {})", case_num + 1, line_number);
 
-            let result = parse_expression(input).unwrap_or_else(|e| {
+            let result = parse_dop_expression(input).unwrap_or_else(|e| {
                 panic!(
                     "Failed to parse expression '{}' in test case {} (line {}): {}",
                     input,

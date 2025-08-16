@@ -1,4 +1,4 @@
-use crate::common::Type;
+use crate::common::DopType;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -13,7 +13,7 @@ impl UnificationError {
 }
 
 pub struct Unifier {
-    substitutions: HashMap<i32, Type>,
+    substitutions: HashMap<i32, DopType>,
     next_type_var_id: i32,
 }
 
@@ -31,24 +31,24 @@ impl Unifier {
         id
     }
 
-    pub fn new_type_var(&mut self) -> Type {
-        Type::TypeVar(self.next_type_var())
+    pub fn new_type_var(&mut self) -> DopType {
+        DopType::TypeVar(self.next_type_var())
     }
 
-    pub fn new_object(&mut self, map: HashMap<String, Type>) -> Type {
-        Type::Object(map, self.next_type_var())
+    pub fn new_object(&mut self, map: HashMap<String, DopType>) -> DopType {
+        DopType::Object(map, self.next_type_var())
     }
 
-    pub fn unify(&mut self, a: &Type, b: &Type) -> Option<UnificationError> {
+    pub fn unify(&mut self, a: &DopType, b: &DopType) -> Option<UnificationError> {
         if self.types_equal(a, b) {
             return None;
         }
 
         match (a, b) {
-            (Type::TypeVar(id_a), _) => self.unify_type_var(*id_a, b),
-            (_, Type::TypeVar(id_b)) => self.unify_type_var(*id_b, a),
-            (Type::Array(type_a), Type::Array(type_b)) => self.unify(type_a, type_b),
-            (Type::Object(props_a, rest_a), Type::Object(props_b, rest_b)) => {
+            (DopType::TypeVar(id_a), _) => self.unify_type_var(*id_a, b),
+            (_, DopType::TypeVar(id_b)) => self.unify_type_var(*id_b, a),
+            (DopType::Array(type_a), DopType::Array(type_b)) => self.unify(type_a, type_b),
+            (DopType::Object(props_a, rest_a), DopType::Object(props_b, rest_b)) => {
                 // Find common properties and unify them
                 for (key, type_a) in props_a {
                     if let Some(type_b) = props_b.get(key) {
@@ -59,13 +59,13 @@ impl Unifier {
                 }
 
                 // Collect missing properties
-                let missing_from_a: HashMap<String, Type> = props_b
+                let missing_from_a: HashMap<String, DopType> = props_b
                     .iter()
                     .filter(|(key, _)| !props_a.contains_key(*key))
                     .map(|(k, v)| (k.clone(), v.clone()))
                     .collect();
 
-                let missing_from_b: HashMap<String, Type> = props_a
+                let missing_from_b: HashMap<String, DopType> = props_a
                     .iter()
                     .filter(|(key, _)| !props_b.contains_key(*key))
                     .map(|(k, v)| (k.clone(), v.clone()))
@@ -76,15 +76,15 @@ impl Unifier {
 
                 // Unify rest types with missing properties
                 if let Some(err) = self.unify(
-                    &Type::TypeVar(*rest_a),
-                    &Type::Object(missing_from_a, shared_rest),
+                    &DopType::TypeVar(*rest_a),
+                    &DopType::Object(missing_from_a, shared_rest),
                 ) {
                     return Some(err);
                 }
 
                 if let Some(err) = self.unify(
-                    &Type::TypeVar(*rest_b),
-                    &Type::Object(missing_from_b, shared_rest),
+                    &DopType::TypeVar(*rest_b),
+                    &DopType::Object(missing_from_b, shared_rest),
                 ) {
                     return Some(err);
                 }
@@ -95,14 +95,14 @@ impl Unifier {
         }
     }
 
-    fn unify_type_var(&mut self, var_id: i32, other_type: &Type) -> Option<UnificationError> {
+    fn unify_type_var(&mut self, var_id: i32, other_type: &DopType) -> Option<UnificationError> {
         if let Some(substituted_type) = self.substitutions.get(&var_id) {
             return self.unify(&substituted_type.clone(), other_type);
         }
 
-        if let Type::TypeVar(other_id) = other_type {
+        if let DopType::TypeVar(other_id) = other_type {
             if let Some(other_substituted) = self.substitutions.get(other_id) {
-                return self.unify(&Type::TypeVar(var_id), &other_substituted.clone());
+                return self.unify(&DopType::TypeVar(var_id), &other_substituted.clone());
             }
         }
 
@@ -110,52 +110,52 @@ impl Unifier {
         None
     }
 
-    pub fn query(&self, t: &Type) -> Type {
+    pub fn query(&self, t: &DopType) -> DopType {
         match t {
-            Type::TypeVar(id) => {
+            DopType::TypeVar(id) => {
                 if let Some(substituted_type) = self.substitutions.get(id) {
                     self.query(substituted_type)
                 } else {
                     t.clone()
                 }
             }
-            Type::Array(sub_type) => Type::Array(Box::new(self.query(sub_type))),
-            Type::Object(props, rest) => {
-                let queried_props: HashMap<String, Type> = props
+            DopType::Array(sub_type) => DopType::Array(Box::new(self.query(sub_type))),
+            DopType::Object(props, rest) => {
+                let queried_props: HashMap<String, DopType> = props
                     .iter()
                     .map(|(k, v)| (k.clone(), self.query(v)))
                     .collect();
 
-                match self.query(&Type::TypeVar(*rest)) {
-                    Type::Object(rest_props, rest_rest) => {
+                match self.query(&DopType::TypeVar(*rest)) {
+                    DopType::Object(rest_props, rest_rest) => {
                         let mut merged_props = queried_props;
                         for (k, v) in rest_props {
                             merged_props.insert(k, v);
                         }
-                        Type::Object(merged_props, rest_rest)
+                        DopType::Object(merged_props, rest_rest)
                     }
-                    Type::TypeVar(rest_id) => Type::Object(queried_props, rest_id),
+                    DopType::TypeVar(rest_id) => DopType::Object(queried_props, rest_id),
                     _ => panic!("Invalid type substitution for object rest"),
                 }
             }
-            Type::Bool | Type::String | Type::Void => t.clone(),
+            DopType::Bool | DopType::String | DopType::Void => t.clone(),
         }
     }
 
-    fn types_equal(&self, a: &Type, b: &Type) -> bool {
+    fn types_equal(&self, a: &DopType, b: &DopType) -> bool {
         match (a, b) {
-            (Type::TypeVar(id_a), Type::TypeVar(id_b)) => id_a == id_b,
-            (Type::Array(type_a), Type::Array(type_b)) => self.types_equal(type_a, type_b),
-            (Type::Object(props_a, rest_a), Type::Object(props_b, rest_b)) => {
+            (DopType::TypeVar(id_a), DopType::TypeVar(id_b)) => id_a == id_b,
+            (DopType::Array(type_a), DopType::Array(type_b)) => self.types_equal(type_a, type_b),
+            (DopType::Object(props_a, rest_a), DopType::Object(props_b, rest_b)) => {
                 rest_a == rest_b
                     && props_a.len() == props_b.len()
                     && props_a
                         .iter()
                         .all(|(k, v)| props_b.get(k).is_some_and(|v2| self.types_equal(v, v2)))
             }
-            (Type::Bool, Type::Bool) => true,
-            (Type::String, Type::String) => true,
-            (Type::Void, Type::Void) => true,
+            (DopType::Bool, DopType::Bool) => true,
+            (DopType::String, DopType::String) => true,
+            (DopType::Void, DopType::Void) => true,
             _ => false,
         }
     }
@@ -251,15 +251,19 @@ mod tests {
         }
     }
 
-    fn sexpr_to_type(sexpr: SExpr, table: &HashMap<String, Type>, unifier: &mut Unifier) -> Type {
+    fn sexpr_to_type(
+        sexpr: SExpr,
+        table: &HashMap<String, DopType>,
+        unifier: &mut Unifier,
+    ) -> DopType {
         match sexpr {
             SExpr::Command(cmd, args) => match cmd.as_str() {
                 "array" => {
                     assert!(args.len() == 1);
-                    Type::Array(Box::new(sexpr_to_type(args[0].clone(), table, unifier)))
+                    DopType::Array(Box::new(sexpr_to_type(args[0].clone(), table, unifier)))
                 }
                 "object" => {
-                    let mut map: HashMap<String, Type> = HashMap::new();
+                    let mut map: HashMap<String, DopType> = HashMap::new();
                     for chunk in args.chunks(2) {
                         let value = sexpr_to_type(chunk[1].clone(), table, unifier);
                         let key = match &chunk[0] {
@@ -268,14 +272,14 @@ mod tests {
                         };
                         map.insert(key, value);
                     }
-                    Type::Object(map, unifier.next_type_var())
+                    DopType::Object(map, unifier.next_type_var())
                 }
                 _ => panic!(),
             },
             SExpr::Symbol(str) => match str.as_str() {
-                "string" => Type::String,
-                "bool" => Type::Bool,
-                "void" => Type::Void,
+                "string" => DopType::String,
+                "bool" => DopType::Bool,
+                "void" => DopType::Void,
                 _ => {
                     // Get type var from table
                     assert!(str.starts_with('t'));
@@ -344,7 +348,7 @@ mod tests {
                 .expect("Missing 'out' section in test case")
                 .content
                 .trim();
-            let mut table: HashMap<String, Type> = HashMap::new();
+            let mut table: HashMap<String, DopType> = HashMap::new();
 
             let mut unifier = Unifier::new();
 

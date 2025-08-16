@@ -2,7 +2,7 @@ mod commands;
 mod common;
 mod compiler;
 mod error_formatter;
-mod expression_parser;
+mod dop_parser;
 mod files;
 mod parser;
 mod runtime;
