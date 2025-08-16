@@ -197,7 +197,7 @@ impl LanguageServer for HopLanguageServer {
     }
 }
 
-pub async fn run_lsp() {
+pub async fn execute() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 

@@ -4,7 +4,6 @@ mod compiler;
 mod error_formatter;
 mod expression_parser;
 mod files;
-mod lsp;
 mod parser;
 mod runtime;
 mod scriptcollector;
@@ -18,8 +17,6 @@ mod unifier;
 use clap::{CommandFactory, Parser, Subcommand};
 use files::ProjectRoot;
 use std::path::Path;
-
-use commands::{build, dev};
 
 #[derive(Parser)]
 #[command(name = "hop")]
@@ -93,7 +90,7 @@ async fn main() -> anyhow::Result<()> {
 
     match &cli.command {
         Some(Commands::Lsp) => {
-            lsp::run_lsp().await;
+            commands::lsp::execute().await;
         }
         Some(Commands::Build {
             projectdir,
@@ -107,7 +104,7 @@ async fn main() -> anyhow::Result<()> {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
-            let mut outputs = build::execute(
+            let mut outputs = commands::build::execute(
                 &root,
                 Path::new(outdir),
                 scriptfile.as_deref(),
@@ -140,7 +137,7 @@ async fn main() -> anyhow::Result<()> {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
-            let (router, _watcher) = dev::execute(
+            let (router, _watcher) = commands::dev::execute(
                 &root,
                 staticdir.as_deref().map(Path::new),
                 scriptfile.as_deref(),
@@ -162,11 +159,3 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
-
-
-
-
-
-
-
-
