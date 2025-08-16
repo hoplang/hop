@@ -234,7 +234,7 @@ pub struct Token {
     pub kind: TokenKind,
     pub value: String,
     pub attributes: Vec<Attribute>,
-    pub expression: Option<String>,
+    pub expression: Option<(String, Range)>,
     pub range: Range,
 }
 
@@ -253,7 +253,7 @@ impl Token {
         kind: TokenKind,
         value: String,
         attributes: Vec<Attribute>,
-        expression: Option<String>,
+        expression: Option<(String, Range)>,
         range: Range,
     ) -> Self {
         Token {

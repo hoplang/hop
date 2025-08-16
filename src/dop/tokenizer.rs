@@ -40,11 +40,15 @@ struct Cursor {
 
 impl Cursor {
     fn new(input: &str) -> Self {
+        Self::new_with_offset(input, Position::new(1, 1))
+    }
+
+    fn new_with_offset(input: &str, start_pos: Position) -> Self {
         Self {
             input: input.chars().collect(),
             position: 0,
-            line: 1,
-            column: 1,
+            line: start_pos.line,
+            column: start_pos.column,
         }
     }
 
@@ -87,12 +91,13 @@ pub struct DopTokenizer {
 
 impl DopTokenizer {
     pub fn new(input: &str) -> Result<Self, String> {
+        Self::new_with_offset(input, Position::new(1, 1))
+    }
+
+    pub fn new_with_offset(input: &str, start_pos: Position) -> Result<Self, String> {
         let mut tokenizer = DopTokenizer {
-            cursor: Cursor::new(input),
-            current_token: RangedDopToken::new(
-                DopToken::Eof,
-                Range::new(Position::new(1, 1), Position::new(1, 1)),
-            ), // temporary value
+            cursor: Cursor::new_with_offset(input, start_pos),
+            current_token: RangedDopToken::new(DopToken::Eof, Range::new(start_pos, start_pos)), // temporary value
         };
         tokenizer.advance()?;
         Ok(tokenizer)
@@ -224,7 +229,10 @@ mod tests {
             let token = tokenizer.peek();
             let range_str = format!(
                 "{}:{}-{}:{}",
-                token.range.start.line, token.range.start.column, token.range.end.line, token.range.end.column
+                token.range.start.line,
+                token.range.start.column,
+                token.range.end.line,
+                token.range.end.column
             );
 
             let formatted = match &token.token {

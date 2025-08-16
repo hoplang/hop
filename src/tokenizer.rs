@@ -86,11 +86,11 @@ impl Cursor {
     }
 
     fn match_str(&self, s: &str) -> bool {
-        let chars: Vec<char> = s.chars().collect();
-        if self.position + chars.len() > self.input.len() {
+        if self.position + s.len() > self.input.len() {
             return false;
         }
 
+        let chars: Vec<char> = s.chars().collect();
         for (i, &ch) in chars.iter().enumerate() {
             if self.input[self.position + i] != ch {
                 return false;
@@ -105,7 +105,7 @@ struct TokenBuilder {
     token_kind: TokenKind,
     token_start: Position,
     token_attributes: Vec<Attribute>,
-    token_expression: Option<String>,
+    token_expression: Option<(String, Range)>,
     expression_content: String,
     expression_start: Position,
     attribute_name: String,
@@ -197,7 +197,13 @@ impl TokenBuilder {
     }
 
     fn push_current_expression(&mut self, cursor: &Cursor) {
-        self.token_expression = Some(mem::take(&mut self.expression_content));
+        self.token_expression = Some((
+            mem::take(&mut self.expression_content),
+            Range {
+                start: self.expression_start,
+                end: cursor.get_position(),
+            },
+        ));
         self.expression_start = cursor.get_position();
     }
 
@@ -238,8 +244,8 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
                         builder.push_current_token(&cursor);
                     }
                     // Start collecting the expression
+                    cursor.advance(); // consume {
                     builder.set_current_expression_start(cursor.get_position());
-                    cursor.advance();
                     state = TokenizerState::TextExpressionContent;
                 } else {
                     builder.append_to_current_token_value(ch);
@@ -282,8 +288,8 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
                     cursor.advance();
                     state = TokenizerState::BeforeAttrName;
                 } else if ch == '{' {
-                    builder.set_current_expression_start(cursor.get_position());
                     cursor.advance();
+                    builder.set_current_expression_start(cursor.get_position());
                     state = TokenizerState::TagExpressionContent;
                 } else if ch == '>' {
                     if is_tag_name_with_raw_content(builder.get_current_token_value()) {
@@ -383,8 +389,8 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
                     cursor.advance();
                     state = TokenizerState::AttrName;
                 } else if ch == '{' {
-                    builder.set_current_expression_start(cursor.get_position());
                     cursor.advance();
+                    builder.set_current_expression_start(cursor.get_position());
                     state = TokenizerState::TagExpressionContent;
                 } else if ch == '/' {
                     builder.set_current_token_kind(TokenKind::SelfClosingTag);
@@ -701,7 +707,7 @@ mod tests {
     fn format_token(token: &Token) -> String {
         match token.kind {
             TokenKind::Text => {
-                if let Some(ref expr_string) = token.expression {
+                if let Some((expr_string, _)) = &token.expression {
                     let attrs = token
                         .attributes
                         .iter()
@@ -720,7 +726,7 @@ mod tests {
                 }
             }
             TokenKind::Expression => {
-                if let Some(ref expr_string) = token.expression {
+                if let Some((expr_string, _)) = &token.expression {
                     let attrs = token
                         .attributes
                         .iter()
@@ -757,8 +763,8 @@ mod tests {
                     .collect::<Vec<_>>()
                     .join(" ");
 
-                let expr_part = if let Some(ref expr_string) = token.expression {
-                    format!(" {{{}}}", expr_string)
+                let expr_part = if let Some((expr_string, range)) = &token.expression {
+                    format!(" {{{}, {}}}", expr_string, format_range(*range))
                 } else {
                     String::new()
                 };
