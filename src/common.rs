@@ -194,16 +194,6 @@ pub struct VarNameAttr {
     pub range: Range,
 }
 
-impl VarNameAttr {
-    pub fn new(attr: &Attribute) -> Option<Self> {
-        let var_name = DopVarName::new(attr.value.clone())?;
-        Some(VarNameAttr {
-            var_name,
-            range: attr.range,
-        })
-    }
-}
-
 impl Attribute {
     pub fn new(name: String, value: String, range: Range) -> Self {
         Attribute { name, value, range }
