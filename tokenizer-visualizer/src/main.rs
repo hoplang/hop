@@ -36,16 +36,25 @@ impl StateMachineVisitor {
             Expr::Call(call) => {
                 if let Expr::Path(path) = &*call.func {
                     if let Some(ident) = path.path.get_ident() {
-                        return format!("{}()", ident);
+                        let args: Vec<String> = call
+                            .args
+                            .iter()
+                            .map(|arg| self.extract_simple_expr(arg))
+                            .collect();
+                        return format!("{}({})", ident, args.join(", "));
                     }
                 }
                 "function_call".to_string()
             }
             Expr::MethodCall(method) => {
+                let args: Vec<String> = method.args.iter()
+                    .map(|arg| self.extract_simple_expr(arg))
+                    .collect();
                 format!(
-                    "{}.{}()",
+                    "{}.{}({})",
                     self.extract_simple_expr(&method.receiver),
-                    method.method
+                    method.method,
+                    args.join(", ")
                 )
             }
             _ => "condition".to_string(),
