@@ -1,7 +1,7 @@
 use crate::common::{
-    ComponentDefinitionNode, ComponentReferenceNode, DopAttribute, Environment, ErrorNode, ForNode,
-    IfNode, ImportNode, NativeHTMLNode, Node, Range, RangeError, RenderNode, SlotDefinitionNode,
-    SlotReferenceNode, XExecNode, XRawNode,
+    ComponentDefinitionNode, ComponentReferenceNode, DopExprAttribute, Environment, ErrorNode,
+    ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Range, RangeError, RenderNode,
+    SlotDefinitionNode, SlotReferenceNode, XExecNode, XRawNode,
 };
 use crate::dop::{BinaryOp, DopExpr, DopType, UnaryOp};
 use crate::parser::Module;
@@ -441,7 +441,7 @@ fn typecheck_node(
 
 fn expect_type(
     expected_type: &DopType,
-    attr: &DopAttribute,
+    attr: &DopExprAttribute,
     env: &mut Environment<DopType>,
     unifier: &mut Unifier,
     annotations: &mut Vec<TypeAnnotation>,

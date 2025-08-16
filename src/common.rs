@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::dop::DopExpr;
+use std::collections::HashMap;
 
 /// HopMode influences the runtime value of the global variable HOP_MODE which
 /// will be set to 'build' when running `hop build` and 'dev' when running
@@ -190,7 +190,7 @@ impl DopVarName {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct VarNameAttr {
+pub struct DopVarNameAttribute {
     pub var_name: DopVarName,
     pub range: Range,
 }
@@ -202,15 +202,15 @@ impl Attribute {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct DopAttribute {
+pub struct DopExprAttribute {
     pub name: String,
     pub expression: DopExpr,
     pub range: Range,
 }
 
-impl DopAttribute {
+impl DopExprAttribute {
     pub fn new(name: String, expression: DopExpr, range: Range) -> Self {
-        DopAttribute {
+        DopExprAttribute {
             name,
             expression,
             range,
@@ -288,7 +288,7 @@ pub struct TextNode {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentReferenceNode {
     pub component: String,
-    pub params_attr: Option<DopAttribute>,
+    pub params_attr: Option<DopExprAttribute>,
     pub range: Range,
     pub children: Vec<Node>,
 }
@@ -310,7 +310,7 @@ pub struct ImportNode {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentDefinitionNode {
     pub name: String,
-    pub params_as_attr: Option<VarNameAttr>,
+    pub params_as_attr: Option<DopVarNameAttribute>,
     pub as_attr: Option<Attribute>,
     pub attributes: Vec<Attribute>,
     pub range: Range,
@@ -326,7 +326,7 @@ pub struct NativeHTMLNode {
     pub attributes: Vec<Attribute>,
     pub range: Range,
     pub children: Vec<Node>,
-    pub set_attributes: Vec<DopAttribute>,
+    pub set_attributes: Vec<DopExprAttribute>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
