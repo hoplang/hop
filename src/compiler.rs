@@ -1,4 +1,4 @@
-use crate::common::{HopMode, Type};
+use crate::common::HopMode;
 use crate::error_formatter::ErrorFormatter;
 use crate::parser::parse;
 use crate::runtime::Program;
@@ -10,11 +10,7 @@ use std::collections::HashMap;
 
 pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Result<Program> {
     let modules_map: HashMap<String, String> = modules.into_iter().collect();
-    let mut component_maps = HashMap::new();
-    let mut import_maps = HashMap::new();
-    let mut render_maps = HashMap::new();
-    let mut modules = HashMap::new();
-    let mut module_parameter_types: HashMap<String, HashMap<String, Type>> = HashMap::new();
+    let mut parsed_modules = HashMap::new();
     let mut module_type_results: HashMap<String, TypeResult> = HashMap::new();
     let mut module_sorter = TopoSorter::new();
     let mut script_collector = ScriptCollector::new();
@@ -36,7 +32,7 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Res
             module_sorter.add_dependency(module_name, &import_node.from_attr.value);
         }
 
-        modules.insert(module_name, module);
+        parsed_modules.insert(module_name.clone(), module);
     }
 
     // Sort modules topologically
@@ -52,7 +48,7 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Res
 
     // Typecheck modules in topological order
     for module_name in sorted_modules {
-        let Some(module) = modules.get(&module_name) else {
+        let Some(module) = parsed_modules.get(&module_name) else {
             continue;
         };
         let mut errors = Vec::new();
@@ -65,33 +61,6 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Res
             anyhow::bail!(formatter.format_all_errors());
         }
 
-        let mut component_map = HashMap::new();
-        let mut import_map = HashMap::new();
-
-        for comp_node in &module.components {
-            component_map.insert(comp_node.name.clone(), comp_node.clone());
-        }
-
-        for import_node in &module.imports {
-            import_map.insert(
-                import_node.component_attr.value.clone(),
-                import_node.from_attr.value.clone(),
-            );
-        }
-
-        // Store build render nodes if any
-        if !module.renders.is_empty() {
-            render_maps.insert(module_name.clone(), module.renders.clone());
-        }
-
-        component_maps.insert(module_name.clone(), component_map);
-        import_maps.insert(module_name.clone(), import_map);
-        // Extract parameter types from component info for backward compatibility
-        let mut parameter_types = HashMap::new();
-        for (name, info) in &type_info.component_info {
-            parameter_types.insert(name.clone(), info.parameter_type.clone());
-        }
-        module_parameter_types.insert(module_name.clone(), parameter_types);
         module_type_results.insert(module_name.clone(), type_info);
 
         // Collect scripts from this module
@@ -99,10 +68,8 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Res
     }
 
     Ok(Program::new(
-        component_maps,
-        import_maps,
-        module_parameter_types,
-        render_maps,
+        parsed_modules,
+        module_type_results,
         script_collector.build(),
         hop_mode,
     ))

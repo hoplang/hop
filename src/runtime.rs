@@ -3,6 +3,8 @@ use crate::common::{
     ForNode, HopMode, IfNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode,
     SlotReferenceNode, Type, UnaryOp, XExecNode, XRawNode, escape_html, is_void_element,
 };
+use crate::parser::Module;
+use crate::typechecker::TypeResult;
 use std::collections::HashMap;
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -20,18 +22,55 @@ pub struct Program {
 
 impl Program {
     pub fn new(
-        component_maps: HashMap<String, HashMap<String, ComponentDefinitionNode>>,
-        import_maps: HashMap<String, HashMap<String, String>>,
-        parameter_types: HashMap<String, HashMap<String, Type>>,
-        render_maps: HashMap<String, Vec<RenderNode>>,
+        modules: HashMap<String, Module>,
+        type_results: HashMap<String, TypeResult>,
         scripts: String,
         hop_mode: HopMode,
     ) -> Self {
+        let mut component_maps = HashMap::new();
+        let mut import_maps = HashMap::new();
+        let mut parameter_types = HashMap::new();
+        let mut render_nodes = HashMap::new();
+
+        for (module_name, module) in modules {
+            // Build component map
+            let mut component_map = HashMap::new();
+            for comp_node in &module.components {
+                component_map.insert(comp_node.name.clone(), comp_node.clone());
+            }
+
+            // Build import map
+            let mut import_map = HashMap::new();
+            for import_node in &module.imports {
+                import_map.insert(
+                    import_node.component_attr.value.clone(),
+                    import_node.from_attr.value.clone(),
+                );
+            }
+
+            // Store render nodes if any
+            if !module.renders.is_empty() {
+                render_nodes.insert(module_name.clone(), module.renders.clone());
+            }
+
+            // Extract parameter types from type results
+            if let Some(type_info) = type_results.get(&module_name) {
+                let mut module_parameter_types = HashMap::new();
+                for (name, info) in &type_info.component_info {
+                    module_parameter_types.insert(name.clone(), info.parameter_type.clone());
+                }
+                parameter_types.insert(module_name.clone(), module_parameter_types);
+            }
+
+            component_maps.insert(module_name.clone(), component_map);
+            import_maps.insert(module_name.clone(), import_map);
+        }
+
         Program {
             component_maps,
             import_maps,
             parameter_types,
-            render_nodes: render_maps,
+            render_nodes,
             scripts,
             hop_mode,
         }
@@ -580,7 +619,7 @@ impl Program {
                 }
             }
             Expression::StringLiteral(value) => Ok(serde_json::Value::String(value.clone())),
-            Expression::BooleanLiteral(value) => Ok(serde_json::Value::Bool(value.clone())),
+            Expression::BooleanLiteral(value) => Ok(serde_json::Value::Bool(*value)),
             Expression::PropertyAccess(base_expr, property) => {
                 let base_value = self.evaluate_expr(base_expr, env)?;
 
@@ -728,9 +767,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn compile_modules(modules_source: Vec<(String, String)>) -> Result<Program, String> {
-        let mut component_maps = HashMap::new();
-        let mut import_maps = HashMap::new();
-        let mut module_parameter_types: HashMap<String, HashMap<String, Type>> = HashMap::new();
+        let mut parsed_modules = HashMap::new();
         let mut module_type_results: HashMap<String, TypeResult> = HashMap::new();
 
         // Parse and typecheck modules in order
@@ -744,33 +781,13 @@ mod tests {
                 return Err(format!("Errors in {}: {:?}", module_name, errors));
             }
 
-            let mut component_map = HashMap::new();
-            let mut import_map = HashMap::new();
-
-            for n in &module.components {
-                component_map.insert(n.name.clone(), n.clone());
-            }
-
-            for n in &module.imports {
-                import_map.insert(n.component_attr.value.clone(), n.from_attr.value.clone());
-            }
-
-            component_maps.insert(module_name.clone(), component_map);
-            import_maps.insert(module_name.clone(), import_map);
-            // Extract parameter types from component info for backward compatibility
-            let mut parameter_types = HashMap::new();
-            for (name, info) in &type_info.component_info {
-                parameter_types.insert(name.clone(), info.parameter_type.clone());
-            }
-            module_parameter_types.insert(module_name.clone(), parameter_types);
+            parsed_modules.insert(module_name.clone(), module);
             module_type_results.insert(module_name.clone(), type_info);
         }
 
         Ok(Program::new(
-            component_maps,
-            import_maps,
-            module_parameter_types,
-            HashMap::new(),
+            parsed_modules,
+            module_type_results,
             String::new(),
             HopMode::Build, // Default to build mode for tests
         ))
