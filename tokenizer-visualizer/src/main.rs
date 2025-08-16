@@ -175,15 +175,13 @@ impl StateMachineVisitor {
     }
 
     fn extract_state_transition(&self, stmt: &Stmt) -> Option<String> {
-        if let Stmt::Expr(expr, _) = stmt {
-            if let Expr::Assign(assign) = expr {
-                if let Expr::Path(path) = &*assign.left {
-                    if let Some(ident) = path.path.get_ident() {
-                        if ident == "state" {
-                            if let Expr::Path(right_path) = &*assign.right {
-                                if let Some(segments) = right_path.path.segments.last() {
-                                    return Some(segments.ident.to_string());
-                                }
+        if let Stmt::Expr(Expr::Assign(assign), _) = stmt {
+            if let Expr::Path(path) = &*assign.left {
+                if let Some(ident) = path.path.get_ident() {
+                    if ident == "state" {
+                        if let Expr::Path(right_path) = &*assign.right {
+                            if let Some(segments) = right_path.path.segments.last() {
+                                return Some(segments.ident.to_string());
                             }
                         }
                     }
@@ -223,31 +221,28 @@ impl<'ast> Visit<'ast> for StateMachineVisitor {
                                 self.current_state = Some(state_name.clone());
 
                                 // Process the arm body for state transitions
-                                match &*arm.body {
-                                    Expr::Block(block) => {
-                                        for stmt in &block.block.stmts {
-                                            match stmt {
-                                                Stmt::Expr(Expr::If(_), _) => {
-                                                    if let Stmt::Expr(expr, _) = stmt {
-                                                        self.process_if_chain(expr, &state_name);
-                                                    }
+                                if let Expr::Block(block) = &*arm.body {
+                                    for stmt in &block.block.stmts {
+                                        match stmt {
+                                            Stmt::Expr(Expr::If(_), _) => {
+                                                if let Stmt::Expr(expr, _) = stmt {
+                                                    self.process_if_chain(expr, &state_name);
                                                 }
-                                                _ => {
-                                                    if let Some(target_state) =
-                                                        self.extract_state_transition(stmt)
-                                                    {
-                                                        self.transitions.push(StateTransition {
-                                                            from_state: state_name.clone(),
-                                                            to_state: target_state,
-                                                            condition: "direct".to_string(),
-                                                            actions: vec![],
-                                                        });
-                                                    }
+                                            }
+                                            _ => {
+                                                if let Some(target_state) =
+                                                    self.extract_state_transition(stmt)
+                                                {
+                                                    self.transitions.push(StateTransition {
+                                                        from_state: state_name.clone(),
+                                                        to_state: target_state,
+                                                        condition: "direct".to_string(),
+                                                        actions: vec![],
+                                                    });
                                                 }
                                             }
                                         }
                                     }
-                                    _ => {}
                                 }
                             }
                         }
