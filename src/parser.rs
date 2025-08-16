@@ -4,7 +4,7 @@ use crate::common::{
     SlotDefinitionNode, SlotReferenceNode, TextExpressionNode, TextNode, Token, TokenKind,
     VarNameAttr, XExecNode, XRawNode, is_void_element,
 };
-use crate::dop_parser::{parse_dop_expression, parse_loop_header, parse_variable_name};
+use crate::dop::{parse_dop_expression, parse_loop_header, parse_variable_name};
 use std::collections::HashSet;
 
 fn is_valid_component_name(name: &str) -> bool {
