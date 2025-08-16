@@ -658,6 +658,9 @@ impl Program {
         }
     }
 
+    /// execute_command is used by the experimental <hop-x-exec> command
+    /// which allows an external program to be executed from the context of a
+    /// hop program.
     fn execute_command(&self, command: &str, stdin_content: &str) -> Result<String> {
         // Parse the command and arguments
         let parts: Vec<&str> = command.split_whitespace().collect();
