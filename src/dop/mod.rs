@@ -1,6 +1,7 @@
 pub mod expr;
 pub mod parser;
 pub mod runtime;
+pub mod tokenizer;
 pub mod typechecker;
 pub mod types;
 pub mod unifier;
