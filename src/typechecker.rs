@@ -483,6 +483,7 @@ fn typecheck_dop_expression(
         }
         DopExpr::BooleanLiteral(_) => DopType::Bool,
         DopExpr::StringLiteral(_) => DopType::String,
+        DopExpr::NumberLiteral(_) => DopType::Number,
         DopExpr::PropertyAccess(base_expr, property) => {
             let base_type =
                 typecheck_dop_expression(base_expr, env, unifier, annotations, errors, range);

@@ -138,7 +138,7 @@ impl Unifier {
                     _ => panic!("Invalid type substitution for object rest"),
                 }
             }
-            DopType::Bool | DopType::String | DopType::Void => t.clone(),
+            DopType::Bool | DopType::String | DopType::Number | DopType::Void => t.clone(),
         }
     }
 
@@ -155,6 +155,7 @@ impl Unifier {
             }
             (DopType::Bool, DopType::Bool) => true,
             (DopType::String, DopType::String) => true,
+            (DopType::Number, DopType::Number) => true,
             (DopType::Void, DopType::Void) => true,
             _ => false,
         }
@@ -279,6 +280,7 @@ mod tests {
             SExpr::Symbol(str) => match str.as_str() {
                 "string" => DopType::String,
                 "bool" => DopType::Bool,
+                "number" => DopType::Number,
                 "void" => DopType::Void,
                 _ => {
                     // Get type var from table

@@ -8,6 +8,7 @@ pub enum DopType {
     Array(Box<DopType>),
     Bool,
     String,
+    Number,
     Void,
     TypeVar(i32),
 }
@@ -35,6 +36,7 @@ impl fmt::Display for DopType {
             DopType::Array(inner_type) => write!(f, "{}[]", inner_type),
             DopType::Bool => write!(f, "boolean"),
             DopType::String => write!(f, "string"),
+            DopType::Number => write!(f, "number"),
             DopType::Void => write!(f, "void"),
             DopType::TypeVar(id) => write!(f, "?t{}", id),
         }
@@ -75,6 +77,11 @@ impl DopType {
             DopType::String => {
                 json!({
                     "type": "string"
+                })
+            }
+            DopType::Number => {
+                json!({
+                    "type": "number"
                 })
             }
             DopType::Void => {

@@ -28,6 +28,20 @@ StringLiteral("")
 
 ## BEGIN
 -- in --
+42
+-- out --
+NumberLiteral(Number(42))
+## END
+
+## BEGIN
+-- in --
+3.14
+-- out --
+NumberLiteral(Number(3.14))
+## END
+
+## BEGIN
+-- in --
 user.profile.name
 -- out --
 PropertyAccess(PropertyAccess(Variable("user"), "profile"), "name")

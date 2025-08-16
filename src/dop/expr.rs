@@ -14,6 +14,7 @@ pub enum DopExpr {
     PropertyAccess(Box<DopExpr>, String),
     StringLiteral(String),
     BooleanLiteral(bool),
+    NumberLiteral(serde_json::Number),
     BinaryOp(Box<DopExpr>, BinaryOp, Box<DopExpr>),
     UnaryOp(UnaryOp, Box<DopExpr>),
 }

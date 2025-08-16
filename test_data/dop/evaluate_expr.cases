@@ -1,0 +1,220 @@
+Basic variable lookup should work.
+
+## BEGIN
+-- env --
+{"name": "alice"}
+-- expr --
+name
+-- out --
+"alice"
+## END
+
+String literals should evaluate to themselves.
+
+## BEGIN
+-- env --
+{}
+-- expr --
+'hello world'
+-- out --
+"hello world"
+## END
+
+Boolean literals should evaluate to themselves.
+
+## BEGIN
+-- env --
+{}
+-- expr --
+true
+-- out --
+true
+## END
+
+## BEGIN
+-- env --
+{}
+-- expr --
+false
+-- out --
+false
+## END
+
+Property access should work on objects.
+
+## BEGIN
+-- env --
+{"user": {"name": "alice", "age": 30}}
+-- expr --
+user.name
+-- out --
+"alice"
+## END
+
+## BEGIN
+-- env --
+{"user": {"name": "alice", "age": 30}}
+-- expr --
+user.age
+-- out --
+30
+## END
+
+Deep property access should work.
+
+## BEGIN
+-- env --
+{"app": {"user": {"profile": {"settings": {"theme": "dark"}}}}}
+-- expr --
+app.user.profile.settings.theme
+-- out --
+"dark"
+## END
+
+Equality comparison should work with identical values.
+
+## BEGIN
+-- env --
+{"user": {"name": "alice"}, "admin": {"name": "alice"}}
+-- expr --
+user.name == admin.name
+-- out --
+true
+## END
+
+Equality comparison should work with different values.
+
+## BEGIN
+-- env --
+{"user": {"name": "alice"}, "admin": {"name": "bob"}}
+-- expr --
+user.name == admin.name
+-- out --
+false
+## END
+
+Equality comparison should work with literals.
+
+## BEGIN
+-- env --
+{"status": "active"}
+-- expr --
+status == 'active'
+-- out --
+true
+## END
+
+## BEGIN
+-- env --
+{"count": 5}
+-- expr --
+count == 5
+-- out --
+true
+## END
+
+Complex equality expressions should work.
+
+## BEGIN
+-- env --
+{"a": 1, "b": 2, "c": 1}
+-- expr --
+a == b == false
+-- out --
+true
+## END
+
+Negation operator should work on boolean values.
+
+## BEGIN
+-- env --
+{"enabled": true}
+-- expr --
+!enabled
+-- out --
+false
+## END
+
+## BEGIN
+-- env --
+{"enabled": false}
+-- expr --
+!enabled
+-- out --
+true
+## END
+
+Negation of boolean literals should work.
+
+## BEGIN
+-- env --
+{}
+-- expr --
+!true
+-- out --
+false
+## END
+
+## BEGIN
+-- env --
+{}
+-- expr --
+!false
+-- out --
+true
+## END
+
+Undefined variable should produce an error.
+
+## BEGIN
+-- env --
+{}
+-- expr --
+undefined_var
+-- error --
+Undefined variable: undefined_var
+## END
+
+Property access on null should produce an error.
+
+## BEGIN
+-- env --
+{"user": null}
+-- expr --
+user.name
+-- error --
+Cannot access property of null value
+## END
+
+Property access on non-object should produce an error.
+
+## BEGIN
+-- env --
+{"count": 42}
+-- expr --
+count.value
+-- error --
+Cannot access property of non-object
+## END
+
+Accessing non-existent property should produce an error.
+
+## BEGIN
+-- env --
+{"user": {"name": "alice"}}
+-- expr --
+user.age
+-- error --
+Property 'age' not found
+## END
+
+Negation of non-boolean should produce an error.
+
+## BEGIN
+-- env --
+{"name": "alice"}
+-- expr --
+!name
+-- error --
+Negation operator can only be applied to boolean values
+## END
