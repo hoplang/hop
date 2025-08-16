@@ -25,22 +25,19 @@ pub fn parse_expr_with_range(expr: &str, range: Range) -> Result<DopExpr, String
 pub fn parse_loop_header(
     header: &str,
     range: Range,
-    errors: &mut Vec<RangeError>,
-) -> Option<(DopVarName, DopExpr)> {
+) -> Result<(DopVarName, DopExpr), RangeError> {
     if header.trim().is_empty() {
-        errors.push(RangeError::new("Empty loop header".to_string(), range));
-        return None;
+        return Err(RangeError::new("Empty loop header".to_string(), range));
     }
 
     // Create tokenizer for the loop header
     let mut tokenizer = match DopTokenizer::new_with_offset(header, range.start) {
         Ok(tokenizer) => tokenizer,
         Err(err) => {
-            errors.push(RangeError::new(
+            return Err(RangeError::new(
                 format!("Invalid expression in <for> tag: {}", err),
                 range,
             ));
-            return None;
         }
     };
 
@@ -48,92 +45,80 @@ pub fn parse_loop_header(
     let var_name = match &tokenizer.peek().token {
         DopToken::Identifier(name) => name.clone(),
         _ => {
-            errors.push(RangeError::new(
+            return Err(RangeError::new(
                 "Expected variable name in <for> tag".to_string(),
                 tokenizer.peek().range,
             ));
-            return None;
         }
     };
 
     // Advance past the identifier
     if tokenizer.advance().is_err() {
-        errors.push(RangeError::new(
+        return Err(RangeError::new(
             "Invalid expression in <for> tag".to_string(),
             range,
         ));
-        return None;
     }
 
     // Expect "in" keyword
     if !matches!(tokenizer.peek().token, DopToken::In) {
-        errors.push(RangeError::new(
+        return Err(RangeError::new(
             "Expected 'in' keyword in <for> tag".to_string(),
             tokenizer.peek().range,
         ));
-        return None;
     }
 
     // Advance past "in"
     if tokenizer.advance().is_err() {
-        errors.push(RangeError::new(
+        return Err(RangeError::new(
             "Invalid expression in <for> tag".to_string(),
             range,
         ));
-        return None;
     }
 
     // Parse the array expression
     let array_expr = match parse_equality(&mut tokenizer) {
         Ok(expr) => expr,
         Err(err) => {
-            errors.push(RangeError::new(
+            return Err(RangeError::new(
                 format!("Invalid array expression in <for> tag: {}", err),
                 range,
             ));
-            return None;
         }
     };
 
     // Ensure we've consumed all tokens
     if !matches!(tokenizer.peek().token, DopToken::Eof) {
-        errors.push(RangeError::new(
+        return Err(RangeError::new(
             "Unexpected tokens at end of <for> expression".to_string(),
             tokenizer.peek().range,
         ));
-        return None;
     }
 
     // Validate the variable name
     match DopVarName::new(var_name.clone()) {
-        Some(validated_var_name) => Some((validated_var_name, array_expr)),
-        None => {
-            errors.push(RangeError::invalid_variable_name(&var_name, range));
-            None
-        }
+        Some(validated_var_name) => Ok((validated_var_name, array_expr)),
+        None => Err(RangeError::invalid_variable_name(&var_name, range)),
     }
 }
 
 pub fn parse_variable_name(
     var_expr: &str,
     range: Range,
-    errors: &mut Vec<RangeError>,
-) -> Option<DopVarName> {
+) -> Result<DopVarName, RangeError> {
     let var_expr = var_expr.trim();
     if var_expr.is_empty() {
-        errors.push(RangeError::new("Empty variable name".to_string(), range));
-        return None;
+        return Err(RangeError::new("Empty variable name".to_string(), range));
     }
 
     // Create tokenizer for the variable expression
     let mut tokenizer = match DopTokenizer::new_with_offset(var_expr, range.start) {
         Ok(tokenizer) => tokenizer,
         Err(err) => {
-            errors.push(RangeError::new(
+            return Err(RangeError::new(
                 format!("Invalid expression: {}", err),
                 range,
             ));
-            return None;
         }
     };
 
@@ -141,36 +126,30 @@ pub fn parse_variable_name(
     let var_name = match &tokenizer.peek().token {
         DopToken::Identifier(name) => name.clone(),
         _ => {
-            errors.push(RangeError::new(
+            return Err(RangeError::new(
                 "Expected variable name".to_string(),
                 tokenizer.peek().range,
             ));
-            return None;
         }
     };
 
     // Advance past the identifier
     if tokenizer.advance().is_err() {
-        errors.push(RangeError::new("Invalid expression".to_string(), range));
-        return None;
+        return Err(RangeError::new("Invalid expression".to_string(), range));
     }
 
     // Ensure we've consumed all tokens (should only be a single identifier)
     if !matches!(tokenizer.peek().token, DopToken::Eof) {
-        errors.push(RangeError::new(
+        return Err(RangeError::new(
             "Expected only a variable name, found additional tokens".to_string(),
             tokenizer.peek().range,
         ));
-        return None;
     }
 
     // Validate the variable name
     match DopVarName::new(var_name.clone()) {
-        Some(validated_var_name) => Some(validated_var_name),
-        None => {
-            errors.push(RangeError::invalid_variable_name(&var_name, range));
-            None
-        }
+        Some(validated_var_name) => Ok(validated_var_name),
+        None => Err(RangeError::invalid_variable_name(&var_name, range)),
     }
 }
 

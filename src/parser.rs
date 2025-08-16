@@ -294,12 +294,16 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                     let as_attr = t.get_attribute("as");
                     let entrypoint = t.get_attribute("entrypoint").is_some();
                     let params_as_attr = t.expression.as_ref().and_then(|(expr_string, _)| {
-                        dop::parse_variable_name(expr_string, t.range, errors).map(|var_name| {
-                            DopVarNameAttribute {
+                        match dop::parse_variable_name(expr_string, t.range) {
+                            Ok(var_name) => Some(DopVarNameAttribute {
                                 var_name,
                                 range: t.range,
+                            }),
+                            Err(error) => {
+                                errors.push(error);
+                                None
                             }
-                        })
+                        }
                     });
 
                     let mut slots = HashSet::new();
@@ -405,17 +409,20 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                 },
                 "for" => match &t.expression {
                     Some((expr_string, range)) => {
-                        match dop::parse_loop_header(expr_string, *range, errors) {
-                            Some((var_name, array_expr)) => Node::For(ForNode {
+                        match dop::parse_loop_header(expr_string, *range) {
+                            Ok((var_name, array_expr)) => Node::For(ForNode {
                                 var_name,
                                 array_expr,
                                 range: t.range,
                                 children,
                             }),
-                            None => Node::Error(ErrorNode {
-                                range: t.range,
-                                children,
-                            }),
+                            Err(error) => {
+                                errors.push(error);
+                                Node::Error(ErrorNode {
+                                    range: t.range,
+                                    children,
+                                })
+                            },
                         }
                     }
                     None => {
