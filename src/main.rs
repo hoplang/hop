@@ -953,7 +953,7 @@ console.log("Hello from static file");
 -- build.hop --
 <import component="hello-world" from="src/components" />
 
-<render file="index.html">
+<render file="foo/bar/index.html">
   <hello-world />
 </render>
 "#,
@@ -967,7 +967,7 @@ console.log("Hello from static file");
         assert_eq!(outputs.len(), 1);
 
         // Check that the output file was created with the correct content
-        let output_path = dir.join("out").join("index.html");
+        let output_path = dir.join("out/foo/bar/index.html");
         let content = std::fs::read_to_string(&output_path).unwrap();
         assert!(content.contains("Build.hop Test"));
         assert!(content.contains("This content comes from a build.hop file"));
