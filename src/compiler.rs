@@ -25,14 +25,10 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Res
         let tokens = tokenize(source_code, &mut errors);
         let module = parse(module_name.clone(), tokens, &mut errors);
         if !errors.is_empty() {
-            let formatter =
+            let mut formatter =
                 ErrorFormatter::new(source_code.clone(), format!("{}.hop", module_name));
-            let mut formatted_errors = String::new();
-            for error in &errors {
-                formatted_errors.push_str(&formatter.format_error(error));
-                formatted_errors.push('\n');
-            }
-            anyhow::bail!(formatted_errors);
+            formatter.add_errors(errors);
+            anyhow::bail!(formatter.format_all_errors());
         }
 
         module_sorter.add_node(module_name.clone());
@@ -63,14 +59,10 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Res
         let type_info = typecheck(module, &module_type_results, &mut errors);
         if !errors.is_empty() {
             let source_code = modules_map.get(&module_name).unwrap();
-            let formatter =
+            let mut formatter =
                 ErrorFormatter::new(source_code.clone(), format!("{}.hop", module_name));
-            let mut formatted_errors = String::new();
-            for error in &errors {
-                formatted_errors.push_str(&formatter.format_error(error));
-                formatted_errors.push('\n');
-            }
-            anyhow::bail!(formatted_errors);
+            formatter.add_errors(errors);
+            anyhow::bail!(formatter.format_all_errors());
         }
 
         let mut component_map = HashMap::new();

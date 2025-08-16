@@ -4,12 +4,38 @@ use unicode_width::UnicodeWidthStr;
 pub struct ErrorFormatter {
     lines: Vec<String>,
     filename: String,
+    errors: Vec<RangeError>,
 }
 
 impl ErrorFormatter {
     pub fn new(source_code: String, filename: String) -> Self {
         let lines = source_code.lines().map(|s| s.to_string()).collect();
-        Self { lines, filename }
+        Self { lines, filename, errors: Vec::new() }
+    }
+
+    pub fn add_error(&mut self, error: RangeError) {
+        self.errors.push(error);
+    }
+
+    pub fn add_errors(&mut self, errors: Vec<RangeError>) {
+        self.errors.extend(errors);
+    }
+
+    pub fn format_all_errors(&self) -> String {
+        if self.errors.is_empty() {
+            return String::new();
+        }
+        
+        let mut formatted_errors = String::new();
+        for error in &self.errors {
+            formatted_errors.push_str(&self.format_error(error));
+            formatted_errors.push('\n');
+        }
+        formatted_errors
+    }
+
+    pub fn has_errors(&self) -> bool {
+        !self.errors.is_empty()
     }
 
     pub fn format_error(&self, error: &RangeError) -> String {
