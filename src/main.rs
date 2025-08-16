@@ -209,7 +209,6 @@ fn hop_build(
     use std::collections::HashMap;
     use std::fs;
 
-    // Create output directory if it doesn't exist
     fs::create_dir_all(output_dir)?;
 
     let mut timer = timing::TimingCollector::new();
@@ -344,10 +343,10 @@ const INSPECT_TEMPLATES: &str = include_str!("../hop/inspector.hop");
 const UI_TEMPLATES: &str = include_str!("../hop/ui.hop");
 const ICONS_TEMPLATES: &str = include_str!("../hop/icons.hop");
 
-static CACHED_INSPECT_PROGRAM: OnceLock<runtime::Program> = OnceLock::new();
+static CACHED_UI_PROGRAM: OnceLock<runtime::Program> = OnceLock::new();
 
-fn get_inspect_program() -> &'static runtime::Program {
-    CACHED_INSPECT_PROGRAM.get_or_init(|| {
+fn get_ui_program() -> &'static runtime::Program {
+    CACHED_UI_PROGRAM.get_or_init(|| {
         let modules = vec![
             ("hop/error_pages".to_string(), ERROR_TEMPLATES.to_string()),
             ("hop/inspector".to_string(), INSPECT_TEMPLATES.to_string()),
@@ -360,7 +359,7 @@ fn get_inspect_program() -> &'static runtime::Program {
 }
 
 fn create_error_page(error: &anyhow::Error) -> String {
-    let program = get_inspect_program();
+    let program = get_ui_program();
 
     let error_data = serde_json::json!({
         "message": format!("{:#}", error)
@@ -373,7 +372,7 @@ fn create_error_page(error: &anyhow::Error) -> String {
 }
 
 fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
-    let program = get_inspect_program();
+    let program = get_ui_program();
 
     let not_found_data = serde_json::json!({
         "path": path,
@@ -387,16 +386,13 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
 }
 
 fn create_inspect_page(program: &runtime::Program) -> String {
-    let inspect_program = get_inspect_program();
+    let inspect_program = get_ui_program();
 
-    // Get component maps from the program
     let component_maps = program.get_component_maps();
     let parameter_types = program.get_parameter_types();
 
-    // Build data structure for the template
     let mut modules_data = Vec::new();
 
-    // Sort modules for consistent output
     let mut sorted_modules: Vec<_> = component_maps.iter().collect();
     sorted_modules.sort_by_key(|(name, _)| *name);
 
@@ -510,7 +506,7 @@ window.addEventListener("beforeunload", function() {
     }
 }
 
-fn create_simple_component_preview(
+fn create_component_preview(
     program: &runtime::Program,
     module_name: &str,
     component_name: &str,
@@ -613,6 +609,7 @@ async fn hop_dev(
 ) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher)> {
     use axum::body::Body;
     use axum::extract::Path;
+    use axum::extract::Request;
     use axum::http::StatusCode;
     use axum::response::Html;
     use axum::response::sse::{Event, Sse};
@@ -659,28 +656,35 @@ async fn hop_dev(
     let preview_root = root.clone();
     router = router.route(
         "/_preview/{module}/{component}",
-        get(async move |Path((module_name, component_name)): Path<(String, String)>| {
+        get(
+            async move |Path((module_name, component_name)): Path<(String, String)>| {
+                // decode the parameters
+                let decoded_module = module_name.replace("%2F", "/");
+                let decoded_component = component_name.replace("%2F", "/");
 
-            // decode the parameters
-            let decoded_module = module_name.replace("%2F", "/");
-            let decoded_component = component_name.replace("%2F", "/");
-
-            match files::load_all_hop_modules(&preview_root).and_then(|modules| compile(modules, HopMode::Dev)) {
-                Ok(program) => {
-                    match create_simple_component_preview(&program, &decoded_module, &decoded_component) {
-                        Ok(html) => Ok(Html(html)),
-                        Err(e) => Err((
-                            StatusCode::NOT_FOUND,
-                            Html(format!("<!DOCTYPE html><html><head><title>Preview Error</title></head><body><h1>Component Preview Error</h1><p>Module: {}<br>Component: {}<br>Error: {}</p></body></html>", escape_html(&decoded_module), escape_html(&decoded_component), escape_html(&e))),
-                        )),
+                match files::load_all_hop_modules(&preview_root)
+                    .and_then(|modules| compile(modules, HopMode::Dev))
+                {
+                    Ok(program) => {
+                        match create_component_preview(
+                            &program,
+                            &decoded_module,
+                            &decoded_component,
+                        ) {
+                            Ok(html) => Ok(Html(html)),
+                            Err(e) => Err((
+                                StatusCode::NOT_FOUND,
+                                Html(create_error_page(&anyhow::anyhow!(e))),
+                            )),
+                        }
                     }
+                    Err(e) => Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Html(create_error_page(&e)),
+                    )),
                 }
-                Err(e) => Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Html(create_error_page(&e)),
-                )),
-            }
-        }),
+            },
+        ),
     );
 
     // Add script serving endpoint if script_file is specified
@@ -707,10 +711,7 @@ async fn hop_dev(
     }
 
     let local_root = root.clone();
-    let request_handler = async move |req: axum::extract::Request| -> Result<
-        Html<String>,
-        (StatusCode, Html<String>),
-    > {
+    let request_handler = async move |req: Request| {
         // Compile the program
         let program = match (|| -> anyhow::Result<runtime::Program> {
             let modules = files::load_all_hop_modules(&local_root)?;
@@ -738,7 +739,6 @@ async fn hop_dev(
         match program.render_file(file_path) {
             Ok(content) => Ok(Html(inject_hot_reload_script(&content))),
             Err(_) => {
-                // Create available paths list for 404 page
                 let available_paths: Vec<String> = program
                     .get_render_file_paths()
                     .iter()
