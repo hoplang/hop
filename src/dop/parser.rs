@@ -224,7 +224,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
     }
 }
 
-pub fn parse_dop_expression(expr: &str) -> Result<DopExpr, String> {
+pub fn parse_expr(expr: &str) -> Result<DopExpr, String> {
     let expr = expr.trim();
     if expr.is_empty() {
         return Err("Empty expression".to_string());
@@ -400,9 +400,9 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn test_expression_parser() {
+    fn test_parse_expr() {
         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("test_data/expression_parser.cases");
+        d.push("test_data/dop/parse_expr.cases");
 
         let content = fs::read_to_string(&d).unwrap();
         let test_cases = parse_test_cases(&content);
@@ -423,7 +423,7 @@ mod tests {
 
             println!("Test case {} (line {})", case_num + 1, line_number);
 
-            let result = parse_dop_expression(input).unwrap_or_else(|e| {
+            let result = parse_expr(input).unwrap_or_else(|e| {
                 panic!(
                     "Failed to parse expression '{}' in test case {} (line {}): {}",
                     input,

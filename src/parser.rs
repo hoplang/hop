@@ -344,7 +344,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
         TokenKind::Expression => {
             // Expression tokens represent {expression} in text content
             match &t.expression {
-                Some(expr_string) => match dop::parse_dop_expression(expr_string) {
+                Some(expr_string) => match dop::parse_expr(expr_string) {
                     Ok(expression) => Node::TextExpression(TextExpressionNode {
                         expression,
                         range: t.range,
@@ -375,7 +375,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
         TokenKind::SelfClosingTag | TokenKind::StartTag => {
             match t.value.as_str() {
                 "if" => match &t.expression {
-                    Some(expr_string) => match dop::parse_dop_expression(expr_string) {
+                    Some(expr_string) => match dop::parse_expr(expr_string) {
                         Ok(condition) => Node::If(IfNode {
                             condition,
                             range: t.range,
@@ -475,7 +475,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                 tag_name if is_valid_component_name(tag_name) => {
                     // This is a component render (contains dash)
                     let params_attr = match &t.expression {
-                        Some(expr_string) => match dop::parse_dop_expression(expr_string) {
+                        Some(expr_string) => match dop::parse_expr(expr_string) {
                             Ok(expression) => {
                                 Some(DopAttribute::new("params".to_string(), expression, t.range))
                             }
@@ -502,7 +502,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     for attr in &t.attributes {
                         if attr.name.starts_with("set-") {
                             if let Some(expr_attr) = {
-                                match dop::parse_dop_expression(&attr.value) {
+                                match dop::parse_expr(&attr.value) {
                                     Ok(expression) => Some(DopAttribute::new(
                                         attr.name.to_string(),
                                         expression,

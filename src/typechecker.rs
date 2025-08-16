@@ -1,6 +1,6 @@
 use crate::common::{
-    ComponentDefinitionNode, ComponentReferenceNode, DopAttribute, Environment, ErrorNode, ForNode, IfNode,
-    ImportNode, NativeHTMLNode, Node, Range, RangeError, RenderNode, SlotDefinitionNode,
+    ComponentDefinitionNode, ComponentReferenceNode, DopAttribute, Environment, ErrorNode, ForNode,
+    IfNode, ImportNode, NativeHTMLNode, Node, Range, RangeError, RenderNode, SlotDefinitionNode,
     SlotReferenceNode, XExecNode, XRawNode,
 };
 use crate::dop::{BinaryOp, DopExpr, DopType, UnaryOp};
@@ -287,7 +287,7 @@ fn typecheck_node(
                 });
 
                 if let Some(params_attr) = params_attr {
-                    typecheck_expr(
+                    expect_type(
                         &comp_info.parameter_type,
                         params_attr,
                         env,
@@ -328,7 +328,7 @@ fn typecheck_node(
             ..
         }) => {
             for set_attr in set_attributes {
-                typecheck_expr(
+                expect_type(
                     &DopType::String,
                     set_attr,
                     env,
@@ -439,7 +439,7 @@ fn typecheck_node(
     }
 }
 
-fn typecheck_expr(
+fn expect_type(
     expected_type: &DopType,
     attr: &DopAttribute,
     env: &mut Environment<DopType>,
