@@ -28,9 +28,9 @@ impl StateMachineVisitor {
             Expr::Binary(binary) => {
                 format!(
                     "{} {} {}",
-                    self.extract_simple_expr(&binary.left),
+                    self.extract_condition_from_expr(&binary.left),
                     binary.op.to_token_stream(),
-                    self.extract_simple_expr(&binary.right)
+                    self.extract_condition_from_expr(&binary.right)
                 )
             }
             Expr::Call(call) => {
@@ -47,7 +47,9 @@ impl StateMachineVisitor {
                 "function_call".to_string()
             }
             Expr::MethodCall(method) => {
-                let args: Vec<String> = method.args.iter()
+                let args: Vec<String> = method
+                    .args
+                    .iter()
                     .map(|arg| self.extract_simple_expr(arg))
                     .collect();
                 format!(
@@ -57,7 +59,7 @@ impl StateMachineVisitor {
                     args.join(", ")
                 )
             }
-            _ => "condition".to_string(),
+            _ => self.extract_simple_expr(expr),
         }
     }
 

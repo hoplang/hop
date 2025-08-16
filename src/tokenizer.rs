@@ -214,18 +214,6 @@ fn is_tag_name_with_raw_content(name: &str) -> bool {
     matches!(name, "script" | "style" | "hop-x-raw")
 }
 
-fn is_alphabetic(ch: char) -> bool {
-    ch.is_ascii_alphabetic()
-}
-
-fn is_alphanumeric_or_dash(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || ch == '-'
-}
-
-fn is_whitespace(ch: char) -> bool {
-    ch.is_whitespace()
-}
-
 pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
     let mut cursor = Cursor::new(input);
     let mut builder = TokenBuilder::new();
@@ -261,7 +249,7 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
             }
 
             TokenizerState::TagOpen => {
-                if is_alphabetic(ch) {
+                if ch.is_ascii_alphabetic() {
                     builder.set_current_token_kind(TokenKind::StartTag);
                     builder.append_to_current_token_value(ch);
                     cursor.advance();
@@ -286,11 +274,11 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
             }
 
             TokenizerState::StartTagName => {
-                if is_alphanumeric_or_dash(ch) {
+                if ch == '-' || ch.is_ascii_alphanumeric() {
                     builder.append_to_current_token_value(ch);
                     cursor.advance();
                     state = TokenizerState::StartTagName;
-                } else if is_whitespace(ch) {
+                } else if ch.is_whitespace() {
                     cursor.advance();
                     state = TokenizerState::BeforeAttrName;
                 } else if ch == '{' {
@@ -325,7 +313,7 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
             }
 
             TokenizerState::EndTagOpen => {
-                if is_alphabetic(ch) {
+                if ch.is_ascii_alphabetic() {
                     builder.append_to_current_token_value(ch);
                     cursor.advance();
                     state = TokenizerState::EndTagName;
@@ -342,7 +330,7 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
             }
 
             TokenizerState::EndTagName => {
-                if is_alphanumeric_or_dash(ch) {
+                if ch == '-' || ch.is_ascii_alphanumeric() {
                     builder.append_to_current_token_value(ch);
                     cursor.advance();
                     state = TokenizerState::EndTagName;
@@ -350,7 +338,7 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
                     cursor.advance();
                     builder.push_current_token(&cursor);
                     state = TokenizerState::Text;
-                } else if is_whitespace(ch) {
+                } else if ch.is_whitespace() {
                     cursor.advance();
                     state = TokenizerState::AfterEndTagName;
                 } else {
@@ -366,7 +354,7 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
             }
 
             TokenizerState::AfterEndTagName => {
-                if is_whitespace(ch) {
+                if ch.is_whitespace() {
                     cursor.advance();
                     state = TokenizerState::AfterEndTagName;
                 } else if ch == '>' {
@@ -386,10 +374,10 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
             }
 
             TokenizerState::BeforeAttrName => {
-                if is_whitespace(ch) {
+                if ch.is_whitespace() {
                     cursor.advance();
                     state = TokenizerState::BeforeAttrName;
-                } else if is_alphabetic(ch) {
+                } else if ch.is_ascii_alphabetic() {
                     builder.set_current_attribute_start(cursor.get_position());
                     builder.append_to_current_attribute_name(&ch.to_string());
                     cursor.advance();
@@ -426,14 +414,14 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
             }
 
             TokenizerState::AttrName => {
-                if is_alphanumeric_or_dash(ch) {
+                if ch == '-' || ch.is_ascii_alphanumeric() {
                     builder.append_to_current_attribute_name(&ch.to_string());
                     cursor.advance();
                     state = TokenizerState::AttrName;
                 } else if ch == '=' {
                     cursor.advance();
                     state = TokenizerState::BeforeAttrValue;
-                } else if is_whitespace(ch) {
+                } else if ch.is_whitespace() {
                     builder.push_current_attribute(&cursor);
                     cursor.advance();
                     state = TokenizerState::BeforeAttrName;
@@ -560,7 +548,7 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
             }
 
             TokenizerState::Doctype => {
-                if is_whitespace(ch) {
+                if ch.is_whitespace() {
                     cursor.advance();
                     state = TokenizerState::BeforeDoctypeName;
                 } else {
@@ -576,10 +564,10 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
             }
 
             TokenizerState::BeforeDoctypeName => {
-                if is_whitespace(ch) {
+                if ch.is_whitespace() {
                     cursor.advance();
                     state = TokenizerState::BeforeDoctypeName;
-                } else if is_alphabetic(ch) {
+                } else if ch.is_ascii_alphabetic() {
                     doctype_name_buffer.clear();
                     doctype_name_buffer.push(ch);
                     cursor.advance();
@@ -597,7 +585,7 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
             }
 
             TokenizerState::DoctypeName => {
-                if is_alphabetic(ch) {
+                if ch.is_ascii_alphabetic() {
                     doctype_name_buffer.push(ch);
                     cursor.advance();
                     state = TokenizerState::DoctypeName;
