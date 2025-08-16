@@ -1,5 +1,6 @@
 use crate::common::{DopVarName, Range, RangeError};
 use crate::dop::{BinaryOp, DopExpr, UnaryOp};
+use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq)]
 enum DopToken {
@@ -99,7 +100,6 @@ impl DopTokenizer {
 
     fn read_number(&mut self) -> Result<serde_json::Number, String> {
         let mut result = String::new();
-        let mut is_float = false;
 
         // Read integer part
         while self.peek().is_ascii_digit() {
@@ -108,30 +108,19 @@ impl DopTokenizer {
 
         // Read decimal part if present
         if self.peek() == '.' {
-            is_float = true;
             result.push(self.advance_char()); // consume '.'
-            
+
             if !self.peek().is_ascii_digit() {
                 return Err("Expected digit after decimal point".to_string());
             }
-            
+
             while self.peek().is_ascii_digit() {
                 result.push(self.advance_char());
             }
         }
 
-        if is_float {
-            // Parse as float
-            let float_val = result.parse::<f64>()
-                .map_err(|_| format!("Invalid float format: {}", result))?;
-            serde_json::Number::from_f64(float_val)
-                .ok_or_else(|| format!("Invalid float value: {}", float_val))
-        } else {
-            // Parse as integer
-            let int_val = result.parse::<i64>()
-                .map_err(|_| format!("Invalid integer format: {}", result))?;
-            Ok(serde_json::Number::from(int_val))
-        }
+        serde_json::Number::from_str(&result)
+            .map_err(|_| format!("Invalid number format: {}", result))
     }
 
     fn advance(&mut self) -> Result<(), String> {
@@ -267,7 +256,10 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
                 Err("Expected closing parenthesis".to_string())
             }
         }
-        _ => Err("Expected identifier, string literal, number literal, or opening parenthesis".to_string()),
+        _ => Err(
+            "Expected identifier, string literal, number literal, or opening parenthesis"
+                .to_string(),
+        ),
     }
 }
 
