@@ -3,7 +3,8 @@ use crate::common::{
     IfNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode, SlotReferenceNode, XExecNode,
     XRawNode, escape_html, is_void_element,
 };
-use crate::dop::{BinaryOp, DopExpr, DopType, UnaryOp};
+use crate::dop;
+use crate::dop::{DopType, evaluate_expr};
 use crate::parser::Module;
 use crate::typechecker::TypeResult;
 use anyhow::Result;
@@ -291,7 +292,7 @@ impl Program {
                 children,
                 ..
             }) => {
-                let condition_value = self.evaluate_expr(condition, env)?;
+                let condition_value = dop::evaluate_expr(condition, env)?;
                 if condition_value.as_bool().unwrap_or(false) {
                     let mut result = String::new();
                     for child in children {
@@ -315,7 +316,7 @@ impl Program {
             }) => {
                 let mut params_value = serde_json::Value::Null;
                 if let Some(attr) = params_attr {
-                    params_value = self.evaluate_expr(&attr.expression, env)?;
+                    params_value = evaluate_expr(&attr.expression, env)?;
                 }
 
                 let component_name = component;
@@ -413,7 +414,7 @@ impl Program {
                 // Evaluate and add set-* attributes
                 for set_attr in set_attributes {
                     let attr_name = &set_attr.name[4..]; // Remove "set-" prefix
-                    let evaluated = self.evaluate_expr(&set_attr.expression, env)?;
+                    let evaluated = evaluate_expr(&set_attr.expression, env)?;
                     result.push_str(&format!(
                         " {}=\"{}\"",
                         attr_name,
@@ -451,7 +452,7 @@ impl Program {
             }
             Node::Text(text_node) => Ok(text_node.value.clone()),
             Node::TextExpression(text_expr_node) => {
-                let result = self.evaluate_expr(&text_expr_node.expression, env)?;
+                let result = evaluate_expr(&text_expr_node.expression, env)?;
                 Ok(escape_html(result.as_str().unwrap_or("")))
             }
             Node::Doctype(doctype_node) => Ok(format!("<!DOCTYPE {}>", doctype_node.value)),
@@ -528,7 +529,7 @@ impl Program {
                 children,
                 ..
             }) => {
-                let array_value = self.evaluate_expr(array_expr, env)?;
+                let array_value = evaluate_expr(array_expr, env)?;
 
                 let array = array_value
                     .as_array()
@@ -578,7 +579,7 @@ impl Program {
                 // Evaluate and add set-* attributes
                 for set_attr in set_attributes {
                     let attr_name = &set_attr.name[4..]; // Remove "set-" prefix
-                    let evaluated = self.evaluate_expr(&set_attr.expression, env)?;
+                    let evaluated = evaluate_expr(&set_attr.expression, env)?;
                     result.push_str(&format!(
                         " {}=\"{}\"",
                         attr_name,
@@ -605,56 +606,6 @@ impl Program {
                 // For all other node types, use the existing evaluation logic (no slots in entrypoints)
                 let empty_slots: HashMap<String, String> = HashMap::new();
                 self.evaluate_node(node, &empty_slots, env, current_module)
-            }
-        }
-    }
-
-    fn evaluate_expr(
-        &self,
-        expr: &DopExpr,
-        env: &mut Environment<serde_json::Value>,
-    ) -> Result<serde_json::Value> {
-        match expr {
-            DopExpr::Variable(name) => {
-                if let Some(val) = env.lookup(name) {
-                    Ok(val.clone())
-                } else {
-                    Err(anyhow::anyhow!("Undefined variable: {}", name))
-                }
-            }
-            DopExpr::StringLiteral(value) => Ok(serde_json::Value::String(value.clone())),
-            DopExpr::BooleanLiteral(value) => Ok(serde_json::Value::Bool(*value)),
-            DopExpr::PropertyAccess(base_expr, property) => {
-                let base_value = self.evaluate_expr(base_expr, env)?;
-
-                if base_value.is_null() {
-                    return Err(anyhow::anyhow!("Cannot access property of null value"));
-                }
-
-                if !base_value.is_object() {
-                    return Err(anyhow::anyhow!("Cannot access property of non-object"));
-                }
-
-                base_value
-                    .get(property)
-                    .ok_or_else(|| anyhow::anyhow!("Property '{}' not found", property))
-                    .cloned()
-            }
-            DopExpr::BinaryOp(left, BinaryOp::Equal, right) => {
-                let left_value = self.evaluate_expr(left, env)?;
-                let right_value = self.evaluate_expr(right, env)?;
-
-                Ok(serde_json::Value::Bool(left_value == right_value))
-            }
-            DopExpr::UnaryOp(UnaryOp::Not, expr) => {
-                let value = self.evaluate_expr(expr, env)?;
-
-                match value {
-                    serde_json::Value::Bool(b) => Ok(serde_json::Value::Bool(!b)),
-                    _ => Err(anyhow::anyhow!(
-                        "Negation operator can only be applied to boolean values"
-                    )),
-                }
             }
         }
     }
