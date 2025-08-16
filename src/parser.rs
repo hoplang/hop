@@ -4,7 +4,7 @@ use crate::common::{
     SlotDefinitionNode, SlotReferenceNode, TextExpressionNode, TextNode, Token, TokenKind,
     VarNameAttr, XExecNode, XRawNode, is_void_element,
 };
-use crate::dop::{parse_dop_expression, parse_loop_header, parse_variable_name};
+use crate::dop;
 use std::collections::HashSet;
 
 fn is_valid_component_name(name: &str) -> bool {
@@ -155,21 +155,6 @@ fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
     stack.pop().unwrap()
 }
 
-fn parse_dop_attribute(
-    name: &str,
-    value: &str,
-    range: Range,
-    errors: &mut Vec<RangeError>,
-) -> Option<DopAttribute> {
-    match parse_dop_expression(value) {
-        Ok(expression) => Some(DopAttribute::new(name.to_string(), expression, range)),
-        Err(err) => {
-            errors.push(RangeError::new(err, range));
-            None
-        }
-    }
-}
-
 fn collect_slots_from_children(
     children: &[Node],
     slots: &mut HashSet<String>,
@@ -309,7 +294,7 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                     let as_attr = t.get_attribute("as");
                     let entrypoint = t.get_attribute("entrypoint").is_some();
                     let params_as_attr = t.expression.as_ref().and_then(|expr_string| {
-                        parse_variable_name(expr_string, t.range, errors).map(|var_name| {
+                        dop::parse_variable_name(expr_string, t.range, errors).map(|var_name| {
                             VarNameAttr {
                                 var_name,
                                 range: t.range,
@@ -359,7 +344,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
         TokenKind::Expression => {
             // Expression tokens represent {expression} in text content
             match &t.expression {
-                Some(expr_string) => match parse_dop_expression(expr_string) {
+                Some(expr_string) => match dop::parse_dop_expression(expr_string) {
                     Ok(expression) => Node::TextExpression(TextExpressionNode {
                         expression,
                         range: t.range,
@@ -390,7 +375,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
         TokenKind::SelfClosingTag | TokenKind::StartTag => {
             match t.value.as_str() {
                 "if" => match &t.expression {
-                    Some(expr_string) => match parse_dop_expression(expr_string) {
+                    Some(expr_string) => match dop::parse_dop_expression(expr_string) {
                         Ok(condition) => Node::If(IfNode {
                             condition,
                             range: t.range,
@@ -419,7 +404,8 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     }
                 },
                 "for" => match &t.expression {
-                    Some(expr_string) => match parse_loop_header(expr_string, t.range, errors) {
+                    Some(expr_string) => match dop::parse_loop_header(expr_string, t.range, errors)
+                    {
                         Some((var_name, array_expr)) => Node::For(ForNode {
                             var_name,
                             array_expr,
@@ -489,7 +475,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                 tag_name if is_valid_component_name(tag_name) => {
                     // This is a component render (contains dash)
                     let params_attr = match &t.expression {
-                        Some(expr_string) => match parse_dop_expression(expr_string) {
+                        Some(expr_string) => match dop::parse_dop_expression(expr_string) {
                             Ok(expression) => {
                                 Some(DopAttribute::new("params".to_string(), expression, t.range))
                             }
@@ -515,9 +501,19 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     let mut set_attributes = Vec::new();
                     for attr in &t.attributes {
                         if attr.name.starts_with("set-") {
-                            if let Some(expr_attr) =
-                                parse_dop_attribute(&attr.name, &attr.value, attr.range, errors)
-                            {
+                            if let Some(expr_attr) = {
+                                match dop::parse_dop_expression(&attr.value) {
+                                    Ok(expression) => Some(DopAttribute::new(
+                                        attr.name.to_string(),
+                                        expression,
+                                        attr.range,
+                                    )),
+                                    Err(err) => {
+                                        errors.push(RangeError::new(err, attr.range));
+                                        None
+                                    }
+                                }
+                            } {
                                 set_attributes.push(expr_attr);
                             }
                         }
