@@ -3,9 +3,9 @@ use crate::common::{
     ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Range, RangeError, RenderNode,
     SlotDefinitionNode, SlotReferenceNode, XExecNode, XRawNode,
 };
-use crate::dop::{typecheck_dop_expression, DopType};
-use crate::parser::Module;
 use crate::dop::Unifier;
+use crate::dop::{DopType, typecheck_dop_expression};
+use crate::parser::Module;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -463,7 +463,6 @@ fn expect_type(
 
     annotations.push(TypeAnnotation(attr.range, expected_type.clone()));
 }
-
 
 #[cfg(test)]
 mod tests {

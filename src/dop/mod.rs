@@ -11,4 +11,3 @@ pub use runtime::evaluate_expr;
 pub use typechecker::typecheck_dop_expression;
 pub use types::DopType;
 pub use unifier::Unifier;
-

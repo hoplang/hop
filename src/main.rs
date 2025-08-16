@@ -1,8 +1,8 @@
 mod cli;
 mod common;
 mod compiler;
-mod error_formatter;
 mod dop;
+mod error_formatter;
 mod files;
 mod parser;
 mod runtime;

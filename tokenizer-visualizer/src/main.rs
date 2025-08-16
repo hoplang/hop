@@ -133,47 +133,44 @@ impl StateMachineVisitor {
     }
 
     fn process_if_chain(&mut self, expr: &Expr, current_state: &str) {
-        match expr {
-            Expr::If(if_expr) => {
-                let condition = self.extract_condition_from_expr(&if_expr.cond);
-                let actions = self.extract_actions_from_block(&if_expr.then_branch.stmts);
+        if let Expr::If(if_expr) = expr {
+            let condition = self.extract_condition_from_expr(&if_expr.cond);
+            let actions = self.extract_actions_from_block(&if_expr.then_branch.stmts);
 
-                // Look for state transitions in the then block
-                for stmt in &if_expr.then_branch.stmts {
-                    if let Some(target_state) = self.extract_state_transition(stmt) {
-                        self.transitions.push(StateTransition {
-                            from_state: current_state.to_string(),
-                            to_state: target_state,
-                            condition: condition.clone(),
-                            actions: actions.clone(),
-                        });
-                    }
-                }
-
-                // Process else branch
-                if let Some((_, else_expr)) = &if_expr.else_branch {
-                    match &**else_expr {
-                        Expr::If(_) => {
-                            self.process_if_chain(else_expr, current_state);
-                        }
-                        Expr::Block(block) => {
-                            let else_actions = self.extract_actions_from_block(&block.block.stmts);
-                            for stmt in &block.block.stmts {
-                                if let Some(target_state) = self.extract_state_transition(stmt) {
-                                    self.transitions.push(StateTransition {
-                                        from_state: current_state.to_string(),
-                                        to_state: target_state,
-                                        condition: "else".to_string(),
-                                        actions: else_actions.clone(),
-                                    });
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
+            // Look for state transitions in the then block
+            for stmt in &if_expr.then_branch.stmts {
+                if let Some(target_state) = self.extract_state_transition(stmt) {
+                    self.transitions.push(StateTransition {
+                        from_state: current_state.to_string(),
+                        to_state: target_state,
+                        condition: condition.clone(),
+                        actions: actions.clone(),
+                    });
                 }
             }
-            _ => {}
+
+            // Process else branch
+            if let Some((_, else_expr)) = &if_expr.else_branch {
+                match &**else_expr {
+                    Expr::If(_) => {
+                        self.process_if_chain(else_expr, current_state);
+                    }
+                    Expr::Block(block) => {
+                        let else_actions = self.extract_actions_from_block(&block.block.stmts);
+                        for stmt in &block.block.stmts {
+                            if let Some(target_state) = self.extract_state_transition(stmt) {
+                                self.transitions.push(StateTransition {
+                                    from_state: current_state.to_string(),
+                                    to_state: target_state,
+                                    condition: "else".to_string(),
+                                    actions: else_actions.clone(),
+                                });
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
         }
     }
 

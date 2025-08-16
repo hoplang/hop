@@ -10,7 +10,11 @@ pub struct ErrorFormatter {
 impl ErrorFormatter {
     pub fn new(source_code: String, filename: String) -> Self {
         let lines = source_code.lines().map(|s| s.to_string()).collect();
-        Self { lines, filename, errors: Vec::new() }
+        Self {
+            lines,
+            filename,
+            errors: Vec::new(),
+        }
     }
 
     pub fn add_error(&mut self, error: RangeError) {
@@ -25,7 +29,7 @@ impl ErrorFormatter {
         if self.errors.is_empty() {
             return String::new();
         }
-        
+
         let mut formatted_errors = String::new();
         for error in &self.errors {
             formatted_errors.push_str(&self.format_error(error));
