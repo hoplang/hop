@@ -99,73 +99,6 @@ impl DopTokenizer {
         Ok(tokenizer)
     }
 
-    fn read_identifier(&mut self) -> String {
-        let mut result = String::new();
-
-        // First character must be letter or underscore
-        let first = self.cursor.peek();
-        if first.is_ascii_alphabetic() || first == '_' {
-            result.push(self.cursor.advance());
-        } else {
-            return result;
-        }
-
-        // Subsequent characters can be letters, digits, or underscores
-        while self.cursor.peek().is_ascii_alphanumeric() || self.cursor.peek() == '_' {
-            result.push(self.cursor.advance());
-        }
-
-        result
-    }
-
-    fn read_string_literal(&mut self) -> Result<String, String> {
-        let mut result = String::new();
-
-        // Consume opening quote
-        if self.cursor.peek() != '\'' {
-            return Err("Expected opening single quote".to_string());
-        }
-        self.cursor.advance();
-
-        while self.cursor.peek() != '\'' && self.cursor.peek() != '\0' {
-            result.push(self.cursor.advance());
-        }
-
-        if self.cursor.peek() != '\'' {
-            return Err("Unterminated string literal".to_string());
-        }
-
-        // Consume closing quote
-        self.cursor.advance();
-
-        Ok(result)
-    }
-
-    fn read_number(&mut self) -> Result<serde_json::Number, String> {
-        let mut result = String::new();
-
-        // Read integer part
-        while self.cursor.peek().is_ascii_digit() {
-            result.push(self.cursor.advance());
-        }
-
-        // Read decimal part if present
-        if self.cursor.peek() == '.' {
-            result.push(self.cursor.advance()); // consume '.'
-
-            if !self.cursor.peek().is_ascii_digit() {
-                return Err("Expected digit after decimal point".to_string());
-            }
-
-            while self.cursor.peek().is_ascii_digit() {
-                result.push(self.cursor.advance());
-            }
-        }
-
-        serde_json::Number::from_str(&result)
-            .map_err(|_| format!("Invalid number format: {}", result))
-    }
-
     fn peek(&self) -> &RangedDopToken {
         &self.current_token
     }
@@ -173,7 +106,6 @@ impl DopTokenizer {
     fn advance(&mut self) -> Result<(), String> {
         let start_pos = self.cursor.get_position();
 
-        // Skip whitespace
         while self.cursor.peek().is_whitespace() {
             self.cursor.advance();
         }
@@ -206,11 +138,27 @@ impl DopTokenizer {
                 DopToken::Not
             }
             '\'' => {
-                let string_value = self.read_string_literal()?;
-                DopToken::StringLiteral(string_value)
+                let mut result = String::new();
+                self.cursor.advance();
+                while self.cursor.peek() != '\'' && self.cursor.peek() != '\0' {
+                    result.push(self.cursor.advance());
+                }
+                if self.cursor.peek() != '\'' {
+                    return Err("Unterminated string literal".to_string());
+                }
+                self.cursor.advance(); // consume '
+                DopToken::StringLiteral(result)
             }
             ch if ch.is_ascii_alphabetic() || ch == '_' => {
-                let identifier = self.read_identifier();
+                let mut identifier = String::new();
+
+                identifier.push(self.cursor.advance());
+
+                // Subsequent characters can be letters, digits, or underscores
+                while self.cursor.peek().is_ascii_alphanumeric() || self.cursor.peek() == '_' {
+                    identifier.push(self.cursor.advance());
+                }
+
                 if identifier.is_empty() {
                     return Err("Invalid identifier".to_string());
                 } else if identifier == "in" {
@@ -224,7 +172,27 @@ impl DopTokenizer {
                 }
             }
             ch if ch.is_ascii_digit() => {
-                let number_value = self.read_number()?;
+                let mut number_string = String::new();
+
+                // Read integer part
+                while self.cursor.peek().is_ascii_digit() {
+                    number_string.push(self.cursor.advance());
+                }
+
+                // Read decimal part if present
+                if self.cursor.peek() == '.' {
+                    number_string.push(self.cursor.advance()); // consume '.'
+                    if !self.cursor.peek().is_ascii_digit() {
+                        return Err("Expected digit after decimal point".to_string());
+                    }
+                    while self.cursor.peek().is_ascii_digit() {
+                        number_string.push(self.cursor.advance());
+                    }
+                }
+
+                let number_value = serde_json::Number::from_str(&number_string)
+                    .map_err(|_| format!("Invalid number format: {}", number_string))?;
+
                 DopToken::NumberLiteral(number_value)
             }
             ch => return Err(format!("Unexpected character: '{}'", ch)),
