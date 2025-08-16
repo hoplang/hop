@@ -1,4 +1,4 @@
-mod commands;
+mod cli;
 mod common;
 mod compiler;
 mod error_formatter;
@@ -90,7 +90,7 @@ async fn main() -> anyhow::Result<()> {
 
     match &cli.command {
         Some(Commands::Lsp) => {
-            commands::lsp::execute().await;
+            cli::lsp::execute().await;
         }
         Some(Commands::Build {
             projectdir,
@@ -104,7 +104,7 @@ async fn main() -> anyhow::Result<()> {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
-            let mut outputs = commands::build::execute(
+            let mut outputs = cli::build::execute(
                 &root,
                 Path::new(outdir),
                 scriptfile.as_deref(),
@@ -137,7 +137,7 @@ async fn main() -> anyhow::Result<()> {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
-            let (router, _watcher) = commands::dev::execute(
+            let (router, _watcher) = cli::dev::execute(
                 &root,
                 staticdir.as_deref().map(Path::new),
                 scriptfile.as_deref(),
