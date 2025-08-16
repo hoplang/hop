@@ -1,4 +1,5 @@
-use crate::common::{BinaryOp, DopExpr, DopVarName, Range, RangeError, UnaryOp};
+use crate::common::{DopVarName, Range, RangeError};
+use crate::dop::{BinaryOp, DopExpr, UnaryOp};
 
 #[derive(Debug, Clone, PartialEq)]
 enum DopToken {

@@ -1,9 +1,9 @@
 use crate::common::{
-    BinaryOp, ComponentDefinitionNode, ComponentReferenceNode, DopAttribute, DopExpr,
-    Environment, ErrorNode, ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Range, RangeError,
-    RenderNode, SlotDefinitionNode, SlotReferenceNode, UnaryOp, XExecNode, XRawNode,
+    ComponentDefinitionNode, ComponentReferenceNode, DopAttribute, Environment, ErrorNode, ForNode, IfNode,
+    ImportNode, NativeHTMLNode, Node, Range, RangeError, RenderNode, SlotDefinitionNode,
+    SlotReferenceNode, XExecNode, XRawNode,
 };
-use crate::dop::DopType;
+use crate::dop::{BinaryOp, DopExpr, DopType, UnaryOp};
 use crate::parser::Module;
 use crate::unifier::Unifier;
 use std::collections::{HashMap, HashSet};

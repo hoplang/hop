@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use crate::dop::DopExpr;
 
 /// HopMode influences the runtime value of the global variable HOP_MODE which
 /// will be set to 'build' when running `hop build` and 'dev' when running
@@ -198,26 +199,6 @@ impl Attribute {
     pub fn new(name: String, value: String, range: Range) -> Self {
         Attribute { name, value, range }
     }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum BinaryOp {
-    Equal,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum UnaryOp {
-    Not,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum DopExpr {
-    Variable(String),
-    PropertyAccess(Box<DopExpr>, String),
-    StringLiteral(String),
-    BooleanLiteral(bool),
-    BinaryOp(Box<DopExpr>, BinaryOp, Box<DopExpr>),
-    UnaryOp(UnaryOp, Box<DopExpr>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
