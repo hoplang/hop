@@ -2,6 +2,9 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fmt;
 
+/// HopMode influences the runtime value of the global variable HOP_MODE which
+/// will be set to 'build' when running `hop build` and 'dev' when running
+/// `hop dev`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum HopMode {
     Build,

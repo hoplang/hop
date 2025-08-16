@@ -231,7 +231,8 @@ impl Program {
         let component = component_map.get(component_name).ok_or_else(|| {
             anyhow::anyhow!(
                 "Component '{}' not found in module '{}'",
-                component_name, module_name
+                component_name,
+                module_name
             )
         })?;
 
@@ -649,7 +650,9 @@ impl Program {
 
                 match value {
                     serde_json::Value::Bool(b) => Ok(serde_json::Value::Bool(!b)),
-                    _ => Err(anyhow::anyhow!("Negation operator can only be applied to boolean values")),
+                    _ => Err(anyhow::anyhow!(
+                        "Negation operator can only be applied to boolean values"
+                    )),
                 }
             }
         }
