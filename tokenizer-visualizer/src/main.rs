@@ -282,10 +282,17 @@ fn generate_graphviz(states: &[String], transitions: &[StateTransition]) -> Stri
 
         // Escape quotes for graphviz
         let escaped_label = label.replace("\"", "\\\"");
+        
+        // Check if actions contain "reset" to color edge red
+        let edge_color = if transition.actions.iter().any(|action| action.contains("reset")) {
+            " color=red"
+        } else {
+            ""
+        };
 
         dot.push_str(&format!(
-            "  {} -> {} [label=\"{}\"];\n",
-            transition.from_state, transition.to_state, escaped_label
+            "  {} -> {} [label=\"{}\"{}];\n",
+            transition.from_state, transition.to_state, escaped_label, edge_color
         ));
     }
 
