@@ -5,6 +5,7 @@ use crate::common::{
 };
 use crate::parser::Module;
 use crate::typechecker::TypeResult;
+use anyhow::Result;
 use std::collections::HashMap;
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -92,6 +93,7 @@ impl Program {
     }
 
     /// Get all file_attr values from render nodes across all modules
+    /// I.e. files specified in <render file="index.html">
     pub fn get_render_file_paths(&self) -> Vec<String> {
         self.render_nodes
             .values()
@@ -101,7 +103,7 @@ impl Program {
     }
 
     /// Render the content for a specific file path
-    pub fn render_file(&self, file_path: &str) -> Result<String, String> {
+    pub fn render_file(&self, file_path: &str) -> Result<String> {
         // Find the render node with the matching file_attr.value
         for render_nodes in self.render_nodes.values() {
             for node in render_nodes {
@@ -116,7 +118,7 @@ impl Program {
                 }
             }
         }
-        Err(format!(
+        Err(anyhow::anyhow!(
             "File path '{}' not found in render nodes",
             file_path
         ))
@@ -137,7 +139,7 @@ impl Program {
         module_name: &str,
         component_name: &str,
         params: serde_json::Value,
-    ) -> Result<String, String> {
+    ) -> Result<String> {
         let empty_slots = HashMap::new();
         self.execute(module_name, component_name, params, &empty_slots)
     }
@@ -147,15 +149,15 @@ impl Program {
         module_name: &str,
         component_name: &str,
         params: serde_json::Value,
-    ) -> Result<String, String> {
+    ) -> Result<String> {
         let component_map = self
             .component_maps
             .get(module_name)
-            .ok_or_else(|| format!("Module '{}' not found", module_name))?;
+            .ok_or_else(|| anyhow::anyhow!("Module '{}' not found", module_name))?;
 
         let component = component_map
             .get(component_name)
-            .ok_or_else(|| format!("Component '{}' not found", component_name))?;
+            .ok_or_else(|| anyhow::anyhow!("Component '{}' not found", component_name))?;
 
         // Use preview content if available, otherwise fall back to regular content
         let content_to_render = match &component.preview {
@@ -220,14 +222,14 @@ impl Program {
         component_name: &str,
         params: serde_json::Value,
         slot_content: &HashMap<String, String>,
-    ) -> Result<String, String> {
+    ) -> Result<String> {
         let component_map = self
             .component_maps
             .get(module_name)
-            .ok_or_else(|| format!("Module '{}' not found", module_name))?;
+            .ok_or_else(|| anyhow::anyhow!("Module '{}' not found", module_name))?;
 
         let component = component_map.get(component_name).ok_or_else(|| {
-            format!(
+            anyhow::anyhow!(
                 "Component '{}' not found in module '{}'",
                 component_name, module_name
             )
@@ -280,7 +282,7 @@ impl Program {
         slot_content: &HashMap<String, String>,
         env: &mut Environment<serde_json::Value>,
         current_module: &str,
-    ) -> Result<String, String> {
+    ) -> Result<String> {
         match node {
             Node::If(IfNode {
                 condition,
@@ -528,7 +530,7 @@ impl Program {
 
                 let array = array_value
                     .as_array()
-                    .ok_or_else(|| "For loop expects an array".to_string())?;
+                    .ok_or_else(|| anyhow::anyhow!("For loop expects an array"))?;
 
                 let mut result = String::new();
                 for item in array {
@@ -554,7 +556,7 @@ impl Program {
         node: &Node,
         env: &mut Environment<serde_json::Value>,
         current_module: &str,
-    ) -> Result<String, String> {
+    ) -> Result<String> {
         match node {
             Node::NativeHTML(NativeHTMLNode {
                 tag_name,
@@ -609,13 +611,13 @@ impl Program {
         &self,
         expr: &Expression,
         env: &mut Environment<serde_json::Value>,
-    ) -> Result<serde_json::Value, String> {
+    ) -> Result<serde_json::Value> {
         match expr {
             Expression::Variable(name) => {
                 if let Some(val) = env.lookup(name) {
                     Ok(val.clone())
                 } else {
-                    Err(format!("Undefined variable: {}", name))
+                    Err(anyhow::anyhow!("Undefined variable: {}", name))
                 }
             }
             Expression::StringLiteral(value) => Ok(serde_json::Value::String(value.clone())),
@@ -624,16 +626,16 @@ impl Program {
                 let base_value = self.evaluate_expr(base_expr, env)?;
 
                 if base_value.is_null() {
-                    return Err("Cannot access property of null value".to_string());
+                    return Err(anyhow::anyhow!("Cannot access property of null value"));
                 }
 
                 if !base_value.is_object() {
-                    return Err("Cannot access property of non-object".to_string());
+                    return Err(anyhow::anyhow!("Cannot access property of non-object"));
                 }
 
                 base_value
                     .get(property)
-                    .ok_or_else(|| format!("Property '{}' not found", property))
+                    .ok_or_else(|| anyhow::anyhow!("Property '{}' not found", property))
                     .cloned()
             }
             Expression::BinaryOp(left, BinaryOp::Equal, right) => {
@@ -647,17 +649,17 @@ impl Program {
 
                 match value {
                     serde_json::Value::Bool(b) => Ok(serde_json::Value::Bool(!b)),
-                    _ => Err("Negation operator can only be applied to boolean values".to_string()),
+                    _ => Err(anyhow::anyhow!("Negation operator can only be applied to boolean values")),
                 }
             }
         }
     }
 
-    fn execute_command(&self, command: &str, stdin_content: &str) -> Result<String, String> {
+    fn execute_command(&self, command: &str, stdin_content: &str) -> Result<String> {
         // Parse the command and arguments
         let parts: Vec<&str> = command.split_whitespace().collect();
         if parts.is_empty() {
-            return Err("Empty command".to_string());
+            return Err(anyhow::anyhow!("Empty command"));
         }
 
         let cmd = parts[0];
@@ -670,24 +672,24 @@ impl Program {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| format!("Failed to execute command '{}': {}", command, e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to execute command '{}': {}", command, e))?;
 
         // Write stdin content to the child process
         if let Some(mut stdin) = child.stdin.take() {
             stdin
                 .write_all(stdin_content.as_bytes())
-                .map_err(|e| format!("Failed to write to stdin: {}", e))?;
+                .map_err(|e| anyhow::anyhow!("Failed to write to stdin: {}", e))?;
         }
 
         // Wait for the command to complete and get output
         let output = child
             .wait_with_output()
-            .map_err(|e| format!("Failed to read command output: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to read command output: {}", e))?;
 
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).to_string())
         } else {
-            Err(format!(
+            Err(anyhow::anyhow!(
                 "Command '{}' failed with exit code {}: {}",
                 command,
                 output.status.code().unwrap_or(-1),
@@ -766,7 +768,7 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
 
-    fn compile_modules(modules_source: Vec<(String, String)>) -> Result<Program, String> {
+    fn compile_modules(modules_source: Vec<(String, String)>) -> Result<Program> {
         let mut parsed_modules = HashMap::new();
         let mut module_type_results: HashMap<String, TypeResult> = HashMap::new();
 
@@ -778,7 +780,7 @@ mod tests {
 
             let type_info = typecheck(&module, &module_type_results, &mut errors);
             if !errors.is_empty() {
-                return Err(format!("Errors in {}: {:?}", module_name, errors));
+                return Err(anyhow::anyhow!("Errors in {}: {:?}", module_name, errors));
             }
 
             parsed_modules.insert(module_name.clone(), module);
