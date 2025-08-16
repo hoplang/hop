@@ -1,4 +1,4 @@
-use crate::common::{Position, Range};
+use crate::common::{Position, Range, RangeError};
 use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -90,11 +90,11 @@ pub struct DopTokenizer {
 }
 
 impl DopTokenizer {
-    pub fn new(input: &str) -> Result<Self, String> {
+    pub fn new(input: &str) -> Result<Self, RangeError> {
         Self::new_with_offset(input, Position::new(1, 1))
     }
 
-    pub fn new_with_offset(input: &str, start_pos: Position) -> Result<Self, String> {
+    pub fn new_with_offset(input: &str, start_pos: Position) -> Result<Self, RangeError> {
         let mut tokenizer = DopTokenizer {
             cursor: Cursor::new_with_offset(input, start_pos),
             current_token: RangedDopToken::new(DopToken::Eof, Range::new(start_pos, start_pos)), // temporary value
@@ -107,7 +107,7 @@ impl DopTokenizer {
         &self.current_token
     }
 
-    pub fn advance(&mut self) -> Result<(), String> {
+    pub fn advance(&mut self) -> Result<(), RangeError> {
         // Skip whitespace first
         while self.cursor.peek().is_whitespace() {
             self.cursor.advance();
@@ -136,7 +136,11 @@ impl DopTokenizer {
                     self.cursor.advance();
                     DopToken::Equal
                 } else {
-                    return Err("Expected '==' but found single '='".to_string());
+                    let error_pos = self.cursor.get_position();
+                    return Err(RangeError::new(
+                        "Expected '==' but found single '='".to_string(),
+                        Range::new(start_pos, error_pos),
+                    ));
                 }
             }
             '!' => {
@@ -150,7 +154,11 @@ impl DopTokenizer {
                     result.push(self.cursor.advance());
                 }
                 if self.cursor.peek() != '\'' {
-                    return Err("Unterminated string literal".to_string());
+                    let error_pos = self.cursor.get_position();
+                    return Err(RangeError::new(
+                        "Unterminated string literal".to_string(),
+                        Range::new(start_pos, error_pos),
+                    ));
                 }
                 self.cursor.advance(); // consume '
                 DopToken::StringLiteral(result)
@@ -166,7 +174,11 @@ impl DopTokenizer {
                 }
 
                 if identifier.is_empty() {
-                    return Err("Invalid identifier".to_string());
+                    let error_pos = self.cursor.get_position();
+                    return Err(RangeError::new(
+                        "Invalid identifier".to_string(),
+                        Range::new(start_pos, error_pos),
+                    ));
                 } else if identifier == "in" {
                     DopToken::In
                 } else if identifier == "true" {
@@ -189,19 +201,34 @@ impl DopTokenizer {
                 if self.cursor.peek() == '.' {
                     number_string.push(self.cursor.advance()); // consume '.'
                     if !self.cursor.peek().is_ascii_digit() {
-                        return Err("Expected digit after decimal point".to_string());
+                        let error_pos = self.cursor.get_position();
+                        return Err(RangeError::new(
+                            "Expected digit after decimal point".to_string(),
+                            Range::new(start_pos, error_pos),
+                        ));
                     }
                     while self.cursor.peek().is_ascii_digit() {
                         number_string.push(self.cursor.advance());
                     }
                 }
 
-                let number_value = serde_json::Number::from_str(&number_string)
-                    .map_err(|_| format!("Invalid number format: {}", number_string))?;
+                let number_value = serde_json::Number::from_str(&number_string).map_err(|_| {
+                    let error_pos = self.cursor.get_position();
+                    RangeError::new(
+                        format!("Invalid number format: {}", number_string),
+                        Range::new(start_pos, error_pos),
+                    )
+                })?;
 
                 DopToken::NumberLiteral(number_value)
             }
-            ch => return Err(format!("Unexpected character: '{}'", ch)),
+            ch => {
+                let error_pos = self.cursor.get_position();
+                return Err(RangeError::new(
+                    format!("Unexpected character: '{}'", ch),
+                    Range::new(start_pos, error_pos),
+                ));
+            }
         };
 
         let end_pos = self.cursor.get_position();
@@ -222,7 +249,7 @@ mod tests {
         let mut result = Vec::new();
         let mut tokenizer = match DopTokenizer::new(input) {
             Ok(t) => t,
-            Err(e) => return format!("ERROR: {}", e),
+            Err(e) => return format!("ERROR: {:?}", e),
         };
 
         loop {

@@ -2,44 +2,37 @@ use crate::common::{DopVarName, Position, Range, RangeError};
 use crate::dop::tokenizer::{DopToken, DopTokenizer};
 use crate::dop::{BinaryOp, DopExpr, UnaryOp};
 
-pub fn parse_expr(expr: &str) -> Result<DopExpr, String> {
+pub fn parse_expr(expr: &str) -> Result<DopExpr, RangeError> {
     parse_expr_with_range(expr, Range::new(Position::new(1, 1), Position::new(1, 1)))
 }
 
-pub fn parse_expr_with_range(expr: &str, range: Range) -> Result<DopExpr, String> {
+pub fn parse_expr_with_range(expr: &str, range: Range) -> Result<DopExpr, RangeError> {
     if expr.trim().is_empty() {
-        return Err("Empty expression".to_string());
+        return Err(RangeError::new("Empty expression".to_string(), range));
     }
 
     let mut tokenizer = DopTokenizer::new_with_offset(expr, range.start)?;
     let result = parse_equality(&mut tokenizer)?;
 
     // Ensure we've consumed all tokens
-    if !matches!(tokenizer.peek().token, DopToken::Eof) {
-        return Err("Unexpected tokens at end of expression".to_string());
+    let t = tokenizer.peek();
+    if !matches!(t.token, DopToken::Eof) {
+        return Err(RangeError::new(
+            "Unexpected token at end of expression".to_string(),
+            t.range,
+        ));
     }
 
     Ok(result)
 }
 
-pub fn parse_loop_header(
-    header: &str,
-    range: Range,
-) -> Result<(DopVarName, DopExpr), RangeError> {
+pub fn parse_loop_header(header: &str, range: Range) -> Result<(DopVarName, DopExpr), RangeError> {
     if header.trim().is_empty() {
         return Err(RangeError::new("Empty loop header".to_string(), range));
     }
 
     // Create tokenizer for the loop header
-    let mut tokenizer = match DopTokenizer::new_with_offset(header, range.start) {
-        Ok(tokenizer) => tokenizer,
-        Err(err) => {
-            return Err(RangeError::new(
-                format!("Invalid expression in <for> tag: {}", err),
-                range,
-            ));
-        }
-    };
+    let mut tokenizer = DopTokenizer::new_with_offset(header, range.start)?;
 
     // Expect: IDENTIFIER "in" expression
     let var_name = match &tokenizer.peek().token {
@@ -77,15 +70,7 @@ pub fn parse_loop_header(
     }
 
     // Parse the array expression
-    let array_expr = match parse_equality(&mut tokenizer) {
-        Ok(expr) => expr,
-        Err(err) => {
-            return Err(RangeError::new(
-                format!("Invalid array expression in <for> tag: {}", err),
-                range,
-            ));
-        }
-    };
+    let array_expr = parse_equality(&mut tokenizer)?;
 
     // Ensure we've consumed all tokens
     if !matches!(tokenizer.peek().token, DopToken::Eof) {
@@ -102,25 +87,14 @@ pub fn parse_loop_header(
     }
 }
 
-pub fn parse_variable_name(
-    var_expr: &str,
-    range: Range,
-) -> Result<DopVarName, RangeError> {
+pub fn parse_variable_name(var_expr: &str, range: Range) -> Result<DopVarName, RangeError> {
     let var_expr = var_expr.trim();
     if var_expr.is_empty() {
         return Err(RangeError::new("Empty variable name".to_string(), range));
     }
 
     // Create tokenizer for the variable expression
-    let mut tokenizer = match DopTokenizer::new_with_offset(var_expr, range.start) {
-        Ok(tokenizer) => tokenizer,
-        Err(err) => {
-            return Err(RangeError::new(
-                format!("Invalid expression: {}", err),
-                range,
-            ));
-        }
-    };
+    let mut tokenizer = DopTokenizer::new_with_offset(var_expr, range.start)?;
 
     // Expect: IDENTIFIER (and nothing else)
     let var_name = match &tokenizer.peek().token {
@@ -154,7 +128,7 @@ pub fn parse_variable_name(
 }
 
 // equality -> unary ( "==" unary )*
-fn parse_equality(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
+fn parse_equality(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
     let mut expr = parse_unary(tokenizer)?;
 
     while matches!(tokenizer.peek().token, DopToken::Equal) {
@@ -167,7 +141,7 @@ fn parse_equality(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
 }
 
 // unary -> ( "!" )* primary
-fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
+fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
     if matches!(tokenizer.peek().token, DopToken::Not) {
         tokenizer.advance()?; // consume !
         let expr = parse_unary(tokenizer)?; // Right associative for multiple !
@@ -178,7 +152,7 @@ fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
 }
 
 // primary -> IDENTIFIER ( "." IDENTIFIER )* | STRING_LITERAL | "(" equality ")"
-fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
+fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
     match &tokenizer.peek().token {
         DopToken::Identifier(name) => {
             let mut expr = DopExpr::Variable(name.clone());
@@ -192,7 +166,10 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
                     expr = DopExpr::PropertyAccess(Box::new(expr), prop.clone());
                     tokenizer.advance()?;
                 } else {
-                    return Err("Expected identifier after '.'".to_string());
+                    return Err(RangeError::new(
+                        "Expected identifier after '.'".to_string(),
+                        tokenizer.peek().range,
+                    ));
                 }
             }
 
@@ -221,13 +198,17 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
                 tokenizer.advance()?; // consume )
                 Ok(expr)
             } else {
-                Err("Expected closing parenthesis".to_string())
+                Err(RangeError::new(
+                    "Expected closing parenthesis".to_string(),
+                    tokenizer.peek().range,
+                ))
             }
         }
-        _ => Err(
+        _ => Err(RangeError::new(
             "Expected identifier, string literal, number literal, or opening parenthesis"
                 .to_string(),
-        ),
+            tokenizer.peek().range,
+        )),
     }
 }
 
@@ -265,7 +246,7 @@ mod tests {
 
             let result = parse_expr(input).unwrap_or_else(|e| {
                 panic!(
-                    "Failed to parse expression '{}' in test case {} (line {}): {}",
+                    "Failed to parse expression '{}' in test case {} (line {}): {:?}",
                     input,
                     case_num + 1,
                     line_number,

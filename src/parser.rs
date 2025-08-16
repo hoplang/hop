@@ -354,10 +354,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                         range: t.range,
                     }),
                     Err(err) => {
-                        errors.push(RangeError::new(
-                            format!("Invalid expression: {}", err),
-                            t.range,
-                        ));
+                        errors.push(err);
                         Node::Error(ErrorNode {
                             range: t.range,
                             children: vec![],
@@ -386,10 +383,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                             children,
                         }),
                         Err(err) => {
-                            errors.push(RangeError::new(
-                                format!("Invalid expression in <if> tag: {}", err),
-                                t.range,
-                            ));
+                            errors.push(err);
                             Node::Error(ErrorNode {
                                 range: t.range,
                                 children,
@@ -422,7 +416,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                                     range: t.range,
                                     children,
                                 })
-                            },
+                            }
                         }
                     }
                     None => {
@@ -490,10 +484,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                                 t.range,
                             )),
                             Err(err) => {
-                                errors.push(RangeError::new(
-                                    format!("Invalid expression in <{}> tag: {}", tag_name, err),
-                                    t.range,
-                                ));
+                                errors.push(err);
                                 None
                             }
                         },
@@ -519,7 +510,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                                         attr.range,
                                     )),
                                     Err(err) => {
-                                        errors.push(RangeError::new(err, attr.range));
+                                        errors.push(err);
                                         None
                                     }
                                 }

@@ -107,7 +107,7 @@ mod tests {
             // Parse the expression
             let expr = parse_expr(expr_content).unwrap_or_else(|e| {
                 panic!(
-                    "Failed to parse expression '{}' in test case {} (line {}): {}",
+                    "Failed to parse expression '{}' in test case {} (line {}): {:?}",
                     expr_content,
                     case_num + 1,
                     line_number,
