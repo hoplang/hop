@@ -1,4 +1,4 @@
-use crate::common::{DopVarName, Range, RangeError};
+use crate::common::{DopVarName, Position, Range, RangeError};
 use crate::dop::{BinaryOp, DopExpr, UnaryOp};
 use std::str::FromStr;
 
@@ -17,59 +17,102 @@ enum DopToken {
     Eof,
 }
 
-struct DopTokenizer {
-    input: Vec<char>,
-    position: usize,
-    current_token: DopToken,
+#[derive(Debug, Clone, PartialEq)]
+struct RangedDopToken {
+    token: DopToken,
+    range: Range,
 }
 
-impl DopTokenizer {
-    fn new(input: &str) -> Result<Self, String> {
-        let mut tokenizer = DopTokenizer {
+impl RangedDopToken {
+    fn new(token: DopToken, range: Range) -> Self {
+        RangedDopToken { token, range }
+    }
+}
+
+struct Cursor {
+    input: Vec<char>,
+    /// Current position (0-indexed, in characters)
+    position: usize,
+    /// Current line number (1-indexed)
+    line: usize,
+    /// Current column index (1-indexed, in bytes)
+    column: usize,
+}
+
+impl Cursor {
+    fn new(input: &str) -> Self {
+        Self {
             input: input.chars().collect(),
             position: 0,
-            current_token: DopToken::Eof, // temporary value
-        };
-        tokenizer.current_token = tokenizer.next_token()?;
-        Ok(tokenizer)
+            line: 1,
+            column: 1,
+        }
     }
 
     fn peek(&self) -> char {
-        if self.position >= self.input.len() {
+        if self.is_at_end() {
             '\0'
         } else {
             self.input[self.position]
         }
     }
 
-    fn advance_char(&mut self) -> char {
+    fn advance(&mut self) -> char {
         let ch = self.peek();
-        if ch != '\0' {
+        if !self.is_at_end() {
+            let byte_len = ch.len_utf8();
+            if ch == '\n' {
+                self.line += 1;
+                self.column = 1;
+            } else {
+                self.column += byte_len;
+            }
             self.position += 1;
         }
         ch
     }
 
-    fn skip_whitespace(&mut self) {
-        while self.peek().is_whitespace() {
-            self.advance_char();
-        }
+    fn get_position(&self) -> Position {
+        Position::new(self.line, self.column)
+    }
+
+    fn is_at_end(&self) -> bool {
+        self.position >= self.input.len()
+    }
+}
+
+struct DopTokenizer {
+    cursor: Cursor,
+    current_token: RangedDopToken,
+}
+
+impl DopTokenizer {
+    fn new(input: &str) -> Result<Self, String> {
+        let mut tokenizer = DopTokenizer {
+            cursor: Cursor::new(input),
+            current_token: RangedDopToken::new(
+                DopToken::Eof,
+                Range::new(Position::new(1, 1), Position::new(1, 1)),
+            ), // temporary value
+        };
+        tokenizer.current_token = tokenizer.next_token()?;
+        Ok(tokenizer)
     }
 
     fn read_identifier(&mut self) -> String {
         let mut result = String::new();
 
         // First character must be letter or underscore
-        let first = self.peek();
+        let first = self.cursor.peek();
         if first.is_ascii_alphabetic() || first == '_' {
-            result.push(self.advance_char());
+            result.push(self.cursor.advance());
         } else {
             return result;
         }
 
         // Subsequent characters can be letters, digits, or underscores
-        while self.peek().is_ascii_alphanumeric() || self.peek() == '_' {
-            result.push(self.advance_char());
+        while self.cursor.peek().is_ascii_alphanumeric() || self.cursor.peek() == '_' {
+            result.push(self.cursor.advance());
         }
 
         result
@@ -79,21 +122,21 @@ impl DopTokenizer {
         let mut result = String::new();
 
         // Consume opening quote
-        if self.peek() != '\'' {
+        if self.cursor.peek() != '\'' {
             return Err("Expected opening single quote".to_string());
         }
-        self.advance_char();
+        self.cursor.advance();
 
-        while self.peek() != '\'' && self.peek() != '\0' {
-            result.push(self.advance_char());
+        while self.cursor.peek() != '\'' && self.cursor.peek() != '\0' {
+            result.push(self.cursor.advance());
         }
 
-        if self.peek() != '\'' {
+        if self.cursor.peek() != '\'' {
             return Err("Unterminated string literal".to_string());
         }
 
         // Consume closing quote
-        self.advance_char();
+        self.cursor.advance();
 
         Ok(result)
     }
@@ -102,20 +145,20 @@ impl DopTokenizer {
         let mut result = String::new();
 
         // Read integer part
-        while self.peek().is_ascii_digit() {
-            result.push(self.advance_char());
+        while self.cursor.peek().is_ascii_digit() {
+            result.push(self.cursor.advance());
         }
 
         // Read decimal part if present
-        if self.peek() == '.' {
-            result.push(self.advance_char()); // consume '.'
+        if self.cursor.peek() == '.' {
+            result.push(self.cursor.advance()); // consume '.'
 
-            if !self.peek().is_ascii_digit() {
+            if !self.cursor.peek().is_ascii_digit() {
                 return Err("Expected digit after decimal point".to_string());
             }
 
-            while self.peek().is_ascii_digit() {
-                result.push(self.advance_char());
+            while self.cursor.peek().is_ascii_digit() {
+                result.push(self.cursor.advance());
             }
         }
 
@@ -128,60 +171,68 @@ impl DopTokenizer {
         Ok(())
     }
 
-    fn next_token(&mut self) -> Result<DopToken, String> {
-        self.skip_whitespace();
+    fn next_token(&mut self) -> Result<RangedDopToken, String> {
+        let start_pos = self.cursor.get_position();
 
-        match self.peek() {
-            '\0' => Ok(DopToken::Eof),
+        // Skip whitespace
+        while self.cursor.peek().is_whitespace() {
+            self.cursor.advance();
+        }
+
+        let token = match self.cursor.peek() {
+            '\0' => DopToken::Eof,
             '.' => {
-                self.advance_char();
-                Ok(DopToken::Dot)
+                self.cursor.advance();
+                DopToken::Dot
             }
             '(' => {
-                self.advance_char();
-                Ok(DopToken::LeftParen)
+                self.cursor.advance();
+                DopToken::LeftParen
             }
             ')' => {
-                self.advance_char();
-                Ok(DopToken::RightParen)
+                self.cursor.advance();
+                DopToken::RightParen
             }
             '=' => {
-                self.advance_char();
-                if self.peek() == '=' {
-                    self.advance_char();
-                    Ok(DopToken::Equal)
+                self.cursor.advance();
+                if self.cursor.peek() == '=' {
+                    self.cursor.advance();
+                    DopToken::Equal
                 } else {
-                    Err("Expected '==' but found single '='".to_string())
+                    return Err("Expected '==' but found single '='".to_string());
                 }
             }
             '!' => {
-                self.advance_char();
-                Ok(DopToken::Not)
+                self.cursor.advance();
+                DopToken::Not
             }
             '\'' => {
                 let string_value = self.read_string_literal()?;
-                Ok(DopToken::StringLiteral(string_value))
+                DopToken::StringLiteral(string_value)
             }
             ch if ch.is_ascii_alphabetic() || ch == '_' => {
                 let identifier = self.read_identifier();
                 if identifier.is_empty() {
-                    Err("Invalid identifier".to_string())
+                    return Err("Invalid identifier".to_string());
                 } else if identifier == "in" {
-                    Ok(DopToken::In)
+                    DopToken::In
                 } else if identifier == "true" {
-                    Ok(DopToken::BooleanLiteral(true))
+                    DopToken::BooleanLiteral(true)
                 } else if identifier == "false" {
-                    Ok(DopToken::BooleanLiteral(false))
+                    DopToken::BooleanLiteral(false)
                 } else {
-                    Ok(DopToken::Identifier(identifier))
+                    DopToken::Identifier(identifier)
                 }
             }
             ch if ch.is_ascii_digit() => {
                 let number_value = self.read_number()?;
-                Ok(DopToken::NumberLiteral(number_value))
+                DopToken::NumberLiteral(number_value)
             }
-            ch => Err(format!("Unexpected character: '{}'", ch)),
-        }
+            ch => return Err(format!("Unexpected character: '{}'", ch)),
+        };
+
+        let end_pos = self.cursor.get_position();
+        Ok(RangedDopToken::new(token, Range::new(start_pos, end_pos)))
     }
 }
 
@@ -189,7 +240,7 @@ impl DopTokenizer {
 fn parse_equality(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
     let mut expr = parse_unary(tokenizer)?;
 
-    while matches!(tokenizer.current_token, DopToken::Equal) {
+    while matches!(tokenizer.current_token.token, DopToken::Equal) {
         tokenizer.advance()?; // consume ==
         let right = parse_unary(tokenizer)?;
         expr = DopExpr::BinaryOp(Box::new(expr), BinaryOp::Equal, Box::new(right));
@@ -200,7 +251,7 @@ fn parse_equality(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
 
 // unary -> ( "!" )* primary
 fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
-    if matches!(tokenizer.current_token, DopToken::Not) {
+    if matches!(tokenizer.current_token.token, DopToken::Not) {
         tokenizer.advance()?; // consume !
         let expr = parse_unary(tokenizer)?; // Right associative for multiple !
         Ok(DopExpr::UnaryOp(UnaryOp::Not, Box::new(expr)))
@@ -211,16 +262,16 @@ fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
 
 // primary -> IDENTIFIER ( "." IDENTIFIER )* | STRING_LITERAL | "(" equality ")"
 fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
-    match &tokenizer.current_token {
+    match &tokenizer.current_token.token {
         DopToken::Identifier(name) => {
             let mut expr = DopExpr::Variable(name.clone());
             tokenizer.advance()?;
 
             // Handle property access
-            while matches!(tokenizer.current_token, DopToken::Dot) {
+            while matches!(tokenizer.current_token.token, DopToken::Dot) {
                 tokenizer.advance()?; // consume .
 
-                if let DopToken::Identifier(prop) = &tokenizer.current_token {
+                if let DopToken::Identifier(prop) = &tokenizer.current_token.token {
                     expr = DopExpr::PropertyAccess(Box::new(expr), prop.clone());
                     tokenizer.advance()?;
                 } else {
@@ -249,7 +300,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, String> {
             tokenizer.advance()?; // consume (
             let expr = parse_equality(tokenizer)?;
 
-            if matches!(tokenizer.current_token, DopToken::RightParen) {
+            if matches!(tokenizer.current_token.token, DopToken::RightParen) {
                 tokenizer.advance()?; // consume )
                 Ok(expr)
             } else {
@@ -273,7 +324,7 @@ pub fn parse_expr(expr: &str) -> Result<DopExpr, String> {
     let result = parse_equality(&mut tokenizer)?;
 
     // Ensure we've consumed all tokens
-    if !matches!(tokenizer.current_token, DopToken::Eof) {
+    if !matches!(tokenizer.current_token.token, DopToken::Eof) {
         return Err("Unexpected tokens at end of expression".to_string());
     }
 
@@ -304,7 +355,7 @@ pub fn parse_loop_header(
     };
 
     // Expect: IDENTIFIER "in" expression
-    let var_name = match &tokenizer.current_token {
+    let var_name = match &tokenizer.current_token.token {
         DopToken::Identifier(name) => name.clone(),
         _ => {
             errors.push(RangeError::new(
@@ -325,7 +376,7 @@ pub fn parse_loop_header(
     }
 
     // Expect "in" keyword
-    if !matches!(tokenizer.current_token, DopToken::In) {
+    if !matches!(tokenizer.current_token.token, DopToken::In) {
         errors.push(RangeError::new(
             "Expected 'in' keyword in <for> tag".to_string(),
             range,
@@ -355,7 +406,7 @@ pub fn parse_loop_header(
     };
 
     // Ensure we've consumed all tokens
-    if !matches!(tokenizer.current_token, DopToken::Eof) {
+    if !matches!(tokenizer.current_token.token, DopToken::Eof) {
         errors.push(RangeError::new(
             "Unexpected tokens at end of <for> expression".to_string(),
             range,
@@ -397,7 +448,7 @@ pub fn parse_variable_name(
     };
 
     // Expect: IDENTIFIER (and nothing else)
-    let var_name = match &tokenizer.current_token {
+    let var_name = match &tokenizer.current_token.token {
         DopToken::Identifier(name) => name.clone(),
         _ => {
             errors.push(RangeError::new("Expected variable name".to_string(), range));
@@ -412,7 +463,7 @@ pub fn parse_variable_name(
     }
 
     // Ensure we've consumed all tokens (should only be a single identifier)
-    if !matches!(tokenizer.current_token, DopToken::Eof) {
+    if !matches!(tokenizer.current_token.token, DopToken::Eof) {
         errors.push(RangeError::new(
             "Expected only a variable name, found additional tokens".to_string(),
             range,
