@@ -29,8 +29,11 @@ pub fn typecheck_dop_expression(
             let obj_type =
                 unifier.new_object(HashMap::from([(property.clone(), property_type.clone())]));
 
-            if let Some(err) = unifier.unify(&base_type, &obj_type) {
-                errors.push(RangeError::unification_error(&err.message, range));
+            if let Some(_err) = unifier.unify(&base_type, &obj_type) {
+                errors.push(RangeError::new(
+                    format!("{} can not be used as an object", unifier.query(&base_type)),
+                    range,
+                ));
             }
 
             property_type
@@ -42,9 +45,13 @@ pub fn typecheck_dop_expression(
                 typecheck_dop_expression(right, env, unifier, annotations, errors, range);
 
             // Both operands should have the same type for equality comparison
-            if let Some(err) = unifier.unify(&left_type, &right_type) {
-                errors.push(RangeError::unification_error(
-                    &format!("Type mismatch in equality comparison: {}", err.message),
+            if let Some(_err) = unifier.unify(&left_type, &right_type) {
+                errors.push(RangeError::new(
+                    format!(
+                        "Can not compare {} to {}",
+                        unifier.query(&left_type),
+                        unifier.query(&right_type)
+                    ),
                     range,
                 ));
             }
@@ -57,12 +64,9 @@ pub fn typecheck_dop_expression(
                 typecheck_dop_expression(expr, env, unifier, annotations, errors, range);
 
             // Negation only works on boolean expressions
-            if let Some(err) = unifier.unify(&expr_type, &DopType::Bool) {
-                errors.push(RangeError::unification_error(
-                    &format!(
-                        "Negation operator can only be applied to boolean values: {}",
-                        err.message
-                    ),
+            if let Some(_err) = unifier.unify(&expr_type, &DopType::Bool) {
+                errors.push(RangeError::new(
+                    "Negation operator can only be applied to boolean values".to_string(),
                     range,
                 ));
             }

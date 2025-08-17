@@ -296,8 +296,15 @@ fn typecheck_node(
                         *range,
                     );
 
-                    if let Some(err) = unifier.unify(&expr_type, &comp_info.parameter_type) {
-                        errors.push(RangeError::unification_error(&err.message, *range));
+                    if let Some(_err) = unifier.unify(&expr_type, &comp_info.parameter_type) {
+                        errors.push(RangeError::new(
+                            format!(
+                                "Argument of type {} is incompatible with expected type {}",
+                                unifier.query(&expr_type),
+                                unifier.query(&comp_info.parameter_type),
+                            ),
+                            *range,
+                        ));
                     } else {
                         annotations.push(TypeAnnotation(*range, comp_info.parameter_type.clone()));
                     }
@@ -382,13 +389,22 @@ fn typecheck_node(
             range,
         }) => {
             // Typecheck the array expression
-            let array_type =
-                typecheck_dop_expression(array_expr, env, unifier, annotations, errors, *array_expr_range);
+            let array_type = typecheck_dop_expression(
+                array_expr,
+                env,
+                unifier,
+                annotations,
+                errors,
+                *array_expr_range,
+            );
             let element_type = unifier.new_type_var();
             let expected_array_type = DopType::Array(Box::new(element_type.clone()));
 
-            if let Some(err) = unifier.unify(&array_type, &expected_array_type) {
-                errors.push(RangeError::unification_error(&err.message, *array_expr_range));
+            if let Some(_err) = unifier.unify(&array_type, &expected_array_type) {
+                errors.push(RangeError::new(
+                    format!("Can not iterate over {}", unifier.query(&array_type)),
+                    *array_expr_range,
+                ));
             }
 
             // Push the loop variable into scope for the children
