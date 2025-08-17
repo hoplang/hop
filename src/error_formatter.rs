@@ -8,17 +8,13 @@ pub struct ErrorFormatter {
 }
 
 impl ErrorFormatter {
-    pub fn new(source_code: String, filename: String) -> Self {
+    pub fn new(source_code: String, filename: String, errors: Vec<RangeError>) -> Self {
         let lines = source_code.lines().map(|s| s.to_string()).collect();
         Self {
             lines,
             filename,
-            errors: Vec::new(),
+            errors,
         }
-    }
-
-    pub fn add_errors(&mut self, errors: Vec<RangeError>) {
-        self.errors.extend(errors);
     }
 
     pub fn format_all_errors(&self) -> String {

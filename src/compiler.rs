@@ -21,9 +21,8 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Res
         let tokenizer = Tokenizer::new(source_code);
         let module = parse(module_name.clone(), tokenizer, &mut errors);
         if !errors.is_empty() {
-            let mut formatter =
-                ErrorFormatter::new(source_code.clone(), format!("{}.hop", module_name));
-            formatter.add_errors(errors);
+            let formatter =
+                ErrorFormatter::new(source_code.clone(), format!("{}.hop", module_name), errors);
             anyhow::bail!(formatter.format_all_errors());
         }
 
@@ -55,9 +54,8 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Res
         let type_info = typecheck(module, &module_type_results, &mut errors);
         if !errors.is_empty() {
             let source_code = modules_map.get(&module_name).unwrap();
-            let mut formatter =
-                ErrorFormatter::new(source_code.clone(), format!("{}.hop", module_name));
-            formatter.add_errors(errors);
+            let formatter =
+                ErrorFormatter::new(source_code.clone(), format!("{}.hop", module_name), errors);
             anyhow::bail!(formatter.format_all_errors());
         }
 
