@@ -524,7 +524,7 @@ impl Program {
                 }
             }
             Node::For(ForNode {
-                var_name,
+                var_name: (var_name, _),
                 array_expr,
                 children,
                 ..
@@ -537,7 +537,7 @@ impl Program {
 
                 let mut result = String::new();
                 for item in array {
-                    env.push(var_name.0.value.clone(), item.clone());
+                    env.push(var_name.value.clone(), item.clone());
                     for child in children {
                         result.push_str(&self.evaluate_node(
                             child,
