@@ -1,5 +1,5 @@
 use crate::common::{Position, Range, RangeError};
-use std::str::FromStr;
+use std::{mem, str::FromStr};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DopToken {
@@ -87,7 +87,7 @@ impl DopTokenizer {
         &self.current_token
     }
 
-    pub fn advance(&mut self) -> Result<(), RangeError> {
+    pub fn advance(&mut self) -> Result<(DopToken, Range), RangeError> {
         // Skip whitespace first
         while self.cursor.peek().is_whitespace() {
             self.cursor.advance();
@@ -212,8 +212,10 @@ impl DopTokenizer {
         };
 
         let end_pos = self.cursor.get_position();
-        self.current_token = (token, Range::new(start_pos, end_pos));
-        Ok(())
+        Ok(mem::replace(
+            &mut self.current_token,
+            (token, Range::new(start_pos, end_pos)),
+        ))
     }
 }
 

@@ -1,6 +1,28 @@
-use crate::common::{DopVarName, Position, Range, RangeError};
+use crate::common::{Position, Range, RangeError};
 use crate::dop::tokenizer::{DopToken, DopTokenizer};
 use crate::dop::{BinaryOp, DopExpr, UnaryOp};
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DopVarName {
+    pub value: String,
+}
+
+impl DopVarName {
+    pub fn new(value: String) -> Option<Self> {
+        let mut chars = value.chars();
+        if let Some(first_char) = chars.next() {
+            if !first_char.is_ascii_lowercase() {
+                return None;
+            }
+            if !chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) {
+                return None;
+            }
+        } else {
+            return None;
+        }
+        Some(DopVarName { value })
+    }
+}
 
 pub fn parse_expr(expr: &str) -> Result<DopExpr, RangeError> {
     parse_expr_with_range(expr, Range::new(Position::new(1, 1), Position::new(1, 1)))
@@ -14,7 +36,7 @@ pub fn parse_expr_with_range(expr: &str, full_range: Range) -> Result<DopExpr, R
     let mut tokenizer = DopTokenizer::new(expr, full_range.start)?;
     let result = parse_equality(&mut tokenizer)?;
 
-    // Ensure we've consumed all tokens
+    // expect Eof
     match tokenizer.peek() {
         (DopToken::Eof, _) => {}
         (_, range) => {
@@ -38,39 +60,34 @@ pub fn parse_loop_header(
 
     let mut tokenizer = DopTokenizer::new(header, full_range.start)?;
 
-    // Expect variable name
-    let var_name = match tokenizer.peek() {
+    // expect Identifier
+    let var_name = match tokenizer.advance()? {
         (DopToken::Identifier(name), range) => match DopVarName::new(name.clone()) {
             Some(var_name) => var_name,
-            None => return Err(RangeError::invalid_variable_name(name, *range)),
+            None => return Err(RangeError::invalid_variable_name(&name, range)),
         },
         (_, range) => {
             return Err(RangeError::new(
                 "Expected variable name in <for> tag".to_string(),
-                *range,
+                range,
             ));
         }
     };
 
-    tokenizer.advance()?; // consume identifier
-
-    // Expect in keyword
-    match tokenizer.peek() {
+    // expect In
+    match tokenizer.advance()? {
         (DopToken::In, _) => {}
         (_, range) => {
             return Err(RangeError::new(
                 "Expected 'in' keyword in <for> tag".to_string(),
-                *range,
+                range,
             ));
         }
     }
 
-    tokenizer.advance()?; // consume in
-
-    // Parse the array expression
     let array_expr = parse_equality(&mut tokenizer)?;
 
-    // Ensure we've consumed all tokens
+    // expect Eof
     match tokenizer.peek() {
         (DopToken::Eof, _) => {}
         (_, range) => {
@@ -89,27 +106,23 @@ pub fn parse_variable_name(var_expr: &str, range: Range) -> Result<DopVarName, R
         return Err(RangeError::new("Empty variable name".to_string(), range));
     }
 
-    // Create tokenizer for the variable expression
     let mut tokenizer = DopTokenizer::new(var_expr, range.start)?;
 
-    // Expect variable name
-    let var_name = match &tokenizer.peek() {
+    // expect Identifier
+    let var_name = match tokenizer.advance()? {
         (DopToken::Identifier(name), range) => match DopVarName::new(name.clone()) {
             Some(var_name) => var_name,
-            None => return Err(RangeError::invalid_variable_name(name, *range)),
+            None => return Err(RangeError::invalid_variable_name(&name, range)),
         },
         (_, range) => {
             return Err(RangeError::new(
                 "Expected variable name in <for> tag".to_string(),
-                *range,
+                range,
             ));
         }
     };
 
-    // Advance past the identifier
-    tokenizer.advance()?;
-
-    // Ensure we've consumed all tokens
+    // expect Eof
     match tokenizer.peek() {
         (DopToken::Eof, _) => {}
         (_, range) => {

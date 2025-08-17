@@ -1,4 +1,4 @@
-use crate::dop::DopExpr;
+use crate::dop::{DopExpr, parser::DopVarName};
 use std::collections::HashMap;
 
 /// HopMode influences the runtime value of the global variable HOP_MODE which
@@ -165,28 +165,6 @@ pub struct Attribute {
     pub name: String,
     pub value: String,
     pub range: Range,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct DopVarName {
-    pub value: String,
-}
-
-impl DopVarName {
-    pub fn new(value: String) -> Option<Self> {
-        let mut chars = value.chars();
-        if let Some(first_char) = chars.next() {
-            if !first_char.is_ascii_lowercase() {
-                return None;
-            }
-            if !chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) {
-                return None;
-            }
-        } else {
-            return None;
-        }
-        Some(DopVarName { value })
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
