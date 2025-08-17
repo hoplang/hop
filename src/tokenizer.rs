@@ -112,26 +112,35 @@ struct Tokenizer {
     attribute_value: String,
     attribute_start: Position,
     tokens: Vec<Token>,
+    cursor: Cursor,
+    state: TokenizerState,
+    doctype_name_buffer: String,
+    stored_tag_name: String,
 }
 
 impl Tokenizer {
-    fn new() -> Self {
+    fn new(input: &str) -> Self {
+        let cursor = Cursor::new(input);
         Self {
             token_value: String::new(),
             token_kind: TokenKind::Text,
-            token_start: Position::default(),
+            token_start: cursor.get_position(),
             token_attributes: Vec::new(),
             token_expression: None,
             expression_content: String::new(),
-            expression_start: Position::default(),
+            expression_start: cursor.get_position(),
             attribute_name: String::new(),
             attribute_value: String::new(),
-            attribute_start: Position::default(),
+            attribute_start: cursor.get_position(),
             tokens: Vec::new(),
+            cursor,
+            state: TokenizerState::Text,
+            doctype_name_buffer: String::new(),
+            stored_tag_name: String::new(),
         }
     }
 
-    fn push_current_token(&mut self, cursor: &Cursor) {
+    fn push_current_token(&mut self) {
         self.tokens.push(Token::new(
             self.token_kind,
             mem::take(&mut self.token_value),
@@ -139,23 +148,23 @@ impl Tokenizer {
             mem::take(&mut self.token_expression),
             Range {
                 start: self.token_start,
-                end: cursor.get_position(),
+                end: self.cursor.get_position(),
             },
         ));
         self.token_kind = TokenKind::Text;
-        self.token_start = cursor.get_position();
+        self.token_start = self.cursor.get_position();
     }
 
-    fn push_current_attribute(&mut self, cursor: &Cursor) {
+    fn push_current_attribute(&mut self) {
         self.token_attributes.push(Attribute::new(
             mem::take(&mut self.attribute_name),
             mem::take(&mut self.attribute_value),
             Range {
                 start: self.attribute_start,
-                end: cursor.get_position(),
+                end: self.cursor.get_position(),
             },
         ));
-        self.attribute_start = cursor.get_position();
+        self.attribute_start = self.cursor.get_position();
     }
 
     fn append_to_current_token_value(&mut self, ch: char) {
@@ -182,29 +191,29 @@ impl Tokenizer {
         self.token_kind = kind;
     }
 
-    fn reset(&mut self, cursor: &Cursor) {
+    fn reset(&mut self) {
         self.token_value = String::new();
         self.token_attributes = Vec::new();
         self.token_expression = None;
         self.expression_content = String::new();
         self.token_kind = TokenKind::Text;
-        self.token_start = cursor.get_position();
-        self.attribute_start = cursor.get_position();
+        self.token_start = self.cursor.get_position();
+        self.attribute_start = self.cursor.get_position();
     }
 
     fn append_to_expression(&mut self, ch: char) {
         self.expression_content.push(ch);
     }
 
-    fn push_current_expression(&mut self, cursor: &Cursor) {
+    fn push_current_expression(&mut self) {
         self.token_expression = Some((
             mem::take(&mut self.expression_content),
             Range {
                 start: self.expression_start,
-                end: cursor.get_position(),
+                end: self.cursor.get_position(),
             },
         ));
-        self.expression_start = cursor.get_position();
+        self.expression_start = self.cursor.get_position();
     }
 
     fn set_current_expression_start(&mut self, pos: Position) {
@@ -214,6 +223,455 @@ impl Tokenizer {
     fn get_tokens(self) -> Vec<Token> {
         self.tokens
     }
+
+    pub fn tokenize(&mut self, errors: &mut Vec<RangeError>) -> Vec<Token> {
+        while !self.cursor.is_at_end() {
+            let ch = self.cursor.peek();
+
+            match self.state {
+                TokenizerState::Text => {
+                    if ch == '<' {
+                        if !self.get_current_token_value().is_empty() {
+                            self.push_current_token();
+                        }
+                        self.cursor.advance();
+                        self.state = TokenizerState::TagOpen;
+                    } else if ch == '{' {
+                        if !self.get_current_token_value().is_empty() {
+                            self.push_current_token();
+                        }
+                        self.cursor.advance();
+                        self.set_current_expression_start(self.cursor.get_position());
+                        self.state = TokenizerState::TextExpressionContent;
+                    } else {
+                        self.append_to_current_token_value(ch);
+                        self.cursor.advance();
+                        self.state = TokenizerState::Text;
+                    }
+                }
+
+                TokenizerState::TagOpen => {
+                    if ch.is_ascii_alphabetic() {
+                        self.set_current_token_kind(TokenKind::StartTag);
+                        self.append_to_current_token_value(ch);
+                        self.cursor.advance();
+                        self.state = TokenizerState::StartTagName;
+                    } else if ch == '/' {
+                        self.set_current_token_kind(TokenKind::EndTag);
+                        self.cursor.advance();
+                        self.state = TokenizerState::EndTagOpen;
+                    } else if ch == '!' {
+                        self.cursor.advance();
+                        self.state = TokenizerState::MarkupDeclaration;
+                    } else {
+                        let start_pos = self.cursor.get_position();
+                        self.cursor.advance();
+                        errors.push(RangeError::new(
+                            "Invalid character after '<'".to_string(),
+                            Range::new(start_pos, self.cursor.get_position()),
+                        ));
+                        self.reset();
+                        self.state = TokenizerState::Text;
+                    }
+                }
+
+                TokenizerState::StartTagName => {
+                    if ch == '-' || ch.is_ascii_alphanumeric() {
+                        self.append_to_current_token_value(ch);
+                        self.cursor.advance();
+                        self.state = TokenizerState::StartTagName;
+                    } else if ch.is_whitespace() {
+                        self.cursor.advance();
+                        self.state = TokenizerState::BeforeAttrName;
+                    } else if ch == '{' {
+                        self.cursor.advance();
+                        self.set_current_expression_start(self.cursor.get_position());
+                        self.state = TokenizerState::TagExpressionContent;
+                    } else if ch == '>' {
+                        if is_tag_name_with_raw_content(self.get_current_token_value()) {
+                            self.stored_tag_name = self.get_current_token_value().to_string();
+                            self.cursor.advance();
+                            self.push_current_token();
+                            self.state = TokenizerState::RawtextData;
+                        } else {
+                            self.cursor.advance();
+                            self.push_current_token();
+                            self.state = TokenizerState::Text;
+                        }
+                    } else if ch == '/' {
+                        self.set_current_token_kind(TokenKind::SelfClosingTag);
+                        self.cursor.advance();
+                        self.state = TokenizerState::SelfClosing;
+                    } else {
+                        let start_pos = self.cursor.get_position();
+                        self.cursor.advance();
+                        errors.push(RangeError::new(
+                            "Invalid character after '<'".to_string(),
+                            Range::new(start_pos, self.cursor.get_position()),
+                        ));
+                        self.reset();
+                        self.state = TokenizerState::Text;
+                    }
+                }
+
+                TokenizerState::EndTagOpen => {
+                    if ch.is_ascii_alphabetic() {
+                        self.append_to_current_token_value(ch);
+                        self.cursor.advance();
+                        self.state = TokenizerState::EndTagName;
+                    } else {
+                        let start_pos = self.cursor.get_position();
+                        self.cursor.advance();
+                        errors.push(RangeError::new(
+                            "Invalid character after '</'".to_string(),
+                            Range::new(start_pos, self.cursor.get_position()),
+                        ));
+                        self.reset();
+                        self.state = TokenizerState::Text;
+                    }
+                }
+
+                TokenizerState::EndTagName => {
+                    if ch == '-' || ch.is_ascii_alphanumeric() {
+                        self.append_to_current_token_value(ch);
+                        self.cursor.advance();
+                        self.state = TokenizerState::EndTagName;
+                    } else if ch == '>' {
+                        self.cursor.advance();
+                        self.push_current_token();
+                        self.state = TokenizerState::Text;
+                    } else if ch.is_whitespace() {
+                        self.cursor.advance();
+                        self.state = TokenizerState::AfterEndTagName;
+                    } else {
+                        let start_pos = self.cursor.get_position();
+                        self.cursor.advance();
+                        errors.push(RangeError::new(
+                            "Invalid character in end tag name".to_string(),
+                            Range::new(start_pos, self.cursor.get_position()),
+                        ));
+                        self.reset();
+                        self.state = TokenizerState::Text;
+                    }
+                }
+
+                TokenizerState::AfterEndTagName => {
+                    if ch.is_whitespace() {
+                        self.cursor.advance();
+                        self.state = TokenizerState::AfterEndTagName;
+                    } else if ch == '>' {
+                        self.cursor.advance();
+                        self.push_current_token();
+                        self.state = TokenizerState::Text;
+                    } else {
+                        let start_pos = self.cursor.get_position();
+                        self.cursor.advance();
+                        errors.push(RangeError::new(
+                            "Invalid character after end tag name".to_string(),
+                            Range::new(start_pos, self.cursor.get_position()),
+                        ));
+                        self.reset();
+                        self.state = TokenizerState::Text;
+                    }
+                }
+
+                TokenizerState::BeforeAttrName => {
+                    if ch.is_whitespace() {
+                        self.cursor.advance();
+                        self.state = TokenizerState::BeforeAttrName;
+                    } else if ch.is_ascii_alphabetic() {
+                        self.set_current_attribute_start(self.cursor.get_position());
+                        self.append_to_current_attribute_name(&ch.to_string());
+                        self.cursor.advance();
+                        self.state = TokenizerState::AttrName;
+                    } else if ch == '{' {
+                        self.cursor.advance();
+                        self.set_current_expression_start(self.cursor.get_position());
+                        self.state = TokenizerState::TagExpressionContent;
+                    } else if ch == '/' {
+                        self.set_current_token_kind(TokenKind::SelfClosingTag);
+                        self.cursor.advance();
+                        self.state = TokenizerState::SelfClosing;
+                    } else if ch == '>' {
+                        if is_tag_name_with_raw_content(self.get_current_token_value()) {
+                            self.stored_tag_name = self.get_current_token_value().to_string();
+                            self.cursor.advance();
+                            self.push_current_token();
+                            self.state = TokenizerState::RawtextData;
+                        } else {
+                            self.cursor.advance();
+                            self.push_current_token();
+                            self.state = TokenizerState::Text;
+                        }
+                    } else {
+                        let start_pos = self.cursor.get_position();
+                        self.cursor.advance();
+                        errors.push(RangeError::new(
+                            "Invalid character before attribute name".to_string(),
+                            Range::new(start_pos, self.cursor.get_position()),
+                        ));
+                        self.reset();
+                        self.state = TokenizerState::Text;
+                    }
+                }
+
+                TokenizerState::AttrName => {
+                    if ch == '-' || ch.is_ascii_alphanumeric() {
+                        self.append_to_current_attribute_name(&ch.to_string());
+                        self.cursor.advance();
+                        self.state = TokenizerState::AttrName;
+                    } else if ch == '=' {
+                        self.cursor.advance();
+                        self.state = TokenizerState::BeforeAttrValue;
+                    } else if ch.is_whitespace() {
+                        self.push_current_attribute();
+                        self.cursor.advance();
+                        self.state = TokenizerState::BeforeAttrName;
+                    } else if ch == '>' {
+                        self.push_current_attribute();
+                        if is_tag_name_with_raw_content(self.get_current_token_value()) {
+                            self.stored_tag_name = self.get_current_token_value().to_string();
+                            self.cursor.advance();
+                            self.push_current_token();
+                            self.state = TokenizerState::RawtextData;
+                        } else {
+                            self.cursor.advance();
+                            self.push_current_token();
+                            self.state = TokenizerState::Text;
+                        }
+                    } else if ch == '/' {
+                        self.push_current_attribute();
+                        self.set_current_token_kind(TokenKind::SelfClosingTag);
+                        self.cursor.advance();
+                        self.state = TokenizerState::SelfClosing;
+                    } else {
+                        let start_pos = self.cursor.get_position();
+                        self.cursor.advance();
+                        errors.push(RangeError::new(
+                            "Invalid character in attribute name".to_string(),
+                            Range::new(start_pos, self.cursor.get_position()),
+                        ));
+                        self.reset();
+                        self.state = TokenizerState::Text;
+                    }
+                }
+
+                TokenizerState::BeforeAttrValue => {
+                    if ch == '"' {
+                        self.cursor.advance();
+                        self.state = TokenizerState::AttrValueDoubleQuote;
+                    } else if ch == '\'' {
+                        self.cursor.advance();
+                        self.state = TokenizerState::AttrValueSingleQuote;
+                    } else {
+                        let start_pos = self.cursor.get_position();
+                        self.cursor.advance();
+                        errors.push(RangeError::new(
+                            "Expected quoted attribute name".to_string(),
+                            Range::new(start_pos, self.cursor.get_position()),
+                        ));
+                        self.reset();
+                        self.state = TokenizerState::Text;
+                    }
+                }
+
+                TokenizerState::AttrValueDoubleQuote => {
+                    if ch == '"' {
+                        self.cursor.advance();
+                        self.push_current_attribute();
+                        self.state = TokenizerState::BeforeAttrName;
+                    } else {
+                        self.append_to_current_attribute_value(&ch.to_string());
+                        self.cursor.advance();
+                        self.state = TokenizerState::AttrValueDoubleQuote;
+                    }
+                }
+
+                TokenizerState::AttrValueSingleQuote => {
+                    if ch == '\'' {
+                        self.cursor.advance();
+                        self.push_current_attribute();
+                        self.state = TokenizerState::BeforeAttrName;
+                    } else {
+                        self.append_to_current_attribute_value(&ch.to_string());
+                        self.cursor.advance();
+                        self.state = TokenizerState::AttrValueSingleQuote;
+                    }
+                }
+
+                TokenizerState::SelfClosing => {
+                    if ch == '>' {
+                        self.cursor.advance();
+                        self.push_current_token();
+                        self.state = TokenizerState::Text;
+                    } else {
+                        let start_pos = self.cursor.get_position();
+                        self.cursor.advance();
+                        errors.push(RangeError::new(
+                            "Expected '>' after '/'".to_string(),
+                            Range::new(start_pos, self.cursor.get_position()),
+                        ));
+                        self.reset();
+                        self.state = TokenizerState::Text;
+                    }
+                }
+
+                TokenizerState::MarkupDeclaration => {
+                    if self.cursor.match_str("--") {
+                        self.set_current_token_kind(TokenKind::Comment);
+                        self.cursor.advance_n(2);
+                        self.state = TokenizerState::Comment;
+                    } else if self.cursor.match_str("DOCTYPE") {
+                        self.set_current_token_kind(TokenKind::Doctype);
+                        self.cursor.advance_n(7);
+                        self.state = TokenizerState::Doctype;
+                    } else {
+                        let start_pos = self.cursor.get_position();
+                        self.cursor.advance();
+                        errors.push(RangeError::new(
+                            "Invalid markup declaration".to_string(),
+                            Range::new(start_pos, self.cursor.get_position()),
+                        ));
+                        self.reset();
+                        self.state = TokenizerState::Text;
+                    }
+                }
+
+                TokenizerState::Comment => {
+                    if self.cursor.match_str("-->") {
+                        self.cursor.advance_n(3);
+                        self.push_current_token();
+                        self.state = TokenizerState::Text;
+                    } else {
+                        self.append_to_current_token_value(ch);
+                        self.cursor.advance();
+                        self.state = TokenizerState::Comment;
+                    }
+                }
+
+                TokenizerState::Doctype => {
+                    if ch.is_whitespace() {
+                        self.cursor.advance();
+                        self.state = TokenizerState::BeforeDoctypeName;
+                    } else {
+                        let start_pos = self.cursor.get_position();
+                        self.cursor.advance();
+                        errors.push(RangeError::new(
+                            "Expected whitespace after DOCTYPE".to_string(),
+                            Range::new(start_pos, self.cursor.get_position()),
+                        ));
+                        self.reset();
+                        self.state = TokenizerState::Text;
+                    }
+                }
+
+                TokenizerState::BeforeDoctypeName => {
+                    if ch.is_whitespace() {
+                        self.cursor.advance();
+                        self.state = TokenizerState::BeforeDoctypeName;
+                    } else if ch.is_ascii_alphabetic() {
+                        self.doctype_name_buffer.clear();
+                        self.doctype_name_buffer.push(ch);
+                        self.cursor.advance();
+                        self.state = TokenizerState::DoctypeName;
+                    } else {
+                        let start_pos = self.cursor.get_position();
+                        self.cursor.advance();
+                        errors.push(RangeError::new(
+                            "Expected DOCTYPE name".to_string(),
+                            Range::new(start_pos, self.cursor.get_position()),
+                        ));
+                        self.reset();
+                        self.state = TokenizerState::Text;
+                    }
+                }
+
+                TokenizerState::DoctypeName => {
+                    if ch.is_ascii_alphabetic() {
+                        self.doctype_name_buffer.push(ch);
+                        self.cursor.advance();
+                        self.state = TokenizerState::DoctypeName;
+                    } else if ch == '>' {
+                        if self.doctype_name_buffer.to_lowercase() == "html" {
+                            let buffer = self.doctype_name_buffer.clone();
+                            for ch in buffer.chars() {
+                                self.append_to_current_token_value(ch);
+                            }
+                            self.cursor.advance();
+                            self.push_current_token();
+                            self.state = TokenizerState::Text;
+                        } else {
+                            let start_pos = self.cursor.get_position();
+                            self.cursor.advance();
+                            errors.push(RangeError::new(
+                                "Invalid DOCTYPE name".to_string(),
+                                Range::new(start_pos, self.cursor.get_position()),
+                            ));
+                            self.reset();
+                            self.state = TokenizerState::Text;
+                        }
+                    } else {
+                        self.cursor.advance();
+                        self.reset();
+                        self.state = TokenizerState::Text;
+                    }
+                }
+
+                TokenizerState::RawtextData => {
+                    let end_tag = format!("</{}>", self.stored_tag_name);
+                    if self.cursor.match_str(&end_tag) {
+                        if !self.get_current_token_value().is_empty() {
+                            self.push_current_token();
+                        }
+                        self.set_current_token_kind(TokenKind::EndTag);
+                        let tag_name = self.stored_tag_name.clone();
+                        for ch in tag_name.chars() {
+                            self.append_to_current_token_value(ch);
+                        }
+                        self.cursor.advance_n(end_tag.len());
+                        self.push_current_token();
+                        self.state = TokenizerState::Text;
+                    } else {
+                        self.append_to_current_token_value(ch);
+                        self.cursor.advance();
+                        self.state = TokenizerState::RawtextData;
+                    }
+                }
+
+                TokenizerState::TextExpressionContent => {
+                    if ch == '}' {
+                        self.push_current_expression();
+                        self.cursor.advance();
+                        self.set_current_token_kind(TokenKind::Expression);
+                        self.push_current_token();
+                        self.state = TokenizerState::Text;
+                    } else {
+                        self.append_to_expression(ch);
+                        self.cursor.advance();
+                        self.state = TokenizerState::TextExpressionContent;
+                    }
+                }
+
+                TokenizerState::TagExpressionContent => {
+                    if ch == '}' {
+                        self.push_current_expression();
+                        self.cursor.advance();
+                        self.state = TokenizerState::BeforeAttrName;
+                    } else {
+                        self.append_to_expression(ch);
+                        self.cursor.advance();
+                        self.state = TokenizerState::TagExpressionContent;
+                    }
+                }
+            }
+        }
+
+        if !self.get_current_token_value().is_empty() {
+            self.push_current_token();
+        }
+
+        mem::take(&mut self.tokens)
+    }
 }
 
 fn is_tag_name_with_raw_content(name: &str) -> bool {
@@ -221,463 +679,8 @@ fn is_tag_name_with_raw_content(name: &str) -> bool {
 }
 
 pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
-    let mut cursor = Cursor::new(input);
-    let mut builder = Tokenizer::new();
-    let mut state = TokenizerState::Text;
-    let mut doctype_name_buffer = String::new();
-    let mut stored_tag_name = String::new();
-
-    while !cursor.is_at_end() {
-        let ch = cursor.peek();
-
-        match state {
-            TokenizerState::Text => {
-                if ch == '<' {
-                    if !builder.get_current_token_value().is_empty() {
-                        builder.push_current_token(&cursor);
-                    }
-                    cursor.advance();
-                    state = TokenizerState::TagOpen;
-                } else if ch == '{' {
-                    // Push any accumulated text before the expression
-                    if !builder.get_current_token_value().is_empty() {
-                        builder.push_current_token(&cursor);
-                    }
-                    // Start collecting the expression
-                    cursor.advance(); // consume {
-                    builder.set_current_expression_start(cursor.get_position());
-                    state = TokenizerState::TextExpressionContent;
-                } else {
-                    builder.append_to_current_token_value(ch);
-                    cursor.advance();
-                    state = TokenizerState::Text;
-                }
-            }
-
-            TokenizerState::TagOpen => {
-                if ch.is_ascii_alphabetic() {
-                    builder.set_current_token_kind(TokenKind::StartTag);
-                    builder.append_to_current_token_value(ch);
-                    cursor.advance();
-                    state = TokenizerState::StartTagName;
-                } else if ch == '/' {
-                    builder.set_current_token_kind(TokenKind::EndTag);
-                    cursor.advance();
-                    state = TokenizerState::EndTagOpen;
-                } else if ch == '!' {
-                    cursor.advance();
-                    state = TokenizerState::MarkupDeclaration;
-                } else {
-                    let start_pos = cursor.get_position();
-                    cursor.advance();
-                    errors.push(RangeError::new(
-                        "Invalid character after '<'".to_string(),
-                        Range::new(start_pos, cursor.get_position()),
-                    ));
-                    builder.reset(&cursor);
-                    state = TokenizerState::Text;
-                }
-            }
-
-            TokenizerState::StartTagName => {
-                if ch == '-' || ch.is_ascii_alphanumeric() {
-                    builder.append_to_current_token_value(ch);
-                    cursor.advance();
-                    state = TokenizerState::StartTagName;
-                } else if ch.is_whitespace() {
-                    cursor.advance();
-                    state = TokenizerState::BeforeAttrName;
-                } else if ch == '{' {
-                    cursor.advance();
-                    builder.set_current_expression_start(cursor.get_position());
-                    state = TokenizerState::TagExpressionContent;
-                } else if ch == '>' {
-                    if is_tag_name_with_raw_content(builder.get_current_token_value()) {
-                        stored_tag_name = builder.get_current_token_value().to_string();
-                        cursor.advance();
-                        builder.push_current_token(&cursor);
-                        state = TokenizerState::RawtextData;
-                    } else {
-                        cursor.advance();
-                        builder.push_current_token(&cursor);
-                        state = TokenizerState::Text;
-                    }
-                } else if ch == '/' {
-                    builder.set_current_token_kind(TokenKind::SelfClosingTag);
-                    cursor.advance();
-                    state = TokenizerState::SelfClosing;
-                } else {
-                    let start_pos = cursor.get_position();
-                    cursor.advance();
-                    errors.push(RangeError::new(
-                        "Invalid character after '<'".to_string(),
-                        Range::new(start_pos, cursor.get_position()),
-                    ));
-                    builder.reset(&cursor);
-                    state = TokenizerState::Text;
-                }
-            }
-
-            TokenizerState::EndTagOpen => {
-                if ch.is_ascii_alphabetic() {
-                    builder.append_to_current_token_value(ch);
-                    cursor.advance();
-                    state = TokenizerState::EndTagName;
-                } else {
-                    let start_pos = cursor.get_position();
-                    cursor.advance();
-                    errors.push(RangeError::new(
-                        "Invalid character after '</'".to_string(),
-                        Range::new(start_pos, cursor.get_position()),
-                    ));
-                    builder.reset(&cursor);
-                    state = TokenizerState::Text;
-                }
-            }
-
-            TokenizerState::EndTagName => {
-                if ch == '-' || ch.is_ascii_alphanumeric() {
-                    builder.append_to_current_token_value(ch);
-                    cursor.advance();
-                    state = TokenizerState::EndTagName;
-                } else if ch == '>' {
-                    cursor.advance();
-                    builder.push_current_token(&cursor);
-                    state = TokenizerState::Text;
-                } else if ch.is_whitespace() {
-                    cursor.advance();
-                    state = TokenizerState::AfterEndTagName;
-                } else {
-                    let start_pos = cursor.get_position();
-                    cursor.advance();
-                    errors.push(RangeError::new(
-                        "Invalid character in end tag name".to_string(),
-                        Range::new(start_pos, cursor.get_position()),
-                    ));
-                    builder.reset(&cursor);
-                    state = TokenizerState::Text;
-                }
-            }
-
-            TokenizerState::AfterEndTagName => {
-                if ch.is_whitespace() {
-                    cursor.advance();
-                    state = TokenizerState::AfterEndTagName;
-                } else if ch == '>' {
-                    cursor.advance();
-                    builder.push_current_token(&cursor);
-                    state = TokenizerState::Text;
-                } else {
-                    let start_pos = cursor.get_position();
-                    cursor.advance();
-                    errors.push(RangeError::new(
-                        "Invalid character after end tag name".to_string(),
-                        Range::new(start_pos, cursor.get_position()),
-                    ));
-                    builder.reset(&cursor);
-                    state = TokenizerState::Text;
-                }
-            }
-
-            TokenizerState::BeforeAttrName => {
-                if ch.is_whitespace() {
-                    cursor.advance();
-                    state = TokenizerState::BeforeAttrName;
-                } else if ch.is_ascii_alphabetic() {
-                    builder.set_current_attribute_start(cursor.get_position());
-                    builder.append_to_current_attribute_name(&ch.to_string());
-                    cursor.advance();
-                    state = TokenizerState::AttrName;
-                } else if ch == '{' {
-                    cursor.advance();
-                    builder.set_current_expression_start(cursor.get_position());
-                    state = TokenizerState::TagExpressionContent;
-                } else if ch == '/' {
-                    builder.set_current_token_kind(TokenKind::SelfClosingTag);
-                    cursor.advance();
-                    state = TokenizerState::SelfClosing;
-                } else if ch == '>' {
-                    if is_tag_name_with_raw_content(builder.get_current_token_value()) {
-                        stored_tag_name = builder.get_current_token_value().to_string();
-                        cursor.advance();
-                        builder.push_current_token(&cursor);
-                        state = TokenizerState::RawtextData;
-                    } else {
-                        cursor.advance();
-                        builder.push_current_token(&cursor);
-                        state = TokenizerState::Text;
-                    }
-                } else {
-                    let start_pos = cursor.get_position();
-                    cursor.advance();
-                    errors.push(RangeError::new(
-                        "Invalid character before attribute name".to_string(),
-                        Range::new(start_pos, cursor.get_position()),
-                    ));
-                    builder.reset(&cursor);
-                    state = TokenizerState::Text;
-                }
-            }
-
-            TokenizerState::AttrName => {
-                if ch == '-' || ch.is_ascii_alphanumeric() {
-                    builder.append_to_current_attribute_name(&ch.to_string());
-                    cursor.advance();
-                    state = TokenizerState::AttrName;
-                } else if ch == '=' {
-                    cursor.advance();
-                    state = TokenizerState::BeforeAttrValue;
-                } else if ch.is_whitespace() {
-                    builder.push_current_attribute(&cursor);
-                    cursor.advance();
-                    state = TokenizerState::BeforeAttrName;
-                } else if ch == '>' {
-                    builder.push_current_attribute(&cursor);
-                    if is_tag_name_with_raw_content(builder.get_current_token_value()) {
-                        stored_tag_name = builder.get_current_token_value().to_string();
-                        cursor.advance();
-                        builder.push_current_token(&cursor);
-                        state = TokenizerState::RawtextData;
-                    } else {
-                        cursor.advance();
-                        builder.push_current_token(&cursor);
-                        state = TokenizerState::Text;
-                    }
-                } else if ch == '/' {
-                    builder.push_current_attribute(&cursor);
-                    builder.set_current_token_kind(TokenKind::SelfClosingTag);
-                    cursor.advance();
-                    state = TokenizerState::SelfClosing;
-                } else {
-                    let start_pos = cursor.get_position();
-                    cursor.advance();
-                    errors.push(RangeError::new(
-                        "Invalid character in attribute name".to_string(),
-                        Range::new(start_pos, cursor.get_position()),
-                    ));
-                    builder.reset(&cursor);
-                    state = TokenizerState::Text;
-                }
-            }
-
-            TokenizerState::BeforeAttrValue => {
-                if ch == '"' {
-                    cursor.advance();
-                    state = TokenizerState::AttrValueDoubleQuote;
-                } else if ch == '\'' {
-                    cursor.advance();
-                    state = TokenizerState::AttrValueSingleQuote;
-                } else {
-                    let start_pos = cursor.get_position();
-                    cursor.advance();
-                    errors.push(RangeError::new(
-                        "Expected quoted attribute name".to_string(),
-                        Range::new(start_pos, cursor.get_position()),
-                    ));
-                    builder.reset(&cursor);
-                    state = TokenizerState::Text;
-                }
-            }
-
-            TokenizerState::AttrValueDoubleQuote => {
-                if ch == '"' {
-                    cursor.advance();
-                    builder.push_current_attribute(&cursor);
-                    state = TokenizerState::BeforeAttrName;
-                } else {
-                    builder.append_to_current_attribute_value(&ch.to_string());
-                    cursor.advance();
-                    state = TokenizerState::AttrValueDoubleQuote;
-                }
-            }
-
-            TokenizerState::AttrValueSingleQuote => {
-                if ch == '\'' {
-                    cursor.advance();
-                    builder.push_current_attribute(&cursor);
-                    state = TokenizerState::BeforeAttrName;
-                } else {
-                    builder.append_to_current_attribute_value(&ch.to_string());
-                    cursor.advance();
-                    state = TokenizerState::AttrValueSingleQuote;
-                }
-            }
-
-            TokenizerState::SelfClosing => {
-                if ch == '>' {
-                    cursor.advance();
-                    builder.push_current_token(&cursor);
-                    state = TokenizerState::Text;
-                } else {
-                    let start_pos = cursor.get_position();
-                    cursor.advance();
-                    errors.push(RangeError::new(
-                        "Expected '>' after '/'".to_string(),
-                        Range::new(start_pos, cursor.get_position()),
-                    ));
-                    builder.reset(&cursor);
-                    state = TokenizerState::Text;
-                }
-            }
-
-            TokenizerState::MarkupDeclaration => {
-                if cursor.match_str("--") {
-                    builder.set_current_token_kind(TokenKind::Comment);
-                    cursor.advance_n(2);
-                    state = TokenizerState::Comment;
-                } else if cursor.match_str("DOCTYPE") {
-                    builder.set_current_token_kind(TokenKind::Doctype);
-                    cursor.advance_n(7);
-                    state = TokenizerState::Doctype;
-                } else {
-                    let start_pos = cursor.get_position();
-                    cursor.advance();
-                    errors.push(RangeError::new(
-                        "Invalid markup declaration".to_string(),
-                        Range::new(start_pos, cursor.get_position()),
-                    ));
-                    builder.reset(&cursor);
-                    state = TokenizerState::Text;
-                }
-            }
-
-            TokenizerState::Comment => {
-                if cursor.match_str("-->") {
-                    cursor.advance_n(3);
-                    builder.push_current_token(&cursor);
-                    state = TokenizerState::Text;
-                } else {
-                    builder.append_to_current_token_value(ch);
-                    cursor.advance();
-                    state = TokenizerState::Comment;
-                }
-            }
-
-            TokenizerState::Doctype => {
-                if ch.is_whitespace() {
-                    cursor.advance();
-                    state = TokenizerState::BeforeDoctypeName;
-                } else {
-                    let start_pos = cursor.get_position();
-                    cursor.advance();
-                    errors.push(RangeError::new(
-                        "Expected whitespace after DOCTYPE".to_string(),
-                        Range::new(start_pos, cursor.get_position()),
-                    ));
-                    builder.reset(&cursor);
-                    state = TokenizerState::Text;
-                }
-            }
-
-            TokenizerState::BeforeDoctypeName => {
-                if ch.is_whitespace() {
-                    cursor.advance();
-                    state = TokenizerState::BeforeDoctypeName;
-                } else if ch.is_ascii_alphabetic() {
-                    doctype_name_buffer.clear();
-                    doctype_name_buffer.push(ch);
-                    cursor.advance();
-                    state = TokenizerState::DoctypeName;
-                } else {
-                    let start_pos = cursor.get_position();
-                    cursor.advance();
-                    errors.push(RangeError::new(
-                        "Expected DOCTYPE name".to_string(),
-                        Range::new(start_pos, cursor.get_position()),
-                    ));
-                    builder.reset(&cursor);
-                    state = TokenizerState::Text;
-                }
-            }
-
-            TokenizerState::DoctypeName => {
-                if ch.is_ascii_alphabetic() {
-                    doctype_name_buffer.push(ch);
-                    cursor.advance();
-                    state = TokenizerState::DoctypeName;
-                } else if ch == '>' {
-                    if doctype_name_buffer.to_lowercase() == "html" {
-                        for ch in doctype_name_buffer.chars() {
-                            builder.append_to_current_token_value(ch);
-                        }
-                        cursor.advance();
-                        builder.push_current_token(&cursor);
-                        state = TokenizerState::Text;
-                    } else {
-                        let start_pos = cursor.get_position();
-                        cursor.advance();
-                        // TODO: better range?
-                        errors.push(RangeError::new(
-                            "Invalid DOCTYPE name".to_string(),
-                            Range::new(start_pos, cursor.get_position()),
-                        ));
-                        builder.reset(&cursor);
-                        state = TokenizerState::Text;
-                    }
-                } else {
-                    cursor.advance();
-                    // "Invalid character in DOCTYPE name"
-                    builder.reset(&cursor);
-                    state = TokenizerState::Text;
-                }
-            }
-
-            TokenizerState::RawtextData => {
-                let end_tag = format!("</{}>", stored_tag_name);
-                if cursor.match_str(&end_tag) {
-                    if !builder.get_current_token_value().is_empty() {
-                        builder.push_current_token(&cursor);
-                    }
-                    builder.set_current_token_kind(TokenKind::EndTag);
-                    for ch in stored_tag_name.chars() {
-                        builder.append_to_current_token_value(ch);
-                    }
-                    cursor.advance_n(end_tag.len());
-                    builder.push_current_token(&cursor);
-                    state = TokenizerState::Text;
-                } else {
-                    builder.append_to_current_token_value(ch);
-                    cursor.advance();
-                    state = TokenizerState::RawtextData;
-                }
-            }
-
-            TokenizerState::TextExpressionContent => {
-                if ch == '}' {
-                    builder.push_current_expression(&cursor);
-                    cursor.advance();
-                    // Create an expression token and go back to Text state
-                    builder.set_current_token_kind(TokenKind::Expression);
-                    builder.push_current_token(&cursor);
-                    state = TokenizerState::Text;
-                } else {
-                    builder.append_to_expression(ch);
-                    cursor.advance();
-                    state = TokenizerState::TextExpressionContent;
-                }
-            }
-
-            TokenizerState::TagExpressionContent => {
-                if ch == '}' {
-                    builder.push_current_expression(&cursor);
-                    cursor.advance();
-                    // Go back to processing attributes in the tag
-                    state = TokenizerState::BeforeAttrName;
-                } else {
-                    builder.append_to_expression(ch);
-                    cursor.advance();
-                    state = TokenizerState::TagExpressionContent;
-                }
-            }
-        }
-    }
-
-    // Handle any remaining token
-    if !builder.get_current_token_value().is_empty() {
-        builder.push_current_token(&cursor);
-    }
-
-    builder.get_tokens()
+    let mut tokenizer = Tokenizer::new(input);
+    tokenizer.tokenize(errors)
 }
 
 #[cfg(test)]

@@ -111,7 +111,7 @@ impl StateMachineVisitor {
                 let method_name = method.method.to_string();
 
                 // Identify key tokenizer actions
-                if receiver == "builder" {
+                if receiver == "self" {
                     match method_name.as_str() {
                         "push_current_token" => Some("push_token".to_string()),
                         "append_to_current_token_value" => Some("append_to_token".to_string()),
@@ -119,20 +119,31 @@ impl StateMachineVisitor {
                         "reset" => Some("reset".to_string()),
                         _ => None,
                     }
-                } else if receiver == "cursor" {
+                } else if receiver == "self" && method_name.starts_with("cursor.") {
                     match method_name.as_str() {
-                        "advance" => Some("advance".to_string()),
-                        "advance_n" => Some("advance_n".to_string()),
+                        "cursor.advance" => Some("advance".to_string()),
+                        "cursor.advance_n" => Some("advance_n".to_string()),
                         _ => None,
                     }
                 } else {
-                    None
+                    // Handle method calls on self.cursor
+                    if method_name == "advance" || method_name == "advance_n" {
+                        Some(method_name)
+                    } else {
+                        None
+                    }
                 }
             }
             Expr::Assign(assign) => {
                 if let Expr::Path(path) = &*assign.left {
                     if let Some(ident) = path.path.get_ident() {
                         if ident == "state" {
+                            return Some("set_state".to_string());
+                        }
+                    }
+                } else if let Expr::Field(field) = &*assign.left {
+                    if let syn::Member::Named(name) = &field.member {
+                        if name == "state" {
                             return Some("set_state".to_string());
                         }
                     }
@@ -187,14 +198,26 @@ impl StateMachineVisitor {
 
     fn extract_state_transition(&self, stmt: &Stmt) -> Option<String> {
         if let Stmt::Expr(Expr::Assign(assign), _) = stmt {
-            if let Expr::Path(path) = &*assign.left {
+            let is_state_assignment = if let Expr::Path(path) = &*assign.left {
                 if let Some(ident) = path.path.get_ident() {
-                    if ident == "state" {
-                        if let Expr::Path(right_path) = &*assign.right {
-                            if let Some(segments) = right_path.path.segments.last() {
-                                return Some(segments.ident.to_string());
-                            }
-                        }
+                    ident == "state"
+                } else {
+                    false
+                }
+            } else if let Expr::Field(field) = &*assign.left {
+                if let syn::Member::Named(name) = &field.member {
+                    name == "state"
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            if is_state_assignment {
+                if let Expr::Path(right_path) = &*assign.right {
+                    if let Some(segments) = right_path.path.segments.last() {
+                        return Some(segments.ident.to_string());
                     }
                 }
             }
@@ -218,40 +241,52 @@ impl<'ast> Visit<'ast> for StateMachineVisitor {
     }
 
     fn visit_expr_match(&mut self, node: &'ast ExprMatch) {
-        // Check if this is matching on 'state'
-        if let Expr::Path(path) = &*node.expr {
+        // Check if this is matching on 'state' or 'self.state'
+        let is_state_match = if let Expr::Path(path) = &*node.expr {
             if let Some(ident) = path.path.get_ident() {
-                if ident == "state" {
-                    self.current_match_expr = Some("state".to_string());
+                ident == "state"
+            } else {
+                false
+            }
+        } else if let Expr::Field(field) = &*node.expr {
+            if let syn::Member::Named(name) = &field.member {
+                name == "state"
+            } else {
+                false
+            }
+        } else {
+            false
+        };
 
-                    // Process each arm of the match
-                    for arm in &node.arms {
-                        if let Pat::Path(pat_path) = &arm.pat {
-                            if let Some(segments) = pat_path.path.segments.last() {
-                                let state_name = segments.ident.to_string();
-                                self.current_state = Some(state_name.clone());
+        if is_state_match {
+            self.current_match_expr = Some("state".to_string());
 
-                                // Process the arm body for state transitions
-                                if let Expr::Block(block) = &*arm.body {
-                                    for stmt in &block.block.stmts {
-                                        match stmt {
-                                            Stmt::Expr(Expr::If(_), _) => {
-                                                if let Stmt::Expr(expr, _) = stmt {
-                                                    self.process_if_chain(expr, &state_name);
-                                                }
-                                            }
-                                            _ => {
-                                                if let Some(target_state) =
-                                                    self.extract_state_transition(stmt)
-                                                {
-                                                    self.transitions.push(StateTransition {
-                                                        from_state: state_name.clone(),
-                                                        to_state: target_state,
-                                                        condition: "direct".to_string(),
-                                                        actions: vec![],
-                                                    });
-                                                }
-                                            }
+            // Process each arm of the match
+            for arm in &node.arms {
+                if let Pat::Path(pat_path) = &arm.pat {
+                    if let Some(segments) = pat_path.path.segments.last() {
+                        let state_name = segments.ident.to_string();
+                        self.current_state = Some(state_name.clone());
+
+                        // Process the arm body for state transitions
+                        if let Expr::Block(block) = &*arm.body {
+                            for stmt in &block.block.stmts {
+                                match stmt {
+                                    Stmt::Expr(Expr::If(_), _) => {
+                                        if let Stmt::Expr(expr, _) = stmt {
+                                            self.process_if_chain(expr, &state_name);
+                                        }
+                                    }
+                                    _ => {
+                                        if let Some(target_state) =
+                                            self.extract_state_transition(stmt)
+                                        {
+                                            self.transitions.push(StateTransition {
+                                                from_state: state_name.clone(),
+                                                to_state: target_state,
+                                                condition: "direct".to_string(),
+                                                actions: vec![],
+                                            });
                                         }
                                     }
                                 }
