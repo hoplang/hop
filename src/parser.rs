@@ -1,8 +1,8 @@
 use crate::common::{
-    ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, DopExprAttribute,
-    DopVarNameAttribute, ErrorNode, ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Position,
-    Range, RangeError, RenderNode, SlotDefinitionNode, SlotReferenceNode, TextExpressionNode,
-    TextNode, Token, TokenKind, XExecNode, XRawNode, is_void_element,
+    Attribute, ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, DopExprAttribute,
+    DopVarNameAttribute, ErrorNode, ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Range,
+    RangeError, RenderNode, SlotDefinitionNode, SlotReferenceNode, TextExpressionNode, TextNode,
+    Token, XExecNode, XRawNode, is_void_element,
 };
 use crate::dop;
 use std::collections::HashSet;
@@ -32,7 +32,11 @@ enum ToplevelNode {
     Render(RenderNode),
 }
 
-pub fn parse(module_name: String, tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> Module {
+pub fn parse(
+    module_name: String,
+    tokens: Vec<(Token, Range)>,
+    errors: &mut Vec<RangeError>,
+) -> Module {
     let tree = build_tree(tokens, errors);
 
     let mut components = Vec::new();
@@ -61,13 +65,13 @@ pub fn parse(module_name: String, tokens: Vec<Token>, errors: &mut Vec<RangeErro
 
 #[derive(Debug, Clone)]
 struct TokenTree {
-    token: Token,
+    token: (Token, Range),
     children: Vec<TokenTree>,
-    end_token: Option<Token>,
+    end_token: Option<(Token, Range)>,
 }
 
 impl TokenTree {
-    fn new(token: Token) -> Self {
+    fn new(token: (Token, Range)) -> Self {
         TokenTree {
             token,
             children: Vec::new(),
@@ -75,7 +79,7 @@ impl TokenTree {
         }
     }
 
-    fn append_node(&mut self, token: Token) {
+    fn append_node(&mut self, token: (Token, Range)) {
         self.children.push(TokenTree::new(token));
     }
 
@@ -83,76 +87,77 @@ impl TokenTree {
         self.children.push(tree);
     }
 
-    fn set_end_token(&mut self, token: Token) {
+    fn set_end_token(&mut self, token: (Token, Range)) {
         self.end_token = Some(token);
     }
 }
 
-fn build_tree(tokens: Vec<Token>, errors: &mut Vec<RangeError>) -> TokenTree {
-    let mut stack: Vec<TokenTree> = Vec::new();
+fn build_tree(tokens: Vec<(Token, Range)>, errors: &mut Vec<RangeError>) -> TokenTree {
+    let mut stack: Vec<(TokenTree, String)> = Vec::new();
 
-    let root_token = Token {
-        kind: TokenKind::StartTag,
+    let root_token = Token::StartTag {
+        self_closing: false,
         value: "root".to_string(),
         attributes: Vec::new(),
         expression: None,
-        range: Range {
-            start: Position { line: 0, column: 0 },
-            end: Position { line: 0, column: 0 },
-        },
     };
-    stack.push(TokenTree::new(root_token));
+    stack.push((
+        TokenTree::new((root_token, Range::default())),
+        "root".to_string(),
+    ));
 
     for token in tokens {
-        match token.kind {
-            TokenKind::Comment => {
+        match token {
+            (Token::Comment, _) => {
                 // skip comments
                 continue;
             }
-            TokenKind::Doctype
-            | TokenKind::Text
-            | TokenKind::SelfClosingTag
-            | TokenKind::Expression => {
-                stack.last_mut().unwrap().append_node(token);
+            (Token::Doctype | Token::Text { .. } | Token::Expression { .. }, _) => {
+                stack.last_mut().unwrap().0.append_node(token);
             }
-            TokenKind::StartTag => {
-                if is_void_element(&token.value) {
-                    stack.last_mut().unwrap().append_node(token);
+            (
+                Token::StartTag {
+                    ref value,
+                    self_closing,
+                    ..
+                },
+                _,
+            ) => {
+                if is_void_element(value) || self_closing {
+                    stack.last_mut().unwrap().0.append_node(token);
                 } else {
-                    stack.push(TokenTree::new(token));
+                    stack.push((TokenTree::new(token.clone()), value.clone()));
                 }
             }
-            TokenKind::EndTag => {
-                if is_void_element(&token.value) {
-                    errors.push(RangeError::closed_void_tag(&token.value, token.range));
-                } else if !stack.iter().any(|t| t.token.value == token.value) {
-                    errors.push(RangeError::unmatched_closing_tag(&token.value, token.range));
+            (Token::EndTag { ref value, .. }, range) => {
+                if is_void_element(value) {
+                    errors.push(RangeError::closed_void_tag(value, range));
+                } else if !stack.iter().any(|(_, v)| *v == *value) {
+                    errors.push(RangeError::unmatched_closing_tag(value, range));
                 } else {
-                    while stack.last().unwrap().token.value != token.value {
-                        let unclosed = stack.pop().unwrap();
-                        errors.push(RangeError::unclosed_tag(
-                            &unclosed.token.value,
-                            unclosed.token.range,
-                        ));
-                        stack.last_mut().unwrap().append_tree(unclosed);
+                    while stack.last().unwrap().1 != *value {
+                        let (unclosed, value) = stack.pop().unwrap();
+                        errors.push(RangeError::unclosed_tag(&value, unclosed.token.1));
+                        stack.last_mut().unwrap().0.append_tree(unclosed);
                     }
                     let mut completed = stack.pop().unwrap();
-                    completed.set_end_token(token);
-                    stack.last_mut().unwrap().append_tree(completed);
+                    completed.0.set_end_token(token);
+                    stack.last_mut().unwrap().0.append_tree(completed.0);
                 }
+            }
+            (Token::Eof, _) => {
+                // This should never be reached since Eof tokens are not added to the tokens vector
+                unreachable!("Eof token should not be in tokens vector");
             }
         }
     }
 
     while stack.len() > 1 {
-        let unclosed_token = stack.pop().unwrap().token;
-        errors.push(RangeError::unclosed_tag(
-            &unclosed_token.value,
-            unclosed_token.range,
-        ));
+        let (tree, value) = stack.pop().unwrap();
+        errors.push(RangeError::unclosed_tag(&value, tree.token.1));
     }
 
-    stack.pop().unwrap()
+    stack.pop().unwrap().0
 }
 
 fn collect_slots_from_children(
@@ -207,24 +212,36 @@ fn collect_slots_from_children(
     }
 }
 
+fn find_attribute(attrs: &[Attribute], value: &str) -> Option<Attribute> {
+    attrs.iter().find(|attr| attr.name == value).cloned()
+}
+
 fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Option<ToplevelNode> {
     let t = &tree.token;
 
-    match t.kind {
-        TokenKind::SelfClosingTag | TokenKind::StartTag => {
-            match t.value.as_str() {
+    match t {
+        (
+            Token::StartTag {
+                value,
+                attributes,
+                expression,
+                ..
+            },
+            range,
+        ) => {
+            match value.as_str() {
                 "import" => {
-                    let component_attr = t.get_attribute("component").or_else(|| {
+                    let component_attr = find_attribute(attributes, "component").or_else(|| {
                         errors.push(RangeError::missing_required_attribute(
-                            &t.value,
+                            value,
                             "component",
-                            t.range,
+                            *range,
                         ));
                         None
                     });
-                    let from_attr = t.get_attribute("from").or_else(|| {
+                    let from_attr = find_attribute(attributes, "from").or_else(|| {
                         errors.push(RangeError::missing_required_attribute(
-                            &t.value, "from", t.range,
+                            value, "from", *range,
                         ));
                         None
                     });
@@ -234,7 +251,7 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                             Some(ToplevelNode::Import(ImportNode {
                                 component_attr,
                                 from_attr,
-                                range: t.range,
+                                range: *range,
                             }))
                         }
                         _ => None,
@@ -247,9 +264,9 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                         .map(|child| construct_node(child, errors))
                         .collect();
 
-                    let file_attr = t.get_attribute("file").or_else(|| {
+                    let file_attr = find_attribute(attributes, "file").or_else(|| {
                         errors.push(RangeError::missing_required_attribute(
-                            &t.value, "file", t.range,
+                            value, "file", *range,
                         ));
                         None
                     });
@@ -257,7 +274,7 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                     file_attr.map(|file_attr| {
                         ToplevelNode::Render(RenderNode {
                             file_attr,
-                            range: t.range,
+                            range: *range,
                             children,
                         })
                     })
@@ -265,7 +282,7 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                 name => {
                     // Handle as component definition
                     if !is_valid_component_name(name) {
-                        errors.push(RangeError::invalid_component_name(name, t.range));
+                        errors.push(RangeError::invalid_component_name(name, *range));
                         return None;
                     }
 
@@ -274,8 +291,8 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                     let mut preview_children = None;
 
                     for child in &tree.children {
-                        if let TokenKind::StartTag = child.token.kind {
-                            if child.token.value == "hop-x-preview" {
+                        if let (Token::StartTag { value, .. }, _) = &child.token {
+                            if value == "hop-x-preview" {
                                 preview_children = Some(
                                     child
                                         .children
@@ -291,13 +308,13 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
 
                     let children = main_children;
 
-                    let as_attr = t.get_attribute("as");
-                    let entrypoint = t.get_attribute("entrypoint").is_some();
-                    let params_as_attr = t.expression.as_ref().and_then(|(expr_string, _)| {
-                        match dop::parse_variable_name(expr_string, t.range) {
+                    let as_attr = find_attribute(attributes, "as");
+                    let entrypoint = find_attribute(attributes, "entrypoint").is_some();
+                    let params_as_attr = expression.as_ref().and_then(|(expr_string, _)| {
+                        match dop::parse_variable_name(expr_string, *range) {
                             Ok(var_name) => Some(DopVarNameAttribute {
                                 var_name,
-                                range: t.range,
+                                range: *range,
                             }),
                             Err(error) => {
                                 errors.push(error);
@@ -313,8 +330,8 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                         name: name.to_string(),
                         params_as_attr,
                         as_attr,
-                        attributes: t.attributes.clone(),
-                        range: t.range,
+                        attributes: attributes.clone(),
+                        range: *range,
                         children,
                         preview: preview_children,
                         entrypoint,
@@ -336,58 +353,53 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
 
     let t = &tree.token;
 
-    match t.kind {
-        TokenKind::Doctype => Node::Doctype(DoctypeNode {
-            value: t.value.clone(),
-            range: t.range,
+    match t {
+        (Token::Doctype, range) => Node::Doctype(DoctypeNode {
+            value: "".to_string(),
+            range: *range,
         }),
-        TokenKind::Text => Node::Text(TextNode {
-            value: t.value.clone(),
-            range: t.range,
+        (Token::Text { value }, range) => Node::Text(TextNode {
+            value: value.clone(),
+            range: *range,
         }),
-        TokenKind::Expression => {
+        (Token::Expression { value, range }, token_range) => {
             // Expression tokens represent {expression} in text content
-            match &t.expression {
-                Some((expr_string, range)) => match dop::parse_expr_with_range(expr_string, *range)
-                {
-                    Ok(expr) => Node::TextExpression(TextExpressionNode {
-                        expression: expr,
-                        range: t.range,
-                    }),
-                    Err(err) => {
-                        errors.push(err);
-                        Node::Error(ErrorNode {
-                            range: t.range,
-                            children: vec![],
-                        })
-                    }
-                },
-                None => {
-                    errors.push(RangeError::new(
-                        "Missing expression in Expression token".to_string(),
-                        t.range,
-                    ));
+            match dop::parse_expr_with_range(value, *range) {
+                Ok(expr) => Node::TextExpression(TextExpressionNode {
+                    expression: expr,
+                    range: *range,
+                }),
+                Err(err) => {
+                    errors.push(err);
                     Node::Error(ErrorNode {
-                        range: t.range,
+                        range: *token_range,
                         children: vec![],
                     })
                 }
             }
         }
-        TokenKind::SelfClosingTag | TokenKind::StartTag => {
-            match t.value.as_str() {
-                "if" => match &t.expression {
-                    Some((expr_string, range)) => {
-                        match dop::parse_expr_with_range(expr_string, *range) {
+        (
+            Token::StartTag {
+                value,
+                expression,
+                attributes,
+                ..
+            },
+            token_range,
+        ) => {
+            match value.as_str() {
+                "if" => match &expression {
+                    Some((expr_string, expr_range)) => {
+                        match dop::parse_expr_with_range(expr_string, *expr_range) {
                             Ok(condition) => Node::If(IfNode {
                                 condition,
-                                range: t.range,
+                                range: *expr_range,
                                 children,
                             }),
                             Err(err) => {
                                 errors.push(err);
                                 Node::Error(ErrorNode {
-                                    range: t.range,
+                                    range: *token_range,
                                     children,
                                 })
                             }
@@ -396,27 +408,27 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     None => {
                         errors.push(RangeError::new(
                             "Missing expression in <if> tag".to_string(),
-                            t.range,
+                            *token_range,
                         ));
                         Node::Error(ErrorNode {
-                            range: t.range,
+                            range: *token_range,
                             children,
                         })
                     }
                 },
-                "for" => match &t.expression {
-                    Some((expr_string, range)) => {
-                        match dop::parse_loop_header(expr_string, *range) {
+                "for" => match expression {
+                    Some((expr_string, expr_range)) => {
+                        match dop::parse_loop_header(expr_string, *expr_range) {
                             Ok((var_name, array_expr)) => Node::For(ForNode {
                                 var_name,
                                 array_expr,
-                                range: t.range,
+                                range: *token_range,
                                 children,
                             }),
                             Err(error) => {
                                 errors.push(error);
                                 Node::Error(ErrorNode {
-                                    range: t.range,
+                                    range: *token_range,
                                     children,
                                 })
                             }
@@ -425,18 +437,20 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     None => {
                         errors.push(RangeError::new(
                             "Missing loop generator expression in <for> tag".to_string(),
-                            t.range,
+                            *token_range,
                         ));
                         Node::Error(ErrorNode {
-                            range: t.range,
+                            range: *token_range,
                             children,
                         })
                     }
                 },
                 "hop-x-exec" => {
-                    let cmd_attr = t.get_attribute("cmd").or_else(|| {
+                    let cmd_attr = find_attribute(attributes, "cmd").or_else(|| {
                         errors.push(RangeError::missing_required_attribute(
-                            &t.value, "cmd", t.range,
+                            value,
+                            "cmd",
+                            *token_range,
                         ));
                         None
                     });
@@ -444,20 +458,20 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     match cmd_attr {
                         Some(cmd_attr) => Node::XExec(XExecNode {
                             cmd_attr,
-                            range: t.range,
+                            range: *token_range,
                             children,
                         }),
                         None => Node::Error(ErrorNode {
-                            range: t.range,
+                            range: *token_range,
                             children,
                         }),
                     }
                 }
                 "hop-x-raw" => {
-                    let has_trim = t.attributes.iter().any(|attr| attr.name == "trim");
+                    let has_trim = attributes.iter().any(|attr| attr.name == "trim");
                     Node::XRaw(XRawNode {
                         trim: has_trim,
-                        range: t.range,
+                        range: *token_range,
                         children,
                     })
                 }
@@ -465,7 +479,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     let slot_name = &tag_name[5..]; // Remove "slot-" prefix
                     Node::SlotDefinition(SlotDefinitionNode {
                         name: slot_name.to_string(),
-                        range: t.range,
+                        range: *token_range,
                         children,
                     })
                 }
@@ -473,19 +487,19 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     let slot_name = &tag_name[5..]; // Remove "with-" prefix
                     Node::SlotReference(SlotReferenceNode {
                         name: slot_name.to_string(),
-                        range: t.range,
+                        range: *token_range,
                         children,
                     })
                 }
                 tag_name if is_valid_component_name(tag_name) => {
                     // This is a component render (contains dash)
-                    let params_attr = match &t.expression {
+                    let params_attr = match &expression {
                         Some((expr_string, range)) => {
                             match dop::parse_expr_with_range(expr_string, *range) {
                                 Ok(expression) => Some(DopExprAttribute::new(
                                     "params".to_string(),
                                     expression,
-                                    t.range,
+                                    *token_range,
                                 )),
                                 Err(err) => {
                                     errors.push(err);
@@ -499,13 +513,13 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     Node::ComponentReference(ComponentReferenceNode {
                         component: tag_name.to_string(),
                         params_attr,
-                        range: t.range,
+                        range: *token_range,
                         children,
                     })
                 }
                 _ => {
                     let mut set_attributes = Vec::new();
-                    for attr in &t.attributes {
+                    for attr in attributes {
                         if attr.name.starts_with("set-") {
                             if let Some(expr_attr) = {
                                 match dop::parse_expr_with_range(&attr.value, attr.range) {
@@ -526,9 +540,9 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     }
 
                     Node::NativeHTML(NativeHTMLNode {
-                        tag_name: t.value.clone(),
-                        attributes: t.attributes.clone(),
-                        range: t.range,
+                        tag_name: value.clone(),
+                        attributes: attributes.clone(),
+                        range: *token_range,
                         children,
                         set_attributes,
                     })

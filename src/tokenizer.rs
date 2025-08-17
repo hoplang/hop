@@ -1,6 +1,6 @@
 use std::mem;
 
-use crate::common::{Attribute, Position, Range, RangeError, Token, TokenKind};
+use crate::common::{Attribute, Position, Range, RangeError, Token};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum TokenizerState {
@@ -117,10 +117,8 @@ impl Tokenizer {
         }
     }
 
-    pub fn next_token(&mut self) -> Result<Option<Token>, RangeError> {
-        // Token building state - local to this call
+    pub fn next_token(&mut self) -> Result<(Token, Range), RangeError> {
         let mut token_value = String::new();
-        let mut token_kind = TokenKind::Text;
         let token_start = self.cursor.get_position();
         let mut token_attributes = Vec::new();
         let mut token_expression = None;
@@ -137,33 +135,19 @@ impl Tokenizer {
                 TokenizerState::Text => {
                     if ch == '<' {
                         if !token_value.is_empty() {
-                            // Return accumulated text token, don't advance, stay in Text state
-                            return Ok(Some(Token::new(
-                                token_kind,
-                                token_value,
-                                token_attributes,
-                                token_expression,
-                                Range {
-                                    start: token_start,
-                                    end: self.cursor.get_position(),
-                                },
-                            )));
+                            return Ok((
+                                Token::Text { value: token_value },
+                                Range::new(token_start, self.cursor.get_position()),
+                            ));
                         }
                         self.cursor.advance();
                         self.state = TokenizerState::TagOpen;
                     } else if ch == '{' {
                         if !token_value.is_empty() {
-                            // Return accumulated text token, don't advance, stay in Text state
-                            return Ok(Some(Token::new(
-                                token_kind,
-                                token_value,
-                                token_attributes,
-                                token_expression,
-                                Range {
-                                    start: token_start,
-                                    end: self.cursor.get_position(),
-                                },
-                            )));
+                            return Ok((
+                                Token::Text { value: token_value },
+                                Range::new(token_start, self.cursor.get_position()),
+                            ));
                         }
                         self.cursor.advance();
                         expression_start = self.cursor.get_position();
@@ -177,12 +161,10 @@ impl Tokenizer {
 
                 TokenizerState::TagOpen => {
                     if ch.is_ascii_alphabetic() {
-                        token_kind = TokenKind::StartTag;
                         token_value.push(ch);
                         self.cursor.advance();
                         self.state = TokenizerState::StartTagName;
                     } else if ch == '/' {
-                        token_kind = TokenKind::EndTag;
                         self.cursor.advance();
                         self.state = TokenizerState::EndTagOpen;
                     } else if ch == '!' {
@@ -216,32 +198,29 @@ impl Tokenizer {
                             self.stored_tag_name = token_value.clone();
                             self.cursor.advance();
                             self.state = TokenizerState::RawtextData;
-                            return Ok(Some(Token::new(
-                                token_kind,
-                                token_value,
-                                token_attributes,
-                                token_expression,
-                                Range {
-                                    start: token_start,
-                                    end: self.cursor.get_position(),
+                            return Ok((
+                                Token::StartTag {
+                                    value: token_value,
+                                    self_closing: false,
+                                    attributes: token_attributes,
+                                    expression: token_expression,
                                 },
-                            )));
+                                Range::new(token_start, self.cursor.get_position()),
+                            ));
                         } else {
                             self.cursor.advance();
                             self.state = TokenizerState::Text;
-                            return Ok(Some(Token::new(
-                                token_kind,
-                                token_value,
-                                token_attributes,
-                                token_expression,
-                                Range {
-                                    start: token_start,
-                                    end: self.cursor.get_position(),
+                            return Ok((
+                                Token::StartTag {
+                                    value: token_value,
+                                    self_closing: false,
+                                    attributes: token_attributes,
+                                    expression: token_expression,
                                 },
-                            )));
+                                Range::new(token_start, self.cursor.get_position()),
+                            ));
                         }
                     } else if ch == '/' {
-                        token_kind = TokenKind::SelfClosingTag;
                         self.cursor.advance();
                         self.state = TokenizerState::SelfClosing;
                     } else {
@@ -279,16 +258,10 @@ impl Tokenizer {
                     } else if ch == '>' {
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
-                        return Ok(Some(Token::new(
-                            token_kind,
-                            token_value,
-                            token_attributes,
-                            token_expression,
-                            Range {
-                                start: token_start,
-                                end: self.cursor.get_position(),
-                            },
-                        )));
+                        return Ok((
+                            Token::EndTag { value: token_value },
+                            Range::new(token_start, self.cursor.get_position()),
+                        ));
                     } else if ch.is_whitespace() {
                         self.cursor.advance();
                         self.state = TokenizerState::AfterEndTagName;
@@ -310,16 +283,10 @@ impl Tokenizer {
                     } else if ch == '>' {
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
-                        return Ok(Some(Token::new(
-                            token_kind,
-                            token_value,
-                            token_attributes,
-                            token_expression,
-                            Range {
-                                start: token_start,
-                                end: self.cursor.get_position(),
-                            },
-                        )));
+                        return Ok((
+                            Token::EndTag { value: token_value },
+                            Range::new(token_start, self.cursor.get_position()),
+                        ));
                     } else {
                         let start_pos = self.cursor.get_position();
                         self.cursor.advance();
@@ -345,7 +312,6 @@ impl Tokenizer {
                         expression_start = self.cursor.get_position();
                         self.state = TokenizerState::TagExpressionContent;
                     } else if ch == '/' {
-                        token_kind = TokenKind::SelfClosingTag;
                         self.cursor.advance();
                         self.state = TokenizerState::SelfClosing;
                     } else if ch == '>' {
@@ -353,29 +319,27 @@ impl Tokenizer {
                             self.stored_tag_name = token_value.clone();
                             self.cursor.advance();
                             self.state = TokenizerState::RawtextData;
-                            return Ok(Some(Token::new(
-                                token_kind,
-                                token_value,
-                                token_attributes,
-                                token_expression,
-                                Range {
-                                    start: token_start,
-                                    end: self.cursor.get_position(),
+                            return Ok((
+                                Token::StartTag {
+                                    self_closing: false,
+                                    value: token_value,
+                                    attributes: token_attributes,
+                                    expression: token_expression,
                                 },
-                            )));
+                                Range::new(token_start, self.cursor.get_position()),
+                            ));
                         } else {
                             self.cursor.advance();
                             self.state = TokenizerState::Text;
-                            return Ok(Some(Token::new(
-                                token_kind,
-                                token_value,
-                                token_attributes,
-                                token_expression,
-                                Range {
-                                    start: token_start,
-                                    end: self.cursor.get_position(),
+                            return Ok((
+                                Token::StartTag {
+                                    self_closing: false,
+                                    value: token_value,
+                                    attributes: token_attributes,
+                                    expression: token_expression,
                                 },
-                            )));
+                                Range::new(token_start, self.cursor.get_position()),
+                            ));
                         }
                     } else {
                         let start_pos = self.cursor.get_position();
@@ -423,29 +387,27 @@ impl Tokenizer {
                             self.stored_tag_name = token_value.clone();
                             self.cursor.advance();
                             self.state = TokenizerState::RawtextData;
-                            return Ok(Some(Token::new(
-                                token_kind,
-                                token_value,
-                                token_attributes,
-                                token_expression,
-                                Range {
-                                    start: token_start,
-                                    end: self.cursor.get_position(),
+                            return Ok((
+                                Token::StartTag {
+                                    self_closing: false,
+                                    value: token_value,
+                                    attributes: token_attributes,
+                                    expression: token_expression,
                                 },
-                            )));
+                                Range::new(token_start, self.cursor.get_position()),
+                            ));
                         } else {
                             self.cursor.advance();
                             self.state = TokenizerState::Text;
-                            return Ok(Some(Token::new(
-                                token_kind,
-                                token_value,
-                                token_attributes,
-                                token_expression,
-                                Range {
-                                    start: token_start,
-                                    end: self.cursor.get_position(),
+                            return Ok((
+                                Token::StartTag {
+                                    self_closing: false,
+                                    value: token_value,
+                                    attributes: token_attributes,
+                                    expression: token_expression,
                                 },
-                            )));
+                                Range::new(token_start, self.cursor.get_position()),
+                            ));
                         }
                     } else if ch == '/' {
                         // Push current attribute
@@ -457,7 +419,6 @@ impl Tokenizer {
                                 end: self.cursor.get_position(),
                             },
                         ));
-                        token_kind = TokenKind::SelfClosingTag;
                         self.cursor.advance();
                         self.state = TokenizerState::SelfClosing;
                     } else {
@@ -535,16 +496,15 @@ impl Tokenizer {
                     if ch == '>' {
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
-                        return Ok(Some(Token::new(
-                            token_kind,
-                            token_value,
-                            token_attributes,
-                            token_expression,
-                            Range {
-                                start: token_start,
-                                end: self.cursor.get_position(),
+                        return Ok((
+                            Token::StartTag {
+                                self_closing: true,
+                                value: token_value,
+                                attributes: token_attributes,
+                                expression: token_expression,
                             },
-                        )));
+                            Range::new(token_start, self.cursor.get_position()),
+                        ));
                     } else {
                         let start_pos = self.cursor.get_position();
                         self.cursor.advance();
@@ -558,11 +518,9 @@ impl Tokenizer {
 
                 TokenizerState::MarkupDeclaration => {
                     if self.cursor.match_str("--") {
-                        token_kind = TokenKind::Comment;
                         self.cursor.advance_n(2);
                         self.state = TokenizerState::Comment;
                     } else if self.cursor.match_str("DOCTYPE") {
-                        token_kind = TokenKind::Doctype;
                         self.cursor.advance_n(7);
                         self.state = TokenizerState::Doctype;
                     } else {
@@ -580,16 +538,10 @@ impl Tokenizer {
                     if self.cursor.match_str("-->") {
                         self.cursor.advance_n(3);
                         self.state = TokenizerState::Text;
-                        return Ok(Some(Token::new(
-                            token_kind,
-                            token_value,
-                            token_attributes,
-                            token_expression,
-                            Range {
-                                start: token_start,
-                                end: self.cursor.get_position(),
-                            },
-                        )));
+                        return Ok((
+                            Token::Comment,
+                            Range::new(token_start, self.cursor.get_position()),
+                        ));
                     } else {
                         token_value.push(ch);
                         self.cursor.advance();
@@ -644,16 +596,10 @@ impl Tokenizer {
                             }
                             self.cursor.advance();
                             self.state = TokenizerState::Text;
-                            return Ok(Some(Token::new(
-                                token_kind,
-                                token_value,
-                                token_attributes,
-                                token_expression,
-                                Range {
-                                    start: token_start,
-                                    end: self.cursor.get_position(),
-                                },
-                            )));
+                            return Ok((
+                                Token::Doctype,
+                                Range::new(token_start, self.cursor.get_position()),
+                            ));
                         } else {
                             let start_pos = self.cursor.get_position();
                             self.cursor.advance();
@@ -677,34 +623,20 @@ impl Tokenizer {
                     let end_tag = format!("</{}>", self.stored_tag_name);
                     if self.cursor.match_str(&end_tag) {
                         if !token_value.is_empty() {
-                            // Return accumulated rawtext content first
-                            // Set state to return end tag on next call
                             self.state = TokenizerState::ReturnEndTag;
-                            return Ok(Some(Token::new(
-                                token_kind,
-                                token_value,
-                                token_attributes,
-                                token_expression,
-                                Range {
-                                    start: token_start,
-                                    end: self.cursor.get_position(),
-                                },
-                            )));
+                            return Ok((
+                                Token::Text { value: token_value },
+                                Range::new(token_start, self.cursor.get_position()),
+                            ));
                         } else {
                             // No accumulated content, create and return end tag token directly
                             let tag_name = self.stored_tag_name.clone();
                             self.cursor.advance_n(end_tag.len());
                             self.state = TokenizerState::Text;
-                            return Ok(Some(Token::new(
-                                TokenKind::EndTag,
-                                tag_name,
-                                Vec::new(),
-                                None,
-                                Range {
-                                    start: token_start,
-                                    end: self.cursor.get_position(),
-                                },
-                            )));
+                            return Ok((
+                                Token::EndTag { value: tag_name },
+                                Range::new(token_start, self.cursor.get_position()),
+                            ));
                         }
                     } else {
                         token_value.push(ch);
@@ -715,44 +647,31 @@ impl Tokenizer {
 
                 TokenizerState::ReturnEndTag => {
                     // Return the end tag that was deferred from RawtextData
-                    let end_tag = format!("</{}>", self.stored_tag_name);
                     let tag_name = self.stored_tag_name.clone();
+                    let end_tag = format!("</{}>", self.stored_tag_name);
                     self.cursor.advance_n(end_tag.len());
                     self.state = TokenizerState::Text;
-                    return Ok(Some(Token::new(
-                        TokenKind::EndTag,
-                        tag_name,
-                        Vec::new(),
-                        None,
-                        Range {
-                            start: token_start,
-                            end: self.cursor.get_position(),
-                        },
-                    )));
+                    return Ok((
+                        Token::EndTag { value: tag_name },
+                        Range::new(token_start, self.cursor.get_position()),
+                    ));
                 }
 
                 TokenizerState::TextExpressionContent => {
                     if ch == '}' {
-                        // Create expression token
-                        token_expression = Some((
-                            expression_content,
-                            Range {
-                                start: expression_start,
-                                end: self.cursor.get_position(),
-                            },
-                        ));
+                        let expression_range = Range {
+                            start: expression_start,
+                            end: self.cursor.get_position(),
+                        };
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
-                        return Ok(Some(Token::new(
-                            TokenKind::Expression,
-                            token_value,
-                            token_attributes,
-                            token_expression,
-                            Range {
-                                start: token_start,
-                                end: self.cursor.get_position(),
+                        return Ok((
+                            Token::Expression {
+                                value: expression_content,
+                                range: expression_range,
                             },
-                        )));
+                            Range::new(token_start, self.cursor.get_position()),
+                        ));
                     } else {
                         expression_content.push(ch);
                         self.cursor.advance();
@@ -784,20 +703,17 @@ impl Tokenizer {
 
         // End of input - return any accumulated token
         if !token_value.is_empty() {
-            return Ok(Some(Token::new(
-                token_kind,
-                token_value,
-                token_attributes,
-                token_expression,
-                Range {
-                    start: token_start,
-                    end: self.cursor.get_position(),
-                },
-            )));
+            return Ok((
+                Token::Text { value: token_value },
+                Range::new(token_start, self.cursor.get_position()),
+            ));
         }
 
-        // No more tokens
-        Ok(None)
+        // No more tokens - return Eof token
+        Ok((
+            Token::Eof,
+            Range::new(token_start, self.cursor.get_position()),
+        ))
     }
 }
 
@@ -805,14 +721,18 @@ fn is_tag_name_with_raw_content(name: &str) -> bool {
     matches!(name, "script" | "style" | "hop-x-raw")
 }
 
-pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
+pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<(Token, Range)> {
     let mut tokenizer = Tokenizer::new(input);
     let mut tokens = Vec::new();
 
     loop {
         match tokenizer.next_token() {
-            Ok(Some(token)) => tokens.push(token),
-            Ok(None) => break,
+            Ok((Token::Eof, _)) => {
+                break;
+            }
+            Ok((token, range)) => {
+                tokens.push((token, range));
+            }
             Err(error) => {
                 errors.push(error);
                 // Continue tokenizing after error
@@ -847,78 +767,57 @@ mod tests {
         )
     }
 
-    fn format_token(token: &Token) -> String {
-        match token.kind {
-            TokenKind::Text => {
-                if let Some((expr_string, _)) = &token.expression {
-                    let attrs = token
-                        .attributes
-                        .iter()
-                        .map(format_attr)
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    format!(
-                        "{:?} [{}] {{{}}} {}",
-                        token.kind,
-                        attrs,
-                        expr_string,
-                        format_range(token.range)
-                    )
-                } else {
-                    format!("{:?} {}", token.kind, format_range(token.range))
-                }
+    fn format_token(val: &(Token, Range)) -> String {
+        match val {
+            (Token::Text { .. }, range) => {
+                format!("Text {}", format_range(*range))
             }
-            TokenKind::Expression => {
-                if let Some((expr_string, _)) = &token.expression {
-                    let attrs = token
-                        .attributes
-                        .iter()
-                        .map(format_attr)
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    format!(
-                        "{:?} [{}] {{{}}} {}",
-                        token.kind,
-                        attrs,
-                        expr_string,
-                        format_range(token.range)
-                    )
-                } else {
-                    format!("{:?} {}", token.kind, format_range(token.range))
-                }
+            (Token::Expression { value, .. }, token_range) => {
+                format!("Expression [] {{{}}} {}", value, format_range(*token_range))
             }
-            TokenKind::Doctype | TokenKind::Comment => {
-                format!("{:?} {}", token.kind, format_range(token.range))
+            (Token::Doctype, range) => {
+                format!("Doctype {}", format_range(*range))
             }
-            TokenKind::EndTag => {
-                format!(
-                    "{:?}({}) {}",
-                    token.kind,
-                    token.value,
-                    format_range(token.range)
-                )
+            (Token::Comment, range) => {
+                format!("Comment {}", format_range(*range))
             }
-            TokenKind::StartTag | TokenKind::SelfClosingTag => {
-                let attrs = token
-                    .attributes
+            (Token::Eof, range) => {
+                format!("Eof {}", format_range(*range))
+            }
+            (Token::EndTag { value }, range) => {
+                format!("EndTag({}) {}", value, format_range(*range))
+            }
+            (
+                Token::StartTag {
+                    attributes,
+                    expression,
+                    self_closing,
+                    value,
+                },
+                range,
+            ) => {
+                let attrs = attributes
                     .iter()
                     .map(format_attr)
                     .collect::<Vec<_>>()
                     .join(" ");
 
-                let expr_part = if let Some((expr_string, range)) = &token.expression {
+                let expr_part = if let Some((expr_string, range)) = &expression {
                     format!(" {{{}, {}}}", expr_string, format_range(*range))
                 } else {
                     String::new()
                 };
 
                 format!(
-                    "{:?}({}) [{}]{} {}",
-                    token.kind,
-                    token.value,
+                    "{}({}) [{}]{} {}",
+                    match self_closing {
+                        true => "SelfClosingTag",
+                        false => "StartTag",
+                    },
+                    value,
                     attrs,
                     expr_part,
-                    format_range(token.range)
+                    format_range(*range)
                 )
             }
         }

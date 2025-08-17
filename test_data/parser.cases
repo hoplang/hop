@@ -39,6 +39,16 @@ error.
 Unmatched </div>
 ## END
 
+Import tags are treated as self-closing.
+
+## BEGIN
+-- main.hop --
+<import component="foo" from="bar">
+<main-comp>
+</main-comp>
+-- out --
+## END
+
 ## BEGIN
 -- main.hop --
 <div>

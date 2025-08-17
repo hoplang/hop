@@ -202,49 +202,27 @@ impl DopExprAttribute {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum TokenKind {
-    Doctype,
-    StartTag,
-    EndTag,
-    SelfClosingTag,
-    Text,
-    Comment,
-    Expression,
-}
-
 #[derive(Debug, Clone, PartialEq)]
-pub struct Token {
-    pub kind: TokenKind,
-    pub value: String,
-    pub attributes: Vec<Attribute>,
-    pub expression: Option<(String, Range)>,
-    pub range: Range,
-}
-
-impl Token {
-    pub fn new(
-        kind: TokenKind,
+pub enum Token {
+    Doctype,
+    Comment,
+    Eof,
+    Expression {
+        value: String,
+        range: Range,
+    },
+    StartTag {
+        self_closing: bool,
         value: String,
         attributes: Vec<Attribute>,
         expression: Option<(String, Range)>,
-        range: Range,
-    ) -> Self {
-        Token {
-            kind,
-            value,
-            attributes,
-            expression,
-            range,
-        }
-    }
-
-    pub fn get_attribute(&self, name: &str) -> Option<Attribute> {
-        self.attributes
-            .iter()
-            .find(|attr| attr.name == name)
-            .cloned()
-    }
+    },
+    EndTag {
+        value: String,
+    },
+    Text {
+        value: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -717,7 +717,7 @@ impl Program {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::{Range, Token, TokenKind};
+    use crate::common::{Range, Token};
     use crate::parser::parse;
     use crate::tokenizer::tokenize;
     use crate::typechecker::{TypeResult, typecheck};
@@ -753,30 +753,40 @@ mod tests {
         ))
     }
 
-    fn normalize_tokens(tokens: Vec<Token>) -> Vec<Token> {
+    fn normalize_tokens(tokens: Vec<(Token, Range)>) -> Vec<Token> {
         tokens
             .into_iter()
-            .map(|t| {
-                let normalized_value = if t.kind == TokenKind::Text && t.value.trim().is_empty() {
-                    " ".to_string()
-                } else {
-                    t.value
-                };
-
-                // Normalize and sort attributes
-                let mut normalized_attrs = t.attributes;
-                normalized_attrs.iter_mut().for_each(|attr| {
-                    attr.range = Range::default();
-                });
-                normalized_attrs.sort_by(|a, b| a.name.cmp(&b.name));
-
-                Token::new(
-                    t.kind,
-                    normalized_value,
-                    normalized_attrs,
-                    None,
-                    Range::default(),
-                )
+            .map(|(t, _)| match t {
+                Token::Text { value } => {
+                    let normalized_value = if value.trim().is_empty() {
+                        " ".to_string()
+                    } else {
+                        value
+                    };
+                    Token::Text {
+                        value: normalized_value,
+                    }
+                }
+                Token::StartTag {
+                    attributes,
+                    expression,
+                    self_closing,
+                    value,
+                    ..
+                } => {
+                    let mut normalized_attrs = attributes;
+                    normalized_attrs.iter_mut().for_each(|attr| {
+                        attr.range = Range::default();
+                    });
+                    normalized_attrs.sort_by(|a, b| a.name.cmp(&b.name));
+                    Token::StartTag {
+                        attributes: normalized_attrs,
+                        expression,
+                        value,
+                        self_closing,
+                    }
+                }
+                _ => t,
             })
             .collect()
     }
@@ -852,7 +862,7 @@ mod tests {
             assert_eq!(
                 actual_tokens,
                 expected_tokens,
-                "Mismatch in test case {} (line {})",
+                "Mismatch in test case {} (line {}), left = actual, right = expected",
                 case_num + 1,
                 line_number
             );
