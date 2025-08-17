@@ -130,7 +130,7 @@ pub fn parse_variable_name(var_expr: &str, range: Range) -> Result<DopVarName, R
 fn parse_equality(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
     let mut expr = parse_unary(tokenizer)?;
 
-    while matches!(tokenizer.peek(), (DopToken::Equal, _)) {
+    while let (DopToken::Equal, _) = tokenizer.peek() {
         tokenizer.advance()?; // consume ==
         let right = parse_unary(tokenizer)?;
         expr = DopExpr::BinaryOp(Box::new(expr), BinaryOp::Equal, Box::new(right));
@@ -159,7 +159,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
             tokenizer.advance()?; // consume identifier
 
             // Handle property access
-            while matches!(tokenizer.peek(), (DopToken::Dot, _)) {
+            while let (DopToken::Dot, _) = tokenizer.peek() {
                 tokenizer.advance()?; // consume .
 
                 match tokenizer.peek() {
