@@ -306,7 +306,7 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
 
                     let as_attr = find_attribute(attributes, "as");
                     let entrypoint = find_attribute(attributes, "entrypoint").is_some();
-                    let params_as_attr = expression.as_ref().and_then(|(expr_string, _)| {
+                    let params_as_attr = expression.as_ref().and_then(|(expr_string, range)| {
                         match dop::parse_variable_name(expr_string, *range) {
                             Ok(var_name) => Some(DopVarNameAttribute {
                                 var_name,
