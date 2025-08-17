@@ -1,6 +1,29 @@
 use std::mem;
 
-use crate::common::{Attribute, Position, Range, RangeError, Token};
+use crate::common::{Attribute, Position, Range, RangeError};
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Token {
+    Doctype,
+    Comment,
+    Eof,
+    Expression {
+        value: String,
+        range: Range,
+    },
+    StartTag {
+        self_closing: bool,
+        value: String,
+        attributes: Vec<Attribute>,
+        expression: Option<(String, Range)>,
+    },
+    EndTag {
+        value: String,
+    },
+    Text {
+        value: String,
+    },
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum TokenizerState {

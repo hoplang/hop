@@ -2,9 +2,10 @@ use crate::common::{
     Attribute, ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, DopExprAttribute,
     DopVarNameAttribute, ErrorNode, ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Range,
     RangeError, RenderNode, SlotDefinitionNode, SlotReferenceNode, TextExpressionNode, TextNode,
-    Token, XExecNode, XRawNode, is_void_element,
+    XExecNode, XRawNode, is_void_element,
 };
 use crate::dop;
+use crate::tokenizer::Token;
 use crate::tokenizer::Tokenizer;
 use std::collections::HashSet;
 

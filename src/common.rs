@@ -19,12 +19,12 @@ impl HopMode {
     }
 }
 
-/// Represents a position in source code with UTF-8 byte-based tracking
+/// Represents a position in source code
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Position {
     /// Line number (1-based)
     pub line: usize,
-    /// Byte column within the line (1-based, incremented by UTF-8 byte length)
+    /// Byte column within the line (1-based)
     pub column: usize,
 }
 
@@ -200,29 +200,6 @@ impl DopExprAttribute {
             range,
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Token {
-    Doctype,
-    Comment,
-    Eof,
-    Expression {
-        value: String,
-        range: Range,
-    },
-    StartTag {
-        self_closing: bool,
-        value: String,
-        attributes: Vec<Attribute>,
-        expression: Option<(String, Range)>,
-    },
-    EndTag {
-        value: String,
-    },
-    Text {
-        value: String,
-    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -717,8 +717,9 @@ impl Program {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::{Range, Token};
+    use crate::common::Range;
     use crate::parser::parse;
+    use crate::tokenizer::Token;
     use crate::tokenizer::Tokenizer;
     use crate::typechecker::{TypeResult, typecheck};
     use pretty_assertions::assert_eq;
