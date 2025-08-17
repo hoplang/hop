@@ -107,11 +107,6 @@ struct Tokenizer {
     stored_tag_name: String,
 }
 
-pub struct TokenizerIterator {
-    tokenizer: Tokenizer,
-    errors: Vec<RangeError>,
-}
-
 impl Tokenizer {
     fn new(input: &str) -> Self {
         let cursor = Cursor::new(input);
