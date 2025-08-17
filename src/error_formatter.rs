@@ -5,6 +5,7 @@ pub struct ErrorFormatter {
     lines: Vec<String>,
     filename: String,
     errors: Vec<RangeError>,
+    show_location: bool,
 }
 
 impl ErrorFormatter {
@@ -14,7 +15,13 @@ impl ErrorFormatter {
             lines,
             filename,
             errors,
+            show_location: true,
         }
+    }
+
+    pub fn without_location_info(mut self) -> Self {
+        self.show_location = false;
+        self
     }
 
     pub fn format_all_errors(&self) -> String {
@@ -23,9 +30,12 @@ impl ErrorFormatter {
         }
 
         let mut formatted_errors = String::new();
-        for error in &self.errors {
+        for (i, error) in self.errors.iter().enumerate() {
             formatted_errors.push_str(&self.format_error(error));
-            formatted_errors.push('\n');
+            // Only add newline if there are more errors after this one
+            if i < self.errors.len() - 1 {
+                formatted_errors.push('\n');
+            }
         }
         formatted_errors
     }
@@ -39,10 +49,12 @@ impl ErrorFormatter {
         let range = error.range;
 
         // Location info
-        output.push_str(&format!(
-            "  --> {} (line {}, col {})\n",
-            self.filename, range.start.line, range.start.column
-        ));
+        if self.show_location {
+            output.push_str(&format!(
+                "  --> {} (line {}, col {})\n",
+                self.filename, range.start.line, range.start.column
+            ));
+        }
 
         // Source code context with surrounding lines
         self.format_source_context(&mut output, range);

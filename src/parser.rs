@@ -550,6 +550,8 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
 
 #[cfg(test)]
 mod tests {
+    use crate::error_formatter::ErrorFormatter;
+
     use super::*;
     use pretty_assertions::assert_eq;
     use simple_txtar::Archive;
@@ -655,7 +657,7 @@ mod tests {
                 .get("out")
                 .expect("Missing 'out' section in test case")
                 .content
-                .trim();
+                .trim_start();
 
             println!("Test case {} (line {})", case_num + 1, line_number);
 
@@ -664,13 +666,11 @@ mod tests {
             let module = parse("test".to_string(), Tokenizer::new(input), &mut errors);
 
             if !errors.is_empty() {
-                let output = errors
-                    .iter()
-                    .map(|e| e.message.clone())
-                    .collect::<Vec<_>>()
-                    .join(" ");
+                let efmt =
+                    ErrorFormatter::new(input.to_string(), "test".to_string(), errors.clone())
+                        .without_location_info();
                 assert_eq!(
-                    output,
+                    efmt.format_all_errors(),
                     expected,
                     "Mismatch in test case {} (line {})",
                     case_num + 1,

@@ -13,7 +13,10 @@ When a tag is not properly closed the parser outputs an error.
 	<div>
 </main-comp>
 -- out --
-Unclosed <div>
+error: Unclosed <div>
+1 | <main-comp>
+2 |     <div>
+  |     ^^^^^
 ## END
 
 When a void tag is closed with an end tag the parser outputs an error.
@@ -24,7 +27,10 @@ When a void tag is closed with an end tag the parser outputs an error.
 	<hr></hr>
 </main-comp>
 -- out --
-<hr> should not be closed using a closing tag
+error: <hr> should not be closed using a closing tag
+1 | <main-comp>
+2 |     <hr></hr>
+  |         ^^^^^
 ## END
 
 When a closing tag does not have a matching opening tag, the parser outputs an
@@ -36,7 +42,10 @@ error.
 	</div>
 </main-comp>
 -- out --
-Unmatched </div>
+error: Unmatched </div>
+1 | <main-comp>
+2 |     </div>
+  |     ^^^^^^
 ## END
 
 Import tags are treated as self-closing.
@@ -54,7 +63,9 @@ Import tags are treated as self-closing.
 <div>
 </div>
 -- out --
-Invalid component name 'div'. Component names must contain a dash and not start or end with one
+error: Invalid component name 'div'. Component names must contain a dash and not start or end with one
+1 | <div>
+  | ^^^^^
 ## END
 
 ## BEGIN
@@ -63,7 +74,9 @@ Invalid component name 'div'. Component names must contain a dash and not start 
 	<div></div>
 </main-comp>
 -- out --
-Invalid variable name 'Data123'. Variable names must match [a-z][a-z0-9]*
+error: Invalid variable name 'Data123'. Variable names must match [a-z][a-z0-9]*
+1 | <main-comp {Data123}>
+  | ^^^^^^^
 ## END
 
 ## BEGIN
@@ -74,7 +87,10 @@ Invalid variable name 'Data123'. Variable names must match [a-z][a-z0-9]*
 	</for>
 </main-comp>
 -- out --
-Invalid variable name 'item_name'. Variable names must match [a-z][a-z0-9]*
+error: Invalid variable name 'item_name'. Variable names must match [a-z][a-z0-9]*
+1 | <main-comp {data}>
+2 |     <for {item_name in data}>
+  |           ^^^^^^^^^
 ## END
 
 ## BEGIN
@@ -403,7 +419,10 @@ Test <if> tag without expression should produce error.
 	</if>
 </main-comp>
 -- out --
-Missing expression in <if> tag
+error: Missing expression in <if> tag
+1 | <main-comp>
+2 |     <if>
+  |     ^^^^
 ## END
 
 Test basic <for> tag with simple loop generator expression.
@@ -446,7 +465,10 @@ Test <for> tag without expression should produce error.
 	</for>
 </main-comp>
 -- out --
-Missing loop generator expression in <for> tag
+error: Missing loop generator expression in <for> tag
+1 | <main-comp>
+2 |     <for>
+  |     ^^^^^
 ## END
 
 Test <for> tag with non-loop-generator expression should produce error.
@@ -459,5 +481,8 @@ Test <for> tag with non-loop-generator expression should produce error.
 	</for>
 </main-comp>
 -- out --
-Expected 'in' keyword in <for> tag
+error: Expected 'in' keyword in <for> tag
+1 | <main-comp>
+2 |     <for {foo}>
+  |              ^
 ## END
