@@ -444,7 +444,7 @@ Test <for> tag with non-loop-generator expression should produce error.
 ## BEGIN
 -- main.hop --
 <main-comp>
-	<for {someVariable}>
+	<for {foo}>
 		<div>Content</div>
 	</for>
 </main-comp>

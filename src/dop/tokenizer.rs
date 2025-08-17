@@ -16,18 +16,6 @@ pub enum DopToken {
     Eof,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct RangedDopToken {
-    pub token: DopToken,
-    pub range: Range,
-}
-
-impl RangedDopToken {
-    pub fn new(token: DopToken, range: Range) -> Self {
-        RangedDopToken { token, range }
-    }
-}
-
 struct Cursor {
     input: Vec<char>,
     /// Current position (0-indexed, in characters)
@@ -39,11 +27,7 @@ struct Cursor {
 }
 
 impl Cursor {
-    fn new(input: &str) -> Self {
-        Self::new_with_offset(input, Position::new(1, 1))
-    }
-
-    fn new_with_offset(input: &str, start_pos: Position) -> Self {
+    fn new(input: &str, start_pos: Position) -> Self {
         Self {
             input: input.chars().collect(),
             position: 0,
@@ -86,24 +70,20 @@ impl Cursor {
 
 pub struct DopTokenizer {
     cursor: Cursor,
-    current_token: RangedDopToken,
+    current_token: (DopToken, Range),
 }
 
 impl DopTokenizer {
-    pub fn new(input: &str) -> Result<Self, RangeError> {
-        Self::new_with_offset(input, Position::new(1, 1))
-    }
-
-    pub fn new_with_offset(input: &str, start_pos: Position) -> Result<Self, RangeError> {
+    pub fn new(input: &str, start_pos: Position) -> Result<Self, RangeError> {
         let mut tokenizer = DopTokenizer {
-            cursor: Cursor::new_with_offset(input, start_pos),
-            current_token: RangedDopToken::new(DopToken::Eof, Range::new(start_pos, start_pos)), // temporary value
+            cursor: Cursor::new(input, start_pos),
+            current_token: (DopToken::Eof, Range::new(start_pos, start_pos)), // temporary value
         };
         tokenizer.advance()?;
         Ok(tokenizer)
     }
 
-    pub fn peek(&self) -> &RangedDopToken {
+    pub fn peek(&self) -> &(DopToken, Range) {
         &self.current_token
     }
 
@@ -232,7 +212,7 @@ impl DopTokenizer {
         };
 
         let end_pos = self.cursor.get_position();
-        self.current_token = RangedDopToken::new(token, Range::new(start_pos, end_pos));
+        self.current_token = (token, Range::new(start_pos, end_pos));
         Ok(())
     }
 }
@@ -247,22 +227,19 @@ mod tests {
 
     fn tokenize_all(input: &str) -> String {
         let mut result = Vec::new();
-        let mut tokenizer = match DopTokenizer::new(input) {
+        let mut tokenizer = match DopTokenizer::new(input, Position::new(1, 1)) {
             Ok(t) => t,
             Err(e) => return format!("ERROR: {:?}", e),
         };
 
         loop {
-            let token = tokenizer.peek();
+            let (token, range) = tokenizer.peek();
             let range_str = format!(
                 "{}:{}-{}:{}",
-                token.range.start.line,
-                token.range.start.column,
-                token.range.end.line,
-                token.range.end.column
+                range.start.line, range.start.column, range.end.line, range.end.column
             );
 
-            let formatted = match &token.token {
+            let formatted = match token {
                 DopToken::Identifier(s) => format!("Identifier(\"{}\") {}", s, range_str),
                 DopToken::StringLiteral(s) => format!("StringLiteral(\"{}\") {}", s, range_str),
                 DopToken::BooleanLiteral(b) => format!("BooleanLiteral({}) {}", b, range_str),
@@ -286,7 +263,7 @@ mod tests {
 
             result.push(formatted);
 
-            if matches!(token.token, DopToken::Eof) {
+            if *token == DopToken::Eof {
                 break;
             }
 
