@@ -119,20 +119,20 @@ impl TokenBuilder {
         Self {
             token_value: String::new(),
             token_kind: TokenKind::Text,
-            token_start: Position { line: 1, column: 1 },
+            token_start: Position::default(),
             token_attributes: Vec::new(),
             token_expression: None,
             expression_content: String::new(),
-            expression_start: Position { line: 1, column: 1 },
+            expression_start: Position::default(),
             attribute_name: String::new(),
             attribute_value: String::new(),
-            attribute_start: Position { line: 1, column: 1 },
+            attribute_start: Position::default(),
             tokens: Vec::new(),
         }
     }
 
     fn push_current_token(&mut self, cursor: &Cursor) {
-        self.tokens.push(Token::new_with_expression(
+        self.tokens.push(Token::new(
             self.token_kind,
             mem::take(&mut self.token_value),
             mem::take(&mut self.token_attributes),

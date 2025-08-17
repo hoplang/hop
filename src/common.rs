@@ -34,7 +34,13 @@ impl Position {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+impl Default for Position {
+    fn default() -> Self {
+        Position { line: 1, column: 1 }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Range {
     pub start: Position,
     pub end: Position,
@@ -217,17 +223,7 @@ pub struct Token {
 }
 
 impl Token {
-    pub fn new(kind: TokenKind, value: String, attributes: Vec<Attribute>, range: Range) -> Self {
-        Token {
-            kind,
-            value,
-            attributes,
-            expression: None,
-            range,
-        }
-    }
-
-    pub fn new_with_expression(
+    pub fn new(
         kind: TokenKind,
         value: String,
         attributes: Vec<Attribute>,

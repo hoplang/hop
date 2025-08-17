@@ -717,7 +717,7 @@ impl Program {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::{Position, Range, Token, TokenKind};
+    use crate::common::{Range, Token, TokenKind};
     use crate::parser::parse;
     use crate::tokenizer::tokenize;
     use crate::typechecker::{TypeResult, typecheck};
@@ -766,7 +766,7 @@ mod tests {
                 // Normalize and sort attributes
                 let mut normalized_attrs = t.attributes;
                 normalized_attrs.iter_mut().for_each(|attr| {
-                    attr.range = Range::new(Position::new(0, 0), Position::new(0, 0));
+                    attr.range = Range::default();
                 });
                 normalized_attrs.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -774,7 +774,8 @@ mod tests {
                     t.kind,
                     normalized_value,
                     normalized_attrs,
-                    Range::new(Position::new(0, 0), Position::new(0, 0)),
+                    None,
+                    Range::default(),
                 )
             })
             .collect()

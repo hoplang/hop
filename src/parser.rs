@@ -348,9 +348,10 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
         TokenKind::Expression => {
             // Expression tokens represent {expression} in text content
             match &t.expression {
-                Some((expr_string, _)) => match dop::parse_expr(expr_string) {
-                    Ok(expression) => Node::TextExpression(TextExpressionNode {
-                        expression,
+                Some((expr_string, range)) => match dop::parse_expr_with_range(expr_string, *range)
+                {
+                    Ok(expr) => Node::TextExpression(TextExpressionNode {
+                        expression: expr,
                         range: t.range,
                     }),
                     Err(err) => {
@@ -376,20 +377,22 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
         TokenKind::SelfClosingTag | TokenKind::StartTag => {
             match t.value.as_str() {
                 "if" => match &t.expression {
-                    Some((expr_string, _)) => match dop::parse_expr(expr_string) {
-                        Ok(condition) => Node::If(IfNode {
-                            condition,
-                            range: t.range,
-                            children,
-                        }),
-                        Err(err) => {
-                            errors.push(err);
-                            Node::Error(ErrorNode {
+                    Some((expr_string, range)) => {
+                        match dop::parse_expr_with_range(expr_string, *range) {
+                            Ok(condition) => Node::If(IfNode {
+                                condition,
                                 range: t.range,
                                 children,
-                            })
+                            }),
+                            Err(err) => {
+                                errors.push(err);
+                                Node::Error(ErrorNode {
+                                    range: t.range,
+                                    children,
+                                })
+                            }
                         }
-                    },
+                    }
                     None => {
                         errors.push(RangeError::new(
                             "Missing expression in <if> tag".to_string(),
@@ -477,17 +480,19 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                 tag_name if is_valid_component_name(tag_name) => {
                     // This is a component render (contains dash)
                     let params_attr = match &t.expression {
-                        Some((expr_string, _)) => match dop::parse_expr(expr_string) {
-                            Ok(expression) => Some(DopExprAttribute::new(
-                                "params".to_string(),
-                                expression,
-                                t.range,
-                            )),
-                            Err(err) => {
-                                errors.push(err);
-                                None
+                        Some((expr_string, range)) => {
+                            match dop::parse_expr_with_range(expr_string, *range) {
+                                Ok(expression) => Some(DopExprAttribute::new(
+                                    "params".to_string(),
+                                    expression,
+                                    t.range,
+                                )),
+                                Err(err) => {
+                                    errors.push(err);
+                                    None
+                                }
                             }
-                        },
+                        }
                         None => None,
                     };
 
@@ -503,7 +508,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     for attr in &t.attributes {
                         if attr.name.starts_with("set-") {
                             if let Some(expr_attr) = {
-                                match dop::parse_expr(&attr.value) {
+                                match dop::parse_expr_with_range(&attr.value, attr.range) {
                                     Ok(expression) => Some(DopExprAttribute::new(
                                         attr.name.to_string(),
                                         expression,
@@ -549,8 +554,8 @@ mod tests {
     pub fn format_component_definition(d: &ComponentDefinitionNode) -> String {
         let mut lines = Vec::new();
         for child in &d.children {
-            let s = format_tree(&child, 0);
-            if s != "" {
+            let s = format_tree(child, 0);
+            if !s.is_empty() {
                 lines.push(s);
             }
         }

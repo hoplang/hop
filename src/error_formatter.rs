@@ -17,10 +17,6 @@ impl ErrorFormatter {
         }
     }
 
-    pub fn add_error(&mut self, error: RangeError) {
-        self.errors.push(error);
-    }
-
     pub fn add_errors(&mut self, errors: Vec<RangeError>) {
         self.errors.extend(errors);
     }
@@ -36,10 +32,6 @@ impl ErrorFormatter {
             formatted_errors.push('\n');
         }
         formatted_errors
-    }
-
-    pub fn has_errors(&self) -> bool {
-        !self.errors.is_empty()
     }
 
     pub fn format_error(&self, error: &RangeError) -> String {

@@ -1,4 +1,3 @@
-use super::parse_expr;
 use crate::common::Environment;
 use crate::dop::{BinaryOp, DopExpr, UnaryOp};
 use anyhow::Result;
@@ -55,6 +54,10 @@ pub fn evaluate_expr(
 
 #[cfg(test)]
 mod tests {
+
+    use crate::common::Range;
+    use crate::dop::parse_expr_with_range;
+
     use super::*;
     use pretty_assertions::assert_eq;
     use simple_txtar::Archive;
@@ -105,7 +108,7 @@ mod tests {
             }
 
             // Parse the expression
-            let expr = parse_expr(expr_content).unwrap_or_else(|e| {
+            let expr = parse_expr_with_range(expr_content, Range::default()).unwrap_or_else(|e| {
                 panic!(
                     "Failed to parse expression '{}' in test case {} (line {}): {:?}",
                     expr_content,

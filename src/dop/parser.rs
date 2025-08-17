@@ -1,7 +1,8 @@
-use crate::common::{Position, Range, RangeError};
+use crate::common::{Range, RangeError};
 use crate::dop::tokenizer::{DopToken, DopTokenizer};
 use crate::dop::{BinaryOp, DopExpr, UnaryOp};
 
+/// A DopVarName represents a validated variable name in dop.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DopVarName {
     pub value: String,
@@ -22,10 +23,6 @@ impl DopVarName {
         }
         Some(DopVarName { value })
     }
-}
-
-pub fn parse_expr(expr: &str) -> Result<DopExpr, RangeError> {
-    parse_expr_with_range(expr, Range::new(Position::new(1, 1), Position::new(1, 1)))
 }
 
 pub fn parse_expr_with_range(expr: &str, full_range: Range) -> Result<DopExpr, RangeError> {
@@ -255,7 +252,7 @@ mod tests {
 
             println!("Test case {} (line {})", case_num + 1, line_number);
 
-            let result = parse_expr(input).unwrap_or_else(|e| {
+            let result = parse_expr_with_range(input, Range::default()).unwrap_or_else(|e| {
                 panic!(
                     "Failed to parse expression '{}' in test case {} (line {}): {:?}",
                     input,
