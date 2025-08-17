@@ -387,11 +387,11 @@ fn typecheck_node(
 
             // Push the loop variable into scope for the children
             let mut pushed = false;
-            if env.push(var_name.value.clone(), element_type) {
+            if env.push(var_name.0.value.clone(), element_type) {
                 pushed = true;
             } else {
                 errors.push(RangeError::variable_already_defined(
-                    &var_name.value,
+                    &var_name.0.value,
                     *range,
                 ));
             }
@@ -412,7 +412,7 @@ fn typecheck_node(
 
             // Pop the loop variable from scope
             if pushed && !env.pop() {
-                errors.push(RangeError::unused_variable(&var_name.value, *range));
+                errors.push(RangeError::unused_variable(&var_name.0.value, var_name.1));
             }
         }
         Node::Text(_) | Node::Doctype(_) => {

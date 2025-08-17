@@ -392,10 +392,10 @@ When a variable is unused, the typechecker outputs an error.
 </main-comp>
 -- out --
 error: Unused variable item
-  --> main.hop (line 5, col 3)
+  --> main.hop (line 5, col 9)
 4 |   </for>
 5 |   <for {item in items}>
-  |   ^^^^^^^^^^^^^^^^^^^^^
+  |         ^^^^
 ## END
 ## BEGIN
 -- main.hop --
@@ -408,10 +408,10 @@ error: Unused variable item
 </main-comp>
 -- out --
 error: Unused variable item
-  --> main.hop (line 2, col 3)
+  --> main.hop (line 2, col 9)
 1 | <main-comp {items}>
 2 |   <for {item in items}>
-  |   ^^^^^^^^^^^^^^^^^^^^^
+  |         ^^^^
 ## END
 ## BEGIN
 -- main.hop --
@@ -421,10 +421,10 @@ error: Unused variable item
 </main-comp>
 -- out --
 error: Unused variable item
-  --> main.hop (line 2, col 3)
+  --> main.hop (line 2, col 9)
 1 | <main-comp {items}>
 2 |   <for {item in items}>
-  |   ^^^^^^^^^^^^^^^^^^^^^
+  |         ^^^^
 ## END
 ## BEGIN
 -- main.hop --

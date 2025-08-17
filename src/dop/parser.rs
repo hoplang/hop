@@ -46,7 +46,7 @@ pub fn parse_expr_with_range(expr: &str, full_range: Range) -> Result<DopExpr, R
 pub fn parse_loop_header(
     header: &str,
     full_range: Range,
-) -> Result<(DopVarName, DopExpr), RangeError> {
+) -> Result<((DopVarName, Range), DopExpr), RangeError> {
     if header.trim().is_empty() {
         return Err(RangeError::new("Empty loop header".to_string(), full_range));
     }
@@ -56,7 +56,7 @@ pub fn parse_loop_header(
     // expect Identifier
     let var_name = match tokenizer.advance()? {
         (DopToken::Identifier(name), range) => match DopVarName::new(name.clone()) {
-            Some(var_name) => var_name,
+            Some(var_name) => (var_name, range),
             None => return Err(RangeError::invalid_variable_name(&name, range)),
         },
         (_, range) => {
