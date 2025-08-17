@@ -1,5 +1,6 @@
 use anyhow::Context;
 use files::ProjectRoot;
+use rayon::prelude::*;
 use std::fs;
 use std::path::Path;
 
@@ -47,8 +48,6 @@ pub fn execute(
     script_file: Option<&str>,
     static_dir: Option<&str>,
 ) -> anyhow::Result<Vec<(String, usize)>> {
-    use std::collections::HashMap;
-
     fs::create_dir_all(output_dir)?;
 
     let mut timer = timing::TimingCollector::new();
@@ -61,13 +60,16 @@ pub fn execute(
         .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))?;
 
     timer.start_phase("rendering");
-    let mut rendered_files = HashMap::new();
-    for file_path in program.get_render_file_paths() {
-        let content = program
-            .render_file(&file_path)
-            .map_err(|e| anyhow::anyhow!("Failed to render file '{}': {}", file_path, e))?;
-        rendered_files.insert(file_path, content);
-    }
+    let rendered_files = program
+        .get_render_file_paths()
+        .into_par_iter()
+        .map(|file_path| {
+            let content = program
+                .render_file(&file_path)
+                .map_err(|e| anyhow::anyhow!("Failed to render file '{}': {}", file_path, e))?;
+            Ok::<_, anyhow::Error>((file_path, content))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
     let mut file_outputs = Vec::new();
 
