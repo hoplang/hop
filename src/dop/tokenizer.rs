@@ -219,6 +219,18 @@ impl DopTokenizer {
     }
 }
 
+impl Iterator for DopTokenizer {
+    type Item = Result<(DopToken, Range), RangeError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.advance() {
+            Err(err) => Some(Err(err)),
+            Ok((DopToken::Eof, _)) => None,
+            Ok((t, range)) => Some(Ok((t, range))),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
