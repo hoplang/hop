@@ -1181,6 +1181,25 @@ main::main-comp
 	[]
 ## END
 
+
+## BEGIN
+-- main.hop --
+<main-comp {config}>
+  <if {config.debug}>
+    <div>Debug mode on</div>
+  </if>
+</main-comp>
+<foo-comp>
+  <main-comp {1}/>
+</foo-comp>
+-- out --
+error: Can not unify types
+  --> main.hop (line 7, col 15)
+6 | <foo-comp>
+7 |   <main-comp {1}/>
+  |               ^
+## END
+
 Test HOP_MODE global variable is available and has string type.
 
 ## BEGIN
