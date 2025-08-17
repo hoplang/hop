@@ -25,7 +25,11 @@ When an undefined component is referenced, the typechecker outputs an error.
 	<h1>Hello, <render-name></render-name>!</h1>
 </main-comp>
 -- out --
-Component render-name is not defined
+error: Component render-name is not defined
+  --> main.hop (line 2, col 13)
+1 | <main-comp>
+2 |     <h1>Hello, <render-name></render-name>!</h1>
+  |                ^^^^^^^^^^^^^
 ## END
 
 When a component references itself, the typechecker outputs an error.
@@ -36,7 +40,11 @@ When a component references itself, the typechecker outputs an error.
 	<h1>Hello, <main-comp></main-comp>!</h1>
 </main-comp>
 -- out --
-Component main-comp is not defined
+error: Component main-comp is not defined
+  --> main.hop (line 2, col 13)
+1 | <main-comp>
+2 |     <h1>Hello, <main-comp></main-comp>!</h1>
+  |                ^^^^^^^^^^^
 ## END
 
 When a component is defined twice, the typechecker outputs an error.
@@ -49,7 +57,11 @@ When a component is defined twice, the typechecker outputs an error.
 <foo-comp>
 </foo-comp>
 -- out --
-Component foo-comp is already defined
+error: Component foo-comp is already defined
+  --> main.hop (line 4, col 1)
+3 | 
+4 | <foo-comp>
+  | ^^^^^^^^^^
 ## END
 
 When a component is defined with the same name as an imported component, the
@@ -70,7 +82,11 @@ typechecker outputs an error.
 	<foo-comp/>
 </bar-comp>
 -- out --
-Component foo-comp is already defined
+error: Component foo-comp is already defined
+  --> main.hop (line 3, col 1)
+2 | 
+3 | <foo-comp>
+  | ^^^^^^^^^^
 ## END
 
 When a component is imported twice, the typechecker outputs an error.
@@ -88,7 +104,11 @@ When a component is imported twice, the typechecker outputs an error.
 	<foo-comp></foo-comp>
 </main-comp>
 -- out --
-Component foo-comp is already defined
+error: Component foo-comp is already defined
+  --> main.hop (line 2, col 1)
+1 | <import component="foo-comp" from="other">
+2 | <import component="foo-comp" from="other">
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ## END
 
 When a component is imported from a module that doesn't exist the typechecker
@@ -101,7 +121,10 @@ outputs an error. TODO: Improve error message
 <main-comp>
 </main-comp>
 -- out --
-Module other is not defined
+error: Module other is not defined
+  --> main.hop (line 1, col 1)
+1 | <import component="foo-comp" from="other">
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ## END
 
 When a component that doesn't exist is imported from a module that does exist
@@ -115,7 +138,10 @@ the typechecker outputs an error.
 <main-comp>
 </main-comp>
 -- out --
-Module other does not declare a component named foo-comp
+error: Module other does not declare a component named foo-comp
+  --> main.hop (line 1, col 1)
+1 | <import component="foo-comp" from="other">
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ## END
 
 When a component is imported without being used the typechecker outputs
@@ -132,7 +158,10 @@ an error.
 <main-comp>
 </main-comp>
 -- out --
-Unused import: foo-comp
+error: Unused import: foo-comp
+  --> main.hop (line 1, col 1)
+1 | <import component="foo-comp" from="other">
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 ## END
 
 The typechecker collects all errors rather than returning at the first error.
@@ -144,8 +173,17 @@ The typechecker collects all errors rather than returning at the first error.
 	<h1>Hello, <other-comp></other-comp>!</h1>
 </main-comp>
 -- out --
-Component render-name is not defined
-Component other-comp is not defined
+error: Component render-name is not defined
+  --> main.hop (line 2, col 13)
+1 | <main-comp>
+2 |     <h1>Hello, <render-name></render-name>!</h1>
+  |                ^^^^^^^^^^^^^
+
+error: Component other-comp is not defined
+  --> main.hop (line 3, col 13)
+2 |     <h1>Hello, <render-name></render-name>!</h1>
+3 |     <h1>Hello, <other-comp></other-comp>!</h1>
+  |                ^^^^^^^^^^^^
 ## END
 
 Defining a component with the same name in two different modules is allowed.
@@ -180,7 +218,11 @@ When a slot is defined twice in a component, the typechecker outputs an error.
     </slot-content>
 </main-comp>
 -- out --
-Slot 'content' is already defined
+error: Slot 'content' is already defined
+  --> main.hop (line 5, col 5)
+4 |     </slot-content>
+5 |     <slot-content>
+  |     ^^^^^^^^^^^^^^
 ## END
 
 Two components are allowed to have slots with the same name.
@@ -224,7 +266,11 @@ When an undefined slot is referenced, the typechecker outputs an error.
     </main-comp>
 </bar-comp>
 -- out --
-Slot 'invalid' is not defined in component main-comp
+error: Slot 'invalid' is not defined in component main-comp
+  --> main.hop (line 9, col 9)
+ 8 |     <main-comp>
+ 9 |         <with-invalid>
+   |         ^^^^^^^^^^^^^^
 ## END
 ## BEGIN
 -- other.hop --
@@ -244,7 +290,11 @@ Slot 'invalid' is not defined in component main-comp
     </foo-comp>
 </bar-comp>
 -- out --
-Slot 'invalid' is not defined in component foo-comp
+error: Slot 'invalid' is not defined in component foo-comp
+  --> main.hop (line 5, col 9)
+4 |     <foo-comp>
+5 |         <with-invalid>
+  |         ^^^^^^^^^^^^^^
 ## END
 
 When slot-default is defined, it must be the only slot, otherwise the typechecker
@@ -257,7 +307,11 @@ outputs an error.
     <slot-other>Other slot</slot-other>
 </mixed-comp>
 -- out --
-When using slot-default, it must be the only slot in the component
+error: When using slot-default, it must be the only slot in the component
+  --> main.hop (line 3, col 5)
+2 |     <slot-default>Default slot</slot-default>
+3 |     <slot-other>Other slot</slot-other>
+  |     ^^^^^^^^^^^^
 ## END
 
 When a variable shadows another variable, the typechecker outputs an error.
@@ -269,7 +323,11 @@ When a variable shadows another variable, the typechecker outputs an error.
   </for>
 </main-comp>
 -- out --
-Variable items is already defined
+error: Variable items is already defined
+  --> main.hop (line 2, col 3)
+1 | <main-comp {items}>
+2 |   <for {items in items.foo}>
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^
 ## END
 ## BEGIN
 -- main.hop --
@@ -278,7 +336,11 @@ Variable items is already defined
   </for>
 </main-comp>
 -- out --
-Variable items is already defined
+error: Variable items is already defined
+  --> main.hop (line 2, col 3)
+1 | <main-comp {items}>
+2 |   <for {items in items}>
+  |   ^^^^^^^^^^^^^^^^^^^^^^
 ## END
 ## BEGIN
 -- main.hop --
@@ -290,7 +352,11 @@ Variable items is already defined
   </for>
 </main-comp>
 -- out --
-Variable item is already defined
+error: Variable item is already defined
+  --> main.hop (line 3, col 5)
+2 |   <for {item in items.a}>
+3 |     <for {item in items.b}>
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
 ## END
 
 When an undefined variable is referenced, the typechecker outputs an error.
@@ -306,7 +372,11 @@ When an undefined variable is referenced, the typechecker outputs an error.
 	</if>
 </main-comp>
 -- out --
-Undefined variable: item
+error: Undefined variable: item
+  --> main.hop (line 6, col 7)
+5 |     </for>
+6 |     <if {item.active}>
+  |          ^^^^^^^^^^^
 ## END
 
 When a variable is unused, the typechecker outputs an error.
@@ -321,7 +391,11 @@ When a variable is unused, the typechecker outputs an error.
   </for>
 </main-comp>
 -- out --
-Unused variable item
+error: Unused variable item
+  --> main.hop (line 5, col 3)
+4 |   </for>
+5 |   <for {item in items}>
+  |   ^^^^^^^^^^^^^^^^^^^^^
 ## END
 ## BEGIN
 -- main.hop --
@@ -333,7 +407,11 @@ Unused variable item
   </for>
 </main-comp>
 -- out --
-Unused variable item
+error: Unused variable item
+  --> main.hop (line 2, col 3)
+1 | <main-comp {items}>
+2 |   <for {item in items}>
+  |   ^^^^^^^^^^^^^^^^^^^^^
 ## END
 ## BEGIN
 -- main.hop --
@@ -342,7 +420,11 @@ Unused variable item
   </for>
 </main-comp>
 -- out --
-Unused variable item
+error: Unused variable item
+  --> main.hop (line 2, col 3)
+1 | <main-comp {items}>
+2 |   <for {item in items}>
+  |   ^^^^^^^^^^^^^^^^^^^^^
 ## END
 ## BEGIN
 -- main.hop --
@@ -351,7 +433,10 @@ Unused variable item
   </div>
 </bar-comp>
 -- out --
-Unused variable p
+error: Unused variable p
+  --> main.hop (line 1, col 12)
+1 | <bar-comp {p}>
+  |            ^
 ## END
 
 ## BEGIN
@@ -368,7 +453,11 @@ Unused variable p
 	</for>
 </main-comp>
 -- out --
-Can not unify types
+error: Can not unify types
+  --> main.hop (line 7, col 3)
+ 6 |     <for {item in params}>
+ 7 |         <for {inner in item.k}>
+   |         ^^^^^^^^^^^^^^^^^^^^^^^
 ## END
 ## BEGIN
 -- main.hop --
@@ -380,7 +469,11 @@ Can not unify types
 	</for>
 </main-comp>
 -- out --
-Can not unify types
+error: Can not unify types
+  --> main.hop (line 4, col 2)
+3 |     </if>
+4 |     <for {item in params}>
+  |     ^^^^^^^^^^^^^^^^^^^^^^
 ## END
 
 When successful, the typechecker identifies the parameter type of the component

@@ -467,6 +467,7 @@ fn expect_type(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error_formatter::ErrorFormatter;
     use crate::parser::parse;
     use crate::tokenizer::Tokenizer;
     use pretty_assertions::assert_eq;
@@ -490,8 +491,8 @@ mod tests {
                 .get("out")
                 .expect("Missing 'out' section in test case")
                 .content
-                .trim();
-            let mut all_errors = Vec::new();
+                .trim_start();
+            let mut error_formatter = ErrorFormatter::new();
             let mut all_output_lines = Vec::new();
             let mut module_type_results: HashMap<String, TypeResult> = HashMap::new();
 
@@ -506,14 +507,22 @@ mod tests {
                     let module = parse(module_name.to_string(), tokenizer, &mut errors);
 
                     if !errors.is_empty() {
-                        all_errors.extend(errors);
+                        error_formatter.add_errors(
+                            module_name.to_string(),
+                            file.content.trim().to_string(),
+                            errors,
+                        );
                         continue;
                     }
 
                     let type_result = typecheck(&module, &module_type_results, &mut errors);
 
                     if !errors.is_empty() {
-                        all_errors.extend(errors);
+                        error_formatter.add_errors(
+                            module_name.to_string(),
+                            file.content.trim().to_string(),
+                            errors,
+                        );
                     } else {
                         module_type_results.insert(module.name.clone(), type_result.clone());
 
@@ -538,12 +547,8 @@ mod tests {
                 }
             }
 
-            if !all_errors.is_empty() {
-                let output = all_errors
-                    .iter()
-                    .map(|e| e.message.clone())
-                    .collect::<Vec<_>>()
-                    .join("\n");
+            if error_formatter.has_errors() {
+                let output = error_formatter.format_all_errors();
                 assert_eq!(
                     output,
                     expected,
@@ -554,7 +559,7 @@ mod tests {
             } else {
                 assert_eq!(
                     all_output_lines.join("\n"),
-                    expected,
+                    expected.trim_end(),
                     "Mismatch in test case {} (line {})",
                     case_num + 1,
                     line_number
