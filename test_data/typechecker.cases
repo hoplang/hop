@@ -454,10 +454,10 @@ error: Unused variable p
 </main-comp>
 -- out --
 error: Can not unify types
-  --> main.hop (line 7, col 3)
+  --> main.hop (line 7, col 18)
  6 |     <for {item in params}>
  7 |         <for {inner in item.k}>
-   |         ^^^^^^^^^^^^^^^^^^^^^^^
+   |                        ^^^^^^
 ## END
 ## BEGIN
 -- main.hop --
@@ -470,10 +470,10 @@ error: Can not unify types
 </main-comp>
 -- out --
 error: Can not unify types
-  --> main.hop (line 4, col 2)
+  --> main.hop (line 4, col 16)
 3 |     </if>
 4 |     <for {item in params}>
-  |     ^^^^^^^^^^^^^^^^^^^^^^
+  |                   ^^^^^^
 ## END
 
 When successful, the typechecker identifies the parameter type of the component

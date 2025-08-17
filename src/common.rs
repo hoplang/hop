@@ -302,7 +302,7 @@ pub struct XRawNode {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForNode {
     pub var_name: (DopVarName, Range),
-    pub array_expr: DopExpr,
+    pub array_expr: (DopExpr, Range),
     pub range: Range,
     pub children: Vec<Node>,
 }

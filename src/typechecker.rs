@@ -371,18 +371,18 @@ fn typecheck_node(
         }
         Node::For(ForNode {
             var_name: (var_name, var_range),
-            array_expr,
+            array_expr: (array_expr, array_expr_range),
             children,
             range,
         }) => {
             // Typecheck the array expression
             let array_type =
-                typecheck_dop_expression(array_expr, env, unifier, annotations, errors, *range);
+                typecheck_dop_expression(array_expr, env, unifier, annotations, errors, *array_expr_range);
             let element_type = unifier.new_type_var();
             let expected_array_type = DopType::Array(Box::new(element_type.clone()));
 
             if let Some(err) = unifier.unify(&array_type, &expected_array_type) {
-                errors.push(RangeError::unification_error(&err.message, *range));
+                errors.push(RangeError::unification_error(&err.message, *array_expr_range));
             }
 
             // Push the loop variable into scope for the children

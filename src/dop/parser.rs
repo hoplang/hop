@@ -46,7 +46,7 @@ pub fn parse_expr_with_range(expr: &str, full_range: Range) -> Result<DopExpr, R
 pub fn parse_loop_header(
     header: &str,
     full_range: Range,
-) -> Result<((DopVarName, Range), DopExpr), RangeError> {
+) -> Result<((DopVarName, Range), (DopExpr, Range)), RangeError> {
     if header.trim().is_empty() {
         return Err(RangeError::new("Empty loop header".to_string(), full_range));
     }
@@ -78,20 +78,23 @@ pub fn parse_loop_header(
         }
     }
 
+    // Get the start position of the array expression
+    let array_expr_start = tokenizer.peek().1.start;
     let array_expr = parse_equality(&mut tokenizer)?;
 
     // expect Eof
-    match tokenizer.peek() {
-        (DopToken::Eof, _) => {}
+    let array_expr_end = match tokenizer.peek() {
+        (DopToken::Eof, range) => range.start,
         (_, range) => {
             return Err(RangeError::new(
                 "Unexpected token at end of <for> expression".to_string(),
                 *range,
             ));
         }
-    }
+    };
 
-    Ok((var_name, array_expr))
+    let array_expr_range = Range::new(array_expr_start, array_expr_end);
+    Ok((var_name, (array_expr, array_expr_range)))
 }
 
 pub fn parse_variable_name(var_expr: &str, range: Range) -> Result<DopVarName, RangeError> {
