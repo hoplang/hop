@@ -9,14 +9,18 @@ pub struct ErrorFormatter {
 }
 
 impl ErrorFormatter {
-    pub fn new(source_code: String, filename: String, errors: Vec<RangeError>) -> Self {
+    pub fn new(source_code: String, filename: String) -> Self {
         let lines = source_code.lines().map(|s| s.to_string()).collect();
         Self {
             lines,
             filename,
-            errors,
+            errors: Vec::new(),
             show_location: true,
         }
+    }
+
+    pub fn add_errors(&mut self, errors: Vec<RangeError>) {
+        self.errors.extend(errors);
     }
 
     pub fn without_location_info(mut self) -> Self {
