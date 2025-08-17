@@ -756,6 +756,7 @@ mod tests {
     fn normalize_tokens(tokenizer: Tokenizer) -> Vec<Token> {
         tokenizer
             .into_iter()
+            .map(|r| r.unwrap())
             .map(|(t, _)| match t {
                 Token::Text { value } => {
                     let normalized_value = if value.trim().is_empty() {

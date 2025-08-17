@@ -89,7 +89,7 @@ impl TokenTree {
     }
 }
 
-fn build_tree(mut tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTree {
+fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTree {
     let mut stack: Vec<(TokenTree, String)> = Vec::new();
 
     let root_token = Token::StartTag {
@@ -103,9 +103,8 @@ fn build_tree(mut tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTr
         "root".to_string(),
     ));
 
-    loop {
-        let result = tokenizer.advance();
-        match result {
+    for t in tokenizer {
+        match t {
             Err(err) => errors.push(err),
             Ok((token, range)) => {
                 match token {

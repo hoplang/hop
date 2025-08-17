@@ -22,7 +22,6 @@ enum TokenizerState {
     BeforeDoctypeName,
     DoctypeName,
     RawtextData,
-    ReturnEndTag,
     TextExpressionContent,
     TagExpressionContent,
 }
@@ -116,7 +115,7 @@ impl Tokenizer {
         }
     }
 
-    pub fn advance(&mut self) -> Result<(Token, Range), RangeError> {
+    fn advance(&mut self) -> Result<(Token, Range), RangeError> {
         let mut token_value = String::new();
         let token_start = self.cursor.get_position();
         let mut token_attributes = Vec::new();
@@ -622,7 +621,7 @@ impl Tokenizer {
                     let end_tag = format!("</{}>", self.stored_tag_name);
                     if self.cursor.match_str(&end_tag) {
                         if !token_value.is_empty() {
-                            self.state = TokenizerState::ReturnEndTag;
+                            self.state = TokenizerState::RawtextData;
                             return Ok((
                                 Token::Text { value: token_value },
                                 Range::new(token_start, self.cursor.get_position()),
@@ -642,18 +641,6 @@ impl Tokenizer {
                         self.cursor.advance();
                         self.state = TokenizerState::RawtextData;
                     }
-                }
-
-                TokenizerState::ReturnEndTag => {
-                    // Return the end tag that was deferred from RawtextData
-                    let tag_name = self.stored_tag_name.clone();
-                    let end_tag = format!("</{}>", self.stored_tag_name);
-                    self.cursor.advance_n(end_tag.len());
-                    self.state = TokenizerState::Text;
-                    return Ok((
-                        Token::EndTag { value: tag_name },
-                        Range::new(token_start, self.cursor.get_position()),
-                    ));
                 }
 
                 TokenizerState::TextExpressionContent => {
@@ -717,13 +704,13 @@ impl Tokenizer {
 }
 
 impl Iterator for Tokenizer {
-    type Item = (Token, Range);
+    type Item = Result<(Token, Range), RangeError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.advance() {
-            Err(err) => panic!("{:?}", err),
+            Err(err) => Some(Err(err)),
             Ok((Token::Eof, _)) => None,
-            Ok((t, range)) => Some((t, range)),
+            Ok((t, range)) => Some(Ok((t, range))),
         }
     }
 }
@@ -756,8 +743,8 @@ mod tests {
         )
     }
 
-    fn format_token(val: (Token, Range)) -> String {
-        match val {
+    fn format_token(val: Result<(Token, Range), RangeError>) -> String {
+        match val.unwrap() {
             (Token::Text { .. }, range) => {
                 format!("Text {}", format_range(range))
             }
