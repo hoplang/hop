@@ -660,9 +660,8 @@ mod tests {
             println!("Test case {} (line {})", case_num + 1, line_number);
 
             let mut errors = Vec::new();
-            let tokenizer = Tokenizer::new(input);
             assert!(errors.is_empty());
-            let module = parse("test".to_string(), tokenizer, &mut errors);
+            let module = parse("test".to_string(), Tokenizer::new(input), &mut errors);
 
             if !errors.is_empty() {
                 let output = errors
