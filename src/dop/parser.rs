@@ -11,14 +11,10 @@ pub struct DopVarName {
 impl DopVarName {
     pub fn new(value: String) -> Option<Self> {
         let mut chars = value.chars();
-        if let Some(first_char) = chars.next() {
-            if !first_char.is_ascii_lowercase() {
-                return None;
-            }
-            if !chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) {
-                return None;
-            }
-        } else {
+        if !chars.next()?.is_ascii_lowercase() {
+            return None;
+        }
+        if !chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) {
             return None;
         }
         Some(DopVarName { value })

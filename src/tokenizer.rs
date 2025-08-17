@@ -100,7 +100,7 @@ impl Cursor {
     }
 }
 
-struct TokenBuilder {
+struct Tokenizer {
     token_value: String,
     token_kind: TokenKind,
     token_start: Position,
@@ -114,7 +114,7 @@ struct TokenBuilder {
     tokens: Vec<Token>,
 }
 
-impl TokenBuilder {
+impl Tokenizer {
     fn new() -> Self {
         Self {
             token_value: String::new(),
@@ -222,7 +222,7 @@ fn is_tag_name_with_raw_content(name: &str) -> bool {
 
 pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<Token> {
     let mut cursor = Cursor::new(input);
-    let mut builder = TokenBuilder::new();
+    let mut builder = Tokenizer::new();
     let mut state = TokenizerState::Text;
     let mut doctype_name_buffer = String::new();
     let mut stored_tag_name = String::new();
