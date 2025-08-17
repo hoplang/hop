@@ -716,30 +716,20 @@ impl Tokenizer {
     }
 }
 
-fn is_tag_name_with_raw_content(name: &str) -> bool {
-    matches!(name, "script" | "style" | "hop-x-raw")
-}
+impl Iterator for Tokenizer {
+    type Item = (Token, Range);
 
-pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<(Token, Range)> {
-    let mut tokenizer = Tokenizer::new(input);
-    let mut tokens = Vec::new();
-
-    loop {
-        match tokenizer.advance() {
-            Ok((Token::Eof, _)) => {
-                break;
-            }
-            Ok((token, range)) => {
-                tokens.push((token, range));
-            }
-            Err(error) => {
-                errors.push(error);
-                // Continue tokenizing after error
-            }
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.advance() {
+            Err(err) => panic!("{:?}", err),
+            Ok((Token::Eof, _)) => None,
+            Ok((t, range)) => Some((t, range)),
         }
     }
+}
 
-    tokens
+fn is_tag_name_with_raw_content(name: &str) -> bool {
+    matches!(name, "script" | "style" | "hop-x-raw")
 }
 
 #[cfg(test)]
@@ -766,25 +756,25 @@ mod tests {
         )
     }
 
-    fn format_token(val: &(Token, Range)) -> String {
+    fn format_token(val: (Token, Range)) -> String {
         match val {
             (Token::Text { .. }, range) => {
-                format!("Text {}", format_range(*range))
+                format!("Text {}", format_range(range))
             }
             (Token::Expression { value, .. }, token_range) => {
-                format!("Expression [] {{{}}} {}", value, format_range(*token_range))
+                format!("Expression [] {{{}}} {}", value, format_range(token_range))
             }
             (Token::Doctype, range) => {
-                format!("Doctype {}", format_range(*range))
+                format!("Doctype {}", format_range(range))
             }
             (Token::Comment, range) => {
-                format!("Comment {}", format_range(*range))
+                format!("Comment {}", format_range(range))
             }
             (Token::Eof, range) => {
-                format!("Eof {}", format_range(*range))
+                format!("Eof {}", format_range(range))
             }
             (Token::EndTag { value }, range) => {
-                format!("EndTag({}) {}", value, format_range(*range))
+                format!("EndTag({}) {}", value, format_range(range))
             }
             (
                 Token::StartTag {
@@ -816,7 +806,7 @@ mod tests {
                     value,
                     attrs,
                     expr_part,
-                    format_range(*range)
+                    format_range(range)
                 )
             }
         }
@@ -843,15 +833,11 @@ mod tests {
                 .expect("Missing 'out' section in test case")
                 .content
                 .trim();
-            let mut errors = Vec::new();
 
-            let actual = tokenize(input, &mut errors)
-                .iter()
+            let actual = Tokenizer::new(input)
                 .map(format_token)
                 .collect::<Vec<_>>()
                 .join("\n");
-
-            assert!(errors.is_empty());
 
             assert_eq!(
                 actual,

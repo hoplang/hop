@@ -719,7 +719,7 @@ mod tests {
     use super::*;
     use crate::common::{Range, Token};
     use crate::parser::parse;
-    use crate::tokenizer::tokenize;
+    use crate::tokenizer::Tokenizer;
     use crate::typechecker::{TypeResult, typecheck};
     use pretty_assertions::assert_eq;
     use simple_txtar::Archive;
@@ -733,8 +733,8 @@ mod tests {
         // Parse and typecheck modules in order
         for (module_name, source_code) in &modules_source {
             let mut errors = Vec::new();
-            let tokens = tokenize(source_code, &mut errors);
-            let module = parse(module_name.clone(), tokens, &mut errors);
+            let tokenizer = Tokenizer::new(source_code);
+            let module = parse(module_name.clone(), tokenizer, &mut errors);
 
             let type_info = typecheck(&module, &module_type_results, &mut errors);
             if !errors.is_empty() {
@@ -753,8 +753,8 @@ mod tests {
         ))
     }
 
-    fn normalize_tokens(tokens: Vec<(Token, Range)>) -> Vec<Token> {
-        tokens
+    fn normalize_tokens(tokenizer: Tokenizer) -> Vec<Token> {
+        tokenizer
             .into_iter()
             .map(|(t, _)| match t {
                 Token::Text { value } => {
@@ -854,10 +854,8 @@ mod tests {
                 });
 
             // Normalize whitespace by tokenizing both outputs and comparing tokens
-            let mut errors = Vec::new();
-            let expected_tokens = normalize_tokens(tokenize(expected_output, &mut errors));
-            let actual_tokens = normalize_tokens(tokenize(actual_output.trim(), &mut errors));
-            assert!(errors.is_empty());
+            let expected_tokens = normalize_tokens(Tokenizer::new(expected_output));
+            let actual_tokens = normalize_tokens(Tokenizer::new(actual_output.trim()));
 
             assert_eq!(
                 actual_tokens,

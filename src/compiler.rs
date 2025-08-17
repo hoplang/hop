@@ -3,7 +3,7 @@ use crate::error_formatter::ErrorFormatter;
 use crate::parser::parse;
 use crate::runtime::Program;
 use crate::scriptcollector::ScriptCollector;
-use crate::tokenizer::tokenize;
+use crate::tokenizer::Tokenizer;
 use crate::toposorter::TopoSorter;
 use crate::typechecker::{TypeResult, typecheck};
 use std::collections::HashMap;
@@ -18,8 +18,8 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Res
     // Parse all modules
     for (module_name, source_code) in &modules_map {
         let mut errors = Vec::new();
-        let tokens = tokenize(source_code, &mut errors);
-        let module = parse(module_name.clone(), tokens, &mut errors);
+        let tokenizer = Tokenizer::new(source_code);
+        let module = parse(module_name.clone(), tokenizer, &mut errors);
         if !errors.is_empty() {
             let mut formatter =
                 ErrorFormatter::new(source_code.clone(), format!("{}.hop", module_name));

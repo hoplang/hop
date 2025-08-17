@@ -5,6 +5,7 @@ use crate::common::{
     Token, XExecNode, XRawNode, is_void_element,
 };
 use crate::dop;
+use crate::tokenizer::Tokenizer;
 use std::collections::HashSet;
 
 fn is_valid_component_name(name: &str) -> bool {
@@ -32,12 +33,8 @@ enum ToplevelNode {
     Render(RenderNode),
 }
 
-pub fn parse(
-    module_name: String,
-    tokens: Vec<(Token, Range)>,
-    errors: &mut Vec<RangeError>,
-) -> Module {
-    let tree = build_tree(tokens, errors);
+pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> Module {
+    let tree = build_tree(tokenizer, errors);
 
     let mut components = Vec::new();
     let mut imports = Vec::new();
@@ -92,7 +89,7 @@ impl TokenTree {
     }
 }
 
-fn build_tree(tokens: Vec<(Token, Range)>, errors: &mut Vec<RangeError>) -> TokenTree {
+fn build_tree(mut tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTree {
     let mut stack: Vec<(TokenTree, String)> = Vec::new();
 
     let root_token = Token::StartTag {
@@ -106,48 +103,50 @@ fn build_tree(tokens: Vec<(Token, Range)>, errors: &mut Vec<RangeError>) -> Toke
         "root".to_string(),
     ));
 
-    for token in tokens {
-        match token {
-            (Token::Comment, _) => {
-                // skip comments
-                continue;
-            }
-            (Token::Doctype | Token::Text { .. } | Token::Expression { .. }, _) => {
-                stack.last_mut().unwrap().0.append_node(token);
-            }
-            (
-                Token::StartTag {
-                    ref value,
-                    self_closing,
-                    ..
-                },
-                _,
-            ) => {
-                if is_void_element(value) || self_closing {
-                    stack.last_mut().unwrap().0.append_node(token);
-                } else {
-                    stack.push((TokenTree::new(token.clone()), value.clone()));
-                }
-            }
-            (Token::EndTag { ref value, .. }, range) => {
-                if is_void_element(value) {
-                    errors.push(RangeError::closed_void_tag(value, range));
-                } else if !stack.iter().any(|(_, v)| *v == *value) {
-                    errors.push(RangeError::unmatched_closing_tag(value, range));
-                } else {
-                    while stack.last().unwrap().1 != *value {
-                        let (unclosed, value) = stack.pop().unwrap();
-                        errors.push(RangeError::unclosed_tag(&value, unclosed.token.1));
-                        stack.last_mut().unwrap().0.append_tree(unclosed);
+    loop {
+        let result = tokenizer.advance();
+        match result {
+            Err(err) => errors.push(err),
+            Ok((token, range)) => {
+                match token {
+                    Token::Comment => {
+                        // skip comments
+                        continue;
                     }
-                    let mut completed = stack.pop().unwrap();
-                    completed.0.set_end_token(token);
-                    stack.last_mut().unwrap().0.append_tree(completed.0);
+                    Token::Doctype | Token::Text { .. } | Token::Expression { .. } => {
+                        stack.last_mut().unwrap().0.append_node((token, range));
+                    }
+                    Token::StartTag {
+                        ref value,
+                        self_closing,
+                        ..
+                    } => {
+                        if is_void_element(value) || self_closing {
+                            stack.last_mut().unwrap().0.append_node((token, range));
+                        } else {
+                            stack.push((TokenTree::new((token.clone(), range)), value.clone()));
+                        }
+                    }
+                    Token::EndTag { ref value, .. } => {
+                        if is_void_element(value) {
+                            errors.push(RangeError::closed_void_tag(value, range));
+                        } else if !stack.iter().any(|(_, v)| *v == *value) {
+                            errors.push(RangeError::unmatched_closing_tag(value, range));
+                        } else {
+                            while stack.last().unwrap().1 != *value {
+                                let (unclosed, value) = stack.pop().unwrap();
+                                errors.push(RangeError::unclosed_tag(&value, unclosed.token.1));
+                                stack.last_mut().unwrap().0.append_tree(unclosed);
+                            }
+                            let mut completed = stack.pop().unwrap();
+                            completed.0.set_end_token((token, range));
+                            stack.last_mut().unwrap().0.append_tree(completed.0);
+                        }
+                    }
+                    Token::Eof => {
+                        break;
+                    }
                 }
-            }
-            (Token::Eof, _) => {
-                // This should never be reached since Eof tokens are not added to the tokens vector
-                unreachable!("Eof token should not be in tokens vector");
             }
         }
     }
@@ -217,18 +216,15 @@ fn find_attribute(attrs: &[Attribute], value: &str) -> Option<Attribute> {
 }
 
 fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Option<ToplevelNode> {
-    let t = &tree.token;
+    let (t, range) = &tree.token;
 
     match t {
-        (
-            Token::StartTag {
-                value,
-                attributes,
-                expression,
-                ..
-            },
-            range,
-        ) => {
+        Token::StartTag {
+            value,
+            attributes,
+            expression,
+            ..
+        } => {
             match value.as_str() {
                 "import" => {
                     let component_attr = find_attribute(attributes, "component").or_else(|| {
@@ -351,18 +347,18 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
         .map(|child| construct_node(child, errors))
         .collect();
 
-    let t = &tree.token;
+    let (t, token_range) = &tree.token;
 
     match t {
-        (Token::Doctype, range) => Node::Doctype(DoctypeNode {
+        Token::Doctype => Node::Doctype(DoctypeNode {
             value: "".to_string(),
-            range: *range,
+            range: *token_range,
         }),
-        (Token::Text { value }, range) => Node::Text(TextNode {
+        Token::Text { value } => Node::Text(TextNode {
             value: value.clone(),
-            range: *range,
+            range: *token_range,
         }),
-        (Token::Expression { value, range }, token_range) => {
+        Token::Expression { value, range } => {
             // Expression tokens represent {expression} in text content
             match dop::parse_expr_with_range(value, *range) {
                 Ok(expr) => Node::TextExpression(TextExpressionNode {
@@ -378,15 +374,12 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                 }
             }
         }
-        (
-            Token::StartTag {
-                value,
-                expression,
-                attributes,
-                ..
-            },
-            token_range,
-        ) => {
+        Token::StartTag {
+            value,
+            expression,
+            attributes,
+            ..
+        } => {
             match value.as_str() {
                 "if" => match &expression {
                     Some((expr_string, expr_range)) => {
@@ -563,8 +556,6 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
 
-    use crate::tokenizer::tokenize;
-
     pub fn format_component_definition(d: &ComponentDefinitionNode) -> String {
         let mut lines = Vec::new();
         for child in &d.children {
@@ -669,9 +660,9 @@ mod tests {
             println!("Test case {} (line {})", case_num + 1, line_number);
 
             let mut errors = Vec::new();
-            let tokens = tokenize(input, &mut errors);
+            let tokenizer = Tokenizer::new(input);
             assert!(errors.is_empty());
-            let module = parse("test".to_string(), tokens, &mut errors);
+            let module = parse("test".to_string(), tokenizer, &mut errors);
 
             if !errors.is_empty() {
                 let output = errors

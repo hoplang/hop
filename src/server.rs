@@ -1,6 +1,6 @@
 use crate::common::{Position, RangeError};
 use crate::parser::{Module, parse};
-use crate::tokenizer::tokenize;
+use crate::tokenizer::Tokenizer;
 use crate::toposorter::TopoSorter;
 use crate::typechecker::{DefinitionLink, TypeAnnotation, TypeResult, typecheck};
 use std::collections::HashMap;
@@ -57,8 +57,8 @@ impl Server {
 
     pub fn update_module(&mut self, name: String, source_code: &str) -> Vec<String> {
         let mut parse_errors = Vec::new();
-        let tokens = tokenize(source_code, &mut parse_errors);
-        let module = parse(name.clone(), tokens, &mut parse_errors);
+        let tokenizer = Tokenizer::new(source_code);
+        let module = parse(name.clone(), tokenizer, &mut parse_errors);
 
         self.topo_sorter.clear_dependencies(&name);
         self.topo_sorter.add_node(name.clone());

@@ -468,7 +468,7 @@ fn expect_type(
 mod tests {
     use super::*;
     use crate::parser::parse;
-    use crate::tokenizer::tokenize;
+    use crate::tokenizer::Tokenizer;
     use pretty_assertions::assert_eq;
     use simple_txtar::Archive;
     use std::collections::HashMap;
@@ -501,9 +501,9 @@ mod tests {
             for file in archive.iter() {
                 if file.name.ends_with(".hop") {
                     let mut errors = Vec::new();
-                    let tokens = tokenize(file.content.trim(), &mut errors);
+                    let tokenizer = Tokenizer::new(file.content.trim());
                     let module_name = file.name.trim_end_matches(".hop");
-                    let module = parse(module_name.to_string(), tokens, &mut errors);
+                    let module = parse(module_name.to_string(), tokenizer, &mut errors);
 
                     if !errors.is_empty() {
                         all_errors.extend(errors);
