@@ -81,27 +81,36 @@ impl StateMachineVisitor {
         let mut actions = Vec::new();
 
         for stmt in stmts {
-            if let Stmt::Expr(expr, _) = stmt {
-                if let Some(action) = self.extract_action_from_expr(expr) {
-                    actions.push(action);
+            match stmt {
+                Stmt::Expr(expr, _) => {
+                    if let Some(action) = self.extract_action_from_expr(expr) {
+                        if action != "set_state" {
+                            actions.push(action);
+                        }
+                    }
                 }
-            }
-        }
-
-        // Validate that set_state is the last action if there are any actions
-        if let Some(last_action) = actions.last() {
-            if last_action != "set_state" {
-                panic!(
-                    "Last action in block is not set_state. Actions: {:?}",
-                    actions
-                );
-            } else {
-                // Remove last action from output since it is always set_state
-                actions.pop();
+                Stmt::Local(local) => {
+                    // Handle local variable assignments that might be actions
+                    if let Some(action) = self.extract_action_from_local(local) {
+                        actions.push(action);
+                    }
+                }
+                _ => {}
             }
         }
 
         actions
+    }
+
+    fn extract_action_from_local(&self, local: &syn::Local) -> Option<String> {
+        if let syn::Pat::Ident(pat_ident) = &local.pat {
+            match pat_ident.ident.to_string().as_str() {
+                "token_kind" => Some("set_token_kind".to_string()),
+                _ => None,
+            }
+        } else {
+            None
+        }
     }
 
     fn extract_action_from_expr(&self, expr: &Expr) -> Option<String> {
@@ -110,45 +119,54 @@ impl StateMachineVisitor {
                 let receiver = self.extract_simple_expr(&method.receiver);
                 let method_name = method.method.to_string();
 
-                // Identify key tokenizer actions
-                if receiver == "self" {
+                // Handle cursor method calls
+                if receiver.contains("cursor") || method_name == "advance" || method_name == "advance_n" {
                     match method_name.as_str() {
-                        "push_current_token" => Some("push_token".to_string()),
-                        "append_to_current_token_value" => Some("append_to_token".to_string()),
-                        "set_current_token_kind" => Some("set_token_kind".to_string()),
-                        "reset" => Some("reset".to_string()),
-                        _ => None,
-                    }
-                } else if receiver == "self" && method_name.starts_with("cursor.") {
-                    match method_name.as_str() {
-                        "cursor.advance" => Some("advance".to_string()),
-                        "cursor.advance_n" => Some("advance_n".to_string()),
+                        "advance" => Some("advance".to_string()),
+                        "advance_n" => Some("advance_n".to_string()),
                         _ => None,
                     }
                 } else {
-                    // Handle method calls on self.cursor
-                    if method_name == "advance" || method_name == "advance_n" {
-                        Some(method_name)
-                    } else {
-                        None
-                    }
+                    None
                 }
             }
             Expr::Assign(assign) => {
                 if let Expr::Path(path) = &*assign.left {
                     if let Some(ident) = path.path.get_ident() {
-                        if ident == "state" {
-                            return Some("set_state".to_string());
+                        match ident.to_string().as_str() {
+                            "state" => Some("set_state".to_string()),
+                            _ => None,
                         }
+                    } else {
+                        None
                     }
                 } else if let Expr::Field(field) = &*assign.left {
                     if let syn::Member::Named(name) = &field.member {
-                        if name == "state" {
-                            return Some("set_state".to_string());
+                        match name.to_string().as_str() {
+                            "state" => Some("set_state".to_string()),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            }
+            Expr::Return(ret_expr) => {
+                if let Some(expr) = &ret_expr.expr {
+                    // Check if this is returning an error
+                    if let Expr::Call(call) = &**expr {
+                        if let Expr::Path(path) = &*call.func {
+                            if let Some(ident) = path.path.get_ident() {
+                                if ident == "Err" {
+                                    return Some("return_error".to_string());
+                                }
+                            }
                         }
                     }
                 }
-                None
+                Some("return_token".to_string())
             }
             _ => None,
         }
@@ -281,11 +299,12 @@ impl<'ast> Visit<'ast> for StateMachineVisitor {
                                         if let Some(target_state) =
                                             self.extract_state_transition(stmt)
                                         {
+                                            let actions = self.extract_actions_from_block(&[stmt.clone()]);
                                             self.transitions.push(StateTransition {
                                                 from_state: state_name.clone(),
                                                 to_state: target_state,
                                                 condition: "direct".to_string(),
-                                                actions: vec![],
+                                                actions,
                                             });
                                         }
                                     }
@@ -326,23 +345,24 @@ fn generate_graphviz(states: &[String], transitions: &[StateTransition]) -> Stri
         if !transition.actions.is_empty() {
             label.push_str("\\n");
             label.push_str(&transition.actions.join(", "));
-        } else {
-            panic!(
-                "Transition has no actions:\nFrom: {}\nTo: {}\nCondition: {}\n",
-                transition.from_state, transition.to_state, transition.condition
-            );
         }
 
         // Escape quotes for graphviz
         let escaped_label = label.replace("\"", "\\\"");
 
-        // Check if actions contain "reset" to color edge red
+        // Color edges based on actions
         let edge_color = if transition
             .actions
             .iter()
-            .any(|action| action.contains("reset"))
+            .any(|action| action.contains("reset") || action.contains("return_error"))
         {
             " color=red"
+        } else if transition
+            .actions
+            .iter()
+            .any(|action| action.contains("return_token"))
+        {
+            " color=green"
         } else {
             ""
         };
