@@ -666,10 +666,8 @@ mod tests {
             let module = parse("test".to_string(), Tokenizer::new(input), &mut errors);
 
             if !errors.is_empty() {
-                let mut efmt =
-                    ErrorFormatter::new(input.to_string(), "test".to_string())
-                        .without_location_info();
-                efmt.add_errors(errors.clone());
+                let mut efmt = ErrorFormatter::new().without_location_info();
+                efmt.add_errors("test".to_string(), input.to_string(), errors.clone());
                 assert_eq!(
                     efmt.format_all_errors(),
                     expected,

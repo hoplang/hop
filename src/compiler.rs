@@ -16,15 +16,13 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Res
     let mut script_collector = ScriptCollector::new();
 
     // Parse all modules
+    let mut error_formatter = ErrorFormatter::new();
     for (module_name, source_code) in &modules_map {
         let mut errors = Vec::new();
         let tokenizer = Tokenizer::new(source_code);
         let module = parse(module_name.clone(), tokenizer, &mut errors);
         if !errors.is_empty() {
-            let mut formatter =
-                ErrorFormatter::new(source_code.clone(), format!("{}.hop", module_name));
-            formatter.add_errors(errors);
-            anyhow::bail!(formatter.format_all_errors());
+            error_formatter.add_errors(module_name.clone(), source_code.clone(), errors);
         }
 
         module_sorter.add_node(module_name.clone());
@@ -33,6 +31,10 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Res
         }
 
         parsed_modules.insert(module_name.clone(), module);
+    }
+
+    if error_formatter.has_errors() {
+        anyhow::bail!(error_formatter.format_all_errors());
     }
 
     // Sort modules topologically
@@ -55,16 +57,17 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Res
         let type_info = typecheck(module, &module_type_results, &mut errors);
         if !errors.is_empty() {
             let source_code = modules_map.get(&module_name).unwrap();
-            let mut formatter =
-                ErrorFormatter::new(source_code.clone(), format!("{}.hop", module_name));
-            formatter.add_errors(errors);
-            anyhow::bail!(formatter.format_all_errors());
+            error_formatter.add_errors(module_name.clone(), source_code.clone(), errors);
         }
 
         module_type_results.insert(module_name.clone(), type_info);
 
         // Collect scripts from this module
         script_collector.add_module(module_name.clone(), module.components.clone());
+    }
+
+    if error_formatter.has_errors() {
+        anyhow::bail!(error_formatter.format_all_errors());
     }
 
     Ok(Program::new(

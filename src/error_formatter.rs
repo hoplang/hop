@@ -1,26 +1,45 @@
 use crate::common::{Range, RangeError};
 use unicode_width::UnicodeWidthStr;
 
-pub struct ErrorFormatter {
+#[derive(Debug)]
+struct ModuleInfo {
+    module_name: String,
     lines: Vec<String>,
     filename: String,
     errors: Vec<RangeError>,
+}
+
+pub struct ErrorFormatter {
+    modules: Vec<ModuleInfo>,
     show_location: bool,
 }
 
 impl ErrorFormatter {
-    pub fn new(source_code: String, filename: String) -> Self {
-        let lines = source_code.lines().map(|s| s.to_string()).collect();
+    pub fn new() -> Self {
         Self {
-            lines,
-            filename,
-            errors: Vec::new(),
+            modules: Vec::new(),
             show_location: true,
         }
     }
 
-    pub fn add_errors(&mut self, errors: Vec<RangeError>) {
-        self.errors.extend(errors);
+    pub fn add_errors(&mut self, module_name: String, source_code: String, errors: Vec<RangeError>) {
+        if errors.is_empty() {
+            panic!("add_errors called with empty errors array");
+        }
+        
+        let lines = source_code.lines().map(|s| s.to_string()).collect();
+        let filename = format!("{}.hop", module_name);
+        
+        if let Some(module_info) = self.modules.iter_mut().find(|m| m.module_name == module_name) {
+            module_info.errors.extend(errors);
+        } else {
+            self.modules.push(ModuleInfo {
+                module_name,
+                lines,
+                filename,
+                errors,
+            });
+        }
     }
 
     pub fn without_location_info(mut self) -> Self {
@@ -28,23 +47,36 @@ impl ErrorFormatter {
         self
     }
 
-    pub fn format_all_errors(&self) -> String {
-        if self.errors.is_empty() {
-            return String::new();
-        }
+    pub fn has_errors(&self) -> bool {
+        !self.modules.is_empty()
+    }
 
+    pub fn format_all_errors(&self) -> String {
         let mut formatted_errors = String::new();
-        for (i, error) in self.errors.iter().enumerate() {
-            formatted_errors.push_str(&self.format_error(error));
-            // Only add newline if there are more errors after this one
-            if i < self.errors.len() - 1 {
+        let mut first_module = true;
+        
+        for module_info in &self.modules {
+            if module_info.errors.is_empty() {
+                continue;
+            }
+            
+            if !first_module {
                 formatted_errors.push('\n');
+            }
+            first_module = false;
+            
+            for (i, error) in module_info.errors.iter().enumerate() {
+                formatted_errors.push_str(&self.format_error(module_info, error));
+                // Only add newline if there are more errors after this one
+                if i < module_info.errors.len() - 1 {
+                    formatted_errors.push('\n');
+                }
             }
         }
         formatted_errors
     }
 
-    pub fn format_error(&self, error: &RangeError) -> String {
+    fn format_error(&self, module_info: &ModuleInfo, error: &RangeError) -> String {
         let mut output = String::new();
 
         // Error header
@@ -56,23 +88,23 @@ impl ErrorFormatter {
         if self.show_location {
             output.push_str(&format!(
                 "  --> {} (line {}, col {})\n",
-                self.filename, range.start.line, range.start.column
+                module_info.filename, range.start.line, range.start.column
             ));
         }
 
         // Source code context with surrounding lines
-        self.format_source_context(&mut output, range);
+        self.format_source_context(&mut output, module_info, range);
 
         output
     }
 
-    fn format_source_context(&self, output: &mut String, range: Range) {
+    fn format_source_context(&self, output: &mut String, module_info: &ModuleInfo, range: Range) {
         let error_line = range.start.line;
-        let max_line_width = self.lines.len().to_string().len();
+        let max_line_width = module_info.lines.len().to_string().len();
 
         // Show one line before (if exists)
         if error_line > 1 {
-            if let Some(prev_line) = self.lines.get(error_line - 2) {
+            if let Some(prev_line) = module_info.lines.get(error_line - 2) {
                 output.push_str(&format!(
                     "{:width$} | {}\n",
                     error_line - 1,
@@ -83,7 +115,7 @@ impl ErrorFormatter {
         }
 
         // Show the error line
-        if let Some(line_content) = self.lines.get(error_line - 1) {
+        if let Some(line_content) = module_info.lines.get(error_line - 1) {
             output.push_str(&format!(
                 "{:width$} | {}\n",
                 error_line,
