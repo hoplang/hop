@@ -217,7 +217,7 @@ pub struct TextNode {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentReferenceNode {
     pub component: String,
-    pub params_attr: Option<DopExprAttribute>,
+    pub params: Option<(DopExpr, Range)>,
     pub range: Range,
     pub children: Vec<Node>,
 }

@@ -489,11 +489,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     let params_attr = match &expression {
                         Some((expr_string, range)) => {
                             match dop::parse_expr_with_range(expr_string, *range) {
-                                Ok(expression) => Some(DopExprAttribute::new(
-                                    "params".to_string(),
-                                    expression,
-                                    *token_range,
-                                )),
+                                Ok(expression) => Some((expression, *range)),
                                 Err(err) => {
                                     errors.push(err);
                                     None
@@ -505,7 +501,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
 
                     Node::ComponentReference(ComponentReferenceNode {
                         component: tag_name.to_string(),
-                        params_attr,
+                        params: params_attr,
                         range: *token_range,
                         children,
                     })

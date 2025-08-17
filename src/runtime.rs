@@ -310,13 +310,13 @@ impl Program {
             }
             Node::ComponentReference(ComponentReferenceNode {
                 component,
-                params_attr,
+                params,
                 children,
                 ..
             }) => {
                 let mut params_value = serde_json::Value::Null;
-                if let Some(attr) = params_attr {
-                    params_value = evaluate_expr(&attr.expression, env)?;
+                if let Some((expression, _)) = params {
+                    params_value = evaluate_expr(expression, env)?;
                 }
 
                 let component_name = component;

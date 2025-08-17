@@ -270,7 +270,7 @@ fn typecheck_node(
         }
         Node::ComponentReference(ComponentReferenceNode {
             component,
-            params_attr,
+            params,
             children,
             range,
             ..
@@ -286,15 +286,21 @@ fn typecheck_node(
                     definition_range: comp_info.definition_range,
                 });
 
-                if let Some(params_attr) = params_attr {
-                    expect_type(
-                        &comp_info.parameter_type,
-                        params_attr,
+                if let Some((expression, range)) = params {
+                    let expr_type = typecheck_dop_expression(
+                        expression,
                         env,
                         unifier,
                         annotations,
                         errors,
+                        *range,
                     );
+
+                    if let Some(err) = unifier.unify(&expr_type, &comp_info.parameter_type) {
+                        errors.push(RangeError::unification_error(&err.message, *range));
+                    } else {
+                        annotations.push(TypeAnnotation(*range, comp_info.parameter_type.clone()));
+                    }
                 }
 
                 // Validate slots
