@@ -101,23 +101,22 @@ impl Cursor {
     }
 }
 
-struct Tokenizer {
+pub struct Tokenizer {
     cursor: Cursor,
     state: TokenizerState,
     stored_tag_name: String,
 }
 
 impl Tokenizer {
-    fn new(input: &str) -> Self {
-        let cursor = Cursor::new(input);
+    pub fn new(input: &str) -> Self {
         Self {
-            cursor,
+            cursor: Cursor::new(input),
             state: TokenizerState::Text,
             stored_tag_name: String::new(),
         }
     }
 
-    pub fn next_token(&mut self) -> Result<(Token, Range), RangeError> {
+    pub fn advance(&mut self) -> Result<(Token, Range), RangeError> {
         let mut token_value = String::new();
         let token_start = self.cursor.get_position();
         let mut token_attributes = Vec::new();
@@ -726,7 +725,7 @@ pub fn tokenize(input: &str, errors: &mut Vec<RangeError>) -> Vec<(Token, Range)
     let mut tokens = Vec::new();
 
     loop {
-        match tokenizer.next_token() {
+        match tokenizer.advance() {
             Ok((Token::Eof, _)) => {
                 break;
             }
