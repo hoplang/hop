@@ -88,12 +88,10 @@ impl DopTokenizer {
     }
 
     pub fn advance(&mut self) -> Result<(DopToken, Range), RangeError> {
-        // Skip whitespace first
         while self.cursor.peek().is_whitespace() {
             self.cursor.advance();
         }
 
-        // Now get the start position after skipping whitespace
         let start_pos = self.cursor.get_position();
 
         let token = match self.cursor.peek() {
@@ -130,64 +128,49 @@ impl DopTokenizer {
             '\'' => {
                 let mut result = String::new();
                 self.cursor.advance();
-                while self.cursor.peek() != '\'' && self.cursor.peek() != '\0' {
+                while !matches!(self.cursor.peek(), '\'' | '\0') {
                     result.push(self.cursor.advance());
                 }
                 if self.cursor.peek() != '\'' {
-                    let error_pos = self.cursor.get_position();
                     return Err(RangeError::new(
                         "Unterminated string literal".to_string(),
-                        Range::new(start_pos, error_pos),
+                        Range::new(start_pos, self.cursor.get_position()),
                     ));
                 }
                 self.cursor.advance(); // consume '
                 DopToken::StringLiteral(result)
             }
-            ch if ch.is_ascii_alphabetic() || ch == '_' => {
+            'A'..='Z' | 'a'..='z' | '_' => {
                 let mut identifier = String::new();
 
-                identifier.push(self.cursor.advance());
-
-                // Subsequent characters can be letters, digits, or underscores
-                while self.cursor.peek().is_ascii_alphanumeric() || self.cursor.peek() == '_' {
+                while matches!(self.cursor.peek(), 'A'..='Z' | 'a'..='z' | '0'..='9' | '_') {
                     identifier.push(self.cursor.advance());
                 }
 
-                if identifier.is_empty() {
-                    let error_pos = self.cursor.get_position();
-                    return Err(RangeError::new(
-                        "Invalid identifier".to_string(),
-                        Range::new(start_pos, error_pos),
-                    ));
-                } else if identifier == "in" {
-                    DopToken::In
-                } else if identifier == "true" {
-                    DopToken::BooleanLiteral(true)
-                } else if identifier == "false" {
-                    DopToken::BooleanLiteral(false)
-                } else {
-                    DopToken::Identifier(identifier)
+                match identifier.as_str() {
+                    "in" => DopToken::In,
+                    "true" => DopToken::BooleanLiteral(true),
+                    "false" => DopToken::BooleanLiteral(false),
+                    _ => DopToken::Identifier(identifier),
                 }
             }
-            ch if ch.is_ascii_digit() => {
+            '0'..='9' => {
                 let mut number_string = String::new();
 
-                // Read integer part
-                while self.cursor.peek().is_ascii_digit() {
+                while matches!(self.cursor.peek(), '0'..='9') {
                     number_string.push(self.cursor.advance());
                 }
 
-                // Read decimal part if present
                 if self.cursor.peek() == '.' {
                     number_string.push(self.cursor.advance()); // consume '.'
-                    if !self.cursor.peek().is_ascii_digit() {
+                    if !matches!(self.cursor.peek(), '0'..='9') {
                         let error_pos = self.cursor.get_position();
                         return Err(RangeError::new(
                             "Expected digit after decimal point".to_string(),
                             Range::new(start_pos, error_pos),
                         ));
                     }
-                    while self.cursor.peek().is_ascii_digit() {
+                    while matches!(self.cursor.peek(), '0'..='9') {
                         number_string.push(self.cursor.advance());
                     }
                 }
