@@ -1,4 +1,5 @@
-use super::{BinaryOp, DopExpr, DopType, UnaryOp, Unifier};
+use super::parser::{BinaryOp, DopExpr, UnaryOp};
+use super::{DopType, Unifier};
 use crate::common::{Environment, Range, RangeError};
 use std::collections::HashMap;
 
