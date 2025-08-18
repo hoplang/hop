@@ -1298,3 +1298,84 @@ main::main-comp
 	{foo: string}
 	[]
 ## END
+
+## BEGIN
+-- main.hop --
+<main-comp {data}>
+	<for {section in data}>
+		<h1>{section.title}</h1>
+		<for {item in section.items}>
+			<div>{item}</div>
+		</for>
+	</for>
+</main-comp>
+-- out --
+main::main-comp
+	{items: string[], title: string}[]
+	[]
+## END
+
+## BEGIN
+-- main.hop --
+<string-comp {message}>
+	<div>{message}</div>
+</string-comp>
+<main-comp>
+	<string-comp {42}/>
+</main-comp>
+-- out --
+error: Argument of type number is incompatible with expected type string
+  --> main.hop (line 5, col 16)
+4 | <main-comp>
+5 |     <string-comp {42}/>
+  |                   ^^
+## END
+
+## BEGIN
+-- main.hop --
+<user-comp {user}>
+	<div>{user.name} ({user.age})</div>
+</user-comp>
+<main-comp>
+	<user-comp {'invalid'}/>
+</main-comp>
+-- out --
+error: Argument of type string is incompatible with expected type {age: string, name: string}
+  --> main.hop (line 5, col 14)
+4 | <main-comp>
+5 |     <user-comp {'invalid'}/>
+  |                 ^^^^^^^^^
+## END
+
+## BEGIN
+-- main.hop --
+<user-comp {user}>
+	<div>{user.name}: {user.active}</div>
+</user-comp>
+<main-comp {data}>
+	<user-comp {data.profile}/>
+</main-comp>
+-- out --
+main::user-comp
+	{active: string, name: string}
+	[]
+main::main-comp
+	{profile: {active: string, name: string}}
+	[]
+## END
+
+## BEGIN
+-- main.hop --
+<new-comp {user}>
+	<div>{user.name}</div>
+</new-comp>
+<main-comp>
+	<new-comp {'invalid'}/>
+</main-comp>
+-- out --
+error: Argument of type string is incompatible with expected type {name: string}
+  --> main.hop (line 5, col 13)
+4 | <main-comp>
+5 |     <new-comp {'invalid'}/>
+  |                ^^^^^^^^^
+## END
