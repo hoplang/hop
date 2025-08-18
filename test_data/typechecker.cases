@@ -1420,3 +1420,18 @@ main::list-comp
 	string[]
 	[]
 ## END
+
+Component with explicit boolean parameter type.
+
+## BEGIN
+-- main.hop --
+<toggle-comp {enabled: boolean}>
+	<if {enabled}>
+		<div>Enabled</div>
+	</if>
+</toggle-comp>
+-- out --
+main::toggle-comp
+	boolean
+	[]
+## END
