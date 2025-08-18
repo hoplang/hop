@@ -70,32 +70,32 @@ error: Invalid component name 'div'. Component names must contain a dash and not
 
 ## BEGIN
 -- main.hop --
-<main-comp {Data123}>
+<main-comp {Data123: string}>
 	<div></div>
 </main-comp>
 -- out --
 error: Invalid variable name 'Data123'. Variable names must match [a-z][a-z0-9]*
-1 | <main-comp {Data123}>
+1 | <main-comp {Data123: string}>
   |             ^^^^^^^
 ## END
 
 ## BEGIN
 -- main.hop --
-<main-comp {data}>
+<main-comp {data: array[string]}>
 	<for {item_name in data}>
 		<div></div>
 	</for>
 </main-comp>
 -- out --
 error: Invalid variable name 'item_name'. Variable names must match [a-z][a-z0-9]*
-1 | <main-comp {data}>
+1 | <main-comp {data: array[string]}>
 2 |     <for {item_name in data}>
   |           ^^^^^^^^^
 ## END
 
 ## BEGIN
 -- main.hop --
-<main-comp {sections}>
+<main-comp {sections: array[object[title: string, items: array[string]]]}>
 	<div>
 		<for {section in sections}>
 			<div>
@@ -118,7 +118,7 @@ div
 
 ## BEGIN
 -- main.hop --
-<main-comp {foo}>
+<main-comp {foo: string}>
 	<!DOCTYPE html>
 	<html>
 	<body>
@@ -150,7 +150,7 @@ style
 
 ## BEGIN
 -- main.hop --
-<main-comp {data} entrypoint>
+<main-comp {data: object[message: string]} entrypoint>
     <h1>Hello World</h1>
     <p>{data.message}</p>
 </main-comp>
@@ -195,7 +195,7 @@ if
 
 ## BEGIN
 -- main.hop --
-<main-comp {i}>
+<main-comp {i: array[object[s: object[t: array[string]]]]}>
 	<for {j in i}>
 		<for {k in j.s.t}>
 			<if {k}>
@@ -220,7 +220,7 @@ for
 
 ## BEGIN
 -- main.hop --
-<main-comp {data}>
+<main-comp {data: array[string]}>
 	<if {data}>
 		<for {d in data}>
 		</for>
@@ -233,7 +233,7 @@ if
 
 ## BEGIN
 -- main.hop --
-<main-comp {foo}>
+<main-comp {foo: array[string]}>
 	<for {bar in foo}>
 	  <div></div>
 	</for>
@@ -245,7 +245,7 @@ for
 
 ## BEGIN
 -- main.hop --
-<main-comp {p}>
+<main-comp {p: string}>
 	<foo-comp></foo-comp>
 	<foo-comp></foo-comp>
 </main-comp>
@@ -256,7 +256,7 @@ render
 
 ## BEGIN
 -- main.hop --
-<main-comp {data}>
+<main-comp {data: object[user: string]}>
 	<foo-comp {data}></foo-comp>
 	<bar-comp {data.user}></bar-comp>
 </main-comp>
@@ -267,7 +267,7 @@ render
 
 ## BEGIN
 -- main.hop --
-<main-comp {foo}>
+<main-comp {foo: array[string]}>
 	<for {v in foo}>
 		<div>{v}</div>
 	</for>
@@ -279,7 +279,7 @@ for
 
 ## BEGIN
 -- main.hop --
-<main-comp {foo}>
+<main-comp {foo: string}>
 	<script>
 		const x = "<div></div>";
 	</script>
@@ -290,7 +290,7 @@ script
 
 ## BEGIN
 -- main.hop --
-<main-comp {user}>
+<main-comp {user: object[url: string, theme: string]}>
   <a set-href="user.url" set-class="user.theme">Link</a>
 </main-comp>
 -- out --

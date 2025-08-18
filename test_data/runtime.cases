@@ -15,7 +15,7 @@ Expressions should be safe against XSS.
 
 ## BEGIN
 -- main.hop --
-<main-comp {p}>
+<main-comp {p: string}>
 	<div>{p}</div>
 </main-comp>
 -- data.json --
@@ -28,7 +28,7 @@ Expressions should be safe against XSS.
 
 ## BEGIN
 -- main.hop --
-<main-comp {params}>
+<main-comp {params: object[user: object[name: string], admin: object[name: string], status: string, expected_status: string]}>
   <if {params.user.name == params.admin.name}>
     <div>Is Admin</div>
   </if>
@@ -53,7 +53,7 @@ Expressions should be safe against XSS.
 
 ## BEGIN
 -- main.hop --
-<main-comp {params}>
+<main-comp {params: object[x: string, y: string]}>
   <if {params.x == params.y}>
     <span>Equal</span>
   </if>
@@ -72,7 +72,7 @@ Expressions should be safe against XSS.
 
 ## BEGIN
 -- main.hop --
-<main-comp {items}>
+<main-comp {items: array[object[show: boolean, data: string]]}>
 	<for {item in items}>
 		<if {item.show}>
 			<div>{item.data}</div>
@@ -95,7 +95,7 @@ Expressions should be safe against XSS.
 
 ## BEGIN
 -- main.hop --
-<main-comp {items}>
+<main-comp {items: array[object[name: string, type: string]]}>
   <for {item in items}>
     <div>
       <span>{item.name}</span>
@@ -165,7 +165,7 @@ Expressions should be safe against XSS.
 
 ## BEGIN
 -- main.hop --
-<main-comp {p}>
+<main-comp {p: string}>
 	<div>{p}</div>
 </main-comp>
 -- data.json --
@@ -215,7 +215,7 @@ Expressions should be safe against XSS.
 
 ## BEGIN
 -- main.hop --
-<main-comp {user}>
+<main-comp {user: object[profile_url: string, name: string]}>
   <a set-href="user.profile_url" set-title="user.name">Click here</a>
 </main-comp>
 -- data.json --
@@ -235,7 +235,7 @@ Expressions should be safe against XSS.
     </div>
 </main-card>
 
-<main-comp entrypoint {data}>
+<main-comp entrypoint {data: object[title: string, message: string]}>
     <main-card>
         <with-content>
             <h1>{data.title}</h1>
@@ -344,7 +344,7 @@ Expressions should be safe against XSS.
     </div>
 </modal-comp>
 
-<main-comp entrypoint {data}>
+<main-comp entrypoint {data: object[page_title: string]}>
     <page-layout>
         <with-content>
             <h1>{data.page_title}</h1>
@@ -402,7 +402,7 @@ Expressions should be safe against XSS.
     </div>
 </main-card>
 
-<main-comp entrypoint {data}>
+<main-comp entrypoint {data: object[title: string, active_count: string, users: array[object[name: string, active: boolean, admin: boolean]]]}>
     <main-card>
         <with-header>
             <h1>{data.title}</h1>
@@ -485,7 +485,7 @@ Expressions should be safe against XSS.
 
 ## BEGIN
 -- main.hop --
-<main-comp {params}>
+<main-comp {params: object[role: string, status: string]}>
   <if {params.role == 'admin'}>
     <div>Admin Access</div>
   </if>
@@ -573,7 +573,7 @@ Expressions should be safe against XSS.
 
 ## BEGIN
 -- main.hop --
-<main-comp {user}>
+<main-comp {user: object[isActive: boolean, role: string]}>
   <if {user.isActive}>
     <div>Welcome active user!</div>
   </if>
@@ -596,7 +596,7 @@ Expressions should be safe against XSS.
 
 ## BEGIN
 -- main.hop --
-<main-comp {config}>
+<main-comp {config: object[enabled: boolean, debug: boolean]}>
   <if {config.enabled}>
     <div>Feature is enabled</div>
     <if {config.debug}>
@@ -618,7 +618,7 @@ Expressions should be safe against XSS.
 
 ## BEGIN
 -- main.hop --
-<main-comp {status}>
+<main-comp {status: object[visible: boolean]}>
   <if {status.visible}>
     <div>Content is visible</div>
   </if>
@@ -635,7 +635,7 @@ Expressions should be safe against XSS.
 
 ## BEGIN
 -- main.hop --
-<main-comp {data}>
+<main-comp {data: object[users: array[object[name: string]]]}>
   <for {user in data.users}>
     <div>{user.name}</div>
   </for>

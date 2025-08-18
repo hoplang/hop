@@ -161,7 +161,7 @@ pub fn parse_variable_name(
 pub fn parse_variable_with_type(
     param_str: &str,
     param_range: Range,
-) -> Result<(DopVarName, Option<crate::dop::DopType>), RangeError> {
+) -> Result<(DopVarName, crate::dop::DopType), RangeError> {
     if param_str.trim().is_empty() {
         return Err(RangeError::new(
             "Empty parameter".to_string(),
@@ -191,16 +191,21 @@ pub fn parse_variable_with_type(
         }
     };
 
-    // Check for optional type annotation
+    // Require type annotation
     let type_annotation = match tokenizer.peek() {
         (DopToken::Colon, _) => {
             tokenizer.advance()?; // consume :
-            Some(parse_type(&mut tokenizer)?)
+            parse_type(&mut tokenizer)?
         }
-        (DopToken::Eof, _) => None,
+        (DopToken::Eof, _) => {
+            return Err(RangeError::new(
+                "Type annotation is required for component parameters".to_string(),
+                param_range,
+            ));
+        }
         (_, range) => {
             return Err(RangeError::new(
-                "Expected ':' or end of parameter".to_string(),
+                "Expected ':' for type annotation".to_string(),
                 *range,
             ));
         }
