@@ -324,10 +324,10 @@ When a variable shadows another variable, the typechecker outputs an error.
 </main-comp>
 -- out --
 error: Variable items is already defined
-  --> main.hop (line 2, col 3)
+  --> main.hop (line 2, col 9)
 1 | <main-comp {items}>
 2 |   <for {items in items.foo}>
-  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |         ^^^^^
 ## END
 ## BEGIN
 -- main.hop --
@@ -337,10 +337,10 @@ error: Variable items is already defined
 </main-comp>
 -- out --
 error: Variable items is already defined
-  --> main.hop (line 2, col 3)
+  --> main.hop (line 2, col 9)
 1 | <main-comp {items}>
 2 |   <for {items in items}>
-  |   ^^^^^^^^^^^^^^^^^^^^^^
+  |         ^^^^^
 ## END
 ## BEGIN
 -- main.hop --
@@ -353,10 +353,10 @@ error: Variable items is already defined
 </main-comp>
 -- out --
 error: Variable item is already defined
-  --> main.hop (line 3, col 5)
+  --> main.hop (line 3, col 11)
 2 |   <for {item in items.a}>
 3 |     <for {item in items.b}>
-  |     ^^^^^^^^^^^^^^^^^^^^^^^
+  |           ^^^^
 ## END
 
 When an undefined variable is referenced, the typechecker outputs an error.

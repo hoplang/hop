@@ -73,7 +73,7 @@ pub fn typecheck(
         if let Some(type_result) = import_type_results.get(from_module) {
             if let Some(comp_info) = type_result.component_info.get(component_name) {
                 if component_info.contains_key(component_name) {
-                    errors.push(RangeError::component_already_defined(
+                    errors.push(RangeError::component_is_already_defined(
                         component_name,
                         *range,
                     ));
@@ -109,7 +109,7 @@ pub fn typecheck(
     {
         // Check for duplicate component names
         if component_info.contains_key(name) {
-            errors.push(RangeError::component_already_defined(name, *range));
+            errors.push(RangeError::component_is_already_defined(name, *range));
             continue;
         }
 
@@ -383,7 +383,7 @@ fn typecheck_node(
             }
         }
         Node::For(ForNode {
-            var_name: (var_name, var_range),
+            var_name: (var_name, var_name_range),
             array_expr: (array_expr, array_expr_range),
             children,
             range,
@@ -412,9 +412,9 @@ fn typecheck_node(
             if env.push(var_name.value.clone(), element_type) {
                 pushed = true;
             } else {
-                errors.push(RangeError::variable_already_defined(
+                errors.push(RangeError::variable_is_already_defined(
                     &var_name.value,
-                    *range,
+                    *var_name_range,
                 ));
             }
 
@@ -434,7 +434,10 @@ fn typecheck_node(
 
             // Pop the loop variable from scope
             if pushed && !env.pop() {
-                errors.push(RangeError::unused_variable(&var_name.value, *var_range));
+                errors.push(RangeError::unused_variable(
+                    &var_name.value,
+                    *var_name_range,
+                ));
             }
         }
         Node::Text(_) | Node::Doctype(_) => {

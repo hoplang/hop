@@ -124,7 +124,7 @@ impl RangeError {
         Self::new(format!("Module {module} is not defined"), range)
     }
 
-    pub fn component_already_defined(component: &str, range: Range) -> Self {
+    pub fn component_is_already_defined(component: &str, range: Range) -> Self {
         Self::new(format!("Component {component} is already defined"), range)
     }
 
@@ -136,7 +136,7 @@ impl RangeError {
         Self::new(format!("Unused variable {var}"), range)
     }
 
-    pub fn variable_already_defined(var: &str, range: Range) -> Self {
+    pub fn variable_is_already_defined(var: &str, range: Range) -> Self {
         Self::new(format!("Variable {var} is already defined"), range)
     }
 
