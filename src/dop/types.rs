@@ -17,14 +17,11 @@ impl fmt::Display for DopType {
         match self {
             DopType::Object(properties, _rest) => {
                 write!(f, "{{")?;
-                let mut first = true;
-
-                for (key, value) in properties {
-                    if !first {
+                for (idx, (key, value)) in properties.iter().enumerate() {
+                    if idx > 0 {
                         write!(f, ", ")?;
                     }
                     write!(f, "{}: {}", key, value)?;
-                    first = false;
                 }
                 write!(f, "}}")
             }
