@@ -1,10 +1,10 @@
 use serde_json::{Value, json};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DopType {
-    Object(HashMap<String, DopType>, i32),
+    Object(BTreeMap<String, DopType>, i32),
     Array(Box<DopType>),
     Bool,
     String,
@@ -20,11 +20,7 @@ impl fmt::Display for DopType {
                 write!(f, "{{")?;
                 let mut first = true;
 
-                // Collect and sort properties by key
-                let mut sorted_props: Vec<_> = properties.iter().collect();
-                sorted_props.sort_by_key(|(key, _)| *key);
-
-                for (key, value) in sorted_props {
+                for (key, value) in properties {
                     if !first {
                         write!(f, ", ")?;
                     }

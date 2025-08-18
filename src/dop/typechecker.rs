@@ -1,7 +1,7 @@
 use super::parser::{BinaryOp, DopExpr, UnaryOp};
 use super::{DopType, Unifier};
 use crate::common::{Environment, Range, RangeError};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 pub fn typecheck_dop_expression(
     expr: &DopExpr,
@@ -28,7 +28,7 @@ pub fn typecheck_dop_expression(
                 typecheck_dop_expression(base_expr, env, unifier, annotations, errors, range);
             let property_type = unifier.new_type_var();
             let obj_type =
-                unifier.new_object(HashMap::from([(property.clone(), property_type.clone())]));
+                unifier.new_object(BTreeMap::from([(property.clone(), property_type.clone())]));
 
             if let Some(_err) = unifier.unify(&base_type, &obj_type) {
                 errors.push(RangeError::new(

@@ -1,5 +1,5 @@
 use super::DopType;
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnificationError {
@@ -35,7 +35,7 @@ impl Unifier {
         DopType::TypeVar(self.next_type_var())
     }
 
-    pub fn new_object(&mut self, map: HashMap<String, DopType>) -> DopType {
+    pub fn new_object(&mut self, map: BTreeMap<String, DopType>) -> DopType {
         DopType::Object(map, self.next_type_var())
     }
 
@@ -59,13 +59,13 @@ impl Unifier {
                 }
 
                 // Collect missing properties
-                let missing_from_a: HashMap<String, DopType> = props_b
+                let missing_from_a: BTreeMap<String, DopType> = props_b
                     .iter()
                     .filter(|(key, _)| !props_a.contains_key(*key))
                     .map(|(k, v)| (k.clone(), v.clone()))
                     .collect();
 
-                let missing_from_b: HashMap<String, DopType> = props_a
+                let missing_from_b: BTreeMap<String, DopType> = props_a
                     .iter()
                     .filter(|(key, _)| !props_b.contains_key(*key))
                     .map(|(k, v)| (k.clone(), v.clone()))
@@ -121,7 +121,7 @@ impl Unifier {
             }
             DopType::Array(sub_type) => DopType::Array(Box::new(self.query(sub_type))),
             DopType::Object(props, rest) => {
-                let queried_props: HashMap<String, DopType> = props
+                let queried_props: BTreeMap<String, DopType> = props
                     .iter()
                     .map(|(k, v)| (k.clone(), self.query(v)))
                     .collect();
@@ -264,7 +264,7 @@ mod tests {
                     DopType::Array(Box::new(sexpr_to_type(args[0].clone(), table, unifier)))
                 }
                 "object" => {
-                    let mut map: HashMap<String, DopType> = HashMap::new();
+                    let mut map: BTreeMap<String, DopType> = BTreeMap::new();
                     for chunk in args.chunks(2) {
                         let value = sexpr_to_type(chunk[1].clone(), table, unifier);
                         let key = match &chunk[0] {
