@@ -21,12 +21,12 @@ impl DopVarName {
     }
 }
 
-pub fn parse_expr_with_range(expr: &str, full_range: Range) -> Result<DopExpr, RangeError> {
+pub fn parse_expr(expr: &str, expr_range: Range) -> Result<DopExpr, RangeError> {
     if expr.trim().is_empty() {
-        return Err(RangeError::new("Empty expression".to_string(), full_range));
+        return Err(RangeError::new("Empty expression".to_string(), expr_range));
     }
 
-    let mut tokenizer = DopTokenizer::new(expr, full_range.start)?;
+    let mut tokenizer = DopTokenizer::new(expr, expr_range.start)?;
     let result = parse_equality(&mut tokenizer)?;
 
     // expect Eof
@@ -45,13 +45,16 @@ pub fn parse_expr_with_range(expr: &str, full_range: Range) -> Result<DopExpr, R
 
 pub fn parse_loop_header(
     header: &str,
-    full_range: Range,
+    header_range: Range,
 ) -> Result<((DopVarName, Range), (DopExpr, Range)), RangeError> {
     if header.trim().is_empty() {
-        return Err(RangeError::new("Empty loop header".to_string(), full_range));
+        return Err(RangeError::new(
+            "Empty loop header".to_string(),
+            header_range,
+        ));
     }
 
-    let mut tokenizer = DopTokenizer::new(header, full_range.start)?;
+    let mut tokenizer = DopTokenizer::new(header, header_range.start)?;
 
     // expect Identifier
     let var_name = match tokenizer.advance()? {
@@ -97,12 +100,18 @@ pub fn parse_loop_header(
     Ok((var_name, (array_expr, array_expr_range)))
 }
 
-pub fn parse_variable_name(var_expr: &str, range: Range) -> Result<DopVarName, RangeError> {
-    if var_expr.trim().is_empty() {
-        return Err(RangeError::new("Empty variable name".to_string(), range));
+pub fn parse_variable_name(
+    variable: &str,
+    variable_range: Range,
+) -> Result<DopVarName, RangeError> {
+    if variable.trim().is_empty() {
+        return Err(RangeError::new(
+            "Empty variable name".to_string(),
+            variable_range,
+        ));
     }
 
-    let mut tokenizer = DopTokenizer::new(var_expr, range.start)?;
+    let mut tokenizer = DopTokenizer::new(variable, variable_range.start)?;
 
     // expect Identifier
     let var_name = match tokenizer.advance()? {
@@ -251,7 +260,7 @@ mod tests {
 
             println!("Test case {} (line {})", case_num + 1, line_number);
 
-            let result = parse_expr_with_range(input, Range::default()).unwrap_or_else(|e| {
+            let result = parse_expr(input, Range::default()).unwrap_or_else(|e| {
                 panic!(
                     "Failed to parse expression '{}' in test case {} (line {}): {:?}",
                     input,

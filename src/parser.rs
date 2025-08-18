@@ -324,7 +324,7 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
 
                     Some(ToplevelNode::ComponentDefinition(ComponentDefinitionNode {
                         name: name.to_string(),
-                        params_as_attr,
+                        param: params_as_attr,
                         as_attr,
                         attributes: attributes.clone(),
                         range: *range,
@@ -360,7 +360,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
         }),
         Token::Expression { value, range } => {
             // Expression tokens represent {expression} in text content
-            match dop::parse_expr_with_range(value, *range) {
+            match dop::parse_expr(value, *range) {
                 Ok(expr) => Node::TextExpression(TextExpressionNode {
                     expression: expr,
                     range: *range,
@@ -383,7 +383,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
             match value.as_str() {
                 "if" => match &expression {
                     Some((expr_string, expr_range)) => {
-                        match dop::parse_expr_with_range(expr_string, *expr_range) {
+                        match dop::parse_expr(expr_string, *expr_range) {
                             Ok(condition) => Node::If(IfNode {
                                 condition,
                                 range: *expr_range,
@@ -487,15 +487,13 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                 tag_name if is_valid_component_name(tag_name) => {
                     // This is a component render (contains dash)
                     let params_attr = match &expression {
-                        Some((expr_string, range)) => {
-                            match dop::parse_expr_with_range(expr_string, *range) {
-                                Ok(expression) => Some((expression, *range)),
-                                Err(err) => {
-                                    errors.push(err);
-                                    None
-                                }
+                        Some((expr_string, range)) => match dop::parse_expr(expr_string, *range) {
+                            Ok(expression) => Some((expression, *range)),
+                            Err(err) => {
+                                errors.push(err);
+                                None
                             }
-                        }
+                        },
                         None => None,
                     };
 
@@ -511,7 +509,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     for attr in attributes {
                         if attr.name.starts_with("set-") {
                             if let Some(expr_attr) = {
-                                match dop::parse_expr_with_range(&attr.value, attr.range) {
+                                match dop::parse_expr(&attr.value, attr.range) {
                                     Ok(expression) => Some(DopExprAttribute::new(
                                         attr.name.to_string(),
                                         expression,

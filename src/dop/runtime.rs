@@ -56,7 +56,7 @@ pub fn evaluate_expr(
 mod tests {
 
     use crate::common::Range;
-    use crate::dop::parse_expr_with_range;
+    use crate::dop::parse_expr;
 
     use super::*;
     use pretty_assertions::assert_eq;
@@ -108,7 +108,7 @@ mod tests {
             }
 
             // Parse the expression
-            let expr = parse_expr_with_range(expr_content, Range::default()).unwrap_or_else(|e| {
+            let expr = parse_expr(expr_content, Range::default()).unwrap_or_else(|e| {
                 panic!(
                     "Failed to parse expression '{}' in test case {} (line {}): {:?}",
                     expr_content,

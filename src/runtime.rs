@@ -171,7 +171,7 @@ impl Program {
         let mut env = self.init_environment();
 
         // Set up environment with parameters if the component has params
-        if let Some(params_as_attr) = &component.params_as_attr {
+        if let Some(params_as_attr) = &component.param {
             env.push(params_as_attr.var_name.value.clone(), params);
         }
 
@@ -239,7 +239,7 @@ impl Program {
         })?;
 
         let mut env = self.init_environment();
-        if let Some(params_as_attr) = &component.params_as_attr {
+        if let Some(params_as_attr) = &component.param {
             env.push(params_as_attr.var_name.value.clone(), params);
         }
 

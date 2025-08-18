@@ -99,7 +99,7 @@ pub fn typecheck(
 
     for ComponentDefinitionNode {
         name,
-        params_as_attr,
+        param: params_as_attr,
         children,
         preview,
         slots,
@@ -386,7 +386,7 @@ fn typecheck_node(
             var_name: (var_name, var_name_range),
             array_expr: (array_expr, array_expr_range),
             children,
-            range,
+            ..
         }) => {
             // Typecheck the array expression
             let array_type = typecheck_dop_expression(
