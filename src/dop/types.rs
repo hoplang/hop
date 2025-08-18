@@ -38,7 +38,7 @@ impl fmt::Display for DopType {
             DopType::String => write!(f, "string"),
             DopType::Number => write!(f, "number"),
             DopType::Void => write!(f, "void"),
-            DopType::TypeVar(id) => write!(f, "?t{}", id),
+            DopType::TypeVar(_) => write!(f, "any"),
         }
     }
 }

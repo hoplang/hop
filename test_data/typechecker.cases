@@ -631,7 +631,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	{data: {x: ?t21, y: ?t21}, other_user: {name: ?t8}, user: {name: ?t8}}
+	{data: {x: any, y: any}, other_user: {name: any}, user: {name: any}}
 	[]
 ## END
 
@@ -644,7 +644,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	{x: ?t3, y: ?t3}
+	{x: any, y: any}
 	[]
 ## END
 
