@@ -4,13 +4,13 @@ use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DopType {
-    Object(BTreeMap<String, DopType>, i32),
+    Object(BTreeMap<String, DopType>, u32),
     Array(Box<DopType>),
     Bool,
     String,
     Number,
     Void,
-    TypeVar(i32),
+    TypeVar(u32),
 }
 
 impl fmt::Display for DopType {

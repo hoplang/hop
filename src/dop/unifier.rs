@@ -13,8 +13,8 @@ impl UnificationError {
 }
 
 pub struct Unifier {
-    substitutions: HashMap<i32, DopType>,
-    next_type_var_id: i32,
+    substitutions: HashMap<u32, DopType>,
+    next_type_var_id: u32,
 }
 
 impl Unifier {
@@ -25,7 +25,7 @@ impl Unifier {
         }
     }
 
-    fn next_type_var(&mut self) -> i32 {
+    fn next_type_var(&mut self) -> u32 {
         let id = self.next_type_var_id;
         self.next_type_var_id += 1;
         id
@@ -89,7 +89,7 @@ impl Unifier {
         }
     }
 
-    fn unify_type_var(&mut self, var_id: i32, other_type: &DopType) -> Result<(), UnificationError> {
+    fn unify_type_var(&mut self, var_id: u32, other_type: &DopType) -> Result<(), UnificationError> {
         if let Some(substituted_type) = self.substitutions.get(&var_id) {
             return self.unify(&substituted_type.clone(), other_type);
         }
