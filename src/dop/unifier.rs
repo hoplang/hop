@@ -73,6 +73,9 @@ impl Unifier {
         DopType::Object(map, self.next_type_var())
     }
 
+    /// Construct a type that is the least upper bound of `a` and `b` and constrain `a` and `b` to
+    /// be this type, or fail if there is no representation of the least upper bound of `a` and `b`
+    /// in the type system.
     pub fn unify(&mut self, a: &DopType, b: &DopType) -> Result<(), UnificationError> {
         match (a, b) {
             (DopType::Bool, DopType::Bool) => Ok(()),
