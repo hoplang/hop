@@ -231,31 +231,27 @@ mod tests {
 
         loop {
             let (token, range) = tokenizer.peek();
-            let range_str = format!(
-                "{}:{}-{}:{}",
-                range.start.line, range.start.column, range.end.line, range.end.column
-            );
 
             let formatted = match token {
-                DopToken::Identifier(s) => format!("Identifier(\"{}\") {}", s, range_str),
-                DopToken::StringLiteral(s) => format!("StringLiteral(\"{}\") {}", s, range_str),
-                DopToken::BooleanLiteral(b) => format!("BooleanLiteral({}) {}", b, range_str),
+                DopToken::Identifier(s) => format!("Identifier(\"{}\") {}", s, range),
+                DopToken::StringLiteral(s) => format!("StringLiteral(\"{}\") {}", s, range),
+                DopToken::BooleanLiteral(b) => format!("BooleanLiteral({}) {}", b, range),
                 DopToken::NumberLiteral(n) => {
                     if let Some(i) = n.as_i64() {
-                        format!("NumberLiteral({}) {}", i, range_str)
+                        format!("NumberLiteral({}) {}", i, range)
                     } else if let Some(f) = n.as_f64() {
-                        format!("NumberLiteral({}) {}", f, range_str)
+                        format!("NumberLiteral({}) {}", f, range)
                     } else {
-                        format!("NumberLiteral({:?}) {}", n, range_str)
+                        format!("NumberLiteral({:?}) {}", n, range)
                     }
                 }
-                DopToken::Equal => format!("Equal {}", range_str),
-                DopToken::Not => format!("Not {}", range_str),
-                DopToken::Dot => format!("Dot {}", range_str),
-                DopToken::LeftParen => format!("LeftParen {}", range_str),
-                DopToken::RightParen => format!("RightParen {}", range_str),
-                DopToken::In => format!("In {}", range_str),
-                DopToken::Eof => format!("Eof {}", range_str),
+                DopToken::Equal => format!("Equal {}", range),
+                DopToken::Not => format!("Not {}", range),
+                DopToken::Dot => format!("Dot {}", range),
+                DopToken::LeftParen => format!("LeftParen {}", range),
+                DopToken::RightParen => format!("RightParen {}", range),
+                DopToken::In => format!("In {}", range),
+                DopToken::Eof => format!("Eof {}", range),
             };
 
             result.push(formatted);

@@ -750,41 +750,35 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
 
-    fn format_range(range: Range) -> String {
-        format!(
-            "{}:{}-{}:{}",
-            range.start.line, range.start.column, range.end.line, range.end.column
-        )
-    }
 
     fn format_attr(attr: &Attribute) -> String {
         format!(
             "{}=[{}] {}",
             attr.name,
             attr.value,
-            format_range(attr.range),
+            attr.range,
         )
     }
 
     fn format_token(val: Result<(Token, Range), RangeError>) -> String {
         match val.unwrap() {
             (Token::Text { .. }, range) => {
-                format!("Text {}", format_range(range))
+                format!("Text {}", range)
             }
             (Token::Expression { value, .. }, token_range) => {
-                format!("Expression [] {{{}}} {}", value, format_range(token_range))
+                format!("Expression [] {{{}}} {}", value, token_range)
             }
             (Token::Doctype, range) => {
-                format!("Doctype {}", format_range(range))
+                format!("Doctype {}", range)
             }
             (Token::Comment, range) => {
-                format!("Comment {}", format_range(range))
+                format!("Comment {}", range)
             }
             (Token::Eof, range) => {
-                format!("Eof {}", format_range(range))
+                format!("Eof {}", range)
             }
             (Token::EndTag { value }, range) => {
-                format!("EndTag({}) {}", value, format_range(range))
+                format!("EndTag({}) {}", value, range)
             }
             (
                 Token::StartTag {
@@ -802,7 +796,7 @@ mod tests {
                     .join(" ");
 
                 let expr_part = if let Some((expr_string, range)) = &expression {
-                    format!(" {{{}, {}}}", expr_string, format_range(*range))
+                    format!(" {{{}, {}}}", expr_string, *range)
                 } else {
                     String::new()
                 };
@@ -816,7 +810,7 @@ mod tests {
                     value,
                     attrs,
                     expr_part,
-                    format_range(range)
+                    range
                 )
             }
         }

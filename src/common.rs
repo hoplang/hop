@@ -1,5 +1,6 @@
 use crate::dop::{DopExpr, parser::DopVarName};
 use std::collections::HashMap;
+use std::fmt;
 
 /// HopMode influences the runtime value of the global variable HOP_MODE which
 /// will be set to 'build' when running `hop build` and 'dev' when running
@@ -40,6 +41,12 @@ impl Default for Position {
     }
 }
 
+impl fmt::Display for Position {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.line, self.column)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Range {
     pub start: Position,
@@ -58,6 +65,12 @@ impl Range {
             || (position.line == self.start.line && position.column >= self.start.column))
             && (position.line < self.end.line
                 || (position.line == self.end.line && position.column < self.end.column))
+    }
+}
+
+impl fmt::Display for Range {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}-{}", self.start, self.end)
     }
 }
 
