@@ -3,13 +3,13 @@ use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DopType {
-    Object(BTreeMap<String, DopType>, u32),
+    Object(BTreeMap<String, DopType>, usize),
     Array(Box<DopType>),
     Bool,
     String,
     Number,
     Void,
-    TypeVar(u32),
+    TypeVar(usize),
 }
 
 impl fmt::Display for DopType {
@@ -47,8 +47,8 @@ impl UnificationError {
 }
 
 pub struct Unifier {
-    substitutions: HashMap<u32, DopType>,
-    next_type_var_id: u32,
+    substitutions: HashMap<usize, DopType>,
+    next_type_var_id: usize,
 }
 
 impl Unifier {
@@ -59,7 +59,7 @@ impl Unifier {
         }
     }
 
-    fn next_type_var(&mut self) -> u32 {
+    fn next_type_var(&mut self) -> usize {
         let id = self.next_type_var_id;
         self.next_type_var_id += 1;
         id
@@ -125,7 +125,7 @@ impl Unifier {
 
     fn unify_type_var(
         &mut self,
-        var_id: u32,
+        var_id: usize,
         other_type: &DopType,
     ) -> Result<(), UnificationError> {
         if let Some(substituted_type) = self.substitutions.get(&var_id) {
