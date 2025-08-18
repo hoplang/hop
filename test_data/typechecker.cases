@@ -1379,3 +1379,44 @@ error: Argument of type string is incompatible with expected type {name: string}
 5 |     <new-comp {'invalid'}/>
   |                ^^^^^^^^^
 ## END
+
+Component with explicit string parameter type.
+
+## BEGIN
+-- main.hop --
+<string-comp {message: string}>
+	<div>{message}</div>
+</string-comp>
+-- out --
+main::string-comp
+	string
+	[]
+## END
+
+Component with explicit object parameter type.
+
+## BEGIN
+-- main.hop --
+<user-comp {user: object[name: string]}>
+	<div>{user.name}</div>
+</user-comp>
+-- out --
+main::user-comp
+	{name: string}
+	[]
+## END
+
+Component with explicit array parameter type.
+
+## BEGIN
+-- main.hop --
+<list-comp {items: array[string]}>
+	<for {item in items}>
+		<div>{item}</div>
+	</for>
+</list-comp>
+-- out --
+main::list-comp
+	string[]
+	[]
+## END

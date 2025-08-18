@@ -269,7 +269,7 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::DopType, Range
                             // Handle empty object
                             if let (DopToken::RightBracket, _) = tokenizer.peek() {
                                 tokenizer.advance()?; // consume ]
-                                return Ok(DopType::Object(properties, 0));
+                                return Ok(DopType::Object(properties, None));
                             }
                             
                             loop {
@@ -318,7 +318,7 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::DopType, Range
                                 }
                             }
                             
-                            Ok(DopType::Object(properties, 0))
+                            Ok(DopType::Object(properties, None))
                         }
                         (_, range) => Err(RangeError::new(
                             "Expected '[' after 'object'".to_string(),

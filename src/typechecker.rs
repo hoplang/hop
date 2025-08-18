@@ -114,9 +114,17 @@ pub fn typecheck(
         }
 
         let parameter_type = if let Some(params_as_attr) = params_as_attr {
-            let t1 = unifier.new_type_var();
-            annotations.push(TypeAnnotation(params_as_attr.range, t1.clone()));
-            env.push(params_as_attr.var_name.value.clone(), t1.clone());
+            let param_type = if let Some(explicit_type) = &params_as_attr.type_annotation {
+                // Use the explicit type annotation if provided
+                explicit_type.clone()
+            } else {
+                // Fall back to type inference if no explicit type
+                unifier.new_type_var()
+            };
+            
+            annotations.push(TypeAnnotation(params_as_attr.range, param_type.clone()));
+            env.push(params_as_attr.var_name.value.clone(), param_type.clone());
+            
             for child in children {
                 typecheck_node(
                     child,
@@ -136,7 +144,12 @@ pub fn typecheck(
                     params_as_attr.range,
                 ));
             }
-            unifier.query(&t1)
+            
+            if params_as_attr.type_annotation.is_some() {
+                param_type
+            } else {
+                unifier.query(&param_type)
+            }
         } else {
             for child in children {
                 typecheck_node(

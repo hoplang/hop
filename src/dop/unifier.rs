@@ -3,7 +3,7 @@ use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DopType {
-    Object(BTreeMap<String, DopType>, usize),
+    Object(BTreeMap<String, DopType>, Option<usize>),
     Array(Box<DopType>),
     Bool,
     String,
@@ -70,7 +70,7 @@ impl Unifier {
     }
 
     pub fn new_object(&mut self, map: BTreeMap<String, DopType>) -> DopType {
-        DopType::Object(map, self.next_type_var())
+        DopType::Object(map, Some(self.next_type_var()))
     }
 
     /// Construct a type that is the least upper bound of `a` and `b` and constrain `a` and `b` to
@@ -100,26 +100,48 @@ impl Unifier {
                     .filter(|(key, _)| !props_a.contains_key(*key))
                     .map(|(k, v)| (k.clone(), v.clone()))
                     .collect();
-
                 let missing_from_b: BTreeMap<String, DopType> = props_a
                     .iter()
                     .filter(|(key, _)| !props_b.contains_key(*key))
                     .map(|(k, v)| (k.clone(), v.clone()))
                     .collect();
 
-                // Create shared rest type variable
-                let shared_rest = self.next_type_var();
-
-                // Unify rest types with missing properties
-                self.unify(
-                    &DopType::TypeVar(*rest_a),
-                    &DopType::Object(missing_from_a, shared_rest),
-                )?;
-
-                self.unify(
-                    &DopType::TypeVar(*rest_b),
-                    &DopType::Object(missing_from_b, shared_rest),
-                )?;
+                match (rest_a, rest_b) {
+                    (Some(rest_a_id), Some(rest_b_id)) => {
+                        let shared_rest = self.next_type_var();
+                        self.unify(
+                            &DopType::TypeVar(*rest_a_id),
+                            &DopType::Object(missing_from_a, Some(shared_rest)),
+                        )?;
+                        self.unify(
+                            &DopType::TypeVar(*rest_b_id),
+                            &DopType::Object(missing_from_b, Some(shared_rest)),
+                        )?;
+                    }
+                    (None, Some(rest_b_id)) => {
+                        if !missing_from_a.is_empty() {
+                            return Err(UnificationError::new("Closed object missing required properties".to_string()));
+                        }
+                        self.unify(
+                            &DopType::TypeVar(*rest_b_id),
+                            &DopType::Object(missing_from_b, None),
+                        )?;
+                    }
+                    (Some(rest_a_id), None) => {
+                        if !missing_from_b.is_empty() {
+                            return Err(UnificationError::new("Closed object missing required properties".to_string()));
+                        }
+                        self.unify(
+                            &DopType::TypeVar(*rest_a_id),
+                            &DopType::Object(missing_from_a, None),
+                        )?;
+                    }
+                    (None, None) => {
+                        if !missing_from_a.is_empty() || !missing_from_b.is_empty() {
+                            return Err(UnificationError::new("Closed objects have different properties".to_string()));
+                        }
+                    }
+                }
 
                 Ok(())
             }
@@ -162,16 +184,23 @@ impl Unifier {
                     .map(|(k, v)| (k.clone(), self.query(v)))
                     .collect();
 
-                match self.query(&DopType::TypeVar(*rest)) {
-                    DopType::Object(rest_props, rest_rest) => {
-                        let mut merged_props = queried_props;
-                        for (k, v) in rest_props {
-                            merged_props.insert(k, v);
+                match rest {
+                    Some(rest_id) => {
+                        match self.query(&DopType::TypeVar(*rest_id)) {
+                            DopType::Object(rest_props, rest_rest) => {
+                                let mut merged_props = queried_props;
+                                for (k, v) in rest_props {
+                                    merged_props.insert(k, v);
+                                }
+                                DopType::Object(merged_props, rest_rest)
+                            }
+                            DopType::TypeVar(_) => DopType::Object(queried_props, None),
+                            _ => panic!("Invalid type substitution for object rest"),
                         }
-                        DopType::Object(merged_props, rest_rest)
                     }
-                    DopType::TypeVar(rest_id) => DopType::Object(queried_props, rest_id),
-                    _ => panic!("Invalid type substitution for object rest"),
+                    None => {
+                        DopType::Object(queried_props, None)
+                    }
                 }
             }
             DopType::Bool | DopType::String | DopType::Number | DopType::Void => t.clone(),
@@ -290,7 +319,7 @@ mod tests {
                         };
                         map.insert(key, value);
                     }
-                    DopType::Object(map, unifier.next_type_var())
+                    DopType::Object(map, Some(unifier.next_type_var()))
                 }
                 _ => panic!(),
             },
