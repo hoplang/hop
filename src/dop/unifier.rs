@@ -1,4 +1,4 @@
-use std::collections::{HashMap, BTreeMap};
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -74,11 +74,11 @@ impl Unifier {
     }
 
     pub fn unify(&mut self, a: &DopType, b: &DopType) -> Result<(), UnificationError> {
-        if self.types_equal(a, b) {
-            return Ok(());
-        }
-
         match (a, b) {
+            (DopType::Bool, DopType::Bool) => Ok(()),
+            (DopType::String, DopType::String) => Ok(()),
+            (DopType::Number, DopType::Number) => Ok(()),
+            (DopType::Void, DopType::Void) => Ok(()),
             (DopType::TypeVar(id_a), _) => self.unify_type_var(*id_a, b),
             (_, DopType::TypeVar(id_b)) => self.unify_type_var(*id_b, a),
             (DopType::Array(type_a), DopType::Array(type_b)) => self.unify(type_a, type_b),
@@ -123,7 +123,11 @@ impl Unifier {
         }
     }
 
-    fn unify_type_var(&mut self, var_id: u32, other_type: &DopType) -> Result<(), UnificationError> {
+    fn unify_type_var(
+        &mut self,
+        var_id: u32,
+        other_type: &DopType,
+    ) -> Result<(), UnificationError> {
         if let Some(substituted_type) = self.substitutions.get(&var_id) {
             return self.unify(&substituted_type.clone(), other_type);
         }
@@ -167,25 +171,6 @@ impl Unifier {
                 }
             }
             DopType::Bool | DopType::String | DopType::Number | DopType::Void => t.clone(),
-        }
-    }
-
-    fn types_equal(&self, a: &DopType, b: &DopType) -> bool {
-        match (a, b) {
-            (DopType::TypeVar(id_a), DopType::TypeVar(id_b)) => id_a == id_b,
-            (DopType::Array(type_a), DopType::Array(type_b)) => self.types_equal(type_a, type_b),
-            (DopType::Object(props_a, rest_a), DopType::Object(props_b, rest_b)) => {
-                rest_a == rest_b
-                    && props_a.len() == props_b.len()
-                    && props_a
-                        .iter()
-                        .all(|(k, v)| props_b.get(k).is_some_and(|v2| self.types_equal(v, v2)))
-            }
-            (DopType::Bool, DopType::Bool) => true,
-            (DopType::String, DopType::String) => true,
-            (DopType::Number, DopType::Number) => true,
-            (DopType::Void, DopType::Void) => true,
-            _ => false,
         }
     }
 }
