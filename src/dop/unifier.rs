@@ -82,6 +82,7 @@ impl Unifier {
             (DopType::String, DopType::String) => Ok(()),
             (DopType::Number, DopType::Number) => Ok(()),
             (DopType::Void, DopType::Void) => Ok(()),
+            (DopType::TypeVar(a), DopType::TypeVar(b)) if a == b => Ok(()),
             (DopType::TypeVar(id_a), _) => self.unify_type_var(*id_a, b),
             (_, DopType::TypeVar(id_b)) => self.unify_type_var(*id_b, a),
             (DopType::Array(type_a), DopType::Array(type_b)) => self.unify(type_a, type_b),

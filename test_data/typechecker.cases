@@ -1282,3 +1282,19 @@ main::main-comp
 	{mode: string}
 	[]
 ## END
+
+## BEGIN
+-- main.hop --
+<main-comp {params}>
+  <if {params.foo == 'foo'}>
+    eq 1
+  </if>
+  <if {params == params}>
+    eq 2
+  </if>
+</main-comp>
+-- out --
+main::main-comp
+	{foo: string}
+	[]
+## END

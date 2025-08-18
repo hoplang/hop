@@ -330,3 +330,19 @@ t8 : string
 t1 : boolean[]
 t3 : boolean[]
 ## END
+
+## BEGIN
+-- in --
+(unify t1 t1)
+(query t1)
+-- out --
+t1 : any
+## END
+
+## BEGIN
+-- in --
+(unify (array t1) (array t1))
+(query t1)
+-- out --
+t1 : any
+## END
