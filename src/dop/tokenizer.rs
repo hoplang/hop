@@ -233,28 +233,28 @@ mod tests {
             let (token, range) = tokenizer.peek();
 
             let formatted = match token {
-                DopToken::Identifier(s) => format!("Identifier(\"{}\") {}", s, range),
-                DopToken::StringLiteral(s) => format!("StringLiteral(\"{}\") {}", s, range),
-                DopToken::BooleanLiteral(b) => format!("BooleanLiteral({}) {}", b, range),
+                DopToken::Identifier(s) => format!("Identifier({})", s),
+                DopToken::StringLiteral(s) => format!("StringLiteral({})", s),
+                DopToken::BooleanLiteral(b) => format!("BooleanLiteral({})", b),
                 DopToken::NumberLiteral(n) => {
                     if let Some(i) = n.as_i64() {
-                        format!("NumberLiteral({}) {}", i, range)
+                        format!("NumberLiteral({})", i)
                     } else if let Some(f) = n.as_f64() {
-                        format!("NumberLiteral({}) {}", f, range)
+                        format!("NumberLiteral({})", f)
                     } else {
-                        format!("NumberLiteral({:?}) {}", n, range)
+                        format!("NumberLiteral({:?})", n)
                     }
                 }
-                DopToken::Equal => format!("Equal {}", range),
-                DopToken::Not => format!("Not {}", range),
-                DopToken::Dot => format!("Dot {}", range),
-                DopToken::LeftParen => format!("LeftParen {}", range),
-                DopToken::RightParen => format!("RightParen {}", range),
-                DopToken::In => format!("In {}", range),
-                DopToken::Eof => format!("Eof {}", range),
+                DopToken::Equal => "Equal".to_string(),
+                DopToken::Not => "Not".to_string(),
+                DopToken::Dot => "Dot".to_string(),
+                DopToken::LeftParen => "LeftParen".to_string(),
+                DopToken::RightParen => "RightParen".to_string(),
+                DopToken::In => "In".to_string(),
+                DopToken::Eof => "Eof".to_string(),
             };
 
-            result.push(formatted);
+            result.push(format!("{} {}", formatted, range));
 
             if *token == DopToken::Eof {
                 break;

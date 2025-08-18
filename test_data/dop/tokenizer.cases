@@ -18,12 +18,12 @@ Test identifiers and keywords
 -- in --
 foo in true false _test var123
 -- out --
-Identifier("foo") 1:1-1:4
+Identifier(foo) 1:1-1:4
 In 1:5-1:7
 BooleanLiteral(true) 1:8-1:12
 BooleanLiteral(false) 1:13-1:18
-Identifier("_test") 1:19-1:24
-Identifier("var123") 1:25-1:31
+Identifier(_test) 1:19-1:24
+Identifier(var123) 1:25-1:31
 Eof 2:1-2:1
 ## END
 
@@ -33,9 +33,9 @@ Test string literals
 -- in --
 'hello' 'world with spaces' ''
 -- out --
-StringLiteral("hello") 1:1-1:8
-StringLiteral("world with spaces") 1:9-1:28
-StringLiteral("") 1:29-1:31
+StringLiteral(hello) 1:1-1:8
+StringLiteral(world with spaces) 1:9-1:28
+StringLiteral() 1:29-1:31
 Eof 2:1-2:1
 ## END
 
@@ -59,8 +59,8 @@ Test multiline input
 foo
 bar
 -- out --
-Identifier("foo") 1:1-1:4
-Identifier("bar") 2:1-2:4
+Identifier(foo) 1:1-1:4
+Identifier(bar) 2:1-2:4
 Eof 3:1-3:1
 ## END
 
@@ -70,9 +70,9 @@ Test property access
 -- in --
 user.name
 -- out --
-Identifier("user") 1:1-1:5
+Identifier(user) 1:1-1:5
 Dot 1:5-1:6
-Identifier("name") 1:6-1:10
+Identifier(name) 1:6-1:10
 Eof 2:1-2:1
 ## END
 
@@ -82,8 +82,8 @@ Test whitespace handling
 -- in --
   foo   bar  
 -- out --
-Identifier("foo") 1:3-1:6
-Identifier("bar") 1:9-1:12
+Identifier(foo) 1:3-1:6
+Identifier(bar) 1:9-1:12
 Eof 2:1-2:1
 ## END
 
@@ -93,11 +93,11 @@ Test complex expression
 -- in --
 user.name == 'admin'
 -- out --
-Identifier("user") 1:1-1:5
+Identifier(user) 1:1-1:5
 Dot 1:5-1:6
-Identifier("name") 1:6-1:10
+Identifier(name) 1:6-1:10
 Equal 1:11-1:13
-StringLiteral("admin") 1:14-1:21
+StringLiteral(admin) 1:14-1:21
 Eof 2:1-2:1
 ## END
 
@@ -109,7 +109,7 @@ Test parenthesized expression
 -- out --
 Not 1:1-1:2
 LeftParen 1:2-1:3
-Identifier("foo") 1:3-1:6
+Identifier(foo) 1:3-1:6
 Equal 1:7-1:9
 BooleanLiteral(true) 1:10-1:14
 RightParen 1:14-1:15
