@@ -486,3 +486,84 @@ error: Expected 'in' keyword in <for> tag
 2 |     <for {foo}>
   |              ^
 ## END
+
+Component parameter can have a simple type annotation.
+
+## BEGIN
+-- main.hop --
+<main-comp {data: string}>
+	<div>{data}</div>
+</main-comp>
+-- out --
+div
+## END
+
+Component parameter can have an array type annotation.
+
+## BEGIN
+-- main.hop --
+<main-comp {items: array[string]}>
+	<for {item in items}>
+		<div>{item}</div>
+	</for>
+</main-comp>
+-- out --
+for
+	div
+## END
+
+Component parameter can have an object type annotation.
+
+## BEGIN
+-- main.hop --
+<main-comp {user: object[name: string, age: number]}>
+	<div>{user.name} is {user.age} years old</div>
+</main-comp>
+-- out --
+div
+## END
+
+Component parameter can have nested type annotations.
+
+## BEGIN
+-- main.hop --
+<main-comp {data: array[object[title: string, items: array[string]]]}>
+	<for {section in data}>
+		<h1>{section.title}</h1>
+		<for {item in section.items}>
+			<div>{item}</div>
+		</for>
+	</for>
+</main-comp>
+-- out --
+for
+	h1
+	for
+		div
+## END
+
+Component parameter with invalid type should produce error.
+
+## BEGIN
+-- main.hop --
+<main-comp {data: invalid}>
+	<div>{data}</div>
+</main-comp>
+-- out --
+error: Unknown type: invalid
+1 | <main-comp {data: invalid}>
+  |                   ^^^^^^^
+## END
+
+Component parameter with malformed type should produce error.
+
+## BEGIN
+-- main.hop --
+<main-comp {data: array[}>
+	<div>{data}</div>
+</main-comp>
+-- out --
+error: Expected type name
+1 | <main-comp {data: array[}>
+  |                         ^
+## END

@@ -12,6 +12,10 @@ pub enum DopToken {
     Dot,
     LeftParen,
     RightParen,
+    LeftBracket,
+    RightBracket,
+    Colon,
+    Comma,
     In,
     Eof,
 }
@@ -107,6 +111,22 @@ impl DopTokenizer {
             ')' => {
                 self.cursor.advance();
                 DopToken::RightParen
+            }
+            '[' => {
+                self.cursor.advance();
+                DopToken::LeftBracket
+            }
+            ']' => {
+                self.cursor.advance();
+                DopToken::RightBracket
+            }
+            ':' => {
+                self.cursor.advance();
+                DopToken::Colon
+            }
+            ',' => {
+                self.cursor.advance();
+                DopToken::Comma
             }
             '=' => {
                 self.cursor.advance();
@@ -250,6 +270,10 @@ mod tests {
                 DopToken::Dot => "Dot".to_string(),
                 DopToken::LeftParen => "LeftParen".to_string(),
                 DopToken::RightParen => "RightParen".to_string(),
+                DopToken::LeftBracket => "LeftBracket".to_string(),
+                DopToken::RightBracket => "RightBracket".to_string(),
+                DopToken::Colon => "Colon".to_string(),
+                DopToken::Comma => "Comma".to_string(),
                 DopToken::In => "In".to_string(),
                 DopToken::Eof => "Eof".to_string(),
             };
