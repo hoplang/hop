@@ -1435,3 +1435,131 @@ main::toggle-comp
 	boolean
 	[]
 ## END
+
+Component with explicit number parameter type.
+
+## BEGIN
+-- main.hop --
+<counter-comp {count: number}>
+	<if {count == 0}>
+		<div>Zero</div>
+	</if>
+</counter-comp>
+-- out --
+main::counter-comp
+	number
+	[]
+## END
+
+Component with nested object parameter type.
+
+## BEGIN
+-- main.hop --
+<profile-comp {profile: object[user: object[name: string, age: number]]}>
+	<div>{profile.user.name}</div>
+	<if {profile.user.age == 25}>
+		<div>Quarter century</div>
+	</if>
+</profile-comp>
+-- out --
+main::profile-comp
+	{user: {age: number, name: string}}
+	[]
+## END
+
+Component with nested array parameter type.
+
+## BEGIN
+-- main.hop --
+<matrix-comp {matrix: array[array[number]]}>
+	<for {row in matrix}>
+		<for {cell in row}>
+			<if {cell == 1}>
+				<span>One</span>
+			</if>
+		</for>
+	</for>
+</matrix-comp>
+-- out --
+main::matrix-comp
+	number[][]
+	[]
+## END
+
+Component with complex object with multiple properties.
+
+## BEGIN
+-- main.hop --
+<card-comp {data: object[title: string, content: string, tags: array[string], metadata: object[author: string, published: boolean]]}>
+	<h1>{data.title}</h1>
+	<p>{data.content}</p>
+	<div>{data.metadata.author}</div>
+	<if {data.metadata.published}>
+		<span>Published</span>
+	</if>
+	<for {tag in data.tags}>
+		<span>{tag}</span>
+	</for>
+</card-comp>
+-- out --
+main::card-comp
+	{content: string, metadata: {author: string, published: boolean}, tags: string[], title: string}
+	[]
+## END
+
+Error when passing wrong type to boolean parameter.
+
+## BEGIN
+-- main.hop --
+<toggle-comp {enabled: boolean}>
+	<if {enabled}>
+		<div>Enabled</div>
+	</if>
+</toggle-comp>
+<main-comp>
+	<toggle-comp {'not a boolean'}/>
+</main-comp>
+-- out --
+error: Argument of type string is incompatible with expected type boolean
+  --> main.hop (line 7, col 16)
+6 | <main-comp>
+7 |     <toggle-comp {'not a boolean'}/>
+  |                   ^^^^^^^^^^^^^^^
+## END
+
+Multi-file component with complex parameter types.
+
+## BEGIN
+-- item-display.hop --
+<item-display {item: object[id: number, name: string, active: boolean]}>
+	<div>{item.name}</div>
+	<if {item.active}>
+		<span>Active item</span>
+	</if>
+	<if {item.id == 1}>
+		<span>First item</span>
+	</if>
+</item-display>
+-- data-list.hop --
+<import component="item-display" from="item-display">
+<data-list {items: array[object[id: number, name: string, active: boolean]]}>
+	<for {item in items}>
+		<item-display {item}/>
+	</for>
+</data-list>
+-- main.hop --
+<import component="data-list" from="data-list">
+<main-comp {items: array[object[id: number, name: string, active: boolean]]}>
+	<data-list {items}/>
+</main-comp>
+-- out --
+item-display::item-display
+	{active: boolean, id: number, name: string}
+	[]
+data-list::data-list
+	{active: boolean, id: number, name: string}[]
+	[]
+main::main-comp
+	{active: boolean, id: number, name: string}[]
+	[]
+## END
