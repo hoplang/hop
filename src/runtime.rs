@@ -185,39 +185,6 @@ impl Program {
         Ok(result)
     }
 
-    /// Validate that the provided parameters match the expected JSON schema for the component
-    pub fn validate(
-        &self,
-        module_name: &str,
-        component_name: &str,
-        params: &serde_json::Value,
-    ) -> anyhow::Result<()> {
-        let component_type = self
-            .parameter_types
-            .get(module_name)
-            .and_then(|types| types.get(component_name))
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Component '{}' not found in module '{}'",
-                    component_name,
-                    module_name
-                )
-            })?;
-        let schema = component_type.to_json_schema();
-
-        let compiled_schema = jsonschema::JSONSchema::compile(&schema)
-            .map_err(|e| anyhow::anyhow!("Failed to compile JSON schema: {}", e))?;
-
-        if let Err(validation_errors) = compiled_schema.validate(params) {
-            let error_messages: Vec<String> = validation_errors
-                .map(|error| format!("{} at {}", error, error.instance_path))
-                .collect();
-            return Err(anyhow::anyhow!("{}", error_messages.join("\n")));
-        }
-
-        Ok(())
-    }
-
     pub fn execute(
         &self,
         module_name: &str,

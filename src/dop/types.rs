@@ -1,4 +1,3 @@
-use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -35,61 +34,6 @@ impl fmt::Display for DopType {
             DopType::Number => write!(f, "number"),
             DopType::Void => write!(f, "void"),
             DopType::TypeVar(_) => write!(f, "any"),
-        }
-    }
-}
-
-impl DopType {
-    /// Convert a Type to a JSON Schema representation
-    pub fn to_json_schema(&self) -> Value {
-        match self {
-            DopType::Object(properties, _rest) => {
-                let mut schema_properties = serde_json::Map::new();
-                let mut required = Vec::new();
-
-                for (key, value) in properties {
-                    schema_properties.insert(key.clone(), value.to_json_schema());
-                    required.push(key.clone());
-                }
-
-                json!({
-                    "type": "object",
-                    "properties": schema_properties,
-                    "required": required,
-                    "additionalProperties": true
-                })
-            }
-            DopType::Array(inner_type) => {
-                json!({
-                    "type": "array",
-                    "items": inner_type.to_json_schema()
-                })
-            }
-            DopType::Bool => {
-                json!({
-                    "type": "boolean"
-                })
-            }
-            DopType::String => {
-                json!({
-                    "type": "string"
-                })
-            }
-            DopType::Number => {
-                json!({
-                    "type": "number"
-                })
-            }
-            DopType::Void => {
-                json!({
-                    "type": "null"
-                })
-            }
-            DopType::TypeVar(_id) => {
-                // Type variables are placeholders during type inference
-                // In JSON Schema, we represent them as allowing any type
-                json!({})
-            }
         }
     }
 }
