@@ -251,7 +251,7 @@ fn typecheck_node(
         }) => {
             let condition_type =
                 typecheck_dop_expression(condition, env, unifier, annotations, errors, *range);
-            if let Some(err) = unifier.unify(&DopType::Bool, &condition_type) {
+            if let Err(err) = unifier.unify(&DopType::Bool, &condition_type) {
                 errors.push(RangeError::unification_error(&err.message, *range));
             }
 
@@ -296,7 +296,7 @@ fn typecheck_node(
                         *range,
                     );
 
-                    if let Some(_err) = unifier.unify(&expr_type, &comp_info.parameter_type) {
+                    if let Err(_err) = unifier.unify(&expr_type, &comp_info.parameter_type) {
                         errors.push(RangeError::new(
                             format!(
                                 "Argument of type {} is incompatible with expected type {}",
@@ -400,7 +400,7 @@ fn typecheck_node(
             let element_type = unifier.new_type_var();
             let expected_array_type = DopType::Array(Box::new(element_type.clone()));
 
-            if let Some(_err) = unifier.unify(&array_type, &expected_array_type) {
+            if let Err(_err) = unifier.unify(&array_type, &expected_array_type) {
                 errors.push(RangeError::new(
                     format!("Can not iterate over {}", unifier.query(&array_type)),
                     *array_expr_range,
@@ -453,7 +453,7 @@ fn typecheck_node(
                 errors,
                 text_expr_node.range,
             );
-            if let Some(err) = unifier.unify(&DopType::String, &expr_type) {
+            if let Err(err) = unifier.unify(&DopType::String, &expr_type) {
                 errors.push(RangeError::unification_error(
                     &err.message,
                     text_expr_node.range,
@@ -481,7 +481,7 @@ fn expect_type(
         attr.range,
     );
 
-    if let Some(err) = unifier.unify(&expr_type, expected_type) {
+    if let Err(err) = unifier.unify(&expr_type, expected_type) {
         errors.push(RangeError::unification_error(&err.message, attr.range));
         return;
     }

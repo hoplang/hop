@@ -39,9 +39,9 @@ impl Unifier {
         DopType::Object(map, self.next_type_var())
     }
 
-    pub fn unify(&mut self, a: &DopType, b: &DopType) -> Option<UnificationError> {
+    pub fn unify(&mut self, a: &DopType, b: &DopType) -> Result<(), UnificationError> {
         if self.types_equal(a, b) {
-            return None;
+            return Ok(());
         }
 
         match (a, b) {
@@ -52,9 +52,7 @@ impl Unifier {
                 // Find common properties and unify them
                 for (key, type_a) in props_a {
                     if let Some(type_b) = props_b.get(key) {
-                        if let Some(err) = self.unify(type_a, type_b) {
-                            return Some(err);
-                        }
+                        self.unify(type_a, type_b)?;
                     }
                 }
 
@@ -75,27 +73,23 @@ impl Unifier {
                 let shared_rest = self.next_type_var();
 
                 // Unify rest types with missing properties
-                if let Some(err) = self.unify(
+                self.unify(
                     &DopType::TypeVar(*rest_a),
                     &DopType::Object(missing_from_a, shared_rest),
-                ) {
-                    return Some(err);
-                }
+                )?;
 
-                if let Some(err) = self.unify(
+                self.unify(
                     &DopType::TypeVar(*rest_b),
                     &DopType::Object(missing_from_b, shared_rest),
-                ) {
-                    return Some(err);
-                }
+                )?;
 
-                None
+                Ok(())
             }
-            _ => Some(UnificationError::new("Can not unify types".to_string())),
+            _ => Err(UnificationError::new("Can not unify types".to_string())),
         }
     }
 
-    fn unify_type_var(&mut self, var_id: i32, other_type: &DopType) -> Option<UnificationError> {
+    fn unify_type_var(&mut self, var_id: i32, other_type: &DopType) -> Result<(), UnificationError> {
         if let Some(substituted_type) = self.substitutions.get(&var_id) {
             return self.unify(&substituted_type.clone(), other_type);
         }
@@ -107,7 +101,7 @@ impl Unifier {
         }
 
         self.substitutions.insert(var_id, other_type.clone());
-        None
+        Ok(())
     }
 
     pub fn query(&self, t: &DopType) -> DopType {
@@ -373,7 +367,7 @@ mod tests {
                             assert!(args.len() == 2);
                             let t1 = &sexpr_to_type(args[0].clone(), &table, &mut unifier);
                             let t2 = &sexpr_to_type(args[1].clone(), &table, &mut unifier);
-                            if let Some(err) = unifier.unify(t1, t2) {
+                            if let Err(err) = unifier.unify(t1, t2) {
                                 lines.push(err.message);
                             }
                         }
