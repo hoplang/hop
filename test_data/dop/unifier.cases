@@ -484,3 +484,83 @@ Constraining object property from type variable to concrete type.
 -- out --
 t2 : object[foo: string]
 ## END
+
+Multiple type variables in same constraint.
+
+## BEGIN
+-- in --
+(constrain t3 (object foo t1 bar t2))
+(constrain t3 (object foo string bar number))
+(resolve t3)
+-- out --
+t3 : object[bar: number, foo: string]
+## END
+
+Constraining type variable to array with type variable element.
+
+## BEGIN
+-- in --
+(constrain t1 (array t2))
+(constrain t1 (array string))
+(resolve t1)
+-- out --
+t1 : array[string]
+## END
+
+Chain of type variable constraints gets frozen at constraint time.
+
+## BEGIN
+-- in --
+(constrain t1 (object user t2))
+(constrain t2 (object name t3))
+(constrain t3 string)
+(resolve t1)
+-- out --
+t1 : object[user: any]
+## END
+
+Circular type variable references should work.
+
+## BEGIN
+-- in --
+(constrain t1 (object next t1))
+(constrain t1 (object value string))
+(resolve t1)
+-- out --
+t1 : object[next: any, value: string]
+## END
+
+Multiple constraints on nested arrays.
+
+## BEGIN
+-- in --
+(constrain t1 (array (array t2)))
+(constrain t1 (array (array string)))
+(resolve t1)
+-- out --
+t1 : array[array[string]]
+## END
+
+Constraint with conflicting nested types works due to frozen behavior.
+
+## BEGIN
+-- in --
+(constrain t1 (object data (array t2)))
+(constrain t2 string)
+(constrain t1 (object data (array number)))
+(resolve t1)
+-- out --
+t1 : object[data: array[number]]
+## END
+
+Mixed object and array constraints get frozen.
+
+## BEGIN
+-- in --
+(constrain t1 (object items (array t2)))
+(constrain t2 (object id t3 name string))
+(constrain t3 number)
+(resolve t1)
+-- out --
+t1 : object[items: array[any]]
+## END

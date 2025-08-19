@@ -254,7 +254,7 @@ fn typecheck_node(
         }) => {
             let condition_type =
                 typecheck_dop_expression(condition, env, unifier, annotations, errors, *range);
-            if let Err(err) = unifier.unify(&DopType::Bool, &condition_type) {
+            if let Err(err) = unifier.constrain(&condition_type, &DopType::Bool) {
                 errors.push(RangeError::unification_error(&err.message, *range));
             }
 
@@ -456,7 +456,7 @@ fn typecheck_node(
                 errors,
                 text_expr_node.range,
             );
-            if let Err(err) = unifier.unify(&DopType::String, &expr_type) {
+            if let Err(err) = unifier.constrain(&expr_type, &DopType::String) {
                 errors.push(RangeError::unification_error(
                     &err.message,
                     text_expr_node.range,

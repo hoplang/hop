@@ -65,7 +65,7 @@ pub fn typecheck_dop_expression(
                 typecheck_dop_expression(expr, env, unifier, annotations, errors, range);
 
             // Negation only works on boolean expressions
-            if let Err(_err) = unifier.unify(&expr_type, &DopType::Bool) {
+            if let Err(_err) = unifier.constrain(&expr_type, &DopType::Bool) {
                 errors.push(RangeError::new(
                     "Negation operator can only be applied to boolean values".to_string(),
                     range,
