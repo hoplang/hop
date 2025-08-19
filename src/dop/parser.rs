@@ -403,7 +403,7 @@ mod tests {
     use super::*;
     use crate::test_utils::parse_test_cases;
     use pretty_assertions::assert_eq;
-    
+
     use std::fs;
     use std::path::PathBuf;
 
@@ -416,7 +416,6 @@ mod tests {
         let test_cases = parse_test_cases(&content);
 
         for (case_num, (archive, line_number)) in test_cases.iter().enumerate() {
-
             let input = archive
                 .get("in")
                 .expect("Missing 'in' section in test case")
