@@ -364,24 +364,6 @@ impl Unifier {
         result
     }
 
-    /// Checks if a type is resolved (contains no type variables).
-    ///
-    /// Returns `false` if the type contains any type variables, `true` otherwise.
-    /// TypeVar(None) representing 'any' is considered resolved.
-    pub fn is_resolved(&self, t: &DopType) -> bool {
-        match t {
-            DopType::TypeVar(Some(_)) => false,
-            DopType::TypeVar(None) => true,
-            DopType::Array(element_type) => self.is_resolved(element_type),
-            DopType::Object(props, state) => {
-                let all_props_resolved =
-                    props.values().all(|prop_type| self.is_resolved(prop_type));
-                let row_resolved = matches!(state, Row::Closed);
-                all_props_resolved && row_resolved
-            }
-            DopType::Bool | DopType::String | DopType::Number | DopType::Void => true,
-        }
-    }
 }
 
 #[cfg(test)]
