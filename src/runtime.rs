@@ -4,7 +4,7 @@ use crate::common::{
     XRawNode, escape_html, is_void_element,
 };
 use crate::dop;
-use crate::dop::{ClosedDopType, DopType, evaluate_expr};
+use crate::dop::{ClosedDopType, evaluate_expr};
 use crate::parser::Module;
 use crate::typechecker::TypeResult;
 use anyhow::Result;
