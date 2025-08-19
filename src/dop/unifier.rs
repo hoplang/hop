@@ -153,7 +153,6 @@ impl Unifier {
                     .map(|(k, v)| (k.clone(), v.clone()))
                     .collect();
 
-                // Since all objects are now open, unify the rest parts
                 let shared_rest = self.next_type_var();
                 self.unify_type_var(
                     *rest_a_id,
