@@ -10,6 +10,17 @@ pub enum Row {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum ClosedDopType {
+    Object(BTreeMap<String, DopType>),
+    Array(Box<DopType>),
+    Bool,
+    String,
+    Number,
+    Void,
+    Any,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum DopType {
     Object(BTreeMap<String, DopType>, Row),
     Array(Box<DopType>),
@@ -18,6 +29,29 @@ pub enum DopType {
     Number,
     Void,
     TypeVar(Option<TypeVarId>),
+}
+
+impl fmt::Display for ClosedDopType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ClosedDopType::Object(properties) => {
+                write!(f, "object[")?;
+                for (idx, (key, value)) in properties.iter().enumerate() {
+                    if idx > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}: {}", key, value)?;
+                }
+                write!(f, "]")
+            }
+            ClosedDopType::Array(inner_type) => write!(f, "array[{}]", inner_type),
+            ClosedDopType::Bool => write!(f, "boolean"),
+            ClosedDopType::String => write!(f, "string"),
+            ClosedDopType::Number => write!(f, "number"),
+            ClosedDopType::Void => write!(f, "void"),
+            ClosedDopType::Any => write!(f, "any"),
+        }
+    }
 }
 
 impl fmt::Display for DopType {
