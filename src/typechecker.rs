@@ -299,7 +299,7 @@ fn typecheck_node(
                         *range,
                     );
 
-                    if let Err(_err) = unifier.unify(&expr_type, &comp_info.parameter_type) {
+                    if let Err(_err) = unifier.constrain(&expr_type, &comp_info.parameter_type) {
                         errors.push(RangeError::new(
                             format!(
                                 "Argument of type {} is incompatible with expected type {}",
