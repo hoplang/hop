@@ -222,20 +222,6 @@ pub fn parse_variable_with_type(
     Ok((var_name, type_annotation))
 }
 
-pub fn parse_type_from_string(type_str: &str) -> Result<crate::dop::DopType, RangeError> {
-    let mut tokenizer = DopTokenizer::new(type_str, crate::common::Position::new(1, 1))?;
-    let result = parse_type(&mut tokenizer)?;
-
-    // Expect EOF
-    match tokenizer.peek() {
-        (DopToken::Eof, _) => Ok(result),
-        (_, range) => Err(RangeError::new(
-            "Unexpected token after type".to_string(),
-            *range,
-        )),
-    }
-}
-
 fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::DopType, RangeError> {
     use crate::dop::DopType;
     use std::collections::BTreeMap;
@@ -502,5 +488,4 @@ mod tests {
             );
         }
     }
-
 }

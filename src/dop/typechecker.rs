@@ -81,7 +81,8 @@ pub fn typecheck_dop_expression(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dop::parser::{parse_expr, parse_type_from_string};
+    use crate::dop::parse_variable_with_type;
+    use crate::dop::parser::parse_expr;
     use crate::test_utils::parse_test_cases;
     use pretty_assertions::assert_eq;
     use simple_txtar::Archive;
@@ -99,40 +100,33 @@ mod tests {
         for (case_num, (txtar_content, line_number)) in test_cases.iter().enumerate() {
             let archive = Archive::from(txtar_content.clone());
 
-            let env_section = archive.get("env");
+            let env_section = archive
+                .get("env")
+                .expect("Missing 'env' section in test case")
+                .content
+                .trim();
+
+            let mut env = Environment::new();
+
+            for line in env_section.lines() {
+                let (var_name, var_type) = parse_variable_with_type(line, Range::default())
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "Parse error in test case {} (line {}): {:?}",
+                            case_num + 1,
+                            line_number,
+                            e
+                        );
+                    });
+                env.push(var_name.value, var_type);
+            }
+
             let expr_content = archive
                 .get("expr")
                 .expect("Missing 'expr' section in test case")
                 .content
                 .trim();
 
-            // Parse environment from the env section
-            let mut env = Environment::new();
-            if let Some(env_section) = env_section {
-                for line in env_section.content.lines() {
-                    let line = line.trim();
-                    if line.is_empty() {
-                        continue;
-                    }
-
-                    if let Some((var_name, type_str)) = line.split_once(':') {
-                        let var_name = var_name.trim();
-                        let type_str = type_str.trim();
-
-                        // Parse the type string using the existing parser
-                        let var_type = parse_type_from_string(type_str).unwrap_or_else(|e| {
-                            panic!(
-                                "Failed to parse type '{}' for variable '{}' in test case {} (line {}): {:?}",
-                                type_str, var_name, case_num + 1, line_number, e
-                            );
-                        });
-
-                        env.push(var_name.to_string(), var_type);
-                    }
-                }
-            }
-
-            // Parse the expression
             let expr = parse_expr(expr_content, Range::default()).unwrap_or_else(|e| {
                 panic!(
                     "Failed to parse expression '{}' in test case {} (line {}): {:?}",
@@ -143,7 +137,6 @@ mod tests {
                 );
             });
 
-            // Run typechecker
             let mut unifier = Unifier::new();
             let mut annotations = Vec::new();
             let mut errors = Vec::new();
@@ -206,5 +199,4 @@ mod tests {
             }
         }
     }
-
 }
