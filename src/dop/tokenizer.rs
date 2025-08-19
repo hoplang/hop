@@ -17,6 +17,13 @@ pub enum DopToken {
     Colon,
     Comma,
     In,
+    // Type tokens
+    TypeString,
+    TypeNumber,
+    TypeBoolean,
+    TypeVoid,
+    TypeArray,
+    TypeObject,
     Eof,
 }
 
@@ -171,6 +178,13 @@ impl DopTokenizer {
                     "in" => DopToken::In,
                     "true" => DopToken::BooleanLiteral(true),
                     "false" => DopToken::BooleanLiteral(false),
+                    // Type keywords
+                    "string" => DopToken::TypeString,
+                    "number" => DopToken::TypeNumber,
+                    "boolean" => DopToken::TypeBoolean,
+                    "void" => DopToken::TypeVoid,
+                    "array" => DopToken::TypeArray,
+                    "object" => DopToken::TypeObject,
                     _ => DopToken::Identifier(identifier),
                 }
             }
@@ -276,6 +290,13 @@ mod tests {
                 DopToken::Colon => "Colon".to_string(),
                 DopToken::Comma => "Comma".to_string(),
                 DopToken::In => "In".to_string(),
+                // Type tokens
+                DopToken::TypeString => "TypeString".to_string(),
+                DopToken::TypeNumber => "TypeNumber".to_string(),
+                DopToken::TypeBoolean => "TypeBoolean".to_string(),
+                DopToken::TypeVoid => "TypeVoid".to_string(),
+                DopToken::TypeArray => "TypeArray".to_string(),
+                DopToken::TypeObject => "TypeObject".to_string(),
                 DopToken::Eof => "Eof".to_string(),
             };
 

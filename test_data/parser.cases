@@ -550,7 +550,7 @@ Component parameter with invalid type should produce error.
 	<div>{data}</div>
 </main-comp>
 -- out --
-error: Unknown type: invalid
+error: Expected type name
 1 | <main-comp {data: invalid}>
   |                   ^^^^^^^
 ## END
