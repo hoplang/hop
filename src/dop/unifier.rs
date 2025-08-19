@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::fmt;
 
 pub type TypeVarId = usize;
@@ -56,21 +56,19 @@ impl UnificationError {
 }
 
 pub struct Unifier {
-    substitutions: HashMap<TypeVarId, DopType>,
-    next_type_var_id: TypeVarId,
+    substitutions: Vec<Option<DopType>>,
 }
 
 impl Unifier {
     pub fn new() -> Self {
         Self {
-            substitutions: HashMap::new(),
-            next_type_var_id: 0,
+            substitutions: Vec::new(),
         }
     }
 
     fn next_type_var(&mut self) -> TypeVarId {
-        let id = self.next_type_var_id;
-        self.next_type_var_id += 1;
+        let id = self.substitutions.len();
+        self.substitutions.push(None);
         id
     }
 
@@ -169,25 +167,24 @@ impl Unifier {
         var_id: TypeVarId,
         other_type: &DopType,
     ) -> Result<(), UnificationError> {
-        if let Some(substituted_type) = self.substitutions.get(&var_id) {
+        if let Some(substituted_type) = &self.substitutions[var_id] {
             return self.unify(&substituted_type.clone(), other_type);
         }
 
         if let DopType::TypeVar(Some(other_id)) = other_type {
-            if let Some(other_substituted) = self.substitutions.get(other_id) {
+            if let Some(other_substituted) = &self.substitutions[*other_id] {
                 return self.unify(&DopType::TypeVar(Some(var_id)), &other_substituted.clone());
             }
         }
 
-        self.substitutions.insert(var_id, other_type.clone());
+        self.substitutions[var_id] = Some(other_type.clone());
         Ok(())
     }
-
 
     pub fn resolve(&self, t: &DopType) -> DopType {
         match t {
             DopType::TypeVar(Some(id)) => {
-                if let Some(substituted_type) = self.substitutions.get(id) {
+                if let Some(substituted_type) = &self.substitutions[*id] {
                     self.resolve(substituted_type)
                 } else {
                     DopType::TypeVar(None)
@@ -314,7 +311,7 @@ mod tests {
 
     fn sexpr_to_type(
         sexpr: SExpr,
-        table: &HashMap<String, DopType>,
+        table: &std::collections::HashMap<String, DopType>,
         unifier: &mut Unifier,
     ) -> DopType {
         match sexpr {
@@ -408,7 +405,8 @@ mod tests {
                 .expect("Missing 'out' section in test case")
                 .content
                 .trim();
-            let mut table: HashMap<String, DopType> = HashMap::new();
+            let mut table: std::collections::HashMap<String, DopType> =
+                std::collections::HashMap::new();
 
             let mut unifier = Unifier::new();
 
