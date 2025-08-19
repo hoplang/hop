@@ -2,8 +2,14 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum Row {
+    Closed,
+    Open(usize),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum DopType {
-    Object(BTreeMap<String, DopType>, Option<usize>),
+    Object(BTreeMap<String, DopType>, Row),
     Array(Box<DopType>),
     Bool,
     String,
@@ -15,7 +21,7 @@ pub enum DopType {
 impl fmt::Display for DopType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DopType::Object(properties, _rest) => {
+            DopType::Object(properties, _state) => {
                 write!(f, "object[")?;
                 for (idx, (key, value)) in properties.iter().enumerate() {
                     if idx > 0 {
@@ -70,7 +76,7 @@ impl Unifier {
     }
 
     pub fn new_object(&mut self, map: BTreeMap<String, DopType>) -> DopType {
-        DopType::Object(map, Some(self.next_type_var()))
+        DopType::Object(map, Row::Open(self.next_type_var()))
     }
 
     /// Construct a type that is the least upper bound of `a` and `b` and constrain `a` and `b` to
@@ -86,7 +92,7 @@ impl Unifier {
             (DopType::TypeVar(id_a), _) => self.unify_type_var(*id_a, b),
             (_, DopType::TypeVar(id_b)) => self.unify_type_var(*id_b, a),
             (DopType::Array(type_a), DopType::Array(type_b)) => self.unify(type_a, type_b),
-            (DopType::Object(props_a, rest_a), DopType::Object(props_b, rest_b)) => {
+            (DopType::Object(props_a, state_a), DopType::Object(props_b, state_b)) => {
                 // Find common properties and unify them
                 for (key, type_a) in props_a {
                     if let Some(type_b) = props_b.get(key) {
@@ -106,19 +112,19 @@ impl Unifier {
                     .map(|(k, v)| (k.clone(), v.clone()))
                     .collect();
 
-                match (rest_a, rest_b) {
-                    (Some(rest_a_id), Some(rest_b_id)) => {
+                match (state_a, state_b) {
+                    (Row::Open(rest_a_id), Row::Open(rest_b_id)) => {
                         let shared_rest = self.next_type_var();
                         self.unify(
                             &DopType::TypeVar(*rest_a_id),
-                            &DopType::Object(missing_from_a, Some(shared_rest)),
+                            &DopType::Object(missing_from_a, Row::Open(shared_rest)),
                         )?;
                         self.unify(
                             &DopType::TypeVar(*rest_b_id),
-                            &DopType::Object(missing_from_b, Some(shared_rest)),
+                            &DopType::Object(missing_from_b, Row::Open(shared_rest)),
                         )?;
                     }
-                    (None, Some(rest_b_id)) => {
+                    (Row::Closed, Row::Open(rest_b_id)) => {
                         if !missing_from_a.is_empty() {
                             return Err(UnificationError::new(
                                 "Closed object missing required properties".to_string(),
@@ -126,10 +132,10 @@ impl Unifier {
                         }
                         self.unify(
                             &DopType::TypeVar(*rest_b_id),
-                            &DopType::Object(missing_from_b, None),
+                            &DopType::Object(missing_from_b, Row::Closed),
                         )?;
                     }
-                    (Some(rest_a_id), None) => {
+                    (Row::Open(rest_a_id), Row::Closed) => {
                         if !missing_from_b.is_empty() {
                             return Err(UnificationError::new(
                                 "Closed object missing required properties".to_string(),
@@ -137,10 +143,10 @@ impl Unifier {
                         }
                         self.unify(
                             &DopType::TypeVar(*rest_a_id),
-                            &DopType::Object(missing_from_a, None),
+                            &DopType::Object(missing_from_a, Row::Closed),
                         )?;
                     }
-                    (None, None) => {
+                    (Row::Closed, Row::Closed) => {
                         if !missing_from_a.is_empty() || !missing_from_b.is_empty() {
                             return Err(UnificationError::new(
                                 "Closed objects have different properties".to_string(),
@@ -184,25 +190,25 @@ impl Unifier {
                 }
             }
             DopType::Array(sub_type) => DopType::Array(Box::new(self.query(sub_type))),
-            DopType::Object(props, rest) => {
+            DopType::Object(props, state) => {
                 let queried_props: BTreeMap<String, DopType> = props
                     .iter()
                     .map(|(k, v)| (k.clone(), self.query(v)))
                     .collect();
 
-                match rest {
-                    Some(rest_id) => match self.query(&DopType::TypeVar(*rest_id)) {
-                        DopType::Object(rest_props, rest_rest) => {
+                match state {
+                    Row::Open(rest_id) => match self.query(&DopType::TypeVar(*rest_id)) {
+                        DopType::Object(rest_props, rest_state) => {
                             let mut merged_props = queried_props;
                             for (k, v) in rest_props {
                                 merged_props.insert(k, v);
                             }
-                            DopType::Object(merged_props, rest_rest)
+                            DopType::Object(merged_props, rest_state)
                         }
-                        DopType::TypeVar(_) => DopType::Object(queried_props, None),
+                        DopType::TypeVar(_) => DopType::Object(queried_props, Row::Closed),
                         _ => panic!("Invalid type substitution for object rest"),
                     },
-                    None => DopType::Object(queried_props, None),
+                    Row::Closed => DopType::Object(queried_props, Row::Closed),
                 }
             }
             DopType::Bool | DopType::String | DopType::Number | DopType::Void => t.clone(),
@@ -322,7 +328,7 @@ mod tests {
                         };
                         map.insert(key, value);
                     }
-                    DopType::Object(map, Some(unifier.next_type_var()))
+                    DopType::Object(map, Row::Open(unifier.next_type_var()))
                 }
                 _ => panic!(),
             },
