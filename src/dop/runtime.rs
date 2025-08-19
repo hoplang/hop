@@ -55,13 +55,12 @@ pub fn evaluate_expr(
 #[cfg(test)]
 mod tests {
 
-    use crate::common::Range;
     use crate::dop::parse_expr;
 
     use super::*;
     use crate::test_utils::parse_test_cases;
     use pretty_assertions::assert_eq;
-    
+
     use std::fs;
     use std::path::PathBuf;
 
@@ -74,7 +73,6 @@ mod tests {
         let test_cases = parse_test_cases(&content);
 
         for (case_num, (archive, line_number)) in test_cases.iter().enumerate() {
-
             let env_content = archive
                 .get("env")
                 .expect("Missing 'env' section in test case")
@@ -108,7 +106,20 @@ mod tests {
             }
 
             // Parse the expression
-            let expr = parse_expr(expr_content, Range::default()).unwrap_or_else(|e| {
+            let mut tokenizer = crate::dop::tokenizer::DopTokenizer::new(
+                expr_content,
+                crate::common::Position::new(1, 1),
+            )
+            .unwrap_or_else(|e| {
+                panic!(
+                    "Failed to create tokenizer for '{}' in test case {} (line {}): {:?}",
+                    expr_content,
+                    case_num + 1,
+                    line_number,
+                    e
+                );
+            });
+            let expr = parse_expr(&mut tokenizer).unwrap_or_else(|e| {
                 panic!(
                     "Failed to parse expression '{}' in test case {} (line {}): {:?}",
                     expr_content,
@@ -178,5 +189,4 @@ mod tests {
             }
         }
     }
-
 }

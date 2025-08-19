@@ -81,8 +81,8 @@ pub fn typecheck_dop_expression(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dop::parse_variable_with_type;
     use crate::dop::parser::parse_expr;
+    use crate::dop::{DopTokenizer, parse_variable_with_type};
     use crate::test_utils::parse_test_cases;
     use pretty_assertions::assert_eq;
 
@@ -107,8 +107,18 @@ mod tests {
             let mut env = Environment::new();
 
             for line in env_section.lines() {
-                let (var_name, var_type) = parse_variable_with_type(line, Range::default())
+                let mut tokenizer = DopTokenizer::new(line, crate::common::Position::new(1, 1))
                     .unwrap_or_else(|e| {
+                        panic!(
+                            "Failed to create tokenizer for '{}' in test case {} (line {}): {:?}",
+                            line,
+                            case_num + 1,
+                            line_number,
+                            e
+                        );
+                    });
+                let (var_name, var_type) =
+                    parse_variable_with_type(&mut tokenizer).unwrap_or_else(|e| {
                         panic!(
                             "Parse error in test case {} (line {}): {:?}",
                             case_num + 1,
@@ -125,7 +135,17 @@ mod tests {
                 .content
                 .trim();
 
-            let expr = parse_expr(expr_content, Range::default()).unwrap_or_else(|e| {
+            let mut tokenizer = DopTokenizer::new(expr_content, crate::common::Position::new(1, 1))
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "Failed to create tokenizer for '{}' in test case {} (line {}): {:?}",
+                        expr_content,
+                        case_num + 1,
+                        line_number,
+                        e
+                    );
+                });
+            let expr = parse_expr(&mut tokenizer).unwrap_or_else(|e| {
                 panic!(
                     "Failed to parse expression '{}' in test case {} (line {}): {:?}",
                     expr_content,

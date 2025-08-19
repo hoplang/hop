@@ -4,7 +4,7 @@ use crate::common::{
     RangeError, RenderNode, SlotDefinitionNode, SlotReferenceNode, TextExpressionNode, TextNode,
     XExecNode, XRawNode, is_void_element,
 };
-use crate::dop;
+use crate::dop::{self, DopTokenizer};
 use crate::tokenizer::Token;
 use crate::tokenizer::Tokenizer;
 use std::collections::HashSet;
@@ -307,7 +307,14 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                     let as_attr = find_attribute(attributes, "as");
                     let entrypoint = find_attribute(attributes, "entrypoint").is_some();
                     let params_as_attr = expression.as_ref().and_then(|(expr_string, range)| {
-                        match dop::parse_variable_with_type(expr_string, *range) {
+                        let mut tokenizer = match DopTokenizer::new(expr_string, range.start) {
+                            Ok(tokenizer) => tokenizer,
+                            Err(err) => {
+                                errors.push(err);
+                                return None;
+                            }
+                        };
+                        match dop::parse_variable_with_type(&mut tokenizer) {
                             Ok((var_name, type_annotation)) => Some(DopVarNameAttribute {
                                 var_name,
                                 type_annotation,
@@ -361,7 +368,16 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
         }),
         Token::Expression { value, range } => {
             // Expression tokens represent {expression} in text content
-            match dop::parse_expr(value, *range) {
+            let mut tokenizer = match DopTokenizer::new(value, range.start) {
+                Ok(tokenizer) => tokenizer,
+                Err(_) => {
+                    return Node::Error(ErrorNode {
+                        range: *range,
+                        children: vec![],
+                    });
+                }
+            };
+            match dop::parse_expr(&mut tokenizer) {
                 Ok(expr) => Node::TextExpression(TextExpressionNode {
                     expression: expr,
                     range: *range,
@@ -384,7 +400,16 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
             match value.as_str() {
                 "if" => match &expression {
                     Some((expr_string, expr_range)) => {
-                        match dop::parse_expr(expr_string, *expr_range) {
+                        let mut tokenizer = match DopTokenizer::new(expr_string, expr_range.start) {
+                            Ok(tokenizer) => tokenizer,
+                            Err(_) => {
+                                return Node::Error(ErrorNode {
+                                    range: *expr_range,
+                                    children: vec![],
+                                });
+                            }
+                        };
+                        match dop::parse_expr(&mut tokenizer) {
                             Ok(condition) => Node::If(IfNode {
                                 condition,
                                 range: *expr_range,
@@ -412,7 +437,16 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                 },
                 "for" => match expression {
                     Some((expr_string, expr_range)) => {
-                        match dop::parse_loop_header(expr_string, *expr_range) {
+                        let mut tokenizer = match DopTokenizer::new(expr_string, expr_range.start) {
+                            Ok(tokenizer) => tokenizer,
+                            Err(_) => {
+                                return Node::Error(ErrorNode {
+                                    range: *expr_range,
+                                    children: vec![],
+                                });
+                            }
+                        };
+                        match dop::parse_loop_header(&mut tokenizer) {
                             Ok((var_name, array_expr)) => Node::For(ForNode {
                                 var_name,
                                 array_expr,
@@ -488,13 +522,25 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                 tag_name if is_valid_component_name(tag_name) => {
                     // This is a component render (contains dash)
                     let params_attr = match &expression {
-                        Some((expr_string, range)) => match dop::parse_expr(expr_string, *range) {
-                            Ok(expression) => Some((expression, *range)),
-                            Err(err) => {
-                                errors.push(err);
-                                None
+                        Some((expr_string, range)) => {
+                            let mut tokenizer = match DopTokenizer::new(expr_string, range.start) {
+                                Ok(tokenizer) => tokenizer,
+                                Err(err) => {
+                                    errors.push(err);
+                                    return Node::Error(ErrorNode {
+                                        range: *range,
+                                        children: vec![],
+                                    });
+                                }
+                            };
+                            match dop::parse_expr(&mut tokenizer) {
+                                Ok(expression) => Some((expression, *range)),
+                                Err(err) => {
+                                    errors.push(err);
+                                    None
+                                }
                             }
-                        },
+                        }
                         None => None,
                     };
 
@@ -510,7 +556,15 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     for attr in attributes {
                         if attr.name.starts_with("set-") {
                             if let Some(expr_attr) = {
-                                match dop::parse_expr(&attr.value, attr.range) {
+                                let mut tokenizer =
+                                    match DopTokenizer::new(&attr.value, attr.range.start) {
+                                        Ok(tokenizer) => tokenizer,
+                                        Err(err) => {
+                                            errors.push(err);
+                                            continue;
+                                        }
+                                    };
+                                match dop::parse_expr(&mut tokenizer) {
                                     Ok(expression) => Some(DopExprAttribute::new(
                                         attr.name.to_string(),
                                         expression,
@@ -550,7 +604,7 @@ mod tests {
 
     use super::*;
     use pretty_assertions::assert_eq;
-    
+
     use std::fs;
     use std::path::PathBuf;
 
@@ -642,7 +696,6 @@ mod tests {
         let test_cases = parse_test_cases(&content);
 
         for (case_num, (archive, line_number)) in test_cases.iter().enumerate() {
-
             let input = archive
                 .get("main.hop")
                 .expect("Missing 'main.hop' section in test case")
@@ -686,5 +739,4 @@ mod tests {
             }
         }
     }
-
 }

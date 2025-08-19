@@ -41,13 +41,8 @@ impl DopVarName {
     }
 }
 
-pub fn parse_expr(expr: &str, expr_range: Range) -> Result<DopExpr, RangeError> {
-    if expr.trim().is_empty() {
-        return Err(RangeError::new("Empty expression".to_string(), expr_range));
-    }
-
-    let mut tokenizer = DopTokenizer::new(expr, expr_range.start)?;
-    let result = parse_equality(&mut tokenizer)?;
+pub fn parse_expr(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
+    let result = parse_equality(tokenizer)?;
 
     // expect Eof
     match tokenizer.peek() {
@@ -64,18 +59,8 @@ pub fn parse_expr(expr: &str, expr_range: Range) -> Result<DopExpr, RangeError> 
 }
 
 pub fn parse_loop_header(
-    header: &str,
-    header_range: Range,
+    tokenizer: &mut DopTokenizer,
 ) -> Result<((DopVarName, Range), (DopExpr, Range)), RangeError> {
-    if header.trim().is_empty() {
-        return Err(RangeError::new(
-            "Empty loop header".to_string(),
-            header_range,
-        ));
-    }
-
-    let mut tokenizer = DopTokenizer::new(header, header_range.start)?;
-
     // expect Identifier
     let var_name = match tokenizer.advance()? {
         (DopToken::Identifier(name), range) => match DopVarName::new(name.clone()) {
@@ -102,8 +87,9 @@ pub fn parse_loop_header(
     }
 
     // Get the start position of the array expression
-    let array_expr_start = tokenizer.peek().1.start;
-    let array_expr = parse_equality(&mut tokenizer)?;
+    let (_, array_expr_start_range) = tokenizer.peek();
+    let array_expr_start = array_expr_start_range.start;
+    let array_expr = parse_equality(tokenizer)?;
 
     // expect Eof
     let array_expr_end = match tokenizer.peek() {
@@ -121,15 +107,8 @@ pub fn parse_loop_header(
 }
 
 pub fn parse_variable_with_type(
-    param_str: &str,
-    param_range: Range,
+    tokenizer: &mut DopTokenizer,
 ) -> Result<(DopVarName, crate::dop::DopType), RangeError> {
-    if param_str.trim().is_empty() {
-        return Err(RangeError::new("Empty parameter".to_string(), param_range));
-    }
-
-    let mut tokenizer = DopTokenizer::new(param_str, param_range.start)?;
-
     // Parse variable name
     let var_name = match tokenizer.peek() {
         (DopToken::Identifier(name), range) => {
@@ -154,12 +133,12 @@ pub fn parse_variable_with_type(
     let type_annotation = match tokenizer.peek() {
         (DopToken::Colon, _) => {
             tokenizer.advance()?; // consume :
-            parse_type(&mut tokenizer)?
+            parse_type(tokenizer)?
         }
-        (DopToken::Eof, _) => {
+        (DopToken::Eof, range) => {
             return Err(RangeError::new(
                 "Type annotation is required for component parameters".to_string(),
-                param_range,
+                *range,
             ));
         }
         (_, range) => {
@@ -429,7 +408,17 @@ mod tests {
 
             println!("Test case {} (line {})", case_num + 1, line_number);
 
-            let result = parse_expr(input, Range::default()).unwrap_or_else(|e| {
+            let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1))
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "Failed to create tokenizer for '{}' in test case {} (line {}): {:?}",
+                        input,
+                        case_num + 1,
+                        line_number,
+                        e
+                    );
+                });
+            let result = parse_expr(&mut tokenizer).unwrap_or_else(|e| {
                 panic!(
                     "Failed to parse expression '{}' in test case {} (line {}): {:?}",
                     input,
