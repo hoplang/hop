@@ -217,8 +217,8 @@ impl Unifier {
 
         match (a, b) {
             (_, DopType::TypeVar(Some(_))) => unreachable!("found type variable"),
-            (_, DopType::TypeVar(None)) => Ok(()),
             (_, DopType::Object(_, Row::Open(_))) => unreachable!("found type variable"),
+            (_, DopType::TypeVar(None)) => Ok(()),
             (DopType::Bool, DopType::Bool) => Ok(()),
             (DopType::String, DopType::String) => Ok(()),
             (DopType::Number, DopType::Number) => Ok(()),
