@@ -4,9 +4,9 @@ use std::fmt;
 pub type TypeVarId = usize;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ClosedDopType {
-    Object(BTreeMap<String, ClosedDopType>),
-    Array(Box<ClosedDopType>),
+pub enum ConcreteDopType {
+    Object(BTreeMap<String, ConcreteDopType>),
+    Array(Box<ConcreteDopType>),
     Bool,
     String,
     Number,
@@ -14,21 +14,10 @@ pub enum ClosedDopType {
     Any,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum DopType {
-    Object(BTreeMap<String, DopType>, TypeVarId),
-    Array(Box<DopType>),
-    Bool,
-    String,
-    Number,
-    Void,
-    TypeVar(TypeVarId),
-}
-
-impl fmt::Display for ClosedDopType {
+impl fmt::Display for ConcreteDopType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ClosedDopType::Object(properties) => {
+            ConcreteDopType::Object(properties) => {
                 write!(f, "object[")?;
                 for (idx, (key, value)) in properties.iter().enumerate() {
                     if idx > 0 {
@@ -38,20 +27,31 @@ impl fmt::Display for ClosedDopType {
                 }
                 write!(f, "]")
             }
-            ClosedDopType::Array(inner_type) => write!(f, "array[{}]", inner_type),
-            ClosedDopType::Bool => write!(f, "boolean"),
-            ClosedDopType::String => write!(f, "string"),
-            ClosedDopType::Number => write!(f, "number"),
-            ClosedDopType::Void => write!(f, "void"),
-            ClosedDopType::Any => write!(f, "any"),
+            ConcreteDopType::Array(inner_type) => write!(f, "array[{}]", inner_type),
+            ConcreteDopType::Bool => write!(f, "boolean"),
+            ConcreteDopType::String => write!(f, "string"),
+            ConcreteDopType::Number => write!(f, "number"),
+            ConcreteDopType::Void => write!(f, "void"),
+            ConcreteDopType::Any => write!(f, "any"),
         }
     }
 }
 
-impl fmt::Display for DopType {
+#[derive(Debug, Clone, PartialEq)]
+pub enum AbstractDopType {
+    Object(BTreeMap<String, AbstractDopType>, TypeVarId),
+    Array(Box<AbstractDopType>),
+    Bool,
+    String,
+    Number,
+    Void,
+    TypeVar(TypeVarId),
+}
+
+impl fmt::Display for AbstractDopType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DopType::Object(properties, _rest_id) => {
+            AbstractDopType::Object(properties, _rest_id) => {
                 write!(f, "object[")?;
                 for (idx, (key, value)) in properties.iter().enumerate() {
                     if idx > 0 {
@@ -65,12 +65,12 @@ impl fmt::Display for DopType {
                 write!(f, "..")?;
                 write!(f, "]")
             }
-            DopType::Array(inner_type) => write!(f, "array[{}]", inner_type),
-            DopType::Bool => write!(f, "boolean"),
-            DopType::String => write!(f, "string"),
-            DopType::Number => write!(f, "number"),
-            DopType::Void => write!(f, "void"),
-            DopType::TypeVar(id) => write!(f, "?t{}", id),
+            AbstractDopType::Array(inner_type) => write!(f, "array[{}]", inner_type),
+            AbstractDopType::Bool => write!(f, "boolean"),
+            AbstractDopType::String => write!(f, "string"),
+            AbstractDopType::Number => write!(f, "number"),
+            AbstractDopType::Void => write!(f, "void"),
+            AbstractDopType::TypeVar(id) => write!(f, "?t{}", id),
         }
     }
 }
@@ -87,7 +87,7 @@ impl UnificationError {
 }
 
 pub struct Unifier {
-    substitutions: Vec<Option<DopType>>,
+    substitutions: Vec<Option<AbstractDopType>>,
 }
 
 impl Unifier {
@@ -103,28 +103,37 @@ impl Unifier {
         id
     }
 
-    pub fn new_type_var(&mut self) -> DopType {
-        DopType::TypeVar(self.next_type_var())
+    pub fn new_type_var(&mut self) -> AbstractDopType {
+        AbstractDopType::TypeVar(self.next_type_var())
     }
 
-    pub fn new_object(&mut self, map: BTreeMap<String, DopType>) -> DopType {
-        DopType::Object(map, self.next_type_var())
+    pub fn new_object(&mut self, map: BTreeMap<String, AbstractDopType>) -> AbstractDopType {
+        AbstractDopType::Object(map, self.next_type_var())
     }
 
     /// Construct a type that is the least upper bound of `a` and `b` and constrain `a` and `b` to
     /// be this type, or fail if there is no representation of the least upper bound of `a` and `b`
     /// in the type system.
-    pub fn unify(&mut self, a: &DopType, b: &DopType) -> Result<(), UnificationError> {
+    pub fn unify(
+        &mut self,
+        a: &AbstractDopType,
+        b: &AbstractDopType,
+    ) -> Result<(), UnificationError> {
         match (a, b) {
-            (DopType::Bool, DopType::Bool) => Ok(()),
-            (DopType::String, DopType::String) => Ok(()),
-            (DopType::Number, DopType::Number) => Ok(()),
-            (DopType::Void, DopType::Void) => Ok(()),
-            (DopType::TypeVar(a), DopType::TypeVar(b)) if a == b => Ok(()),
-            (DopType::TypeVar(id_a), _) => self.unify_type_var(*id_a, b),
-            (_, DopType::TypeVar(id_b)) => self.unify_type_var(*id_b, a),
-            (DopType::Array(type_a), DopType::Array(type_b)) => self.unify(type_a, type_b),
-            (DopType::Object(props_a, rest_a_id), DopType::Object(props_b, rest_b_id)) => {
+            (AbstractDopType::Bool, AbstractDopType::Bool) => Ok(()),
+            (AbstractDopType::String, AbstractDopType::String) => Ok(()),
+            (AbstractDopType::Number, AbstractDopType::Number) => Ok(()),
+            (AbstractDopType::Void, AbstractDopType::Void) => Ok(()),
+            (AbstractDopType::TypeVar(a), AbstractDopType::TypeVar(b)) if a == b => Ok(()),
+            (AbstractDopType::TypeVar(id_a), _) => self.unify_type_var(*id_a, b),
+            (_, AbstractDopType::TypeVar(id_b)) => self.unify_type_var(*id_b, a),
+            (AbstractDopType::Array(type_a), AbstractDopType::Array(type_b)) => {
+                self.unify(type_a, type_b)
+            }
+            (
+                AbstractDopType::Object(props_a, rest_a_id),
+                AbstractDopType::Object(props_b, rest_b_id),
+            ) => {
                 // Find common properties and unify them
                 for (key, type_a) in props_a {
                     if let Some(type_b) = props_b.get(key) {
@@ -133,12 +142,12 @@ impl Unifier {
                 }
 
                 // Collect missing properties
-                let missing_from_a: BTreeMap<String, DopType> = props_b
+                let missing_from_a: BTreeMap<String, AbstractDopType> = props_b
                     .iter()
                     .filter(|(key, _)| !props_a.contains_key(*key))
                     .map(|(k, v)| (k.clone(), v.clone()))
                     .collect();
-                let missing_from_b: BTreeMap<String, DopType> = props_a
+                let missing_from_b: BTreeMap<String, AbstractDopType> = props_a
                     .iter()
                     .filter(|(key, _)| !props_b.contains_key(*key))
                     .map(|(k, v)| (k.clone(), v.clone()))
@@ -148,11 +157,11 @@ impl Unifier {
                 let shared_rest = self.next_type_var();
                 self.unify_type_var(
                     *rest_a_id,
-                    &DopType::Object(missing_from_a, shared_rest),
+                    &AbstractDopType::Object(missing_from_a, shared_rest),
                 )?;
                 self.unify_type_var(
                     *rest_b_id,
-                    &DopType::Object(missing_from_b, shared_rest),
+                    &AbstractDopType::Object(missing_from_b, shared_rest),
                 )?;
 
                 Ok(())
@@ -164,15 +173,18 @@ impl Unifier {
     fn unify_type_var(
         &mut self,
         var_id: TypeVarId,
-        other_type: &DopType,
+        other_type: &AbstractDopType,
     ) -> Result<(), UnificationError> {
         if let Some(substituted_type) = &self.substitutions[var_id] {
             return self.unify(&substituted_type.clone(), other_type);
         }
 
-        if let DopType::TypeVar(other_id) = other_type {
+        if let AbstractDopType::TypeVar(other_id) = other_type {
             if let Some(other_substituted) = &self.substitutions[*other_id] {
-                return self.unify(&DopType::TypeVar(var_id), &other_substituted.clone());
+                return self.unify(
+                    &AbstractDopType::TypeVar(var_id),
+                    &other_substituted.clone(),
+                );
             }
         }
 
@@ -196,15 +208,18 @@ impl Unifier {
     /// # Returns
     ///
     /// `Ok(())` if the constraint is satisfiable, `Err` otherwise
-    pub fn constrain(&mut self, a: &DopType, b: &ClosedDopType) -> Result<(), UnificationError> {
-
+    pub fn constrain(
+        &mut self,
+        a: &AbstractDopType,
+        b: &ConcreteDopType,
+    ) -> Result<(), UnificationError> {
         match (a, b) {
-            (_, ClosedDopType::Any) => Ok(()),
-            (DopType::Bool, ClosedDopType::Bool) => Ok(()),
-            (DopType::String, ClosedDopType::String) => Ok(()),
-            (DopType::Number, ClosedDopType::Number) => Ok(()),
-            (DopType::Void, ClosedDopType::Void) => Ok(()),
-            (DopType::TypeVar(id_a), _) => {
+            (_, ConcreteDopType::Any) => Ok(()),
+            (AbstractDopType::Bool, ConcreteDopType::Bool) => Ok(()),
+            (AbstractDopType::String, ConcreteDopType::String) => Ok(()),
+            (AbstractDopType::Number, ConcreteDopType::Number) => Ok(()),
+            (AbstractDopType::Void, ConcreteDopType::Void) => Ok(()),
+            (AbstractDopType::TypeVar(id_a), _) => {
                 if let Some(substituted_type) = &self.substitutions[*id_a] {
                     self.constrain(&substituted_type.clone(), b)
                 } else {
@@ -213,8 +228,10 @@ impl Unifier {
                     Ok(())
                 }
             }
-            (DopType::Array(type_a), ClosedDopType::Array(type_b)) => self.constrain(type_a, type_b),
-            (DopType::Object(props_a, rest_id), ClosedDopType::Object(props_b)) => {
+            (AbstractDopType::Array(type_a), ConcreteDopType::Array(type_b)) => {
+                self.constrain(type_a, type_b)
+            }
+            (AbstractDopType::Object(props_a, rest_id), ConcreteDopType::Object(props_b)) => {
                 let mut missing_props = BTreeMap::new();
                 for (key, type_b) in props_b {
                     if let Some(type_a) = props_a.get(key) {
@@ -224,11 +241,8 @@ impl Unifier {
                     }
                 }
                 if !missing_props.is_empty() {
-                    let missing_closed = ClosedDopType::Object(missing_props);
-                    self.constrain(
-                        &DopType::TypeVar(*rest_id),
-                        &missing_closed,
-                    )?;
+                    let missing_closed = ConcreteDopType::Object(missing_props);
+                    self.constrain(&AbstractDopType::TypeVar(*rest_id), &missing_closed)?;
                 }
 
                 Ok(())
@@ -238,28 +252,28 @@ impl Unifier {
     }
 
     /// Makes a constraint type extensible by converting closed objects to open objects recursively.
-    fn unresolve(&mut self, constraint_type: &ClosedDopType) -> DopType {
+    fn unresolve(&mut self, constraint_type: &ConcreteDopType) -> AbstractDopType {
         match constraint_type {
-            ClosedDopType::Any => {
+            ConcreteDopType::Any => {
                 // Create a new type variable for Any
                 self.new_type_var()
             }
-            ClosedDopType::Object(props) => {
+            ConcreteDopType::Object(props) => {
                 // Make nested types extensible too
-                let open_props: BTreeMap<String, DopType> = props
+                let open_props: BTreeMap<String, AbstractDopType> = props
                     .iter()
                     .map(|(k, v)| (k.clone(), self.unresolve(v)))
                     .collect();
                 self.new_object(open_props)
             }
-            ClosedDopType::Array(element_type) => {
+            ConcreteDopType::Array(element_type) => {
                 let open_element = self.unresolve(element_type);
-                DopType::Array(Box::new(open_element))
+                AbstractDopType::Array(Box::new(open_element))
             }
-            ClosedDopType::Bool => DopType::Bool,
-            ClosedDopType::String => DopType::String,
-            ClosedDopType::Number => DopType::Number,
-            ClosedDopType::Void => DopType::Void,
+            ConcreteDopType::Bool => AbstractDopType::Bool,
+            ConcreteDopType::String => AbstractDopType::String,
+            ConcreteDopType::Number => AbstractDopType::Number,
+            ConcreteDopType::Void => AbstractDopType::Void,
         }
     }
 
@@ -267,46 +281,45 @@ impl Unifier {
     ///
     /// Note that the returned type will be immutable and not
     /// open to extension.
-    pub fn resolve(&self, t: &DopType) -> ClosedDopType {
+    pub fn resolve(&self, t: &AbstractDopType) -> ConcreteDopType {
         let result = match t {
-            DopType::TypeVar(id) => {
+            AbstractDopType::TypeVar(id) => {
                 if let Some(substituted_type) = &self.substitutions[*id] {
                     self.resolve(substituted_type)
                 } else {
-                    ClosedDopType::Any
+                    ConcreteDopType::Any
                 }
             }
-            DopType::Array(sub_type) => {
-                ClosedDopType::Array(Box::new(self.resolve(sub_type)))
+            AbstractDopType::Array(sub_type) => {
+                ConcreteDopType::Array(Box::new(self.resolve(sub_type)))
             }
-            DopType::Object(props, rest_id) => {
-                let resolved_props: BTreeMap<String, ClosedDopType> = props
+            AbstractDopType::Object(props, rest_id) => {
+                let resolved_props: BTreeMap<String, ConcreteDopType> = props
                     .iter()
                     .map(|(k, v)| (k.clone(), self.resolve(v)))
                     .collect();
 
-                let rest_resolved = self.resolve(&DopType::TypeVar(*rest_id));
+                let rest_resolved = self.resolve(&AbstractDopType::TypeVar(*rest_id));
                 match rest_resolved {
-                    ClosedDopType::Object(rest_props) => {
+                    ConcreteDopType::Object(rest_props) => {
                         let mut merged_props = resolved_props;
                         for (k, v) in rest_props {
                             merged_props.insert(k, v);
                         }
-                        ClosedDopType::Object(merged_props)
+                        ConcreteDopType::Object(merged_props)
                     }
-                    ClosedDopType::Any => ClosedDopType::Object(resolved_props),
+                    ConcreteDopType::Any => ConcreteDopType::Object(resolved_props),
                     _ => panic!("Invalid type substitution for object rest"),
                 }
             }
-            DopType::Bool => ClosedDopType::Bool,
-            DopType::String => ClosedDopType::String,
-            DopType::Number => ClosedDopType::Number,
-            DopType::Void => ClosedDopType::Void,
+            AbstractDopType::Bool => ConcreteDopType::Bool,
+            AbstractDopType::String => ConcreteDopType::String,
+            AbstractDopType::Number => ConcreteDopType::Number,
+            AbstractDopType::Void => ConcreteDopType::Void,
         };
 
         result
     }
-
 }
 
 #[cfg(test)]
@@ -402,17 +415,17 @@ mod tests {
 
     fn sexpr_to_type(
         sexpr: SExpr,
-        table: &std::collections::HashMap<String, DopType>,
+        table: &std::collections::HashMap<String, AbstractDopType>,
         unifier: &mut Unifier,
-    ) -> DopType {
+    ) -> AbstractDopType {
         match sexpr {
             SExpr::Command(cmd, args) => match cmd.as_str() {
                 "array" => {
                     assert!(args.len() == 1);
-                    DopType::Array(Box::new(sexpr_to_type(args[0].clone(), table, unifier)))
+                    AbstractDopType::Array(Box::new(sexpr_to_type(args[0].clone(), table, unifier)))
                 }
                 "object" => {
-                    let mut map: BTreeMap<String, DopType> = BTreeMap::new();
+                    let mut map: BTreeMap<String, AbstractDopType> = BTreeMap::new();
                     for chunk in args.chunks(2) {
                         let value = sexpr_to_type(chunk[1].clone(), table, unifier);
                         let key = match &chunk[0] {
@@ -426,10 +439,10 @@ mod tests {
                 _ => panic!(),
             },
             SExpr::Symbol(str) => match str.as_str() {
-                "string" => DopType::String,
-                "bool" => DopType::Bool,
-                "number" => DopType::Number,
-                "void" => DopType::Void,
+                "string" => AbstractDopType::String,
+                "bool" => AbstractDopType::Bool,
+                "number" => AbstractDopType::Number,
+                "void" => AbstractDopType::Void,
                 _ => {
                     // Get type var from table
                     assert!(str.starts_with('t'));
@@ -496,7 +509,7 @@ mod tests {
                 .expect("Missing 'out' section in test case")
                 .content
                 .trim();
-            let mut table: std::collections::HashMap<String, DopType> =
+            let mut table: std::collections::HashMap<String, AbstractDopType> =
                 std::collections::HashMap::new();
 
             let mut unifier = Unifier::new();

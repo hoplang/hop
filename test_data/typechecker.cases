@@ -1563,3 +1563,25 @@ main::main-comp
 	array[object[active: boolean, id: number, name: string]]
 	[]
 ## END
+
+Structural subtyping should work: an object with properties a and b should be
+compatible with a component that only needs property a.
+
+## BEGIN
+-- main.hop --
+<needs-a {data: object[a: string]}>
+	<div>{data.a}</div>
+</needs-a>
+
+<main-comp {params: object[data: object[a: string, b: string]]}>
+	<needs-a {params.data}>
+	</needs-a>
+</main-comp>
+-- out --
+main::needs-a
+	object[a: string]
+	[]
+main::main-comp
+	object[data: object[a: string, b: string]]
+	[]
+## END

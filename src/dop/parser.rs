@@ -108,7 +108,7 @@ pub fn parse_loop_header(
 
 pub fn parse_variable_with_type(
     tokenizer: &mut DopTokenizer,
-) -> Result<(DopVarName, crate::dop::ClosedDopType), RangeError> {
+) -> Result<(DopVarName, crate::dop::ConcreteDopType), RangeError> {
     // Parse variable name
     let var_name = match tokenizer.peek() {
         (DopToken::Identifier(name), range) => {
@@ -163,26 +163,26 @@ pub fn parse_variable_with_type(
     Ok((var_name, type_annotation))
 }
 
-fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::ClosedDopType, RangeError> {
-    use crate::dop::ClosedDopType;
+fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::ConcreteDopType, RangeError> {
+    use crate::dop::ConcreteDopType;
     use std::collections::BTreeMap;
 
     match tokenizer.peek() {
         (DopToken::TypeString, _) => {
             tokenizer.advance()?;
-            Ok(ClosedDopType::String)
+            Ok(ConcreteDopType::String)
         }
         (DopToken::TypeNumber, _) => {
             tokenizer.advance()?;
-            Ok(ClosedDopType::Number)
+            Ok(ConcreteDopType::Number)
         }
         (DopToken::TypeBoolean, _) => {
             tokenizer.advance()?;
-            Ok(ClosedDopType::Bool)
+            Ok(ConcreteDopType::Bool)
         }
         (DopToken::TypeVoid, _) => {
             tokenizer.advance()?;
-            Ok(ClosedDopType::Void)
+            Ok(ConcreteDopType::Void)
         }
         (DopToken::TypeArray, _) => {
             tokenizer.advance()?; // consume array token
@@ -195,7 +195,7 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::ClosedDopType,
                     match tokenizer.peek() {
                         (DopToken::RightBracket, _) => {
                             tokenizer.advance()?; // consume ]
-                            Ok(ClosedDopType::Array(Box::new(inner_type)))
+                            Ok(ConcreteDopType::Array(Box::new(inner_type)))
                         }
                         (_, range) => Err(RangeError::new(
                             "Expected ']' after array type".to_string(),
@@ -220,7 +220,7 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::ClosedDopType,
                     // Handle empty object
                     if let (DopToken::RightBracket, _) = tokenizer.peek() {
                         tokenizer.advance()?; // consume ]
-                        return Ok(ClosedDopType::Object(properties));
+                        return Ok(ConcreteDopType::Object(properties));
                     }
 
                     loop {
@@ -275,7 +275,7 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::ClosedDopType,
                         }
                     }
 
-                    Ok(ClosedDopType::Object(properties))
+                    Ok(ConcreteDopType::Object(properties))
                 }
                 (_, range) => Err(RangeError::new(
                     "Expected '[' after 'object'".to_string(),

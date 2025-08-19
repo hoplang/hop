@@ -189,7 +189,7 @@ pub struct Attribute {
 #[derive(Debug, Clone, PartialEq)]
 pub struct DopVarNameAttribute {
     pub var_name: DopVarName,
-    pub type_annotation: crate::dop::ClosedDopType,
+    pub type_annotation: crate::dop::ConcreteDopType,
     pub range: Range,
 }
 

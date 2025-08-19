@@ -1,16 +1,16 @@
 use super::parser::{BinaryOp, DopExpr, UnaryOp};
-use super::{ClosedDopType, DopType, Unifier};
+use super::{AbstractDopType, ConcreteDopType, Unifier};
 use crate::common::{Environment, Range, RangeError};
 use std::collections::BTreeMap;
 
 pub fn typecheck_dop_expression(
     expr: &DopExpr,
-    env: &mut Environment<DopType>,
+    env: &mut Environment<AbstractDopType>,
     unifier: &mut Unifier,
-    annotations: &mut Vec<(crate::common::Range, DopType)>,
+    annotations: &mut Vec<(crate::common::Range, AbstractDopType)>,
     errors: &mut Vec<RangeError>,
     range: Range,
-) -> DopType {
+) -> AbstractDopType {
     match expr {
         DopExpr::Variable(name) => {
             if let Some(var_type) = env.lookup(name) {
@@ -20,9 +20,9 @@ pub fn typecheck_dop_expression(
                 unifier.new_type_var()
             }
         }
-        DopExpr::BooleanLiteral(_) => DopType::Bool,
-        DopExpr::StringLiteral(_) => DopType::String,
-        DopExpr::NumberLiteral(_) => DopType::Number,
+        DopExpr::BooleanLiteral(_) => AbstractDopType::Bool,
+        DopExpr::StringLiteral(_) => AbstractDopType::String,
+        DopExpr::NumberLiteral(_) => AbstractDopType::Number,
         DopExpr::PropertyAccess(base_expr, property) => {
             let base_type =
                 typecheck_dop_expression(base_expr, env, unifier, annotations, errors, range);
@@ -32,7 +32,10 @@ pub fn typecheck_dop_expression(
 
             if let Err(_err) = unifier.unify(&base_type, &obj_type) {
                 errors.push(RangeError::new(
-                    format!("{} can not be used as an object", unifier.resolve(&base_type)),
+                    format!(
+                        "{} can not be used as an object",
+                        unifier.resolve(&base_type)
+                    ),
                     range,
                 ));
             }
@@ -58,14 +61,14 @@ pub fn typecheck_dop_expression(
             }
 
             // The result of == is always boolean
-            DopType::Bool
+            AbstractDopType::Bool
         }
         DopExpr::UnaryOp(UnaryOp::Not, expr) => {
             let expr_type =
                 typecheck_dop_expression(expr, env, unifier, annotations, errors, range);
 
             // Negation only works on boolean expressions
-            if let Err(_err) = unifier.constrain(&expr_type, &ClosedDopType::Bool) {
+            if let Err(_err) = unifier.constrain(&expr_type, &ConcreteDopType::Bool) {
                 errors.push(RangeError::new(
                     "Negation operator can only be applied to boolean values".to_string(),
                     range,
@@ -73,7 +76,7 @@ pub fn typecheck_dop_expression(
             }
 
             // The result of ! is always boolean
-            DopType::Bool
+            AbstractDopType::Bool
         }
     }
 }

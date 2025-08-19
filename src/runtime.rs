@@ -4,7 +4,7 @@ use crate::common::{
     XRawNode, escape_html, is_void_element,
 };
 use crate::dop;
-use crate::dop::{ClosedDopType, evaluate_expr};
+use crate::dop::{ConcreteDopType, evaluate_expr};
 use crate::parser::Module;
 use crate::typechecker::TypeResult;
 use anyhow::Result;
@@ -17,7 +17,7 @@ use std::process::{Command, Stdio};
 pub struct Program {
     component_maps: HashMap<String, HashMap<String, ComponentDefinitionNode>>,
     import_maps: HashMap<String, HashMap<String, String>>,
-    parameter_types: HashMap<String, HashMap<String, ClosedDopType>>,
+    parameter_types: HashMap<String, HashMap<String, ConcreteDopType>>,
     render_nodes: HashMap<String, Vec<RenderNode>>,
     scripts: String,
     hop_mode: HopMode,
@@ -90,7 +90,7 @@ impl Program {
     }
 
     /// Get the parameter types for inspection
-    pub fn get_parameter_types(&self) -> &HashMap<String, HashMap<String, ClosedDopType>> {
+    pub fn get_parameter_types(&self) -> &HashMap<String, HashMap<String, ConcreteDopType>> {
         &self.parameter_types
     }
 
@@ -683,15 +683,15 @@ impl Program {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::parse_test_cases;
     use super::*;
     use crate::common::Range;
     use crate::parser::parse;
+    use crate::test_utils::parse_test_cases;
     use crate::tokenizer::Token;
     use crate::tokenizer::Tokenizer;
     use crate::typechecker::{TypeResult, typecheck};
     use pretty_assertions::assert_eq;
-    
+
     use std::fs;
     use std::path::PathBuf;
 
@@ -770,7 +770,6 @@ mod tests {
         let test_cases = parse_test_cases(&content);
 
         for (case_num, (archive, line_number)) in test_cases.iter().enumerate() {
-
             let data_json = archive
                 .get("data.json")
                 .expect("Missing 'data.json' section in test case")
@@ -835,5 +834,4 @@ mod tests {
             );
         }
     }
-
 }

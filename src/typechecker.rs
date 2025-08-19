@@ -1,15 +1,15 @@
 use crate::common::{
-    ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode,
-    ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Range, RangeError, RenderNode,
-    SlotDefinitionNode, SlotReferenceNode, XExecNode, XRawNode,
+    ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode, ForNode, IfNode,
+    ImportNode, NativeHTMLNode, Node, Range, RangeError, RenderNode, SlotDefinitionNode,
+    SlotReferenceNode, XExecNode, XRawNode,
 };
 use crate::dop::Unifier;
-use crate::dop::{ClosedDopType, DopType, typecheck_dop_expression};
+use crate::dop::{AbstractDopType, ConcreteDopType, typecheck_dop_expression};
 use crate::parser::Module;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypeAnnotation(pub Range, pub ClosedDopType);
+pub struct TypeAnnotation(pub Range, pub ConcreteDopType);
 
 // Internal function uses DopType tuples during typechecking
 
@@ -22,7 +22,7 @@ pub struct DefinitionLink {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentInfo {
-    pub parameter_type: ClosedDopType,
+    pub parameter_type: ConcreteDopType,
     pub slots: Vec<String>,
     pub definition_module: String,
     pub definition_range: Range,
@@ -55,7 +55,7 @@ pub fn typecheck(
     errors: &mut Vec<RangeError>,
 ) -> TypeResult {
     let mut unifier = Unifier::new();
-    let mut annotations: Vec<(Range, DopType)> = Vec::new();
+    let mut annotations: Vec<(Range, AbstractDopType)> = Vec::new();
     let mut definition_links: Vec<DefinitionLink> = Vec::new();
     let mut component_info = HashMap::new();
     let mut imported_components: HashMap<String, Range> = HashMap::new();
@@ -97,7 +97,7 @@ pub fn typecheck(
     let mut env = Environment::new();
 
     // Add global HOP_MODE variable
-    env.push("HOP_MODE".to_string(), DopType::String);
+    env.push("HOP_MODE".to_string(), AbstractDopType::String);
 
     for ComponentDefinitionNode {
         name,
@@ -117,11 +117,13 @@ pub fn typecheck(
 
         let parameter_type = if let Some(params_as_attr) = params_as_attr {
             let param_type = unifier.new_type_var();
-            unifier.constrain(&param_type, &params_as_attr.type_annotation).unwrap();
-            
+            unifier
+                .constrain(&param_type, &params_as_attr.type_annotation)
+                .unwrap();
+
             annotations.push((params_as_attr.range, param_type.clone()));
             env.push(params_as_attr.var_name.value.clone(), param_type.clone());
-            
+
             for child in children {
                 typecheck_node(
                     child,
@@ -141,7 +143,7 @@ pub fn typecheck(
                     params_as_attr.range,
                 ));
             }
-            
+
             param_type
         } else {
             for child in children {
@@ -157,7 +159,7 @@ pub fn typecheck(
                 );
             }
 
-            DopType::Void
+            AbstractDopType::Void
         };
 
         // Add the component to component_info BEFORE typechecking preview content
@@ -241,9 +243,9 @@ pub fn typecheck(
 fn typecheck_node(
     node: &Node,
     component_info: &HashMap<String, ComponentInfo>,
-    env: &mut Environment<DopType>,
+    env: &mut Environment<AbstractDopType>,
     unifier: &mut Unifier,
-    annotations: &mut Vec<(Range, DopType)>,
+    annotations: &mut Vec<(Range, AbstractDopType)>,
     definition_links: &mut Vec<DefinitionLink>,
     referenced_components: &mut HashSet<String>,
     errors: &mut Vec<RangeError>,
@@ -257,7 +259,7 @@ fn typecheck_node(
         }) => {
             let condition_type =
                 typecheck_dop_expression(condition, env, unifier, annotations, errors, *range);
-            if let Err(err) = unifier.constrain(&condition_type, &ClosedDopType::Bool) {
+            if let Err(err) = unifier.constrain(&condition_type, &ConcreteDopType::Bool) {
                 errors.push(RangeError::unification_error(&err.message, *range));
             }
 
@@ -356,12 +358,12 @@ fn typecheck_node(
                     set_attr.range,
                 );
 
-                if let Err(err) = unifier.constrain(&expr_type, &ClosedDopType::String) {
+                if let Err(err) = unifier.constrain(&expr_type, &ConcreteDopType::String) {
                     errors.push(RangeError::unification_error(&err.message, set_attr.range));
                     continue;
                 }
 
-                annotations.push((set_attr.range, DopType::String));
+                annotations.push((set_attr.range, AbstractDopType::String));
             }
 
             for child in children {
@@ -411,7 +413,7 @@ fn typecheck_node(
                 *array_expr_range,
             );
             let element_type = unifier.new_type_var();
-            let expected_array_type = DopType::Array(Box::new(element_type.clone()));
+            let expected_array_type = AbstractDopType::Array(Box::new(element_type.clone()));
 
             if let Err(_err) = unifier.unify(&array_type, &expected_array_type) {
                 errors.push(RangeError::new(
@@ -466,17 +468,16 @@ fn typecheck_node(
                 errors,
                 text_expr_node.range,
             );
-            if let Err(err) = unifier.constrain(&expr_type, &ClosedDopType::String) {
+            if let Err(err) = unifier.constrain(&expr_type, &ConcreteDopType::String) {
                 errors.push(RangeError::unification_error(
                     &err.message,
                     text_expr_node.range,
                 ));
             }
-            annotations.push((text_expr_node.range, DopType::String));
+            annotations.push((text_expr_node.range, AbstractDopType::String));
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -486,7 +487,7 @@ mod tests {
     use crate::test_utils::parse_test_cases;
     use crate::tokenizer::Tokenizer;
     use pretty_assertions::assert_eq;
-    
+
     use std::collections::HashMap;
     use std::fs;
     use std::path::PathBuf;
@@ -500,7 +501,6 @@ mod tests {
         let test_cases = parse_test_cases(&content);
 
         for (case_num, (archive, line_number)) in test_cases.iter().enumerate() {
-
             let expected = archive
                 .get("out")
                 .expect("Missing 'out' section in test case")
@@ -581,5 +581,4 @@ mod tests {
             }
         }
     }
-
 }
