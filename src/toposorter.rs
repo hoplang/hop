@@ -204,7 +204,7 @@ impl Default for TopoSorter {
 mod tests {
     use crate::test_utils::parse_test_cases;
     use super::*;
-    use simple_txtar::Archive;
+    
     use std::{env, fs, path::PathBuf};
 
     #[test]
@@ -215,8 +215,7 @@ mod tests {
         let content = fs::read_to_string(&d).unwrap();
         let test_cases = parse_test_cases(&content);
 
-        for (case_num, (txtar_content, line_number)) in test_cases.iter().enumerate() {
-            let archive = Archive::from(txtar_content.clone());
+        for (case_num, (archive, line_number)) in test_cases.iter().enumerate() {
 
             let input = archive
                 .get("in")

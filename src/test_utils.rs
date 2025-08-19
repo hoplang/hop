@@ -1,8 +1,10 @@
 //! Shared test utilities to avoid duplication across test modules.
 
-/// Parses test cases from txtar format content.
+use simple_txtar::Archive;
+
+/// Parses test cases from txtar format content and returns Archive objects.
 /// 
-/// Returns a vector of (test_case_content, start_line_number) tuples.
+/// Returns a vector of (Archive, start_line_number) tuples.
 /// Each test case is delimited by `## BEGIN` and `## END` markers.
 /// 
 /// # Example
@@ -24,7 +26,7 @@
 /// let cases = parse_test_cases(content);
 /// assert_eq!(cases.len(), 1);
 /// ```
-pub fn parse_test_cases(content: &str) -> Vec<(String, usize)> {
+pub fn parse_test_cases(content: &str) -> Vec<(Archive, usize)> {
     let mut test_cases = Vec::new();
     let mut current_case = String::new();
     let mut in_case = false;
@@ -48,7 +50,7 @@ pub fn parse_test_cases(content: &str) -> Vec<(String, usize)> {
                 "Found '## END' at line {} without matching '## BEGIN'",
                 line_number
             );
-            test_cases.push((current_case.clone(), case_start_line));
+            test_cases.push((Archive::from(current_case.clone()), case_start_line));
             in_case = false;
         } else if in_case {
             if !current_case.is_empty() {
@@ -77,7 +79,8 @@ mod tests {
 ## BEGIN
 -- input.txt --
 hello world
--- output.txt --  
+
+-- output.txt --
 expected
 ## END
 "#;
@@ -85,10 +88,10 @@ expected
         let cases = parse_test_cases(content);
         assert_eq!(cases.len(), 1);
         assert_eq!(cases[0].1, 3); // Line number of ## BEGIN
-        assert!(cases[0].0.contains("-- input.txt --"));
-        assert!(cases[0].0.contains("hello world"));
-        assert!(cases[0].0.contains("-- output.txt --"));
-        assert!(cases[0].0.contains("expected"));
+        assert!(cases[0].0.get("input.txt").is_some());
+        assert_eq!(cases[0].0.get("input.txt").unwrap().content.trim(), "hello world");
+        assert!(cases[0].0.get("output.txt").is_some());
+        assert_eq!(cases[0].0.get("output.txt").unwrap().content.trim(), "expected");
     }
 
     #[test]
@@ -112,8 +115,8 @@ Can not unify types
 
         let cases = parse_test_cases(content);
         assert_eq!(cases.len(), 2);
-        assert!(cases[0].0.contains("(unify string string)"));
-        assert!(cases[1].0.contains("(unify string bool)"));
+        assert_eq!(cases[0].0.get("in").unwrap().content.trim(), "(unify string string)");
+        assert_eq!(cases[1].0.get("in").unwrap().content.trim(), "(unify string bool)");
     }
 
     #[test]
