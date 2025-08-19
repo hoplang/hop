@@ -23,13 +23,19 @@ pub enum DopType {
 impl fmt::Display for DopType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DopType::Object(properties, _state) => {
+            DopType::Object(properties, state) => {
                 write!(f, "object[")?;
                 for (idx, (key, value)) in properties.iter().enumerate() {
                     if idx > 0 {
                         write!(f, ", ")?;
                     }
                     write!(f, "{}: {}", key, value)?;
+                }
+                if matches!(state, Row::Open(_)) {
+                    if !properties.is_empty() {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "..")?;
                 }
                 write!(f, "]")
             }
