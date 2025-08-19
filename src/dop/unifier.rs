@@ -122,12 +122,12 @@ impl Unifier {
                 match (state_a, state_b) {
                     (Row::Open(rest_a_id), Row::Open(rest_b_id)) => {
                         let shared_rest = self.next_type_var();
-                        self.unify(
-                            &DopType::TypeVar(Some(*rest_a_id)),
+                        self.unify_type_var(
+                            *rest_a_id,
                             &DopType::Object(missing_from_a, Row::Open(shared_rest)),
                         )?;
-                        self.unify(
-                            &DopType::TypeVar(Some(*rest_b_id)),
+                        self.unify_type_var(
+                            *rest_b_id,
                             &DopType::Object(missing_from_b, Row::Open(shared_rest)),
                         )?;
                     }
@@ -137,8 +137,8 @@ impl Unifier {
                                 "Closed object missing required properties".to_string(),
                             ));
                         }
-                        self.unify(
-                            &DopType::TypeVar(Some(*rest_b_id)),
+                        self.unify_type_var(
+                            *rest_b_id,
                             &DopType::Object(missing_from_b, Row::Closed),
                         )?;
                     }
@@ -148,8 +148,8 @@ impl Unifier {
                                 "Closed object missing required properties".to_string(),
                             ));
                         }
-                        self.unify(
-                            &DopType::TypeVar(Some(*rest_a_id)),
+                        self.unify_type_var(
+                            *rest_a_id,
                             &DopType::Object(missing_from_a, Row::Closed),
                         )?;
                     }
