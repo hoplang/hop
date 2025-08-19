@@ -374,7 +374,7 @@ Basic types cannot be constrained to different types.
 -- in --
 (constrain string bool)
 -- out --
-Can not constrain types
+Cannot constrain string to boolean
 ## END
 
 Array constraint with type variable element.
@@ -394,7 +394,7 @@ Conflicting property types in constraints should fail.
 (constrain t1 (object name string))
 (constrain t1 (object name number))
 -- out --
-Can not constrain types
+Cannot constrain string to number
 ## END
 
 Nested object constraints.
@@ -471,7 +471,7 @@ Mixed constraint types on same variable should fail when incompatible.
 (constrain t1 string)
 (constrain t1 (object foo string))
 -- out --
-Can not constrain types
+Cannot constrain string to object[foo: string]
 ## END
 
 Constraining object property from type variable to concrete type.

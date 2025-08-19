@@ -247,7 +247,10 @@ impl Unifier {
 
                 Ok(())
             }
-            _ => Err(UnificationError::new("Can not constrain types".to_string())),
+            _ => Err(UnificationError::new(format!(
+                "Cannot constrain {} to {}",
+                a, b
+            ))),
         }
     }
 
