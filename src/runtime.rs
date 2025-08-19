@@ -4,7 +4,7 @@ use crate::common::{
     XRawNode, escape_html, is_void_element,
 };
 use crate::dop;
-use crate::dop::{DopType, evaluate_expr};
+use crate::dop::{ClosedDopType, DopType, evaluate_expr};
 use crate::parser::Module;
 use crate::typechecker::TypeResult;
 use anyhow::Result;
@@ -17,7 +17,7 @@ use std::process::{Command, Stdio};
 pub struct Program {
     component_maps: HashMap<String, HashMap<String, ComponentDefinitionNode>>,
     import_maps: HashMap<String, HashMap<String, String>>,
-    parameter_types: HashMap<String, HashMap<String, DopType>>,
+    parameter_types: HashMap<String, HashMap<String, ClosedDopType>>,
     render_nodes: HashMap<String, Vec<RenderNode>>,
     scripts: String,
     hop_mode: HopMode,
@@ -90,7 +90,7 @@ impl Program {
     }
 
     /// Get the parameter types for inspection
-    pub fn get_parameter_types(&self) -> &HashMap<String, HashMap<String, DopType>> {
+    pub fn get_parameter_types(&self) -> &HashMap<String, HashMap<String, ClosedDopType>> {
         &self.parameter_types
     }
 

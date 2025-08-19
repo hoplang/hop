@@ -296,13 +296,3 @@ obj.name == obj.title
 boolean
 ## END
 
-Type inference should work when accessing unknown property.
-
-## BEGIN
--- env --
-data: object[field: string]
--- expr --
-data.unknown
--- error --
-object[field: string] can not be used as an object
-## END

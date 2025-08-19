@@ -22,7 +22,7 @@ pub struct DefinitionLink {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentInfo {
-    pub parameter_type: DopType,
+    pub parameter_type: ClosedDopType,
     pub slots: Vec<String>,
     pub definition_module: String,
     pub definition_range: Range,
@@ -116,7 +116,8 @@ pub fn typecheck(
         }
 
         let parameter_type = if let Some(params_as_attr) = params_as_attr {
-            let param_type = params_as_attr.type_annotation.clone();
+            let param_type = unifier.new_type_var();
+            unifier.constrain(&param_type, &params_as_attr.type_annotation).unwrap();
             
             annotations.push((params_as_attr.range, param_type.clone()));
             env.push(params_as_attr.var_name.value.clone(), param_type.clone());
@@ -163,7 +164,7 @@ pub fn typecheck(
         component_info.insert(
             name.clone(),
             ComponentInfo {
-                parameter_type: parameter_type.clone(),
+                parameter_type: unifier.resolve(&parameter_type),
                 slots: slots.clone(),
                 definition_module: module.name.clone(),
                 definition_range: *range,
@@ -301,18 +302,17 @@ fn typecheck_node(
                         *range,
                     );
 
-                    let resolved_param_type = unifier.resolve(&comp_info.parameter_type);
-                    if let Err(_err) = unifier.constrain(&expr_type, &resolved_param_type) {
+                    if let Err(_err) = unifier.constrain(&expr_type, &comp_info.parameter_type) {
                         errors.push(RangeError::new(
                             format!(
                                 "Argument of type {} is incompatible with expected type {}",
                                 unifier.resolve(&expr_type),
-                                unifier.resolve(&comp_info.parameter_type),
+                                comp_info.parameter_type,
                             ),
                             *range,
                         ));
                     } else {
-                        annotations.push((*range, comp_info.parameter_type.clone()));
+                        annotations.push((*range, expr_type));
                     }
                 }
 

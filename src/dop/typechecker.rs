@@ -104,6 +104,7 @@ mod tests {
                 .content
                 .trim();
 
+            let mut unifier = Unifier::new();
             let mut env = Environment::new();
 
             for line in env_section.lines() {
@@ -126,7 +127,9 @@ mod tests {
                             e
                         );
                     });
-                env.push(var_name.value, var_type);
+                let open_type = unifier.new_type_var();
+                unifier.constrain(&open_type, &var_type).unwrap();
+                env.push(var_name.value, open_type);
             }
 
             let expr_content = archive
@@ -155,7 +158,6 @@ mod tests {
                 );
             });
 
-            let mut unifier = Unifier::new();
             let mut annotations = Vec::new();
             let mut errors = Vec::new();
 
