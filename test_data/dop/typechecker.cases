@@ -249,7 +249,7 @@ users: array[object[name: string]]
 -- expr --
 users.name
 -- error --
-{name: string}[] can not be used as an object
+array[object[name: string]] can not be used as an object
 ## END
 
 Object properties with array types should work.
@@ -260,7 +260,7 @@ data: object[items: array[string]]
 -- expr --
 data.items
 -- out --
-string[]
+array[string]
 ## END
 
 Complex nested object and array types should work.
@@ -271,7 +271,7 @@ config: object[users: array[object[profile: object[name: string, active: boolean
 -- expr --
 config.users.profile.name
 -- error --
-{profile: {active: boolean, name: string}}[] can not be used as an object
+array[object[profile: object[active: boolean, name: string]]] can not be used as an object
 ## END
 
 Deep property access on objects should work.
@@ -304,5 +304,5 @@ data: object[field: string]
 -- expr --
 data.unknown
 -- error --
-{field: string} can not be used as an object
+object[field: string] can not be used as an object
 ## END

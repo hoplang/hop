@@ -16,16 +16,16 @@ impl fmt::Display for DopType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DopType::Object(properties, _rest) => {
-                write!(f, "{{")?;
+                write!(f, "object[")?;
                 for (idx, (key, value)) in properties.iter().enumerate() {
                     if idx > 0 {
                         write!(f, ", ")?;
                     }
                     write!(f, "{}: {}", key, value)?;
                 }
-                write!(f, "}}")
+                write!(f, "]")
             }
-            DopType::Array(inner_type) => write!(f, "{}[]", inner_type),
+            DopType::Array(inner_type) => write!(f, "array[{}]", inner_type),
             DopType::Bool => write!(f, "boolean"),
             DopType::String => write!(f, "string"),
             DopType::Number => write!(f, "number"),
