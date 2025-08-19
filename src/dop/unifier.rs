@@ -120,7 +120,9 @@ impl Unifier {
                     }
                     (None, Some(rest_b_id)) => {
                         if !missing_from_a.is_empty() {
-                            return Err(UnificationError::new("Closed object missing required properties".to_string()));
+                            return Err(UnificationError::new(
+                                "Closed object missing required properties".to_string(),
+                            ));
                         }
                         self.unify(
                             &DopType::TypeVar(*rest_b_id),
@@ -129,7 +131,9 @@ impl Unifier {
                     }
                     (Some(rest_a_id), None) => {
                         if !missing_from_b.is_empty() {
-                            return Err(UnificationError::new("Closed object missing required properties".to_string()));
+                            return Err(UnificationError::new(
+                                "Closed object missing required properties".to_string(),
+                            ));
                         }
                         self.unify(
                             &DopType::TypeVar(*rest_a_id),
@@ -138,7 +142,9 @@ impl Unifier {
                     }
                     (None, None) => {
                         if !missing_from_a.is_empty() || !missing_from_b.is_empty() {
-                            return Err(UnificationError::new("Closed objects have different properties".to_string()));
+                            return Err(UnificationError::new(
+                                "Closed objects have different properties".to_string(),
+                            ));
                         }
                     }
                 }
@@ -185,22 +191,18 @@ impl Unifier {
                     .collect();
 
                 match rest {
-                    Some(rest_id) => {
-                        match self.query(&DopType::TypeVar(*rest_id)) {
-                            DopType::Object(rest_props, rest_rest) => {
-                                let mut merged_props = queried_props;
-                                for (k, v) in rest_props {
-                                    merged_props.insert(k, v);
-                                }
-                                DopType::Object(merged_props, rest_rest)
+                    Some(rest_id) => match self.query(&DopType::TypeVar(*rest_id)) {
+                        DopType::Object(rest_props, rest_rest) => {
+                            let mut merged_props = queried_props;
+                            for (k, v) in rest_props {
+                                merged_props.insert(k, v);
                             }
-                            DopType::TypeVar(_) => DopType::Object(queried_props, None),
-                            _ => panic!("Invalid type substitution for object rest"),
+                            DopType::Object(merged_props, rest_rest)
                         }
-                    }
-                    None => {
-                        DopType::Object(queried_props, None)
-                    }
+                        DopType::TypeVar(_) => DopType::Object(queried_props, None),
+                        _ => panic!("Invalid type substitution for object rest"),
+                    },
+                    None => DopType::Object(queried_props, None),
                 }
             }
             DopType::Bool | DopType::String | DopType::Number | DopType::Void => t.clone(),

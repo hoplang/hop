@@ -1,5 +1,5 @@
-use crate::common::Environment;
 use super::parser::{BinaryOp, DopExpr, UnaryOp};
+use crate::common::Environment;
 use anyhow::Result;
 
 pub fn evaluate_expr(

@@ -1,0 +1,308 @@
+Basic variable lookup should work when variable is in environment.
+
+## BEGIN
+-- env --
+name: string
+-- expr --
+name
+-- out --
+string
+## END
+
+Undefined variable should produce an error.
+
+## BEGIN
+-- env --
+-- expr --
+undefined_var
+-- error --
+Undefined variable: undefined_var
+## END
+
+String literals should have string type.
+
+## BEGIN
+-- env --
+-- expr --
+'hello world'
+-- out --
+string
+## END
+
+Boolean literals should have boolean type.
+
+## BEGIN
+-- env --
+-- expr --
+true
+-- out --
+boolean
+## END
+
+## BEGIN
+-- env --
+-- expr --
+false
+-- out --
+boolean
+## END
+
+Number literals should have number type.
+
+## BEGIN
+-- env --
+-- expr --
+42
+-- out --
+number
+## END
+
+## BEGIN
+-- env --
+-- expr --
+3.14
+-- out --
+number
+## END
+
+Property access should work on objects with known properties.
+
+## BEGIN
+-- env --
+user: object[name: string]
+-- expr --
+user.name
+-- out --
+string
+## END
+
+Property access on nested objects should work.
+
+## BEGIN
+-- env --
+app: object[user: object[profile: object[name: string]]]
+-- expr --
+app.user.profile.name
+-- out --
+string
+## END
+
+Property access on non-object should produce an error.
+
+## BEGIN
+-- env --
+count: number
+-- expr --
+count.value
+-- error --
+number can not be used as an object
+## END
+
+Equality comparison with same types should produce boolean.
+
+## BEGIN
+-- env --
+name: string
+-- expr --
+name == 'alice'
+-- out --
+boolean
+## END
+
+## BEGIN
+-- env --
+count: number
+-- expr --
+count == 42
+-- out --
+boolean
+## END
+
+## BEGIN
+-- env --
+enabled: boolean
+-- expr --
+enabled == true
+-- out --
+boolean
+## END
+
+Equality comparison between variables of same type should work.
+
+## BEGIN
+-- env --
+user: object[name: string]
+admin: object[name: string]
+-- expr --
+user.name == admin.name
+-- out --
+boolean
+## END
+
+Equality comparison with incompatible types should produce an error.
+
+## BEGIN
+-- env --
+name: string
+count: number
+-- expr --
+name == count
+-- error --
+Can not compare string to number
+## END
+
+## BEGIN
+-- env --
+enabled: boolean
+name: string
+-- expr --
+enabled == name
+-- error --
+Can not compare boolean to string
+## END
+
+Complex equality expressions should work when types match.
+
+## BEGIN
+-- env --
+a: boolean
+b: boolean
+-- expr --
+a == b == true
+-- out --
+boolean
+## END
+
+Negation operator should work on boolean expressions.
+
+## BEGIN
+-- env --
+enabled: boolean
+-- expr --
+!enabled
+-- out --
+boolean
+## END
+
+## BEGIN
+-- env --
+-- expr --
+!true
+-- out --
+boolean
+## END
+
+## BEGIN
+-- env --
+-- expr --
+!false
+-- out --
+boolean
+## END
+
+Negation of non-boolean should produce an error.
+
+## BEGIN
+-- env --
+name: string
+-- expr --
+!name
+-- error --
+Negation operator can only be applied to boolean values
+## END
+
+## BEGIN
+-- env --
+count: number
+-- expr --
+!count
+-- error --
+Negation operator can only be applied to boolean values
+## END
+
+Complex expressions with mixed operations should work when types are compatible.
+
+## BEGIN
+-- env --
+user: object[active: boolean]
+-- expr --
+!user.active == false
+-- out --
+boolean
+## END
+
+## BEGIN
+-- env --
+status: object[enabled: boolean]
+config: object[active: boolean]
+-- expr --
+!(status.enabled == config.active)
+-- out --
+boolean
+## END
+
+Property access should work with array element types.
+
+## BEGIN
+-- env --
+users: array[object[name: string]]
+-- expr --
+users.name
+-- error --
+{name: string}[] can not be used as an object
+## END
+
+Object properties with array types should work.
+
+## BEGIN
+-- env --
+data: object[items: array[string]]
+-- expr --
+data.items
+-- out --
+string[]
+## END
+
+Complex nested object and array types should work.
+
+## BEGIN
+-- env --
+config: object[users: array[object[profile: object[name: string, active: boolean]]]]
+-- expr --
+config.users.profile.name
+-- error --
+{profile: {active: boolean, name: string}}[] can not be used as an object
+## END
+
+Deep property access on objects should work.
+
+## BEGIN
+-- env --
+system: object[config: object[database: object[connection: object[host: string]]]]
+-- expr --
+system.config.database.connection.host
+-- out --
+string
+## END
+
+Multiple property accesses on same variable should be consistent.
+
+## BEGIN
+-- env --
+obj: object[name: string, title: string]
+-- expr --
+obj.name == obj.title
+-- out --
+boolean
+## END
+
+Type inference should work when accessing unknown property.
+
+## BEGIN
+-- env --
+data: object[field: string]
+-- expr --
+data.unknown
+-- error --
+{field: string} can not be used as an object
+## END

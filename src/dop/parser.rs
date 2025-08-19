@@ -163,14 +163,11 @@ pub fn parse_variable_with_type(
     param_range: Range,
 ) -> Result<(DopVarName, crate::dop::DopType), RangeError> {
     if param_str.trim().is_empty() {
-        return Err(RangeError::new(
-            "Empty parameter".to_string(),
-            param_range,
-        ));
+        return Err(RangeError::new("Empty parameter".to_string(), param_range));
     }
 
     let mut tokenizer = DopTokenizer::new(param_str, param_range.start)?;
-    
+
     // Parse variable name
     let var_name = match tokenizer.peek() {
         (DopToken::Identifier(name), range) => {
@@ -225,16 +222,30 @@ pub fn parse_variable_with_type(
     Ok((var_name, type_annotation))
 }
 
+pub fn parse_type_from_string(type_str: &str) -> Result<crate::dop::DopType, RangeError> {
+    let mut tokenizer = DopTokenizer::new(type_str, crate::common::Position::new(1, 1))?;
+    let result = parse_type(&mut tokenizer)?;
+
+    // Expect EOF
+    match tokenizer.peek() {
+        (DopToken::Eof, _) => Ok(result),
+        (_, range) => Err(RangeError::new(
+            "Unexpected token after type".to_string(),
+            *range,
+        )),
+    }
+}
+
 fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::DopType, RangeError> {
     use crate::dop::DopType;
     use std::collections::BTreeMap;
-    
+
     match tokenizer.peek() {
         (DopToken::Identifier(name), range) => {
             let type_name = name.clone();
             let type_range = *range;
             tokenizer.advance()?;
-            
+
             match type_name.as_str() {
                 "string" => Ok(DopType::String),
                 "number" => Ok(DopType::Number),
@@ -246,7 +257,7 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::DopType, Range
                         (DopToken::LeftBracket, _) => {
                             tokenizer.advance()?; // consume [
                             let inner_type = parse_type(tokenizer)?;
-                            
+
                             match tokenizer.peek() {
                                 (DopToken::RightBracket, _) => {
                                     tokenizer.advance()?; // consume ]
@@ -255,13 +266,13 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::DopType, Range
                                 (_, range) => Err(RangeError::new(
                                     "Expected ']' after array type".to_string(),
                                     *range,
-                                ))
+                                )),
                             }
                         }
                         (_, range) => Err(RangeError::new(
                             "Expected '[' after 'array'".to_string(),
                             *range,
-                        ))
+                        )),
                     }
                 }
                 "object" => {
@@ -270,13 +281,13 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::DopType, Range
                         (DopToken::LeftBracket, _) => {
                             tokenizer.advance()?; // consume [
                             let mut properties = BTreeMap::new();
-                            
+
                             // Handle empty object
                             if let (DopToken::RightBracket, _) = tokenizer.peek() {
                                 tokenizer.advance()?; // consume ]
                                 return Ok(DopType::Object(properties, None));
                             }
-                            
+
                             loop {
                                 // Parse property name
                                 let prop_name = match tokenizer.peek() {
@@ -285,27 +296,31 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::DopType, Range
                                         tokenizer.advance()?;
                                         name
                                     }
-                                    (_, range) => return Err(RangeError::new(
-                                        "Expected property name".to_string(),
-                                        *range,
-                                    ))
+                                    (_, range) => {
+                                        return Err(RangeError::new(
+                                            "Expected property name".to_string(),
+                                            *range,
+                                        ));
+                                    }
                                 };
-                                
+
                                 // Expect colon
                                 match tokenizer.peek() {
                                     (DopToken::Colon, _) => {
                                         tokenizer.advance()?; // consume :
                                     }
-                                    (_, range) => return Err(RangeError::new(
-                                        "Expected ':' after property name".to_string(),
-                                        *range,
-                                    ))
+                                    (_, range) => {
+                                        return Err(RangeError::new(
+                                            "Expected ':' after property name".to_string(),
+                                            *range,
+                                        ));
+                                    }
                                 }
-                                
+
                                 // Parse property type
                                 let prop_type = parse_type(tokenizer)?;
                                 properties.insert(prop_name, prop_type);
-                                
+
                                 // Check for comma or closing bracket
                                 match tokenizer.peek() {
                                     (DopToken::Comma, _) => {
@@ -316,31 +331,30 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::DopType, Range
                                         tokenizer.advance()?; // consume ]
                                         break;
                                     }
-                                    (_, range) => return Err(RangeError::new(
-                                        "Expected ',' or ']' after property type".to_string(),
-                                        *range,
-                                    ))
+                                    (_, range) => {
+                                        return Err(RangeError::new(
+                                            "Expected ',' or ']' after property type".to_string(),
+                                            *range,
+                                        ));
+                                    }
                                 }
                             }
-                            
+
                             Ok(DopType::Object(properties, None))
                         }
                         (_, range) => Err(RangeError::new(
                             "Expected '[' after 'object'".to_string(),
                             *range,
-                        ))
+                        )),
                     }
                 }
                 _ => Err(RangeError::new(
                     format!("Unknown type: {}", type_name),
                     type_range,
-                ))
+                )),
             }
         }
-        (_, range) => Err(RangeError::new(
-            "Expected type name".to_string(),
-            *range,
-        ))
+        (_, range) => Err(RangeError::new("Expected type name".to_string(), *range)),
     }
 }
 
