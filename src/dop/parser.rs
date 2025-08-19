@@ -120,44 +120,6 @@ pub fn parse_loop_header(
     Ok((var_name, (array_expr, array_expr_range)))
 }
 
-pub fn parse_variable_name(
-    variable: &str,
-    variable_range: Range,
-) -> Result<DopVarName, RangeError> {
-    if variable.trim().is_empty() {
-        return Err(RangeError::new(
-            "Empty variable name".to_string(),
-            variable_range,
-        ));
-    }
-
-    let mut tokenizer = DopTokenizer::new(variable, variable_range.start)?;
-
-    // expect Identifier
-    let var_name = match tokenizer.advance()? {
-        (DopToken::Identifier(name), range) => match DopVarName::new(name.clone()) {
-            Some(var_name) => var_name,
-            None => return Err(RangeError::invalid_variable_name(&name, range)),
-        },
-        (_, range) => {
-            return Err(RangeError::new(
-                "Expected variable name in <for> tag".to_string(),
-                range,
-            ));
-        }
-    };
-
-    // expect Eof
-    match tokenizer.peek() {
-        (DopToken::Eof, _) => {}
-        (_, range) => {
-            return Err(RangeError::new("Unexpected token".to_string(), *range));
-        }
-    }
-
-    Ok(var_name)
-}
-
 pub fn parse_variable_with_type(
     param_str: &str,
     param_range: Range,
