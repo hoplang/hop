@@ -59,6 +59,7 @@ mod tests {
     use crate::dop::parse_expr;
 
     use super::*;
+    use crate::test_utils::parse_test_cases;
     use pretty_assertions::assert_eq;
     use simple_txtar::Archive;
     use std::fs;
@@ -179,45 +180,4 @@ mod tests {
         }
     }
 
-    fn parse_test_cases(content: &str) -> Vec<(String, usize)> {
-        let mut test_cases = Vec::new();
-        let mut current_case = String::new();
-        let mut in_case = false;
-        let mut case_start_line = 0;
-
-        for (line_num, line) in content.lines().enumerate() {
-            let line_number = line_num + 1;
-
-            if line == "## BEGIN" {
-                assert!(
-                    !in_case,
-                    "Found '## BEGIN' at line {} while already inside a test case",
-                    line_number
-                );
-                in_case = true;
-                case_start_line = line_number;
-                current_case.clear();
-            } else if line == "## END" {
-                assert!(
-                    in_case,
-                    "Found '## END' at line {} without matching '## BEGIN'",
-                    line_number
-                );
-                in_case = false;
-                test_cases.push((current_case.clone(), case_start_line));
-                current_case.clear();
-            } else if in_case {
-                current_case.push_str(line);
-                current_case.push('\n');
-            }
-        }
-
-        assert!(
-            !in_case,
-            "Reached end of file while still inside a test case starting at line {}",
-            case_start_line
-        );
-
-        test_cases
-    }
 }

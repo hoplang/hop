@@ -8,6 +8,8 @@ mod parser;
 mod runtime;
 mod scriptcollector;
 mod server;
+#[cfg(test)]
+mod test_utils;
 mod timing;
 mod tokenizer;
 mod toposorter;

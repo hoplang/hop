@@ -744,6 +744,7 @@ fn is_tag_name_with_raw_content(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_utils::parse_test_cases;
     use super::*;
     use pretty_assertions::assert_eq;
     use simple_txtar::Archive;
@@ -853,45 +854,4 @@ mod tests {
         }
     }
 
-    fn parse_test_cases(content: &str) -> Vec<(String, usize)> {
-        let mut test_cases = Vec::new();
-        let mut current_case = String::new();
-        let mut in_case = false;
-        let mut case_start_line = 0;
-
-        for (line_num, line) in content.lines().enumerate() {
-            let line_number = line_num + 1;
-
-            if line == "## BEGIN" {
-                assert!(
-                    !in_case,
-                    "Found '## BEGIN' at line {} while already inside a test case",
-                    line_number
-                );
-                in_case = true;
-                case_start_line = line_number;
-                current_case.clear();
-            } else if line == "## END" {
-                assert!(
-                    in_case,
-                    "Found '## END' at line {} without matching '## BEGIN'",
-                    line_number
-                );
-                test_cases.push((current_case.clone(), case_start_line));
-                in_case = false;
-            } else if in_case {
-                if !current_case.is_empty() {
-                    current_case.push('\n');
-                }
-                current_case.push_str(line);
-            }
-        }
-
-        assert!(
-            !in_case,
-            "Reached end of file while inside a test case (missing '## END')"
-        );
-
-        test_cases
-    }
 }
