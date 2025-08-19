@@ -11,8 +11,8 @@ pub enum Row {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClosedDopType {
-    Object(BTreeMap<String, DopType>),
-    Array(Box<DopType>),
+    Object(BTreeMap<String, ClosedDopType>),
+    Array(Box<ClosedDopType>),
     Bool,
     String,
     Number,
@@ -237,26 +237,14 @@ impl Unifier {
     /// # Returns
     ///
     /// `Ok(())` if the constraint is satisfiable, `Err` otherwise
-    ///
-    /// # Panics
-    ///
-    /// Panics in debug mode if `b` is not resolved
-    pub fn constrain(&mut self, a: &DopType, b: &DopType) -> Result<(), UnificationError> {
-        // Pre-condition: b must be resolved
-        debug_assert!(
-            self.is_resolved(b),
-            "constrain() requires b to be resolved: {}",
-            b
-        );
+    pub fn constrain(&mut self, a: &DopType, b: &ClosedDopType) -> Result<(), UnificationError> {
 
         match (a, b) {
-            (_, DopType::TypeVar(Some(_))) => unreachable!("found type variable"),
-            (_, DopType::Object(_, Row::Open(_))) => unreachable!("found type variable"),
-            (_, DopType::TypeVar(None)) => Ok(()),
-            (DopType::Bool, DopType::Bool) => Ok(()),
-            (DopType::String, DopType::String) => Ok(()),
-            (DopType::Number, DopType::Number) => Ok(()),
-            (DopType::Void, DopType::Void) => Ok(()),
+            (_, ClosedDopType::Any) => Ok(()),
+            (DopType::Bool, ClosedDopType::Bool) => Ok(()),
+            (DopType::String, ClosedDopType::String) => Ok(()),
+            (DopType::Number, ClosedDopType::Number) => Ok(()),
+            (DopType::Void, ClosedDopType::Void) => Ok(()),
             (DopType::TypeVar(Some(id_a)), _) => {
                 if let Some(substituted_type) = &self.substitutions[*id_a] {
                     self.constrain(&substituted_type.clone(), b)
@@ -266,8 +254,8 @@ impl Unifier {
                     Ok(())
                 }
             }
-            (DopType::Array(type_a), DopType::Array(type_b)) => self.constrain(type_a, type_b),
-            (DopType::Object(props_a, state_a), DopType::Object(props_b, Row::Closed)) => {
+            (DopType::Array(type_a), ClosedDopType::Array(type_b)) => self.constrain(type_a, type_b),
+            (DopType::Object(props_a, state_a), ClosedDopType::Object(props_b)) => {
                 let mut missing_props = BTreeMap::new();
                 for (key, type_b) in props_b {
                     if let Some(type_a) = props_a.get(key) {
@@ -279,9 +267,10 @@ impl Unifier {
                 if !missing_props.is_empty() {
                     match state_a {
                         Row::Open(rest_id) => {
+                            let missing_closed = ClosedDopType::Object(missing_props);
                             self.constrain(
                                 &DopType::TypeVar(Some(*rest_id)),
-                                &DopType::Object(missing_props, Row::Closed),
+                                &missing_closed,
                             )?;
                         }
                         Row::Closed => {
@@ -300,13 +289,13 @@ impl Unifier {
     }
 
     /// Makes a constraint type extensible by converting closed objects to open objects recursively.
-    fn unresolve(&mut self, constraint_type: &DopType) -> DopType {
+    fn unresolve(&mut self, constraint_type: &ClosedDopType) -> DopType {
         match constraint_type {
-            DopType::TypeVar(_) => {
-                // Create a new type variable for existing type variables
+            ClosedDopType::Any => {
+                // Create a new type variable for Any
                 self.new_type_var()
             }
-            DopType::Object(props, Row::Closed) => {
+            ClosedDopType::Object(props) => {
                 // Make nested types extensible too
                 let open_props: BTreeMap<String, DopType> = props
                     .iter()
@@ -314,11 +303,14 @@ impl Unifier {
                     .collect();
                 self.new_object(open_props)
             }
-            DopType::Array(element_type) => {
+            ClosedDopType::Array(element_type) => {
                 let open_element = self.unresolve(element_type);
                 DopType::Array(Box::new(open_element))
             }
-            _ => constraint_type.clone(),
+            ClosedDopType::Bool => DopType::Bool,
+            ClosedDopType::String => DopType::String,
+            ClosedDopType::Number => DopType::Number,
+            ClosedDopType::Void => DopType::Void,
         }
     }
 
@@ -326,47 +318,49 @@ impl Unifier {
     ///
     /// Note that the returned type will be immutable and not
     /// open to extension.
-    pub fn resolve(&self, t: &DopType) -> DopType {
+    pub fn resolve(&self, t: &DopType) -> ClosedDopType {
         let result = match t {
             DopType::TypeVar(Some(id)) => {
                 if let Some(substituted_type) = &self.substitutions[*id] {
                     self.resolve(substituted_type)
                 } else {
-                    DopType::TypeVar(None)
+                    ClosedDopType::Any
                 }
             }
-            DopType::TypeVar(None) => DopType::TypeVar(None),
-            DopType::Array(sub_type) => DopType::Array(Box::new(self.resolve(sub_type))),
+            DopType::TypeVar(None) => ClosedDopType::Any,
+            DopType::Array(sub_type) => {
+                ClosedDopType::Array(Box::new(self.resolve(sub_type)))
+            }
             DopType::Object(props, state) => {
-                let resolved_props: BTreeMap<String, DopType> = props
+                let resolved_props: BTreeMap<String, ClosedDopType> = props
                     .iter()
                     .map(|(k, v)| (k.clone(), self.resolve(v)))
                     .collect();
 
                 match state {
-                    Row::Open(rest_id) => match self.resolve(&DopType::TypeVar(Some(*rest_id))) {
-                        DopType::Object(rest_props, _) => {
-                            let mut merged_props = resolved_props;
-                            for (k, v) in rest_props {
-                                merged_props.insert(k, v);
+                    Row::Open(rest_id) => {
+                        let rest_resolved = self.resolve(&DopType::TypeVar(Some(*rest_id)));
+                        match rest_resolved {
+                            ClosedDopType::Object(rest_props) => {
+                                let mut merged_props = resolved_props;
+                                for (k, v) in rest_props {
+                                    merged_props.insert(k, v);
+                                }
+                                ClosedDopType::Object(merged_props)
                             }
-                            DopType::Object(merged_props, Row::Closed)
+                            ClosedDopType::Any => ClosedDopType::Object(resolved_props),
+                            _ => panic!("Invalid type substitution for object rest"),
                         }
-                        DopType::TypeVar(None) => DopType::Object(resolved_props, Row::Closed),
-                        _ => panic!("Invalid type substitution for object rest"),
-                    },
-                    Row::Closed => DopType::Object(resolved_props, Row::Closed),
+                    }
+                    Row::Closed => ClosedDopType::Object(resolved_props),
                 }
             }
-            DopType::Bool | DopType::String | DopType::Number | DopType::Void => t.clone(),
+            DopType::Bool => ClosedDopType::Bool,
+            DopType::String => ClosedDopType::String,
+            DopType::Number => ClosedDopType::Number,
+            DopType::Void => ClosedDopType::Void,
         };
 
-        // Post-condition: the result must be fully resolved
-        debug_assert!(
-            self.is_resolved(&result),
-            "resolve() returned unresolved type: {}",
-            result
-        );
         result
     }
 

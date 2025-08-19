@@ -1,5 +1,5 @@
 use super::parser::{BinaryOp, DopExpr, UnaryOp};
-use super::{DopType, Unifier};
+use super::{ClosedDopType, DopType, Unifier};
 use crate::common::{Environment, Range, RangeError};
 use std::collections::BTreeMap;
 
@@ -65,7 +65,7 @@ pub fn typecheck_dop_expression(
                 typecheck_dop_expression(expr, env, unifier, annotations, errors, range);
 
             // Negation only works on boolean expressions
-            if let Err(_err) = unifier.constrain(&expr_type, &DopType::Bool) {
+            if let Err(_err) = unifier.constrain(&expr_type, &ClosedDopType::Bool) {
                 errors.push(RangeError::new(
                     "Negation operator can only be applied to boolean values".to_string(),
                     range,

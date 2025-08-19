@@ -4,12 +4,12 @@ use crate::common::{
     SlotDefinitionNode, SlotReferenceNode, XExecNode, XRawNode,
 };
 use crate::dop::Unifier;
-use crate::dop::{DopType, typecheck_dop_expression};
+use crate::dop::{ClosedDopType, DopType, typecheck_dop_expression};
 use crate::parser::Module;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypeAnnotation(pub Range, pub DopType);
+pub struct TypeAnnotation(pub Range, pub ClosedDopType);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DefinitionLink {
@@ -116,7 +116,7 @@ pub fn typecheck(
         let parameter_type = if let Some(params_as_attr) = params_as_attr {
             let param_type = params_as_attr.type_annotation.clone();
             
-            annotations.push(TypeAnnotation(params_as_attr.range, param_type.clone()));
+            annotations.push(TypeAnnotation(params_as_attr.range, unifier.resolve(&param_type)));
             env.push(params_as_attr.var_name.value.clone(), param_type.clone());
             
             for child in children {
@@ -229,7 +229,7 @@ pub fn typecheck(
 
     let final_annotations = annotations
         .into_iter()
-        .map(|TypeAnnotation(range, t)| TypeAnnotation(range, unifier.resolve(&t)))
+        .map(|TypeAnnotation(range, t)| TypeAnnotation(range, t))
         .collect();
 
     TypeResult::new(component_info, final_annotations, definition_links)
@@ -254,7 +254,7 @@ fn typecheck_node(
         }) => {
             let condition_type =
                 typecheck_dop_expression(condition, env, unifier, annotations, errors, *range);
-            if let Err(err) = unifier.constrain(&condition_type, &DopType::Bool) {
+            if let Err(err) = unifier.constrain(&condition_type, &ClosedDopType::Bool) {
                 errors.push(RangeError::unification_error(&err.message, *range));
             }
 
@@ -299,7 +299,8 @@ fn typecheck_node(
                         *range,
                     );
 
-                    if let Err(_err) = unifier.constrain(&expr_type, &comp_info.parameter_type) {
+                    let resolved_param_type = unifier.resolve(&comp_info.parameter_type);
+                    if let Err(_err) = unifier.constrain(&expr_type, &resolved_param_type) {
                         errors.push(RangeError::new(
                             format!(
                                 "Argument of type {} is incompatible with expected type {}",
@@ -309,7 +310,7 @@ fn typecheck_node(
                             *range,
                         ));
                     } else {
-                        annotations.push(TypeAnnotation(*range, comp_info.parameter_type.clone()));
+                        annotations.push(TypeAnnotation(*range, unifier.resolve(&comp_info.parameter_type)));
                     }
                 }
 
@@ -353,12 +354,12 @@ fn typecheck_node(
                     set_attr.range,
                 );
 
-                if let Err(err) = unifier.constrain(&expr_type, &DopType::String) {
+                if let Err(err) = unifier.constrain(&expr_type, &ClosedDopType::String) {
                     errors.push(RangeError::unification_error(&err.message, set_attr.range));
                     continue;
                 }
 
-                annotations.push(TypeAnnotation(set_attr.range, DopType::String));
+                annotations.push(TypeAnnotation(set_attr.range, ClosedDopType::String));
             }
 
             for child in children {
@@ -463,13 +464,13 @@ fn typecheck_node(
                 errors,
                 text_expr_node.range,
             );
-            if let Err(err) = unifier.constrain(&expr_type, &DopType::String) {
+            if let Err(err) = unifier.constrain(&expr_type, &ClosedDopType::String) {
                 errors.push(RangeError::unification_error(
                     &err.message,
                     text_expr_node.range,
                 ));
             }
-            annotations.push(TypeAnnotation(text_expr_node.range, DopType::String));
+            annotations.push(TypeAnnotation(text_expr_node.range, ClosedDopType::String));
         }
     }
 }
