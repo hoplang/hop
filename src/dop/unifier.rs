@@ -223,7 +223,15 @@ impl Unifier {
             (DopType::String, DopType::String) => Ok(()),
             (DopType::Number, DopType::Number) => Ok(()),
             (DopType::Void, DopType::Void) => Ok(()),
-            (DopType::TypeVar(Some(id_a)), _) => self.constrain_type_var(*id_a, b),
+            (DopType::TypeVar(Some(id_a)), _) => {
+                if let Some(substituted_type) = &self.substitutions[*id_a] {
+                    self.constrain(&substituted_type.clone(), b)
+                } else {
+                    // For closed objects and arrays containing objects, make them open so they can be extended with more constraints
+                    self.substitutions[*id_a] = Some(self.unresolve(b));
+                    Ok(())
+                }
+            }
             (DopType::Array(type_a), DopType::Array(type_b)) => self.constrain(type_a, type_b),
             (DopType::Object(props_a, state_a), DopType::Object(props_b, Row::Closed)) => {
                 let mut missing_props = BTreeMap::new();
@@ -237,8 +245,10 @@ impl Unifier {
                 if !missing_props.is_empty() {
                     match state_a {
                         Row::Open(rest_id) => {
-                            let open_missing = self.new_object(missing_props);
-                            self.constrain_type_var(*rest_id, &open_missing)?;
+                            self.constrain(
+                                &DopType::TypeVar(Some(*rest_id)),
+                                &DopType::Object(missing_props, Row::Closed),
+                            )?;
                         }
                         Row::Closed => {
                             return Err(UnificationError::new(format!(
@@ -255,34 +265,23 @@ impl Unifier {
         }
     }
 
-    fn constrain_type_var(
-        &mut self,
-        var_id: TypeVarId,
-        constraint_type: &DopType,
-    ) -> Result<(), UnificationError> {
-        if let Some(substituted_type) = &self.substitutions[var_id] {
-            return self.constrain(&substituted_type.clone(), constraint_type);
-        }
-
-        // For closed objects and arrays containing objects, make them open so they can be extended with more constraints
-        let open_constraint = self.make_constraint_extensible(constraint_type);
-        self.substitutions[var_id] = Some(open_constraint);
-        Ok(())
-    }
-
     /// Makes a constraint type extensible by converting closed objects to open objects recursively.
-    fn make_constraint_extensible(&mut self, constraint_type: &DopType) -> DopType {
+    fn unresolve(&mut self, constraint_type: &DopType) -> DopType {
         match constraint_type {
+            DopType::TypeVar(_) => {
+                // Create a new type variable for existing type variables
+                self.new_type_var()
+            }
             DopType::Object(props, Row::Closed) => {
                 // Make nested types extensible too
                 let open_props: BTreeMap<String, DopType> = props
                     .iter()
-                    .map(|(k, v)| (k.clone(), self.make_constraint_extensible(v)))
+                    .map(|(k, v)| (k.clone(), self.unresolve(v)))
                     .collect();
                 self.new_object(open_props)
             }
             DopType::Array(element_type) => {
-                let open_element = self.make_constraint_extensible(element_type);
+                let open_element = self.unresolve(element_type);
                 DopType::Array(Box::new(open_element))
             }
             _ => constraint_type.clone(),

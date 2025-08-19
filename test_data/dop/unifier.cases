@@ -473,3 +473,14 @@ Mixed constraint types on same variable should fail when incompatible.
 -- out --
 Can not constrain types
 ## END
+
+Constraining object property from type variable to concrete type.
+
+## BEGIN
+-- in --
+(constrain t2 (object foo t1))
+(constrain t2 (object foo string))
+(resolve t2)
+-- out --
+t2 : object[foo: string]
+## END
