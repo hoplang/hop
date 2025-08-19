@@ -187,12 +187,114 @@ impl Unifier {
         Ok(())
     }
 
+    /// Constrains `a` to be a subtype of `b`, where `b` must be resolved.
+    ///
+    /// This function ensures that `a` can be extended to match `b`, but unlike unify,
+    /// it leaves `a` open to extension. The key difference from unify is:
+    /// - `a` can have fewer properties than `b` (subtype relationship)
+    /// - `a` can be extended with additional properties
+    /// - `b` must be fully resolved (no type variables)
+    ///
+    /// # Arguments
+    ///
+    /// * `a` - The type to constrain (can be extended)
+    /// * `b` - The supertype constraint (must be resolved)
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the constraint is satisfiable, `Err` otherwise
+    ///
+    /// # Panics
+    ///
+    /// Panics in debug mode if `b` is not resolved
+    pub fn constrain(&mut self, a: &DopType, b: &DopType) -> Result<(), UnificationError> {
+        // Pre-condition: b must be resolved
+        debug_assert!(
+            self.is_resolved(b),
+            "constrain() requires b to be resolved: {}",
+            b
+        );
+
+        match (a, b) {
+            (_, DopType::TypeVar(Some(_))) => unreachable!("found type variable"),
+            (_, DopType::TypeVar(None)) => Ok(()),
+            (_, DopType::Object(_, Row::Open(_))) => unreachable!("found type variable"),
+            (DopType::Bool, DopType::Bool) => Ok(()),
+            (DopType::String, DopType::String) => Ok(()),
+            (DopType::Number, DopType::Number) => Ok(()),
+            (DopType::Void, DopType::Void) => Ok(()),
+            (DopType::TypeVar(Some(id_a)), _) => self.constrain_type_var(*id_a, b),
+            (DopType::Array(type_a), DopType::Array(type_b)) => self.constrain(type_a, type_b),
+            (DopType::Object(props_a, state_a), DopType::Object(props_b, Row::Closed)) => {
+                let mut missing_props = BTreeMap::new();
+                for (key, type_b) in props_b {
+                    if let Some(type_a) = props_a.get(key) {
+                        self.constrain(type_a, type_b)?;
+                    } else {
+                        missing_props.insert(key.clone(), type_b.clone());
+                    }
+                }
+                if !missing_props.is_empty() {
+                    match state_a {
+                        Row::Open(rest_id) => {
+                            let open_missing = self.new_object(missing_props);
+                            self.constrain_type_var(*rest_id, &open_missing)?;
+                        }
+                        Row::Closed => {
+                            return Err(UnificationError::new(format!(
+                                "Closed object missing required properties: {:?}",
+                                missing_props.keys().collect::<Vec<_>>()
+                            )));
+                        }
+                    }
+                }
+
+                Ok(())
+            }
+            _ => Err(UnificationError::new("Can not constrain types".to_string())),
+        }
+    }
+
+    fn constrain_type_var(
+        &mut self,
+        var_id: TypeVarId,
+        constraint_type: &DopType,
+    ) -> Result<(), UnificationError> {
+        if let Some(substituted_type) = &self.substitutions[var_id] {
+            return self.constrain(&substituted_type.clone(), constraint_type);
+        }
+
+        // For closed objects and arrays containing objects, make them open so they can be extended with more constraints
+        let open_constraint = self.make_constraint_extensible(constraint_type);
+        self.substitutions[var_id] = Some(open_constraint);
+        Ok(())
+    }
+
+    /// Makes a constraint type extensible by converting closed objects to open objects recursively.
+    fn make_constraint_extensible(&mut self, constraint_type: &DopType) -> DopType {
+        match constraint_type {
+            DopType::Object(props, Row::Closed) => {
+                // Make nested types extensible too
+                let open_props: BTreeMap<String, DopType> = props
+                    .iter()
+                    .map(|(k, v)| (k.clone(), self.make_constraint_extensible(v)))
+                    .collect();
+                self.new_object(open_props)
+            }
+            DopType::Array(element_type) => {
+                let open_element = self.make_constraint_extensible(element_type);
+                DopType::Array(Box::new(open_element))
+            }
+            _ => constraint_type.clone(),
+        }
+    }
+
     /// Resolves a type to its concrete form.
     ///
     /// Note that the returned type will be immutable and not
     /// open to extension.
     pub fn resolve(&self, t: &DopType) -> DopType {
-        match t {
+        let result = match t {
             DopType::TypeVar(Some(id)) => {
                 if let Some(substituted_type) = &self.substitutions[*id] {
                     self.resolve(substituted_type)
@@ -224,6 +326,33 @@ impl Unifier {
                 }
             }
             DopType::Bool | DopType::String | DopType::Number | DopType::Void => t.clone(),
+        };
+
+        // Post-condition: the result must be fully resolved
+        debug_assert!(
+            self.is_resolved(&result),
+            "resolve() returned unresolved type: {}",
+            result
+        );
+        result
+    }
+
+    /// Checks if a type is resolved (contains no type variables).
+    ///
+    /// Returns `false` if the type contains any type variables, `true` otherwise.
+    /// TypeVar(None) representing 'any' is considered resolved.
+    pub fn is_resolved(&self, t: &DopType) -> bool {
+        match t {
+            DopType::TypeVar(Some(_)) => false,
+            DopType::TypeVar(None) => true,
+            DopType::Array(element_type) => self.is_resolved(element_type),
+            DopType::Object(props, state) => {
+                let all_props_resolved =
+                    props.values().all(|prop_type| self.is_resolved(prop_type));
+                let row_resolved = matches!(state, Row::Closed);
+                all_props_resolved && row_resolved
+            }
+            DopType::Bool | DopType::String | DopType::Number | DopType::Void => true,
         }
     }
 }
@@ -440,6 +569,15 @@ mod tests {
                             let t1 = &sexpr_to_type(args[0].clone(), &table, &mut unifier);
                             let t2 = &sexpr_to_type(args[1].clone(), &table, &mut unifier);
                             if let Err(err) = unifier.unify(t1, t2) {
+                                lines.push(err.message);
+                            }
+                        }
+                        "constrain" => {
+                            assert!(args.len() == 2);
+                            let t1 = &sexpr_to_type(args[0].clone(), &table, &mut unifier);
+                            let t2 = &sexpr_to_type(args[1].clone(), &table, &mut unifier);
+                            let t2_resolved = unifier.resolve(t2);
+                            if let Err(err) = unifier.constrain(t1, &t2_resolved) {
                                 lines.push(err.message);
                             }
                         }

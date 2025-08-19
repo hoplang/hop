@@ -346,3 +346,130 @@ t1 : any
 -- out --
 t1 : any
 ## END
+
+A type variable can be constrained to a basic type.
+
+## BEGIN
+-- in --
+(constrain t1 string)
+(resolve t1)
+-- out --
+t1 : string
+## END
+
+Multiple constraints accumulate properties in an object.
+
+## BEGIN
+-- in --
+(constrain t1 (object foo string))
+(constrain t1 (object bar string))
+(resolve t1)
+-- out --
+t1 : object[bar: string, foo: string]
+## END
+
+Basic types cannot be constrained to different types.
+
+## BEGIN
+-- in --
+(constrain string bool)
+-- out --
+Can not constrain types
+## END
+
+Array constraint with type variable element.
+
+## BEGIN
+-- in --
+(constrain (array t1) (array string))
+(resolve t1)
+-- out --
+t1 : string
+## END
+
+Conflicting property types in constraints should fail.
+
+## BEGIN
+-- in --
+(constrain t1 (object name string))
+(constrain t1 (object name number))
+-- out --
+Can not constrain types
+## END
+
+Nested object constraints.
+
+## BEGIN
+-- in --
+(constrain t1 (object user (object name string)))
+(constrain t1 (object user (object age number)))
+(resolve t1)
+-- out --
+t1 : object[user: object[age: number, name: string]]
+## END
+
+Array of objects constraint.
+
+## BEGIN
+-- in --
+(constrain t1 (array (object id number)))
+(constrain t1 (array (object name string)))
+(resolve t1)
+-- out --
+t1 : array[object[id: number, name: string]]
+## END
+
+Constraining already substituted type variable should work.
+
+## BEGIN
+-- in --
+(constrain t1 string)
+(constrain t1 string)
+(resolve t1)
+-- out --
+t1 : string
+## END
+
+Constraining TypeVar(None) should work.
+
+## BEGIN
+-- in --
+(unify t1 t1)
+(constrain t1 string)
+(resolve t1)
+-- out --
+t1 : string
+## END
+
+Deep nesting with multiple constraints.
+
+## BEGIN
+-- in --
+(constrain t1 (object level1 (object level2 (object name string))))
+(constrain t1 (object level1 (object level2 (object age number))))
+(constrain t1 (object level1 (object active bool)))
+(resolve t1)
+-- out --
+t1 : object[level1: object[active: boolean, level2: object[age: number, name: string]]]
+## END
+
+Arrays nested in objects.
+
+## BEGIN
+-- in --
+(constrain t1 (object users (array (object role string))))
+(constrain t1 (object users (array (object id number))))
+(resolve t1)
+-- out --
+t1 : object[users: array[object[id: number, role: string]]]
+## END
+
+Mixed constraint types on same variable should fail when incompatible.
+
+## BEGIN
+-- in --
+(constrain t1 string)
+(constrain t1 (object foo string))
+-- out --
+Can not constrain types
+## END
