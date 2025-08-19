@@ -1,5 +1,5 @@
 use crate::common::{
-    ComponentDefinitionNode, ComponentReferenceNode, DopExprAttribute, Environment, ErrorNode,
+    ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode,
     ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Range, RangeError, RenderNode,
     SlotDefinitionNode, SlotReferenceNode, XExecNode, XRawNode,
 };
@@ -344,14 +344,21 @@ fn typecheck_node(
             ..
         }) => {
             for set_attr in set_attributes {
-                expect_type(
-                    &DopType::String,
-                    set_attr,
+                let expr_type = typecheck_dop_expression(
+                    &set_attr.expression,
                     env,
                     unifier,
                     annotations,
                     errors,
+                    set_attr.range,
                 );
+
+                if let Err(err) = unifier.constrain(&expr_type, &DopType::String) {
+                    errors.push(RangeError::unification_error(&err.message, set_attr.range));
+                    continue;
+                }
+
+                annotations.push(TypeAnnotation(set_attr.range, DopType::String));
             }
 
             for child in children {
@@ -467,30 +474,6 @@ fn typecheck_node(
     }
 }
 
-fn expect_type(
-    expected_type: &DopType,
-    attr: &DopExprAttribute,
-    env: &mut Environment<DopType>,
-    unifier: &mut Unifier,
-    annotations: &mut Vec<TypeAnnotation>,
-    errors: &mut Vec<RangeError>,
-) {
-    let expr_type = typecheck_dop_expression(
-        &attr.expression,
-        env,
-        unifier,
-        annotations,
-        errors,
-        attr.range,
-    );
-
-    if let Err(err) = unifier.unify(&expr_type, expected_type) {
-        errors.push(RangeError::unification_error(&err.message, attr.range));
-        return;
-    }
-
-    annotations.push(TypeAnnotation(attr.range, expected_type.clone()));
-}
 
 #[cfg(test)]
 mod tests {
