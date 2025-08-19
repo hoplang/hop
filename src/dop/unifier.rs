@@ -75,16 +75,6 @@ impl fmt::Display for AbstractDopType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct UnificationError {
-    pub message: String,
-}
-
-impl UnificationError {
-    pub fn new(message: String) -> Self {
-        Self { message }
-    }
-}
 
 pub struct Unifier {
     substitutions: Vec<Option<AbstractDopType>>,
@@ -118,7 +108,7 @@ impl Unifier {
         &mut self,
         a: &AbstractDopType,
         b: &AbstractDopType,
-    ) -> Result<(), UnificationError> {
+    ) -> Result<(), String> {
         match (a, b) {
             (AbstractDopType::Bool, AbstractDopType::Bool) => Ok(()),
             (AbstractDopType::String, AbstractDopType::String) => Ok(()),
@@ -165,7 +155,7 @@ impl Unifier {
 
                 Ok(())
             }
-            _ => Err(UnificationError::new("Can not unify types".to_string())),
+            _ => Err("Can not unify types".to_string()),
         }
     }
 
@@ -173,7 +163,7 @@ impl Unifier {
         &mut self,
         var_id: TypeVarId,
         other_type: &AbstractDopType,
-    ) -> Result<(), UnificationError> {
+    ) -> Result<(), String> {
         if let Some(substituted_type) = &self.substitutions[var_id] {
             return self.unify(&substituted_type.clone(), other_type);
         }
@@ -211,7 +201,7 @@ impl Unifier {
         &mut self,
         a: &AbstractDopType,
         b: &ConcreteDopType,
-    ) -> Result<(), UnificationError> {
+    ) -> Result<(), String> {
         match (a, b) {
             (_, ConcreteDopType::Any) => Ok(()),
             (AbstractDopType::Bool, ConcreteDopType::Bool) => Ok(()),
@@ -246,10 +236,10 @@ impl Unifier {
 
                 Ok(())
             }
-            _ => Err(UnificationError::new(format!(
+            _ => Err(format!(
                 "Cannot constrain {} to {}",
                 a, b
-            ))),
+            )),
         }
     }
 
@@ -536,7 +526,7 @@ mod tests {
                             let t1 = &sexpr_to_type(args[0].clone(), &table, &mut unifier);
                             let t2 = &sexpr_to_type(args[1].clone(), &table, &mut unifier);
                             if let Err(err) = unifier.unify(t1, t2) {
-                                lines.push(err.message);
+                                lines.push(err);
                             }
                         }
                         "constrain" => {
@@ -545,7 +535,7 @@ mod tests {
                             let t2 = &sexpr_to_type(args[1].clone(), &table, &mut unifier);
                             let t2_resolved = unifier.resolve(t2);
                             if let Err(err) = unifier.constrain(t1, &t2_resolved) {
-                                lines.push(err.message);
+                                lines.push(err);
                             }
                         }
                         "resolve" => {

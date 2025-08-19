@@ -260,7 +260,7 @@ fn typecheck_node(
             let condition_type =
                 typecheck_dop_expression(condition, env, unifier, annotations, errors, *range);
             if let Err(err) = unifier.constrain(&condition_type, &ConcreteDopType::Bool) {
-                errors.push(RangeError::unification_error(&err.message, *range));
+                errors.push(RangeError::unification_error(&err, *range));
             }
 
             for child in children {
@@ -359,7 +359,7 @@ fn typecheck_node(
                 );
 
                 if let Err(err) = unifier.constrain(&expr_type, &ConcreteDopType::String) {
-                    errors.push(RangeError::unification_error(&err.message, set_attr.range));
+                    errors.push(RangeError::unification_error(&err, set_attr.range));
                     continue;
                 }
 
@@ -470,7 +470,7 @@ fn typecheck_node(
             );
             if let Err(err) = unifier.constrain(&expr_type, &ConcreteDopType::String) {
                 errors.push(RangeError::unification_error(
-                    &err.message,
+                    &err,
                     text_expr_node.range,
                 ));
             }
