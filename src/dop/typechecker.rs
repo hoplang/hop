@@ -32,7 +32,7 @@ pub fn typecheck_dop_expression(
 
             if let Err(_err) = unifier.unify(&base_type, &obj_type) {
                 errors.push(RangeError::new(
-                    format!("{} can not be used as an object", unifier.query(&base_type)),
+                    format!("{} can not be used as an object", unifier.resolve(&base_type)),
                     range,
                 ));
             }
@@ -50,8 +50,8 @@ pub fn typecheck_dop_expression(
                 errors.push(RangeError::new(
                     format!(
                         "Can not compare {} to {}",
-                        unifier.query(&left_type),
-                        unifier.query(&right_type)
+                        unifier.resolve(&left_type),
+                        unifier.resolve(&right_type)
                     ),
                     range,
                 ));
@@ -176,7 +176,7 @@ mod tests {
                     panic!(
                         "Expected error '{}' but got successful result '{}' in test case {} (line {})",
                         expected_error,
-                        unifier.query(&result_type),
+                        unifier.resolve(&result_type),
                         case_num + 1,
                         line_number
                     );
@@ -206,7 +206,7 @@ mod tests {
                     .expect("Missing 'out' section in test case");
                 let expected = expected_section.content.trim();
 
-                let actual = unifier.query(&result_type);
+                let actual = unifier.resolve(&result_type);
                 assert_eq!(
                     actual.to_string(),
                     expected,

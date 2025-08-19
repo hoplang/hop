@@ -1,10 +1,12 @@
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 
+pub type TypeVarId = usize;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Row {
     Closed,
-    Open(usize),
+    Open(TypeVarId),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -15,7 +17,7 @@ pub enum DopType {
     String,
     Number,
     Void,
-    TypeVar(usize),
+    TypeVar(Option<TypeVarId>),
 }
 
 impl fmt::Display for DopType {
@@ -36,7 +38,8 @@ impl fmt::Display for DopType {
             DopType::String => write!(f, "string"),
             DopType::Number => write!(f, "number"),
             DopType::Void => write!(f, "void"),
-            DopType::TypeVar(_) => write!(f, "any"),
+            DopType::TypeVar(Some(id)) => write!(f, "?t{}", id),
+            DopType::TypeVar(None) => write!(f, "any"),
         }
     }
 }
@@ -53,8 +56,8 @@ impl UnificationError {
 }
 
 pub struct Unifier {
-    substitutions: HashMap<usize, DopType>,
-    next_type_var_id: usize,
+    substitutions: HashMap<TypeVarId, DopType>,
+    next_type_var_id: TypeVarId,
 }
 
 impl Unifier {
@@ -65,14 +68,14 @@ impl Unifier {
         }
     }
 
-    fn next_type_var(&mut self) -> usize {
+    fn next_type_var(&mut self) -> TypeVarId {
         let id = self.next_type_var_id;
         self.next_type_var_id += 1;
         id
     }
 
     pub fn new_type_var(&mut self) -> DopType {
-        DopType::TypeVar(self.next_type_var())
+        DopType::TypeVar(Some(self.next_type_var()))
     }
 
     pub fn new_object(&mut self, map: BTreeMap<String, DopType>) -> DopType {
@@ -89,8 +92,8 @@ impl Unifier {
             (DopType::Number, DopType::Number) => Ok(()),
             (DopType::Void, DopType::Void) => Ok(()),
             (DopType::TypeVar(a), DopType::TypeVar(b)) if a == b => Ok(()),
-            (DopType::TypeVar(id_a), _) => self.unify_type_var(*id_a, b),
-            (_, DopType::TypeVar(id_b)) => self.unify_type_var(*id_b, a),
+            (DopType::TypeVar(Some(id_a)), _) => self.unify_type_var(*id_a, b),
+            (_, DopType::TypeVar(Some(id_b))) => self.unify_type_var(*id_b, a),
             (DopType::Array(type_a), DopType::Array(type_b)) => self.unify(type_a, type_b),
             (DopType::Object(props_a, state_a), DopType::Object(props_b, state_b)) => {
                 // Find common properties and unify them
@@ -116,11 +119,11 @@ impl Unifier {
                     (Row::Open(rest_a_id), Row::Open(rest_b_id)) => {
                         let shared_rest = self.next_type_var();
                         self.unify(
-                            &DopType::TypeVar(*rest_a_id),
+                            &DopType::TypeVar(Some(*rest_a_id)),
                             &DopType::Object(missing_from_a, Row::Open(shared_rest)),
                         )?;
                         self.unify(
-                            &DopType::TypeVar(*rest_b_id),
+                            &DopType::TypeVar(Some(*rest_b_id)),
                             &DopType::Object(missing_from_b, Row::Open(shared_rest)),
                         )?;
                     }
@@ -131,7 +134,7 @@ impl Unifier {
                             ));
                         }
                         self.unify(
-                            &DopType::TypeVar(*rest_b_id),
+                            &DopType::TypeVar(Some(*rest_b_id)),
                             &DopType::Object(missing_from_b, Row::Closed),
                         )?;
                     }
@@ -142,7 +145,7 @@ impl Unifier {
                             ));
                         }
                         self.unify(
-                            &DopType::TypeVar(*rest_a_id),
+                            &DopType::TypeVar(Some(*rest_a_id)),
                             &DopType::Object(missing_from_a, Row::Closed),
                         )?;
                     }
@@ -163,16 +166,16 @@ impl Unifier {
 
     fn unify_type_var(
         &mut self,
-        var_id: usize,
+        var_id: TypeVarId,
         other_type: &DopType,
     ) -> Result<(), UnificationError> {
         if let Some(substituted_type) = self.substitutions.get(&var_id) {
             return self.unify(&substituted_type.clone(), other_type);
         }
 
-        if let DopType::TypeVar(other_id) = other_type {
+        if let DopType::TypeVar(Some(other_id)) = other_type {
             if let Some(other_substituted) = self.substitutions.get(other_id) {
-                return self.unify(&DopType::TypeVar(var_id), &other_substituted.clone());
+                return self.unify(&DopType::TypeVar(Some(var_id)), &other_substituted.clone());
             }
         }
 
@@ -180,35 +183,37 @@ impl Unifier {
         Ok(())
     }
 
-    pub fn query(&self, t: &DopType) -> DopType {
+
+    pub fn resolve(&self, t: &DopType) -> DopType {
         match t {
-            DopType::TypeVar(id) => {
+            DopType::TypeVar(Some(id)) => {
                 if let Some(substituted_type) = self.substitutions.get(id) {
-                    self.query(substituted_type)
+                    self.resolve(substituted_type)
                 } else {
-                    t.clone()
+                    DopType::TypeVar(None)
                 }
             }
-            DopType::Array(sub_type) => DopType::Array(Box::new(self.query(sub_type))),
+            DopType::TypeVar(None) => DopType::TypeVar(None),
+            DopType::Array(sub_type) => DopType::Array(Box::new(self.resolve(sub_type))),
             DopType::Object(props, state) => {
-                let queried_props: BTreeMap<String, DopType> = props
+                let resolved_props: BTreeMap<String, DopType> = props
                     .iter()
-                    .map(|(k, v)| (k.clone(), self.query(v)))
+                    .map(|(k, v)| (k.clone(), self.resolve(v)))
                     .collect();
 
                 match state {
-                    Row::Open(rest_id) => match self.query(&DopType::TypeVar(*rest_id)) {
-                        DopType::Object(rest_props, rest_state) => {
-                            let mut merged_props = queried_props;
+                    Row::Open(rest_id) => match self.resolve(&DopType::TypeVar(Some(*rest_id))) {
+                        DopType::Object(rest_props, _) => {
+                            let mut merged_props = resolved_props;
                             for (k, v) in rest_props {
                                 merged_props.insert(k, v);
                             }
-                            DopType::Object(merged_props, rest_state)
+                            DopType::Object(merged_props, Row::Closed)
                         }
-                        DopType::TypeVar(_) => DopType::Object(queried_props, Row::Closed),
+                        DopType::TypeVar(None) => DopType::Object(resolved_props, Row::Closed),
                         _ => panic!("Invalid type substitution for object rest"),
                     },
-                    Row::Closed => DopType::Object(queried_props, Row::Closed),
+                    Row::Closed => DopType::Object(resolved_props, Row::Closed),
                 }
             }
             DopType::Bool | DopType::String | DopType::Number | DopType::Void => t.clone(),
@@ -430,14 +435,14 @@ mod tests {
                                 lines.push(err.message);
                             }
                         }
-                        "query" => {
+                        "resolve" => {
                             assert!(args.len() == 1);
                             let t1 = &sexpr_to_type(args[0].clone(), &table, &mut unifier);
                             let val = match &args[0] {
                                 SExpr::Symbol(s) => s,
                                 SExpr::Command(..) => panic!(),
                             };
-                            lines.push(format!("{} : {}", val, unifier.query(t1)));
+                            lines.push(format!("{} : {}", val, unifier.resolve(t1)));
                         }
                         _ => panic!(),
                     },

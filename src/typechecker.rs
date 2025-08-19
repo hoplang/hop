@@ -229,7 +229,7 @@ pub fn typecheck(
 
     let final_annotations = annotations
         .into_iter()
-        .map(|TypeAnnotation(range, t)| TypeAnnotation(range, unifier.query(&t)))
+        .map(|TypeAnnotation(range, t)| TypeAnnotation(range, unifier.resolve(&t)))
         .collect();
 
     TypeResult::new(component_info, final_annotations, definition_links)
@@ -303,8 +303,8 @@ fn typecheck_node(
                         errors.push(RangeError::new(
                             format!(
                                 "Argument of type {} is incompatible with expected type {}",
-                                unifier.query(&expr_type),
-                                unifier.query(&comp_info.parameter_type),
+                                unifier.resolve(&expr_type),
+                                unifier.resolve(&comp_info.parameter_type),
                             ),
                             *range,
                         ));
@@ -405,7 +405,7 @@ fn typecheck_node(
 
             if let Err(_err) = unifier.unify(&array_type, &expected_array_type) {
                 errors.push(RangeError::new(
-                    format!("Can not iterate over {}", unifier.query(&array_type)),
+                    format!("Can not iterate over {}", unifier.resolve(&array_type)),
                     *array_expr_range,
                 ));
             }
