@@ -7,7 +7,7 @@ pub fn typecheck_dop_expression(
     expr: &DopExpr,
     env: &mut Environment<DopType>,
     unifier: &mut Unifier,
-    annotations: &mut Vec<crate::typechecker::TypeAnnotation>,
+    annotations: &mut Vec<(crate::common::Range, DopType)>,
     errors: &mut Vec<RangeError>,
     range: Range,
 ) -> DopType {

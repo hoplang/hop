@@ -11,6 +11,8 @@ use std::collections::{HashMap, HashSet};
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeAnnotation(pub Range, pub ClosedDopType);
 
+// Internal function uses DopType tuples during typechecking
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct DefinitionLink {
     pub reference_range: Range,
@@ -53,7 +55,7 @@ pub fn typecheck(
     errors: &mut Vec<RangeError>,
 ) -> TypeResult {
     let mut unifier = Unifier::new();
-    let mut annotations: Vec<TypeAnnotation> = Vec::new();
+    let mut annotations: Vec<(Range, DopType)> = Vec::new();
     let mut definition_links: Vec<DefinitionLink> = Vec::new();
     let mut component_info = HashMap::new();
     let mut imported_components: HashMap<String, Range> = HashMap::new();
@@ -116,7 +118,7 @@ pub fn typecheck(
         let parameter_type = if let Some(params_as_attr) = params_as_attr {
             let param_type = params_as_attr.type_annotation.clone();
             
-            annotations.push(TypeAnnotation(params_as_attr.range, unifier.resolve(&param_type)));
+            annotations.push((params_as_attr.range, param_type.clone()));
             env.push(params_as_attr.var_name.value.clone(), param_type.clone());
             
             for child in children {
@@ -229,7 +231,7 @@ pub fn typecheck(
 
     let final_annotations = annotations
         .into_iter()
-        .map(|TypeAnnotation(range, t)| TypeAnnotation(range, t))
+        .map(|(range, t)| TypeAnnotation(range, unifier.resolve(&t)))
         .collect();
 
     TypeResult::new(component_info, final_annotations, definition_links)
@@ -240,7 +242,7 @@ fn typecheck_node(
     component_info: &HashMap<String, ComponentInfo>,
     env: &mut Environment<DopType>,
     unifier: &mut Unifier,
-    annotations: &mut Vec<TypeAnnotation>,
+    annotations: &mut Vec<(Range, DopType)>,
     definition_links: &mut Vec<DefinitionLink>,
     referenced_components: &mut HashSet<String>,
     errors: &mut Vec<RangeError>,
@@ -310,7 +312,7 @@ fn typecheck_node(
                             *range,
                         ));
                     } else {
-                        annotations.push(TypeAnnotation(*range, unifier.resolve(&comp_info.parameter_type)));
+                        annotations.push((*range, comp_info.parameter_type.clone()));
                     }
                 }
 
@@ -359,7 +361,7 @@ fn typecheck_node(
                     continue;
                 }
 
-                annotations.push(TypeAnnotation(set_attr.range, ClosedDopType::String));
+                annotations.push((set_attr.range, DopType::String));
             }
 
             for child in children {
@@ -470,7 +472,7 @@ fn typecheck_node(
                     text_expr_node.range,
                 ));
             }
-            annotations.push(TypeAnnotation(text_expr_node.range, ClosedDopType::String));
+            annotations.push((text_expr_node.range, DopType::String));
         }
     }
 }
