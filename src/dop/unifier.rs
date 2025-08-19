@@ -187,6 +187,10 @@ impl Unifier {
         Ok(())
     }
 
+    /// Resolves a type to its concrete form.
+    ///
+    /// Note that the returned type will be immutable and not
+    /// open to extension.
     pub fn resolve(&self, t: &DopType) -> DopType {
         match t {
             DopType::TypeVar(Some(id)) => {
