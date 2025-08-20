@@ -3,13 +3,13 @@ use crate::common::{
     ImportNode, NativeHTMLNode, Node, Range, RangeError, RenderNode, SlotDefinitionNode,
     SlotReferenceNode, XExecNode, XRawNode,
 };
-use crate::dop::{ConcreteDopType, typecheck_dop_expression, is_subtype};
+use crate::dop::{DopType, typecheck_dop_expression, is_subtype};
 use crate::parser::Module;
 use std::collections::{HashMap, HashSet};
 
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypeAnnotation(pub Range, pub ConcreteDopType);
+pub struct TypeAnnotation(pub Range, pub DopType);
 
 // Internal function uses DopType tuples during typechecking
 
@@ -22,7 +22,7 @@ pub struct DefinitionLink {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentInfo {
-    pub parameter_type: ConcreteDopType,
+    pub parameter_type: DopType,
     pub slots: Vec<String>,
     pub definition_module: String,
     pub definition_range: Range,
@@ -54,7 +54,7 @@ pub fn typecheck(
     import_type_results: &HashMap<String, TypeResult>,
     errors: &mut Vec<RangeError>,
 ) -> TypeResult {
-    let mut annotations: Vec<(Range, ConcreteDopType)> = Vec::new();
+    let mut annotations: Vec<(Range, DopType)> = Vec::new();
     let mut definition_links: Vec<DefinitionLink> = Vec::new();
     let mut component_info = HashMap::new();
     let mut imported_components: HashMap<String, Range> = HashMap::new();
@@ -96,7 +96,7 @@ pub fn typecheck(
     let mut env = Environment::new();
 
     // Add global HOP_MODE variable
-    env.push("HOP_MODE".to_string(), ConcreteDopType::String);
+    env.push("HOP_MODE".to_string(), DopType::String);
 
     for ComponentDefinitionNode {
         name,
@@ -153,7 +153,7 @@ pub fn typecheck(
                 );
             }
 
-            ConcreteDopType::Void
+            DopType::Void
         };
 
         // Add the component to component_info BEFORE typechecking preview content
@@ -234,8 +234,8 @@ pub fn typecheck(
 fn typecheck_node(
     node: &Node,
     component_info: &HashMap<String, ComponentInfo>,
-    env: &mut Environment<ConcreteDopType>,
-    annotations: &mut Vec<(Range, ConcreteDopType)>,
+    env: &mut Environment<DopType>,
+    annotations: &mut Vec<(Range, DopType)>,
     definition_links: &mut Vec<DefinitionLink>,
     referenced_components: &mut HashSet<String>,
     errors: &mut Vec<RangeError>,
@@ -247,9 +247,14 @@ fn typecheck_node(
             range,
             ..
         }) => {
-            let condition_type =
-                typecheck_dop_expression(condition, env, annotations, errors, *range);
-            if !is_subtype(&condition_type, &ConcreteDopType::Bool) {
+            let condition_type = match typecheck_dop_expression(condition, env, annotations, errors, *range) {
+                Ok(t) => t,
+                Err(err) => {
+                    errors.push(RangeError::new(err, *range));
+                    return; // Skip further processing of this branch
+                }
+            };
+            if !is_subtype(&condition_type, &DopType::Bool) {
                 errors.push(RangeError::new(
                     format!("Expected boolean condition, got {}", condition_type),
                     *range,
@@ -287,13 +292,19 @@ fn typecheck_node(
                 });
 
                 if let Some((expression, range)) = params {
-                    let expr_type = typecheck_dop_expression(
+                    let expr_type = match typecheck_dop_expression(
                         expression,
                         env,
                         annotations,
                         errors,
                         *range,
-                    );
+                    ) {
+                        Ok(t) => t,
+                        Err(err) => {
+                            errors.push(RangeError::new(err, *range));
+                            return; // Skip further processing
+                        }
+                    };
 
                     if !is_subtype(&expr_type, &comp_info.parameter_type) {
                         errors.push(RangeError::new(
@@ -339,15 +350,21 @@ fn typecheck_node(
             ..
         }) => {
             for set_attr in set_attributes {
-                let expr_type = typecheck_dop_expression(
+                let expr_type = match typecheck_dop_expression(
                     &set_attr.expression,
                     env,
                     annotations,
                     errors,
                     set_attr.range,
-                );
+                ) {
+                    Ok(t) => t,
+                    Err(err) => {
+                        errors.push(RangeError::new(err, set_attr.range));
+                        continue; // Skip this attribute
+                    }
+                };
 
-                if !is_subtype(&expr_type, &ConcreteDopType::String) {
+                if !is_subtype(&expr_type, &DopType::String) {
                     errors.push(RangeError::new(
                         format!("Expected string attribute, got {}", expr_type),
                         set_attr.range,
@@ -355,7 +372,7 @@ fn typecheck_node(
                     continue;
                 }
 
-                annotations.push((set_attr.range, ConcreteDopType::String));
+                annotations.push((set_attr.range, DopType::String));
             }
 
             for child in children {
@@ -394,22 +411,27 @@ fn typecheck_node(
             ..
         }) => {
             // Typecheck the array expression
-            let array_type = typecheck_dop_expression(
+            let array_type = match typecheck_dop_expression(
                 array_expr,
                 env,
                 annotations,
                 errors,
                 *array_expr_range,
-            );
+            ) {
+                Ok(t) => t,
+                Err(err) => {
+                    errors.push(RangeError::new(err, *array_expr_range));
+                    return; // Skip further processing of this for loop
+                }
+            };
             let element_type = match &array_type {
-                ConcreteDopType::Array(inner) => *inner.clone(),
-                ConcreteDopType::Any => ConcreteDopType::Any,
+                DopType::Array(inner) => *inner.clone(),
                 _ => {
                     errors.push(RangeError::new(
                         format!("Can not iterate over {}", array_type),
                         *array_expr_range,
                     ));
-                    ConcreteDopType::Any
+                    return; // Skip further processing
                 }
             };
 
@@ -450,20 +472,26 @@ fn typecheck_node(
         }
         Node::TextExpression(text_expr_node) => {
             // Typecheck the expression and ensure it's a string
-            let expr_type = typecheck_dop_expression(
+            let expr_type = match typecheck_dop_expression(
                 &text_expr_node.expression,
                 env,
                 annotations,
                 errors,
                 text_expr_node.range,
-            );
-            if !is_subtype(&expr_type, &ConcreteDopType::String) {
+            ) {
+                Ok(t) => t,
+                Err(err) => {
+                    errors.push(RangeError::new(err, text_expr_node.range));
+                    return; // Skip further processing
+                }
+            };
+            if !is_subtype(&expr_type, &DopType::String) {
                 errors.push(RangeError::new(
                     format!("Expected string for text expression, got {}", expr_type),
                     text_expr_node.range,
                 ));
             }
-            annotations.push((text_expr_node.range, ConcreteDopType::String));
+            annotations.push((text_expr_node.range, DopType::String));
         }
     }
 }

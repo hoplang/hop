@@ -141,20 +141,12 @@ impl RangeError {
         Self::new(format!("Component {component} is already defined"), range)
     }
 
-    pub fn undefined_variable(var: &str, range: Range) -> Self {
-        Self::new(format!("Undefined variable: {var}"), range)
-    }
-
     pub fn unused_variable(var: &str, range: Range) -> Self {
         Self::new(format!("Unused variable {var}"), range)
     }
 
     pub fn variable_is_already_defined(var: &str, range: Range) -> Self {
         Self::new(format!("Variable {var} is already defined"), range)
-    }
-
-    pub fn unification_error(message: &str, range: Range) -> Self {
-        Self::new(message.to_string(), range)
     }
 
     pub fn undefined_slot(slot: &str, component: &str, range: Range) -> Self {
@@ -189,7 +181,7 @@ pub struct Attribute {
 #[derive(Debug, Clone, PartialEq)]
 pub struct DopVarNameAttribute {
     pub var_name: DopVarName,
-    pub type_annotation: crate::dop::ConcreteDopType,
+    pub type_annotation: crate::dop::DopType,
     pub range: Range,
 }
 

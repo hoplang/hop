@@ -1,27 +1,57 @@
 use super::parser::{BinaryOp, DopExpr, UnaryOp};
-use super::ConcreteDopType;
 use crate::common::{Environment, Range, RangeError};
+use std::collections::BTreeMap;
+use std::fmt;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DopType {
+    Object(BTreeMap<String, DopType>),
+    Array(Box<DopType>),
+    Bool,
+    String,
+    Number,
+    Void,
+}
+
+impl fmt::Display for DopType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DopType::Object(properties) => {
+                write!(f, "object[")?;
+                for (idx, (key, value)) in properties.iter().enumerate() {
+                    if idx > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}: {}", key, value)?;
+                }
+                write!(f, "]")
+            }
+            DopType::Array(inner_type) => write!(f, "array[{}]", inner_type),
+            DopType::Bool => write!(f, "boolean"),
+            DopType::String => write!(f, "string"),
+            DopType::Number => write!(f, "number"),
+            DopType::Void => write!(f, "void"),
+        }
+    }
+}
 
 /// Check if `subtype` is a subtype of `supertype`
-pub fn is_subtype(subtype: &ConcreteDopType, supertype: &ConcreteDopType) -> bool {
+pub fn is_subtype(subtype: &DopType, supertype: &DopType) -> bool {
     match (subtype, supertype) {
-        // Any type is compatible with Any
-        (_, ConcreteDopType::Any) => true,
-        (ConcreteDopType::Any, _) => true,
         
         // Exact matches
-        (ConcreteDopType::Bool, ConcreteDopType::Bool) => true,
-        (ConcreteDopType::String, ConcreteDopType::String) => true,
-        (ConcreteDopType::Number, ConcreteDopType::Number) => true,
-        (ConcreteDopType::Void, ConcreteDopType::Void) => true,
+        (DopType::Bool, DopType::Bool) => true,
+        (DopType::String, DopType::String) => true,
+        (DopType::Number, DopType::Number) => true,
+        (DopType::Void, DopType::Void) => true,
         
         // Arrays are covariant in their element type
-        (ConcreteDopType::Array(sub_elem), ConcreteDopType::Array(super_elem)) => {
+        (DopType::Array(sub_elem), DopType::Array(super_elem)) => {
             is_subtype(sub_elem, super_elem)
         }
         
         // Objects: subtype must have all properties of supertype with compatible types
-        (ConcreteDopType::Object(sub_props), ConcreteDopType::Object(super_props)) => {
+        (DopType::Object(sub_props), DopType::Object(super_props)) => {
             super_props.iter().all(|(key, super_type)| {
                 sub_props.get(key).map_or(false, |sub_type| is_subtype(sub_type, super_type))
             })
@@ -34,80 +64,60 @@ pub fn is_subtype(subtype: &ConcreteDopType, supertype: &ConcreteDopType) -> boo
 
 pub fn typecheck_dop_expression(
     expr: &DopExpr,
-    env: &mut Environment<ConcreteDopType>,
-    annotations: &mut Vec<(crate::common::Range, ConcreteDopType)>,
+    env: &mut Environment<DopType>,
+    annotations: &mut Vec<(crate::common::Range, DopType)>,
     errors: &mut Vec<RangeError>,
     range: Range,
-) -> ConcreteDopType {
+) -> Result<DopType, String> {
     match expr {
         DopExpr::Variable(name) => {
             if let Some(var_type) = env.lookup(name) {
-                var_type.clone()
+                Ok(var_type.clone())
             } else {
-                errors.push(RangeError::undefined_variable(name, range));
-                ConcreteDopType::Any
+                Err(format!("Undefined variable: {}", name))
             }
         }
-        DopExpr::BooleanLiteral(_) => ConcreteDopType::Bool,
-        DopExpr::StringLiteral(_) => ConcreteDopType::String,
-        DopExpr::NumberLiteral(_) => ConcreteDopType::Number,
+        DopExpr::BooleanLiteral(_) => Ok(DopType::Bool),
+        DopExpr::StringLiteral(_) => Ok(DopType::String),
+        DopExpr::NumberLiteral(_) => Ok(DopType::Number),
         DopExpr::PropertyAccess(base_expr, property) => {
-            let base_type =
-                typecheck_dop_expression(base_expr, env, annotations, errors, range);
+            let base_type = typecheck_dop_expression(base_expr, env, annotations, errors, range)?;
             
             match &base_type {
-                ConcreteDopType::Object(props) => {
+                DopType::Object(props) => {
                     if let Some(prop_type) = props.get(property) {
-                        prop_type.clone()
+                        Ok(prop_type.clone())
                     } else {
-                        errors.push(RangeError::new(
-                            format!("Property {} not found in object", property),
-                            range,
-                        ));
-                        ConcreteDopType::Any
+                        Err(format!("Property {} not found in object", property))
                     }
                 }
-                ConcreteDopType::Any => ConcreteDopType::Any,
                 _ => {
-                    errors.push(RangeError::new(
-                        format!("{} can not be used as an object", base_type),
-                        range,
-                    ));
-                    ConcreteDopType::Any
+                    Err(format!("{} can not be used as an object", base_type))
                 }
             }
         }
         DopExpr::BinaryOp(left, BinaryOp::Equal, right) => {
-            let left_type =
-                typecheck_dop_expression(left, env, annotations, errors, range);
-            let right_type =
-                typecheck_dop_expression(right, env, annotations, errors, range);
+            let left_type = typecheck_dop_expression(left, env, annotations, errors, range)?;
+            let right_type = typecheck_dop_expression(right, env, annotations, errors, range)?;
 
             // Both operands should have the same type for equality comparison
-            if left_type != right_type && left_type != ConcreteDopType::Any && right_type != ConcreteDopType::Any {
-                errors.push(RangeError::new(
-                    format!("Can not compare {} to {}", left_type, right_type),
-                    range,
-                ));
+            if left_type != right_type {
+                return Err(format!("Can not compare {} to {}", left_type, right_type));
             }
 
             // The result of == is always boolean
-            ConcreteDopType::Bool
+            Ok(DopType::Bool)
         }
         DopExpr::UnaryOp(UnaryOp::Not, expr) => {
-            let expr_type =
-                typecheck_dop_expression(expr, env, annotations, errors, range);
+            let expr_type = typecheck_dop_expression(expr, env, annotations, errors, range)?;
 
             // Negation only works on boolean expressions
-            if !is_subtype(&expr_type, &ConcreteDopType::Bool) {
-                errors.push(RangeError::new(
-                    "Negation operator can only be applied to boolean values".to_string(),
-                    range,
-                ));
+            if !is_subtype(&expr_type, &DopType::Bool) {
+                return Err("Negation operator can only be applied to boolean values".to_string());
             }
 
             // The result of ! is always boolean
-            ConcreteDopType::Bool
+            Ok(DopType::Bool)
         }
     }
 }
@@ -204,48 +214,52 @@ mod tests {
             if let Some(error_section) = archive.get("error") {
                 let expected_error = error_section.content.trim();
 
-                if errors.is_empty() {
-                    panic!(
-                        "Expected error '{}' but got successful result '{}' in test case {} (line {})",
-                        expected_error,
-                        result_type,
-                        case_num + 1,
-                        line_number
-                    );
+                match result_type {
+                    Err(actual_error) => {
+                        assert_eq!(
+                            actual_error,
+                            expected_error,
+                            "Test case {} (line {}): Error message mismatch",
+                            case_num + 1,
+                            line_number
+                        );
+                    }
+                    Ok(successful_type) => {
+                        panic!(
+                            "Expected error '{}' but got successful result '{}' in test case {} (line {})",
+                            expected_error,
+                            successful_type,
+                            case_num + 1,
+                            line_number
+                        );
+                    }
                 }
-
-                let actual_error = errors[0].message.clone();
-                assert_eq!(
-                    actual_error,
-                    expected_error,
-                    "Test case {} (line {}): Error message mismatch",
-                    case_num + 1,
-                    line_number
-                );
             } else {
                 // This test case expects a successful result
-                if !errors.is_empty() {
-                    panic!(
-                        "Expected successful result but got error '{}' in test case {} (line {})",
-                        errors[0].message,
-                        case_num + 1,
-                        line_number
-                    );
+                match result_type {
+                    Ok(actual_type) => {
+                        let expected_section = archive
+                            .get("out")
+                            .expect("Missing 'out' section in test case");
+                        let expected = expected_section.content.trim();
+
+                        assert_eq!(
+                            actual_type.to_string(),
+                            expected,
+                            "Test case {} (line {}): Type mismatch",
+                            case_num + 1,
+                            line_number
+                        );
+                    }
+                    Err(error_message) => {
+                        panic!(
+                            "Expected successful result but got error '{}' in test case {} (line {})",
+                            error_message,
+                            case_num + 1,
+                            line_number
+                        );
+                    }
                 }
-
-                let expected_section = archive
-                    .get("out")
-                    .expect("Missing 'out' section in test case");
-                let expected = expected_section.content.trim();
-
-                let actual = result_type;
-                assert_eq!(
-                    actual.to_string(),
-                    expected,
-                    "Test case {} (line {}): Type mismatch",
-                    case_num + 1,
-                    line_number
-                );
             }
         }
     }
