@@ -75,7 +75,6 @@ impl fmt::Display for AbstractDopType {
     }
 }
 
-
 pub struct Unifier {
     substitutions: Vec<Option<AbstractDopType>>,
 }
@@ -104,11 +103,7 @@ impl Unifier {
     /// Construct a type that is the least upper bound of `a` and `b` and constrain `a` and `b` to
     /// be this type, or fail if there is no representation of the least upper bound of `a` and `b`
     /// in the type system.
-    pub fn unify(
-        &mut self,
-        a: &AbstractDopType,
-        b: &AbstractDopType,
-    ) -> Result<(), String> {
+    pub fn unify(&mut self, a: &AbstractDopType, b: &AbstractDopType) -> Result<(), String> {
         match (a, b) {
             (AbstractDopType::Bool, AbstractDopType::Bool) => Ok(()),
             (AbstractDopType::String, AbstractDopType::String) => Ok(()),
@@ -181,27 +176,8 @@ impl Unifier {
         Ok(())
     }
 
-    /// Constrains `a` to be a subtype of `b`, where `b` must be resolved.
-    ///
-    /// This function ensures that `a` can be extended to match `b`, but unlike unify,
-    /// it leaves `a` open to extension. The key difference from unify is:
-    /// - `a` can have fewer properties than `b` (subtype relationship)
-    /// - `a` can be extended with additional properties
-    /// - `b` must be fully resolved (no type variables)
-    ///
-    /// # Arguments
-    ///
-    /// * `a` - The type to constrain (can be extended)
-    /// * `b` - The supertype constraint (must be resolved)
-    ///
-    /// # Returns
-    ///
-    /// `Ok(())` if the constraint is satisfiable, `Err` otherwise
-    pub fn constrain(
-        &mut self,
-        a: &AbstractDopType,
-        b: &ConcreteDopType,
-    ) -> Result<(), String> {
+    /// Constrain `a` to be a subtype of `b`, where `b` must is concrete.
+    pub fn constrain(&mut self, a: &AbstractDopType, b: &ConcreteDopType) -> Result<(), String> {
         match (a, b) {
             (_, ConcreteDopType::Any) => Ok(()),
             (AbstractDopType::Bool, ConcreteDopType::Bool) => Ok(()),
@@ -236,16 +212,13 @@ impl Unifier {
 
                 Ok(())
             }
-            _ => Err(format!(
-                "Cannot constrain {} to {}",
-                a, b
-            )),
+            _ => Err(format!("Cannot constrain {} to {}", a, b)),
         }
     }
 
-    /// Makes a constraint type extensible by converting closed objects to open objects recursively.
-    fn unresolve(&mut self, constraint_type: &ConcreteDopType) -> AbstractDopType {
-        match constraint_type {
+    /// Makes a constraint type extensible by converting concrete objects to abstract objects.
+    fn unresolve(&mut self, t: &ConcreteDopType) -> AbstractDopType {
+        match t {
             ConcreteDopType::Any => {
                 // Create a new type variable for Any
                 self.new_type_var()
