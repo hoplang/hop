@@ -3,13 +3,16 @@ use crate::common::{
     ImportNode, NativeHTMLNode, Node, Range, RangeError, RenderNode, SlotDefinitionNode,
     SlotReferenceNode, XExecNode, XRawNode,
 };
-use crate::dop::{DopType, typecheck_dop_expression, is_subtype};
+use crate::dop::{DopType, is_subtype, typecheck_expr};
 use crate::parser::Module;
 use std::collections::{HashMap, HashSet};
 
-
 #[derive(Debug, Clone, PartialEq)]
-pub struct TypeAnnotation(pub Range, pub DopType);
+pub struct TypeAnnotation {
+    pub range: Range,
+    pub typ: DopType,
+    pub name: String,
+}
 
 // Internal function uses DopType tuples during typechecking
 
@@ -54,7 +57,7 @@ pub fn typecheck(
     import_type_results: &HashMap<String, TypeResult>,
     errors: &mut Vec<RangeError>,
 ) -> TypeResult {
-    let mut annotations: Vec<(Range, DopType)> = Vec::new();
+    let mut annotations: Vec<TypeAnnotation> = Vec::new();
     let mut definition_links: Vec<DefinitionLink> = Vec::new();
     let mut component_info = HashMap::new();
     let mut imported_components: HashMap<String, Range> = HashMap::new();
@@ -117,7 +120,11 @@ pub fn typecheck(
         let parameter_type = if let Some(params_as_attr) = params_as_attr {
             let param_type = params_as_attr.type_annotation.clone();
 
-            annotations.push((params_as_attr.range, param_type.clone()));
+            annotations.push(TypeAnnotation {
+                range: params_as_attr.range,
+                typ: param_type.clone(),
+                name: params_as_attr.var_name.value.clone(),
+            });
             env.push(params_as_attr.var_name.value.clone(), param_type.clone());
 
             for child in children {
@@ -223,10 +230,7 @@ pub fn typecheck(
         }
     }
 
-    let final_annotations = annotations
-        .into_iter()
-        .map(|(range, t)| TypeAnnotation(range, t))
-        .collect();
+    let final_annotations = annotations;
 
     TypeResult::new(component_info, final_annotations, definition_links)
 }
@@ -235,7 +239,7 @@ fn typecheck_node(
     node: &Node,
     component_info: &HashMap<String, ComponentInfo>,
     env: &mut Environment<DopType>,
-    annotations: &mut Vec<(Range, DopType)>,
+    annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
     referenced_components: &mut HashSet<String>,
     errors: &mut Vec<RangeError>,
@@ -247,7 +251,7 @@ fn typecheck_node(
             range,
             ..
         }) => {
-            let condition_type = match typecheck_dop_expression(condition, env, annotations, errors, *range) {
+            let condition_type = match typecheck_expr(condition, env, annotations, errors, *range) {
                 Ok(t) => t,
                 Err(err) => {
                     errors.push(RangeError::new(err, *range));
@@ -292,31 +296,29 @@ fn typecheck_node(
                 });
 
                 if let Some((expression, range)) = params {
-                    let expr_type = match typecheck_dop_expression(
-                        expression,
-                        env,
-                        annotations,
-                        errors,
-                        *range,
-                    ) {
-                        Ok(t) => t,
-                        Err(err) => {
-                            errors.push(RangeError::new(err, *range));
-                            return; // Skip further processing
-                        }
-                    };
+                    let expr_type =
+                        match typecheck_expr(expression, env, annotations, errors, *range) {
+                            Ok(t) => t,
+                            Err(err) => {
+                                errors.push(RangeError::new(err, *range));
+                                return; // Skip further processing
+                            }
+                        };
 
                     if !is_subtype(&expr_type, &comp_info.parameter_type) {
                         errors.push(RangeError::new(
                             format!(
                                 "Argument of type {} is incompatible with expected type {}",
-                                expr_type,
-                                comp_info.parameter_type,
+                                expr_type, comp_info.parameter_type,
                             ),
                             *range,
                         ));
                     } else {
-                        annotations.push((*range, expr_type));
+                        annotations.push(TypeAnnotation {
+                            range: *range,
+                            typ: expr_type,
+                            name: format!("component parameter"),
+                        });
                     }
                 }
 
@@ -350,7 +352,7 @@ fn typecheck_node(
             ..
         }) => {
             for set_attr in set_attributes {
-                let expr_type = match typecheck_dop_expression(
+                let expr_type = match typecheck_expr(
                     &set_attr.expression,
                     env,
                     annotations,
@@ -372,7 +374,11 @@ fn typecheck_node(
                     continue;
                 }
 
-                annotations.push((set_attr.range, DopType::String));
+                annotations.push(TypeAnnotation {
+                    range: set_attr.range,
+                    typ: DopType::String,
+                    name: format!("attribute expression"),
+                });
             }
 
             for child in children {
@@ -411,19 +417,14 @@ fn typecheck_node(
             ..
         }) => {
             // Typecheck the array expression
-            let array_type = match typecheck_dop_expression(
-                array_expr,
-                env,
-                annotations,
-                errors,
-                *array_expr_range,
-            ) {
-                Ok(t) => t,
-                Err(err) => {
-                    errors.push(RangeError::new(err, *array_expr_range));
-                    return; // Skip further processing of this for loop
-                }
-            };
+            let array_type =
+                match typecheck_expr(array_expr, env, annotations, errors, *array_expr_range) {
+                    Ok(t) => t,
+                    Err(err) => {
+                        errors.push(RangeError::new(err, *array_expr_range));
+                        return; // Skip further processing of this for loop
+                    }
+                };
             let element_type = match &array_type {
                 DopType::Array(inner) => *inner.clone(),
                 _ => {
@@ -437,8 +438,14 @@ fn typecheck_node(
 
             // Push the loop variable into scope for the children
             let mut pushed = false;
-            if env.push(var_name.value.clone(), element_type) {
+            if env.push(var_name.value.clone(), element_type.clone()) {
                 pushed = true;
+                // Add type annotation for the loop variable
+                annotations.push(TypeAnnotation {
+                    range: *var_name_range,
+                    typ: element_type.clone(),
+                    name: var_name.value.clone(),
+                });
             } else {
                 errors.push(RangeError::variable_is_already_defined(
                     &var_name.value,
@@ -472,7 +479,7 @@ fn typecheck_node(
         }
         Node::TextExpression(text_expr_node) => {
             // Typecheck the expression and ensure it's a string
-            let expr_type = match typecheck_dop_expression(
+            let expr_type = match typecheck_expr(
                 &text_expr_node.expression,
                 env,
                 annotations,
@@ -491,7 +498,11 @@ fn typecheck_node(
                     text_expr_node.range,
                 ));
             }
-            annotations.push((text_expr_node.range, DopType::String));
+            annotations.push(TypeAnnotation {
+                range: text_expr_node.range,
+                typ: DopType::String,
+                name: format!("text expression"),
+            });
         }
     }
 }

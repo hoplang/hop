@@ -1,5 +1,6 @@
 use super::parser::{BinaryOp, DopExpr, UnaryOp};
 use crate::common::{Environment, Range, RangeError};
+use crate::typechecker::TypeAnnotation;
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -61,16 +62,21 @@ pub fn is_subtype(subtype: &DopType, supertype: &DopType) -> bool {
     }
 }
 
-pub fn typecheck_dop_expression(
+pub fn typecheck_expr(
     expr: &DopExpr,
     env: &mut Environment<DopType>,
-    annotations: &mut Vec<(Range, DopType)>,
+    annotations: &mut Vec<TypeAnnotation>,
     errors: &mut Vec<RangeError>,
     range: Range,
 ) -> Result<DopType, String> {
     match expr {
         DopExpr::Variable(name) => {
             if let Some(var_type) = env.lookup(name) {
+                annotations.push(TypeAnnotation {
+                    range,
+                    typ: var_type.clone(),
+                    name: name.clone(),
+                });
                 Ok(var_type.clone())
             } else {
                 Err(format!("Undefined variable: {}", name))
@@ -80,7 +86,7 @@ pub fn typecheck_dop_expression(
         DopExpr::StringLiteral(_) => Ok(DopType::String),
         DopExpr::NumberLiteral(_) => Ok(DopType::Number),
         DopExpr::PropertyAccess(base_expr, property) => {
-            let base_type = typecheck_dop_expression(base_expr, env, annotations, errors, range)?;
+            let base_type = typecheck_expr(base_expr, env, annotations, errors, range)?;
 
             match &base_type {
                 DopType::Object(props) => {
@@ -94,8 +100,8 @@ pub fn typecheck_dop_expression(
             }
         }
         DopExpr::BinaryOp(left, BinaryOp::Equal, right) => {
-            let left_type = typecheck_dop_expression(left, env, annotations, errors, range)?;
-            let right_type = typecheck_dop_expression(right, env, annotations, errors, range)?;
+            let left_type = typecheck_expr(left, env, annotations, errors, range)?;
+            let right_type = typecheck_expr(right, env, annotations, errors, range)?;
 
             // Both operands should have the same type for equality comparison
             if left_type != right_type {
@@ -106,7 +112,7 @@ pub fn typecheck_dop_expression(
             Ok(DopType::Bool)
         }
         DopExpr::UnaryOp(UnaryOp::Not, expr) => {
-            let expr_type = typecheck_dop_expression(expr, env, annotations, errors, range)?;
+            let expr_type = typecheck_expr(expr, env, annotations, errors, range)?;
 
             // Negation only works on boolean expressions
             if !is_subtype(&expr_type, &DopType::Bool) {
@@ -199,7 +205,7 @@ mod tests {
             let mut annotations = Vec::new();
             let mut errors = Vec::new();
 
-            let result_type = typecheck_dop_expression(
+            let result_type = typecheck_expr(
                 &expr,
                 &mut env,
                 &mut annotations,

@@ -2,7 +2,7 @@ use crate::common::{Position, RangeError};
 use crate::parser::{Module, parse};
 use crate::tokenizer::Tokenizer;
 use crate::toposorter::TopoSorter;
-use crate::typechecker::{DefinitionLink, TypeAnnotation, TypeResult, typecheck};
+use crate::typechecker::{DefinitionLink, TypeResult, typecheck};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -103,14 +103,14 @@ impl Server {
         let type_result = self.type_results.get(module_name)?;
         let pos = Position::new(line, column);
 
-        for TypeAnnotation(range, val) in &type_result.annotations {
-            if range.contains_position(pos) {
+        for annotation in &type_result.annotations {
+            if annotation.range.contains_position(pos) {
                 return Some(HoverInfo {
-                    type_str: val.to_string(),
-                    start_line: range.start.line,
-                    start_column: range.start.column,
-                    end_line: range.end.line,
-                    end_column: range.end.column,
+                    type_str: format!("`{}`: `{}`", annotation.name, annotation.typ.to_string()),
+                    start_line: annotation.range.start.line,
+                    start_column: annotation.range.start.column,
+                    end_line: annotation.range.end.line,
+                    end_column: annotation.range.end.column,
                 });
             }
         }
