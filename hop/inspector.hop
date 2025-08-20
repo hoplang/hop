@@ -58,14 +58,19 @@
 					});
 
 				} else {
-					// Pan with regular scroll
+					// Pan with touchpad or mouse wheel
 					e.preventDefault();
 					const panSpeed = 0.7;
 					
-					if (e.shiftKey) {
-						const deltaX = -e.deltaY * panSpeed;
-						mat.update(m => m.translate(deltaX, 0));
+					// Check if it's a touchpad gesture (has both deltaX and deltaY)
+					// or if deltaX is non-zero (horizontal scroll)
+					if (e.deltaX !== 0 || e.shiftKey) {
+						// Horizontal panning
+						const deltaX = e.shiftKey ? -e.deltaY * panSpeed : -e.deltaX * panSpeed;
+						const deltaY = e.shiftKey ? 0 : -e.deltaY * panSpeed;
+						mat.update(m => m.translate(deltaX, deltaY));
 					} else {
+						// Vertical panning only
 						const deltaY = -e.deltaY * panSpeed;
 						mat.update(m => m.translate(0, deltaY));
 					}
