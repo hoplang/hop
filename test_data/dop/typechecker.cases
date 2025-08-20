@@ -296,3 +296,11 @@ obj.name == obj.title
 boolean
 ## END
 
+## BEGIN
+-- env --
+data: object[field: string]
+-- expr --
+data.unknown
+-- error --
+Property unknown not found in object
+## END

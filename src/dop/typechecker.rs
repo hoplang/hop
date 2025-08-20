@@ -38,25 +38,24 @@ impl fmt::Display for DopType {
 /// Check if `subtype` is a subtype of `supertype`
 pub fn is_subtype(subtype: &DopType, supertype: &DopType) -> bool {
     match (subtype, supertype) {
-        
         // Exact matches
         (DopType::Bool, DopType::Bool) => true,
         (DopType::String, DopType::String) => true,
         (DopType::Number, DopType::Number) => true,
         (DopType::Void, DopType::Void) => true,
-        
+
         // Arrays are covariant in their element type
-        (DopType::Array(sub_elem), DopType::Array(super_elem)) => {
-            is_subtype(sub_elem, super_elem)
-        }
-        
+        (DopType::Array(sub_elem), DopType::Array(super_elem)) => is_subtype(sub_elem, super_elem),
+
         // Objects: subtype must have all properties of supertype with compatible types
         (DopType::Object(sub_props), DopType::Object(super_props)) => {
             super_props.iter().all(|(key, super_type)| {
-                sub_props.get(key).map_or(false, |sub_type| is_subtype(sub_type, super_type))
+                sub_props
+                    .get(key)
+                    .is_some_and(|sub_type| is_subtype(sub_type, super_type))
             })
         }
-        
+
         // Otherwise, not a subtype
         _ => false,
     }
@@ -65,7 +64,7 @@ pub fn is_subtype(subtype: &DopType, supertype: &DopType) -> bool {
 pub fn typecheck_dop_expression(
     expr: &DopExpr,
     env: &mut Environment<DopType>,
-    annotations: &mut Vec<(crate::common::Range, DopType)>,
+    annotations: &mut Vec<(Range, DopType)>,
     errors: &mut Vec<RangeError>,
     range: Range,
 ) -> Result<DopType, String> {
@@ -82,7 +81,7 @@ pub fn typecheck_dop_expression(
         DopExpr::NumberLiteral(_) => Ok(DopType::Number),
         DopExpr::PropertyAccess(base_expr, property) => {
             let base_type = typecheck_dop_expression(base_expr, env, annotations, errors, range)?;
-            
+
             match &base_type {
                 DopType::Object(props) => {
                     if let Some(prop_type) = props.get(property) {
@@ -91,9 +90,7 @@ pub fn typecheck_dop_expression(
                         Err(format!("Property {} not found in object", property))
                     }
                 }
-                _ => {
-                    Err(format!("{} can not be used as an object", base_type))
-                }
+                _ => Err(format!("{} can not be used as an object", base_type)),
             }
         }
         DopExpr::BinaryOp(left, BinaryOp::Equal, right) => {
