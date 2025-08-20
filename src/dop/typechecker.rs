@@ -1,74 +1,105 @@
 use super::parser::{BinaryOp, DopExpr, UnaryOp};
-use super::{AbstractDopType, ConcreteDopType, Unifier};
+use super::ConcreteDopType;
 use crate::common::{Environment, Range, RangeError};
-use std::collections::BTreeMap;
+
+/// Check if `subtype` is a subtype of `supertype`
+pub fn is_subtype(subtype: &ConcreteDopType, supertype: &ConcreteDopType) -> bool {
+    match (subtype, supertype) {
+        // Any type is compatible with Any
+        (_, ConcreteDopType::Any) => true,
+        (ConcreteDopType::Any, _) => true,
+        
+        // Exact matches
+        (ConcreteDopType::Bool, ConcreteDopType::Bool) => true,
+        (ConcreteDopType::String, ConcreteDopType::String) => true,
+        (ConcreteDopType::Number, ConcreteDopType::Number) => true,
+        (ConcreteDopType::Void, ConcreteDopType::Void) => true,
+        
+        // Arrays are covariant in their element type
+        (ConcreteDopType::Array(sub_elem), ConcreteDopType::Array(super_elem)) => {
+            is_subtype(sub_elem, super_elem)
+        }
+        
+        // Objects: subtype must have all properties of supertype with compatible types
+        (ConcreteDopType::Object(sub_props), ConcreteDopType::Object(super_props)) => {
+            super_props.iter().all(|(key, super_type)| {
+                sub_props.get(key).map_or(false, |sub_type| is_subtype(sub_type, super_type))
+            })
+        }
+        
+        // Otherwise, not a subtype
+        _ => false,
+    }
+}
 
 pub fn typecheck_dop_expression(
     expr: &DopExpr,
-    env: &mut Environment<AbstractDopType>,
-    unifier: &mut Unifier,
-    annotations: &mut Vec<(crate::common::Range, AbstractDopType)>,
+    env: &mut Environment<ConcreteDopType>,
+    annotations: &mut Vec<(crate::common::Range, ConcreteDopType)>,
     errors: &mut Vec<RangeError>,
     range: Range,
-) -> AbstractDopType {
+) -> ConcreteDopType {
     match expr {
         DopExpr::Variable(name) => {
             if let Some(var_type) = env.lookup(name) {
                 var_type.clone()
             } else {
                 errors.push(RangeError::undefined_variable(name, range));
-                unifier.new_type_var()
+                ConcreteDopType::Any
             }
         }
-        DopExpr::BooleanLiteral(_) => AbstractDopType::Bool,
-        DopExpr::StringLiteral(_) => AbstractDopType::String,
-        DopExpr::NumberLiteral(_) => AbstractDopType::Number,
+        DopExpr::BooleanLiteral(_) => ConcreteDopType::Bool,
+        DopExpr::StringLiteral(_) => ConcreteDopType::String,
+        DopExpr::NumberLiteral(_) => ConcreteDopType::Number,
         DopExpr::PropertyAccess(base_expr, property) => {
             let base_type =
-                typecheck_dop_expression(base_expr, env, unifier, annotations, errors, range);
-            let property_type = unifier.new_type_var();
-            let obj_type =
-                unifier.new_object(BTreeMap::from([(property.clone(), property_type.clone())]));
-
-            if let Err(_err) = unifier.unify(&base_type, &obj_type) {
-                errors.push(RangeError::new(
-                    format!(
-                        "{} can not be used as an object",
-                        unifier.resolve(&base_type)
-                    ),
-                    range,
-                ));
+                typecheck_dop_expression(base_expr, env, annotations, errors, range);
+            
+            match &base_type {
+                ConcreteDopType::Object(props) => {
+                    if let Some(prop_type) = props.get(property) {
+                        prop_type.clone()
+                    } else {
+                        errors.push(RangeError::new(
+                            format!("Property {} not found in object", property),
+                            range,
+                        ));
+                        ConcreteDopType::Any
+                    }
+                }
+                ConcreteDopType::Any => ConcreteDopType::Any,
+                _ => {
+                    errors.push(RangeError::new(
+                        format!("{} can not be used as an object", base_type),
+                        range,
+                    ));
+                    ConcreteDopType::Any
+                }
             }
-
-            property_type
         }
         DopExpr::BinaryOp(left, BinaryOp::Equal, right) => {
             let left_type =
-                typecheck_dop_expression(left, env, unifier, annotations, errors, range);
+                typecheck_dop_expression(left, env, annotations, errors, range);
             let right_type =
-                typecheck_dop_expression(right, env, unifier, annotations, errors, range);
+                typecheck_dop_expression(right, env, annotations, errors, range);
 
             // Both operands should have the same type for equality comparison
-            if let Err(_err) = unifier.unify(&left_type, &right_type) {
+            if left_type != right_type && left_type != ConcreteDopType::Any && right_type != ConcreteDopType::Any {
                 errors.push(RangeError::new(
-                    format!(
-                        "Can not compare {} to {}",
-                        unifier.resolve(&left_type),
-                        unifier.resolve(&right_type)
-                    ),
+                    format!("Can not compare {} to {}", left_type, right_type),
                     range,
                 ));
             }
 
             // The result of == is always boolean
-            AbstractDopType::Bool
+            ConcreteDopType::Bool
         }
         DopExpr::UnaryOp(UnaryOp::Not, expr) => {
             let expr_type =
-                typecheck_dop_expression(expr, env, unifier, annotations, errors, range);
+                typecheck_dop_expression(expr, env, annotations, errors, range);
 
             // Negation only works on boolean expressions
-            if let Err(_err) = unifier.constrain(&expr_type, &ConcreteDopType::Bool) {
+            if !is_subtype(&expr_type, &ConcreteDopType::Bool) {
                 errors.push(RangeError::new(
                     "Negation operator can only be applied to boolean values".to_string(),
                     range,
@@ -76,7 +107,7 @@ pub fn typecheck_dop_expression(
             }
 
             // The result of ! is always boolean
-            AbstractDopType::Bool
+            ConcreteDopType::Bool
         }
     }
 }
@@ -107,7 +138,6 @@ mod tests {
                 .content
                 .trim();
 
-            let mut unifier = Unifier::new();
             let mut env = Environment::new();
 
             for line in env_section.lines() {
@@ -130,9 +160,7 @@ mod tests {
                             e
                         );
                     });
-                let open_type = unifier.new_type_var();
-                unifier.constrain(&open_type, &var_type).unwrap();
-                env.push(var_name.value, open_type);
+                env.push(var_name.value, var_type);
             }
 
             let expr_content = archive
@@ -167,7 +195,6 @@ mod tests {
             let result_type = typecheck_dop_expression(
                 &expr,
                 &mut env,
-                &mut unifier,
                 &mut annotations,
                 &mut errors,
                 Range::default(),
@@ -181,7 +208,7 @@ mod tests {
                     panic!(
                         "Expected error '{}' but got successful result '{}' in test case {} (line {})",
                         expected_error,
-                        unifier.resolve(&result_type),
+                        result_type,
                         case_num + 1,
                         line_number
                     );
@@ -211,7 +238,7 @@ mod tests {
                     .expect("Missing 'out' section in test case");
                 let expected = expected_section.content.trim();
 
-                let actual = unifier.resolve(&result_type);
+                let actual = result_type;
                 assert_eq!(
                     actual.to_string(),
                     expected,

@@ -1585,3 +1585,23 @@ main::main-comp
 	object[data: object[a: string, b: string]]
 	[]
 ## END
+
+Typechecker should print an error if an object lacks required properties.
+
+## BEGIN
+-- main.hop --
+<needs-a {data: object[a: string]}>
+	<div>{data.a}</div>
+</needs-a>
+
+<main-comp {params: object[data: object[b: string]]}>
+	<needs-a {params.data}>
+	</needs-a>
+</main-comp>
+-- out --
+error: Argument of type object[b: string] is incompatible with expected type object[a: string]
+  --> main.hop (line 6, col 12)
+5 | <main-comp {params: object[data: object[b: string]]}>
+6 |     <needs-a {params.data}>
+  |               ^^^^^^^^^^^
+## END

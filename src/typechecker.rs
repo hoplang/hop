@@ -3,10 +3,10 @@ use crate::common::{
     ImportNode, NativeHTMLNode, Node, Range, RangeError, RenderNode, SlotDefinitionNode,
     SlotReferenceNode, XExecNode, XRawNode,
 };
-use crate::dop::Unifier;
-use crate::dop::{AbstractDopType, ConcreteDopType, typecheck_dop_expression};
+use crate::dop::{ConcreteDopType, typecheck_dop_expression, is_subtype};
 use crate::parser::Module;
 use std::collections::{HashMap, HashSet};
+
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeAnnotation(pub Range, pub ConcreteDopType);
@@ -54,8 +54,7 @@ pub fn typecheck(
     import_type_results: &HashMap<String, TypeResult>,
     errors: &mut Vec<RangeError>,
 ) -> TypeResult {
-    let mut unifier = Unifier::new();
-    let mut annotations: Vec<(Range, AbstractDopType)> = Vec::new();
+    let mut annotations: Vec<(Range, ConcreteDopType)> = Vec::new();
     let mut definition_links: Vec<DefinitionLink> = Vec::new();
     let mut component_info = HashMap::new();
     let mut imported_components: HashMap<String, Range> = HashMap::new();
@@ -97,7 +96,7 @@ pub fn typecheck(
     let mut env = Environment::new();
 
     // Add global HOP_MODE variable
-    env.push("HOP_MODE".to_string(), AbstractDopType::String);
+    env.push("HOP_MODE".to_string(), ConcreteDopType::String);
 
     for ComponentDefinitionNode {
         name,
@@ -116,10 +115,7 @@ pub fn typecheck(
         }
 
         let parameter_type = if let Some(params_as_attr) = params_as_attr {
-            let param_type = unifier.new_type_var();
-            unifier
-                .constrain(&param_type, &params_as_attr.type_annotation)
-                .unwrap();
+            let param_type = params_as_attr.type_annotation.clone();
 
             annotations.push((params_as_attr.range, param_type.clone()));
             env.push(params_as_attr.var_name.value.clone(), param_type.clone());
@@ -129,7 +125,6 @@ pub fn typecheck(
                     child,
                     &component_info,
                     &mut env,
-                    &mut unifier,
                     &mut annotations,
                     &mut definition_links,
                     &mut referenced_components,
@@ -151,7 +146,6 @@ pub fn typecheck(
                     child,
                     &component_info,
                     &mut env,
-                    &mut unifier,
                     &mut annotations,
                     &mut definition_links,
                     &mut referenced_components,
@@ -159,14 +153,14 @@ pub fn typecheck(
                 );
             }
 
-            AbstractDopType::Void
+            ConcreteDopType::Void
         };
 
         // Add the component to component_info BEFORE typechecking preview content
         component_info.insert(
             name.clone(),
             ComponentInfo {
-                parameter_type: unifier.resolve(&parameter_type),
+                parameter_type: parameter_type.clone(),
                 slots: slots.clone(),
                 definition_module: module.name.clone(),
                 definition_range: *range,
@@ -185,7 +179,6 @@ pub fn typecheck(
                         child,
                         &component_info,
                         &mut env,
-                        &mut unifier,
                         &mut annotations,
                         &mut definition_links,
                         &mut referenced_components,
@@ -199,7 +192,6 @@ pub fn typecheck(
                         child,
                         &component_info,
                         &mut env,
-                        &mut unifier,
                         &mut annotations,
                         &mut definition_links,
                         &mut referenced_components,
@@ -216,7 +208,6 @@ pub fn typecheck(
                 child,
                 &component_info,
                 &mut env,
-                &mut unifier,
                 &mut annotations,
                 &mut definition_links,
                 &mut referenced_components,
@@ -234,7 +225,7 @@ pub fn typecheck(
 
     let final_annotations = annotations
         .into_iter()
-        .map(|(range, t)| TypeAnnotation(range, unifier.resolve(&t)))
+        .map(|(range, t)| TypeAnnotation(range, t))
         .collect();
 
     TypeResult::new(component_info, final_annotations, definition_links)
@@ -243,9 +234,8 @@ pub fn typecheck(
 fn typecheck_node(
     node: &Node,
     component_info: &HashMap<String, ComponentInfo>,
-    env: &mut Environment<AbstractDopType>,
-    unifier: &mut Unifier,
-    annotations: &mut Vec<(Range, AbstractDopType)>,
+    env: &mut Environment<ConcreteDopType>,
+    annotations: &mut Vec<(Range, ConcreteDopType)>,
     definition_links: &mut Vec<DefinitionLink>,
     referenced_components: &mut HashSet<String>,
     errors: &mut Vec<RangeError>,
@@ -258,9 +248,12 @@ fn typecheck_node(
             ..
         }) => {
             let condition_type =
-                typecheck_dop_expression(condition, env, unifier, annotations, errors, *range);
-            if let Err(err) = unifier.constrain(&condition_type, &ConcreteDopType::Bool) {
-                errors.push(RangeError::unification_error(&err, *range));
+                typecheck_dop_expression(condition, env, annotations, errors, *range);
+            if !is_subtype(&condition_type, &ConcreteDopType::Bool) {
+                errors.push(RangeError::new(
+                    format!("Expected boolean condition, got {}", condition_type),
+                    *range,
+                ));
             }
 
             for child in children {
@@ -268,7 +261,6 @@ fn typecheck_node(
                     child,
                     component_info,
                     env,
-                    unifier,
                     annotations,
                     definition_links,
                     referenced_components,
@@ -298,17 +290,16 @@ fn typecheck_node(
                     let expr_type = typecheck_dop_expression(
                         expression,
                         env,
-                        unifier,
                         annotations,
                         errors,
                         *range,
                     );
 
-                    if let Err(_err) = unifier.constrain(&expr_type, &comp_info.parameter_type) {
+                    if !is_subtype(&expr_type, &comp_info.parameter_type) {
                         errors.push(RangeError::new(
                             format!(
                                 "Argument of type {} is incompatible with expected type {}",
-                                unifier.resolve(&expr_type),
+                                expr_type,
                                 comp_info.parameter_type,
                             ),
                             *range,
@@ -335,7 +326,6 @@ fn typecheck_node(
                     child,
                     component_info,
                     env,
-                    unifier,
                     annotations,
                     definition_links,
                     referenced_components,
@@ -352,18 +342,20 @@ fn typecheck_node(
                 let expr_type = typecheck_dop_expression(
                     &set_attr.expression,
                     env,
-                    unifier,
                     annotations,
                     errors,
                     set_attr.range,
                 );
 
-                if let Err(err) = unifier.constrain(&expr_type, &ConcreteDopType::String) {
-                    errors.push(RangeError::unification_error(&err, set_attr.range));
+                if !is_subtype(&expr_type, &ConcreteDopType::String) {
+                    errors.push(RangeError::new(
+                        format!("Expected string attribute, got {}", expr_type),
+                        set_attr.range,
+                    ));
                     continue;
                 }
 
-                annotations.push((set_attr.range, AbstractDopType::String));
+                annotations.push((set_attr.range, ConcreteDopType::String));
             }
 
             for child in children {
@@ -371,7 +363,6 @@ fn typecheck_node(
                     child,
                     component_info,
                     env,
-                    unifier,
                     annotations,
                     definition_links,
                     referenced_components,
@@ -389,7 +380,6 @@ fn typecheck_node(
                     child,
                     component_info,
                     env,
-                    unifier,
                     annotations,
                     definition_links,
                     referenced_components,
@@ -407,20 +397,21 @@ fn typecheck_node(
             let array_type = typecheck_dop_expression(
                 array_expr,
                 env,
-                unifier,
                 annotations,
                 errors,
                 *array_expr_range,
             );
-            let element_type = unifier.new_type_var();
-            let expected_array_type = AbstractDopType::Array(Box::new(element_type.clone()));
-
-            if let Err(_err) = unifier.unify(&array_type, &expected_array_type) {
-                errors.push(RangeError::new(
-                    format!("Can not iterate over {}", unifier.resolve(&array_type)),
-                    *array_expr_range,
-                ));
-            }
+            let element_type = match &array_type {
+                ConcreteDopType::Array(inner) => *inner.clone(),
+                ConcreteDopType::Any => ConcreteDopType::Any,
+                _ => {
+                    errors.push(RangeError::new(
+                        format!("Can not iterate over {}", array_type),
+                        *array_expr_range,
+                    ));
+                    ConcreteDopType::Any
+                }
+            };
 
             // Push the loop variable into scope for the children
             let mut pushed = false;
@@ -439,7 +430,6 @@ fn typecheck_node(
                     child,
                     component_info,
                     env,
-                    unifier,
                     annotations,
                     definition_links,
                     referenced_components,
@@ -463,18 +453,17 @@ fn typecheck_node(
             let expr_type = typecheck_dop_expression(
                 &text_expr_node.expression,
                 env,
-                unifier,
                 annotations,
                 errors,
                 text_expr_node.range,
             );
-            if let Err(err) = unifier.constrain(&expr_type, &ConcreteDopType::String) {
-                errors.push(RangeError::unification_error(
-                    &err,
+            if !is_subtype(&expr_type, &ConcreteDopType::String) {
+                errors.push(RangeError::new(
+                    format!("Expected string for text expression, got {}", expr_type),
                     text_expr_node.range,
                 ));
             }
-            annotations.push((text_expr_node.range, AbstractDopType::String));
+            annotations.push((text_expr_node.range, ConcreteDopType::String));
         }
     }
 }

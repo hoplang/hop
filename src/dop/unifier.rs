@@ -176,6 +176,32 @@ impl Unifier {
         Ok(())
     }
 
+    /// Check if `a` is a subtype of `b` without modifying the unifier.
+    pub fn check(&self, a: &ConcreteDopType, b: &ConcreteDopType) -> Result<(), String> {
+        match (a, b) {
+            (_, ConcreteDopType::Any) => Ok(()),
+            (ConcreteDopType::Bool, ConcreteDopType::Bool) => Ok(()),
+            (ConcreteDopType::String, ConcreteDopType::String) => Ok(()),
+            (ConcreteDopType::Number, ConcreteDopType::Number) => Ok(()),
+            (ConcreteDopType::Void, ConcreteDopType::Void) => Ok(()),
+            (ConcreteDopType::Array(type_a), ConcreteDopType::Array(type_b)) => {
+                self.check(type_a, type_b)
+            }
+            (ConcreteDopType::Object(props_a), ConcreteDopType::Object(props_b)) => {
+                // Check that all required properties in b exist in a and have compatible types
+                for (key, type_b) in props_b {
+                    if let Some(type_a) = props_a.get(key) {
+                        self.check(type_a, type_b)?;
+                    } else {
+                        return Err(format!("Required property {} is missing", key));
+                    }
+                }
+                Ok(())
+            }
+            _ => Err(format!("Type {} is not a subtype of {}", a, b)),
+        }
+    }
+
     /// Constrain `a` to be a subtype of `b`, where `b` must is concrete.
     pub fn constrain(&mut self, a: &AbstractDopType, b: &ConcreteDopType) -> Result<(), String> {
         match (a, b) {
