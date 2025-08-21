@@ -166,7 +166,7 @@ Parse error with unclosed parenthesis.
 -- in --
 (x == y
 -- out --
-Error: Expected closing parenthesis
+Error: Missing closing parenthesis
 ## END
 
 Parse error with unmatched closing parenthesis.
