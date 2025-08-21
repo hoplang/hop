@@ -25,7 +25,7 @@ impl ProjectRoot {
             }
             current_dir = current_dir
                 .parent()
-                .ok_or_else(|| anyhow::anyhow!("Can't get parent of {:?}", &current_dir))?
+                .ok_or_else(|| anyhow::anyhow!("Failed to locate build.hop file in {:?} or any parent directory", &start_path))?
         }
     }
     /// Construct the project root from a path. The path should be a directory and contain the
@@ -175,6 +175,25 @@ mod tests {
         // Test finding from nested directory
         let found = ProjectRoot::find_upwards(&nested_dir).unwrap();
         assert_eq!(found.0, temp_dir);
+
+        // Clean up
+        fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[test]
+    fn test_find_build_file_not_found() {
+        let temp_dir = create_test_dir().unwrap();
+
+        // Create nested directory structure without build.hop
+        let nested_dir = temp_dir.join("src").join("components");
+        fs::create_dir_all(&nested_dir).unwrap();
+
+        // Test that find_upwards fails when no build.hop exists
+        let result = ProjectRoot::find_upwards(&nested_dir);
+        assert!(result.is_err());
+        
+        let error_message = result.unwrap_err().to_string();
+        assert!(error_message.contains("Failed to locate build.hop"));
 
         // Clean up
         fs::remove_dir_all(&temp_dir).unwrap();
