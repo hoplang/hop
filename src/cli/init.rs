@@ -3,7 +3,15 @@ use std::fs;
 use std::path::Path;
 
 const BUILD_HOP_TEMPLATE: &str = r#"<render file="index.html">
-  hello world
+  <!DOCTYPE html>
+  <html>
+    <head>
+      <title>Hello World</title>
+    </head>
+    <body>
+      <h1>hello world</h1>
+    </body>
+  </html>
 </render>
 "#;
 
@@ -47,7 +55,12 @@ mod tests {
         // Check the content
         let content = fs::read_to_string(&build_file).unwrap();
         assert!(content.contains("<render file=\"index.html\">"));
-        assert!(content.contains("hello world"));
+        assert!(content.contains("<!DOCTYPE html>"));
+        assert!(content.contains("<html>"));
+        assert!(content.contains("<head>"));
+        assert!(content.contains("<title>Hello World</title>"));
+        assert!(content.contains("<body>"));
+        assert!(content.contains("<h1>hello world</h1>"));
         
         // Clean up
         fs::remove_dir_all(&temp_dir).unwrap();

@@ -111,6 +111,8 @@ async fn main() -> anyhow::Result<()> {
             println!();
             println!("  Created build.hop with a basic template");
             println!();
+            println!("  Run {} to start the development server", "hop dev".green());
+            println!();
         }
         Some(Commands::Build {
             projectdir,
