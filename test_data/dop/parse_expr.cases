@@ -157,7 +157,7 @@ Parse error when expression starts with an invalid token.
 -- in --
 == x
 -- out --
-Error: Expected identifier, string literal, number literal, or opening parenthesis
+Error: Expected identifier, string literal, number literal, array literal, or opening parenthesis
 ## END
 
 Parse error with unclosed parenthesis.
@@ -184,7 +184,7 @@ Parse error when parenthesis is empty.
 -- in --
 ()
 -- out --
-Error: Expected identifier, string literal, number literal, or opening parenthesis
+Error: Expected identifier, string literal, number literal, array literal, or opening parenthesis
 ## END
 
 Parse error with invalid character after equality operator.
@@ -193,7 +193,7 @@ Parse error with invalid character after equality operator.
 -- in --
 x == )
 -- out --
-Error: Expected identifier, string literal, number literal, or opening parenthesis
+Error: Expected identifier, string literal, number literal, array literal, or opening parenthesis
 ## END
 
 Parse error with dot at the start.
@@ -202,7 +202,7 @@ Parse error with dot at the start.
 -- in --
 .property
 -- out --
-Error: Expected identifier, string literal, number literal, or opening parenthesis
+Error: Expected identifier, string literal, number literal, array literal, or opening parenthesis
 ## END
 
 Parse error with multiple dots in sequence.
@@ -220,7 +220,7 @@ Parse error with operator at the end.
 -- in --
 x ==
 -- out --
-Error: Expected identifier, string literal, number literal, or opening parenthesis
+Error: Expected identifier, string literal, number literal, array literal, or opening parenthesis
 ## END
 
 Parse error with not operator without operand.
@@ -229,7 +229,7 @@ Parse error with not operator without operand.
 -- in --
 !
 -- out --
-Error: Expected identifier, string literal, number literal, or opening parenthesis
+Error: Expected identifier, string literal, number literal, array literal, or opening parenthesis
 ## END
 
 Parse error with trailing not operator.
@@ -239,4 +239,49 @@ Parse error with trailing not operator.
 x !
 -- out --
 Error: Unexpected token at end of expression
+## END
+
+Test empty array literal
+
+## BEGIN
+-- in --
+[]
+-- out --
+ArrayLiteral([])
+## END
+
+Test array literal with numbers
+
+## BEGIN
+-- in --
+[1, 2, 3]
+-- out --
+ArrayLiteral([NumberLiteral(Number(1)), NumberLiteral(Number(2)), NumberLiteral(Number(3))])
+## END
+
+Test array literal with mixed types
+
+## BEGIN
+-- in --
+[1, 'hello', true]
+-- out --
+ArrayLiteral([NumberLiteral(Number(1)), StringLiteral("hello"), BooleanLiteral(true)])
+## END
+
+Test nested array literals
+
+## BEGIN
+-- in --
+[[1, 2], [3, 4]]
+-- out --
+ArrayLiteral([ArrayLiteral([NumberLiteral(Number(1)), NumberLiteral(Number(2))]), ArrayLiteral([NumberLiteral(Number(3)), NumberLiteral(Number(4))])])
+## END
+
+Test array literal with variables
+
+## BEGIN
+-- in --
+[x, user.name]
+-- out --
+ArrayLiteral([Variable("x"), PropertyAccess(Variable("user"), "name")])
 ## END

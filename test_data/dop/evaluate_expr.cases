@@ -218,3 +218,69 @@ Negation of non-boolean should produce an error.
 -- error --
 Negation operator can only be applied to boolean values
 ## END
+
+Empty array literal should evaluate to empty array.
+
+## BEGIN
+-- env --
+{}
+-- expr --
+[]
+-- out --
+[]
+## END
+
+Array literal with numbers should evaluate to array.
+
+## BEGIN
+-- env --
+{}
+-- expr --
+[1, 2, 3]
+-- out --
+[1, 2, 3]
+## END
+
+Array literal with mixed types should work.
+
+## BEGIN
+-- env --
+{}
+-- expr --
+[42, 'hello', true]
+-- out --
+[42, "hello", true]
+## END
+
+Array literal with variables should evaluate variables.
+
+## BEGIN
+-- env --
+{"x": 10, "y": 20}
+-- expr --
+[x, y]
+-- out --
+[10, 20]
+## END
+
+Nested array literals should work.
+
+## BEGIN
+-- env --
+{}
+-- expr --
+[[1, 2], [3, 4]]
+-- out --
+[[1, 2], [3, 4]]
+## END
+
+Array with property access should work.
+
+## BEGIN
+-- env --
+{"user": {"name": "alice", "age": 30}}
+-- expr --
+[user.name, user.age]
+-- out --
+["alice", 30]
+## END

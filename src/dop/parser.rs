@@ -18,6 +18,7 @@ pub enum DopExpr {
     StringLiteral(String),
     BooleanLiteral(bool),
     NumberLiteral(serde_json::Number),
+    ArrayLiteral(Vec<DopExpr>),
     BinaryOp(Box<DopExpr>, BinaryOp, Box<DopExpr>),
     UnaryOp(UnaryOp, Box<DopExpr>),
 }
@@ -307,6 +308,7 @@ fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
 //         | StringLiteral
 //         | BooleanLiteral
 //         | NumberLiteral
+//         | "[" ( equality ("," equality)* )? "]"
 //         | "(" equality ")"
 fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
     match tokenizer.advance()? {
@@ -335,6 +337,39 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
         (DopToken::StringLiteral(value), _) => Ok(DopExpr::StringLiteral(value)),
         (DopToken::BooleanLiteral(value), _) => Ok(DopExpr::BooleanLiteral(value)),
         (DopToken::NumberLiteral(value), _) => Ok(DopExpr::NumberLiteral(value)),
+        (DopToken::LeftBracket, _) => {
+            let mut elements = Vec::new();
+
+            // Handle empty array
+            if let (DopToken::RightBracket, _) = tokenizer.peek() {
+                tokenizer.advance()?; // consume ]
+                return Ok(DopExpr::ArrayLiteral(elements));
+            }
+
+            // Parse array elements
+            loop {
+                elements.push(parse_equality(tokenizer)?);
+
+                match tokenizer.peek() {
+                    (DopToken::Comma, _) => {
+                        tokenizer.advance()?; // consume ,
+                        continue;
+                    }
+                    (DopToken::RightBracket, _) => {
+                        tokenizer.advance()?; // consume ]
+                        break;
+                    }
+                    (_, range) => {
+                        return Err(RangeError::new(
+                            "Expected ',' or ']' in array literal".to_string(),
+                            *range,
+                        ));
+                    }
+                }
+            }
+
+            Ok(DopExpr::ArrayLiteral(elements))
+        }
         (DopToken::LeftParen, _) => {
             let expr = parse_equality(tokenizer)?;
 
@@ -350,7 +385,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
             }
         }
         (_, range) => Err(RangeError::new(
-            "Expected identifier, string literal, number literal, or opening parenthesis"
+            "Expected identifier, string literal, number literal, array literal, or opening parenthesis"
                 .to_string(),
             range,
         )),
