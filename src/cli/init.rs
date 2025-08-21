@@ -2,14 +2,36 @@ use anyhow::Context;
 use std::fs;
 use std::path::Path;
 
-const BUILD_HOP_TEMPLATE: &str = r#"<render file="index.html">
+const BUILD_HOP_TEMPLATE: &str = r#"<welcome-message>
+  <div class="container mx-auto px-4 py-16 text-center">
+    <h1 class="text-5xl font-bold text-gray-800 mb-4">
+      Welcome to <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">Hop</span>
+    </h1>
+    <p class="text-xl text-gray-600 mb-8">
+      A modern HTML templating language
+    </p>
+    <div class="bg-white rounded-lg shadow-lg p-6 max-w-md mx-auto">
+      <p class="text-gray-600 mb-4">
+        Edit <code class="bg-gray-100 px-2 py-1 rounded">build.hop</code> to get started
+      </p>
+      <a href="" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium inline-block">
+        Learn More
+      </a>
+    </div>
+  </div>
+</welcome-message>
+
+<render file="index.html">
   <!DOCTYPE html>
-  <html>
+  <html lang="en">
     <head>
-      <title>Hello World</title>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Welcome to Hop</title>
+      <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     </head>
-    <body>
-      <h1>hello world</h1>
+    <body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+      <welcome-message />
     </body>
   </html>
 </render>
@@ -54,13 +76,16 @@ mod tests {
         
         // Check the content
         let content = fs::read_to_string(&build_file).unwrap();
+        assert!(content.contains("<welcome-message>"));
         assert!(content.contains("<render file=\"index.html\">"));
         assert!(content.contains("<!DOCTYPE html>"));
-        assert!(content.contains("<html>"));
+        assert!(content.contains("<html lang=\"en\">"));
         assert!(content.contains("<head>"));
-        assert!(content.contains("<title>Hello World</title>"));
-        assert!(content.contains("<body>"));
-        assert!(content.contains("<h1>hello world</h1>"));
+        assert!(content.contains("<title>Welcome to Hop</title>"));
+        assert!(content.contains("@tailwindcss/browser"));
+        assert!(content.contains("<welcome-message />"));
+        assert!(content.contains("Welcome to"));
+        assert!(content.contains("Learn More"));
         
         // Clean up
         fs::remove_dir_all(&temp_dir).unwrap();
