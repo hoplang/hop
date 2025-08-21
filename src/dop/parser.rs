@@ -177,18 +177,10 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::DopType, Range
     use std::collections::BTreeMap;
 
     match tokenizer.advance()? {
-        (DopToken::TypeString, _) => {
-            Ok(DopType::String)
-        }
-        (DopToken::TypeNumber, _) => {
-            Ok(DopType::Number)
-        }
-        (DopToken::TypeBoolean, _) => {
-            Ok(DopType::Bool)
-        }
-        (DopToken::TypeVoid, _) => {
-            Ok(DopType::Void)
-        }
+        (DopToken::TypeString, _) => Ok(DopType::String),
+        (DopToken::TypeNumber, _) => Ok(DopType::Number),
+        (DopToken::TypeBoolean, _) => Ok(DopType::Bool),
+        (DopToken::TypeVoid, _) => Ok(DopType::Void),
         (DopToken::TypeArray, _) => {
             // Expect [inner_type]
             match tokenizer.peek() {
@@ -229,9 +221,7 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::DopType, Range
                     loop {
                         // Parse property name
                         let prop_name = match tokenizer.advance()? {
-                            (DopToken::Identifier(name), _) => {
-                                name
-                            }
+                            (DopToken::Identifier(name), _) => name,
                             (_, range) => {
                                 return Err(RangeError::new(
                                     "Expected property name".to_string(),
@@ -408,7 +398,7 @@ mod tests {
                         e
                     );
                 });
-            
+
             let actual = match parse_expr(&mut tokenizer) {
                 Ok(result) => format!("{:?}", result),
                 Err(e) => format!("Error: {}", e.message),
