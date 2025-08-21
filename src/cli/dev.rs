@@ -41,7 +41,22 @@ eventSource.onmessage = function(event) {
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
                 // Morph the entire document to enable head merging
-                Idiomorph.morph(document.documentElement, doc.documentElement);
+                Idiomorph.morph(document.documentElement, doc.documentElement, {
+                    head: {
+                        shouldPreserve: function(elt) {
+                            // Preserve elements with im-preserve attribute (default behavior)
+                            if (elt.getAttribute('im-preserve') === 'true') {
+                                return true;
+                            }
+                            // Preserve Tailwind CSS style tags
+                            if (elt.tagName === 'STYLE' && elt.textContent && 
+                                elt.textContent.includes('/*! tailwindcss')) {
+                                return true;
+                            }
+                            return false;
+                        }
+                    }
+                });
             })
             .catch(error => {
                 console.error('Hot reload fetch error:', error);
@@ -195,7 +210,22 @@ eventSource.onmessage = async function(event) {
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(html, 'text/html');
                     if (iframe.contentDocument && iframe.contentDocument.documentElement) {
-                        Idiomorph.morph(iframe.contentDocument.documentElement, doc.documentElement);
+                        Idiomorph.morph(iframe.contentDocument.documentElement, doc.documentElement, {
+                            head: {
+                                shouldPreserve: function(elt) {
+                                    // Preserve elements with im-preserve attribute (default behavior)
+                                    if (elt.getAttribute('im-preserve') === 'true') {
+                                        return true;
+                                    }
+                                    // Preserve Tailwind CSS style tags
+                                    if (elt.tagName === 'STYLE' && elt.textContent && 
+                                        elt.textContent.includes('/*! tailwindcss')) {
+                                        return true;
+                                    }
+                                    return false;
+                                }
+                            }
+                        });
                     }
                 }
             } catch (error) {
