@@ -41,6 +41,7 @@ impl DopVarName {
     }
 }
 
+// expr = equality Eof
 pub fn parse_expr(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
     let result = parse_equality(tokenizer)?;
 
@@ -58,6 +59,7 @@ pub fn parse_expr(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
     Ok(result)
 }
 
+// loop_header = Identifier "in" equality Eof
 pub fn parse_loop_header(
     tokenizer: &mut DopTokenizer,
 ) -> Result<((DopVarName, Range), (DopExpr, Range)), RangeError> {
@@ -106,6 +108,7 @@ pub fn parse_loop_header(
     Ok((var_name, (array_expr, array_expr_range)))
 }
 
+// variable_with_type = Identifier ":" type Eof
 pub fn parse_variable_with_type(
     tokenizer: &mut DopTokenizer,
 ) -> Result<(DopVarName, crate::dop::DopType), RangeError> {
@@ -163,6 +166,13 @@ pub fn parse_variable_with_type(
     Ok((var_name, type_annotation))
 }
 
+// type = TypeString
+//      | TypeNumber
+//      | TypeBoolean
+//      | TypeVoid
+//      | TypeArray "[" type "]"
+//      | TypeObject "[" (property ("," property)*)? "]"
+// property = Identifier ":" type
 fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::DopType, RangeError> {
     use crate::dop::DopType;
     use std::collections::BTreeMap;
@@ -287,7 +297,7 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::DopType, Range
     }
 }
 
-// equality -> unary ( "==" unary )*
+// equality = unary ( "==" unary )*
 fn parse_equality(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
     let mut expr = parse_unary(tokenizer)?;
 
@@ -300,7 +310,7 @@ fn parse_equality(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
     Ok(expr)
 }
 
-// unary -> ( "!" )* primary
+// unary = ( "!" )* primary
 fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
     match tokenizer.peek() {
         (DopToken::Not, _) => {
@@ -312,12 +322,15 @@ fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
     }
 }
 
-// primary -> IDENTIFIER ( "." IDENTIFIER )* | STRING_LITERAL | "(" equality ")"
+// primary = Identifier ( "." Identifier )*
+//         | StringLiteral
+//         | BooleanLiteral
+//         | NumberLiteral
+//         | "(" equality ")"
 fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
-    match tokenizer.peek() {
+    match tokenizer.advance()? {
         (DopToken::Identifier(name), _) => {
             let mut expr = DopExpr::Variable(name.clone());
-            tokenizer.advance()?; // consume identifier
 
             // Handle property access
             while let (DopToken::Dot, _) = tokenizer.peek() {
@@ -339,23 +352,10 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
 
             Ok(expr)
         }
-        (DopToken::BooleanLiteral(value), _) => {
-            let expr = DopExpr::BooleanLiteral(*value);
-            tokenizer.advance()?;
-            Ok(expr)
-        }
-        (DopToken::StringLiteral(value), _) => {
-            let expr = DopExpr::StringLiteral(value.clone());
-            tokenizer.advance()?;
-            Ok(expr)
-        }
-        (DopToken::NumberLiteral(value), _) => {
-            let expr = DopExpr::NumberLiteral(value.clone());
-            tokenizer.advance()?;
-            Ok(expr)
-        }
+        (DopToken::StringLiteral(value), _) => Ok(DopExpr::StringLiteral(value)),
+        (DopToken::BooleanLiteral(value), _) => Ok(DopExpr::BooleanLiteral(value)),
+        (DopToken::NumberLiteral(value), _) => Ok(DopExpr::NumberLiteral(value)),
         (DopToken::LeftParen, _) => {
-            tokenizer.advance()?; // consume (
             let expr = parse_equality(tokenizer)?;
 
             match tokenizer.peek() {
@@ -372,7 +372,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
         (_, range) => Err(RangeError::new(
             "Expected identifier, string literal, number literal, or opening parenthesis"
                 .to_string(),
-            *range,
+            range,
         )),
     }
 }
