@@ -418,17 +418,11 @@ mod tests {
                         e
                     );
                 });
-            let result = parse_expr(&mut tokenizer).unwrap_or_else(|e| {
-                panic!(
-                    "Failed to parse expression '{}' in test case {} (line {}): {:?}",
-                    input,
-                    case_num + 1,
-                    line_number,
-                    e
-                );
-            });
-
-            let actual = format!("{:?}", result);
+            
+            let actual = match parse_expr(&mut tokenizer) {
+                Ok(result) => format!("{:?}", result),
+                Err(e) => format!("Error: {}", e.message),
+            };
 
             assert_eq!(
                 actual,
