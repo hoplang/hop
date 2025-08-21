@@ -30,7 +30,7 @@ fn get_ui_program() -> &'static runtime::Program {
 fn inject_hot_reload_script(html: &str) -> String {
     const HOT_RELOAD_SCRIPT: &str = r#"
 <script type="module">
-import morphdom from 'https://unpkg.com/morphdom@2.7.0/dist/morphdom-esm.js';
+import Idiomorph from './idiomorph.js';
 
 const eventSource = new EventSource('/__hop_hot_reload');
 eventSource.onmessage = function(event) {
@@ -40,10 +40,8 @@ eventSource.onmessage = function(event) {
             .then(html => {
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
-                const newContent = doc.body;
-                if (newContent) {
-                    morphdom(document.body, newContent);
-                }
+                // Morph the entire document to enable head merging
+                Idiomorph.morph(document.documentElement, doc.documentElement);
             })
             .catch(error => {
                 console.error('Hot reload fetch error:', error);
@@ -180,7 +178,7 @@ fn create_inspect_page(program: &runtime::Program) -> String {
         Ok(html) => {
             let hot_reload_script = r#"
 <script type="module">
-import morphdom from 'https://unpkg.com/morphdom@2.7.0/dist/morphdom-esm.js';
+import Idiomorph from './idiomorph.js';
 
 const eventSource = new EventSource('/__hop_hot_reload');
 eventSource.onmessage = async function(event) {
@@ -193,12 +191,11 @@ eventSource.onmessage = async function(event) {
                 const response = await fetch(previewUrl);
                 const html = await response.text();
                 if (iframe.contentDocument) {
-                    // Parse the HTML to extract just the body content
+                    // Parse the HTML and morph the entire iframe document
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(html, 'text/html');
-                    const newBody = doc.body;
-                    if (newBody && iframe.contentDocument.body) {
-                        morphdom(iframe.contentDocument.body, newBody);
+                    if (iframe.contentDocument && iframe.contentDocument.documentElement) {
+                        Idiomorph.morph(iframe.contentDocument.documentElement, doc.documentElement);
                     }
                 }
             } catch (error) {
@@ -414,6 +411,17 @@ pub async fn execute(
                 }
             },
         ),
+    );
+
+    // Add idiomorph.js serving endpoint
+    router = router.route(
+        "/idiomorph.js",
+        get(async move || {
+            axum::response::Response::builder()
+                .header("Content-Type", "application/javascript")
+                .body(Body::from(include_str!("../../idiomorph.js")))
+                .unwrap()
+        }),
     );
 
     // Add script serving endpoint if script_file is specified
