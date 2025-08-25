@@ -3,20 +3,12 @@ use std::fs;
 use std::path::Path;
 
 const BUILD_HOP_TEMPLATE: &str = r#"<welcome-message>
-  <div class="container mx-auto px-4 py-16 text-center">
-    <h1 class="text-5xl font-bold text-gray-800 mb-4">
-      Welcome to <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600">Hop</span>
+  <div class="container mx-auto px-4 py-16">
+    <h1 class="text-2xl text-gray-800 mb-8 text-center">
+      hop
     </h1>
-    <p class="text-xl text-gray-600 mb-8">
-      A modern HTML templating language
-    </p>
-    <div class="bg-white rounded-lg shadow-lg p-6 max-w-md mx-auto">
-      <p class="text-gray-600 mb-4">
-        Edit <code class="bg-gray-100 px-2 py-1 rounded">build.hop</code> to get started
-      </p>
-      <a href="" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium inline-block">
-        Learn More
-      </a>
+    <div class="bg-white rounded shadow p-6 max-w-sm mx-auto">
+	  Edit build.hop to see your changes reflected here
     </div>
   </div>
 </welcome-message>
@@ -84,8 +76,6 @@ mod tests {
         assert!(content.contains("<title>Welcome to Hop</title>"));
         assert!(content.contains("@tailwindcss/browser"));
         assert!(content.contains("<welcome-message />"));
-        assert!(content.contains("Welcome to"));
-        assert!(content.contains("Learn More"));
         
         // Clean up
         fs::remove_dir_all(&temp_dir).unwrap();
