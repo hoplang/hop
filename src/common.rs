@@ -314,6 +314,14 @@ pub struct ForNode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct XLoadJsonNode {
+    pub file_attr: Attribute,
+    pub as_attr: Attribute,
+    pub range: Range,
+    pub children: Vec<Node>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct TextExpressionNode {
     pub expression: DopExpr,
     pub range: Range,
@@ -333,6 +341,7 @@ pub enum Node {
     Error(ErrorNode),
     XExec(XExecNode),
     XRaw(XRawNode),
+    XLoadJson(XLoadJsonNode),
 }
 
 // Environment entry that holds both value and access status

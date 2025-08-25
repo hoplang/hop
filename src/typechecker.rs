@@ -1,9 +1,9 @@
 use crate::common::{
     ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode, ForNode, IfNode,
     ImportNode, NativeHTMLNode, Node, Range, RangeError, RenderNode, SlotDefinitionNode,
-    SlotReferenceNode, XExecNode, XRawNode,
+    SlotReferenceNode, XExecNode, XLoadJsonNode, XRawNode,
 };
-use crate::dop::{DopType, is_subtype, typecheck_expr};
+use crate::dop::{DopType, infer_type_from_json_file, is_subtype, typecheck_expr};
 use crate::parser::Module;
 use std::collections::{HashMap, HashSet};
 
@@ -408,6 +408,63 @@ fn typecheck_node(
                     referenced_components,
                     errors,
                 );
+            }
+        }
+        Node::XLoadJson(XLoadJsonNode {
+            file_attr,
+            as_attr,
+            children,
+            range,
+            ..
+        }) => {
+            // Infer the type from the JSON file
+            let var_name = &as_attr.value;
+            let file_path = &file_attr.value;
+            
+            let json_type = match infer_type_from_json_file(file_path) {
+                Ok(typ) => typ,
+                Err(err) => {
+                    errors.push(RangeError::new(err, file_attr.range));
+                    return; // Skip further processing
+                }
+            };
+
+            // Push the JSON data variable into scope
+            let mut pushed = false;
+            if env.push(var_name.clone(), json_type.clone()) {
+                pushed = true;
+                // Add type annotation for the JSON variable
+                annotations.push(TypeAnnotation {
+                    range: as_attr.range,
+                    typ: json_type,
+                    name: var_name.clone(),
+                });
+            } else {
+                errors.push(RangeError::variable_is_already_defined(
+                    var_name,
+                    as_attr.range,
+                ));
+            }
+
+            // Typecheck children
+            for child in children {
+                typecheck_node(
+                    child,
+                    component_info,
+                    env,
+                    annotations,
+                    definition_links,
+                    referenced_components,
+                    errors,
+                );
+            }
+
+            // Pop the JSON variable from scope
+            if pushed && !env.pop() {
+                errors.push(RangeError::unused_variable(
+                    var_name,
+                    *range,
+                ));
             }
         }
         Node::For(ForNode {

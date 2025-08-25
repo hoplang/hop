@@ -1,10 +1,10 @@
 use crate::common::{
     ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode, ForNode, HopMode,
     IfNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode, SlotReferenceNode, XExecNode,
-    XRawNode, escape_html, is_void_element,
+    XLoadJsonNode, XRawNode, escape_html, is_void_element,
 };
 use crate::dop;
-use crate::dop::{DopType, evaluate_expr};
+use crate::dop::{DopType, evaluate_expr, load_json_file};
 use crate::parser::Module;
 use crate::typechecker::TypeResult;
 use anyhow::Result;
@@ -489,6 +489,40 @@ impl Program {
                 } else {
                     Ok(result)
                 }
+            }
+            Node::XLoadJson(XLoadJsonNode {
+                file_attr,
+                as_attr,
+                children,
+                ..
+            }) => {
+                // Load JSON data from file
+                let file_path = &file_attr.value;
+                let var_name = &as_attr.value;
+                
+                let json_value = match load_json_file(file_path) {
+                    Ok(value) => value,
+                    Err(err) => return Err(anyhow::anyhow!("Failed to load JSON file '{}': {}", file_path, err)),
+                };
+
+                // Push the JSON data variable into scope
+                env.push(var_name.clone(), json_value);
+
+                // Evaluate children with the JSON data in scope
+                let mut result = String::new();
+                for child in children {
+                    result.push_str(&self.evaluate_node(
+                        child,
+                        slot_content,
+                        env,
+                        current_module,
+                    )?);
+                }
+
+                // Pop the JSON variable from scope
+                env.pop();
+
+                Ok(result)
             }
             Node::For(ForNode {
                 var_name: (var_name, _),

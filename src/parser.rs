@@ -2,7 +2,7 @@ use crate::common::{
     Attribute, ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, DopExprAttribute,
     DopVarNameAttribute, ErrorNode, ForNode, IfNode, ImportNode, NativeHTMLNode, Node, Range,
     RangeError, RenderNode, SlotDefinitionNode, SlotReferenceNode, TextExpressionNode, TextNode,
-    XExecNode, XRawNode, is_void_element,
+    XExecNode, XLoadJsonNode, XRawNode, is_void_element,
 };
 use crate::dop::{self, DopTokenizer};
 use crate::tokenizer::Token;
@@ -205,6 +205,9 @@ fn collect_slots_from_children(
                 collect_slots_from_children(children, slots, errors);
             }
             Node::XRaw(XRawNode { children, .. }) => {
+                collect_slots_from_children(children, slots, errors);
+            }
+            Node::XLoadJson(XLoadJsonNode { children, .. }) => {
                 collect_slots_from_children(children, slots, errors);
             }
         }
@@ -502,6 +505,38 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                         range: *token_range,
                         children,
                     })
+                }
+                "hop-x-load-json" => {
+                    let file_attr = find_attribute(attributes, "file").or_else(|| {
+                        errors.push(RangeError::missing_required_attribute(
+                            value,
+                            "file",
+                            *token_range,
+                        ));
+                        None
+                    });
+
+                    let as_attr = find_attribute(attributes, "as").or_else(|| {
+                        errors.push(RangeError::missing_required_attribute(
+                            value,
+                            "as",
+                            *token_range,
+                        ));
+                        None
+                    });
+
+                    match (file_attr, as_attr) {
+                        (Some(file_attr), Some(as_attr)) => Node::XLoadJson(XLoadJsonNode {
+                            file_attr,
+                            as_attr,
+                            range: *token_range,
+                            children,
+                        }),
+                        _ => Node::Error(ErrorNode {
+                            range: *token_range,
+                            children,
+                        }),
+                    }
                 }
                 tag_name if tag_name.starts_with("slot-") => {
                     let slot_name = &tag_name[5..]; // Remove "slot-" prefix

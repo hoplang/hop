@@ -36,6 +36,9 @@ impl ScriptCollector {
                 Node::XRaw(xraw_node) => {
                     result.extend(self.get_all_descendants(&xraw_node.children));
                 }
+                Node::XLoadJson(xloadjson_node) => {
+                    result.extend(self.get_all_descendants(&xloadjson_node.children));
+                }
                 _ => {
                     // leaf nodes
                 }
