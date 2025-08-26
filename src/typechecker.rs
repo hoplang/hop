@@ -5,7 +5,7 @@ use crate::common::{
 };
 use crate::dop::{DopType, infer_type_from_json_file, is_subtype, typecheck_expr};
 use crate::parser::Module;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeAnnotation {
@@ -36,7 +36,7 @@ impl ComponentDefinitionLink {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentInfo {
-    pub parameter_types: Vec<DopType>,
+    pub parameter_types: BTreeMap<String, DopType>,
     pub slots: Vec<String>,
     pub definition_module: String,
     pub definition_opening_name_range: Range,
@@ -128,9 +128,9 @@ pub fn typecheck(
             continue;
         }
 
-        let mut parameter_types = Vec::new();
+        let mut parameter_types = BTreeMap::new();
 
-        for param in params {
+        for (param_name, param) in params {
             let param_type = param.type_annotation.clone();
 
             annotations.push(TypeAnnotation {
@@ -139,7 +139,7 @@ pub fn typecheck(
                 name: param.var_name.value.clone(),
             });
             env.push(param.var_name.value.clone(), param_type.clone());
-            parameter_types.push(param_type);
+            parameter_types.insert(param_name.clone(), param_type);
         }
 
         for child in children {
@@ -154,8 +154,8 @@ pub fn typecheck(
             );
         }
 
-        // Check for unused variables in reverse order (to match push order)
-        for param in params.iter().rev() {
+        // Check for unused variables 
+        for (_, param) in params.iter() {
             if !env.pop() {
                 errors.push(RangeError::unused_variable(
                     &param.var_name.value,
@@ -176,7 +176,7 @@ pub fn typecheck(
         );
 
         if let Some(preview_nodes) = preview {
-            for param in params {
+            for (_, param) in params {
                 env.push(param.var_name.value.clone(), param.type_annotation.clone());
             }
             for child in preview_nodes {
@@ -190,7 +190,7 @@ pub fn typecheck(
                     errors,
                 );
             }
-            // Pop parameters in reverse order
+            // Pop parameters
             for _ in params {
                 env.pop();
             }
@@ -287,20 +287,29 @@ fn typecheck_node(
                     definition_closing_name_range: comp_info.definition_closing_name_range,
                 });
 
-                // Validate arguments against parameter types
-                if params.len() != comp_info.parameter_types.len() {
+                // Validate named arguments against parameter types
+                let provided_args: std::collections::HashSet<_> = params.keys().collect();
+                let expected_params: std::collections::HashSet<_> = comp_info.parameter_types.keys().collect();
+
+                // Check for missing required parameters
+                for param_name in expected_params.difference(&provided_args) {
                     errors.push(RangeError::new(
-                        format!(
-                            "Component {} expects {} parameters but {} arguments were provided",
-                            component,
-                            comp_info.parameter_types.len(),
-                            params.len()
-                        ),
+                        format!("Missing required parameter '{}'", param_name),
                         *range,
                     ));
-                } else {
-                    // Check each argument against its corresponding parameter type
-                    for (i, (expression, expr_range)) in params.iter().enumerate() {
+                }
+
+                // Check for unexpected arguments
+                for arg_name in provided_args.difference(&expected_params) {
+                    errors.push(RangeError::new(
+                        format!("Unexpected argument '{}'", arg_name),
+                        *range,
+                    ));
+                }
+
+                // Check each provided argument against its corresponding parameter type
+                for (arg_name, (expression, expr_range)) in params {
+                    if let Some(expected_type) = comp_info.parameter_types.get(arg_name) {
                         let expr_type =
                             match typecheck_expr(expression, env, annotations, errors, *expr_range) {
                                 Ok(t) => t,
@@ -310,12 +319,11 @@ fn typecheck_node(
                                 }
                             };
 
-                        let expected_type = &comp_info.parameter_types[i];
                         if !is_subtype(&expr_type, expected_type) {
                             errors.push(RangeError::new(
                                 format!(
-                                    "Argument {} of type {} is incompatible with expected type {}",
-                                    i + 1, expr_type, expected_type,
+                                    "Argument '{}' of type {} is incompatible with expected type {}",
+                                    arg_name, expr_type, expected_type,
                                 ),
                                 *expr_range,
                             ));
@@ -323,7 +331,7 @@ fn typecheck_node(
                             annotations.push(TypeAnnotation {
                                 range: *expr_range,
                                 typ: expr_type,
-                                name: format!("component parameter {}", i + 1),
+                                name: format!("component parameter '{}'", arg_name),
                             });
                         }
                     }
@@ -640,7 +648,7 @@ mod tests {
                                 component_info
                                     .parameter_types
                                     .iter()
-                                    .map(|t| t.to_string())
+                                    .map(|(name, typ)| format!("{}: {}", name, typ))
                                     .collect::<Vec<_>>()
                                     .join(", ")
                             };

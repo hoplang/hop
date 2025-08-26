@@ -74,23 +74,9 @@ error: Invalid component name 'div'. Component names must contain a dash and not
 	<div></div>
 </main-comp>
 -- out --
-error: Invalid variable name 'Data123'. Variable names must match [a-z][a-z0-9]*
+error: Invalid variable name 'Data123'. Variable names must match [a-z][a-z0-9_]*
 1 | <main-comp {Data123: string}>
   |             ^^^^^^^
-## END
-
-## BEGIN
--- main.hop --
-<main-comp {data: array[string]}>
-	<for {item_name in data}>
-		<div></div>
-	</for>
-</main-comp>
--- out --
-error: Invalid variable name 'item_name'. Variable names must match [a-z][a-z0-9]*
-1 | <main-comp {data: array[string]}>
-2 |     <for {item_name in data}>
-  |           ^^^^^^^^^
 ## END
 
 ## BEGIN
@@ -257,8 +243,8 @@ render
 ## BEGIN
 -- main.hop --
 <main-comp {data: object[user: string]}>
-	<foo-comp {data}></foo-comp>
-	<bar-comp {data.user}></bar-comp>
+	<foo-comp {a: data} />
+	<bar-comp {b: data.user} />
 </main-comp>
 -- out --
 render

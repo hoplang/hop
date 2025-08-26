@@ -1,5 +1,5 @@
 use crate::dop::{DopExpr, parser::DopVarName};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 
 /// Represents a position in source code
@@ -92,7 +92,7 @@ impl RangeError {
 
     pub fn invalid_variable_name(name: &str, range: Range) -> Self {
         Self::new(
-            format!("Invalid variable name '{name}'. Variable names must match [a-z][a-z0-9]*"),
+            format!("Invalid variable name '{name}'. Variable names must match [a-z][a-z0-9_]*"),
             range,
         )
     }
@@ -213,7 +213,7 @@ pub struct ComponentReferenceNode {
     pub component: String,
     pub opening_name_range: Range,
     pub closing_name_range: Option<Range>,
-    pub params: Vec<(DopExpr, Range)>,
+    pub params: BTreeMap<String, (DopExpr, Range)>,
     pub attributes: Vec<Attribute>,
     pub range: Range,
     pub children: Vec<Node>,
@@ -238,7 +238,7 @@ pub struct ComponentDefinitionNode {
     pub name: String,
     pub opening_name_range: Range,
     pub closing_name_range: Option<Range>,
-    pub params: Vec<DopVarNameAttribute>,
+    pub params: BTreeMap<String, DopVarNameAttribute>,
     pub as_attr: Option<Attribute>,
     pub attributes: Vec<Attribute>,
     pub range: Range,

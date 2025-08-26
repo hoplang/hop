@@ -35,7 +35,7 @@ impl DopVarName {
         if !chars.next()?.is_ascii_lowercase() {
             return None;
         }
-        if !chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) {
+        if !chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
             return None;
         }
         Some(DopVarName { value })
@@ -167,6 +167,71 @@ pub fn parse_parameters_with_types(
     }
 
     Ok(params)
+}
+
+// named_arguments = named_argument ("," named_argument)* Eof
+// named_argument = Identifier ":" expr
+pub fn parse_named_arguments(
+    tokenizer: &mut DopTokenizer,
+) -> Result<std::collections::BTreeMap<String, DopExpr>, RangeError> {
+    let mut args = std::collections::BTreeMap::new();
+
+    // Parse first argument
+    let (name, expr) = parse_named_argument(tokenizer)?;
+    args.insert(name, expr);
+
+    // Parse additional arguments if any (comma-separated)
+    loop {
+        match tokenizer.peek() {
+            (DopToken::Comma, _) => {
+                tokenizer.advance()?; // consume comma
+                let (name, expr) = parse_named_argument(tokenizer)?;
+                if args.contains_key(&name) {
+                    return Err(RangeError::new(
+                        format!("Duplicate argument name '{}'", name),
+                        tokenizer.peek().1,
+                    ));
+                }
+                args.insert(name, expr);
+            }
+            (DopToken::Eof, _) => break,
+            (_, range) => {
+                return Err(RangeError::new(
+                    "Unexpected token after argument".to_string(),
+                    *range,
+                ));
+            }
+        }
+    }
+
+    Ok(args)
+}
+
+// named_argument = Identifier ":" expr
+fn parse_named_argument(tokenizer: &mut DopTokenizer) -> Result<(String, DopExpr), RangeError> {
+    // Parse argument name
+    let arg_name = match tokenizer.advance()? {
+        (DopToken::Identifier(name), _) => name,
+        (_, range) => {
+            return Err(RangeError::new("Expected argument name".to_string(), range));
+        }
+    };
+
+    // Expect colon
+    match tokenizer.advance()? {
+        (DopToken::Colon, _) => {}
+        (_, range) => {
+            return Err(RangeError::new(
+                "Expected ':' after argument name".to_string(),
+                range,
+            ));
+        }
+    }
+
+    // Parse expression
+    let expr = parse_equality(tokenizer)?;
+
+    Ok((arg_name, expr))
 }
 
 // arguments = expr ("," expr)* Eof

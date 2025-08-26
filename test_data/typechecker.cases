@@ -491,7 +491,7 @@ as well as the defined slots.
 </main-comp>
 -- out --
 main::main-comp
-	object[items: array[object[active: boolean, name: boolean]]]
+	params: object[items: array[object[active: boolean, name: boolean]]]
 	[]
 ## END
 
@@ -520,7 +520,7 @@ main::custom-head
 </main-comp>
 -- out --
 main::main-comp
-	object[a: string, b: boolean]
+	params: object[a: string, b: boolean]
 	[]
 ## END
 
@@ -541,7 +541,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	object[enabled: boolean, users: array[object[posts: array[object[published: boolean]], profile: object[verified: boolean]]]]
+	params: object[enabled: boolean, users: array[object[posts: array[object[published: boolean]], profile: object[verified: boolean]]]]
 	[]
 ## END
 
@@ -559,7 +559,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	object[sections: array[object[header: object[visible: boolean], items: array[object[data: object[valid: boolean]]]]]]
+	params: object[sections: array[object[header: object[visible: boolean], items: array[object[data: object[valid: boolean]]]]]]
 	[]
 ## END
 
@@ -571,7 +571,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	object[i: object[j: object[k: object[l: boolean]]]]
+	params: object[i: object[j: object[k: object[l: boolean]]]]
 	[]
 ## END
 
@@ -587,7 +587,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	object[app: object[api: object[endpoints: object[users: object[enabled: boolean]]], database: object[connection: object[ssl: boolean]], ui: object[theme: object[dark: boolean]]]]
+	params: object[app: object[api: object[endpoints: object[users: object[enabled: boolean]]], database: object[connection: object[ssl: boolean]], ui: object[theme: object[dark: boolean]]]]
 	[]
 ## END
 
@@ -615,7 +615,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	object[message: string]
+	data: object[message: string]
 	[]
 ## END
 
@@ -631,7 +631,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	object[data: object[x: string, y: string], other_user: object[name: string], user: object[name: string]]
+	params: object[data: object[x: string, y: string], other_user: object[name: string], user: object[name: string]]
 	[]
 ## END
 
@@ -644,7 +644,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	object[x: string, y: string]
+	params: object[x: string, y: string]
 	[]
 ## END
 
@@ -658,7 +658,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	object[foo: object[bar: array[boolean]]]
+	params: object[foo: object[bar: array[boolean]]]
 	[]
 ## END
 
@@ -676,7 +676,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	array[object[a: boolean, b: boolean]]
+	params: array[object[a: boolean, b: boolean]]
 	[]
 ## END
 
@@ -692,7 +692,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	array[array[boolean]]
+	i: array[array[boolean]]
 	[]
 ## END
 
@@ -706,7 +706,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	array[boolean]
+	i: array[boolean]
 	[]
 ## END
 
@@ -720,15 +720,15 @@ main::main-comp
 <import component="button-comp" from="utils">
 
 <main-comp {label: string}>
-  <button-comp {label}/>
+  <button-comp {text: label}/>
 </main-comp>
 
 -- out --
 utils::button-comp
-	string
+	text: string
 	[]
 main::main-comp
-	string
+	label: string
 	[]
 ## END
 
@@ -745,7 +745,7 @@ main::main-comp
 
 <panel-comp {data: object[items: array[object[enabled: boolean, title: string]]]}>
   <for {item in data.items}>
-    <widget-comp {item}/>
+    <widget-comp {config: item}/>
   </for>
 </panel-comp>
 
@@ -753,18 +753,18 @@ main::main-comp
 <import component="panel-comp" from="foo">
 
 <main-comp {settings: object[dashboard: object[items: array[object[enabled: boolean, title: string]]]]}>
-  <panel-comp {settings.dashboard}/>
+  <panel-comp {data: settings.dashboard}/>
 </main-comp>
 
 -- out --
 bar::widget-comp
-	object[enabled: boolean, title: string]
+	config: object[enabled: boolean, title: string]
 	[]
 foo::panel-comp
-	object[items: array[object[enabled: boolean, title: string]]]
+	data: object[items: array[object[enabled: boolean, title: string]]]
 	[]
 main::main-comp
-	object[dashboard: object[items: array[object[enabled: boolean, title: string]]]]
+	settings: object[dashboard: object[items: array[object[enabled: boolean, title: string]]]]
 	[]
 ## END
 
@@ -775,7 +775,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	string
+	params: string
 	[]
 ## END
 
@@ -795,7 +795,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	object[config: object[debug: boolean], data: array[object[attributes: array[boolean], id: boolean]]]
+	params: object[config: object[debug: boolean], data: array[object[attributes: array[boolean], id: boolean]]]
 	[]
 ## END
 
@@ -807,28 +807,28 @@ main::main-comp
 </step3-comp>
 
 <step2-comp {config: object[settings: object[enabled: boolean]]}>
-	<step3-comp {config.settings}/>
+	<step3-comp {settings: config.settings}/>
 </step2-comp>
 
 <step1-comp {data: object[config: object[settings: object[enabled: boolean]]]}>
-	<step2-comp {data.config}/>
+	<step2-comp {config: data.config}/>
 </step1-comp>
 
 <main-comp {params: object[config: object[settings: object[enabled: boolean]]]}>
-	<step1-comp {params}/>
+	<step1-comp {data: params}/>
 </main-comp>
 -- out --
 main::step3-comp
-	object[enabled: boolean]
+	settings: object[enabled: boolean]
 	[]
 main::step2-comp
-	object[settings: object[enabled: boolean]]
+	config: object[settings: object[enabled: boolean]]
 	[]
 main::step1-comp
-	object[config: object[settings: object[enabled: boolean]]]
+	data: object[config: object[settings: object[enabled: boolean]]]
 	[]
 main::main-comp
-	object[config: object[settings: object[enabled: boolean]]]
+	params: object[config: object[settings: object[enabled: boolean]]]
 	[]
 ## END
 
@@ -845,22 +845,22 @@ main::main-comp
 
 <main-list {items: array[object[title: string, active: boolean, status: string]]}>
   <for {item in items}>
-    <main-card {item}/>
+    <main-card {item: item}/>
   </for>
 </main-list>
 
 <main-comp {data: object[items: array[object[title: string, active: boolean, status: string]]]}>
-  <main-list {data.items}/>
+  <main-list {items: data.items}/>
 </main-comp>
 -- out --
 main::main-card
-	object[active: boolean, status: string, title: string]
+	item: object[active: boolean, status: string, title: string]
 	[]
 main::main-list
-	array[object[active: boolean, status: string, title: string]]
+	items: array[object[active: boolean, status: string, title: string]]
 	[]
 main::main-comp
-	object[items: array[object[active: boolean, status: string, title: string]]]
+	data: object[items: array[object[active: boolean, status: string, title: string]]]
 	[]
 ## END
 
@@ -874,7 +874,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	object[i: object[j: object[k: object[l: boolean]], k: boolean]]
+	params: object[i: object[j: object[k: object[l: boolean]], k: boolean]]
 	[]
 ## END
 
@@ -888,7 +888,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	object[i: object[j: object[k: object[l: boolean]], k: boolean]]
+	params: object[i: object[j: object[k: object[l: boolean]], k: boolean]]
 	[]
 ## END
 
@@ -908,7 +908,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	object[categories: array[boolean], metadata: object[title: boolean], tags: array[boolean]]
+	params: object[categories: array[boolean], metadata: object[title: boolean], tags: array[boolean]]
 	[]
 ## END
 
@@ -920,21 +920,21 @@ main::main-comp
 </main-bar>
 
 <main-foo {p: boolean}>
-  <main-bar {p}/>
+  <main-bar {p: p}/>
 </main-foo>
 
 <main-comp {i: boolean}>
-  <main-foo {i}/>
+  <main-foo {p: i}/>
 </main-comp>
 -- out --
 main::main-bar
-	boolean
+	p: boolean
 	[]
 main::main-foo
-	boolean
+	p: boolean
 	[]
 main::main-comp
-	boolean
+	i: boolean
 	[]
 ## END
 
@@ -948,25 +948,25 @@ main::main-comp
 <execute-workflow {workflow: object[enabled: boolean, steps: array[object[condition: boolean]]]}>
 	<if {workflow.enabled}>
 		<for {step in workflow.steps}>
-			<execute-step {step}/>
+			<execute-step {step: step}/>
 		</for>
 	</if>
 </execute-workflow>
 
 <main-comp {params: object[workflows: array[object[enabled: boolean, steps: array[object[condition: boolean]]]]]}>
 	<for {workflow in params.workflows}>
-		<execute-workflow {workflow}/>
+		<execute-workflow {workflow: workflow}/>
 	</for>
 </main-comp>
 -- out --
 main::execute-step
-	object[condition: boolean]
+	step: object[condition: boolean]
 	[]
 main::execute-workflow
-	object[enabled: boolean, steps: array[object[condition: boolean]]]
+	workflow: object[enabled: boolean, steps: array[object[condition: boolean]]]
 	[]
 main::main-comp
-	object[workflows: array[object[enabled: boolean, steps: array[object[condition: boolean]]]]]
+	params: object[workflows: array[object[enabled: boolean, steps: array[object[condition: boolean]]]]]
 	[]
 ## END
 
@@ -978,14 +978,14 @@ main::main-comp
 </foo-comp>
 
 <main-comp {i: boolean}>
-  <foo-comp {i}/>
+  <foo-comp {p: i}/>
 </main-comp>
 -- out --
 main::foo-comp
-	boolean
+	p: boolean
 	[]
 main::main-comp
-	boolean
+	i: boolean
 	[]
 ## END
 
@@ -1002,15 +1002,15 @@ main::main-comp
 
 <main-comp {params: object[items: array[object[children: array[object[visible: boolean]], status: object[active: boolean]]]]}>
 	<for {item in params.items}>
-		<process-item {item}/>
+		<process-item {item: item}/>
 	</for>
 </main-comp>
 -- out --
 main::process-item
-	object[children: array[object[visible: boolean]], status: object[active: boolean]]
+	item: object[children: array[object[visible: boolean]], status: object[active: boolean]]
 	[]
 main::main-comp
-	object[items: array[object[children: array[object[visible: boolean]], status: object[active: boolean]]]]
+	params: object[items: array[object[children: array[object[visible: boolean]], status: object[active: boolean]]]]
 	[]
 ## END
 
@@ -1021,7 +1021,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	object[theme: string, url: string]
+	user: object[theme: string, url: string]
 	[]
 ## END
 
@@ -1057,7 +1057,7 @@ main::bar-comp
 </main-comp>
 -- out --
 main::main-comp
-	object[message: string]
+	data: object[message: string]
 	[]
 ## END
 
@@ -1070,7 +1070,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	object[role: string]
+	params: object[role: string]
 	[]
 ## END
 
@@ -1088,7 +1088,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	array[array[array[boolean]]]
+	params: array[array[array[boolean]]]
 	[]
 ## END
 
@@ -1118,7 +1118,7 @@ error: array[string] can not be used as an object
 </main-comp>
 -- out --
 main::main-comp
-	object[message: string]
+	data: object[message: string]
 	[]
 ## END
 
@@ -1164,7 +1164,7 @@ Test <if> tag with boolean expression.
 </main-comp>
 -- out --
 main::main-comp
-	object[isActive: boolean]
+	user: object[isActive: boolean]
 	[]
 ## END
 
@@ -1179,7 +1179,7 @@ Test <if> tag with comparison expression.
 </main-comp>
 -- out --
 main::main-comp
-	object[status: string]
+	data: object[status: string]
 	[]
 ## END
 
@@ -1214,7 +1214,7 @@ Test <if> tag with nested conditionals.
 </main-comp>
 -- out --
 main::main-comp
-	object[debug: boolean, enabled: boolean]
+	config: object[debug: boolean, enabled: boolean]
 	[]
 ## END
 
@@ -1227,14 +1227,14 @@ main::main-comp
   </if>
 </main-comp>
 <foo-comp>
-  <main-comp {1}/>
+  <main-comp {config: 1}/>
 </foo-comp>
 -- out --
-error: Argument 1 of type number is incompatible with expected type object[debug: boolean]
+error: Argument 'config' of type number is incompatible with expected type object[debug: boolean]
   --> main.hop (line 7, col 15)
 6 | <foo-comp>
-7 |   <main-comp {1}/>
-  |               ^
+7 |   <main-comp {config: 1}/>
+  |               ^^^^^^^^^
 ## END
 
 Test HOP_MODE global variable is available and has string type.
@@ -1279,7 +1279,7 @@ Test type inference works when comparing variables to HOP_MODE.
 </main-comp>
 -- out --
 main::main-comp
-	object[mode: string]
+	params: object[mode: string]
 	[]
 ## END
 
@@ -1295,7 +1295,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	object[foo: string]
+	params: object[foo: string]
 	[]
 ## END
 
@@ -1311,7 +1311,7 @@ main::main-comp
 </main-comp>
 -- out --
 main::main-comp
-	array[object[items: array[string], title: string]]
+	data: array[object[items: array[string], title: string]]
 	[]
 ## END
 
@@ -1321,14 +1321,14 @@ main::main-comp
 	<div>{message}</div>
 </string-comp>
 <main-comp>
-	<string-comp {42}/>
+	<string-comp {message: 42}/>
 </main-comp>
 -- out --
-error: Argument 1 of type number is incompatible with expected type string
+error: Argument 'message' of type number is incompatible with expected type string
   --> main.hop (line 5, col 16)
 4 | <main-comp>
-5 |     <string-comp {42}/>
-  |                   ^^
+5 |     <string-comp {message: 42}/>
+  |                   ^^^^^^^^^^^
 ## END
 
 ## BEGIN
@@ -1337,14 +1337,14 @@ error: Argument 1 of type number is incompatible with expected type string
 	<div>{user.name} ({user.age})</div>
 </user-comp>
 <main-comp>
-	<user-comp {'invalid'}/>
+	<user-comp {user: 'invalid'}/>
 </main-comp>
 -- out --
-error: Argument 1 of type string is incompatible with expected type object[age: string, name: string]
+error: Argument 'user' of type string is incompatible with expected type object[age: string, name: string]
   --> main.hop (line 5, col 14)
 4 | <main-comp>
-5 |     <user-comp {'invalid'}/>
-  |                 ^^^^^^^^^
+5 |     <user-comp {user: 'invalid'}/>
+  |                 ^^^^^^^^^^^^^^^
 ## END
 
 ## BEGIN
@@ -1353,14 +1353,14 @@ error: Argument 1 of type string is incompatible with expected type object[age: 
 	<div>{user.name}: {user.active}</div>
 </user-comp>
 <main-comp {data: object[profile: object[name: string, active: string]]}>
-	<user-comp {data.profile}/>
+	<user-comp {user: data.profile}/>
 </main-comp>
 -- out --
 main::user-comp
-	object[active: string, name: string]
+	user: object[active: string, name: string]
 	[]
 main::main-comp
-	object[profile: object[active: string, name: string]]
+	data: object[profile: object[active: string, name: string]]
 	[]
 ## END
 
@@ -1370,14 +1370,14 @@ main::main-comp
 	<div>{user.name}</div>
 </new-comp>
 <main-comp>
-	<new-comp {'invalid'}/>
+	<new-comp {user: 'invalid'}/>
 </main-comp>
 -- out --
-error: Argument 1 of type string is incompatible with expected type object[name: string]
+error: Argument 'user' of type string is incompatible with expected type object[name: string]
   --> main.hop (line 5, col 13)
 4 | <main-comp>
-5 |     <new-comp {'invalid'}/>
-  |                ^^^^^^^^^
+5 |     <new-comp {user: 'invalid'}/>
+  |                ^^^^^^^^^^^^^^^
 ## END
 
 Component with explicit string parameter type.
@@ -1389,7 +1389,7 @@ Component with explicit string parameter type.
 </string-comp>
 -- out --
 main::string-comp
-	string
+	message: string
 	[]
 ## END
 
@@ -1402,7 +1402,7 @@ Component with explicit object parameter type.
 </user-comp>
 -- out --
 main::user-comp
-	object[name: string]
+	user: object[name: string]
 	[]
 ## END
 
@@ -1417,7 +1417,7 @@ Component with explicit array parameter type.
 </list-comp>
 -- out --
 main::list-comp
-	array[string]
+	items: array[string]
 	[]
 ## END
 
@@ -1432,7 +1432,7 @@ Component with explicit boolean parameter type.
 </toggle-comp>
 -- out --
 main::toggle-comp
-	boolean
+	enabled: boolean
 	[]
 ## END
 
@@ -1447,7 +1447,7 @@ Component with explicit number parameter type.
 </counter-comp>
 -- out --
 main::counter-comp
-	number
+	count: number
 	[]
 ## END
 
@@ -1463,7 +1463,7 @@ Component with nested object parameter type.
 </profile-comp>
 -- out --
 main::profile-comp
-	object[user: object[age: number, name: string]]
+	profile: object[user: object[age: number, name: string]]
 	[]
 ## END
 
@@ -1482,7 +1482,7 @@ Component with nested array parameter type.
 </matrix-comp>
 -- out --
 main::matrix-comp
-	array[array[number]]
+	matrix: array[array[number]]
 	[]
 ## END
 
@@ -1503,7 +1503,7 @@ Component with complex object with multiple properties.
 </card-comp>
 -- out --
 main::card-comp
-	object[content: string, metadata: object[author: string, published: boolean], tags: array[string], title: string]
+	data: object[content: string, metadata: object[author: string, published: boolean], tags: array[string], title: string]
 	[]
 ## END
 
@@ -1517,14 +1517,14 @@ Error when passing wrong type to boolean parameter.
 	</if>
 </toggle-comp>
 <main-comp>
-	<toggle-comp {'not a boolean'}/>
+	<toggle-comp {enabled: 'not a boolean'}/>
 </main-comp>
 -- out --
-error: Argument 1 of type string is incompatible with expected type boolean
+error: Argument 'enabled' of type string is incompatible with expected type boolean
   --> main.hop (line 7, col 16)
 6 | <main-comp>
-7 |     <toggle-comp {'not a boolean'}/>
-  |                   ^^^^^^^^^^^^^^^
+7 |     <toggle-comp {enabled: 'not a boolean'}/>
+  |                   ^^^^^^^^^^^^^^^^^^^^^^^^
 ## END
 
 Multi-file component with complex parameter types.
@@ -1544,23 +1544,23 @@ Multi-file component with complex parameter types.
 <import component="item-display" from="item-display">
 <data-list {items: array[object[id: number, name: string, active: boolean]]}>
 	<for {item in items}>
-		<item-display {item}/>
+		<item-display {item: item}/>
 	</for>
 </data-list>
 -- main.hop --
 <import component="data-list" from="data-list">
 <main-comp {items: array[object[id: number, name: string, active: boolean]]}>
-	<data-list {items}/>
+	<data-list {items: items}/>
 </main-comp>
 -- out --
 item-display::item-display
-	object[active: boolean, id: number, name: string]
+	item: object[active: boolean, id: number, name: string]
 	[]
 data-list::data-list
-	array[object[active: boolean, id: number, name: string]]
+	items: array[object[active: boolean, id: number, name: string]]
 	[]
 main::main-comp
-	array[object[active: boolean, id: number, name: string]]
+	items: array[object[active: boolean, id: number, name: string]]
 	[]
 ## END
 
@@ -1574,15 +1574,15 @@ compatible with a component that only needs property a.
 </needs-a>
 
 <main-comp {params: object[data: object[a: string, b: string]]}>
-	<needs-a {params.data}>
+	<needs-a {data: params.data}>
 	</needs-a>
 </main-comp>
 -- out --
 main::needs-a
-	object[a: string]
+	data: object[a: string]
 	[]
 main::main-comp
-	object[data: object[a: string, b: string]]
+	params: object[data: object[a: string, b: string]]
 	[]
 ## END
 
@@ -1595,13 +1595,13 @@ Typechecker should print an error if an object lacks required properties.
 </needs-a>
 
 <main-comp {params: object[data: object[b: string]]}>
-	<needs-a {params.data}>
+	<needs-a {data: params.data}>
 	</needs-a>
 </main-comp>
 -- out --
-error: Argument 1 of type object[b: string] is incompatible with expected type object[a: string]
+error: Argument 'data' of type object[b: string] is incompatible with expected type object[a: string]
   --> main.hop (line 6, col 12)
 5 | <main-comp {params: object[data: object[b: string]]}>
-6 |     <needs-a {params.data}>
-  |               ^^^^^^^^^^^
+6 |     <needs-a {data: params.data}>
+  |               ^^^^^^^^^^^^^^^^^
 ## END

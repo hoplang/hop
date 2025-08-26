@@ -74,7 +74,7 @@
 	</html>
 </generic-error>
 
-<not-found-error {params: object[path: string, available_routes: array[string]]} entrypoint>
+<not-found-error {path: string, available_routes: array[string]} entrypoint>
 	<!DOCTYPE html>
 	<html>
 	<head>
@@ -88,9 +88,9 @@
 	<body>
 		<page-container>
 			<error-not-found-error>
-				<with-requested-path>{params.path}</with-requested-path>
+				<with-requested-path>{path}</with-requested-path>
 				<with-available-routes>
-					<for {route in params.available_routes}>
+					<for {route in available_routes}>
 					  <li><a set-href="route">{route}</a></li>
 					</for>
 				</with-available-routes>

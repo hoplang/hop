@@ -83,7 +83,7 @@ impl Program {
                     let param_type = if info.parameter_types.is_empty() {
                         DopType::Void
                     } else {
-                        info.parameter_types[0].clone()
+                        info.parameter_types.values().next().unwrap().clone()
                     };
                     module_parameter_types.insert(name.clone(), param_type);
                 }
@@ -165,7 +165,7 @@ impl Program {
         &self,
         module_name: &str,
         component_name: &str,
-        params: Vec<serde_json::Value>,
+        params: std::collections::BTreeMap<String, serde_json::Value>,
     ) -> Result<String> {
         let empty_slots = HashMap::new();
         self.evaluate_component(module_name, component_name, params, &empty_slots, None)
@@ -175,7 +175,7 @@ impl Program {
         &self,
         module_name: &str,
         component_name: &str,
-        params: Vec<serde_json::Value>,
+        params: std::collections::BTreeMap<String, serde_json::Value>,
     ) -> Result<String> {
         let component_map = self
             .component_maps
@@ -196,8 +196,11 @@ impl Program {
         let mut env = Self::init_environment(self.hop_mode);
 
         // Set up environment with all parameters and their corresponding values
-        for (i, param) in component.params.iter().enumerate() {
-            let value = params.get(i).cloned().unwrap_or(serde_json::Value::Null);
+        for (param_name, param) in &component.params {
+            let value = params
+                .get(param_name)
+                .cloned()
+                .unwrap_or_else(|| panic!("Missing parameter {param_name}"));
             env.push(param.var_name.value.clone(), value);
         }
 
@@ -215,7 +218,7 @@ impl Program {
         &self,
         module_name: &str,
         component_name: &str,
-        params: Vec<serde_json::Value>,
+        params: std::collections::BTreeMap<String, serde_json::Value>,
         slot_content: &HashMap<String, String>,
         additional_class: Option<&str>,
     ) -> Result<String> {
@@ -234,8 +237,11 @@ impl Program {
 
         let mut env = Self::init_environment(self.hop_mode);
         // Set up environment with all parameters and their corresponding values
-        for (i, param) in component.params.iter().enumerate() {
-            let value = params.get(i).cloned().unwrap_or(serde_json::Value::Null);
+        for (param_name, param) in &component.params {
+            let value = params
+                .get(param_name)
+                .cloned()
+                .unwrap_or_else(|| panic!("Missing parameter {param_name}"));
             env.push(param.var_name.value.clone(), value);
         }
 
@@ -327,9 +333,9 @@ impl Program {
                 children,
                 ..
             }) => {
-                let mut params_values = Vec::new();
-                for (expression, _) in params {
-                    params_values.push(evaluate_expr(expression, env)?);
+                let mut params_values = std::collections::BTreeMap::new();
+                for (param_name, (expression, _)) in params {
+                    params_values.insert(param_name.clone(), evaluate_expr(expression, env)?);
                 }
 
                 let component_name = component;
@@ -912,8 +918,16 @@ mod tests {
                 );
             });
 
+            // Convert JSON object fields to individual named parameters
+            let mut params = std::collections::BTreeMap::new();
+            if let serde_json::Value::Object(obj) = data {
+                for (key, value) in obj {
+                    params.insert(key, value);
+                }
+            }
+
             let actual_output = program
-                .execute_simple("main", "main-comp", vec![data])
+                .execute_simple("main", "main-comp", params)
                 .unwrap_or_else(|e| {
                     panic!(
                         "Execution failed for test case {} (line {}): {}",

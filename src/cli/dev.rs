@@ -104,11 +104,12 @@ window.addEventListener("beforeunload", function() {
 fn create_error_page(error: &anyhow::Error) -> String {
     let program = get_ui_program();
 
-    let error_data = serde_json::json!({
-        "message": format!("{:#}", error)
-    });
-
-    match program.execute_simple("hop/error_pages", "generic-error", vec![error_data]) {
+    let mut params = std::collections::BTreeMap::new();
+    params.insert(
+        "error".to_string(),
+        serde_json::json!(format!("{:#}", error).to_string()),
+    );
+    match program.execute_simple("hop/error_pages", "generic-error", params) {
         Ok(html) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
     }
@@ -117,12 +118,13 @@ fn create_error_page(error: &anyhow::Error) -> String {
 fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
     let program = get_ui_program();
 
-    let not_found_data = serde_json::json!({
-        "path": path,
-        "available_routes": available_routes
-    });
-
-    match program.execute_simple("hop/error_pages", "not-found-error", vec![not_found_data]) {
+    let mut params = std::collections::BTreeMap::new();
+    params.insert("path".to_string(), serde_json::json!(path));
+    params.insert(
+        "available_routes".to_string(),
+        serde_json::json!(available_routes),
+    );
+    match program.execute_simple("hop/error_pages", "not-found-error", params) {
         Ok(html) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
     }
@@ -187,7 +189,9 @@ fn create_inspect_page(program: &runtime::Program) -> String {
 
     let combined_script = inspect_program.get_scripts();
 
-    match inspect_program.execute_simple("hop/inspector", "inspect-page", vec![inspect_data]) {
+    let mut params = std::collections::BTreeMap::new();
+    params.insert("data".to_string(), inspect_data);
+    match inspect_program.execute_simple("hop/inspector", "inspect-page", params) {
         Ok(html) => {
             let hot_reload_script = r#"
 <script type="module">
@@ -280,7 +284,11 @@ fn create_component_preview(
     }
 
     // Render the component using preview content if available
-    match program.execute_preview(module_name, component_name, vec![]) {
+    match program.execute_preview(
+        module_name,
+        component_name,
+        std::collections::BTreeMap::new(),
+    ) {
         Ok(rendered_content) => {
             let combined_script = program.get_scripts();
 
@@ -746,5 +754,27 @@ console.log("Hello from static file");
 
         // Verify hot reload script is included
         assert!(body.contains("/__hop_hot_reload"));
+    }
+
+    /// When the user calls `hop dev` and the program doesn't compile an error should be returned.
+    #[tokio::test]
+    async fn test_dev_compile_error() {
+        let dir = temp_dir_from_txtar(
+            r#"
+-- build.hop --
+<render file="index.html">
+    <div>
+"#,
+        )
+        .unwrap();
+        let root = ProjectRoot::find_upwards(&dir).unwrap();
+
+        let (router, _watcher) = execute(&root, None, None).await.unwrap();
+
+        let server = TestServer::new(router).unwrap();
+
+        // Test non-existent path
+        let response = server.get("/").await;
+        response.assert_status(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

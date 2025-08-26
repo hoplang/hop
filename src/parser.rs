@@ -327,25 +327,27 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                                 Ok(tokenizer) => tokenizer,
                                 Err(err) => {
                                     errors.push(err);
-                                    return Vec::new();
+                                    return std::collections::BTreeMap::new();
                                 }
                             };
                             match dop::parse_parameters_with_types(&mut tokenizer) {
                                 Ok(params) => params
                                     .into_iter()
-                                    .map(|(var_name, type_annotation)| DopVarNameAttribute {
-                                        var_name,
-                                        type_annotation,
-                                        range: *range,
+                                    .map(|(var_name, type_annotation)| {
+                                        (var_name.value.clone(), DopVarNameAttribute {
+                                            var_name,
+                                            type_annotation,
+                                            range: *range,
+                                        })
                                     })
                                     .collect(),
                                 Err(error) => {
                                     errors.push(error);
-                                    Vec::new()
+                                    std::collections::BTreeMap::new()
                                 }
                             }
                         })
-                        .unwrap_or_else(Vec::new);
+                        .unwrap_or_else(std::collections::BTreeMap::new);
 
                     let mut slots = HashSet::new();
                     collect_slots_from_children(&children, &mut slots, errors);
@@ -588,15 +590,15 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                                     });
                                 }
                             };
-                            match dop::parse_arguments(&mut tokenizer) {
-                                Ok(expressions) => expressions.into_iter().map(|expr| (expr, *range)).collect(),
+                            match dop::parse_named_arguments(&mut tokenizer) {
+                                Ok(named_args) => named_args.into_iter().map(|(name, expr)| (name, (expr, *range))).collect(),
                                 Err(err) => {
                                     errors.push(err);
-                                    Vec::new()
+                                    std::collections::BTreeMap::new()
                                 }
                             }
                         }
-                        None => Vec::new(),
+                        None => std::collections::BTreeMap::new(),
                     };
 
                     Node::ComponentReference(ComponentReferenceNode {

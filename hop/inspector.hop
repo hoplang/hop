@@ -376,7 +376,7 @@
 	</script>
 	<hop-x-preview>
 		<div class="p-8">
-			<canvas-element {'/_preview/hop%2Ferror_pages/error-generic-error'}>
+			<canvas-element {preview: '/_preview/hop%2Ferror_pages/error-generic-error'}>
 				<with-title>hop/ui - component</with-title>
 			</canvas-element>
 		</div>
@@ -423,7 +423,7 @@
 					<for {module in data.modules}>
 						<for {component in module.components}>
 							<if {component.has_preview}>
-								<canvas-element {component.preview_url}>
+								<canvas-element {preview: component.preview_url}>
 									<with-title>{module.name} - {component.name}</with-title>
 								</canvas-element>
 							</if>

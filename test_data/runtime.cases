@@ -19,7 +19,7 @@ Expressions should be safe against XSS.
 	<div>{p}</div>
 </main-comp>
 -- data.json --
-"<script>alert(1);</script>"
+{"p": "<script>alert(1);</script>"}
 -- output.html --
 <div data-hop-id="main/main-comp">
 	<div>&lt;script&gt;alert(1);&lt;/script&gt;</div>
@@ -28,11 +28,11 @@ Expressions should be safe against XSS.
 
 ## BEGIN
 -- main.hop --
-<main-comp {params: object[user: object[name: string], admin: object[name: string], status: string, expected_status: string]}>
-  <if {params.user.name == params.admin.name}>
+<main-comp {user: object[name: string], admin: object[name: string], status: string, expected_status: string}>
+  <if {user.name == admin.name}>
     <div>Is Admin</div>
   </if>
-  <if {params.status == params.expected_status}>
+  <if {status == expected_status}>
     <div>Status OK</div>
   </if>
 </main-comp>
@@ -53,8 +53,8 @@ Expressions should be safe against XSS.
 
 ## BEGIN
 -- main.hop --
-<main-comp {params: object[x: string, y: string]}>
-  <if {params.x == params.y}>
+<main-comp {x: string, y: string}>
+  <if {x == y}>
     <span>Equal</span>
   </if>
 </main-comp>
@@ -80,11 +80,11 @@ Expressions should be safe against XSS.
 	</for>
 </main-comp>
 -- data.json --
-[
+{"items": [
 	{"show": true, "data": "foo"},
 	{"show": false, "data": "bar"},
 	{"show": true, "data": "baz"}
-]
+]}
 -- output.html --
 <div data-hop-id="main/main-comp">
 	<div>foo</div>
@@ -109,7 +109,7 @@ Expressions should be safe against XSS.
   </for>
 </main-comp>
 -- data.json --
-[
+{"items": [
   {
     "name": "Alice",
     "type": "admin"
@@ -122,7 +122,7 @@ Expressions should be safe against XSS.
     "name": "Carol",
     "type": "admin"
   }
-]
+]}
 -- output.html --
 <div data-hop-id="main/main-comp">
   <div>
@@ -169,7 +169,7 @@ Expressions should be safe against XSS.
 	<div>{p}</div>
 </main-comp>
 -- data.json --
-"foo bar"
+{"p": "foo bar"}
 -- output.html --
 <div data-hop-id="main/main-comp">
 	<div>foo bar</div>
@@ -215,8 +215,8 @@ Expressions should be safe against XSS.
 
 ## BEGIN
 -- main.hop --
-<main-comp {user: object[profile_url: string, name: string]}>
-  <a set-href="user.profile_url" set-title="user.name">Click here</a>
+<main-comp {profile_url: string, name: string}>
+  <a set-href="profile_url" set-title="name">Click here</a>
 </main-comp>
 -- data.json --
 {"profile_url": "https://example.com/user/123", "name": "John Doe"}
@@ -235,11 +235,11 @@ Expressions should be safe against XSS.
     </div>
 </main-card>
 
-<main-comp entrypoint {data: object[title: string, message: string]}>
+<main-comp entrypoint {title: string, message: string}>
     <main-card>
         <with-content>
-            <h1>{data.title}</h1>
-            <p>{data.message}</p>
+            <h1>{title}</h1>
+            <p>{message}</p>
         </with-content>
     </main-card>
 </main-comp>
@@ -344,10 +344,10 @@ Expressions should be safe against XSS.
     </div>
 </modal-comp>
 
-<main-comp entrypoint {data: object[page_title: string]}>
+<main-comp entrypoint {page_title: string}>
     <page-layout>
         <with-content>
-            <h1>{data.page_title}</h1>
+            <h1>{page_title}</h1>
             <modal-wrapper>
                 <with-modal>
                     <modal-comp>
@@ -402,13 +402,13 @@ Expressions should be safe against XSS.
     </div>
 </main-card>
 
-<main-comp entrypoint {data: object[title: string, active_count: string, users: array[object[name: string, active: boolean, admin: boolean]]]}>
+<main-comp entrypoint {title: string, active_count: string, users: array[object[name: string, active: boolean, admin: boolean]]}>
     <main-card>
         <with-header>
-            <h1>{data.title}</h1>
+            <h1>{title}</h1>
         </with-header>
         <with-content>
-            <for {user in data.users}>
+            <for {user in users}>
                 <if {user.active}>
                     <div class="user-item">
                         <span>{user.name}</span>
@@ -420,7 +420,7 @@ Expressions should be safe against XSS.
             </for>
         </with-content>
         <with-footer>
-            <p>Total active users: <span>{data.active_count}</span></p>
+            <p>Total active users: <span>{active_count}</span></p>
         </with-footer>
     </main-card>
 </main-comp>
@@ -485,14 +485,14 @@ Expressions should be safe against XSS.
 
 ## BEGIN
 -- main.hop --
-<main-comp {params: object[role: string, status: string]}>
-  <if {params.role == 'admin'}>
+<main-comp {role: string, status: string}>
+  <if {role == 'admin'}>
     <div>Admin Access</div>
   </if>
-  <if {params.status == 'active'}>
+  <if {status == 'active'}>
     <div>Active User</div>
   </if>
-  <if {params.status == 'inactive'}>
+  <if {status == 'inactive'}>
     <div>Inactive User</div>
   </if>
 </main-comp>
@@ -582,10 +582,10 @@ Expressions should be safe against XSS.
   </if>
 </main-comp>
 -- data.json --
-{
+{"user": {
   "isActive": true,
   "role": "admin"
-}
+}}
 -- output.html --
 <div data-hop-id="main/main-comp">
   <div>Welcome active user!</div>
@@ -605,10 +605,10 @@ Expressions should be safe against XSS.
   </if>
 </main-comp>
 -- data.json --
-{
+{"config": {
   "enabled": true,
   "debug": false
-}
+}}
 -- output.html --
 <div data-hop-id="main/main-comp">
   <div>Feature is enabled</div>
@@ -618,8 +618,8 @@ Expressions should be safe against XSS.
 
 ## BEGIN
 -- main.hop --
-<main-comp {status: object[visible: boolean]}>
-  <if {status.visible}>
+<main-comp {visible: boolean}>
+  <if {visible}>
     <div>Content is visible</div>
   </if>
 </main-comp>
@@ -635,8 +635,8 @@ Expressions should be safe against XSS.
 
 ## BEGIN
 -- main.hop --
-<main-comp {data: object[users: array[object[name: string]]]}>
-  <for {user in data.users}>
+<main-comp {users: array[object[name: string]]}>
+  <for {user in users}>
     <div>{user.name}</div>
   </for>
 </main-comp>
