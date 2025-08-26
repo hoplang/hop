@@ -140,9 +140,6 @@ fn create_inspect_page(program: &runtime::Program) -> String {
     sorted_modules.sort_by_key(|(name, _)| *name);
 
     for (module_name, components) in sorted_modules {
-        if module_name == "build" {
-            continue;
-        }
         let mut components_data = Vec::new();
 
         // Sort components for consistent output
