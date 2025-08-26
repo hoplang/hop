@@ -317,7 +317,7 @@ fn typecheck_node(
                         annotations.push(TypeAnnotation {
                             range: *range,
                             typ: expr_type,
-                            name: format!("component parameter"),
+                            name: "component parameter".to_string(),
                         });
                     }
                 }
@@ -377,7 +377,7 @@ fn typecheck_node(
                 annotations.push(TypeAnnotation {
                     range: set_attr.range,
                     typ: DopType::String,
-                    name: format!("attribute expression"),
+                    name: "attribute expression".to_string(),
                 });
             }
 
@@ -420,7 +420,7 @@ fn typecheck_node(
             // Infer the type from the JSON file
             let var_name = &as_attr.value;
             let file_path = &file_attr.value;
-            
+
             let json_type = match infer_type_from_json_file(file_path) {
                 Ok(typ) => typ,
                 Err(err) => {
@@ -461,10 +461,7 @@ fn typecheck_node(
 
             // Pop the JSON variable from scope
             if pushed && !env.pop() {
-                errors.push(RangeError::unused_variable(
-                    var_name,
-                    *range,
-                ));
+                errors.push(RangeError::unused_variable(var_name, *range));
             }
         }
         Node::For(ForNode {
@@ -558,7 +555,7 @@ fn typecheck_node(
             annotations.push(TypeAnnotation {
                 range: text_expr_node.range,
                 typ: DopType::String,
-                name: format!("text expression"),
+                name: "text expression".to_string(),
             });
         }
     }

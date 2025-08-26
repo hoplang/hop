@@ -2,10 +2,11 @@ use files::ProjectRoot;
 use std::path::Path;
 use std::sync::OnceLock;
 
-use crate::common::{HopMode, escape_html};
+use crate::common::escape_html;
 use crate::compiler::compile;
 use crate::files;
 use crate::runtime;
+use crate::runtime::HopMode;
 
 const ERROR_TEMPLATES: &str = include_str!("../../hop/error_pages.hop");
 const INSPECT_TEMPLATES: &str = include_str!("../../hop/inspector.hop");

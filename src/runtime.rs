@@ -1,6 +1,6 @@
 use crate::common::{
-    ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode, ForNode, HopMode,
-    IfNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode, SlotReferenceNode, XExecNode,
+    ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode, ForNode, IfNode,
+    NativeHTMLNode, Node, RenderNode, SlotDefinitionNode, SlotReferenceNode, XExecNode,
     XLoadJsonNode, XRawNode, escape_html, is_void_element,
 };
 use crate::dop;
@@ -11,6 +11,24 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::io::Write;
 use std::process::{Command, Stdio};
+
+/// HopMode influences the runtime value of the global variable HOP_MODE which
+/// will be set to 'build' when running `hop build` and 'dev' when running
+/// `hop dev`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum HopMode {
+    Build,
+    Dev,
+}
+
+impl HopMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            HopMode::Build => "build",
+            HopMode::Dev => "dev",
+        }
+    }
+}
 
 /// Program represents a compiled hop program that can execute components and entrypoints
 #[derive(Clone)]

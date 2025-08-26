@@ -81,7 +81,7 @@ mod tests {
         let typ = infer_type_from_value(&value);
         assert_eq!(typ, DopType::Number);
 
-        let value = json!(3.14);
+        let value = json!(3.2);
         let typ = infer_type_from_value(&value);
         assert_eq!(typ, DopType::Number);
     }

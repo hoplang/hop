@@ -2,24 +2,6 @@ use crate::dop::{DopExpr, parser::DopVarName};
 use std::collections::HashMap;
 use std::fmt;
 
-/// HopMode influences the runtime value of the global variable HOP_MODE which
-/// will be set to 'build' when running `hop build` and 'dev' when running
-/// `hop dev`.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum HopMode {
-    Build,
-    Dev,
-}
-
-impl HopMode {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            HopMode::Build => "build",
-            HopMode::Dev => "dev",
-        }
-    }
-}
-
 /// Represents a position in source code
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Position {

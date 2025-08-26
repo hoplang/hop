@@ -106,7 +106,7 @@ impl Server {
         for annotation in &type_result.annotations {
             if annotation.range.contains_position(pos) {
                 return Some(HoverInfo {
-                    type_str: format!("`{}`: `{}`", annotation.name, annotation.typ.to_string()),
+                    type_str: format!("`{}`: `{}`", annotation.name, annotation.typ),
                     start_line: annotation.range.start.line,
                     start_column: annotation.range.start.column,
                     end_line: annotation.range.end.line,

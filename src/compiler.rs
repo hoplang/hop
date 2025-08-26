@@ -1,7 +1,6 @@
-use crate::common::HopMode;
 use crate::error_formatter::ErrorFormatter;
 use crate::parser::parse;
-use crate::runtime::Program;
+use crate::runtime::{HopMode, Program};
 use crate::scriptcollector::ScriptCollector;
 use crate::tokenizer::Tokenizer;
 use crate::toposorter::TopoSorter;

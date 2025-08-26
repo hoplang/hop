@@ -4,9 +4,9 @@ use rayon::prelude::*;
 use std::fs;
 use std::path::Path;
 
-use crate::common::HopMode;
 use crate::compiler::compile;
 use crate::files;
+use crate::runtime::HopMode;
 use crate::timing;
 
 fn copy_dir_recursive(
