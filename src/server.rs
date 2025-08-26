@@ -8,46 +8,31 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, PartialEq)]
 pub struct HoverInfo {
     pub type_str: String,
-    pub start_line: usize,
-    pub start_column: usize,
-    pub end_line: usize,
-    pub end_column: usize,
+    pub range: Range,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DefinitionLocation {
     pub module: String,
-    pub start_line: usize,
-    pub start_column: usize,
-    pub end_line: usize,
-    pub end_column: usize,
+    pub range: Range,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Diagnostic {
     pub message: String,
-    pub start_line: usize,
-    pub start_column: usize,
-    pub end_line: usize,
-    pub end_column: usize,
+    pub range: Range,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RenameLocation {
     pub module: String,
-    pub start_line: usize,
-    pub start_column: usize,
-    pub end_line: usize,
-    pub end_column: usize,
+    pub range: Range,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RenameableSymbol {
     pub current_name: String,
-    pub start_line: usize,
-    pub start_column: usize,
-    pub end_line: usize,
-    pub end_column: usize,
+    pub range: Range,
 }
 
 pub struct Server {
@@ -125,10 +110,7 @@ impl Server {
             if annotation.range.contains_position(pos) {
                 return Some(HoverInfo {
                     type_str: format!("`{}`: `{}`", annotation.name, annotation.typ),
-                    start_line: annotation.range.start.line,
-                    start_column: annotation.range.start.column,
-                    end_line: annotation.range.end.line,
-                    end_column: annotation.range.end.column,
+                    range: annotation.range,
                 });
             }
         }
@@ -157,10 +139,7 @@ impl Server {
             if reference_opening_name_range.contains_position(pos) {
                 return Some(DefinitionLocation {
                     module: definition_module.clone(),
-                    start_line: definition_opening_name_range.start.line,
-                    start_column: definition_opening_name_range.start.column,
-                    end_line: definition_opening_name_range.end.line,
-                    end_column: definition_opening_name_range.end.column,
+                    range: *definition_opening_name_range,
                 });
             }
 
@@ -169,10 +148,7 @@ impl Server {
                 if closing_range.contains_position(pos) {
                     return Some(DefinitionLocation {
                         module: definition_module.clone(),
-                        start_line: definition_opening_name_range.start.line,
-                        start_column: definition_opening_name_range.start.column,
-                        end_line: definition_opening_name_range.end.line,
-                        end_column: definition_opening_name_range.end.column,
+                        range: *definition_opening_name_range,
                     });
                 }
             }
@@ -265,10 +241,7 @@ impl Server {
             if reference_opening_name_range.contains_position(pos) {
                 return Some(RenameableSymbol {
                     current_name: definition_component_name.clone(),
-                    start_line: reference_opening_name_range.start.line,
-                    start_column: reference_opening_name_range.start.column,
-                    end_line: reference_opening_name_range.end.line,
-                    end_column: reference_opening_name_range.end.column,
+                    range: *reference_opening_name_range,
                 });
             }
 
@@ -277,10 +250,7 @@ impl Server {
                 if closing_range.contains_position(pos) {
                     return Some(RenameableSymbol {
                         current_name: definition_component_name.clone(),
-                        start_line: closing_range.start.line,
-                        start_column: closing_range.start.column,
-                        end_line: closing_range.end.line,
-                        end_column: closing_range.end.column,
+                        range: *closing_range,
                     });
                 }
             }
@@ -296,10 +266,7 @@ impl Server {
                 {
                     return Some(RenameableSymbol {
                         current_name: component_name.clone(),
-                        start_line: component_info.definition_opening_name_range.start.line,
-                        start_column: component_info.definition_opening_name_range.start.column,
-                        end_line: component_info.definition_opening_name_range.end.line,
-                        end_column: component_info.definition_opening_name_range.end.column,
+                        range: component_info.definition_opening_name_range,
                     });
                 }
 
@@ -308,10 +275,7 @@ impl Server {
                     if closing_range.contains_position(pos) {
                         return Some(RenameableSymbol {
                             current_name: component_name.clone(),
-                            start_line: closing_range.start.line,
-                            start_column: closing_range.start.column,
-                            end_line: closing_range.end.line,
-                            end_column: closing_range.end.column,
+                            range: closing_range,
                         });
                     }
                 }
@@ -333,20 +297,14 @@ impl Server {
         // Add the definition's opening tag name
         locations.push(RenameLocation {
             module: definition_module.to_string(),
-            start_line: definition_opening_range.start.line,
-            start_column: definition_opening_range.start.column,
-            end_line: definition_opening_range.end.line,
-            end_column: definition_opening_range.end.column,
+            range: definition_opening_range,
         });
 
         // Add the definition's closing tag name if it exists
         if let Some(closing_range) = definition_closing_range {
             locations.push(RenameLocation {
                 module: definition_module.to_string(),
-                start_line: closing_range.start.line,
-                start_column: closing_range.start.column,
-                end_line: closing_range.end.line,
-                end_column: closing_range.end.column,
+                range: closing_range,
             });
         }
 
@@ -360,20 +318,14 @@ impl Server {
                     // Add the reference's opening tag name
                     locations.push(RenameLocation {
                         module: module_name.clone(),
-                        start_line: link.reference_opening_name_range.start.line,
-                        start_column: link.reference_opening_name_range.start.column,
-                        end_line: link.reference_opening_name_range.end.line,
-                        end_column: link.reference_opening_name_range.end.column,
+                        range: link.reference_opening_name_range,
                     });
 
                     // Add the reference's closing tag name if it exists
                     if let Some(ref_closing_range) = link.reference_closing_name_range {
                         locations.push(RenameLocation {
                             module: module_name.clone(),
-                            start_line: ref_closing_range.start.line,
-                            start_column: ref_closing_range.start.column,
-                            end_line: ref_closing_range.end.line,
-                            end_column: ref_closing_range.end.column,
+                            range: ref_closing_range,
                         });
                     }
                 }
@@ -389,10 +341,7 @@ impl Server {
                     // This import statement imports our component
                     locations.push(RenameLocation {
                         module: module_name.clone(),
-                        start_line: import.component_attr.value_range.start.line,
-                        start_column: import.component_attr.value_range.start.column,
-                        end_line: import.component_attr.value_range.end.line,
-                        end_column: import.component_attr.value_range.end.column,
+                        range: import.component_attr.value_range,
                     });
                 }
             }
@@ -408,10 +357,7 @@ impl Server {
             for error in parse_errors {
                 diagnostics.push(Diagnostic {
                     message: error.message.clone(),
-                    start_line: error.range.start.line,
-                    start_column: error.range.start.column,
-                    end_line: error.range.end.line,
-                    end_column: error.range.end.column,
+                    range: error.range,
                 });
             }
         }
@@ -420,10 +366,7 @@ impl Server {
             for error in typecheck_errors {
                 diagnostics.push(Diagnostic {
                     message: error.message.clone(),
-                    start_line: error.range.start.line,
-                    start_column: error.range.start.column,
-                    end_line: error.range.end.line,
-                    end_column: error.range.end.column,
+                    range: error.range,
                 });
             }
         }

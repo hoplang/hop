@@ -32,6 +32,14 @@ impl HopLanguageServer {
         }
     }
 
+    // Convert from common Range to LSP Range
+    fn to_lsp_range(range: crate::common::Range) -> tower_lsp::lsp_types::Range {
+        tower_lsp::lsp_types::Range {
+            start: Self::to_lsp_position(range.start.line, range.start.column),
+            end: Self::to_lsp_position(range.end.line, range.end.column),
+        }
+    }
+
     fn find_root(uri: &Url) -> anyhow::Result<ProjectRoot> {
         ProjectRoot::find_upwards(std::path::Path::new(uri.path()))
     }
@@ -54,10 +62,7 @@ impl HopLanguageServer {
     fn convert_hover(&self, hover_info: HoverInfo) -> Hover {
         Hover {
             contents: HoverContents::Scalar(MarkedString::String(hover_info.type_str)),
-            range: Some(Range {
-                start: Self::to_lsp_position(hover_info.start_line, hover_info.start_column),
-                end: Self::to_lsp_position(hover_info.end_line, hover_info.end_column),
-            }),
+            range: Some(Self::to_lsp_range(hover_info.range)),
         }
     }
 
@@ -86,10 +91,7 @@ impl HopLanguageServer {
         let lsp_diagnostics: Vec<tower_lsp::lsp_types::Diagnostic> = diagnostics
             .into_iter()
             .map(|d| tower_lsp::lsp_types::Diagnostic {
-                range: Range {
-                    start: Self::to_lsp_position(d.start_line, d.start_column),
-                    end: Self::to_lsp_position(d.end_line, d.end_column),
-                },
+                range: Self::to_lsp_range(d.range),
                 severity: Some(DiagnosticSeverity::ERROR),
                 code: None,
                 code_description: None,
@@ -186,19 +188,10 @@ impl LanguageServer for HopLanguageServer {
         let server = self.server.read().await;
 
         Ok(server.get_definition(&module_name, line, column).map(
-            |DefinitionLocation {
-                 module,
-                 start_line,
-                 start_column,
-                 end_column,
-                 end_line,
-             }| {
+            |DefinitionLocation { module, range }| {
                 GotoDefinitionResponse::Scalar(Location {
                     uri: Self::module_name_to_uri(&module, &root),
-                    range: Range {
-                        start: Self::to_lsp_position(start_line, start_column),
-                        end: Self::to_lsp_position(end_line, end_column),
-                    },
+                    range: Self::to_lsp_range(range),
                 })
             },
         ))
@@ -218,16 +211,7 @@ impl LanguageServer for HopLanguageServer {
 
         if let Some(renameable_symbol) = server.get_renameable_symbol(&module_name, line, column) {
             Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
-                range: Range {
-                    start: Self::to_lsp_position(
-                        renameable_symbol.start_line,
-                        renameable_symbol.start_column,
-                    ),
-                    end: Self::to_lsp_position(
-                        renameable_symbol.end_line,
-                        renameable_symbol.end_column,
-                    ),
-                },
+                range: Self::to_lsp_range(renameable_symbol.range),
                 placeholder: renameable_symbol.current_name,
             }))
         } else {
@@ -249,20 +233,10 @@ impl LanguageServer for HopLanguageServer {
             let mut changes: std::collections::HashMap<Url, Vec<TextEdit>> =
                 std::collections::HashMap::new();
 
-            for RenameLocation {
-                module,
-                start_line,
-                start_column,
-                end_line,
-                end_column,
-            } in rename_locations
-            {
+            for RenameLocation { module, range } in rename_locations {
                 let file_uri = Self::module_name_to_uri(&module, &root);
                 let edit = TextEdit {
-                    range: Range {
-                        start: Self::to_lsp_position(start_line, start_column),
-                        end: Self::to_lsp_position(end_line, end_column),
-                    },
+                    range: Self::to_lsp_range(range),
                     new_text: new_name.clone(),
                 };
 
