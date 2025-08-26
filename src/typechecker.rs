@@ -14,8 +14,6 @@ pub struct TypeAnnotation {
     pub name: String,
 }
 
-// Internal function uses DopType tuples during typechecking
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct DefinitionLink {
     pub reference_range: Range,
@@ -63,7 +61,6 @@ pub fn typecheck(
     let mut imported_components: HashMap<String, Range> = HashMap::new();
     let mut referenced_components: HashSet<String> = HashSet::new();
 
-    // Build component_info from all imported components
     for ImportNode {
         from_attr,
         component_attr,
@@ -98,7 +95,6 @@ pub fn typecheck(
     }
     let mut env = Environment::new();
 
-    // Add global HOP_MODE variable
     env.push("HOP_MODE".to_string(), DopType::String);
 
     for ComponentDefinitionNode {
@@ -111,7 +107,6 @@ pub fn typecheck(
         ..
     } in &module.components
     {
-        // Check for duplicate component names
         if component_info.contains_key(name) {
             errors.push(RangeError::component_is_already_defined(name, *range));
             continue;
@@ -163,7 +158,6 @@ pub fn typecheck(
             DopType::Void
         };
 
-        // Add the component to component_info BEFORE typechecking preview content
         component_info.insert(
             name.clone(),
             ComponentInfo {
@@ -174,7 +168,6 @@ pub fn typecheck(
             },
         );
 
-        // Now typecheck preview content with the component available in component_info
         if let Some(preview_nodes) = preview {
             if let Some(params_as_attr) = params_as_attr {
                 env.push(
@@ -223,7 +216,6 @@ pub fn typecheck(
         }
     }
 
-    // Check for unused imports
     for (component_name, import_range) in imported_components {
         if !referenced_components.contains(&component_name) {
             errors.push(RangeError::unused_import(&component_name, import_range));
