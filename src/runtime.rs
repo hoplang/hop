@@ -8,7 +8,7 @@ use crate::dop::{DopType, evaluate_expr, load_json_file};
 use crate::parser::Module;
 use crate::typechecker::TypeResult;
 use anyhow::Result;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::Write;
 use std::process::{Command, Stdio};
 
@@ -35,7 +35,7 @@ impl HopMode {
 pub struct Program {
     component_maps: HashMap<String, HashMap<String, ComponentDefinitionNode>>,
     import_maps: HashMap<String, HashMap<String, String>>,
-    parameter_types: HashMap<String, HashMap<String, DopType>>,
+    parameter_types: HashMap<String, HashMap<String, BTreeMap<String, DopType>>>,
     render_nodes: HashMap<String, Vec<RenderNode>>,
     scripts: String,
     hop_mode: HopMode,
@@ -78,14 +78,7 @@ impl Program {
             if let Some(type_info) = type_results.get(&module_name) {
                 let mut module_parameter_types = HashMap::new();
                 for (name, info) in &type_info.component_info {
-                    // For backward compatibility, use the first parameter type
-                    // or Void if there are no parameters
-                    let param_type = if info.parameter_types.is_empty() {
-                        DopType::Void
-                    } else {
-                        info.parameter_types.values().next().unwrap().clone()
-                    };
-                    module_parameter_types.insert(name.clone(), param_type);
+                    module_parameter_types.insert(name.clone(), info.parameter_types.clone());
                 }
                 parameter_types.insert(module_name.clone(), module_parameter_types);
             }
@@ -115,7 +108,7 @@ impl Program {
     }
 
     /// Get the parameter types for inspection
-    pub fn get_parameter_types(&self) -> &HashMap<String, HashMap<String, DopType>> {
+    pub fn get_parameter_types(&self) -> &HashMap<String, HashMap<String, BTreeMap<String, DopType>>> {
         &self.parameter_types
     }
 

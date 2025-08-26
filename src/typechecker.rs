@@ -497,7 +497,14 @@ fn typecheck_node(
                     }
                 };
             let element_type = match &array_type {
-                DopType::Array(inner) => *inner.clone(),
+                DopType::Array(Some(inner)) => *inner.clone(),
+                DopType::Array(None) => {
+                    errors.push(RangeError::new(
+                        "Cannot iterate over an empty array with unknown element type".to_string(),
+                        *array_expr_range,
+                    ));
+                    return;
+                }
                 _ => {
                     errors.push(RangeError::new(
                         format!("Can not iterate over {}", array_type),

@@ -275,7 +275,6 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::DopType, Range
         (DopToken::TypeString, _) => Ok(DopType::String),
         (DopToken::TypeNumber, _) => Ok(DopType::Number),
         (DopToken::TypeBoolean, _) => Ok(DopType::Bool),
-        (DopToken::TypeVoid, _) => Ok(DopType::Void),
         (DopToken::TypeArray, _) => {
             // Expect [inner_type]
             match tokenizer.peek() {
@@ -286,7 +285,7 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::DopType, Range
                     match tokenizer.peek() {
                         (DopToken::RightBracket, _) => {
                             tokenizer.advance()?; // consume ]
-                            Ok(DopType::Array(Box::new(inner_type)))
+                            Ok(DopType::Array(Some(Box::new(inner_type))))
                         }
                         (_, range) => Err(RangeError::new(
                             "Expected ']' after array type".to_string(),

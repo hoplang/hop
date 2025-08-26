@@ -154,7 +154,18 @@ fn create_inspect_page(program: &runtime::Program) -> String {
             let encoded_component = component_name.replace("/", "%2F");
 
             let parameter_type = if let Some(module_types) = parameter_types.get(module_name) {
-                module_types.get(component_name).map(|t| t.to_string())
+                if let Some(param_map) = module_types.get(component_name) {
+                    if param_map.is_empty() {
+                        Some("()".to_string())
+                    } else {
+                        let params: Vec<String> = param_map.iter()
+                            .map(|(name, typ)| format!("{}: {}", name, typ))
+                            .collect();
+                        Some(format!("({})", params.join(", ")))
+                    }
+                } else {
+                    None
+                }
             } else {
                 None
             };

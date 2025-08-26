@@ -7,11 +7,10 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq)]
 pub enum DopType {
     Object(BTreeMap<String, DopType>),
-    Array(Box<DopType>),
+    Array(Option<Box<DopType>>),
     Bool,
     String,
     Number,
-    Void,
 }
 
 impl fmt::Display for DopType {
@@ -27,11 +26,13 @@ impl fmt::Display for DopType {
                 }
                 write!(f, "]")
             }
-            DopType::Array(inner_type) => write!(f, "array[{}]", inner_type),
+            DopType::Array(inner_type) => match inner_type {
+                Some(typ) => write!(f, "array[{}]", typ),
+                None => write!(f, "array[]"),
+            },
             DopType::Bool => write!(f, "boolean"),
             DopType::String => write!(f, "string"),
             DopType::Number => write!(f, "number"),
-            DopType::Void => write!(f, "void"),
         }
     }
 }
@@ -43,10 +44,14 @@ pub fn is_subtype(subtype: &DopType, supertype: &DopType) -> bool {
         (DopType::Bool, DopType::Bool) => true,
         (DopType::String, DopType::String) => true,
         (DopType::Number, DopType::Number) => true,
-        (DopType::Void, DopType::Void) => true,
 
         // Arrays are covariant in their element type
-        (DopType::Array(sub_elem), DopType::Array(super_elem)) => is_subtype(sub_elem, super_elem),
+        (DopType::Array(sub_elem), DopType::Array(super_elem)) => match (sub_elem, super_elem) {
+            (Some(sub_type), Some(super_type)) => is_subtype(sub_type, super_type),
+            (None, None) => true,
+            (None, Some(_)) => true, // Empty array can be subtype of any array
+            (Some(_), None) => false, // Typed array cannot be subtype of empty array
+        },
 
         // Objects: subtype must have all properties of supertype with compatible types
         (DopType::Object(sub_props), DopType::Object(super_props)) => {
@@ -124,8 +129,8 @@ pub fn typecheck_expr(
         }
         DopExpr::ArrayLiteral(elements) => {
             if elements.is_empty() {
-                // Empty array has unknown element type, we'll use void for now
-                Ok(DopType::Array(Box::new(DopType::Void)))
+                // Empty array has unknown element type
+                Ok(DopType::Array(None))
             } else {
                 // Check the type of the first element
                 let first_type = typecheck_expr(&elements[0], env, annotations, errors, range)?;
@@ -141,7 +146,7 @@ pub fn typecheck_expr(
                     }
                 }
 
-                Ok(DopType::Array(Box::new(first_type)))
+                Ok(DopType::Array(Some(Box::new(first_type))))
             }
         }
     }
