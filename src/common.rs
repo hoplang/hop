@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 /// Represents a position in source code
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Position {
     /// Line number (1-based)
     pub line: usize,
@@ -29,7 +29,7 @@ impl fmt::Display for Position {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, PartialOrd, Ord)]
 pub struct Range {
     pub start: Position,
     pub end: Position,

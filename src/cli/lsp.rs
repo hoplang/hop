@@ -1,3 +1,4 @@
+use crate::common::Position;
 use crate::files::{self, ProjectRoot};
 use crate::server::{DefinitionLocation, HoverInfo, RenameLocation, Server};
 use std::path::Path;
@@ -22,6 +23,10 @@ impl HopLanguageServer {
     // Convert from LSP position (0-based) to Rust Position (1-based)
     fn from_lsp_position(position: tower_lsp::lsp_types::Position) -> (usize, usize) {
         (position.line as usize + 1, position.character as usize + 1)
+    }
+
+    fn position_from_lsp_position(position: tower_lsp::lsp_types::Position) -> Position {
+        Position::new(position.line as usize + 1, position.character as usize + 1)
     }
 
     // Convert from Rust position (1-based) to LSP position (0-based)
@@ -168,10 +173,9 @@ impl LanguageServer for HopLanguageServer {
         let root = Self::find_root(&uri).unwrap();
         let module_name = Self::uri_to_module_name(&uri, &root);
 
-        let (line, column) = Self::from_lsp_position(position);
         let server = self.server.read().await;
         Ok(server
-            .get_hover_info(&module_name, line, column)
+            .get_hover_info(&module_name, Self::position_from_lsp_position(position))
             .map(|h| self.convert_hover(h)))
     }
 
@@ -184,17 +188,16 @@ impl LanguageServer for HopLanguageServer {
         let root = Self::find_root(&uri).unwrap();
         let module_name = Self::uri_to_module_name(&uri, &root);
 
-        let (line, column) = Self::from_lsp_position(position);
         let server = self.server.read().await;
 
-        Ok(server.get_definition(&module_name, line, column).map(
-            |DefinitionLocation { module, range }| {
+        Ok(server
+            .get_definition_location(&module_name, Self::position_from_lsp_position(position))
+            .map(|DefinitionLocation { module, range }| {
                 GotoDefinitionResponse::Scalar(Location {
                     uri: Self::module_name_to_uri(&module, &root),
                     range: Self::to_lsp_range(range),
                 })
-            },
-        ))
+            }))
     }
 
     async fn prepare_rename(
@@ -206,10 +209,11 @@ impl LanguageServer for HopLanguageServer {
         let root = Self::find_root(&uri).unwrap();
         let module_name = Self::uri_to_module_name(&uri, &root);
 
-        let (line, column) = Self::from_lsp_position(position);
         let server = self.server.read().await;
 
-        if let Some(renameable_symbol) = server.get_renameable_symbol(&module_name, line, column) {
+        if let Some(renameable_symbol) =
+            server.get_renameable_symbol(&module_name, Self::position_from_lsp_position(position))
+        {
             Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
                 range: Self::to_lsp_range(renameable_symbol.range),
                 placeholder: renameable_symbol.current_name,
@@ -226,10 +230,11 @@ impl LanguageServer for HopLanguageServer {
         let root = Self::find_root(&uri).unwrap();
         let module_name = Self::uri_to_module_name(&uri, &root);
 
-        let (line, column) = Self::from_lsp_position(position);
         let server = self.server.read().await;
 
-        if let Some(rename_locations) = server.get_rename_locations(&module_name, line, column) {
+        if let Some(rename_locations) =
+            server.get_rename_locations(&module_name, Self::position_from_lsp_position(position))
+        {
             let mut changes: std::collections::HashMap<Url, Vec<TextEdit>> =
                 std::collections::HashMap::new();
 

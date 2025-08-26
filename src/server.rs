@@ -23,10 +23,35 @@ pub struct Diagnostic {
     pub range: Range,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenameLocation {
     pub module: String,
     pub range: Range,
+}
+
+impl PartialOrd for RenameLocation {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for RenameLocation {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // First compare by module name
+        match self.module.cmp(&other.module) {
+            std::cmp::Ordering::Equal => {
+                // Then by range start
+                match self.range.start.cmp(&other.range.start) {
+                    std::cmp::Ordering::Equal => {
+                        // Finally by range end
+                        self.range.end.cmp(&other.range.end)
+                    }
+                    other => other,
+                }
+            }
+            other => other,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -97,37 +122,28 @@ impl Server {
         dependent_modules
     }
 
-    pub fn get_hover_info(
-        &self,
-        module_name: &str,
-        line: usize,
-        column: usize,
-    ) -> Option<HoverInfo> {
-        let pos = Position::new(line, column);
+    pub fn get_hover_info(&self, module_name: &str, position: Position) -> Option<HoverInfo> {
         self.type_results
             .get(module_name)?
             .annotations
             .iter()
-            .find(|a| a.range.contains_position(pos))
+            .find(|a| a.range.contains_position(position))
             .map(|annotation| HoverInfo {
                 type_str: format!("`{}`: `{}`", annotation.name, annotation.typ),
                 range: annotation.range,
             })
     }
 
-    pub fn get_definition(
+    pub fn get_definition_location(
         &self,
         module_name: &str,
-        line: usize,
-        column: usize,
+        position: Position,
     ) -> Option<DefinitionLocation> {
-        let pos = Position::new(line, column);
-
         self.type_results
             .get(module_name)?
             .component_definition_links
             .iter()
-            .find(|link| link.reference_name_contains_position(pos))
+            .find(|link| link.reference_name_contains_position(position))
             .map(|link| DefinitionLocation {
                 module: link.definition_module.clone(),
                 range: link.definition_opening_name_range,
@@ -137,20 +153,16 @@ impl Server {
     pub fn get_rename_locations(
         &self,
         module_name: &str,
-        line: usize,
-        column: usize,
+        position: Position,
     ) -> Option<Vec<RenameLocation>> {
         let type_result = self.type_results.get(module_name)?;
-        let pos = Position::new(line, column);
 
         // First, check if we're on a component reference
         for link in &type_result.component_definition_links {
-            if link.reference_name_contains_position(pos) {
-                return Some(self.collect_all_rename_locations(
+            if link.reference_name_contains_position(position) {
+                return Some(self.collect_component_rename_locations(
                     &link.definition_component_name,
                     &link.definition_module,
-                    link.definition_opening_name_range,
-                    link.definition_closing_name_range,
                 ));
             }
         }
@@ -160,18 +172,16 @@ impl Server {
             if component_info.definition_module == module_name {
                 let is_on_definition = component_info
                     .definition_opening_name_range
-                    .contains_position(pos)
+                    .contains_position(position)
                     || component_info
                         .definition_closing_name_range
-                        .is_some_and(|range| range.contains_position(pos));
+                        .is_some_and(|range| range.contains_position(position));
 
                 if is_on_definition {
                     // We're on a definition, collect all rename locations
-                    return Some(self.collect_all_rename_locations(
+                    return Some(self.collect_component_rename_locations(
                         component_name,
                         &component_info.definition_module,
-                        component_info.definition_opening_name_range,
-                        component_info.definition_closing_name_range,
                     ));
                 }
             }
@@ -180,18 +190,22 @@ impl Server {
         None
     }
 
+    /// Returns information about a renameable symbol at the given position.
+    /// Checks if the position is on a component name (reference or definition)
+    /// and returns the symbol's current name and range if found.
     pub fn get_renameable_symbol(
         &self,
         module_name: &str,
-        line: usize,
-        column: usize,
+        position: Position,
     ) -> Option<RenameableSymbol> {
         let type_result = self.type_results.get(module_name)?;
-        let pos = Position::new(line, column);
 
         // First, check if we're on a component reference
         for link in &type_result.component_definition_links {
-            if link.reference_opening_name_range.contains_position(pos) {
+            if link
+                .reference_opening_name_range
+                .contains_position(position)
+            {
                 return Some(RenameableSymbol {
                     current_name: link.definition_component_name.clone(),
                     range: link.reference_opening_name_range,
@@ -199,7 +213,7 @@ impl Server {
             }
             if link
                 .reference_closing_name_range
-                .is_some_and(|r| r.contains_position(pos))
+                .is_some_and(|r| r.contains_position(position))
             {
                 return Some(RenameableSymbol {
                     current_name: link.definition_component_name.clone(),
@@ -212,17 +226,15 @@ impl Server {
         for (component_name, component_info) in &type_result.component_info {
             if component_info
                 .definition_opening_name_range
-                .contains_position(pos)
+                .contains_position(position)
             {
                 return Some(RenameableSymbol {
                     current_name: component_name.clone(),
                     range: component_info.definition_opening_name_range,
                 });
             }
-
-            // Check if cursor is on the closing name of a definition
             if let Some(closing_range) = component_info.definition_closing_name_range {
-                if closing_range.contains_position(pos) {
+                if closing_range.contains_position(position) {
                     return Some(RenameableSymbol {
                         current_name: component_name.clone(),
                         range: closing_range,
@@ -234,27 +246,35 @@ impl Server {
         None
     }
 
-    fn collect_all_rename_locations(
+    /// Collects all locations where a component should be renamed, including:
+    /// - The component definition (opening and closing tags)
+    /// - All references to the component (opening and closing tags)
+    /// - All import statements that import the component
+    fn collect_component_rename_locations(
         &self,
         component_name: &str,
         definition_module: &str,
-        definition_opening_range: Range,
-        definition_closing_range: Option<Range>,
     ) -> Vec<RenameLocation> {
         let mut locations = Vec::new();
 
-        // Add the definition's opening tag name
-        locations.push(RenameLocation {
-            module: definition_module.to_string(),
-            range: definition_opening_range,
-        });
-
-        // Add the definition's closing tag name if it exists
-        if let Some(closing_range) = definition_closing_range {
+        if let Some(component_info) = self
+            .type_results
+            .get(definition_module)
+            .and_then(|t| t.component_info.get(component_name))
+        {
+            // Add the definition's opening tag name
             locations.push(RenameLocation {
                 module: definition_module.to_string(),
-                range: closing_range,
+                range: component_info.definition_opening_name_range,
             });
+
+            // Add the definition's closing tag name if it exists
+            if let Some(closing_range) = component_info.definition_closing_name_range {
+                locations.push(RenameLocation {
+                    module: definition_module.to_string(),
+                    range: closing_range,
+                });
+            }
         }
 
         for (module_name, type_result) in &self.type_results {
@@ -319,5 +339,141 @@ impl Server {
         }
 
         diagnostics
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+    use simple_txtar::Archive;
+
+    fn server_from_txtar(archive: &str) -> Server {
+        let mut server = Server::new();
+
+        for file in Archive::from(archive).iter() {
+            let module_name = file.name.replace(".hop", "").replace("/", ".");
+            server.update_module(module_name, &file.content);
+        }
+
+        server
+    }
+
+    #[test]
+    fn test_get_definition() {
+        let server = server_from_txtar(
+            r#"
+-- components.hop --
+<hello-world>
+  <h1>Hello World</h1>
+</hello-world>
+
+-- main.hop --
+<import component="hello-world" from="components" />
+
+<main-comp>
+  <hello-world />
+</main-comp>
+"#,
+        );
+
+        assert_eq!(
+            server
+                .get_definition_location("main", Position::new(4, 4))
+                .unwrap(),
+            DefinitionLocation {
+                module: "components".to_string(),
+                range: Range::new(Position::new(1, 2), Position::new(1, 13))
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_rename_locations() {
+        let server = server_from_txtar(
+            r#"
+-- components.hop --
+<hello-world>
+  <h1>Hello World</h1>
+</hello-world>
+
+-- main.hop --
+<import component="hello-world" from="components" />
+
+<main-comp>
+  <hello-world />
+</main-comp>
+"#,
+        );
+
+        let rename_locations = server.get_rename_locations("main", Position::new(4, 4));
+        assert!(rename_locations.is_some());
+        let mut locations = rename_locations.unwrap();
+        locations.sort();
+        assert_eq!(
+            locations,
+            vec![
+                RenameLocation {
+                    module: "components".to_string(),
+                    range: Range {
+                        start: Position { line: 1, column: 2 },
+                        end: Position {
+                            line: 1,
+                            column: 13,
+                        },
+                    },
+                },
+                RenameLocation {
+                    module: "components".to_string(),
+                    range: Range {
+                        start: Position { line: 3, column: 3 },
+                        end: Position {
+                            line: 3,
+                            column: 14,
+                        },
+                    },
+                },
+                RenameLocation {
+                    module: "main".to_string(),
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 20,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 31,
+                        },
+                    },
+                },
+                RenameLocation {
+                    module: "main".to_string(),
+                    range: Range {
+                        start: Position { line: 4, column: 4 },
+                        end: Position {
+                            line: 4,
+                            column: 15,
+                        },
+                    },
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn test_get_renameable_symbol() {
+        let server = server_from_txtar(
+            r#"
+-- main.hop --
+<hello-world>
+  <h1>Hello World</h1>
+</hello-world>
+"#,
+        );
+
+        let symbol = server.get_renameable_symbol("main", Position::new(1, 2));
+        assert!(symbol.is_some());
+        let symbol = symbol.unwrap();
+        assert_eq!(symbol.current_name, "hello-world");
     }
 }
