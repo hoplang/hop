@@ -352,7 +352,7 @@ mod tests {
         let mut server = Server::new();
 
         for file in Archive::from(archive).iter() {
-            let module_name = file.name.replace(".hop", "").replace("/", ".");
+            let module_name = file.name.replace(".hop", "");
             server.update_module(module_name, &file.content);
         }
 
@@ -363,13 +363,13 @@ mod tests {
     fn test_get_definition() {
         let server = server_from_txtar(
             r#"
--- components.hop --
+-- hop/components.hop --
 <hello-world>
   <h1>Hello World</h1>
 </hello-world>
 
 -- main.hop --
-<import component="hello-world" from="components" />
+<import component="hello-world" from="hop/components" />
 
 <main-comp>
   <hello-world />
@@ -382,7 +382,7 @@ mod tests {
                 .get_definition_location("main", Position::new(4, 4))
                 .unwrap(),
             DefinitionLocation {
-                module: "components".to_string(),
+                module: "hop/components".to_string(),
                 range: Range::new(Position::new(1, 2), Position::new(1, 13))
             }
         );
@@ -475,5 +475,38 @@ mod tests {
         assert!(symbol.is_some());
         let symbol = symbol.unwrap();
         assert_eq!(symbol.current_name, "hello-world");
+    }
+
+    #[test]
+    fn test_get_error_diagnostics_parse_errors() {
+        let server = server_from_txtar(
+            r#"
+-- main.hop --
+<main-comp>
+  <div>
+  <span>unclosed span
+</main-comp>
+"#,
+        );
+
+        assert_eq!(
+            server.get_error_diagnostics("main"),
+            vec![
+                Diagnostic {
+                    message: "Unclosed <span>".to_string(),
+                    range: Range {
+                        start: Position { line: 3, column: 3 },
+                        end: Position { line: 3, column: 9 },
+                    },
+                },
+                Diagnostic {
+                    message: "Unclosed <div>".to_string(),
+                    range: Range {
+                        start: Position { line: 2, column: 3 },
+                        end: Position { line: 2, column: 8 },
+                    },
+                },
+            ]
+        );
     }
 }
