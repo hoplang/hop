@@ -287,49 +287,46 @@ fn typecheck_node(
                     definition_closing_name_range: comp_info.definition_closing_name_range,
                 });
 
-                if let Some((expression, range)) = params {
-                    let expr_type =
-                        match typecheck_expr(expression, env, annotations, errors, *range) {
-                            Ok(t) => t,
-                            Err(err) => {
-                                errors.push(RangeError::new(err, *range));
-                                return; // Skip further processing
-                            }
-                        };
-
-                    // For components with multiple parameters, we expect a single expression
-                    // that should match the first parameter type (for backward compatibility)
-                    // or we could extend this to handle tuple types in the future
-                    let expected_type = if comp_info.parameter_types.is_empty() {
-                        &DopType::Void
-                    } else {
-                        &comp_info.parameter_types[0]
-                    };
-
-                    if !is_subtype(&expr_type, expected_type) {
-                        errors.push(RangeError::new(
-                            format!(
-                                "Argument of type {} is incompatible with expected type {}",
-                                expr_type, expected_type,
-                            ),
-                            *range,
-                        ));
-                    } else {
-                        annotations.push(TypeAnnotation {
-                            range: *range,
-                            typ: expr_type,
-                            name: "component parameter".to_string(),
-                        });
-                    }
-                } else if !comp_info.parameter_types.is_empty() {
-                    // Component expects parameters but none were provided
+                // Validate arguments against parameter types
+                if params.len() != comp_info.parameter_types.len() {
                     errors.push(RangeError::new(
                         format!(
-                            "Component {} expects parameters but none were provided",
-                            component
+                            "Component {} expects {} parameters but {} arguments were provided",
+                            component,
+                            comp_info.parameter_types.len(),
+                            params.len()
                         ),
                         *range,
                     ));
+                } else {
+                    // Check each argument against its corresponding parameter type
+                    for (i, (expression, expr_range)) in params.iter().enumerate() {
+                        let expr_type =
+                            match typecheck_expr(expression, env, annotations, errors, *expr_range) {
+                                Ok(t) => t,
+                                Err(err) => {
+                                    errors.push(RangeError::new(err, *expr_range));
+                                    continue; // Skip to next argument
+                                }
+                            };
+
+                        let expected_type = &comp_info.parameter_types[i];
+                        if !is_subtype(&expr_type, expected_type) {
+                            errors.push(RangeError::new(
+                                format!(
+                                    "Argument {} of type {} is incompatible with expected type {}",
+                                    i + 1, expr_type, expected_type,
+                                ),
+                                *expr_range,
+                            ));
+                        } else {
+                            annotations.push(TypeAnnotation {
+                                range: *expr_range,
+                                typ: expr_type,
+                                name: format!("component parameter {}", i + 1),
+                            });
+                        }
+                    }
                 }
 
                 // Validate slots

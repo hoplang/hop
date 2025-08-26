@@ -1230,7 +1230,7 @@ main::main-comp
   <main-comp {1}/>
 </foo-comp>
 -- out --
-error: Argument of type number is incompatible with expected type object[debug: boolean]
+error: Argument 1 of type number is incompatible with expected type object[debug: boolean]
   --> main.hop (line 7, col 15)
 6 | <foo-comp>
 7 |   <main-comp {1}/>
@@ -1324,7 +1324,7 @@ main::main-comp
 	<string-comp {42}/>
 </main-comp>
 -- out --
-error: Argument of type number is incompatible with expected type string
+error: Argument 1 of type number is incompatible with expected type string
   --> main.hop (line 5, col 16)
 4 | <main-comp>
 5 |     <string-comp {42}/>
@@ -1340,7 +1340,7 @@ error: Argument of type number is incompatible with expected type string
 	<user-comp {'invalid'}/>
 </main-comp>
 -- out --
-error: Argument of type string is incompatible with expected type object[age: string, name: string]
+error: Argument 1 of type string is incompatible with expected type object[age: string, name: string]
   --> main.hop (line 5, col 14)
 4 | <main-comp>
 5 |     <user-comp {'invalid'}/>
@@ -1373,7 +1373,7 @@ main::main-comp
 	<new-comp {'invalid'}/>
 </main-comp>
 -- out --
-error: Argument of type string is incompatible with expected type object[name: string]
+error: Argument 1 of type string is incompatible with expected type object[name: string]
   --> main.hop (line 5, col 13)
 4 | <main-comp>
 5 |     <new-comp {'invalid'}/>
@@ -1520,7 +1520,7 @@ Error when passing wrong type to boolean parameter.
 	<toggle-comp {'not a boolean'}/>
 </main-comp>
 -- out --
-error: Argument of type string is incompatible with expected type boolean
+error: Argument 1 of type string is incompatible with expected type boolean
   --> main.hop (line 7, col 16)
 6 | <main-comp>
 7 |     <toggle-comp {'not a boolean'}/>
@@ -1599,7 +1599,7 @@ Typechecker should print an error if an object lacks required properties.
 	</needs-a>
 </main-comp>
 -- out --
-error: Argument of type object[b: string] is incompatible with expected type object[a: string]
+error: Argument 1 of type object[b: string] is incompatible with expected type object[a: string]
   --> main.hop (line 6, col 12)
 5 | <main-comp {params: object[data: object[b: string]]}>
 6 |     <needs-a {params.data}>

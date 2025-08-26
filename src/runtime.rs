@@ -165,7 +165,7 @@ impl Program {
         &self,
         module_name: &str,
         component_name: &str,
-        params: serde_json::Value,
+        params: Vec<serde_json::Value>,
     ) -> Result<String> {
         let empty_slots = HashMap::new();
         self.evaluate_component(module_name, component_name, params, &empty_slots, None)
@@ -175,7 +175,7 @@ impl Program {
         &self,
         module_name: &str,
         component_name: &str,
-        params: serde_json::Value,
+        params: Vec<serde_json::Value>,
     ) -> Result<String> {
         let component_map = self
             .component_maps
@@ -195,10 +195,10 @@ impl Program {
         let mut result = String::new();
         let mut env = Self::init_environment(self.hop_mode);
 
-        // Set up environment with parameters if the component has params
-        // For now, only handle the first parameter for backward compatibility
-        if let Some(first_param) = component.params.first() {
-            env.push(first_param.var_name.value.clone(), params);
+        // Set up environment with all parameters and their corresponding values
+        for (i, param) in component.params.iter().enumerate() {
+            let value = params.get(i).cloned().unwrap_or(serde_json::Value::Null);
+            env.push(param.var_name.value.clone(), value);
         }
 
         // Render each node in the preview content
@@ -215,7 +215,7 @@ impl Program {
         &self,
         module_name: &str,
         component_name: &str,
-        params: serde_json::Value,
+        params: Vec<serde_json::Value>,
         slot_content: &HashMap<String, String>,
         additional_class: Option<&str>,
     ) -> Result<String> {
@@ -233,9 +233,10 @@ impl Program {
         })?;
 
         let mut env = Self::init_environment(self.hop_mode);
-        // For now, only handle the first parameter for backward compatibility
-        if let Some(first_param) = component.params.first() {
-            env.push(first_param.var_name.value.clone(), params);
+        // Set up environment with all parameters and their corresponding values
+        for (i, param) in component.params.iter().enumerate() {
+            let value = params.get(i).cloned().unwrap_or(serde_json::Value::Null);
+            env.push(param.var_name.value.clone(), value);
         }
 
         if component.entrypoint {
@@ -326,9 +327,9 @@ impl Program {
                 children,
                 ..
             }) => {
-                let mut params_value = serde_json::Value::Null;
-                if let Some((expression, _)) = params {
-                    params_value = evaluate_expr(expression, env)?;
+                let mut params_values = Vec::new();
+                for (expression, _) in params {
+                    params_values.push(evaluate_expr(expression, env)?);
                 }
 
                 let component_name = component;
@@ -401,7 +402,7 @@ impl Program {
                 self.evaluate_component(
                     &target_module,
                     component_name,
-                    params_value,
+                    params_values,
                     &new_slot_content,
                     additional_class,
                 )
@@ -912,7 +913,7 @@ mod tests {
             });
 
             let actual_output = program
-                .execute_simple("main", "main-comp", data)
+                .execute_simple("main", "main-comp", vec![data])
                 .unwrap_or_else(|e| {
                     panic!(
                         "Execution failed for test case {} (line {}): {}",

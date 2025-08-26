@@ -108,7 +108,7 @@ fn create_error_page(error: &anyhow::Error) -> String {
         "message": format!("{:#}", error)
     });
 
-    match program.execute_simple("hop/error_pages", "generic-error", error_data) {
+    match program.execute_simple("hop/error_pages", "generic-error", vec![error_data]) {
         Ok(html) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
     }
@@ -122,7 +122,7 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
         "available_routes": available_routes
     });
 
-    match program.execute_simple("hop/error_pages", "not-found-error", not_found_data) {
+    match program.execute_simple("hop/error_pages", "not-found-error", vec![not_found_data]) {
         Ok(html) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
     }
@@ -187,7 +187,7 @@ fn create_inspect_page(program: &runtime::Program) -> String {
 
     let combined_script = inspect_program.get_scripts();
 
-    match inspect_program.execute_simple("hop/inspector", "inspect-page", inspect_data) {
+    match inspect_program.execute_simple("hop/inspector", "inspect-page", vec![inspect_data]) {
         Ok(html) => {
             let hot_reload_script = r#"
 <script type="module">
@@ -280,7 +280,7 @@ fn create_component_preview(
     }
 
     // Render the component using preview content if available
-    match program.execute_preview(module_name, component_name, serde_json::json!({})) {
+    match program.execute_preview(module_name, component_name, vec![]) {
         Ok(rendered_content) => {
             let combined_script = program.get_scripts();
 

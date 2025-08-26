@@ -213,7 +213,7 @@ pub struct ComponentReferenceNode {
     pub component: String,
     pub opening_name_range: Range,
     pub closing_name_range: Option<Range>,
-    pub params: Option<(DopExpr, Range)>,
+    pub params: Vec<(DopExpr, Range)>,
     pub attributes: Vec<Attribute>,
     pub range: Range,
     pub children: Vec<Node>,

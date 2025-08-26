@@ -576,7 +576,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                 }
                 tag_name if is_valid_component_name(tag_name) => {
                     // This is a component render (contains dash)
-                    let params_attr = match &expression {
+                    let params_attrs = match &expression {
                         Some((expr_string, range)) => {
                             let mut tokenizer = match DopTokenizer::new(expr_string, range.start) {
                                 Ok(tokenizer) => tokenizer,
@@ -588,22 +588,22 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                                     });
                                 }
                             };
-                            match dop::parse_expr(&mut tokenizer) {
-                                Ok(expression) => Some((expression, *range)),
+                            match dop::parse_arguments(&mut tokenizer) {
+                                Ok(expressions) => expressions.into_iter().map(|expr| (expr, *range)).collect(),
                                 Err(err) => {
                                     errors.push(err);
-                                    None
+                                    Vec::new()
                                 }
                             }
                         }
-                        None => None,
+                        None => Vec::new(),
                     };
 
                     Node::ComponentReference(ComponentReferenceNode {
                         component: tag_name.to_string(),
                         opening_name_range: *name_range,
                         closing_name_range: tree.end_token.as_ref().map(|token| token.name_range),
-                        params: params_attr,
+                        params: params_attrs,
                         attributes: attributes.clone(),
                         range: *token_range,
                         children,

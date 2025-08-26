@@ -169,6 +169,33 @@ pub fn parse_parameters_with_types(
     Ok(params)
 }
 
+// arguments = expr ("," expr)* Eof
+pub fn parse_arguments(tokenizer: &mut DopTokenizer) -> Result<Vec<DopExpr>, RangeError> {
+    let mut args = Vec::new();
+
+    // Parse first argument
+    args.push(parse_equality(tokenizer)?);
+
+    // Parse additional arguments if any (comma-separated)
+    loop {
+        match tokenizer.peek() {
+            (DopToken::Comma, _) => {
+                tokenizer.advance()?; // consume comma
+                args.push(parse_equality(tokenizer)?);
+            }
+            (DopToken::Eof, _) => break,
+            (_, range) => {
+                return Err(RangeError::new(
+                    "Unexpected token after argument".to_string(),
+                    *range,
+                ));
+            }
+        }
+    }
+
+    Ok(args)
+}
+
 // type = TypeString
 //      | TypeNumber
 //      | TypeBoolean
