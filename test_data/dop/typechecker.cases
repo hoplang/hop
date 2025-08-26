@@ -131,8 +131,7 @@ Equality comparison between variables of same type should work.
 
 ## BEGIN
 -- env --
-user: object[name: string]
-admin: object[name: string]
+user: object[name: string], admin: object[name: string]
 -- expr --
 user.name == admin.name
 -- out --
@@ -143,8 +142,7 @@ Equality comparison with incompatible types should produce an error.
 
 ## BEGIN
 -- env --
-name: string
-count: number
+name: string, count: number
 -- expr --
 name == count
 -- error --
@@ -153,8 +151,7 @@ Can not compare string to number
 
 ## BEGIN
 -- env --
-enabled: boolean
-name: string
+enabled: boolean, name: string
 -- expr --
 enabled == name
 -- error --
@@ -165,8 +162,7 @@ Complex equality expressions should work when types match.
 
 ## BEGIN
 -- env --
-a: boolean
-b: boolean
+a: boolean, b: boolean
 -- expr --
 a == b == true
 -- out --
@@ -233,8 +229,7 @@ boolean
 
 ## BEGIN
 -- env --
-status: object[enabled: boolean]
-config: object[active: boolean]
+status: object[enabled: boolean], config: object[active: boolean]
 -- expr --
 !(status.enabled == config.active)
 -- out --

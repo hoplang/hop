@@ -109,62 +109,64 @@ pub fn parse_loop_header(
     Ok((var_name, (array_expr, array_expr_range)))
 }
 
-// variable_with_type = Identifier ":" type Eof
-pub fn parse_variable_with_type(
+// parameter_with_type = Identifier ":" type
+fn parse_parameter_with_type(
     tokenizer: &mut DopTokenizer,
 ) -> Result<(DopVarName, crate::dop::DopType), RangeError> {
-    // Parse variable name
-    let var_name = match tokenizer.peek() {
-        (DopToken::Identifier(name), range) => {
-            let var_name = match DopVarName::new(name.clone()) {
-                Some(var_name) => var_name,
-                None => {
-                    return Err(RangeError::invalid_variable_name(name, *range));
-                }
-            };
-            tokenizer.advance()?; // consume identifier
-            var_name
-        }
+    // Parse parameter name
+    let var_name = match tokenizer.advance()? {
+        (DopToken::Identifier(name), range) => match DopVarName::new(name.clone()) {
+            Some(var_name) => var_name,
+            None => {
+                return Err(RangeError::invalid_variable_name(&name, range));
+            }
+        },
         (_, range) => {
-            return Err(RangeError::new(
-                "Expected variable name".to_string(),
-                *range,
-            ));
+            return Err(RangeError::new("Expected variable name".to_string(), range));
         }
     };
 
     // Require type annotation
-    let type_annotation = match tokenizer.peek() {
-        (DopToken::Colon, _) => {
-            tokenizer.advance()?; // consume :
-            parse_type(tokenizer)?
-        }
-        (DopToken::Eof, range) => {
-            return Err(RangeError::new(
-                "Type annotation is required for component parameters".to_string(),
-                *range,
-            ));
-        }
+    let type_annotation = match tokenizer.advance()? {
+        (DopToken::Colon, _) => parse_type(tokenizer)?,
         (_, range) => {
             return Err(RangeError::new(
                 "Expected ':' for type annotation".to_string(),
-                *range,
+                range,
             ));
         }
     };
 
-    // Expect end of input
-    match tokenizer.peek() {
-        (DopToken::Eof, _) => {}
-        (_, range) => {
-            return Err(RangeError::new(
-                "Unexpected token after parameter".to_string(),
-                *range,
-            ));
+    Ok((var_name, type_annotation))
+}
+
+// parameters_with_types = parameter_with_type ("," parameter_with_type)* Eof
+pub fn parse_parameters_with_types(
+    tokenizer: &mut DopTokenizer,
+) -> Result<Vec<(DopVarName, crate::dop::DopType)>, RangeError> {
+    let mut params = Vec::new();
+
+    // Parse first parameter
+    params.push(parse_parameter_with_type(tokenizer)?);
+
+    // Parse additional parameters if any (comma-separated)
+    loop {
+        match tokenizer.peek() {
+            (DopToken::Comma, _) => {
+                tokenizer.advance()?; // consume comma
+                params.push(parse_parameter_with_type(tokenizer)?);
+            }
+            (DopToken::Eof, _) => break,
+            (_, range) => {
+                return Err(RangeError::new(
+                    "Unexpected token after parameter".to_string(),
+                    *range,
+                ));
+            }
         }
     }
 
-    Ok((var_name, type_annotation))
+    Ok(params)
 }
 
 // type = TypeString

@@ -36,7 +36,7 @@ impl ComponentDefinitionLink {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentInfo {
-    pub parameter_type: DopType,
+    pub parameter_types: Vec<DopType>,
     pub slots: Vec<String>,
     pub definition_module: String,
     pub definition_opening_name_range: Range,
@@ -113,7 +113,7 @@ pub fn typecheck(
 
     for ComponentDefinitionNode {
         name,
-        param: params_as_attr,
+        params,
         children,
         preview,
         slots,
@@ -128,56 +128,46 @@ pub fn typecheck(
             continue;
         }
 
-        let parameter_type = if let Some(params_as_attr) = params_as_attr {
-            let param_type = params_as_attr.type_annotation.clone();
+        let mut parameter_types = Vec::new();
+
+        for param in params {
+            let param_type = param.type_annotation.clone();
 
             annotations.push(TypeAnnotation {
-                range: params_as_attr.range,
+                range: param.range,
                 typ: param_type.clone(),
-                name: params_as_attr.var_name.value.clone(),
+                name: param.var_name.value.clone(),
             });
-            env.push(params_as_attr.var_name.value.clone(), param_type.clone());
+            env.push(param.var_name.value.clone(), param_type.clone());
+            parameter_types.push(param_type);
+        }
 
-            for child in children {
-                typecheck_node(
-                    child,
-                    &component_info,
-                    &mut env,
-                    &mut annotations,
-                    &mut definition_links,
-                    &mut referenced_components,
-                    errors,
-                );
-            }
+        for child in children {
+            typecheck_node(
+                child,
+                &component_info,
+                &mut env,
+                &mut annotations,
+                &mut definition_links,
+                &mut referenced_components,
+                errors,
+            );
+        }
 
+        // Check for unused variables in reverse order (to match push order)
+        for param in params.iter().rev() {
             if !env.pop() {
                 errors.push(RangeError::unused_variable(
-                    &params_as_attr.var_name.value,
-                    params_as_attr.range,
+                    &param.var_name.value,
+                    param.range,
                 ));
             }
-
-            param_type
-        } else {
-            for child in children {
-                typecheck_node(
-                    child,
-                    &component_info,
-                    &mut env,
-                    &mut annotations,
-                    &mut definition_links,
-                    &mut referenced_components,
-                    errors,
-                );
-            }
-
-            DopType::Void
-        };
+        }
 
         component_info.insert(
             name.clone(),
             ComponentInfo {
-                parameter_type: parameter_type.clone(),
+                parameter_types,
                 slots: slots.clone(),
                 definition_module: module.name.clone(),
                 definition_opening_name_range: *opening_name_range,
@@ -186,35 +176,23 @@ pub fn typecheck(
         );
 
         if let Some(preview_nodes) = preview {
-            if let Some(params_as_attr) = params_as_attr {
-                env.push(
-                    params_as_attr.var_name.value.clone(),
-                    parameter_type.clone(),
+            for param in params {
+                env.push(param.var_name.value.clone(), param.type_annotation.clone());
+            }
+            for child in preview_nodes {
+                typecheck_node(
+                    child,
+                    &component_info,
+                    &mut env,
+                    &mut annotations,
+                    &mut definition_links,
+                    &mut referenced_components,
+                    errors,
                 );
-                for child in preview_nodes {
-                    typecheck_node(
-                        child,
-                        &component_info,
-                        &mut env,
-                        &mut annotations,
-                        &mut definition_links,
-                        &mut referenced_components,
-                        errors,
-                    );
-                }
+            }
+            // Pop parameters in reverse order
+            for _ in params {
                 env.pop();
-            } else {
-                for child in preview_nodes {
-                    typecheck_node(
-                        child,
-                        &component_info,
-                        &mut env,
-                        &mut annotations,
-                        &mut definition_links,
-                        &mut referenced_components,
-                        errors,
-                    );
-                }
             }
         }
     }
@@ -319,11 +297,20 @@ fn typecheck_node(
                             }
                         };
 
-                    if !is_subtype(&expr_type, &comp_info.parameter_type) {
+                    // For components with multiple parameters, we expect a single expression
+                    // that should match the first parameter type (for backward compatibility)
+                    // or we could extend this to handle tuple types in the future
+                    let expected_type = if comp_info.parameter_types.is_empty() {
+                        &DopType::Void
+                    } else {
+                        &comp_info.parameter_types[0]
+                    };
+
+                    if !is_subtype(&expr_type, expected_type) {
                         errors.push(RangeError::new(
                             format!(
                                 "Argument of type {} is incompatible with expected type {}",
-                                expr_type, comp_info.parameter_type,
+                                expr_type, expected_type,
                             ),
                             *range,
                         ));
@@ -334,6 +321,15 @@ fn typecheck_node(
                             name: "component parameter".to_string(),
                         });
                     }
+                } else if !comp_info.parameter_types.is_empty() {
+                    // Component expects parameters but none were provided
+                    errors.push(RangeError::new(
+                        format!(
+                            "Component {} expects parameters but none were provided",
+                            component
+                        ),
+                        *range,
+                    ));
                 }
 
                 // Validate slots
@@ -637,20 +633,23 @@ mod tests {
                         module_type_results.insert(module.name.clone(), type_result.clone());
 
                         for c in module.components {
+                            let component_info = type_result
+                                .component_info
+                                .get(&c.name)
+                                .expect("Component info not found");
+                            let param_types_str = if component_info.parameter_types.is_empty() {
+                                "void".to_string()
+                            } else {
+                                component_info
+                                    .parameter_types
+                                    .iter()
+                                    .map(|t| t.to_string())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            };
                             all_output_lines.push(format!(
                                 "{}::{}\n\t{}\n\t{:?}",
-                                module.name,
-                                c.name,
-                                type_result
-                                    .component_info
-                                    .get(&c.name)
-                                    .expect("Component info not found")
-                                    .parameter_type,
-                                type_result
-                                    .component_info
-                                    .get(&c.name)
-                                    .expect("Component info not found")
-                                    .slots
+                                module.name, c.name, param_types_str, component_info.slots
                             ));
                         }
                     }

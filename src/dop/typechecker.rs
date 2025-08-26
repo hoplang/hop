@@ -150,8 +150,9 @@ pub fn typecheck_expr(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dop::DopTokenizer;
+    use crate::dop::parse_parameters_with_types;
     use crate::dop::parser::parse_expr;
-    use crate::dop::{DopTokenizer, parse_variable_with_type};
     use crate::test_utils::parse_test_cases;
     use pretty_assertions::assert_eq;
 
@@ -175,27 +176,28 @@ mod tests {
 
             let mut env = Environment::new();
 
-            for line in env_section.lines() {
-                let mut tokenizer = DopTokenizer::new(line, crate::common::Position::new(1, 1))
-                    .unwrap_or_else(|e| {
-                        panic!(
-                            "Failed to create tokenizer for '{}' in test case {} (line {}): {:?}",
-                            line,
-                            case_num + 1,
-                            line_number,
-                            e
-                        );
-                    });
-                let (var_name, var_type) =
-                    parse_variable_with_type(&mut tokenizer).unwrap_or_else(|e| {
-                        panic!(
-                            "Parse error in test case {} (line {}): {:?}",
-                            case_num + 1,
-                            line_number,
-                            e
-                        );
-                    });
-                env.push(var_name.value, var_type);
+            if !env_section.is_empty() {
+                let mut tokenizer =
+                    DopTokenizer::new(env_section, crate::common::Position::new(1, 1))
+                        .unwrap_or_else(|e| {
+                            panic!(
+                                "Failed to create tokenizer in test case {} (line {}): {:?}",
+                                case_num + 1,
+                                line_number,
+                                e
+                            );
+                        });
+                let params = parse_parameters_with_types(&mut tokenizer).unwrap_or_else(|e| {
+                    panic!(
+                        "Parse error in test case {} (line {}): {:?}",
+                        case_num + 1,
+                        line_number,
+                        e
+                    );
+                });
+                for (var_name, var_type) in params {
+                    env.push(var_name.value, var_type);
+                }
             }
 
             let expr_content = archive

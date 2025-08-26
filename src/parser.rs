@@ -320,26 +320,32 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
 
                     let as_attr = find_attribute(attributes, "as");
                     let entrypoint = find_attribute(attributes, "entrypoint").is_some();
-                    let params_as_attr = expression.as_ref().and_then(|(expr_string, range)| {
-                        let mut tokenizer = match DopTokenizer::new(expr_string, range.start) {
-                            Ok(tokenizer) => tokenizer,
-                            Err(err) => {
-                                errors.push(err);
-                                return None;
+                    let params_as_attrs = expression
+                        .as_ref()
+                        .map(|(expr_string, range)| {
+                            let mut tokenizer = match DopTokenizer::new(expr_string, range.start) {
+                                Ok(tokenizer) => tokenizer,
+                                Err(err) => {
+                                    errors.push(err);
+                                    return Vec::new();
+                                }
+                            };
+                            match dop::parse_parameters_with_types(&mut tokenizer) {
+                                Ok(params) => params
+                                    .into_iter()
+                                    .map(|(var_name, type_annotation)| DopVarNameAttribute {
+                                        var_name,
+                                        type_annotation,
+                                        range: *range,
+                                    })
+                                    .collect(),
+                                Err(error) => {
+                                    errors.push(error);
+                                    Vec::new()
+                                }
                             }
-                        };
-                        match dop::parse_variable_with_type(&mut tokenizer) {
-                            Ok((var_name, type_annotation)) => Some(DopVarNameAttribute {
-                                var_name,
-                                type_annotation,
-                                range: *range,
-                            }),
-                            Err(error) => {
-                                errors.push(error);
-                                None
-                            }
-                        }
-                    });
+                        })
+                        .unwrap_or_else(Vec::new);
 
                     let mut slots = HashSet::new();
                     collect_slots_from_children(&children, &mut slots, errors);
@@ -348,7 +354,7 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                         name: name.to_string(),
                         opening_name_range: *name_range,
                         closing_name_range: tree.end_token.as_ref().map(|token| token.name_range),
-                        param: params_as_attr,
+                        params: params_as_attrs,
                         as_attr,
                         attributes: attributes.clone(),
                         range: *range,

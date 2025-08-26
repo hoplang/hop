@@ -78,7 +78,14 @@ impl Program {
             if let Some(type_info) = type_results.get(&module_name) {
                 let mut module_parameter_types = HashMap::new();
                 for (name, info) in &type_info.component_info {
-                    module_parameter_types.insert(name.clone(), info.parameter_type.clone());
+                    // For backward compatibility, use the first parameter type
+                    // or Void if there are no parameters
+                    let param_type = if info.parameter_types.is_empty() {
+                        DopType::Void
+                    } else {
+                        info.parameter_types[0].clone()
+                    };
+                    module_parameter_types.insert(name.clone(), param_type);
                 }
                 parameter_types.insert(module_name.clone(), module_parameter_types);
             }
@@ -189,8 +196,9 @@ impl Program {
         let mut env = Self::init_environment(self.hop_mode);
 
         // Set up environment with parameters if the component has params
-        if let Some(params_as_attr) = &component.param {
-            env.push(params_as_attr.var_name.value.clone(), params);
+        // For now, only handle the first parameter for backward compatibility
+        if let Some(first_param) = component.params.first() {
+            env.push(first_param.var_name.value.clone(), params);
         }
 
         // Render each node in the preview content
@@ -225,8 +233,9 @@ impl Program {
         })?;
 
         let mut env = Self::init_environment(self.hop_mode);
-        if let Some(params_as_attr) = &component.param {
-            env.push(params_as_attr.var_name.value.clone(), params);
+        // For now, only handle the first parameter for backward compatibility
+        if let Some(first_param) = component.params.first() {
+            env.push(first_param.var_name.value.clone(), params);
         }
 
         if component.entrypoint {

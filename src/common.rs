@@ -238,7 +238,7 @@ pub struct ComponentDefinitionNode {
     pub name: String,
     pub opening_name_range: Range,
     pub closing_name_range: Option<Range>,
-    pub param: Option<DopVarNameAttribute>,
+    pub params: Vec<DopVarNameAttribute>,
     pub as_attr: Option<Attribute>,
     pub attributes: Vec<Attribute>,
     pub range: Range,
