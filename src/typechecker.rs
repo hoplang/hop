@@ -154,7 +154,7 @@ pub fn typecheck(
             );
         }
 
-        // Check for unused variables 
+        // Check for unused variables
         for (_, param) in params.iter() {
             if !env.pop() {
                 errors.push(RangeError::unused_variable(
@@ -289,7 +289,8 @@ fn typecheck_node(
 
                 // Validate named arguments against parameter types
                 let provided_args: std::collections::HashSet<_> = params.keys().collect();
-                let expected_params: std::collections::HashSet<_> = comp_info.parameter_types.keys().collect();
+                let expected_params: std::collections::HashSet<_> =
+                    comp_info.parameter_types.keys().collect();
 
                 // Check for missing required parameters
                 for param_name in expected_params.difference(&provided_args) {
@@ -311,7 +312,8 @@ fn typecheck_node(
                 for (arg_name, (expression, expr_range)) in params {
                     if let Some(expected_type) = comp_info.parameter_types.get(arg_name) {
                         let expr_type =
-                            match typecheck_expr(expression, env, annotations, errors, *expr_range) {
+                            match typecheck_expr(expression, env, annotations, errors, *expr_range)
+                            {
                                 Ok(t) => t,
                                 Err(err) => {
                                     errors.push(RangeError::new(err, *expr_range));
@@ -642,18 +644,14 @@ mod tests {
                                 .component_info
                                 .get(&c.name)
                                 .expect("Component info not found");
-                            let param_types_str = if component_info.parameter_types.is_empty() {
-                                "void".to_string()
-                            } else {
-                                component_info
-                                    .parameter_types
-                                    .iter()
-                                    .map(|(name, typ)| format!("{}: {}", name, typ))
-                                    .collect::<Vec<_>>()
-                                    .join(", ")
-                            };
+                            let param_types_str = component_info
+                                .parameter_types
+                                .iter()
+                                .map(|(name, typ)| format!("{}: {}", name, typ))
+                                .collect::<Vec<_>>()
+                                .join(", ");
                             all_output_lines.push(format!(
-                                "{}::{}\n\t{}\n\t{:?}",
+                                "{}::{}\n\t{{{}}}\n\t{:?}",
                                 module.name, c.name, param_types_str, component_info.slots
                             ));
                         }
