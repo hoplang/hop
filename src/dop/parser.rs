@@ -19,6 +19,7 @@ pub enum DopExpr {
     BooleanLiteral(bool),
     NumberLiteral(serde_json::Number),
     ArrayLiteral(Vec<DopExpr>),
+    ObjectLiteral(std::collections::BTreeMap<String, DopExpr>),
     BinaryOp(Box<DopExpr>, BinaryOp, Box<DopExpr>),
     UnaryOp(UnaryOp, Box<DopExpr>),
 }
@@ -154,6 +155,11 @@ pub fn parse_parameters_with_types(
         match tokenizer.peek() {
             (DopToken::Comma, _) => {
                 tokenizer.advance()?; // consume comma
+
+                // Check for trailing comma (EOF after comma)
+                if let (DopToken::Eof, _) = tokenizer.peek() {
+                    break;
+                }
                 params.push(parse_parameter_with_type(tokenizer)?);
             }
             (DopToken::Eof, _) => break,
@@ -185,6 +191,11 @@ pub fn parse_named_arguments(
         match tokenizer.peek() {
             (DopToken::Comma, _) => {
                 tokenizer.advance()?; // consume comma
+
+                // Check for trailing comma (EOF after comma)
+                if let (DopToken::Eof, _) = tokenizer.peek() {
+                    break;
+                }
                 let (name, expr) = parse_named_argument(tokenizer)?;
                 if args.contains_key(&name) {
                     return Err(RangeError::new(
@@ -232,33 +243,6 @@ fn parse_named_argument(tokenizer: &mut DopTokenizer) -> Result<(String, DopExpr
     let expr = parse_equality(tokenizer)?;
 
     Ok((arg_name, expr))
-}
-
-// arguments = expr ("," expr)* Eof
-pub fn parse_arguments(tokenizer: &mut DopTokenizer) -> Result<Vec<DopExpr>, RangeError> {
-    let mut args = Vec::new();
-
-    // Parse first argument
-    args.push(parse_equality(tokenizer)?);
-
-    // Parse additional arguments if any (comma-separated)
-    loop {
-        match tokenizer.peek() {
-            (DopToken::Comma, _) => {
-                tokenizer.advance()?; // consume comma
-                args.push(parse_equality(tokenizer)?);
-            }
-            (DopToken::Eof, _) => break,
-            (_, range) => {
-                return Err(RangeError::new(
-                    "Unexpected token after argument".to_string(),
-                    *range,
-                ));
-            }
-        }
-    }
-
-    Ok(args)
 }
 
 // type = TypeString
@@ -402,6 +386,7 @@ fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
 //         | BooleanLiteral
 //         | NumberLiteral
 //         | "[" ( equality ("," equality)* )? "]"
+//         | "object" "(" ( Identifier ":" equality ("," Identifier ":" equality)* )? ")"
 //         | "(" equality ")"
 fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
     match tokenizer.advance()? {
@@ -446,6 +431,11 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
                 match tokenizer.peek() {
                     (DopToken::Comma, _) => {
                         tokenizer.advance()?; // consume ,
+                        // Check for trailing comma (closing bracket after comma)
+                        if let (DopToken::RightBracket, _) = tokenizer.peek() {
+                            tokenizer.advance()?; // consume ]
+                            break;
+                        }
                         continue;
                     }
                     (DopToken::RightBracket, _) => {
@@ -463,6 +453,84 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
 
             Ok(DopExpr::ArrayLiteral(elements))
         }
+        (DopToken::TypeObject, _) => {
+            // Parse object(key1: value1, key2: value2, ...)
+            match tokenizer.advance()? {
+                (DopToken::LeftParen, _) => {
+                    let mut properties = std::collections::BTreeMap::new();
+
+                    // Handle empty object
+                    if let (DopToken::RightParen, _) = tokenizer.peek() {
+                        tokenizer.advance()?; // consume )
+                        return Ok(DopExpr::ObjectLiteral(properties));
+                    }
+
+                    // Parse object properties
+                    loop {
+                        // Parse property name
+                        let prop_name = match tokenizer.advance()? {
+                            (DopToken::Identifier(name), _) => name,
+                            (_, range) => {
+                                return Err(RangeError::new(
+                                    "Expected property name in object literal".to_string(),
+                                    range,
+                                ));
+                            }
+                        };
+
+                        // Expect colon
+                        match tokenizer.advance()? {
+                            (DopToken::Colon, _) => {}
+                            (_, range) => {
+                                return Err(RangeError::new(
+                                    "Expected ':' after property name".to_string(),
+                                    range,
+                                ));
+                            }
+                        }
+
+                        // Parse property value
+                        let prop_value = parse_equality(tokenizer)?;
+                        if properties.contains_key(&prop_name) {
+                            return Err(RangeError::new(
+                                format!("Duplicate property name '{}'", prop_name),
+                                tokenizer.peek().1,
+                            ));
+                        }
+                        properties.insert(prop_name, prop_value);
+
+                        // Check for comma or closing parenthesis
+                        match tokenizer.peek() {
+                            (DopToken::Comma, _) => {
+                                tokenizer.advance()?; // consume ,
+                                // Check for trailing comma (closing paren after comma)
+                                if let (DopToken::RightParen, _) = tokenizer.peek() {
+                                    tokenizer.advance()?; // consume )
+                                    break;
+                                }
+                                continue;
+                            }
+                            (DopToken::RightParen, _) => {
+                                tokenizer.advance()?; // consume )
+                                break;
+                            }
+                            (_, range) => {
+                                return Err(RangeError::new(
+                                    "Expected ',' or ')' after property value".to_string(),
+                                    *range,
+                                ));
+                            }
+                        }
+                    }
+
+                    Ok(DopExpr::ObjectLiteral(properties))
+                }
+                (_, range) => Err(RangeError::new(
+                    "Expected '(' after 'object'".to_string(),
+                    range,
+                )),
+            }
+        }
         (DopToken::LeftParen, _) => {
             let expr = parse_equality(tokenizer)?;
 
@@ -478,7 +546,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
             }
         }
         (_, range) => Err(RangeError::new(
-            "Expected identifier, string literal, number literal, array literal, or opening parenthesis"
+            "Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis"
                 .to_string(),
             range,
         )),

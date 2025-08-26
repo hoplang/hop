@@ -149,6 +149,16 @@ pub fn typecheck_expr(
                 Ok(DopType::Array(Some(Box::new(first_type))))
             }
         }
+        DopExpr::ObjectLiteral(properties) => {
+            let mut object_properties = BTreeMap::new();
+
+            for (key, value_expr) in properties {
+                let value_type = typecheck_expr(value_expr, env, annotations, errors, range)?;
+                object_properties.insert(key.clone(), value_type);
+            }
+
+            Ok(DopType::Object(object_properties))
+        }
     }
 }
 

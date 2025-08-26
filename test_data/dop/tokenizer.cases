@@ -142,3 +142,28 @@ LeftBracket 1:1-1:2
 RightBracket 1:2-1:3
 Eof 2:1-2:1
 ## END
+
+Test object keyword
+
+## BEGIN
+-- in --
+object
+-- out --
+TypeObject 1:1-1:7
+Eof 2:1-2:1
+## END
+
+Test object literal syntax
+
+## BEGIN
+-- in --
+object(name: 'John')
+-- out --
+TypeObject 1:1-1:7
+LeftParen 1:7-1:8
+Identifier(name) 1:8-1:12
+Colon 1:12-1:13
+StringLiteral(John) 1:14-1:20
+RightParen 1:20-1:21
+Eof 2:1-2:1
+## END

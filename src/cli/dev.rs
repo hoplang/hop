@@ -158,7 +158,8 @@ fn create_inspect_page(program: &runtime::Program) -> String {
                     if param_map.is_empty() {
                         Some("()".to_string())
                     } else {
-                        let params: Vec<String> = param_map.iter()
+                        let params: Vec<String> = param_map
+                            .iter()
                             .map(|(name, typ)| format!("{}: {}", name, typ))
                             .collect();
                         Some(format!("({})", params.join(", ")))

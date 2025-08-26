@@ -284,3 +284,111 @@ Array with property access should work.
 -- out --
 ["alice", 30]
 ## END
+
+Empty object literal should evaluate to empty object.
+
+## BEGIN
+-- env --
+{}
+-- expr --
+object()
+-- out --
+{}
+## END
+
+Object literal with single property should evaluate correctly.
+
+## BEGIN
+-- env --
+{}
+-- expr --
+object(name: 'John')
+-- out --
+{"name": "John"}
+## END
+
+Object literal with multiple properties should evaluate correctly.
+
+## BEGIN
+-- env --
+{}
+-- expr --
+object(a: 'foo', b: 1, c: true)
+-- out --
+{"a": "foo", "b": 1, "c": true}
+## END
+
+Object literal with property access should evaluate correctly.
+
+## BEGIN
+-- env --
+{"user": {"name": "alice", "disabled": false}}
+-- expr --
+object(user: user.name, active: !user.disabled)
+-- out --
+{"active": true, "user": "alice"}
+## END
+
+Nested object literals should evaluate correctly.
+
+## BEGIN
+-- env --
+{}
+-- expr --
+object(nested: object(inner: 'value'))
+-- out --
+{"nested": {"inner": "value"}}
+## END
+
+Array with trailing comma should evaluate correctly.
+
+## BEGIN
+-- env --
+{}
+-- expr --
+[
+	1,
+	2,
+	3,
+]
+-- out --
+[1, 2, 3]
+## END
+
+Array with trailing comma and single element should evaluate correctly.
+
+## BEGIN
+-- env --
+{}
+-- expr --
+['hello',]
+-- out --
+["hello"]
+## END
+
+Object literal with trailing comma should evaluate correctly.
+
+## BEGIN
+-- env --
+{}
+-- expr --
+object(
+	a: 'foo',
+	b: 1,
+)
+-- out --
+{"a": "foo", "b": 1}
+## END
+
+Object literal with trailing comma and single property should evaluate correctly.
+
+## BEGIN
+-- env --
+{}
+-- expr --
+object(
+	name: 'John',
+)
+-- out --
+{"name": "John"}
+## END

@@ -178,13 +178,13 @@ impl DopTokenizer {
                     "in" => DopToken::In,
                     "true" => DopToken::BooleanLiteral(true),
                     "false" => DopToken::BooleanLiteral(false),
+                    "object" => DopToken::TypeObject,
                     // Type keywords
                     "string" => DopToken::TypeString,
                     "number" => DopToken::TypeNumber,
                     "boolean" => DopToken::TypeBoolean,
                     "void" => DopToken::TypeVoid,
                     "array" => DopToken::TypeArray,
-                    "object" => DopToken::TypeObject,
                     _ => DopToken::Identifier(identifier),
                 }
             }

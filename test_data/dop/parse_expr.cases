@@ -157,7 +157,7 @@ Parse error when expression starts with an invalid token.
 -- in --
 == x
 -- out --
-Error: Expected identifier, string literal, number literal, array literal, or opening parenthesis
+Error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
 ## END
 
 Parse error with unclosed parenthesis.
@@ -184,7 +184,7 @@ Parse error when parenthesis is empty.
 -- in --
 ()
 -- out --
-Error: Expected identifier, string literal, number literal, array literal, or opening parenthesis
+Error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
 ## END
 
 Parse error with invalid character after equality operator.
@@ -193,7 +193,7 @@ Parse error with invalid character after equality operator.
 -- in --
 x == )
 -- out --
-Error: Expected identifier, string literal, number literal, array literal, or opening parenthesis
+Error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
 ## END
 
 Parse error with dot at the start.
@@ -202,7 +202,7 @@ Parse error with dot at the start.
 -- in --
 .property
 -- out --
-Error: Expected identifier, string literal, number literal, array literal, or opening parenthesis
+Error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
 ## END
 
 Parse error with multiple dots in sequence.
@@ -220,7 +220,7 @@ Parse error with operator at the end.
 -- in --
 x ==
 -- out --
-Error: Expected identifier, string literal, number literal, array literal, or opening parenthesis
+Error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
 ## END
 
 Parse error with not operator without operand.
@@ -229,7 +229,7 @@ Parse error with not operator without operand.
 -- in --
 !
 -- out --
-Error: Expected identifier, string literal, number literal, array literal, or opening parenthesis
+Error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
 ## END
 
 Parse error with trailing not operator.
@@ -284,4 +284,120 @@ Test array literal with variables
 [x, user.name]
 -- out --
 ArrayLiteral([Variable("x"), PropertyAccess(Variable("user"), "name")])
+## END
+
+Empty object literal should parse successfully.
+
+## BEGIN
+-- in --
+object()
+-- out --
+ObjectLiteral({})
+## END
+
+Object literal with single property should parse successfully.
+
+## BEGIN
+-- in --
+object(name: 'John')
+-- out --
+ObjectLiteral({"name": StringLiteral("John")})
+## END
+
+Object literal with multiple properties should parse successfully.
+
+## BEGIN
+-- in --
+object(a: 'foo', b: 1)
+-- out --
+ObjectLiteral({"a": StringLiteral("foo"), "b": NumberLiteral(Number(1))})
+## END
+
+Object literal with complex expressions as values should parse successfully.
+
+## BEGIN
+-- in --
+object(user: user.name, active: !user.disabled)
+-- out --
+ObjectLiteral({"active": UnaryOp(Not, PropertyAccess(Variable("user"), "disabled")), "user": PropertyAccess(Variable("user"), "name")})
+## END
+
+Object literal with nested object should parse successfully.
+
+## BEGIN
+-- in --
+object(nested: object(inner: 'value'))
+-- out --
+ObjectLiteral({"nested": ObjectLiteral({"inner": StringLiteral("value")})})
+## END
+
+Array with trailing comma should parse successfully.
+
+## BEGIN
+-- in --
+[
+	1,
+	2,
+	3,
+]
+-- out --
+ArrayLiteral([NumberLiteral(Number(1)), NumberLiteral(Number(2)), NumberLiteral(Number(3))])
+## END
+
+Array with trailing comma and single element should parse successfully.
+
+## BEGIN
+-- in --
+[
+	1,
+]
+-- out --
+ArrayLiteral([NumberLiteral(Number(1))])
+## END
+
+Array with trailing comma and complex expressions should parse successfully.
+
+## BEGIN
+-- in --
+[
+	user.name,
+	!user.disabled,
+]
+-- out --
+ArrayLiteral([PropertyAccess(Variable("user"), "name"), UnaryOp(Not, PropertyAccess(Variable("user"), "disabled"))])
+## END
+
+Object literal with trailing comma should parse successfully.
+
+## BEGIN
+-- in --
+object(
+	a: 'foo',
+	b: 1,
+)
+-- out --
+ObjectLiteral({"a": StringLiteral("foo"), "b": NumberLiteral(Number(1))})
+## END
+
+Object literal with trailing comma and single property should parse successfully.
+
+## BEGIN
+-- in --
+object(
+	name: 'John',
+)
+-- out --
+ObjectLiteral({"name": StringLiteral("John")})
+## END
+
+Object literal with trailing comma and complex expressions should parse successfully.
+
+## BEGIN
+-- in --
+object(
+	user: user.name,
+	active: !user.disabled,
+)
+-- out --
+ObjectLiteral({"active": UnaryOp(Not, PropertyAccess(Variable("user"), "disabled")), "user": PropertyAccess(Variable("user"), "name")})
 ## END
