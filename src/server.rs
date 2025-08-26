@@ -2,7 +2,7 @@ use crate::common::{Position, RangeError};
 use crate::parser::{Module, parse};
 use crate::tokenizer::Tokenizer;
 use crate::toposorter::TopoSorter;
-use crate::typechecker::{DefinitionLink, TypeResult, typecheck};
+use crate::typechecker::{ComponentDefinitionLink, TypeResult, typecheck};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -127,20 +127,36 @@ impl Server {
         let type_result = self.type_results.get(module_name)?;
         let pos = Position::new(line, column);
 
-        for DefinitionLink {
-            reference_range,
+        for ComponentDefinitionLink {
+            reference_opening_name_range,
+            reference_closing_name_range,
             definition_module,
-            definition_range,
+            definition_opening_name_range,
+            ..
         } in &type_result.definition_links
         {
-            if reference_range.contains_position(pos) {
+            // Check if cursor is on the opening name range
+            if reference_opening_name_range.contains_position(pos) {
                 return Some(DefinitionLocation {
                     module: definition_module.clone(),
-                    start_line: definition_range.start.line,
-                    start_column: definition_range.start.column,
-                    end_line: definition_range.end.line,
-                    end_column: definition_range.end.column,
+                    start_line: definition_opening_name_range.start.line,
+                    start_column: definition_opening_name_range.start.column,
+                    end_line: definition_opening_name_range.end.line,
+                    end_column: definition_opening_name_range.end.column,
                 });
+            }
+            
+            // Check if cursor is on the closing name range (if it exists)
+            if let Some(closing_range) = reference_closing_name_range {
+                if closing_range.contains_position(pos) {
+                    return Some(DefinitionLocation {
+                        module: definition_module.clone(),
+                        start_line: definition_opening_name_range.start.line,
+                        start_column: definition_opening_name_range.start.column,
+                        end_line: definition_opening_name_range.end.line,
+                        end_column: definition_opening_name_range.end.column,
+                    });
+                }
             }
         }
 

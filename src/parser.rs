@@ -236,6 +236,7 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
             value,
             attributes,
             expression,
+            name_range,
             ..
         } => {
             match value.as_str() {
@@ -345,6 +346,8 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
 
                     Some(ToplevelNode::ComponentDefinition(ComponentDefinitionNode {
                         name: name.to_string(),
+                        opening_name_range: *name_range,
+                        closing_name_range: tree.end_token.as_ref().map(|token| token.name_range),
                         param: params_as_attr,
                         as_attr,
                         attributes: attributes.clone(),

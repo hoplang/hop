@@ -15,10 +15,12 @@ pub struct TypeAnnotation {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct DefinitionLink {
-    pub reference_range: Range,
+pub struct ComponentDefinitionLink {
+    pub reference_opening_name_range: Range,
+    pub reference_closing_name_range: Option<Range>,
     pub definition_module: String,
-    pub definition_range: Range,
+    pub definition_opening_name_range: Range,
+    pub definition_closing_name_range: Option<Range>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -26,21 +28,22 @@ pub struct ComponentInfo {
     pub parameter_type: DopType,
     pub slots: Vec<String>,
     pub definition_module: String,
-    pub definition_range: Range,
+    pub definition_opening_name_range: Range,
+    pub definition_closing_name_range: Option<Range>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeResult {
     pub component_info: HashMap<String, ComponentInfo>,
     pub annotations: Vec<TypeAnnotation>,
-    pub definition_links: Vec<DefinitionLink>,
+    pub definition_links: Vec<ComponentDefinitionLink>,
 }
 
 impl TypeResult {
     pub fn new(
         component_info: HashMap<String, ComponentInfo>,
         annotations: Vec<TypeAnnotation>,
-        definition_links: Vec<DefinitionLink>,
+        definition_links: Vec<ComponentDefinitionLink>,
     ) -> Self {
         TypeResult {
             component_info,
@@ -56,7 +59,7 @@ pub fn typecheck(
     errors: &mut Vec<RangeError>,
 ) -> TypeResult {
     let mut annotations: Vec<TypeAnnotation> = Vec::new();
-    let mut definition_links: Vec<DefinitionLink> = Vec::new();
+    let mut definition_links: Vec<ComponentDefinitionLink> = Vec::new();
     let mut component_info = HashMap::new();
     let mut imported_components: HashMap<String, Range> = HashMap::new();
     let mut referenced_components: HashSet<String> = HashSet::new();
@@ -104,6 +107,8 @@ pub fn typecheck(
         preview,
         slots,
         range,
+        opening_name_range,
+        closing_name_range,
         ..
     } in &module.components
     {
@@ -164,7 +169,8 @@ pub fn typecheck(
                 parameter_type: parameter_type.clone(),
                 slots: slots.clone(),
                 definition_module: module.name.clone(),
-                definition_range: *range,
+                definition_opening_name_range: *opening_name_range,
+                definition_closing_name_range: *closing_name_range,
             },
         );
 
@@ -232,7 +238,7 @@ fn typecheck_node(
     component_info: &HashMap<String, ComponentInfo>,
     env: &mut Environment<DopType>,
     annotations: &mut Vec<TypeAnnotation>,
-    definition_links: &mut Vec<DefinitionLink>,
+    definition_links: &mut Vec<ComponentDefinitionLink>,
     referenced_components: &mut HashSet<String>,
     errors: &mut Vec<RangeError>,
 ) {
@@ -274,6 +280,7 @@ fn typecheck_node(
             params,
             children,
             opening_name_range,
+            closing_name_range,
             range,
             ..
         }) => {
@@ -282,10 +289,12 @@ fn typecheck_node(
 
             if let Some(comp_info) = component_info.get(component) {
                 // Add definition link for go-to-definition
-                definition_links.push(DefinitionLink {
-                    reference_range: *opening_name_range,
+                definition_links.push(ComponentDefinitionLink {
+                    reference_opening_name_range: *opening_name_range,
+                    reference_closing_name_range: *closing_name_range,
                     definition_module: comp_info.definition_module.clone(),
-                    definition_range: comp_info.definition_range,
+                    definition_opening_name_range: comp_info.definition_opening_name_range,
+                    definition_closing_name_range: comp_info.definition_closing_name_range,
                 });
 
                 if let Some((expression, range)) = params {

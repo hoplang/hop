@@ -230,6 +230,8 @@ pub struct ImportNode {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentDefinitionNode {
     pub name: String,
+    pub opening_name_range: Range,
+    pub closing_name_range: Option<Range>,
     pub param: Option<DopVarNameAttribute>,
     pub as_attr: Option<Attribute>,
     pub attributes: Vec<Attribute>,
