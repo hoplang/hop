@@ -206,6 +206,7 @@ pub struct TextNode {
 pub struct ComponentReferenceNode {
     pub component: String,
     pub params: Option<(DopExpr, Range)>,
+    pub attributes: Vec<Attribute>,
     pub range: Range,
     pub children: Vec<Node>,
 }

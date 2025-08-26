@@ -690,3 +690,57 @@ Test HOP_MODE can be used in conditions.
   <div>Build mode active</div>
 </div>
 ## END
+
+Test class merging when component reference has class attribute and component
+definition has class attribute.
+
+## BEGIN
+-- main.hop --
+<my-button class="bg-red-500">Click me</my-button>
+
+<main-comp>
+	<my-button class="px-4 py-2 rounded"/>
+</main-comp>
+-- data.json --
+{}
+-- output.html --
+<div data-hop-id="main/main-comp">
+	<div data-hop-id="main/my-button" class="bg-red-500 px-4 py-2 rounded">Click me</div>
+</div>
+## END
+
+Test class merging when component reference has class attribute but component
+definition doesn't have class attribute.
+
+## BEGIN
+-- main.hop --
+<my-button>Click me</my-button>
+
+<main-comp>
+	<my-button class="px-4 py-2 rounded"/>
+</main-comp>
+-- data.json --
+{}
+-- output.html --
+<div data-hop-id="main/main-comp">
+	<div data-hop-id="main/my-button" class="px-4 py-2 rounded">Click me</div>
+</div>
+## END
+
+Test class merging when component definition has class attribute but component
+reference doesn't.
+
+## BEGIN
+-- main.hop --
+<my-button class="px-4 py-2">Click me</my-button>
+
+<main-comp>
+	<my-button/>
+</main-comp>
+-- data.json --
+{}
+-- output.html --
+<div data-hop-id="main/main-comp">
+	<div data-hop-id="main/my-button" class="px-4 py-2">Click me</div>
+</div>
+## END

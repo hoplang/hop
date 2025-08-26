@@ -161,7 +161,7 @@ impl Program {
         params: serde_json::Value,
     ) -> Result<String> {
         let empty_slots = HashMap::new();
-        self.execute(module_name, component_name, params, &empty_slots)
+        self.execute(module_name, component_name, params, &empty_slots, None)
     }
 
     pub fn execute_preview(
@@ -209,6 +209,7 @@ impl Program {
         component_name: &str,
         params: serde_json::Value,
         slot_content: &HashMap<String, String>,
+        additional_class: Option<&str>,
     ) -> Result<String> {
         let component_map = self
             .component_maps
@@ -245,14 +246,30 @@ impl Program {
             let data_hop_id = format!("{}/{}", module_name, component_name);
             let mut result = format!("<{} data-hop-id=\"{}\"", element_type, data_hop_id);
 
+            let mut added_class = false;
+
             for attr in &component.attributes {
                 if attr.name != "name"
                     && attr.name != "params-as"
                     && attr.name != "as"
                     && attr.name != "entrypoint"
                 {
-                    result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
+                    if attr.name == "class" {
+                        added_class = true;
+                        match additional_class {
+                            None => result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value)),
+                            Some(cls) => result
+                                .push_str(&format!(" {}=\"{} {}\"", attr.name, attr.value, cls)),
+                        }
+                    } else {
+                        result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
+                    }
                 }
+            }
+
+            // If component doesn't have a class attribute but the reference does, add it
+            if let (Some(cls), false) = (additional_class, added_class) {
+                result.push_str(&format!(" class=\"{}\"", cls))
             }
             result.push('>');
             for child in &component.children {
@@ -296,6 +313,7 @@ impl Program {
             Node::ComponentReference(ComponentReferenceNode {
                 component,
                 params,
+                attributes,
                 children,
                 ..
             }) => {
@@ -365,11 +383,18 @@ impl Program {
                     new_slot_content.insert("default".to_string(), default_html);
                 }
 
+                // Extract class attribute from component reference
+                let additional_class = attributes
+                    .iter()
+                    .find(|attr| attr.name == "class")
+                    .map(|attr| attr.value.as_str());
+
                 self.execute(
                     &target_module,
                     component_name,
                     params_value,
                     &new_slot_content,
+                    additional_class,
                 )
             }
             Node::NativeHTML(NativeHTMLNode {

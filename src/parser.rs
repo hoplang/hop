@@ -582,6 +582,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     Node::ComponentReference(ComponentReferenceNode {
                         component: tag_name.to_string(),
                         params: params_attr,
+                        attributes: attributes.clone(),
                         range: *token_range,
                         children,
                     })
