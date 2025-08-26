@@ -41,6 +41,15 @@ pub struct RenameLocation {
     pub end_column: usize,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct RenameableSymbol {
+    pub current_name: String,
+    pub start_line: usize,
+    pub start_column: usize,
+    pub end_line: usize,
+    pub end_column: usize,
+}
+
 pub struct Server {
     modules: HashMap<String, Module>,
     type_results: HashMap<String, TypeResult>,
@@ -228,6 +237,83 @@ impl Server {
                         component_info.definition_opening_name_range,
                         component_info.definition_closing_name_range,
                     ));
+                }
+            }
+        }
+
+        None
+    }
+
+    pub fn get_renameable_symbol(
+        &self,
+        module_name: &str,
+        line: usize,
+        column: usize,
+    ) -> Option<RenameableSymbol> {
+        let type_result = self.type_results.get(module_name)?;
+        let pos = Position::new(line, column);
+
+        // First, check if we're on a component reference
+        for ComponentDefinitionLink {
+            reference_opening_name_range,
+            reference_closing_name_range,
+            definition_component_name,
+            ..
+        } in &type_result.definition_links
+        {
+            // Check if cursor is on the opening name of a reference
+            if reference_opening_name_range.contains_position(pos) {
+                return Some(RenameableSymbol {
+                    current_name: definition_component_name.clone(),
+                    start_line: reference_opening_name_range.start.line,
+                    start_column: reference_opening_name_range.start.column,
+                    end_line: reference_opening_name_range.end.line,
+                    end_column: reference_opening_name_range.end.column,
+                });
+            }
+
+            // Check if cursor is on the closing name of a reference
+            if let Some(closing_range) = reference_closing_name_range {
+                if closing_range.contains_position(pos) {
+                    return Some(RenameableSymbol {
+                        current_name: definition_component_name.clone(),
+                        start_line: closing_range.start.line,
+                        start_column: closing_range.start.column,
+                        end_line: closing_range.end.line,
+                        end_column: closing_range.end.column,
+                    });
+                }
+            }
+        }
+
+        // Check if we're on a component definition
+        for (component_name, component_info) in &type_result.component_info {
+            if component_info.definition_module == module_name {
+                // Check if cursor is on the opening name of a definition
+                if component_info
+                    .definition_opening_name_range
+                    .contains_position(pos)
+                {
+                    return Some(RenameableSymbol {
+                        current_name: component_name.clone(),
+                        start_line: component_info.definition_opening_name_range.start.line,
+                        start_column: component_info.definition_opening_name_range.start.column,
+                        end_line: component_info.definition_opening_name_range.end.line,
+                        end_column: component_info.definition_opening_name_range.end.column,
+                    });
+                }
+
+                // Check if cursor is on the closing name of a definition
+                if let Some(closing_range) = component_info.definition_closing_name_range {
+                    if closing_range.contains_position(pos) {
+                        return Some(RenameableSymbol {
+                            current_name: component_name.clone(),
+                            start_line: closing_range.start.line,
+                            start_column: closing_range.start.column,
+                            end_line: closing_range.end.line,
+                            end_column: closing_range.end.column,
+                        });
+                    }
                 }
             }
         }

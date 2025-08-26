@@ -1,5 +1,5 @@
 use crate::files::{self, ProjectRoot};
-use crate::server::{DefinitionLocation, HoverInfo, RenameLocation, Server};
+use crate::server::{DefinitionLocation, HoverInfo, RenameLocation, RenameableSymbol, Server};
 use std::path::Path;
 use tokio::sync::RwLock;
 use tower_lsp::jsonrpc::Result;
@@ -117,7 +117,10 @@ impl LanguageServer for HopLanguageServer {
                 )),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
-                rename_provider: Some(OneOf::Left(true)),
+                rename_provider: Some(OneOf::Right(RenameOptions {
+                    prepare_provider: Some(true),
+                    work_done_progress_options: WorkDoneProgressOptions::default(),
+                })),
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
@@ -199,6 +202,37 @@ impl LanguageServer for HopLanguageServer {
                 })
             },
         ))
+    }
+
+    async fn prepare_rename(
+        &self,
+        params: TextDocumentPositionParams,
+    ) -> Result<Option<PrepareRenameResponse>> {
+        let uri = params.text_document.uri;
+        let position = params.position;
+        let root = Self::find_root(&uri).unwrap();
+        let module_name = Self::uri_to_module_name(&uri, &root);
+
+        let (line, column) = Self::from_lsp_position(position);
+        let server = self.server.read().await;
+
+        if let Some(renameable_symbol) = server.get_renameable_symbol(&module_name, line, column) {
+            Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
+                range: Range {
+                    start: Self::to_lsp_position(
+                        renameable_symbol.start_line,
+                        renameable_symbol.start_column,
+                    ),
+                    end: Self::to_lsp_position(
+                        renameable_symbol.end_line,
+                        renameable_symbol.end_column,
+                    ),
+                },
+                placeholder: renameable_symbol.current_name,
+            }))
+        } else {
+            Ok(None)
+        }
     }
 
     async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
