@@ -129,15 +129,18 @@ pub fn typecheck_expr(
             } else {
                 // Check the type of the first element
                 let first_type = typecheck_expr(&elements[0], env, annotations, errors, range)?;
-                
+
                 // Check that all elements have the same type
                 for element in elements.iter().skip(1) {
                     let element_type = typecheck_expr(element, env, annotations, errors, range)?;
                     if element_type != first_type {
-                        return Err(format!("Array elements must all have the same type, found {} and {}", first_type, element_type));
+                        return Err(format!(
+                            "Array elements must all have the same type, found {} and {}",
+                            first_type, element_type
+                        ));
                     }
                 }
-                
+
                 Ok(DopType::Array(Box::new(first_type)))
             }
         }

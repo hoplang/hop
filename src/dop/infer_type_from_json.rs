@@ -36,11 +36,11 @@ pub fn infer_type_from_json_file(file_path: &str) -> Result<DopType, String> {
     // Read the file
     let content = fs::read_to_string(file_path)
         .map_err(|e| format!("Failed to read JSON file '{}': {}", file_path, e))?;
-    
+
     // Parse as JSON
     let value: Value = serde_json::from_str(&content)
         .map_err(|e| format!("Failed to parse JSON file '{}': {}", file_path, e))?;
-    
+
     // Infer the type
     Ok(infer_type_from_value(&value))
 }
@@ -50,7 +50,7 @@ pub fn load_json_file(file_path: &str) -> Result<Value, String> {
     // Read the file
     let content = fs::read_to_string(file_path)
         .map_err(|e| format!("Failed to read JSON file '{}': {}", file_path, e))?;
-    
+
     // Parse as JSON
     serde_json::from_str(&content)
         .map_err(|e| format!("Failed to parse JSON file '{}': {}", file_path, e))
@@ -139,12 +139,12 @@ mod tests {
             "active": true
         });
         let typ = infer_type_from_value(&value);
-        
+
         let mut expected = BTreeMap::new();
         expected.insert("name".to_string(), DopType::String);
         expected.insert("age".to_string(), DopType::Number);
         expected.insert("active".to_string(), DopType::Bool);
-        
+
         assert_eq!(typ, DopType::Object(expected));
     }
 
@@ -158,15 +158,18 @@ mod tests {
             "scores": [95, 87, 92]
         });
         let typ = infer_type_from_value(&value);
-        
+
         let mut user_props = BTreeMap::new();
         user_props.insert("name".to_string(), DopType::String);
         user_props.insert("id".to_string(), DopType::Number);
-        
+
         let mut expected = BTreeMap::new();
         expected.insert("user".to_string(), DopType::Object(user_props));
-        expected.insert("scores".to_string(), DopType::Array(Box::new(DopType::Number)));
-        
+        expected.insert(
+            "scores".to_string(),
+            DopType::Array(Box::new(DopType::Number)),
+        );
+
         assert_eq!(typ, DopType::Object(expected));
     }
 
@@ -181,24 +184,27 @@ mod tests {
                 },
                 {
                     "name": "Bob",
-                    "email": "bob@example.com", 
+                    "email": "bob@example.com",
                     "roles": ["user"]
                 }
             ]
         });
         let typ = infer_type_from_value(&value);
-        
+
         let mut user_props = BTreeMap::new();
         user_props.insert("name".to_string(), DopType::String);
         user_props.insert("email".to_string(), DopType::String);
-        user_props.insert("roles".to_string(), DopType::Array(Box::new(DopType::String)));
-        
+        user_props.insert(
+            "roles".to_string(),
+            DopType::Array(Box::new(DopType::String)),
+        );
+
         let mut expected = BTreeMap::new();
         expected.insert(
             "users".to_string(),
-            DopType::Array(Box::new(DopType::Object(user_props)))
+            DopType::Array(Box::new(DopType::Object(user_props))),
         );
-        
+
         assert_eq!(typ, DopType::Object(expected));
     }
 }

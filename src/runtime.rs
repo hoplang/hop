@@ -422,7 +422,7 @@ impl Program {
                 let result = evaluate_expr(&text_expr_node.expression, env)?;
                 Ok(escape_html(result.as_str().unwrap_or("")))
             }
-            Node::Doctype(doctype_node) => Ok(format!("<!DOCTYPE {}>", doctype_node.value)),
+            Node::Doctype(_) => Ok("<!DOCTYPE html>".to_string()),
             Node::SlotDefinition(SlotDefinitionNode { name, children, .. }) => {
                 // Check if we have supply-slot content for this slot
                 if let Some(supplied_html) = slot_content.get(name) {
@@ -499,10 +499,16 @@ impl Program {
                 // Load JSON data from file
                 let file_path = &file_attr.value;
                 let var_name = &as_attr.value;
-                
+
                 let json_value = match load_json_file(file_path) {
                     Ok(value) => value,
-                    Err(err) => return Err(anyhow::anyhow!("Failed to load JSON file '{}': {}", file_path, err)),
+                    Err(err) => {
+                        return Err(anyhow::anyhow!(
+                            "Failed to load JSON file '{}': {}",
+                            file_path,
+                            err
+                        ));
+                    }
                 };
 
                 // Push the JSON data variable into scope
