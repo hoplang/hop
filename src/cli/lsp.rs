@@ -1,5 +1,5 @@
 use crate::files::{self, ProjectRoot};
-use crate::server::{HoverInfo, Server};
+use crate::server::{DefinitionLocation, HoverInfo, Server};
 use std::path::Path;
 use tokio::sync::RwLock;
 use tower_lsp::jsonrpc::Result;
@@ -181,15 +181,23 @@ impl LanguageServer for HopLanguageServer {
         let (line, column) = Self::from_lsp_position(position);
         let server = self.server.read().await;
 
-        Ok(server.get_definition(&module_name, line, column).map(|d| {
-            GotoDefinitionResponse::Scalar(Location {
-                uri: Self::module_name_to_uri(&d.module, &root),
-                range: Range {
-                    start: Self::to_lsp_position(d.start_line, d.start_column),
-                    end: Self::to_lsp_position(d.end_line, d.end_column),
-                },
-            })
-        }))
+        Ok(server.get_definition(&module_name, line, column).map(
+            |DefinitionLocation {
+                 module,
+                 start_line,
+                 start_column,
+                 end_column,
+                 end_line,
+             }| {
+                GotoDefinitionResponse::Scalar(Location {
+                    uri: Self::module_name_to_uri(&module, &root),
+                    range: Range {
+                        start: Self::to_lsp_position(start_line, start_column),
+                        end: Self::to_lsp_position(end_line, end_column),
+                    },
+                })
+            },
+        ))
     }
 
     async fn shutdown(&self) -> Result<()> {
