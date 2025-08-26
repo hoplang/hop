@@ -97,6 +97,7 @@ fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTree {
         self_closing: false,
         value: "root".to_string(),
         attributes: Vec::new(),
+        name_range: Range::default(),
         expression: None,
     };
     stack.push((

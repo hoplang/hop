@@ -13,12 +13,14 @@ pub enum Token {
     },
     StartTag {
         self_closing: bool,
+        name_range: Range,
         value: String,
         attributes: Vec<Attribute>,
         expression: Option<(String, Range)>,
     },
     EndTag {
         value: String,
+        name_range: Range,
     },
     Text {
         value: String,
@@ -143,6 +145,8 @@ impl Tokenizer {
         let token_start = self.cursor.get_position();
         let mut token_attributes = Vec::new();
         let mut token_expression = None;
+        let mut tag_name_start = self.cursor.get_position();
+        let mut tag_name_end = self.cursor.get_position();
         let mut expression_content = String::new();
         let mut expression_start = self.cursor.get_position();
         let mut attribute_name = String::new();
@@ -162,6 +166,7 @@ impl Tokenizer {
                             ));
                         }
                         self.cursor.advance();
+                        tag_name_start = self.cursor.get_position();
                         self.state = TokenizerState::TagOpen;
                     } else if ch == '{' {
                         if !token_value.is_empty() {
@@ -184,9 +189,11 @@ impl Tokenizer {
                     if ch.is_ascii_alphabetic() {
                         token_value.push(ch);
                         self.cursor.advance();
+                        tag_name_end = self.cursor.get_position();
                         self.state = TokenizerState::StartTagName;
                     } else if ch == '/' {
                         self.cursor.advance();
+                        tag_name_start = self.cursor.get_position();
                         self.state = TokenizerState::EndTagOpen;
                     } else if ch == '!' {
                         self.cursor.advance();
@@ -206,6 +213,7 @@ impl Tokenizer {
                     if ch == '-' || ch.is_ascii_alphanumeric() {
                         token_value.push(ch);
                         self.cursor.advance();
+                        tag_name_end = self.cursor.get_position();
                         self.state = TokenizerState::StartTagName;
                     } else if ch.is_whitespace() {
                         self.cursor.advance();
@@ -224,6 +232,7 @@ impl Tokenizer {
                                     value: token_value,
                                     self_closing: false,
                                     attributes: token_attributes,
+                                    name_range: Range::new(tag_name_start, tag_name_end),
                                     expression: token_expression,
                                 },
                                 Range::new(token_start, self.cursor.get_position()),
@@ -236,6 +245,7 @@ impl Tokenizer {
                                     value: token_value,
                                     self_closing: false,
                                     attributes: token_attributes,
+                                    name_range: Range::new(tag_name_start, tag_name_end),
                                     expression: token_expression,
                                 },
                                 Range::new(token_start, self.cursor.get_position()),
@@ -259,6 +269,7 @@ impl Tokenizer {
                     if ch.is_ascii_alphabetic() {
                         token_value.push(ch);
                         self.cursor.advance();
+                        tag_name_end = self.cursor.get_position();
                         self.state = TokenizerState::EndTagName;
                     } else {
                         let start_pos = self.cursor.get_position();
@@ -275,12 +286,16 @@ impl Tokenizer {
                     if ch == '-' || ch.is_ascii_alphanumeric() {
                         token_value.push(ch);
                         self.cursor.advance();
+                        tag_name_end = self.cursor.get_position();
                         self.state = TokenizerState::EndTagName;
                     } else if ch == '>' {
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
                         return Ok((
-                            Token::EndTag { value: token_value },
+                            Token::EndTag {
+                                value: token_value,
+                                name_range: Range::new(tag_name_start, tag_name_end),
+                            },
                             Range::new(token_start, self.cursor.get_position()),
                         ));
                     } else if ch.is_whitespace() {
@@ -305,7 +320,10 @@ impl Tokenizer {
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
                         return Ok((
-                            Token::EndTag { value: token_value },
+                            Token::EndTag {
+                                value: token_value,
+                                name_range: Range::new(tag_name_start, tag_name_end),
+                            },
                             Range::new(token_start, self.cursor.get_position()),
                         ));
                     } else {
@@ -346,6 +364,7 @@ impl Tokenizer {
                                     value: token_value,
                                     attributes: token_attributes,
                                     expression: token_expression,
+                                    name_range: Range::new(tag_name_start, tag_name_end),
                                 },
                                 Range::new(token_start, self.cursor.get_position()),
                             ));
@@ -358,6 +377,7 @@ impl Tokenizer {
                                     value: token_value,
                                     attributes: token_attributes,
                                     expression: token_expression,
+                                    name_range: Range::new(tag_name_start, tag_name_end),
                                 },
                                 Range::new(token_start, self.cursor.get_position()),
                             ));
@@ -414,6 +434,7 @@ impl Tokenizer {
                                     value: token_value,
                                     attributes: token_attributes,
                                     expression: token_expression,
+                                    name_range: Range::new(tag_name_start, tag_name_end),
                                 },
                                 Range::new(token_start, self.cursor.get_position()),
                             ));
@@ -426,6 +447,7 @@ impl Tokenizer {
                                     value: token_value,
                                     attributes: token_attributes,
                                     expression: token_expression,
+                                    name_range: Range::new(tag_name_start, tag_name_end),
                                 },
                                 Range::new(token_start, self.cursor.get_position()),
                             ));
@@ -523,6 +545,7 @@ impl Tokenizer {
                                 value: token_value,
                                 attributes: token_attributes,
                                 expression: token_expression,
+                                name_range: Range::new(tag_name_start, tag_name_end),
                             },
                             Range::new(token_start, self.cursor.get_position()),
                         ));
@@ -652,10 +675,17 @@ impl Tokenizer {
                         } else {
                             // No accumulated content, create and return end tag token directly
                             let tag_name = self.stored_tag_name.clone();
-                            self.cursor.advance_n(end_tag.len());
+                            self.cursor.advance_n(2); // consume </
+                            tag_name_start = self.cursor.get_position();
+                            self.cursor.advance_n(self.stored_tag_name.len()); // consume tag name 
+                            tag_name_end = self.cursor.get_position();
+                            self.cursor.advance_n(1); // consume >
                             self.state = TokenizerState::Text;
                             return Ok((
-                                Token::EndTag { value: tag_name },
+                                Token::EndTag {
+                                    value: tag_name,
+                                    name_range: Range::new(tag_name_start, tag_name_end),
+                                },
                                 Range::new(token_start, self.cursor.get_position()),
                             ));
                         }
@@ -744,21 +774,15 @@ fn is_tag_name_with_raw_content(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::parse_test_cases;
     use super::*;
+    use crate::test_utils::parse_test_cases;
     use pretty_assertions::assert_eq;
-    
+
     use std::fs;
     use std::path::PathBuf;
 
-
     fn format_attr(attr: &Attribute) -> String {
-        format!(
-            "{}=[{}] {}",
-            attr.name,
-            attr.value,
-            attr.range,
-        )
+        format!("{}=[{}] {}", attr.name, attr.value, attr.range,)
     }
 
     fn format_token(val: Result<(Token, Range), RangeError>) -> String {
@@ -778,12 +802,13 @@ mod tests {
             (Token::Eof, range) => {
                 format!("Eof {}", range)
             }
-            (Token::EndTag { value }, range) => {
-                format!("EndTag({}) {}", value, range)
+            (Token::EndTag { value, name_range }, range) => {
+                format!("EndTag({} {}) {}", value, name_range, range)
             }
             (
                 Token::StartTag {
                     attributes,
+                    name_range,
                     expression,
                     self_closing,
                     value,
@@ -803,12 +828,13 @@ mod tests {
                 };
 
                 format!(
-                    "{}({}) [{}]{} {}",
+                    "{}({} {}) [{}]{} {}",
                     match self_closing {
                         true => "SelfClosingTag",
                         false => "StartTag",
                     },
                     value,
+                    name_range,
                     attrs,
                     expr_part,
                     range
@@ -826,7 +852,6 @@ mod tests {
         let test_cases = parse_test_cases(&content);
 
         for (case_num, (archive, line_number)) in test_cases.iter().enumerate() {
-
             let input = archive
                 .get("in")
                 .expect("Missing 'in' section in test case")
@@ -852,5 +877,4 @@ mod tests {
             );
         }
     }
-
 }

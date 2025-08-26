@@ -9,28 +9,28 @@ The tokenizer allows empty files, and no tokens are emitted.
 -- in --
 <input type="" value="" disabled="">
 -- out --
-StartTag(input) [type=[] 1:8-1:15 value=[] 1:16-1:24 disabled=[] 1:25-1:36] 1:1-1:37
+StartTag(input 1:2-1:7) [type=[] 1:8-1:15 value=[] 1:16-1:24 disabled=[] 1:25-1:36] 1:1-1:37
 ## END
 
 ## BEGIN
 -- in --
 <h1 foo="bar"x="y">
 -- out --
-StartTag(h1) [foo=[bar] 1:5-1:14 x=[y] 1:14-1:19] 1:1-1:20
+StartTag(h1 1:2-1:4) [foo=[bar] 1:5-1:14 x=[y] 1:14-1:19] 1:1-1:20
 ## END
 
 ## BEGIN
 -- in --
 <h1 foo bar/>
 -- out --
-SelfClosingTag(h1) [foo=[] 1:5-1:8 bar=[] 1:9-1:12] 1:1-1:14
+SelfClosingTag(h1 1:2-1:4) [foo=[] 1:5-1:8 bar=[] 1:9-1:12] 1:1-1:14
 ## END
 
 ## BEGIN
 -- in --
 <h1 foo/>
 -- out --
-SelfClosingTag(h1) [foo=[] 1:5-1:8] 1:1-1:10
+SelfClosingTag(h1 1:2-1:4) [foo=[] 1:5-1:8] 1:1-1:10
 ## END
 
 ## BEGIN
@@ -38,10 +38,10 @@ SelfClosingTag(h1) [foo=[] 1:5-1:8] 1:1-1:10
 <p><!-- -->
 </p>
 -- out --
-StartTag(p) [] 1:1-1:4
+StartTag(p 1:2-1:3) [] 1:1-1:4
 Comment 1:4-1:12
 Text 1:12-2:1
-EndTag(p) 2:1-2:5
+EndTag(p 2:3-2:4) 2:1-2:5
 ## END
 
 ## BEGIN
@@ -50,30 +50,30 @@ EndTag(p) 2:1-2:5
 	<div></div>
 </textarea>
 -- out --
-StartTag(textarea) [] 1:1-1:11
+StartTag(textarea 1:2-1:10) [] 1:1-1:11
 Text 1:11-2:2
-StartTag(div) [] 2:2-2:7
-EndTag(div) 2:7-2:13
+StartTag(div 2:3-2:6) [] 2:2-2:7
+EndTag(div 2:9-2:12) 2:7-2:13
 Text 2:13-3:1
-EndTag(textarea) 3:1-3:12
+EndTag(textarea 3:3-3:11) 3:1-3:12
 ## END
 
 ## BEGIN
 -- in --
 <title><slot-title/></title>
 -- out --
-StartTag(title) [] 1:1-1:8
-SelfClosingTag(slot-title) [] 1:8-1:21
-EndTag(title) 1:21-1:29
+StartTag(title 1:2-1:7) [] 1:1-1:8
+SelfClosingTag(slot-title 1:9-1:19) [] 1:8-1:21
+EndTag(title 1:23-1:28) 1:21-1:29
 ## END
 
 ## BEGIN
 -- in --
 <p><!-- --></p>
 -- out --
-StartTag(p) [] 1:1-1:4
+StartTag(p 1:2-1:3) [] 1:1-1:4
 Comment 1:4-1:12
-EndTag(p) 1:12-1:16
+EndTag(p 1:14-1:15) 1:12-1:16
 ## END
 
 ## BEGIN
@@ -91,9 +91,9 @@ that stretches
 over several
 lines --></p>
 -- out --
-StartTag(p) [] 1:1-1:4
+StartTag(p 1:2-1:3) [] 1:1-1:4
 Comment 1:4-5:10
-EndTag(p) 5:10-5:14
+EndTag(p 5:12-5:13) 5:10-5:14
 ## END
 
 ## BEGIN
@@ -114,21 +114,21 @@ Doctype 1:1-1:18
 -- in --
 </div >
 -- out --
-EndTag(div) 1:1-1:8
+EndTag(div 1:3-1:6) 1:1-1:8
 ## END
 
 ## BEGIN
 -- in --
 <h1/>
 -- out --
-SelfClosingTag(h1) [] 1:1-1:6
+SelfClosingTag(h1 1:2-1:4) [] 1:1-1:6
 ## END
 
 ## BEGIN
 -- in --
 <h1 />
 -- out --
-SelfClosingTag(h1) [] 1:1-1:7
+SelfClosingTag(h1 1:2-1:4) [] 1:1-1:7
 ## END
 
 ## BEGIN
@@ -138,9 +138,9 @@ SelfClosingTag(h1) [] 1:1-1:7
   .class { font-size: 12px; }
 </style>
 -- out --
-StartTag(style) [] 1:1-1:8
+StartTag(style 1:2-1:7) [] 1:1-1:8
 Text 1:8-4:1
-EndTag(style) 4:1-4:9
+EndTag(style 4:3-4:8) 4:1-4:9
 ## END
 
 ## BEGIN
@@ -152,23 +152,23 @@ EndTag(style) 4:1-4:9
 <h5></h5>
 <h6></h6>
 -- out --
-StartTag(h1) [] 1:1-1:5
-EndTag(h1) 1:5-1:10
+StartTag(h1 1:2-1:4) [] 1:1-1:5
+EndTag(h1 1:7-1:9) 1:5-1:10
 Text 1:10-2:1
-StartTag(h2) [] 2:1-2:5
-EndTag(h2) 2:5-2:10
+StartTag(h2 2:2-2:4) [] 2:1-2:5
+EndTag(h2 2:7-2:9) 2:5-2:10
 Text 2:10-3:1
-StartTag(h3) [] 3:1-3:5
-EndTag(h3) 3:5-3:10
+StartTag(h3 3:2-3:4) [] 3:1-3:5
+EndTag(h3 3:7-3:9) 3:5-3:10
 Text 3:10-4:1
-StartTag(h4) [] 4:1-4:5
-EndTag(h4) 4:5-4:10
+StartTag(h4 4:2-4:4) [] 4:1-4:5
+EndTag(h4 4:7-4:9) 4:5-4:10
 Text 4:10-5:1
-StartTag(h5) [] 5:1-5:5
-EndTag(h5) 5:5-5:10
+StartTag(h5 5:2-5:4) [] 5:1-5:5
+EndTag(h5 5:7-5:9) 5:5-5:10
 Text 5:10-6:1
-StartTag(h6) [] 6:1-6:5
-EndTag(h6) 6:5-6:10
+StartTag(h6 6:2-6:4) [] 6:1-6:5
+EndTag(h6 6:7-6:9) 6:5-6:10
 ## END
 
 ## BEGIN
@@ -179,9 +179,9 @@ EndTag(h6) 6:5-6:10
   data-value="something">
 </div>
 -- out --
-StartTag(div) [class=[multiline] 2:3-2:20 id=[test] 3:3-3:12 data-value=[something] 4:3-4:25] 1:1-4:26
+StartTag(div 1:2-1:5) [class=[multiline] 2:3-2:20 id=[test] 3:3-3:12 data-value=[something] 4:3-4:25] 1:1-4:26
 Text 4:26-5:1
-EndTag(div) 5:1-5:7
+EndTag(div 5:3-5:6) 5:1-5:7
 ## END
 
 ## BEGIN
@@ -191,18 +191,18 @@ EndTag(div) 5:1-5:7
   document.write(html);
 </script>
 -- out --
-StartTag(script) [] 1:1-1:9
+StartTag(script 1:2-1:8) [] 1:1-1:9
 Text 1:9-4:1
-EndTag(script) 4:1-4:10
+EndTag(script 4:3-4:9) 4:1-4:10
 ## END
 
 ## BEGIN
 -- in --
 <hop-x-raw>foo bar</hop-x-raw>
 -- out --
-StartTag(hop-x-raw) [] 1:1-1:12
+StartTag(hop-x-raw 1:2-1:11) [] 1:1-1:12
 Text 1:12-1:19
-EndTag(hop-x-raw) 1:19-1:31
+EndTag(hop-x-raw 1:21-1:30) 1:19-1:31
 ## END
 
 ## BEGIN
@@ -211,19 +211,19 @@ EndTag(hop-x-raw) 1:19-1:31
   <div>some html</div>
 </hop-x-raw>
 -- out --
-StartTag(hop-x-raw) [] 1:1-1:12
+StartTag(hop-x-raw 1:2-1:11) [] 1:1-1:12
 Text 1:12-3:1
-EndTag(hop-x-raw) 3:1-3:13
+EndTag(hop-x-raw 3:3-3:12) 3:1-3:13
 ## END
 
 ## BEGIN
 -- in --
 <p></p><p></p>
 -- out --
-StartTag(p) [] 1:1-1:4
-EndTag(p) 1:4-1:8
-StartTag(p) [] 1:8-1:11
-EndTag(p) 1:11-1:15
+StartTag(p 1:2-1:3) [] 1:1-1:4
+EndTag(p 1:6-1:7) 1:4-1:8
+StartTag(p 1:9-1:10) [] 1:8-1:11
+EndTag(p 1:13-1:14) 1:11-1:15
 ## END
 
 ## BEGIN
@@ -234,13 +234,13 @@ EndTag(p) 1:11-1:15
 	</script>
 </main-comp>
 -- out --
-StartTag(main-comp) [] {foo, 1:13-1:16} 1:1-1:18
+StartTag(main-comp 1:2-1:11) [] {foo, 1:13-1:16} 1:1-1:18
 Text 1:18-2:2
-StartTag(script) [] 2:2-2:10
+StartTag(script 2:3-2:9) [] 2:2-2:10
 Text 2:10-4:2
-EndTag(script) 4:2-4:11
+EndTag(script 4:4-4:10) 4:2-4:11
 Text 4:11-5:1
-EndTag(main-comp) 5:1-5:13
+EndTag(main-comp 5:3-5:12) 5:1-5:13
 ## END
 
 ## BEGIN
@@ -259,25 +259,25 @@ EndTag(main-comp) 5:1-5:13
 -- out --
 Doctype 1:1-1:16
 Text 1:16-2:1
-StartTag(html) [] 2:1-2:7
+StartTag(html 2:2-2:6) [] 2:1-2:7
 Text 2:7-3:1
-StartTag(head) [] 3:1-3:7
+StartTag(head 3:2-3:6) [] 3:1-3:7
 Text 3:7-4:3
-StartTag(title) [] 4:3-4:10
+StartTag(title 4:4-4:9) [] 4:3-4:10
 Text 4:10-4:17
-EndTag(title) 4:17-4:25
+EndTag(title 4:19-4:24) 4:17-4:25
 Text 4:25-5:1
-EndTag(head) 5:1-5:8
+EndTag(head 5:3-5:7) 5:1-5:8
 Text 5:8-6:1
-StartTag(body) [] 6:1-6:7
+StartTag(body 6:2-6:6) [] 6:1-6:7
 Text 6:7-7:3
-StartTag(div) [class=[container] 7:8-7:25] 7:3-7:26
+StartTag(div 7:4-7:7) [class=[container] 7:8-7:25] 7:3-7:26
 Text 7:26-9:3
-EndTag(div) 9:3-9:9
+EndTag(div 9:5-9:8) 9:3-9:9
 Text 9:9-10:1
-EndTag(body) 10:1-10:8
+EndTag(body 10:3-10:7) 10:1-10:8
 Text 10:8-11:1
-EndTag(html) 11:1-11:8
+EndTag(html 11:3-11:7) 11:1-11:8
 ## END
 
 ## BEGIN
@@ -289,21 +289,21 @@ EndTag(html) 11:1-11:8
 <line x1="12" y1="22.08" x2="12" y2="12"></line>
 </svg>
 -- out --
-StartTag(svg) [xmlns=[http://www.w3.org/2000/svg] 1:6-1:40 width=[24] 1:41-1:51 height=[24] 1:52-1:63 viewBox=[0 0 24 24] 1:64-1:83 fill=[none] 1:84-1:95 stroke=[currentColor] 1:96-1:117 stroke-width=[2] 1:118-1:134 stroke-linecap=[round] 1:135-1:157 stroke-linejoin=[round] 1:158-1:181] 1:1-1:182
+StartTag(svg 1:2-1:5) [xmlns=[http://www.w3.org/2000/svg] 1:6-1:40 width=[24] 1:41-1:51 height=[24] 1:52-1:63 viewBox=[0 0 24 24] 1:64-1:83 fill=[none] 1:84-1:95 stroke=[currentColor] 1:96-1:117 stroke-width=[2] 1:118-1:134 stroke-linecap=[round] 1:135-1:157 stroke-linejoin=[round] 1:158-1:181] 1:1-1:182
 Text 1:182-2:1
-StartTag(line) [x1=[16.5] 2:7-2:16 y1=[9.4] 2:17-2:25 x2=[7.5] 2:26-2:34 y2=[4.21] 2:35-2:44] 2:1-2:45
-EndTag(line) 2:45-2:52
+StartTag(line 2:2-2:6) [x1=[16.5] 2:7-2:16 y1=[9.4] 2:17-2:25 x2=[7.5] 2:26-2:34 y2=[4.21] 2:35-2:44] 2:1-2:45
+EndTag(line 2:47-2:51) 2:45-2:52
 Text 2:52-3:1
-StartTag(path) [d=[M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z] 3:7-3:132] 3:1-3:133
-EndTag(path) 3:133-3:140
+StartTag(path 3:2-3:6) [d=[M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z] 3:7-3:132] 3:1-3:133
+EndTag(path 3:135-3:139) 3:133-3:140
 Text 3:140-4:1
-StartTag(polyline) [points=[3.27 6.96 12 12.01 20.73 6.96] 4:11-4:49] 4:1-4:50
-EndTag(polyline) 4:50-4:61
+StartTag(polyline 4:2-4:10) [points=[3.27 6.96 12 12.01 20.73 6.96] 4:11-4:49] 4:1-4:50
+EndTag(polyline 4:52-4:60) 4:50-4:61
 Text 4:61-5:1
-StartTag(line) [x1=[12] 5:7-5:14 y1=[22.08] 5:15-5:25 x2=[12] 5:26-5:33 y2=[12] 5:34-5:41] 5:1-5:42
-EndTag(line) 5:42-5:49
+StartTag(line 5:2-5:6) [x1=[12] 5:7-5:14 y1=[22.08] 5:15-5:25 x2=[12] 5:26-5:33 y2=[12] 5:34-5:41] 5:1-5:42
+EndTag(line 5:44-5:48) 5:42-5:49
 Text 5:49-6:1
-EndTag(svg) 6:1-6:7
+EndTag(svg 6:3-6:6) 6:1-6:7
 ## END
 
 ## BEGIN
@@ -316,22 +316,22 @@ EndTag(svg) 6:1-6:7
 	</g>
 </svg>
 -- out --
-StartTag(svg) [xmlns=[http://www.w3.org/2000/svg] 1:6-1:40 width=[128] 1:41-1:52 height=[128] 1:53-1:65 version=[1.1] 1:66-1:79 viewBox=[0 0 128 128] 1:80-1:101 class=[size-12] 1:102-1:117] 1:1-1:118
+StartTag(svg 1:2-1:5) [xmlns=[http://www.w3.org/2000/svg] 1:6-1:40 width=[128] 1:41-1:52 height=[128] 1:53-1:65 version=[1.1] 1:66-1:79 viewBox=[0 0 128 128] 1:80-1:101 class=[size-12] 1:102-1:117] 1:1-1:118
 Text 1:118-2:2
-StartTag(g) [style=[fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;] 2:5-2:112] 2:2-2:113
+StartTag(g 2:3-2:4) [style=[fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;] 2:5-2:112] 2:2-2:113
 Text 2:113-3:3
-StartTag(path) [d=[M20.04 38 64 22l43.96 16L64 54Z] 3:9-3:44] 3:3-3:45
-EndTag(path) 3:45-3:52
+StartTag(path 3:4-3:8) [d=[M20.04 38 64 22l43.96 16L64 54Z] 3:9-3:44] 3:3-3:45
+EndTag(path 3:47-3:51) 3:45-3:52
 Text 3:52-4:3
-StartTag(path) [d=[M17.54 47.09v48l35.099 12.775] 4:9-4:42] 4:3-4:43
-EndTag(path) 4:43-4:50
+StartTag(path 4:4-4:8) [d=[M17.54 47.09v48l35.099 12.775] 4:9-4:42] 4:3-4:43
+EndTag(path 4:45-4:49) 4:43-4:50
 Text 4:50-5:3
-StartTag(path) [d=[M64 112V64l46.46-16.91v48L77.988 106.91] 5:9-5:52] 5:3-5:53
-EndTag(path) 5:53-5:60
+StartTag(path 5:4-5:8) [d=[M64 112V64l46.46-16.91v48L77.988 106.91] 5:9-5:52] 5:3-5:53
+EndTag(path 5:55-5:59) 5:53-5:60
 Text 5:60-6:2
-EndTag(g) 6:2-6:6
+EndTag(g 6:4-6:5) 6:2-6:6
 Text 6:6-7:1
-EndTag(svg) 7:1-7:7
+EndTag(svg 7:3-7:6) 7:1-7:7
 ## END
 
 ## BEGIN
@@ -343,110 +343,110 @@ EndTag(svg) 7:1-7:7
 	</form>
 </main-comp>
 -- out --
-StartTag(main-comp) [] 1:1-1:12
+StartTag(main-comp 1:2-1:11) [] 1:1-1:12
 Text 1:12-2:2
-StartTag(form) [id=[form] 2:8-2:17] 2:2-2:18
+StartTag(form 2:3-2:7) [id=[form] 2:8-2:17] 2:2-2:18
 Text 2:18-3:3
-StartTag(input) [type=[text] 3:10-3:21 required=[] 3:22-3:30] 3:3-3:31
+StartTag(input 3:4-3:9) [type=[text] 3:10-3:21 required=[] 3:22-3:30] 3:3-3:31
 Text 3:31-4:3
-StartTag(button) [type=[submit] 4:11-4:24] 4:3-4:25
+StartTag(button 4:4-4:10) [type=[submit] 4:11-4:24] 4:3-4:25
 Text 4:25-4:29
-EndTag(button) 4:29-4:38
+EndTag(button 4:31-4:37) 4:29-4:38
 Text 4:38-5:2
-EndTag(form) 5:2-5:9
+EndTag(form 5:4-5:8) 5:2-5:9
 Text 5:9-6:1
-EndTag(main-comp) 6:1-6:13
+EndTag(main-comp 6:3-6:12) 6:1-6:13
 ## END
 
 ## BEGIN
 -- in --
 <if {foo}>
 -- out --
-StartTag(if) [] {foo, 1:6-1:9} 1:1-1:11
+StartTag(if 1:2-1:4) [] {foo, 1:6-1:9} 1:1-1:11
 ## END
 
 ## BEGIN
 -- in --
 <div {bar} class="test">
 -- out --
-StartTag(div) [class=[test] 1:12-1:24] {bar, 1:7-1:10} 1:1-1:25
+StartTag(div 1:2-1:5) [class=[test] 1:12-1:24] {bar, 1:7-1:10} 1:1-1:25
 ## END
 
 ## BEGIN
 -- in --
 <if {user.name == 'John'}>
 -- out --
-StartTag(if) [] {user.name == 'John', 1:6-1:25} 1:1-1:27
+StartTag(if 1:2-1:4) [] {user.name == 'John', 1:6-1:25} 1:1-1:27
 ## END
 
 ## BEGIN
 -- in --
 <component {obj.prop.subprop}>
 -- out --
-StartTag(component) [] {obj.prop.subprop, 1:13-1:29} 1:1-1:31
+StartTag(component 1:2-1:11) [] {obj.prop.subprop, 1:13-1:29} 1:1-1:31
 ## END
 
 ## BEGIN
 -- in --
 <button {enabled == 'yes'} disabled>
 -- out --
-StartTag(button) [disabled=[] 1:28-1:36] {enabled == 'yes', 1:10-1:26} 1:1-1:37
+StartTag(button 1:2-1:8) [disabled=[] 1:28-1:36] {enabled == 'yes', 1:10-1:26} 1:1-1:37
 ## END
 
 ## BEGIN
 -- in --
 <input {variable_name_123}>
 -- out --
-StartTag(input) [] {variable_name_123, 1:9-1:26} 1:1-1:28
+StartTag(input 1:2-1:7) [] {variable_name_123, 1:9-1:26} 1:1-1:28
 ## END
 
 ## BEGIN
 -- in --
 <div {  user.name  } class="test">
 -- out --
-StartTag(div) [class=[test] 1:22-1:34] {  user.name  , 1:7-1:20} 1:1-1:35
+StartTag(div 1:2-1:5) [class=[test] 1:22-1:34] {  user.name  , 1:7-1:20} 1:1-1:35
 ## END
 
 ## BEGIN
 -- in --
 <span {'hello world'}>
 -- out --
-StartTag(span) [] {'hello world', 1:8-1:21} 1:1-1:23
+StartTag(span 1:2-1:6) [] {'hello world', 1:8-1:21} 1:1-1:23
 ## END
 
 ## BEGIN
 -- in --
 <form {(user.role == 'admin')}>
 -- out --
-StartTag(form) [] {(user.role == 'admin'), 1:8-1:30} 1:1-1:32
+StartTag(form 1:2-1:6) [] {(user.role == 'admin'), 1:8-1:30} 1:1-1:32
 ## END
 
 ## BEGIN
 -- in --
 <section {a == b == c}>
 -- out --
-StartTag(section) [] {a == b == c, 1:11-1:22} 1:1-1:24
+StartTag(section 1:2-1:9) [] {a == b == c, 1:11-1:22} 1:1-1:24
 ## END
 
 ## BEGIN
 -- in --
 <for {user in users}>
 -- out --
-StartTag(for) [] {user in users, 1:7-1:20} 1:1-1:22
+StartTag(for 1:2-1:5) [] {user in users, 1:7-1:20} 1:1-1:22
 ## END
 
 ## BEGIN
 -- in --
 <for {item in user.items}>
 -- out --
-StartTag(for) [] {item in user.items, 1:7-1:25} 1:1-1:27
+StartTag(for 1:2-1:5) [] {item in user.items, 1:7-1:25} 1:1-1:27
 ## END
 
 ## BEGIN
 -- in --
 <div {foo in bars}>
 -- out --
-StartTag(div) [] {foo in bars, 1:7-1:18} 1:1-1:20
+StartTag(div 1:2-1:5) [] {foo in bars, 1:7-1:18} 1:1-1:20
 ## END
 
 Test text with single expression.
@@ -455,11 +455,11 @@ Test text with single expression.
 -- in --
 <h1>Hello {name}!</h1>
 -- out --
-StartTag(h1) [] 1:1-1:5
+StartTag(h1 1:2-1:4) [] 1:1-1:5
 Text 1:5-1:11
 Expression [] {name} 1:11-1:17
 Text 1:17-1:18
-EndTag(h1) 1:18-1:23
+EndTag(h1 1:20-1:22) 1:18-1:23
 ## END
 
 Test text with multiple expressions.
@@ -468,13 +468,13 @@ Test text with multiple expressions.
 -- in --
 <p>User {user.name} has {user.count} items</p>
 -- out --
-StartTag(p) [] 1:1-1:4
+StartTag(p 1:2-1:3) [] 1:1-1:4
 Text 1:4-1:9
 Expression [] {user.name} 1:9-1:20
 Text 1:20-1:25
 Expression [] {user.count} 1:25-1:37
 Text 1:37-1:43
-EndTag(p) 1:43-1:47
+EndTag(p 1:45-1:46) 1:43-1:47
 ## END
 
 Test text with expression at start.
@@ -483,10 +483,10 @@ Test text with expression at start.
 -- in --
 <span>{greeting} world!</span>
 -- out --
-StartTag(span) [] 1:1-1:7
+StartTag(span 1:2-1:6) [] 1:1-1:7
 Expression [] {greeting} 1:7-1:17
 Text 1:17-1:24
-EndTag(span) 1:24-1:31
+EndTag(span 1:26-1:30) 1:24-1:31
 ## END
 
 Test text with expression at end.
@@ -495,10 +495,10 @@ Test text with expression at end.
 -- in --
 <div>Price: {price}</div>
 -- out --
-StartTag(div) [] 1:1-1:6
+StartTag(div 1:2-1:5) [] 1:1-1:6
 Text 1:6-1:13
 Expression [] {price} 1:13-1:20
-EndTag(div) 1:20-1:26
+EndTag(div 1:22-1:25) 1:20-1:26
 ## END
 
 Test text with only expression.
@@ -507,9 +507,9 @@ Test text with only expression.
 -- in --
 <h2>{title}</h2>
 -- out --
-StartTag(h2) [] 1:1-1:5
+StartTag(h2 1:2-1:4) [] 1:1-1:5
 Expression [] {title} 1:5-1:12
-EndTag(h2) 1:12-1:17
+EndTag(h2 1:14-1:16) 1:12-1:17
 ## END
 
 Test complex expression in text.
@@ -518,10 +518,10 @@ Test complex expression in text.
 -- in --
 <p>Status: {user.profile.status == 'active'}</p>
 -- out --
-StartTag(p) [] 1:1-1:4
+StartTag(p 1:2-1:3) [] 1:1-1:4
 Text 1:4-1:12
 Expression [] {user.profile.status == 'active'} 1:12-1:45
-EndTag(p) 1:45-1:49
+EndTag(p 1:47-1:48) 1:45-1:49
 ## END
 
 Test expression with property access.
@@ -530,10 +530,10 @@ Test expression with property access.
 -- in --
 <span>Item: {item.title}</span>
 -- out --
-StartTag(span) [] 1:1-1:7
+StartTag(span 1:2-1:6) [] 1:1-1:7
 Text 1:7-1:13
 Expression [] {item.title} 1:13-1:25
-EndTag(span) 1:25-1:32
+EndTag(span 1:27-1:31) 1:25-1:32
 ## END
 
 Test mixed tag and text expressions.
@@ -542,8 +542,8 @@ Test mixed tag and text expressions.
 -- in --
 <div {className}>Content: {content}</div>
 -- out --
-StartTag(div) [] {className, 1:7-1:16} 1:1-1:18
+StartTag(div 1:2-1:5) [] {className, 1:7-1:16} 1:1-1:18
 Text 1:18-1:27
 Expression [] {content} 1:27-1:36
-EndTag(div) 1:36-1:42
+EndTag(div 1:38-1:41) 1:36-1:42
 ## END

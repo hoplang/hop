@@ -820,6 +820,13 @@ mod tests {
                         value: normalized_value,
                     }
                 }
+                Token::EndTag {
+                    value,
+                    name_range: _,
+                } => Token::EndTag {
+                    value,
+                    name_range: Range::default(),
+                },
                 Token::StartTag {
                     attributes,
                     expression,
@@ -835,6 +842,7 @@ mod tests {
                     Token::StartTag {
                         attributes: normalized_attrs,
                         expression,
+                        name_range: Range::default(),
                         value,
                         self_closing,
                     }
