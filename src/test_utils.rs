@@ -3,18 +3,18 @@
 use simple_txtar::Archive;
 
 /// Parses test cases from txtar format content and returns Archive objects.
-/// 
+///
 /// Returns a vector of (Archive, start_line_number) tuples.
 /// Each test case is delimited by `## BEGIN` and `## END` markers.
-/// 
+///
 /// # Example
-/// 
+///
 /// ```
 /// use hop_rs::test_utils::parse_test_cases;
-/// 
+///
 /// let content = r#"
 /// Test case 1 description
-/// 
+///
 /// ## BEGIN
 /// -- input.txt --
 /// some input
@@ -22,7 +22,7 @@ use simple_txtar::Archive;
 /// expected output
 /// ## END
 /// "#;
-/// 
+///
 /// let cases = parse_test_cases(content);
 /// assert_eq!(cases.len(), 1);
 /// ```
@@ -89,9 +89,15 @@ expected
         assert_eq!(cases.len(), 1);
         assert_eq!(cases[0].1, 3); // Line number of ## BEGIN
         assert!(cases[0].0.get("input.txt").is_some());
-        assert_eq!(cases[0].0.get("input.txt").unwrap().content.trim(), "hello world");
+        assert_eq!(
+            cases[0].0.get("input.txt").unwrap().content.trim(),
+            "hello world"
+        );
         assert!(cases[0].0.get("output.txt").is_some());
-        assert_eq!(cases[0].0.get("output.txt").unwrap().content.trim(), "expected");
+        assert_eq!(
+            cases[0].0.get("output.txt").unwrap().content.trim(),
+            "expected"
+        );
     }
 
     #[test]
@@ -115,8 +121,14 @@ Can not unify types
 
         let cases = parse_test_cases(content);
         assert_eq!(cases.len(), 2);
-        assert_eq!(cases[0].0.get("in").unwrap().content.trim(), "(unify string string)");
-        assert_eq!(cases[1].0.get("in").unwrap().content.trim(), "(unify string bool)");
+        assert_eq!(
+            cases[0].0.get("in").unwrap().content.trim(),
+            "(unify string string)"
+        );
+        assert_eq!(
+            cases[1].0.get("in").unwrap().content.trim(),
+            "(unify string bool)"
+        );
     }
 
     #[test]

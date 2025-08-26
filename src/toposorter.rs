@@ -202,9 +202,9 @@ impl Default for TopoSorter {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::parse_test_cases;
     use super::*;
-    
+    use crate::test_utils::parse_test_cases;
+
     use std::{env, fs, path::PathBuf};
 
     #[test]
@@ -216,7 +216,6 @@ mod tests {
         let test_cases = parse_test_cases(&content);
 
         for (case_num, (archive, line_number)) in test_cases.iter().enumerate() {
-
             let input = archive
                 .get("in")
                 .expect("Missing 'in' section in test case")
@@ -293,5 +292,4 @@ mod tests {
             );
         }
     }
-
 }

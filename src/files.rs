@@ -23,9 +23,12 @@ impl ProjectRoot {
             if build_file.exists() {
                 return Ok(ProjectRoot(current_dir.to_path_buf()));
             }
-            current_dir = current_dir
-                .parent()
-                .ok_or_else(|| anyhow::anyhow!("Failed to locate build.hop file in {:?} or any parent directory", &start_path))?
+            current_dir = current_dir.parent().ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Failed to locate build.hop file in {:?} or any parent directory",
+                    &start_path
+                )
+            })?
         }
     }
     /// Construct the project root from a path. The path should be a directory and contain the
@@ -191,7 +194,7 @@ mod tests {
         // Test that find_upwards fails when no build.hop exists
         let result = ProjectRoot::find_upwards(&nested_dir);
         assert!(result.is_err());
-        
+
         let error_message = result.unwrap_err().to_string();
         assert!(error_message.contains("Failed to locate build.hop"));
 

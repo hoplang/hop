@@ -158,6 +158,7 @@ pub struct Attribute {
     pub name: String,
     pub value: String,
     pub range: Range,
+    pub value_range: Range,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -168,8 +169,13 @@ pub struct DopVarNameAttribute {
 }
 
 impl Attribute {
-    pub fn new(name: String, value: String, range: Range) -> Self {
-        Attribute { name, value, range }
+    pub fn new(name: String, value: String, range: Range, value_range: Range) -> Self {
+        Attribute {
+            name,
+            value,
+            range,
+            value_range,
+        }
     }
 }
 

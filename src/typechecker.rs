@@ -19,6 +19,7 @@ pub struct ComponentDefinitionLink {
     pub reference_opening_name_range: Range,
     pub reference_closing_name_range: Option<Range>,
     pub definition_module: String,
+    pub definition_component_name: String,
     pub definition_opening_name_range: Range,
     pub definition_closing_name_range: Option<Range>,
 }
@@ -293,6 +294,7 @@ fn typecheck_node(
                     reference_opening_name_range: *opening_name_range,
                     reference_closing_name_range: *closing_name_range,
                     definition_module: comp_info.definition_module.clone(),
+                    definition_component_name: component.clone(),
                     definition_opening_name_range: comp_info.definition_opening_name_range,
                     definition_closing_name_range: comp_info.definition_closing_name_range,
                 });

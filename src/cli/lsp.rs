@@ -1,5 +1,5 @@
 use crate::files::{self, ProjectRoot};
-use crate::server::{DefinitionLocation, HoverInfo, Server};
+use crate::server::{DefinitionLocation, HoverInfo, RenameLocation, Server};
 use std::path::Path;
 use tokio::sync::RwLock;
 use tower_lsp::jsonrpc::Result;
@@ -117,6 +117,7 @@ impl LanguageServer for HopLanguageServer {
                 )),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
+                rename_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
@@ -198,6 +199,49 @@ impl LanguageServer for HopLanguageServer {
                 })
             },
         ))
+    }
+
+    async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+        let new_name = params.new_name;
+        let root = Self::find_root(&uri).unwrap();
+        let module_name = Self::uri_to_module_name(&uri, &root);
+
+        let (line, column) = Self::from_lsp_position(position);
+        let server = self.server.read().await;
+
+        if let Some(rename_locations) = server.get_rename_locations(&module_name, line, column) {
+            let mut changes: std::collections::HashMap<Url, Vec<TextEdit>> =
+                std::collections::HashMap::new();
+
+            for RenameLocation {
+                module,
+                start_line,
+                start_column,
+                end_line,
+                end_column,
+            } in rename_locations
+            {
+                let file_uri = Self::module_name_to_uri(&module, &root);
+                let edit = TextEdit {
+                    range: Range {
+                        start: Self::to_lsp_position(start_line, start_column),
+                        end: Self::to_lsp_position(end_line, end_column),
+                    },
+                    new_text: new_name.clone(),
+                };
+
+                changes.entry(file_uri).or_insert_with(Vec::new).push(edit);
+            }
+
+            Ok(Some(WorkspaceEdit {
+                changes: Some(changes),
+                ..Default::default()
+            }))
+        } else {
+            Ok(None)
+        }
     }
 
     async fn shutdown(&self) -> Result<()> {

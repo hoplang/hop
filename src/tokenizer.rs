@@ -152,6 +152,7 @@ impl Tokenizer {
         let mut attribute_name = String::new();
         let mut attribute_value = String::new();
         let mut attribute_start = self.cursor.get_position();
+        let mut attribute_value_start = self.cursor.get_position();
         let mut doctype_name_buffer = String::new();
         while !self.cursor.is_at_end() {
             let ch = self.cursor.peek();
@@ -410,6 +411,7 @@ impl Tokenizer {
                                 start: attribute_start,
                                 end: self.cursor.get_position(),
                             },
+                            Range::default(),
                         ));
                         attribute_start = self.cursor.get_position();
                         self.cursor.advance();
@@ -423,6 +425,7 @@ impl Tokenizer {
                                 start: attribute_start,
                                 end: self.cursor.get_position(),
                             },
+                            Range::default(),
                         ));
                         if is_tag_name_with_raw_content(&token_value) {
                             self.stored_tag_name = token_value.clone();
@@ -461,6 +464,7 @@ impl Tokenizer {
                                 start: attribute_start,
                                 end: self.cursor.get_position(),
                             },
+                            Range::default(),
                         ));
                         self.cursor.advance();
                         self.state = TokenizerState::SelfClosing;
@@ -479,9 +483,11 @@ impl Tokenizer {
                     if ch == '"' {
                         self.cursor.advance();
                         self.state = TokenizerState::AttrValueDoubleQuote;
+                        attribute_value_start = self.cursor.get_position();
                     } else if ch == '\'' {
                         self.cursor.advance();
                         self.state = TokenizerState::AttrValueSingleQuote;
+                        attribute_value_start = self.cursor.get_position();
                     } else {
                         let start_pos = self.cursor.get_position();
                         self.cursor.advance();
@@ -495,6 +501,7 @@ impl Tokenizer {
 
                 TokenizerState::AttrValueDoubleQuote => {
                     if ch == '"' {
+                        let attribute_value_end = self.cursor.get_position();
                         self.cursor.advance();
                         // Push current attribute
                         token_attributes.push(Attribute::new(
@@ -504,6 +511,7 @@ impl Tokenizer {
                                 start: attribute_start,
                                 end: self.cursor.get_position(),
                             },
+                            Range::new(attribute_value_start, attribute_value_end),
                         ));
                         attribute_start = self.cursor.get_position();
                         self.state = TokenizerState::BeforeAttrName;
@@ -516,6 +524,7 @@ impl Tokenizer {
 
                 TokenizerState::AttrValueSingleQuote => {
                     if ch == '\'' {
+                        let attribute_value_end = self.cursor.get_position();
                         self.cursor.advance();
                         // Push current attribute
                         token_attributes.push(Attribute::new(
@@ -525,6 +534,7 @@ impl Tokenizer {
                                 start: attribute_start,
                                 end: self.cursor.get_position(),
                             },
+                            Range::new(attribute_value_start, attribute_value_end),
                         ));
                         attribute_start = self.cursor.get_position();
                         self.state = TokenizerState::BeforeAttrName;

@@ -22,15 +22,24 @@ impl ErrorFormatter {
         }
     }
 
-    pub fn add_errors(&mut self, module_name: String, source_code: String, errors: Vec<RangeError>) {
+    pub fn add_errors(
+        &mut self,
+        module_name: String,
+        source_code: String,
+        errors: Vec<RangeError>,
+    ) {
         if errors.is_empty() {
             panic!("add_errors called with empty errors array");
         }
-        
+
         let lines = source_code.lines().map(|s| s.to_string()).collect();
         let filename = format!("{}.hop", module_name);
-        
-        if let Some(module_info) = self.modules.iter_mut().find(|m| m.module_name == module_name) {
+
+        if let Some(module_info) = self
+            .modules
+            .iter_mut()
+            .find(|m| m.module_name == module_name)
+        {
             module_info.errors.extend(errors);
         } else {
             self.modules.push(ModuleInfo {
@@ -54,17 +63,17 @@ impl ErrorFormatter {
     pub fn format_all_errors(&self) -> String {
         let mut formatted_errors = String::new();
         let mut first_module = true;
-        
+
         for module_info in &self.modules {
             if module_info.errors.is_empty() {
                 continue;
             }
-            
+
             if !first_module {
                 formatted_errors.push('\n');
             }
             first_module = false;
-            
+
             for (i, error) in module_info.errors.iter().enumerate() {
                 formatted_errors.push_str(&self.format_error(module_info, error));
                 // Only add newline if there are more errors after this one

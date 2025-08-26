@@ -837,6 +837,7 @@ mod tests {
                     let mut normalized_attrs = attributes;
                     normalized_attrs.iter_mut().for_each(|attr| {
                         attr.range = Range::default();
+                        attr.value_range = Range::default();
                     });
                     normalized_attrs.sort_by(|a, b| a.name.cmp(&b.name));
                     Token::StartTag {

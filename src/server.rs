@@ -1,4 +1,4 @@
-use crate::common::{Position, RangeError};
+use crate::common::{Position, Range, RangeError};
 use crate::parser::{Module, parse};
 use crate::tokenizer::Tokenizer;
 use crate::toposorter::TopoSorter;
@@ -26,6 +26,15 @@ pub struct DefinitionLocation {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Diagnostic {
     pub message: String,
+    pub start_line: usize,
+    pub start_column: usize,
+    pub end_line: usize,
+    pub end_column: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RenameLocation {
+    pub module: String,
     pub start_line: usize,
     pub start_column: usize,
     pub end_line: usize,
@@ -145,7 +154,7 @@ impl Server {
                     end_column: definition_opening_name_range.end.column,
                 });
             }
-            
+
             // Check if cursor is on the closing name range (if it exists)
             if let Some(closing_range) = reference_closing_name_range {
                 if closing_range.contains_position(pos) {
@@ -161,6 +170,149 @@ impl Server {
         }
 
         None
+    }
+
+    pub fn get_rename_locations(
+        &self,
+        module_name: &str,
+        line: usize,
+        column: usize,
+    ) -> Option<Vec<RenameLocation>> {
+        let type_result = self.type_results.get(module_name)?;
+        let pos = Position::new(line, column);
+
+        // First, check if we're on a component reference
+        for ComponentDefinitionLink {
+            reference_opening_name_range,
+            reference_closing_name_range,
+            definition_module,
+            definition_component_name,
+            definition_opening_name_range,
+            definition_closing_name_range,
+            ..
+        } in &type_result.definition_links
+        {
+            // Check if cursor is on the opening or closing name of a reference
+            let is_on_reference = reference_opening_name_range.contains_position(pos)
+                || reference_closing_name_range
+                    .as_ref()
+                    .map_or(false, |range| range.contains_position(pos));
+
+            if is_on_reference {
+                // We found the component being renamed
+                return Some(self.collect_all_rename_locations(
+                    definition_component_name,
+                    definition_module,
+                    *definition_opening_name_range,
+                    *definition_closing_name_range,
+                ));
+            }
+        }
+
+        // Check if we're on a component definition
+        for (component_name, component_info) in &type_result.component_info {
+            if component_info.definition_module == module_name {
+                let is_on_definition = component_info
+                    .definition_opening_name_range
+                    .contains_position(pos)
+                    || component_info
+                        .definition_closing_name_range
+                        .as_ref()
+                        .map_or(false, |range| range.contains_position(pos));
+
+                if is_on_definition {
+                    // We're on a definition, collect all rename locations
+                    return Some(self.collect_all_rename_locations(
+                        component_name,
+                        &component_info.definition_module,
+                        component_info.definition_opening_name_range,
+                        component_info.definition_closing_name_range,
+                    ));
+                }
+            }
+        }
+
+        None
+    }
+
+    fn collect_all_rename_locations(
+        &self,
+        component_name: &str,
+        definition_module: &str,
+        definition_opening_range: Range,
+        definition_closing_range: Option<Range>,
+    ) -> Vec<RenameLocation> {
+        let mut locations = Vec::new();
+
+        // Add the definition's opening tag name
+        locations.push(RenameLocation {
+            module: definition_module.to_string(),
+            start_line: definition_opening_range.start.line,
+            start_column: definition_opening_range.start.column,
+            end_line: definition_opening_range.end.line,
+            end_column: definition_opening_range.end.column,
+        });
+
+        // Add the definition's closing tag name if it exists
+        if let Some(closing_range) = definition_closing_range {
+            locations.push(RenameLocation {
+                module: definition_module.to_string(),
+                start_line: closing_range.start.line,
+                start_column: closing_range.start.column,
+                end_line: closing_range.end.line,
+                end_column: closing_range.end.column,
+            });
+        }
+
+        // Now find all references to this component across all modules
+        for (module_name, type_result) in &self.type_results {
+            for link in &type_result.definition_links {
+                // Check if this link refers to our component definition
+                if link.definition_component_name == component_name
+                    && link.definition_module == definition_module
+                {
+                    // Add the reference's opening tag name
+                    locations.push(RenameLocation {
+                        module: module_name.clone(),
+                        start_line: link.reference_opening_name_range.start.line,
+                        start_column: link.reference_opening_name_range.start.column,
+                        end_line: link.reference_opening_name_range.end.line,
+                        end_column: link.reference_opening_name_range.end.column,
+                    });
+
+                    // Add the reference's closing tag name if it exists
+                    if let Some(ref_closing_range) = link.reference_closing_name_range {
+                        locations.push(RenameLocation {
+                            module: module_name.clone(),
+                            start_line: ref_closing_range.start.line,
+                            start_column: ref_closing_range.start.column,
+                            end_line: ref_closing_range.end.line,
+                            end_column: ref_closing_range.end.column,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Find all import statements that import this component
+        for (module_name, module) in &self.modules {
+            for import in &module.imports {
+                if import.component_attr.value == component_name
+                    && import.from_attr.value == definition_module
+                {
+                    // This import statement imports our component
+                    locations.push(RenameLocation {
+                        module: module_name.clone(),
+                        start_line: import.component_attr.value_range.start.line,
+                        start_column: import.component_attr.value_range.start.column,
+                        end_line: import.component_attr.value_range.end.line,
+                        end_column: import.component_attr.value_range.end.column,
+                    });
+                }
+            }
+        }
+
+        locations
     }
 
     pub fn get_error_diagnostics(&self, module_name: &str) -> Vec<Diagnostic> {
