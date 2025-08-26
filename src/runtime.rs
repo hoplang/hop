@@ -128,7 +128,7 @@ impl Program {
         for render_nodes in self.render_nodes.values() {
             for node in render_nodes {
                 if node.file_attr.value == file_path {
-                    let mut env = self.init_environment();
+                    let mut env = Self::init_environment(self.hop_mode);
                     let mut content = String::new();
                     for child in &node.children {
                         let rendered = self.evaluate_node_entrypoint(child, &mut env, "build")?;
@@ -145,11 +145,11 @@ impl Program {
     }
 
     /// Initialize an environment with global variables like HOP_MODE
-    fn init_environment(&self) -> Environment<serde_json::Value> {
+    fn init_environment(hop_mode: HopMode) -> Environment<serde_json::Value> {
         let mut env = Environment::new();
         env.push(
             "HOP_MODE".to_string(),
-            serde_json::Value::String(self.hop_mode.as_str().to_string()),
+            serde_json::Value::String(hop_mode.as_str().to_string()),
         );
         env
     }
@@ -161,7 +161,7 @@ impl Program {
         params: serde_json::Value,
     ) -> Result<String> {
         let empty_slots = HashMap::new();
-        self.execute(module_name, component_name, params, &empty_slots, None)
+        self.evaluate_component(module_name, component_name, params, &empty_slots, None)
     }
 
     pub fn execute_preview(
@@ -186,7 +186,7 @@ impl Program {
         };
 
         let mut result = String::new();
-        let mut env = self.init_environment();
+        let mut env = Self::init_environment(self.hop_mode);
 
         // Set up environment with parameters if the component has params
         if let Some(params_as_attr) = &component.param {
@@ -203,7 +203,7 @@ impl Program {
         Ok(result)
     }
 
-    pub fn execute(
+    pub fn evaluate_component(
         &self,
         module_name: &str,
         component_name: &str,
@@ -224,7 +224,7 @@ impl Program {
             )
         })?;
 
-        let mut env = self.init_environment();
+        let mut env = Self::init_environment(self.hop_mode);
         if let Some(params_as_attr) = &component.param {
             env.push(params_as_attr.var_name.value.clone(), params);
         }
@@ -389,7 +389,7 @@ impl Program {
                     .find(|attr| attr.name == "class")
                     .map(|attr| attr.value.as_str());
 
-                self.execute(
+                self.evaluate_component(
                     &target_module,
                     component_name,
                     params_value,
