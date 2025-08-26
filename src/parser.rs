@@ -61,11 +61,16 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<RangeEr
     }
 }
 
+#[derive(Clone, Debug)]
+struct EndToken {
+    name_range: Range,
+}
+
 #[derive(Debug, Clone)]
 struct TokenTree {
     token: (Token, Range),
     children: Vec<TokenTree>,
-    end_token: Option<(Token, Range)>,
+    end_token: Option<EndToken>,
 }
 
 impl TokenTree {
@@ -85,7 +90,7 @@ impl TokenTree {
         self.children.push(tree);
     }
 
-    fn set_end_token(&mut self, token: (Token, Range)) {
+    fn set_end_token(&mut self, token: EndToken) {
         self.end_token = Some(token);
     }
 }
@@ -128,7 +133,11 @@ fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTree {
                             stack.push((TokenTree::new((token.clone(), range)), value.clone()));
                         }
                     }
-                    Token::EndTag { ref value, .. } => {
+                    Token::EndTag {
+                        ref value,
+                        name_range,
+                        ..
+                    } => {
                         if is_void_element(value) {
                             errors.push(RangeError::closed_void_tag(value, range));
                         } else if !stack.iter().any(|(_, v)| *v == *value) {
@@ -140,7 +149,7 @@ fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTree {
                                 stack.last_mut().unwrap().0.append_tree(unclosed);
                             }
                             let mut completed = stack.pop().unwrap();
-                            completed.0.set_end_token((token, range));
+                            completed.0.set_end_token(EndToken { name_range });
                             stack.last_mut().unwrap().0.append_tree(completed.0);
                         }
                     }
@@ -399,6 +408,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
             value,
             expression,
             attributes,
+            name_range,
             ..
         } => {
             match value.as_str() {
@@ -582,6 +592,8 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
 
                     Node::ComponentReference(ComponentReferenceNode {
                         component: tag_name.to_string(),
+                        opening_name_range: *name_range,
+                        closing_name_range: tree.end_token.as_ref().map(|token| token.name_range),
                         params: params_attr,
                         attributes: attributes.clone(),
                         range: *token_range,

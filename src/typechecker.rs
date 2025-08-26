@@ -281,6 +281,7 @@ fn typecheck_node(
             component,
             params,
             children,
+            opening_name_range,
             range,
             ..
         }) => {
@@ -290,7 +291,7 @@ fn typecheck_node(
             if let Some(comp_info) = component_info.get(component) {
                 // Add definition link for go-to-definition
                 definition_links.push(DefinitionLink {
-                    reference_range: *range,
+                    reference_range: *opening_name_range,
                     definition_module: comp_info.definition_module.clone(),
                     definition_range: comp_info.definition_range,
                 });
