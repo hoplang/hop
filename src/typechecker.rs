@@ -1,6 +1,6 @@
 use crate::common::{
     ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode, ForNode, IfNode,
-    ImportNode, NativeHTMLNode, Node, Range, RangeError, RenderNode, SlotDefinitionNode,
+    ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode, SlotDefinitionNode,
     SlotReferenceNode, XExecNode, XLoadJsonNode, XRawNode,
 };
 use crate::dop::{DopType, infer_type_from_json_file, is_subtype, typecheck_expr};
@@ -24,6 +24,16 @@ pub struct ComponentDefinitionLink {
     pub definition_closing_name_range: Option<Range>,
 }
 
+impl ComponentDefinitionLink {
+    pub fn reference_name_contains_position(&self, position: Position) -> bool {
+        self.reference_opening_name_range
+            .contains_position(position)
+            || self
+                .reference_closing_name_range
+                .is_some_and(|range| range.contains_position(position))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentInfo {
     pub parameter_type: DopType,
@@ -37,7 +47,7 @@ pub struct ComponentInfo {
 pub struct TypeResult {
     pub component_info: HashMap<String, ComponentInfo>,
     pub annotations: Vec<TypeAnnotation>,
-    pub definition_links: Vec<ComponentDefinitionLink>,
+    pub component_definition_links: Vec<ComponentDefinitionLink>,
 }
 
 impl TypeResult {
@@ -49,7 +59,7 @@ impl TypeResult {
         TypeResult {
             component_info,
             annotations,
-            definition_links,
+            component_definition_links: definition_links,
         }
     }
 }

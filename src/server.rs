@@ -2,7 +2,7 @@ use crate::common::{Position, Range, RangeError};
 use crate::parser::{Module, parse};
 use crate::tokenizer::Tokenizer;
 use crate::toposorter::TopoSorter;
-use crate::typechecker::{ComponentDefinitionLink, TypeResult, typecheck};
+use crate::typechecker::{TypeResult, typecheck};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -103,19 +103,16 @@ impl Server {
         line: usize,
         column: usize,
     ) -> Option<HoverInfo> {
-        let type_result = self.type_results.get(module_name)?;
         let pos = Position::new(line, column);
-
-        for annotation in &type_result.annotations {
-            if annotation.range.contains_position(pos) {
-                return Some(HoverInfo {
-                    type_str: format!("`{}`: `{}`", annotation.name, annotation.typ),
-                    range: annotation.range,
-                });
-            }
-        }
-
-        None
+        self.type_results
+            .get(module_name)?
+            .annotations
+            .iter()
+            .find(|a| a.range.contains_position(pos))
+            .map(|annotation| HoverInfo {
+                type_str: format!("`{}`: `{}`", annotation.name, annotation.typ),
+                range: annotation.range,
+            })
     }
 
     pub fn get_definition(
@@ -124,37 +121,17 @@ impl Server {
         line: usize,
         column: usize,
     ) -> Option<DefinitionLocation> {
-        let type_result = self.type_results.get(module_name)?;
         let pos = Position::new(line, column);
 
-        for ComponentDefinitionLink {
-            reference_opening_name_range,
-            reference_closing_name_range,
-            definition_module,
-            definition_opening_name_range,
-            ..
-        } in &type_result.definition_links
-        {
-            // Check if cursor is on the opening name range
-            if reference_opening_name_range.contains_position(pos) {
-                return Some(DefinitionLocation {
-                    module: definition_module.clone(),
-                    range: *definition_opening_name_range,
-                });
-            }
-
-            // Check if cursor is on the closing name range (if it exists)
-            if let Some(closing_range) = reference_closing_name_range {
-                if closing_range.contains_position(pos) {
-                    return Some(DefinitionLocation {
-                        module: definition_module.clone(),
-                        range: *definition_opening_name_range,
-                    });
-                }
-            }
-        }
-
-        None
+        self.type_results
+            .get(module_name)?
+            .component_definition_links
+            .iter()
+            .find(|link| link.reference_name_contains_position(pos))
+            .map(|link| DefinitionLocation {
+                module: link.definition_module.clone(),
+                range: link.definition_opening_name_range,
+            })
     }
 
     pub fn get_rename_locations(
@@ -167,29 +144,13 @@ impl Server {
         let pos = Position::new(line, column);
 
         // First, check if we're on a component reference
-        for ComponentDefinitionLink {
-            reference_opening_name_range,
-            reference_closing_name_range,
-            definition_module,
-            definition_component_name,
-            definition_opening_name_range,
-            definition_closing_name_range,
-            ..
-        } in &type_result.definition_links
-        {
-            // Check if cursor is on the opening or closing name of a reference
-            let is_on_reference = reference_opening_name_range.contains_position(pos)
-                || reference_closing_name_range
-                    .as_ref()
-                    .is_some_and(|range| range.contains_position(pos));
-
-            if is_on_reference {
-                // We found the component being renamed
+        for link in &type_result.component_definition_links {
+            if link.reference_name_contains_position(pos) {
                 return Some(self.collect_all_rename_locations(
-                    definition_component_name,
-                    definition_module,
-                    *definition_opening_name_range,
-                    *definition_closing_name_range,
+                    &link.definition_component_name,
+                    &link.definition_module,
+                    link.definition_opening_name_range,
+                    link.definition_closing_name_range,
                 ));
             }
         }
@@ -202,7 +163,6 @@ impl Server {
                     .contains_position(pos)
                     || component_info
                         .definition_closing_name_range
-                        .as_ref()
                         .is_some_and(|range| range.contains_position(pos));
 
                 if is_on_definition {
@@ -230,54 +190,43 @@ impl Server {
         let pos = Position::new(line, column);
 
         // First, check if we're on a component reference
-        for ComponentDefinitionLink {
-            reference_opening_name_range,
-            reference_closing_name_range,
-            definition_component_name,
-            ..
-        } in &type_result.definition_links
-        {
-            // Check if cursor is on the opening name of a reference
-            if reference_opening_name_range.contains_position(pos) {
+        for link in &type_result.component_definition_links {
+            if link.reference_opening_name_range.contains_position(pos) {
                 return Some(RenameableSymbol {
-                    current_name: definition_component_name.clone(),
-                    range: *reference_opening_name_range,
+                    current_name: link.definition_component_name.clone(),
+                    range: link.reference_opening_name_range,
                 });
             }
-
-            // Check if cursor is on the closing name of a reference
-            if let Some(closing_range) = reference_closing_name_range {
-                if closing_range.contains_position(pos) {
-                    return Some(RenameableSymbol {
-                        current_name: definition_component_name.clone(),
-                        range: *closing_range,
-                    });
-                }
+            if link
+                .reference_closing_name_range
+                .is_some_and(|r| r.contains_position(pos))
+            {
+                return Some(RenameableSymbol {
+                    current_name: link.definition_component_name.clone(),
+                    range: link.reference_closing_name_range.unwrap(),
+                });
             }
         }
 
         // Check if we're on a component definition
         for (component_name, component_info) in &type_result.component_info {
-            if component_info.definition_module == module_name {
-                // Check if cursor is on the opening name of a definition
-                if component_info
-                    .definition_opening_name_range
-                    .contains_position(pos)
-                {
+            if component_info
+                .definition_opening_name_range
+                .contains_position(pos)
+            {
+                return Some(RenameableSymbol {
+                    current_name: component_name.clone(),
+                    range: component_info.definition_opening_name_range,
+                });
+            }
+
+            // Check if cursor is on the closing name of a definition
+            if let Some(closing_range) = component_info.definition_closing_name_range {
+                if closing_range.contains_position(pos) {
                     return Some(RenameableSymbol {
                         current_name: component_name.clone(),
-                        range: component_info.definition_opening_name_range,
+                        range: closing_range,
                     });
-                }
-
-                // Check if cursor is on the closing name of a definition
-                if let Some(closing_range) = component_info.definition_closing_name_range {
-                    if closing_range.contains_position(pos) {
-                        return Some(RenameableSymbol {
-                            current_name: component_name.clone(),
-                            range: closing_range,
-                        });
-                    }
                 }
             }
         }
@@ -308,9 +257,8 @@ impl Server {
             });
         }
 
-        // Now find all references to this component across all modules
         for (module_name, type_result) in &self.type_results {
-            for link in &type_result.definition_links {
+            for link in &type_result.component_definition_links {
                 // Check if this link refers to our component definition
                 if link.definition_component_name == component_name
                     && link.definition_module == definition_module
@@ -322,10 +270,10 @@ impl Server {
                     });
 
                     // Add the reference's closing tag name if it exists
-                    if let Some(ref_closing_range) = link.reference_closing_name_range {
+                    if let Some(name_range) = link.reference_closing_name_range {
                         locations.push(RenameLocation {
                             module: module_name.clone(),
-                            range: ref_closing_range,
+                            range: name_range,
                         });
                     }
                 }
@@ -338,7 +286,6 @@ impl Server {
                 if import.component_attr.value == component_name
                     && import.from_attr.value == definition_module
                 {
-                    // This import statement imports our component
                     locations.push(RenameLocation {
                         module: module_name.clone(),
                         range: import.component_attr.value_range,
