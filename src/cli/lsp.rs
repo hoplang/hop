@@ -1,5 +1,5 @@
 use crate::files::{self, ProjectRoot};
-use crate::server::{DefinitionLocation, HoverInfo, RenameLocation, RenameableSymbol, Server};
+use crate::server::{DefinitionLocation, HoverInfo, RenameLocation, Server};
 use std::path::Path;
 use tokio::sync::RwLock;
 use tower_lsp::jsonrpc::Result;
@@ -266,7 +266,7 @@ impl LanguageServer for HopLanguageServer {
                     new_text: new_name.clone(),
                 };
 
-                changes.entry(file_uri).or_insert_with(Vec::new).push(edit);
+                changes.entry(file_uri).or_default().push(edit);
             }
 
             Ok(Some(WorkspaceEdit {

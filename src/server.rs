@@ -205,7 +205,7 @@ impl Server {
             let is_on_reference = reference_opening_name_range.contains_position(pos)
                 || reference_closing_name_range
                     .as_ref()
-                    .map_or(false, |range| range.contains_position(pos));
+                    .is_some_and(|range| range.contains_position(pos));
 
             if is_on_reference {
                 // We found the component being renamed
@@ -227,7 +227,7 @@ impl Server {
                     || component_info
                         .definition_closing_name_range
                         .as_ref()
-                        .map_or(false, |range| range.contains_position(pos));
+                        .is_some_and(|range| range.contains_position(pos));
 
                 if is_on_definition {
                     // We're on a definition, collect all rename locations
