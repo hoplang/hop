@@ -397,7 +397,8 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
             // Expression tokens represent {expression} in text content
             let mut tokenizer = match DopTokenizer::new(value, range.start) {
                 Ok(tokenizer) => tokenizer,
-                Err(_) => {
+                Err(err) => {
+                    errors.push(err);
                     return Node::Error(ErrorNode {
                         range: *range,
                         children: vec![],
@@ -430,7 +431,8 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     Some((expr_string, expr_range)) => {
                         let mut tokenizer = match DopTokenizer::new(expr_string, expr_range.start) {
                             Ok(tokenizer) => tokenizer,
-                            Err(_) => {
+                            Err(err) => {
+                                errors.push(err);
                                 return Node::Error(ErrorNode {
                                     range: *expr_range,
                                     children: vec![],
@@ -467,7 +469,8 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                     Some((expr_string, expr_range)) => {
                         let mut tokenizer = match DopTokenizer::new(expr_string, expr_range.start) {
                             Ok(tokenizer) => tokenizer,
-                            Err(_) => {
+                            Err(err) => {
+                                errors.push(err);
                                 return Node::Error(ErrorNode {
                                     range: *expr_range,
                                     children: vec![],
@@ -920,7 +923,7 @@ mod tests {
         );
     }
 
-    // Test <for> tag with non-loop-generator expression should produce error.
+    // A for tag with non-loop-generator expression should produce error.
     #[test]
     fn test_parser_for_invalid_expression_error() {
         check(
@@ -940,7 +943,27 @@ mod tests {
         );
     }
 
-    // Component parameter with invalid type should produce error.
+    // An if expression without valid tokens should produce an error.
+    #[test]
+    fn test_parser_dop_tokenization_error() {
+        check(
+            indoc! {"
+                <main-comp>
+                    <if {~}>
+                        <div>Content</div>
+                    </if>
+                </main-comp>
+            "},
+            expect![[r#"
+                error: Unexpected character: '~'
+                1 | <main-comp>
+                2 |     <if {~}>
+                  |          ^
+            "#]],
+        );
+    }
+
+    // Component parameter with invalid type should produce an error.
     #[test]
     fn test_parser_param_invalid_type_error() {
         check(
