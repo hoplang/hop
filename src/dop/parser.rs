@@ -614,7 +614,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
 mod tests {
     use super::*;
     use crate::test_utils::parse_test_cases;
-    use pretty_assertions::assert_eq;
+    use crate::source_annotator::SourceAnnotator;
 
     use std::fs;
     use std::path::PathBuf;
@@ -654,7 +654,15 @@ mod tests {
 
             let actual = match parse_expr(&mut tokenizer) {
                 Ok(result) => format!("{:?}", result),
-                Err(e) => format!("Error: {}", e.message),
+                Err(e) => {
+                    let annotator = SourceAnnotator::new()
+                        .with_label("error")
+                        .with_underline('^')
+                        .without_location()
+                        .without_line_numbers();
+                    
+                    annotator.annotate(input, &[e]).trim().to_string()
+                }
             };
 
             assert_eq!(

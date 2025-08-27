@@ -130,7 +130,9 @@ Parse error when expression has trailing tokens.
 -- in --
 x y
 -- out --
-Error: Unexpected token at end of expression
+error: Unexpected token at end of expression
+x y
+  ^
 ## END
 
 Parse error when dot is not followed by identifier.
@@ -139,7 +141,9 @@ Parse error when dot is not followed by identifier.
 -- in --
 user.
 -- out --
-Error: Expected identifier after '.'
+error: Expected identifier after '.'
+user.
+     ^
 ## END
 
 Parse error when dot is followed by a number.
@@ -148,7 +152,9 @@ Parse error when dot is followed by a number.
 -- in --
 user.123
 -- out --
-Error: Expected identifier after '.'
+error: Expected identifier after '.'
+user.123
+     ^^^
 ## END
 
 Parse error when expression starts with an invalid token.
@@ -157,7 +163,9 @@ Parse error when expression starts with an invalid token.
 -- in --
 == x
 -- out --
-Error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+== x
+^^
 ## END
 
 Parse error with unclosed parenthesis.
@@ -166,7 +174,9 @@ Parse error with unclosed parenthesis.
 -- in --
 (x == y
 -- out --
-Error: Missing closing parenthesis
+error: Missing closing parenthesis
+(x == y
+       ^
 ## END
 
 Parse error with unmatched closing parenthesis.
@@ -175,7 +185,9 @@ Parse error with unmatched closing parenthesis.
 -- in --
 x == y)
 -- out --
-Error: Unexpected token at end of expression
+error: Unexpected token at end of expression
+x == y)
+      ^
 ## END
 
 Parse error when parenthesis is empty.
@@ -184,7 +196,9 @@ Parse error when parenthesis is empty.
 -- in --
 ()
 -- out --
-Error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+()
+ ^
 ## END
 
 Parse error with invalid character after equality operator.
@@ -193,7 +207,9 @@ Parse error with invalid character after equality operator.
 -- in --
 x == )
 -- out --
-Error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+x == )
+     ^
 ## END
 
 Parse error with dot at the start.
@@ -202,7 +218,9 @@ Parse error with dot at the start.
 -- in --
 .property
 -- out --
-Error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+.property
+^
 ## END
 
 Parse error with multiple dots in sequence.
@@ -211,7 +229,9 @@ Parse error with multiple dots in sequence.
 -- in --
 user..name
 -- out --
-Error: Expected identifier after '.'
+error: Expected identifier after '.'
+user..name
+     ^
 ## END
 
 Parse error with operator at the end.
@@ -220,7 +240,9 @@ Parse error with operator at the end.
 -- in --
 x ==
 -- out --
-Error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+x ==
+    ^
 ## END
 
 Parse error with not operator without operand.
@@ -229,7 +251,9 @@ Parse error with not operator without operand.
 -- in --
 !
 -- out --
-Error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+!
+ ^
 ## END
 
 Parse error with trailing not operator.
@@ -238,7 +262,9 @@ Parse error with trailing not operator.
 -- in --
 x !
 -- out --
-Error: Unexpected token at end of expression
+error: Unexpected token at end of expression
+x !
+  ^
 ## END
 
 Test empty array literal
