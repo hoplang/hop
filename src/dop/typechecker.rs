@@ -112,7 +112,7 @@ pub fn typecheck_expr(
                 }
                 _ => Err(RangeError::new(
                     format!("{} can not be used as an object", base_type),
-                    expr.range(),
+                    base_expr.range(),
                 )),
             }
         }
@@ -198,6 +198,7 @@ mod tests {
     use crate::dop::DopTokenizer;
     use crate::dop::parse_parameters_with_types;
     use crate::dop::parser::parse_expr;
+    use crate::source_annotator::SourceAnnotator;
     use expect_test::{Expect, expect};
 
     fn check_typecheck(env_str: &str, expr_str: &str, expected: Expect) {
@@ -227,7 +228,15 @@ mod tests {
             &mut errors,
         ) {
             Ok(typ) => typ.to_string(),
-            Err(e) => format!("Error: {}", e.message),
+            Err(e) => {
+                let annotator = SourceAnnotator::new()
+                    .with_label("error")
+                    .with_underline('^')
+                    .without_location()
+                    .without_line_numbers();
+
+                annotator.annotate(expr_str, &[e]).to_string()
+            }
         };
 
         expected.assert_eq(&actual);
@@ -243,7 +252,11 @@ mod tests {
         check_typecheck(
             "",
             "undefined_var",
-            expect!["Error: Undefined variable: undefined_var"],
+            expect![[r#"
+                error: Undefined variable: undefined_var
+                undefined_var
+                ^^^^^^^^^^^^^
+            "#]],
         );
     }
 
@@ -291,7 +304,11 @@ mod tests {
         check_typecheck(
             "count: number",
             "count.value",
-            expect!["Error: number can not be used as an object"],
+            expect![[r#"
+                error: number can not be used as an object
+                count.value
+                ^^^^^
+            "#]],
         );
     }
 
@@ -324,7 +341,11 @@ mod tests {
         check_typecheck(
             "name: string, count: number",
             "name == count",
-            expect!["Error: Can not compare string to number"],
+            expect![[r#"
+                error: Can not compare string to number
+                name == count
+                ^^^^^^^^^^^^^
+            "#]],
         );
     }
 
@@ -333,7 +354,11 @@ mod tests {
         check_typecheck(
             "enabled: boolean, name: string",
             "enabled == name",
-            expect!["Error: Can not compare boolean to string"],
+            expect![[r#"
+                error: Can not compare boolean to string
+                enabled == name
+                ^^^^^^^^^^^^^^^
+            "#]],
         );
     }
 
@@ -366,7 +391,11 @@ mod tests {
         check_typecheck(
             "name: string",
             "!name",
-            expect!["Error: Negation operator can only be applied to boolean values"],
+            expect![[r#"
+                error: Negation operator can only be applied to boolean values
+                !name
+                 ^^^^
+            "#]],
         );
     }
 
@@ -375,7 +404,11 @@ mod tests {
         check_typecheck(
             "count: number",
             "!count",
-            expect!["Error: Negation operator can only be applied to boolean values"],
+            expect![[r#"
+                error: Negation operator can only be applied to boolean values
+                !count
+                 ^^^^^
+            "#]],
         );
     }
 
@@ -402,7 +435,11 @@ mod tests {
         check_typecheck(
             "users: array[object[name: string]]",
             "users.name",
-            expect!["Error: array[object[name: string]] can not be used as an object"],
+            expect![[r#"
+                error: array[object[name: string]] can not be used as an object
+                users.name
+                ^^^^^
+            "#]],
         );
     }
 
@@ -420,9 +457,11 @@ mod tests {
         check_typecheck(
             "config: object[users: array[object[profile: object[name: string, active: boolean]]]]",
             "config.users.profile.name",
-            expect![
-                "Error: array[object[profile: object[active: boolean, name: string]]] can not be used as an object"
-            ],
+            expect![[r#"
+                error: array[object[profile: object[active: boolean, name: string]]] can not be used as an object
+                config.users.profile.name
+                ^^^^^^^^^^^^
+            "#]],
         );
     }
 
@@ -449,7 +488,11 @@ mod tests {
         check_typecheck(
             "data: object[field: string]",
             "data.unknown",
-            expect!["Error: Property unknown not found in object"],
+            expect![[r#"
+                error: Property unknown not found in object
+                data.unknown
+                ^^^^^^^^^^^^
+            "#]],
         );
     }
 

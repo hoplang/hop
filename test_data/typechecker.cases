@@ -1108,7 +1108,7 @@ error: array[string] can not be used as an object
   --> main.hop (line 5, col 13)
 4 |     </for>
 5 |     <for {y in params.foo}>
-  |                ^^^^^^^^^^
+  |                ^^^^^^
 ## END
 
 ## BEGIN
