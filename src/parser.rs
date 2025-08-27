@@ -665,14 +665,10 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
 
 #[cfg(test)]
 mod tests {
-    use crate::error_formatter::ErrorFormatter;
-    use crate::test_utils::parse_test_cases;
-
     use super::*;
-    use pretty_assertions::assert_eq;
-
-    use std::fs;
-    use std::path::PathBuf;
+    use crate::error_formatter::ErrorFormatter;
+    use expect_test::{Expect, expect};
+    use indoc::indoc;
 
     pub fn format_component_definition(d: &ComponentDefinitionNode) -> String {
         let mut lines = Vec::new();
@@ -753,56 +749,721 @@ mod tests {
         lines.join("\n")
     }
 
-    #[test]
-    fn test_parser() {
-        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("test_data/parser.cases");
+    fn check(input: &str, expected: Expect) {
+        let mut errors = Vec::new();
+        let module = parse("test".to_string(), Tokenizer::new(input), &mut errors);
 
-        let content = fs::read_to_string(&d).unwrap();
-        let test_cases = parse_test_cases(&content);
-
-        for (case_num, (archive, line_number)) in test_cases.iter().enumerate() {
-            let input = archive
-                .get("main.hop")
-                .expect("Missing 'main.hop' section in test case")
-                .content
-                .trim();
-            let expected = archive
-                .get("out")
-                .expect("Missing 'out' section in test case")
-                .content
-                .trim_start();
-
-            println!("Test case {} (line {})", case_num + 1, line_number);
-
-            let mut errors = Vec::new();
-            assert!(errors.is_empty());
-            let module = parse("test".to_string(), Tokenizer::new(input), &mut errors);
-
-            if !errors.is_empty() {
-                let mut efmt = ErrorFormatter::new().without_location_info();
-                efmt.add_errors("test".to_string(), input.to_string(), errors.clone());
-                assert_eq!(
-                    efmt.format_all_errors(),
-                    expected,
-                    "Mismatch in test case {} (line {})",
-                    case_num + 1,
-                    line_number
-                );
-            } else {
-                for component in module.components {
-                    if component.name == "main-comp" {
-                        let output = format_component_definition(&component);
-                        assert_eq!(
-                            output.trim(),
-                            expected.trim(),
-                            "Mismatch in test case {} (line {})",
-                            case_num + 1,
-                            line_number
-                        );
-                    }
+        let actual = if !errors.is_empty() {
+            let mut efmt = ErrorFormatter::new().without_location_info();
+            efmt.add_errors("test".to_string(), input.to_string(), errors);
+            efmt.format_all_errors()
+        } else {
+            for component in module.components {
+                if component.name == "main-comp" {
+                    return expected.assert_eq(&format_component_definition(&component));
                 }
             }
-        }
+            String::new()
+        };
+
+        println!("{}", actual);
+
+        expected.assert_eq(&actual);
+    }
+
+    // The parser allows empty file and the resulting output is empty.
+    #[test]
+    fn test_parser_empty_file() {
+        check("", expect![[""]]);
+    }
+
+    // When a tag is not properly closed the parser outputs an error.
+    #[test]
+    fn test_parser_unclosed_tag() {
+        check(
+            indoc! {"
+                <main-comp>
+                    <div>
+                </main-comp>
+            "},
+            expect![[r#"
+                error: Unclosed <div>
+                1 | <main-comp>
+                2 |     <div>
+                  |     ^^^^^
+            "#]],
+        );
+    }
+
+    // When a void tag is closed with an end tag the parser outputs an error.
+    #[test]
+    fn test_parser_void_tag_closed() {
+        check(
+            indoc! {"
+                <main-comp>
+                    <hr></hr>
+                </main-comp>
+            "},
+            expect![[r#"
+                error: <hr> should not be closed using a closing tag
+                1 | <main-comp>
+                2 |     <hr></hr>
+                  |         ^^^^^
+            "#]],
+        );
+    }
+
+    // Import tags are treated as a void tag.
+    #[test]
+    fn test_parser_import_self_closing() {
+        check(
+            indoc! {r#"
+                <import component="foo" from="bar"></import>
+                <main-comp>
+                </main-comp>
+            "#},
+            expect![[r#"
+                error: <import> should not be closed using a closing tag
+                1 | <import component="foo" from="bar"></import>
+                  |                                    ^^^^^^^^^
+            "#]],
+        );
+    }
+
+    // When a closing tag does not have a matching opening tag, the parser outputs an error.
+    #[test]
+    fn test_parser_unmatched_closing_tag() {
+        check(
+            indoc! {"
+                <main-comp>
+                    </div>
+                </main-comp>
+            "},
+            expect![[r#"
+                error: Unmatched </div>
+                1 | <main-comp>
+                2 |     </div>
+                  |     ^^^^^^
+            "#]],
+        );
+    }
+
+    // To declare a component at the top level scope it must have a valid name.
+    #[test]
+    fn test_parser_invalid_component_name() {
+        check(
+            indoc! {"
+                <div>
+                </div>
+            "},
+            expect![[r#"
+                error: Invalid component name 'div'. Component names must contain a dash and not start or end with one
+                1 | <div>
+                  | ^^^^^
+            "#]],
+        );
+    }
+
+    // An if tag without expression should produce error.
+    #[test]
+    fn test_parser_if_no_expression_error() {
+        check(
+            indoc! {"
+                <main-comp>
+                    <if>
+                        <div>Content</div>
+                    </if>
+                </main-comp>
+            "},
+            expect![[r#"
+                error: Missing expression in <if> tag
+                1 | <main-comp>
+                2 |     <if>
+                  |     ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parser_invalid_variable_name() {
+        check(
+            indoc! {"
+                <main-comp {Data: string}>
+                    <div></div>
+                </main-comp>
+            "},
+            expect![[r#"
+                error: Invalid variable name 'Data'. Variable names must match [a-z][a-z0-9_]*
+                1 | <main-comp {Data: string}>
+                  |             ^^^^
+            "#]],
+        );
+    }
+
+    // A for tag without expression should produce error.
+    #[test]
+    fn test_parser_for_no_expression_error() {
+        check(
+            indoc! {"
+                <main-comp>
+                    <for>
+                        <div>Content</div>
+                    </for>
+                </main-comp>
+            "},
+            expect![[r#"
+                error: Missing loop generator expression in <for> tag
+                1 | <main-comp>
+                2 |     <for>
+                  |     ^^^^^
+            "#]],
+        );
+    }
+
+    // Test <for> tag with non-loop-generator expression should produce error.
+    #[test]
+    fn test_parser_for_invalid_expression_error() {
+        check(
+            indoc! {"
+                <main-comp>
+                    <for {foo}>
+                        <div>Content</div>
+                    </for>
+                </main-comp>
+            "},
+            expect![[r#"
+                error: Expected 'in' keyword in <for> tag
+                1 | <main-comp>
+                2 |     <for {foo}>
+                  |              ^
+            "#]],
+        );
+    }
+
+    // Component parameter with invalid type should produce error.
+    #[test]
+    fn test_parser_param_invalid_type_error() {
+        check(
+            indoc! {"
+                <main-comp {data: invalid}>
+                    <div>{data}</div>
+                </main-comp>
+            "},
+            expect![[r#"
+                error: Expected type name
+                1 | <main-comp {data: invalid}>
+                  |                   ^^^^^^^
+            "#]],
+        );
+    }
+
+    // Component parameter with malformed type should produce error.
+    #[test]
+    fn test_parser_param_malformed_type_error() {
+        check(
+            indoc! {"
+                <main-comp {data: array[}>
+                    <div>{data}</div>
+                </main-comp>
+            "},
+            expect![[r#"
+                error: Expected type name
+                1 | <main-comp {data: array[}>
+                  |                         ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parser_nested_loops_complex_types() {
+        check(
+            indoc! {"
+                <main-comp {sections: array[object[title: string, items: array[string]]]}>
+                    <div>
+                        <for {section in sections}>
+                            <div>
+                                <h2>{section.title}</h2>
+                                <for {item in section.items}>
+                                    <p>{item}</p>
+                                </for>
+                            </div>
+                        </for>
+                    </div>
+                </main-comp>
+            "},
+            expect![[r#"
+                div
+                	for
+                		div
+                			h2
+                			for
+                				p"#]],
+        );
+    }
+
+    #[test]
+    fn test_parser_doctype_html_structure() {
+        check(
+            indoc! {"
+                <main-comp {foo: string}>
+                    <!DOCTYPE html>
+                    <html>
+                        <body>
+                            <div>hello world</div>
+                        </body>
+                    </html>
+                </main-comp>
+            "},
+            expect![[r#"
+                doctype
+                html
+                	body
+                		div"#]],
+        );
+    }
+
+    #[test]
+    fn test_parser_entrypoint_with_script_style() {
+        check(
+            indoc! {r#"
+                <main-comp entrypoint>
+                    <script>
+                        console.log("test");
+                    </script>
+                    <style>
+                        body { color: red; }
+                    </style>
+                </main-comp>
+            "#},
+            expect![[r#"
+                script
+                style"#]],
+        );
+    }
+
+    #[test]
+    fn test_parser_entrypoint_with_data_param() {
+        check(
+            indoc! {"
+                <main-comp entrypoint {data: object[message: string]}>
+                    <h1>Hello World</h1>
+                    <p>{data.message}</p>
+                </main-comp>
+            "},
+            expect![[r#"
+                h1
+                p"#]],
+        );
+    }
+
+    #[test]
+    fn test_parser_if_conditions_various() {
+        check(
+            indoc! {r#"
+                <main-comp>
+                    <if {user.name == other_user.name}>
+                        <div>Same name</div>
+                    </if>
+                    <if {(data.x == data.y)}>
+                        <div>Parentheses work</div>
+                    </if>
+                    <if {a == b == c}>
+                        <div>Chained equality</div>
+                    </if>
+                </main-comp>
+            "#},
+            expect![[r#"
+                if
+                	div
+                if
+                	div
+                if
+                	div"#]],
+        );
+    }
+
+    #[test]
+    fn test_parser_simple_if_condition() {
+        check(
+            indoc! {"
+                <main-comp>
+                    <if {x == y}>
+                        <div>Equal</div>
+                    </if>
+                </main-comp>
+            "},
+            expect![[r#"
+                if
+                	div"#]],
+        );
+    }
+
+    #[test]
+    fn test_parser_complex_nested_loops() {
+        check(
+            indoc! {"
+                <main-comp {i: array[object[s: object[t: array[string]]]]}>
+                    <for {j in i}>
+                        <for {k in j.s.t}>
+                            <if {k}>
+                            </if>
+                        </for>
+                    </for>
+                    <for {p in i}>
+                        <for {k in p.s.t}>
+                            <for {item in k}>
+                            </for>
+                        </for>
+                    </for>
+                </main-comp>
+            "},
+            expect![[r#"
+                for
+                	for
+                		if
+                for
+                	for
+                		for"#]],
+        );
+    }
+
+    #[test]
+    fn test_parser_if_with_for_nested() {
+        check(
+            indoc! {"
+                <main-comp {data: array[string]}>
+	                <if {data}>
+		                <for {d in data}>
+		                </for>
+	                </if>
+                </main-comp>
+            "},
+            expect![[r#"
+                if
+                	for"#]],
+        );
+    }
+
+    #[test]
+    fn test_parser_simple_for_loop() {
+        check(
+            indoc! {"
+                <main-comp {foo: array[string]}>
+                    <for {bar in foo}>
+                        <div></div>
+                    </for>
+                </main-comp>
+            "},
+            expect![[r#"
+                for
+                	div"#]],
+        );
+    }
+
+    #[test]
+    fn test_parser_component_references() {
+        check(
+            indoc! {"
+                <main-comp {p: string}>
+                    <foo-comp></foo-comp>
+                    <foo-comp></foo-comp>
+                </main-comp>
+            "},
+            expect![[r#"
+                render
+                render"#]],
+        );
+    }
+
+    #[test]
+    fn test_parser_component_with_params() {
+        check(
+            indoc! {"
+                <main-comp {data: object[user: string]}>
+                    <foo-comp {a: data}/>
+                    <bar-comp {b: data.user}/>
+                </main-comp>
+            "},
+            expect![[r#"
+                render
+                render"#]],
+        );
+    }
+
+    #[test]
+    fn test_parser_for_loop_with_text_expression() {
+        check(
+            indoc! {"
+                <main-comp {foo: array[string]}>
+                    <for {v in foo}>
+                        <div>{v}</div>
+                    </for>
+                </main-comp>
+            "},
+            expect![[r#"
+                for
+                	div"#]],
+        );
+    }
+
+    #[test]
+    fn test_parser_script_tag_with_html_content() {
+        check(
+            indoc! {r#"
+                <main-comp {foo: string}>
+                    <script>
+                        const x = "<div></div>";
+                    </script>
+                </main-comp>
+            "#},
+            expect!["script"],
+        );
+    }
+
+    #[test]
+    fn test_parser_set_attributes() {
+        check(
+            indoc! {r#"
+                <main-comp {user: object[url: string, theme: string]}>
+                    <a set-href="user.url" set-class="user.theme">Link</a>
+                </main-comp>
+            "#},
+            expect!["a"],
+        );
+    }
+
+    #[test]
+    fn test_parser_slots_basic() {
+        check(
+            indoc! {r#"
+                <main-comp>
+                    <slot-content>
+                        Default content
+                    </slot-content>
+                    <other-comp>
+                        <with-data>
+                            Custom content
+                        </with-data>
+                    </other-comp>
+                </main-comp>
+
+                <other-comp>
+                    <slot-data>
+                        Other content
+                    </slot-data>
+                </other-comp>
+            "#},
+            expect![[r#"
+                slot-content
+                render
+                	with-data"#]],
+        );
+    }
+
+    #[test]
+    fn test_parser_slots_default() {
+        check(
+            indoc! {r#"
+                <main-comp>
+                    <slot-default>
+                        Default content
+                    </slot-default>
+                    <button-comp>
+                        <with-default>Custom Button</with-default>
+                    </button-comp>
+                </main-comp>
+            "#},
+            expect![[r#"
+                slot-default
+                render
+                	with-default"#]],
+        );
+    }
+
+    #[test]
+    fn test_parser_svg_complex_structure() {
+        check(
+            indoc! {r#"
+                <main-comp>
+                    <div class="navbar">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" version="1.1" viewBox="0 0 128 128" class="size-12">
+                            <g style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;">
+                                <path d="M20.04 38 64 22l43.96 16L64 54Z"></path>
+                                <path d="M17.54 47.09v48l35.099 12.775"></path>
+                                <path d="M64 112V64l46.46-16.91v48L77.988 106.91"></path>
+                            </g>
+                        </svg>
+                        <ul>
+                            <li><a href="/">Home</a></li>
+                        </ul>
+                    </div>
+                </main-comp>
+            "#},
+            expect![[r#"
+                div
+                	svg
+                		g
+                			path
+                			path
+                			path
+                	ul
+                		li
+                			a"#]],
+        );
+    }
+
+    #[test]
+    fn test_parser_form_with_inputs() {
+        check(
+            indoc! {r#"
+                <main-comp>
+                    <form id="form">
+                        <input type="text" required>
+                        <button type="submit">Send</button>
+                    </form>
+                </main-comp>
+            "#},
+            expect![[r#"
+                form
+                	input
+                	button"#]],
+        );
+    }
+
+    // Test basic <if> tag with simple variable expression.
+    #[test]
+    fn test_parser_if_simple_variable() {
+        check(
+            indoc! {"
+                <main-comp>
+                    <if {isVisible}>
+                        <div>This is visible</div>
+                    </if>
+                </main-comp>
+            "},
+            expect![[r#"
+                if
+                	div"#]],
+        );
+    }
+
+    // Test <if> tag with complex expression.
+    #[test]
+    fn test_parser_if_complex_expression() {
+        check(
+            indoc! {r#"
+                <main-comp>
+                    <if {user.name == 'admin'}>
+                        <div>Admin panel</div>
+                        <button>Settings</button>
+                    </if>
+                </main-comp>
+            "#},
+            expect![[r#"
+                if
+                	div
+                	button"#]],
+        );
+    }
+
+    // Test basic <for> tag with simple loop generator expression.
+    #[test]
+    fn test_parser_for_simple_loop() {
+        check(
+            indoc! {"
+                <main-comp>
+                    <for {item in items}>
+                        <div>Item content</div>
+                    </for>
+                </main-comp>
+            "},
+            expect![[r#"
+                for
+                	div"#]],
+        );
+    }
+
+    // Test <for> tag with complex array expression.
+    #[test]
+    fn test_parser_for_complex_array() {
+        check(
+            indoc! {"
+                <main-comp>
+                    <for {user in users.active}>
+                        <div>User: {user.name}</div>
+                        <p>Role: {user.role}</p>
+                    </for>
+                </main-comp>
+            "},
+            expect![[r#"
+                for
+                	div
+                	p"#]],
+        );
+    }
+
+    // Component parameter can have a simple type annotation.
+    #[test]
+    fn test_parser_param_simple_type() {
+        check(
+            indoc! {"
+                <main-comp {data: string}>
+                    <div>{data}</div>
+                </main-comp>
+            "},
+            expect!["div"],
+        );
+    }
+
+    // Component parameter can have an array type annotation.
+    #[test]
+    fn test_parser_param_array_type() {
+        check(
+            indoc! {"
+                <main-comp {items: array[string]}>
+                    <for {item in items}>
+                        <div>{item}</div>
+                    </for>
+                </main-comp>
+            "},
+            expect![[r#"
+                for
+                	div"#]],
+        );
+    }
+
+    // Component parameter can have an object type annotation.
+    #[test]
+    fn test_parser_param_object_type() {
+        check(
+            indoc! {"
+                <main-comp {user: object[name: string, age: number]}>
+                    <div>{user.name} is {user.age} years old</div>
+                </main-comp>
+            "},
+            expect!["div"],
+        );
+    }
+
+    // Component parameter can have nested type annotations.
+    #[test]
+    fn test_parser_param_nested_types() {
+        check(
+            indoc! {"
+                <main-comp {data: array[object[title: string, items: array[string]]]}>
+                    <for {section in data}>
+                        <h1>{section.title}</h1>
+                        <for {item in section.items}>
+                            <div>{item}</div>
+                        </for>
+                    </for>
+                </main-comp>
+            "},
+            expect![[r#"
+                for
+                	h1
+                	for
+                		div"#]],
+        );
     }
 }
