@@ -570,7 +570,7 @@ impl Program {
             }
             Node::For(ForNode {
                 var_name: (var_name, _),
-                array_expr: (array_expr, _),
+                array_expr,
                 children,
                 ..
             }) => {

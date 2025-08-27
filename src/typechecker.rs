@@ -483,13 +483,13 @@ fn typecheck_node(
         }
         Node::For(ForNode {
             var_name: (var_name, var_name_range),
-            array_expr: (array_expr, array_expr_range),
+            array_expr,
             children,
             ..
         }) => {
             // Typecheck the array expression
             let array_type =
-                match typecheck_expr(array_expr, env, annotations, errors, *array_expr_range) {
+                match typecheck_expr(array_expr, env, annotations, errors, array_expr.range()) {
                     Ok(t) => t,
                     Err(err) => {
                         errors.push(err);
@@ -501,14 +501,14 @@ fn typecheck_node(
                 DopType::Array(None) => {
                     errors.push(RangeError::new(
                         "Cannot iterate over an empty array with unknown element type".to_string(),
-                        *array_expr_range,
+                        array_expr.range(),
                     ));
                     return;
                 }
                 _ => {
                     errors.push(RangeError::new(
                         format!("Can not iterate over {}", array_type),
-                        *array_expr_range,
+                        array_expr.range(),
                     ));
                     return; // Skip further processing
                 }

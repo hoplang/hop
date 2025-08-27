@@ -118,7 +118,7 @@ pub fn parse_expr(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
 // loop_header = Identifier "in" equality Eof
 pub fn parse_loop_header(
     tokenizer: &mut DopTokenizer,
-) -> Result<((DopVarName, Range), (DopExpr, Range)), RangeError> {
+) -> Result<((DopVarName, Range), DopExpr), RangeError> {
     // expect Identifier
     let var_name = match tokenizer.advance()? {
         (DopToken::Identifier(name), range) => match DopVarName::new(name.clone()) {
@@ -144,14 +144,11 @@ pub fn parse_loop_header(
         }
     }
 
-    // Get the start position of the array expression
-    let (_, array_expr_start_range) = tokenizer.peek();
-    let array_expr_start = array_expr_start_range.start;
     let array_expr = parse_equality(tokenizer)?;
 
     // expect Eof
-    let array_expr_end = match tokenizer.peek() {
-        (DopToken::Eof, range) => range.start,
+    match tokenizer.peek() {
+        (DopToken::Eof, _) => {}
         (_, range) => {
             return Err(RangeError::new(
                 "Unexpected token at end of <for> expression".to_string(),
@@ -160,8 +157,7 @@ pub fn parse_loop_header(
         }
     };
 
-    let array_expr_range = Range::new(array_expr_start, array_expr_end);
-    Ok((var_name, (array_expr, array_expr_range)))
+    Ok((var_name, array_expr))
 }
 
 // parameter_with_type = Identifier ":" type
