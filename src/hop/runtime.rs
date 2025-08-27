@@ -1,12 +1,11 @@
 use crate::common::{escape_html, is_void_element};
-use crate::hop::environment::Environment;
-use crate::hop::ast::{
-    ComponentDefinitionNode, ComponentReferenceNode, ErrorNode, ForNode, IfNode,
-    NativeHTMLNode, Node, RenderNode, SlotDefinitionNode, SlotReferenceNode, XExecNode,
-    XLoadJsonNode, XRawNode,
-};
 use crate::dop;
 use crate::dop::{DopType, evaluate_expr, load_json_file};
+use crate::hop::ast::{
+    ComponentDefinitionNode, ComponentReferenceNode, ErrorNode, ForNode, IfNode, NativeHTMLNode,
+    Node, RenderNode, SlotDefinitionNode, SlotReferenceNode, XExecNode, XLoadJsonNode, XRawNode,
+};
+use crate::hop::environment::Environment;
 use crate::hop::parser::Module;
 use crate::hop::typechecker::TypeResult;
 use anyhow::Result;
@@ -764,22 +763,29 @@ impl Program {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::Range;
     use crate::hop::parser::parse;
-    use crate::test_utils::parse_test_cases;
-    use crate::hop::tokenizer::Token;
     use crate::hop::tokenizer::Tokenizer;
     use crate::hop::typechecker::{TypeResult, typecheck};
-    use pretty_assertions::assert_eq;
+    use expect_test::{Expect, expect};
+    use indoc::indoc;
+    use simple_txtar::Archive;
 
-    use std::fs;
-    use std::path::PathBuf;
+    fn check(archive_str: &str, data_json: &str, expected: Expect) {
+        let archive = Archive::from(archive_str);
 
-    fn compile_modules(modules_source: Vec<(String, String)>) -> Result<Program> {
+        // Collect all modules from .hop files in order
+        let mut modules_source = Vec::new();
+        for file in archive.iter() {
+            if file.name.ends_with(".hop") {
+                let module_name = file.name.trim_end_matches(".hop");
+                modules_source.push((module_name.to_string(), file.content.trim().to_string()));
+            }
+        }
+
+        // Parse and typecheck modules
         let mut parsed_modules = HashMap::new();
         let mut module_type_results: HashMap<String, TypeResult> = HashMap::new();
 
-        // Parse and typecheck modules in order
         for (module_name, source_code) in &modules_source {
             let mut errors = Vec::new();
             let tokenizer = Tokenizer::new(source_code);
@@ -787,148 +793,899 @@ mod tests {
 
             let type_info = typecheck(&module, &module_type_results, &mut errors);
             if !errors.is_empty() {
-                return Err(anyhow::anyhow!("Errors in {}: {:?}", module_name, errors));
+                panic!("Errors in {}: {:?}", module_name, errors);
             }
 
             parsed_modules.insert(module_name.clone(), module);
             module_type_results.insert(module_name.clone(), type_info);
         }
 
-        Ok(Program::new(
+        let program = Program::new(
             parsed_modules,
             module_type_results,
             String::new(),
-            HopMode::Build, // Default to build mode for tests
-        ))
-    }
+            HopMode::Build,
+        );
 
-    fn normalize_tokens(tokenizer: Tokenizer) -> Vec<Token> {
-        tokenizer
-            .into_iter()
-            .map(|r| r.unwrap())
-            .map(|(t, _)| match t {
-                Token::Text { value } => {
-                    let normalized_value = if value.trim().is_empty() {
-                        " ".to_string()
-                    } else {
-                        value
-                    };
-                    Token::Text {
-                        value: normalized_value,
-                    }
-                }
-                Token::EndTag {
-                    value,
-                    name_range: _,
-                } => Token::EndTag {
-                    value,
-                    name_range: Range::default(),
-                },
-                Token::StartTag {
-                    attributes,
-                    expression,
-                    self_closing,
-                    value,
-                    ..
-                } => {
-                    let mut normalized_attrs = attributes;
-                    normalized_attrs.iter_mut().for_each(|attr| {
-                        attr.range = Range::default();
-                        attr.value_range = Range::default();
-                    });
-                    normalized_attrs.sort_by(|a, b| a.name.cmp(&b.name));
-                    Token::StartTag {
-                        attributes: normalized_attrs,
-                        expression,
-                        name_range: Range::default(),
-                        value,
-                        self_closing,
-                    }
-                }
-                _ => t,
-            })
-            .collect()
+        let data: serde_json::Value =
+            serde_json::from_str(data_json).expect("Failed to parse JSON data");
+
+        // Convert JSON object fields to individual named parameters
+        let mut params = std::collections::BTreeMap::new();
+        if let serde_json::Value::Object(obj) = data {
+            for (key, value) in obj {
+                params.insert(key, value);
+            }
+        }
+
+        let actual_output = program
+            .execute_simple("main", "main-comp", params)
+            .expect("Execution failed");
+
+        // Normalize output by removing lines that contain only whitespace
+        let normalized_output = actual_output
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+
+        expected.assert_eq(&normalized_output);
     }
 
     #[test]
-    fn test_runtime() {
-        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("test_data/runtime.cases");
+    fn test_basic_component() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp class="p-2">
+                    <div>hello</div>
+                </main-comp>
+            "#},
+            "{}",
+            expect![[r#"
+                <div data-hop-id="main/main-comp" class="p-2">
+                    <div>hello</div>
+                </div>
+            "#]],
+        );
+    }
 
-        let content = fs::read_to_string(&d).unwrap();
-        let test_cases = parse_test_cases(&content);
+    /// Expressions should be safe against XSS.
+    #[test]
+    fn test_xss_protection() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp {p: string}>
+                    <div>{p}</div>
+                </main-comp>
+            "#},
+            r#"{"p": "<script>alert(1);</script>"}"#,
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                    <div>&lt;script&gt;alert(1);&lt;/script&gt;</div>
+                </div>
+            "#]],
+        );
+    }
 
-        for (case_num, (archive, line_number)) in test_cases.iter().enumerate() {
-            let data_json = archive
-                .get("data.json")
-                .expect("Missing 'data.json' section in test case")
-                .content
-                .trim();
-            let expected_output = archive
-                .get("output.html")
-                .expect("Missing 'output.html' section in test case")
-                .content
-                .trim();
+    #[test]
+    fn test_conditional_rendering() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp {
+                    user: object[name: string],
+                    admin: object[name: string],
+                    status: string,
+                    expected_status: string,
+                }>
+                  <if {user.name == admin.name}>
+                    <div>Is Admin</div>
+                  </if>
+                  <if {status == expected_status}>
+                    <div>Status OK</div>
+                  </if>
+                </main-comp>
+            "#},
+            r#"{
+              "user": {"name": "alice"},
+              "admin": {"name": "alice"},
+              "status": "active",
+              "expected_status": "active"
+            }"#,
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                    <div>Is Admin</div>
+                    <div>Status OK</div>
+                </div>
+            "#]],
+        );
+    }
 
-            println!("Test case {} (line {})", case_num + 1, line_number);
+    #[test]
+    fn test_for_loop_with_conditionals() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp {items: array[object[show: boolean, data: string]]}>
+                    <for {item in items}>
+                        <if {item.show}>
+                            <div>{item.data}</div>
+                        </if>
+                    </for>
+                </main-comp>
+            "#},
+            r#"{"items": [
+            	{"show": true, "data": "foo"},
+            	{"show": false, "data": "bar"},
+            	{"show": true, "data": "baz"}
+            ]}"#,
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                            <div>foo</div>
+                            <div>baz</div>
+                </div>
+            "#]],
+        );
+    }
 
-            // Collect all modules from .hop files in order
-            let mut modules_source = Vec::new();
-            for file in archive.iter() {
-                if file.name.ends_with(".hop") {
-                    let module_name = file.name.trim_end_matches(".hop");
-                    modules_source.push((module_name.to_string(), file.content.trim().to_string()));
-                }
-            }
+    #[test]
+    fn test_for_loop_with_type_conditionals() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp {items: array[object[name: string, type: string]]}>
+                  <for {item in items}>
+                    <div>
+                      <span>{item.name}</span>
+                      <if {item.type == 'admin'}>
+                        <strong> [Admin]</strong>
+                      </if>
+                      <if {item.type == 'user'}>
+                        <em> [User]</em>
+                      </if>
+                    </div>
+                  </for>
+                </main-comp>
+            "#},
+            r#"{"items": [
+              {
+                "name": "Alice",
+                "type": "admin"
+              },
+              {
+                "name": "Bob", 
+                "type": "user"
+              },
+              {
+                "name": "Carol",
+                "type": "admin"
+              }
+            ]}"#,
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                    <div>
+                      <span>Alice</span>
+                        <strong> [Admin]</strong>
+                    </div>
+                    <div>
+                      <span>Bob</span>
+                        <em> [User]</em>
+                    </div>
+                    <div>
+                      <span>Carol</span>
+                        <strong> [Admin]</strong>
+                    </div>
+                </div>
+            "#]],
+        );
+    }
 
-            let program = compile_modules(modules_source).unwrap_or_else(|e| {
-                panic!(
-                    "Compilation failed for test case {} (line {}): {}",
-                    case_num + 1,
-                    line_number,
-                    e
-                );
-            });
+    #[test]
+    fn test_component_imports() {
+        check(
+            indoc! {r#"
+                -- test.hop --
+                <button-comp as="button">
+                	<span>button</span>
+                </button-comp>
+                -- main.hop --
+                <import from="test" component="button-comp">
 
-            let data: serde_json::Value = serde_json::from_str(data_json).unwrap_or_else(|e| {
-                panic!(
-                    "Failed to parse JSON data for test case {} (line {}): {}",
-                    case_num + 1,
-                    line_number,
-                    e
-                );
-            });
+                <main-comp>
+                  <button-comp></button-comp>
+                </main-comp>
+            "#},
+            "{}",
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                  <button data-hop-id="test/button-comp">
+                	<span>button</span>
+                </button>
+                </div>
+            "#]],
+        );
+    }
 
-            // Convert JSON object fields to individual named parameters
-            let mut params = std::collections::BTreeMap::new();
-            if let serde_json::Value::Object(obj) = data {
-                for (key, value) in obj {
-                    params.insert(key, value);
-                }
-            }
+    #[test]
+    fn test_string_parameter() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp {p: string}>
+                	<div>{p}</div>
+                </main-comp>
+            "#},
+            r#"{"p": "foo bar"}"#,
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                	<div>foo bar</div>
+                </div>
+            "#]],
+        );
+    }
 
-            let actual_output = program
-                .execute_simple("main", "main-comp", params)
-                .unwrap_or_else(|e| {
-                    panic!(
-                        "Execution failed for test case {} (line {}): {}",
-                        case_num + 1,
-                        line_number,
-                        e
-                    );
-                });
+    #[test]
+    fn test_simple_for_loop() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp {users: array[object[name: string]]}>
+                  <for {user in users}>
+                    <div>{user.name}</div>
+                  </for>
+                </main-comp>
+            "#},
+            r#"{
+              "users": [
+                {"name": "Alice"},
+                {"name": "Bob"},
+                {"name": "Charlie"}
+              ]
+            }"#,
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                    <div>Alice</div>
+                    <div>Bob</div>
+                    <div>Charlie</div>
+                </div>
+            "#]],
+        );
+    }
 
-            // Normalize whitespace by tokenizing both outputs and comparing tokens
-            let expected_tokens = normalize_tokens(Tokenizer::new(expected_output));
-            let actual_tokens = normalize_tokens(Tokenizer::new(actual_output.trim()));
+    /// Test HOP_MODE global variable is available and displays correctly.
+    #[test]
+    fn test_hop_mode_variable() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp>
+                  <div>Mode: {HOP_MODE}</div>
+                </main-comp>
+            "#},
+            "{}",
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                  <div>Mode: build</div>
+                </div>
+            "#]],
+        );
+    }
 
-            assert_eq!(
-                actual_tokens,
-                expected_tokens,
-                "Mismatch in test case {} (line {}), left = actual, right = expected",
-                case_num + 1,
-                line_number
-            );
-        }
+    /// Test HOP_MODE can be used in conditions.
+    #[test]
+    fn test_hop_mode_condition() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp>
+                  <if {HOP_MODE == 'build'}>
+                    <div>Build mode active</div>
+                  </if>
+                  <if {HOP_MODE == 'dev'}>
+                    <div>Dev mode active</div>
+                  </if>
+                </main-comp>
+            "#},
+            "{}",
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                    <div>Build mode active</div>
+                </div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_nested_slots() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <foo-comp>
+                    <div class="foo">
+                        <h1><slot-title /></h1>
+                        <p><slot-content /></p>
+                    </div>
+                </foo-comp>
+
+                <bar-comp>
+                    <foo-comp>
+                        <with-title><slot-title/></with-title>
+                        <with-content><slot-content/></with-content>
+                    </foo-comp>
+                </bar-comp>
+
+                <main-comp entrypoint>
+                    <bar-comp>
+                        <with-title>Bar Title</with-title>
+                        <with-content>Bar Content</with-content>
+                    </bar-comp>
+                </main-comp>
+            "#},
+            "{}",
+            expect![[r#"
+                    <div data-hop-id="main/bar-comp">
+                    <div data-hop-id="main/foo-comp">
+                    <div class="foo">
+                        <h1>Bar Title</h1>
+                        <p>Bar Content</p>
+                    </div>
+                </div>
+                </div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_set_attributes() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp {
+                    profile_url: string,
+                    name: string,
+                }>
+                  <a set-href="profile_url" set-title="name">Click here</a>
+                </main-comp>
+            "#},
+            r#"{"profile_url": "https://example.com/user/123", "name": "John Doe"}"#,
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                  <a href="https://example.com/user/123" title="John Doe">Click here</a>
+                </div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_slot_with_parameters() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-card>
+                    <div class="card">
+                        <slot-content></slot-content>
+                    </div>
+                </main-card>
+
+                <main-comp entrypoint {title: string, message: string}>
+                    <main-card>
+                        <with-content>
+                            <h1>{title}</h1>
+                            <p>{message}</p>
+                        </with-content>
+                    </main-card>
+                </main-comp>
+            "#},
+            r#"{
+                "title": "Hello World",
+                "message": "This text comes from outside params"
+            }"#,
+            expect![[r#"
+                    <div data-hop-id="main/main-card">
+                    <div class="card">
+                            <h1>Hello World</h1>
+                            <p>This text comes from outside params</p>
+                    </div>
+                </div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_default_slot() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <my-button>
+                	<slot-default>Default Button</slot-default>
+                </my-button>
+
+                <main-comp entrypoint>
+                	<my-button>Click me!</my-button>
+                	<my-button><with-default>Custom Button</with-default></my-button>
+                </main-comp>
+            "#},
+            "{}",
+            expect![[r#"
+                	<div data-hop-id="main/my-button">
+                	Click me!
+                </div>
+                	<div data-hop-id="main/my-button">
+                	Custom Button
+                </div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_complex_layout() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-layout>
+                    <div class="page">
+                        <header>
+                            <slot-title></slot-title>
+                        </header>
+                        <main>
+                            <slot-content></slot-content>
+                        </main>
+                    </div>
+                </main-layout>
+
+                <main-comp entrypoint>
+                    <main-layout>
+                        <with-title>My Custom Title</with-title>
+                        <with-content>
+                            <p>This is custom content</p>
+                            <p>With multiple paragraphs</p>
+                        </with-content>
+                    </main-layout>
+                </main-comp>
+            "#},
+            "{}",
+            expect![[r#"
+                    <div data-hop-id="main/main-layout">
+                    <div class="page">
+                        <header>
+                            My Custom Title
+                        </header>
+                        <main>
+                            <p>This is custom content</p>
+                            <p>With multiple paragraphs</p>
+                        </main>
+                    </div>
+                </div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_deeply_nested_slots() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <page-layout>
+                    <div class="page">
+                        <slot-content></slot-content>
+                    </div>
+                </page-layout>
+
+                <modal-wrapper>
+                    <div class="modal-container">
+                        <slot-modal></slot-modal>
+                    </div>
+                </modal-wrapper>
+
+                <modal-comp>
+                    <div class="modal">
+                        <div class="modal-header">
+                            <slot-header></slot-header>
+                        </div>
+                        <div class="modal-body">
+                            <slot-body></slot-body>
+                        </div>
+                    </div>
+                </modal-comp>
+
+                <main-comp entrypoint {page_title: string}>
+                    <page-layout>
+                        <with-content>
+                            <h1>{page_title}</h1>
+                            <modal-wrapper>
+                                <with-modal>
+                                    <modal-comp>
+                                        <with-header>
+                						  	<span>header</span>
+                                        </with-header>
+                                        <with-body>
+                                            <span>body</span>
+                                        </with-body>
+                                    </modal-comp>
+                                </with-modal>
+                            </modal-wrapper>
+                        </with-content>
+                    </page-layout>
+                </main-comp>
+            "#},
+            r#"{
+                "page_title": "Welcome Page"
+            }"#,
+            expect![[r#"
+                    <div data-hop-id="main/page-layout">
+                    <div class="page">
+                            <h1>Welcome Page</h1>
+                            <div data-hop-id="main/modal-wrapper">
+                    <div class="modal-container">
+                                    <div data-hop-id="main/modal-comp">
+                    <div class="modal">
+                        <div class="modal-header">
+                						  	<span>header</span>
+                        </div>
+                        <div class="modal-body">
+                                            <span>body</span>
+                        </div>
+                    </div>
+                </div>
+                    </div>
+                </div>
+                    </div>
+                </div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_complex_user_management() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-card>
+                    <div class="card">
+                        <slot-header></slot-header>
+                        <div class="body">
+                            <slot-content></slot-content>
+                        </div>
+                        <slot-footer></slot-footer>
+                    </div>
+                </main-card>
+
+                <main-comp entrypoint {
+                    title: string,
+                    active_count: string,
+                    users: array[object[name: string, active: boolean, admin: boolean]],
+                }>
+                    <main-card>
+                        <with-header>
+                            <h1>{title}</h1>
+                        </with-header>
+                        <with-content>
+                            <for {user in users}>
+                                <if {user.active}>
+                                    <div class="user-item">
+                                        <span>{user.name}</span>
+                                        <if {user.admin}>
+                                            <strong> (Admin)</strong>
+                                        </if>
+                                    </div>
+                                </if>
+                            </for>
+                        </with-content>
+                        <with-footer>
+                            <p>Total active users: <span>{active_count}</span></p>
+                        </with-footer>
+                    </main-card>
+                </main-comp>
+            "#},
+            r#"{
+                "title": "User Management",
+                "active_count": "3",
+                "users": [
+                    {"name": "Alice", "active": true, "admin": true},
+                    {"name": "Bob", "active": false, "admin": false},
+                    {"name": "Charlie", "active": true, "admin": false},
+                    {"name": "Diana", "active": true, "admin": true},
+                    {"name": "Eve", "active": false, "admin": false}
+                ]
+            }"#,
+            expect![[r#"
+                    <div data-hop-id="main/main-card">
+                    <div class="card">
+                            <h1>User Management</h1>
+                        <div class="body">
+                                    <div class="user-item">
+                                        <span>Alice</span>
+                                            <strong> (Admin)</strong>
+                                    </div>
+                                    <div class="user-item">
+                                        <span>Charlie</span>
+                                    </div>
+                                    <div class="user-item">
+                                        <span>Diana</span>
+                                            <strong> (Admin)</strong>
+                                    </div>
+                        </div>
+                            <p>Total active users: <span>3</span></p>
+                    </div>
+                </div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_simple_wrapper() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <wrapper-comp>
+                    <div>
+                        <slot-content></slot-content>
+                    </div>
+                </wrapper-comp>
+
+                <main-comp entrypoint>
+                    <wrapper-comp>
+                        <with-content>Custom</with-content>
+                    </wrapper-comp>
+                </main-comp>
+            "#},
+            "{}",
+            expect![[r#"
+                    <div data-hop-id="main/wrapper-comp">
+                    <div>
+                        Custom
+                    </div>
+                </div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_multiple_conditions() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp {role: string, status: string}>
+                  <if {role == 'admin'}>
+                    <div>Admin Access</div>
+                  </if>
+                  <if {status == 'active'}>
+                    <div>Active User</div>
+                  </if>
+                  <if {status == 'inactive'}>
+                    <div>Inactive User</div>
+                  </if>
+                </main-comp>
+            "#},
+            r#"{
+              "role": "admin",
+              "status": "active"
+            }"#,
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                    <div>Admin Access</div>
+                    <div>Active User</div>
+                </div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_x_raw_simple() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp>
+                    <hop-x-raw>foo bar</hop-x-raw>
+                </main-comp>
+            "#},
+            "{}",
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                    foo bar
+                </div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_x_raw_html() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp>
+                	<hop-x-raw>
+                		<div>some html</div>
+                		<p>more content</p>
+                	</hop-x-raw>
+                </main-comp>
+            "#},
+            "{}",
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                		<div>some html</div>
+                		<p>more content</p>
+                </div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_x_raw_trimmed() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp>
+                	<hop-x-raw trim>  trimmed  </hop-x-raw>
+                </main-comp>
+            "#},
+            "{}",
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                	trimmed  
+                </div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_x_raw_not_trimmed() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp>
+                	<hop-x-raw>  not trimmed  </hop-x-raw>
+                </main-comp>
+            "#},
+            "{}",
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                	  not trimmed  
+                </div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_object_property_access() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp {user: object[isActive: boolean, role: string]}>
+                  <if {user.isActive}>
+                    <div>Welcome active user!</div>
+                  </if>
+                  <if {user.role == 'admin'}>
+                    <div>Admin panel access</div>
+                  </if>
+                </main-comp>
+            "#},
+            r#"{"user": {
+              "isActive": true,
+              "role": "admin"
+            }}"#,
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                    <div>Welcome active user!</div>
+                    <div>Admin panel access</div>
+                </div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_nested_conditions() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp {config: object[enabled: boolean, debug: boolean]}>
+                  <if {config.enabled}>
+                    <div>Feature is enabled</div>
+                    <if {config.debug}>
+                      <div>Debug mode on</div>
+                    </if>
+                  </if>
+                </main-comp>
+            "#},
+            r#"{"config": {
+              "enabled": true,
+              "debug": false
+            }}"#,
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                    <div>Feature is enabled</div>
+                </div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_false_condition() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp {visible: boolean}>
+                  <if {visible}>
+                    <div>Content is visible</div>
+                  </if>
+                </main-comp>
+            "#},
+            r#"{
+              "visible": false
+            }"#,
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                </div>
+            "#]],
+        );
+    }
+
+    /// Test class merging when component reference has class attribute and
+    /// component definition has class attribute.
+    #[test]
+    fn test_class_merging_both_have_class() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <my-button class="bg-red-500">Click me</my-button>
+
+                <main-comp>
+                	<my-button class="px-4 py-2 rounded"/>
+                </main-comp>
+            "#},
+            "{}",
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                	<div data-hop-id="main/my-button" class="bg-red-500 px-4 py-2 rounded">Click me</div>
+                </div>
+            "#]],
+        );
+    }
+
+    /// Test class merging when component reference has class attribute but
+    /// component definition doesn't have class attribute.
+    #[test]
+    fn test_class_merging_reference_only() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <my-button>Click me</my-button>
+
+                <main-comp>
+                	<my-button class="px-4 py-2 rounded"/>
+                </main-comp>
+            "#},
+            "{}",
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                	<div data-hop-id="main/my-button" class="px-4 py-2 rounded">Click me</div>
+                </div>
+            "#]],
+        );
+    }
+
+    /// Test class merging when component definition has class attribute but
+    /// component reference doesn't.
+    #[test]
+    fn test_class_merging_definition_only() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <my-button class="px-4 py-2">Click me</my-button>
+
+                <main-comp>
+                	<my-button/>
+                </main-comp>
+            "#},
+            "{}",
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                	<div data-hop-id="main/my-button" class="px-4 py-2">Click me</div>
+                </div>
+            "#]],
+        );
     }
 }
