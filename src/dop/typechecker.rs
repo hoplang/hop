@@ -75,7 +75,7 @@ pub fn typecheck_expr(
     range: Range,
 ) -> Result<DopType, RangeError> {
     match expr {
-        DopExpr::Variable(name) => {
+        DopExpr::Variable { name } => {
             if let Some(var_type) = env.lookup(name) {
                 annotations.push(TypeAnnotation {
                     range,
@@ -90,10 +90,13 @@ pub fn typecheck_expr(
                 ))
             }
         }
-        DopExpr::BooleanLiteral(_) => Ok(DopType::Bool),
-        DopExpr::StringLiteral(_) => Ok(DopType::String),
-        DopExpr::NumberLiteral(_) => Ok(DopType::Number),
-        DopExpr::PropertyAccess(base_expr, property) => {
+        DopExpr::BooleanLiteral { .. } => Ok(DopType::Bool),
+        DopExpr::StringLiteral { .. } => Ok(DopType::String),
+        DopExpr::NumberLiteral { .. } => Ok(DopType::Number),
+        DopExpr::PropertyAccess {
+            object: base_expr,
+            property,
+        } => {
             let base_type = typecheck_expr(base_expr, env, annotations, errors, range)?;
 
             match &base_type {
@@ -113,7 +116,11 @@ pub fn typecheck_expr(
                 )),
             }
         }
-        DopExpr::BinaryOp(left, BinaryOp::Equal, right) => {
+        DopExpr::BinaryOp {
+            left,
+            operator: BinaryOp::Equal,
+            right,
+        } => {
             let left_type = typecheck_expr(left, env, annotations, errors, range)?;
             let right_type = typecheck_expr(right, env, annotations, errors, range)?;
 
@@ -128,7 +135,10 @@ pub fn typecheck_expr(
             // The result of == is always boolean
             Ok(DopType::Bool)
         }
-        DopExpr::UnaryOp(UnaryOp::Not, expr) => {
+        DopExpr::UnaryOp {
+            operator: UnaryOp::Not,
+            operand: expr,
+        } => {
             let expr_type = typecheck_expr(expr, env, annotations, errors, range)?;
 
             // Negation only works on boolean expressions
@@ -142,7 +152,7 @@ pub fn typecheck_expr(
             // The result of ! is always boolean
             Ok(DopType::Bool)
         }
-        DopExpr::ArrayLiteral(elements) => {
+        DopExpr::ArrayLiteral { elements } => {
             if elements.is_empty() {
                 // Empty array has unknown element type
                 Ok(DopType::Array(None))
@@ -167,7 +177,7 @@ pub fn typecheck_expr(
                 Ok(DopType::Array(Some(Box::new(first_type))))
             }
         }
-        DopExpr::ObjectLiteral(properties) => {
+        DopExpr::ObjectLiteral { properties } => {
             let mut object_properties = BTreeMap::new();
 
             for (key, value_expr) in properties {

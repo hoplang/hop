@@ -16,15 +16,37 @@ pub enum UnaryOp {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DopExpr {
-    Variable(String),
-    PropertyAccess(Box<DopExpr>, String),
-    StringLiteral(String),
-    BooleanLiteral(bool),
-    NumberLiteral(serde_json::Number),
-    ArrayLiteral(Vec<DopExpr>),
-    ObjectLiteral(BTreeMap<String, DopExpr>),
-    BinaryOp(Box<DopExpr>, BinaryOp, Box<DopExpr>),
-    UnaryOp(UnaryOp, Box<DopExpr>),
+    Variable {
+        name: String,
+    },
+    PropertyAccess {
+        object: Box<DopExpr>,
+        property: String,
+    },
+    StringLiteral {
+        value: String,
+    },
+    BooleanLiteral {
+        value: bool,
+    },
+    NumberLiteral {
+        value: serde_json::Number,
+    },
+    ArrayLiteral {
+        elements: Vec<DopExpr>,
+    },
+    ObjectLiteral {
+        properties: BTreeMap<String, DopExpr>,
+    },
+    BinaryOp {
+        left: Box<DopExpr>,
+        operator: BinaryOp,
+        right: Box<DopExpr>,
+    },
+    UnaryOp {
+        operator: UnaryOp,
+        operand: Box<DopExpr>,
+    },
 }
 
 /// A DopVarName represents a validated variable name in dop.
@@ -443,7 +465,11 @@ fn parse_equality(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
     while let (DopToken::Equal, _) = tokenizer.peek() {
         tokenizer.advance()?; // consume ==
         let right = parse_unary(tokenizer)?;
-        expr = DopExpr::BinaryOp(Box::new(expr), BinaryOp::Equal, Box::new(right));
+        expr = DopExpr::BinaryOp {
+            left: Box::new(expr),
+            operator: BinaryOp::Equal,
+            right: Box::new(right),
+        };
     }
 
     Ok(expr)
@@ -455,7 +481,10 @@ fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
         (DopToken::Not, _) => {
             tokenizer.advance()?; // consume !
             let expr = parse_unary(tokenizer)?; // Right associative for multiple !
-            Ok(DopExpr::UnaryOp(UnaryOp::Not, Box::new(expr)))
+            Ok(DopExpr::UnaryOp {
+                operator: UnaryOp::Not,
+                operand: Box::new(expr),
+            })
         }
         _ => parse_primary(tokenizer),
     }
@@ -471,7 +500,7 @@ fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
 fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
     match tokenizer.advance()? {
         (DopToken::Identifier(name), _) => {
-            let mut expr = DopExpr::Variable(name);
+            let mut expr = DopExpr::Variable { name };
 
             // Handle property access
             while let (DopToken::Dot, _) = tokenizer.peek() {
@@ -479,7 +508,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
 
                 match tokenizer.advance()? {
                     (DopToken::Identifier(prop), _) => {
-                        expr = DopExpr::PropertyAccess(Box::new(expr), prop);
+                        expr = DopExpr::PropertyAccess { object: Box::new(expr), property: prop };
                     }
                     (_, range) => {
                         return Err(RangeError::new(
@@ -492,16 +521,16 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
 
             Ok(expr)
         }
-        (DopToken::StringLiteral(value), _) => Ok(DopExpr::StringLiteral(value)),
-        (DopToken::BooleanLiteral(value), _) => Ok(DopExpr::BooleanLiteral(value)),
-        (DopToken::NumberLiteral(value), _) => Ok(DopExpr::NumberLiteral(value)),
+        (DopToken::StringLiteral(value), _) => Ok(DopExpr::StringLiteral { value }),
+        (DopToken::BooleanLiteral(value), _) => Ok(DopExpr::BooleanLiteral { value }),
+        (DopToken::NumberLiteral(value), _) => Ok(DopExpr::NumberLiteral { value }),
         (DopToken::LeftBracket, _) => {
             let mut elements = Vec::new();
 
             // Handle empty array
             if let (DopToken::RightBracket, _) = tokenizer.peek() {
                 tokenizer.advance()?; // consume ]
-                return Ok(DopExpr::ArrayLiteral(elements));
+                return Ok(DopExpr::ArrayLiteral { elements });
             }
 
             // Parse array elements
@@ -531,7 +560,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
                 }
             }
 
-            Ok(DopExpr::ArrayLiteral(elements))
+            Ok(DopExpr::ArrayLiteral { elements })
         }
         (DopToken::LeftBrace, _) => {
             // Parse {key1: value1, key2: value2, ...}
@@ -540,7 +569,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
             // Handle empty object
             if let (DopToken::RightBrace, _) = tokenizer.peek() {
                 tokenizer.advance()?; // consume }
-                return Ok(DopExpr::ObjectLiteral(properties));
+                return Ok(DopExpr::ObjectLiteral { properties });
             }
 
             // Parse object properties
@@ -601,7 +630,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
                 }
             }
 
-            Ok(DopExpr::ObjectLiteral(properties))
+            Ok(DopExpr::ObjectLiteral { properties })
         }
         (DopToken::LeftParen, _) => {
             let expr = parse_equality(tokenizer)?;

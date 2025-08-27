@@ -7,24 +7,24 @@ pub fn evaluate_expr(
     env: &mut Environment<serde_json::Value>,
 ) -> Result<serde_json::Value> {
     match expr {
-        DopExpr::Variable(name) => {
+        DopExpr::Variable { name } => {
             if let Some(val) = env.lookup(name) {
                 Ok(val.clone())
             } else {
                 Err(anyhow::anyhow!("Undefined variable: {}", name))
             }
         }
-        DopExpr::StringLiteral(value) => Ok(serde_json::Value::String(value.clone())),
-        DopExpr::BooleanLiteral(value) => Ok(serde_json::Value::Bool(*value)),
-        DopExpr::NumberLiteral(value) => Ok(serde_json::Value::Number(value.clone())),
-        DopExpr::ArrayLiteral(elements) => {
+        DopExpr::StringLiteral { value } => Ok(serde_json::Value::String(value.clone())),
+        DopExpr::BooleanLiteral { value } => Ok(serde_json::Value::Bool(*value)),
+        DopExpr::NumberLiteral { value } => Ok(serde_json::Value::Number(value.clone())),
+        DopExpr::ArrayLiteral { elements } => {
             let mut array_values = Vec::new();
             for element in elements {
                 array_values.push(evaluate_expr(element, env)?);
             }
             Ok(serde_json::Value::Array(array_values))
         }
-        DopExpr::ObjectLiteral(properties) => {
+        DopExpr::ObjectLiteral { properties } => {
             let mut object_map = serde_json::Map::new();
             for (key, value_expr) in properties {
                 let value = evaluate_expr(value_expr, env)?;
@@ -32,7 +32,10 @@ pub fn evaluate_expr(
             }
             Ok(serde_json::Value::Object(object_map))
         }
-        DopExpr::PropertyAccess(base_expr, property) => {
+        DopExpr::PropertyAccess {
+            object: base_expr,
+            property,
+        } => {
             let base_value = evaluate_expr(base_expr, env)?;
 
             if base_value.is_null() {
@@ -48,13 +51,20 @@ pub fn evaluate_expr(
                 .ok_or_else(|| anyhow::anyhow!("Property '{}' not found", property))
                 .cloned()
         }
-        DopExpr::BinaryOp(left, BinaryOp::Equal, right) => {
+        DopExpr::BinaryOp {
+            left,
+            operator: BinaryOp::Equal,
+            right,
+        } => {
             let left_value = evaluate_expr(left, env)?;
             let right_value = evaluate_expr(right, env)?;
 
             Ok(serde_json::Value::Bool(left_value == right_value))
         }
-        DopExpr::UnaryOp(UnaryOp::Not, expr) => {
+        DopExpr::UnaryOp {
+            operator: UnaryOp::Not,
+            operand: expr,
+        } => {
             let value = evaluate_expr(expr, env)?;
 
             match value {
