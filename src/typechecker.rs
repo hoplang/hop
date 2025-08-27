@@ -592,7 +592,6 @@ mod tests {
     use crate::parser::parse;
     use crate::test_utils::parse_test_cases;
     use crate::tokenizer::Tokenizer;
-    use pretty_assertions::assert_eq;
 
     use std::collections::HashMap;
     use std::fs;

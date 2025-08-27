@@ -669,7 +669,6 @@ mod tests {
     use crate::test_utils::parse_test_cases;
 
     use super::*;
-    use pretty_assertions::assert_eq;
 
     use std::fs;
     use std::path::PathBuf;

@@ -613,7 +613,6 @@ dependencies = [
  "colored",
  "jsonschema",
  "notify",
- "pretty_assertions",
  "rand",
  "rayon",
  "serde",

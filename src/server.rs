@@ -345,7 +345,6 @@ impl Server {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pretty_assertions::assert_eq;
     use simple_txtar::Archive;
 
     fn server_from_txtar(archive: &str) -> Server {
