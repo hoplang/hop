@@ -1333,7 +1333,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-comp
-                	{params: object[a: string, b: boolean]}
+                	{params: {a: string, b: boolean}}
                 	[]
             "#]],
         );
@@ -1360,7 +1360,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-comp
-                	{params: object[enabled: boolean, users: array[object[posts: array[object[published: boolean]], profile: object[verified: boolean]]]]}
+                	{params: {enabled: boolean, users: array[{posts: array[{published: boolean}], profile: {verified: boolean}}]}}
                 	[]
             "#]],
         );
@@ -1403,7 +1403,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-comp
-                	{params: object[i: object[j: object[k: object[l: boolean]]]]}
+                	{params: {i: {j: {k: {l: boolean}}}}}
                 	[]
             "#]],
         );
@@ -1425,7 +1425,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-comp
-                	{params: object[app: object[api: object[endpoints: object[users: object[enabled: boolean]]], database: object[connection: object[ssl: boolean]], ui: object[theme: object[dark: boolean]]]]}
+                	{params: {app: {api: {endpoints: {users: {enabled: boolean}}}, database: {connection: {ssl: boolean}}, ui: {theme: {dark: boolean}}}}}
                 	[]
             "#]],
         );
@@ -1465,7 +1465,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-comp
-                	{data: object[message: string]}
+                	{data: {message: string}}
                 	[]
             "#]],
         );
@@ -1487,7 +1487,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-comp
-                	{params: object[data: object[x: string, y: string], other_user: object[name: string], user: object[name: string]]}
+                	{params: {data: {x: string, y: string}, other_user: {name: string}, user: {name: string}}}
                 	[]
             "#]],
         );
@@ -1506,7 +1506,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-comp
-                	{params: object[x: string, y: string]}
+                	{params: {x: string, y: string}}
                 	[]
             "#]],
         );
@@ -1526,7 +1526,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-comp
-                	{params: object[foo: object[bar: array[boolean]]]}
+                	{params: {foo: {bar: array[boolean]}}}
                 	[]
             "#]],
         );
@@ -1550,7 +1550,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-comp
-                	{params: array[object[a: boolean, b: boolean]]}
+                	{params: array[{a: boolean, b: boolean}]}
                 	[]
             "#]],
         );
@@ -1655,15 +1655,15 @@ mod tests {
             "#},
             expect![[r#"
                 bar::widget-comp
-                	{config: object[enabled: boolean, title: string]}
+                	{config: {enabled: boolean, title: string}}
                 	[]
 
                 foo::panel-comp
-                	{data: object[items: array[object[enabled: boolean, title: string]]]}
+                	{data: {items: array[{enabled: boolean, title: string}]}}
                 	[]
 
                 main::main-comp
-                	{settings: object[dashboard: object[items: array[object[enabled: boolean, title: string]]]]}
+                	{settings: {dashboard: {items: array[{enabled: boolean, title: string}]}}}
                 	[]
             "#]],
         );
@@ -1737,19 +1737,19 @@ mod tests {
             "#},
             expect![[r#"
                 main::step3-comp
-                	{settings: object[enabled: boolean]}
+                	{settings: {enabled: boolean}}
                 	[]
 
                 main::step2-comp
-                	{config: object[settings: object[enabled: boolean]]}
+                	{config: {settings: {enabled: boolean}}}
                 	[]
 
                 main::step1-comp
-                	{data: object[config: object[settings: object[enabled: boolean]]]}
+                	{data: {config: {settings: {enabled: boolean}}}}
                 	[]
 
                 main::main-comp
-                	{params: object[config: object[settings: object[enabled: boolean]]]}
+                	{params: {config: {settings: {enabled: boolean}}}}
                 	[]
             "#]],
         );
@@ -1781,15 +1781,15 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-card
-                	{item: object[active: boolean, status: string, title: string]}
+                	{item: {active: boolean, status: string, title: string}}
                 	[]
 
                 main::main-list
-                	{items: array[object[active: boolean, status: string, title: string]]}
+                	{items: array[{active: boolean, status: string, title: string}]}
                 	[]
 
                 main::main-comp
-                	{data: object[items: array[object[active: boolean, status: string, title: string]]]}
+                	{data: {items: array[{active: boolean, status: string, title: string}]}}
                 	[]
             "#]],
         );
@@ -1809,7 +1809,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-comp
-                	{params: object[i: object[j: object[k: object[l: boolean]], k: boolean]]}
+                	{params: {i: {j: {k: {l: boolean}}, k: boolean}}}
                 	[]
             "#]],
         );
@@ -1829,7 +1829,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-comp
-                	{params: object[i: object[j: object[k: object[l: boolean]], k: boolean]]}
+                	{params: {i: {j: {k: {l: boolean}}, k: boolean}}}
                 	[]
             "#]],
         );
@@ -1855,7 +1855,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-comp
-                	{params: object[categories: array[boolean], metadata: object[title: boolean], tags: array[boolean]]}
+                	{params: {categories: array[boolean], metadata: {title: boolean}, tags: array[boolean]}}
                 	[]
             "#]],
         );
@@ -1921,15 +1921,15 @@ mod tests {
             "#},
             expect![[r#"
                 main::execute-step
-                	{step: object[condition: boolean]}
+                	{step: {condition: boolean}}
                 	[]
 
                 main::execute-workflow
-                	{workflow: object[enabled: boolean, steps: array[object[condition: boolean]]]}
+                	{workflow: {enabled: boolean, steps: array[{condition: boolean}]}}
                 	[]
 
                 main::main-comp
-                	{params: object[workflows: array[object[enabled: boolean, steps: array[object[condition: boolean]]]]]}
+                	{params: {workflows: array[{enabled: boolean, steps: array[{condition: boolean}]}]}}
                 	[]
             "#]],
         );
@@ -1983,11 +1983,11 @@ mod tests {
             "#},
             expect![[r#"
                 main::process-item
-                	{item: object[children: array[object[visible: boolean]], status: object[active: boolean]]}
+                	{item: {children: array[{visible: boolean}], status: {active: boolean}}}
                 	[]
 
                 main::main-comp
-                	{params: object[items: array[object[children: array[object[visible: boolean]], status: object[active: boolean]]]]}
+                	{params: {items: array[{children: array[{visible: boolean}], status: {active: boolean}}]}}
                 	[]
             "#]],
         );
@@ -2004,7 +2004,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-comp
-                	{user: object[theme: string, url: string]}
+                	{user: {theme: string, url: string}}
                 	[]
             "#]],
         );
@@ -2053,7 +2053,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-comp
-                	{data: object[message: string]}
+                	{data: {message: string}}
                 	[]
             "#]],
         );
@@ -2072,7 +2072,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-comp
-                	{params: object[role: string]}
+                	{params: {role: string}}
                 	[]
             "#]],
         );
@@ -2138,7 +2138,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-comp
-                	{data: object[message: string]}
+                	{data: {message: string}}
                 	[]
             "#]],
         );
@@ -2200,7 +2200,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-comp
-                	{user: object[isActive: boolean]}
+                	{user: {isActive: boolean}}
                 	[]
             "#]],
         );
@@ -2220,7 +2220,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-comp
-                	{data: object[status: string]}
+                	{data: {status: string}}
                 	[]
             "#]],
         );
@@ -2265,7 +2265,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-comp
-                	{config: object[debug: boolean, enabled: boolean]}
+                	{config: {debug: boolean, enabled: boolean}}
                 	[]
             "#]],
         );
@@ -2286,7 +2286,7 @@ mod tests {
                 </foo-comp>
             "#},
             expect![[r#"
-                error: Argument 'config' of type number is incompatible with expected type object[debug: boolean]
+                error: Argument 'config' of type number is incompatible with expected type {debug: boolean}
                   --> main.hop (line 7, col 15)
                 6 | <foo-comp>
                 7 |   <main-comp {config: 1}/>
@@ -2350,7 +2350,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-comp
-                	{params: object[mode: string]}
+                	{params: {mode: string}}
                 	[]
             "#]],
         );
@@ -2372,7 +2372,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-comp
-                	{params: object[foo: string]}
+                	{params: {foo: string}}
                 	[]
             "#]],
         );
@@ -2394,7 +2394,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::main-comp
-                	{data: array[object[items: array[string], title: string]]}
+                	{data: array[{items: array[string], title: string}]}
                 	[]
             "#]],
         );
@@ -2435,7 +2435,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Argument 'user' of type string is incompatible with expected type object[age: string, name: string]
+                error: Argument 'user' of type string is incompatible with expected type {age: string, name: string}
                   --> main.hop (line 5, col 14)
                 4 | <main-comp>
                 5 |     <user-comp {user: 'invalid'}/>
@@ -2458,11 +2458,11 @@ mod tests {
             "#},
             expect![[r#"
                 main::user-comp
-                	{user: object[active: string, name: string]}
+                	{user: {active: string, name: string}}
                 	[]
 
                 main::main-comp
-                	{data: object[profile: object[active: string, name: string]]}
+                	{data: {profile: {active: string, name: string}}}
                 	[]
             "#]],
         );
@@ -2481,7 +2481,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Argument 'user' of type string is incompatible with expected type object[name: string]
+                error: Argument 'user' of type string is incompatible with expected type {name: string}
                   --> main.hop (line 5, col 13)
                 4 | <main-comp>
                 5 |     <new-comp {user: 'invalid'}/>
@@ -2520,7 +2520,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::user-comp
-                	{user: object[name: string]}
+                	{user: {name: string}}
                 	[]
             "#]],
         );
@@ -2601,7 +2601,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::profile-comp
-                	{profile: object[user: object[age: number, name: string]]}
+                	{profile: {user: {age: number, name: string}}}
                 	[]
             "#]],
         );
@@ -2651,7 +2651,7 @@ mod tests {
             "#},
             expect![[r#"
                 main::card-comp
-                	{data: object[content: string, metadata: object[author: string, published: boolean], tags: array[string], title: string]}
+                	{data: {content: string, metadata: {author: string, published: boolean}, tags: array[string], title: string}}
                 	[]
             "#]],
         );
@@ -2712,15 +2712,15 @@ mod tests {
             "#},
             expect![[r#"
                 item-display::item-display
-                	{item: object[active: boolean, id: number, name: string]}
+                	{item: {active: boolean, id: number, name: string}}
                 	[]
 
                 data-list::data-list
-                	{items: array[object[active: boolean, id: number, name: string]]}
+                	{items: array[{active: boolean, id: number, name: string}]}
                 	[]
 
                 main::main-comp
-                	{items: array[object[active: boolean, id: number, name: string]]}
+                	{items: array[{active: boolean, id: number, name: string}]}
                 	[]
             "#]],
         );
@@ -2743,11 +2743,11 @@ mod tests {
             "#},
             expect![[r#"
                 main::needs-a
-                	{data: object[a: string]}
+                	{data: {a: string}}
                 	[]
 
                 main::main-comp
-                	{params: object[data: object[a: string, b: string]]}
+                	{params: {data: {a: string, b: string}}}
                 	[]
             "#]],
         );
@@ -2769,7 +2769,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Argument 'data' of type object[b: string] is incompatible with expected type object[a: string]
+                error: Argument 'data' of type {b: string} is incompatible with expected type {a: string}
                   --> main.hop (line 6, col 12)
                 5 | <main-comp {params: object[data: object[b: string]]}>
                 6 |     <needs-a {data: params.data}>

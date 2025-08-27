@@ -18,14 +18,14 @@ impl fmt::Display for DopType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DopType::Object(properties) => {
-                write!(f, "object[")?;
+                write!(f, "{{")?;
                 for (idx, (key, value)) in properties.iter().enumerate() {
                     if idx > 0 {
                         write!(f, ", ")?;
                     }
                     write!(f, "{}: {}", key, value)?;
                 }
-                write!(f, "]")
+                write!(f, "}}")
             }
             DopType::Array(inner_type) => match inner_type {
                 Some(typ) => write!(f, "array[{}]", typ),
@@ -336,7 +336,7 @@ mod tests {
             "config: object[users: array[object[profile: object[name: string, active: boolean]]]]",
             "config.users.profile.name",
             expect![[r#"
-                error: array[object[profile: object[active: boolean, name: string]]] can not be used as an object
+                error: array[{profile: {active: boolean, name: string}}] can not be used as an object
                 config.users.profile.name
                 ^^^^^^^^^^^^
             "#]],
@@ -349,7 +349,7 @@ mod tests {
             "users: array[object[name: string]]",
             "users.name",
             expect![[r#"
-                error: array[object[name: string]] can not be used as an object
+                error: array[{name: string}] can not be used as an object
                 users.name
                 ^^^^^
             "#]],
@@ -508,12 +508,12 @@ mod tests {
 
     #[test]
     fn test_typecheck_empty_object_literal() {
-        check("", "{}", expect!["object[]"]);
+        check("", "{}", expect!["{}"]);
     }
 
     #[test]
     fn test_typecheck_object_literal_single_property() {
-        check("", "{name: 'John'}", expect!["object[name: string]"]);
+        check("", "{name: 'John'}", expect!["{name: string}"]);
     }
 
     #[test]
@@ -521,7 +521,7 @@ mod tests {
         check(
             "",
             "{a: 'foo', b: 1, c: true}",
-            expect!["object[a: string, b: number, c: boolean]"],
+            expect!["{a: string, b: number, c: boolean}"],
         );
     }
 
@@ -530,7 +530,7 @@ mod tests {
         check(
             "user: object[name: string, disabled: boolean]",
             "{user: user.name, active: !user.disabled}",
-            expect!["object[active: boolean, user: string]"],
+            expect!["{active: boolean, user: string}"],
         );
     }
 
@@ -539,7 +539,7 @@ mod tests {
         check(
             "",
             "{nested: {inner: 'value'}}",
-            expect!["object[nested: object[inner: string]]"],
+            expect!["{nested: {inner: string}}"],
         );
     }
 
@@ -558,12 +558,12 @@ mod tests {
         check(
             "",
             "{\n\ta: 'foo',\n\tb: 1,\n}",
-            expect!["object[a: string, b: number]"],
+            expect!["{a: string, b: number}"],
         );
     }
 
     #[test]
     fn test_typecheck_object_literal_trailing_comma_single() {
-        check("", "{\n\tname: 'John',\n}", expect!["object[name: string]"]);
+        check("", "{\n\tname: 'John',\n}", expect!["{name: string}"]);
     }
 }
