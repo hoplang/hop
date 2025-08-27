@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::common::{Range, RangeError};
 use crate::dop::tokenizer::{DopToken, DopTokenizer};
-use crate::dop::{DopType, typechecker::RangeDopType};
+use crate::dop::typechecker::RangeDopType;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
@@ -178,7 +178,7 @@ fn parse_parameter_with_type(
     };
 
     // Require type annotation
-    let (type_annotation, type_range) = match tokenizer.advance()? {
+    let range_dop_type = match tokenizer.advance()? {
         (DopToken::Colon, _) => parse_type(tokenizer)?,
         (_, range) => {
             return Err(RangeError::new(
@@ -188,13 +188,7 @@ fn parse_parameter_with_type(
         }
     };
 
-    Ok((
-        (var_name, param_range),
-        RangeDopType {
-            dop_type: type_annotation,
-            range: type_range,
-        },
-    ))
+    Ok(((var_name, param_range), range_dop_type))
 }
 
 // parameters_with_types = parameter_with_type ("," parameter_with_type)* Eof
@@ -304,27 +298,27 @@ fn parse_named_argument(tokenizer: &mut DopTokenizer) -> Result<(String, DopExpr
 //      | TypeVoid
 //      | TypeArray "[" type "]"
 //      | "{" (Identifier ":" type ("," Identifier ":" type)*)? "}"
-fn parse_type(tokenizer: &mut DopTokenizer) -> Result<(DopType, Range), RangeError> {
+fn parse_type(tokenizer: &mut DopTokenizer) -> Result<RangeDopType, RangeError> {
     use crate::dop::DopType;
     use std::collections::BTreeMap;
 
     match tokenizer.advance()? {
-        (DopToken::TypeString, range) => Ok((DopType::String, range)),
-        (DopToken::TypeNumber, range) => Ok((DopType::Number, range)),
-        (DopToken::TypeBoolean, range) => Ok((DopType::Bool, range)),
+        (DopToken::TypeString, range) => Ok(RangeDopType { dop_type: DopType::String, range }),
+        (DopToken::TypeNumber, range) => Ok(RangeDopType { dop_type: DopType::Number, range }),
+        (DopToken::TypeBoolean, range) => Ok(RangeDopType { dop_type: DopType::Bool, range }),
         (DopToken::TypeArray, start_range) => {
             match tokenizer.peek() {
                 (DopToken::LeftBracket, _) => {
                     tokenizer.advance()?; // consume [
-                    let (inner_type, _inner_range) = parse_type(tokenizer)?;
+                    let inner_range_dop_type = parse_type(tokenizer)?;
 
                     match tokenizer.peek() {
                         (DopToken::RightBracket, _) => {
                             let (_, end_range) = tokenizer.advance()?; // consume ]
-                            Ok((
-                                DopType::Array(Some(Box::new(inner_type))),
-                                Range::new(start_range.start, end_range.end),
-                            ))
+                            Ok(RangeDopType {
+                                dop_type: DopType::Array(Some(Box::new(inner_range_dop_type.dop_type))),
+                                range: Range::new(start_range.start, end_range.end),
+                            })
                         }
                         (_, range) => Err(RangeError::new(
                             "Expected ']' after array type".to_string(),
@@ -344,10 +338,10 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<(DopType, Range), RangeErr
             // Handle empty object type
             if let (DopToken::RightBrace, _) = tokenizer.peek() {
                 let (_, end_range) = tokenizer.advance()?; // consume }
-                return Ok((
-                    DopType::Object(properties),
-                    Range::new(start_range.start, end_range.end),
-                ));
+                return Ok(RangeDopType {
+                    dop_type: DopType::Object(properties),
+                    range: Range::new(start_range.start, end_range.end),
+                });
             }
 
             loop {
@@ -374,8 +368,8 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<(DopType, Range), RangeErr
                 }
 
                 // Parse property type
-                let (prop_type, _prop_range) = parse_type(tokenizer)?;
-                properties.insert(prop_name, prop_type);
+                let prop_range_dop_type = parse_type(tokenizer)?;
+                properties.insert(prop_name, prop_range_dop_type.dop_type);
 
                 // Check for comma or closing brace
                 match tokenizer.peek() {
@@ -385,19 +379,19 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<(DopType, Range), RangeErr
                         // Check for trailing comma (closing brace after comma)
                         if let (DopToken::RightBrace, _) = tokenizer.peek() {
                             let (_, end_range) = tokenizer.advance()?; // consume }
-                            return Ok((
-                                DopType::Object(properties),
-                                Range::new(start_range.start, end_range.end),
-                            ));
+                            return Ok(RangeDopType {
+                                dop_type: DopType::Object(properties),
+                                range: Range::new(start_range.start, end_range.end),
+                            });
                         }
                         continue;
                     }
                     (DopToken::RightBrace, _) => {
                         let (_, end_range) = tokenizer.advance()?; // consume }
-                        return Ok((
-                            DopType::Object(properties),
-                            Range::new(start_range.start, end_range.end),
-                        ));
+                        return Ok(RangeDopType {
+                            dop_type: DopType::Object(properties),
+                            range: Range::new(start_range.start, end_range.end),
+                        });
                     }
                     (DopToken::Eof, range) => {
                         return Err(RangeError::new("Missing closing '}'".to_string(), *range));
@@ -687,6 +681,26 @@ mod tests {
             .expect("Failed to create tokenizer");
 
         let actual = match parse_parameters_with_types(&mut tokenizer) {
+            Ok(result) => format!("{:#?}\n", result),
+            Err(e) => {
+                let annotator = SourceAnnotator::new()
+                    .with_label("error")
+                    .with_underline('^')
+                    .without_location()
+                    .without_line_numbers();
+
+                annotator.annotate(input, &[e]).to_string()
+            }
+        };
+
+        expected.assert_eq(&actual);
+    }
+
+    fn check_parse_named_arguments(input: &str, expected: Expect) {
+        let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1))
+            .expect("Failed to create tokenizer");
+
+        let actual = match parse_named_arguments(&mut tokenizer) {
             Ok(result) => format!("{:#?}\n", result),
             Err(e) => {
                 let annotator = SourceAnnotator::new()
@@ -1625,6 +1639,157 @@ mod tests {
                     },
                     range: 1:1-4:2,
                 }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_named_arguments_single() {
+        check_parse_named_arguments(
+            "name: 'John'",
+            expect![[r#"
+                {
+                    "name": StringLiteral {
+                        value: "John",
+                        range: 1:7-1:13,
+                    },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_named_arguments_multiple() {
+        check_parse_named_arguments(
+            "name: 'John', age: 25, active: true",
+            expect![[r#"
+                {
+                    "active": BooleanLiteral {
+                        value: true,
+                        range: 1:32-1:36,
+                    },
+                    "age": NumberLiteral {
+                        value: Number(25),
+                        range: 1:20-1:22,
+                    },
+                    "name": StringLiteral {
+                        value: "John",
+                        range: 1:7-1:13,
+                    },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_named_arguments_complex_expressions() {
+        check_parse_named_arguments(
+            "user: user.name, enabled: !user.disabled",
+            expect![[r#"
+                {
+                    "enabled": UnaryOp {
+                        operator: Not,
+                        operator_range: 1:27-1:28,
+                        operand: PropertyAccess {
+                            object: Variable {
+                                name: "user",
+                                range: 1:28-1:32,
+                            },
+                            property: "disabled",
+                            property_range: 1:33-1:41,
+                            range: 1:28-1:41,
+                        },
+                        range: 1:27-1:41,
+                    },
+                    "user": PropertyAccess {
+                        object: Variable {
+                            name: "user",
+                            range: 1:7-1:11,
+                        },
+                        property: "name",
+                        property_range: 1:12-1:16,
+                        range: 1:7-1:16,
+                    },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_named_arguments_trailing_comma() {
+        check_parse_named_arguments(
+            "name: 'John', age: 25,",
+            expect![[r#"
+                {
+                    "age": NumberLiteral {
+                        value: Number(25),
+                        range: 1:20-1:22,
+                    },
+                    "name": StringLiteral {
+                        value: "John",
+                        range: 1:7-1:13,
+                    },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_named_arguments_duplicate_error() {
+        check_parse_named_arguments(
+            "name: 'John', name: 'Jane'",
+            expect![[r#"
+                error: Duplicate argument name 'name'
+                name: 'John', name: 'Jane'
+                                          ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_named_arguments_missing_colon_error() {
+        check_parse_named_arguments(
+            "name 'John'",
+            expect![[r#"
+                error: Expected ':' after argument name
+                name 'John'
+                     ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_named_arguments_missing_value_error() {
+        check_parse_named_arguments(
+            "name:",
+            expect![[r#"
+                error: Unexpected end of expression
+                name:
+                     ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_named_arguments_invalid_start_error() {
+        check_parse_named_arguments(
+            "123: 'value'",
+            expect![[r#"
+                error: Expected argument name
+                123: 'value'
+                ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_named_arguments_unexpected_token_error() {
+        check_parse_named_arguments(
+            "name: 'John' age: 25",
+            expect![[r#"
+                error: Unexpected token after argument
+                name: 'John' age: 25
+                             ^^^
             "#]],
         );
     }
