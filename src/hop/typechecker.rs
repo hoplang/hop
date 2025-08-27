@@ -601,12 +601,7 @@ mod tests {
                 let module = parse(module_name.to_string(), tokenizer, &mut errors);
 
                 if !errors.is_empty() {
-                    error_formatter.add_errors(
-                        module_name.to_string(),
-                        file.content.trim().to_string(),
-                        errors,
-                    );
-                    continue;
+                    panic!("Got parse errors: {:#?}", errors);
                 }
 
                 let type_result = typecheck(&module, &module_type_results, &mut errors);
@@ -908,31 +903,6 @@ mod tests {
         );
     }
 
-    // When a slot is defined twice in a component, the typechecker outputs an error.
-    #[test]
-    fn test_slot_defined_twice() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                <main-comp>
-                    <slot-content>
-                        First definition
-                    </slot-content>
-                    <slot-content>
-                        Second definition
-                    </slot-content>
-                </main-comp>
-            "#},
-            expect![[r#"
-                error: Slot 'content' is already defined
-                  --> main.hop (line 5, col 5)
-                4 |     </slot-content>
-                5 |     <slot-content>
-                  |     ^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
     // Two components are allowed to have slots with the same name.
     #[test]
     fn test_same_slot_name_in_different_components() {
@@ -1020,27 +990,6 @@ mod tests {
                 4 |     <foo-comp>
                 5 |         <with-invalid>
                   |         ^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    // When slot-default is defined, it must be the only slot, otherwise the typechecker outputs an error.
-    #[test]
-    fn test_slot_default_must_be_only_slot() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                <mixed-comp>
-                    <slot-default>Default slot</slot-default>
-                    <slot-other>Other slot</slot-other>
-                </mixed-comp>
-            "#},
-            expect![[r#"
-                error: When using slot-default, it must be the only slot in the component
-                  --> main.hop (line 3, col 5)
-                2 |     <slot-default>Default slot</slot-default>
-                3 |     <slot-other>Other slot</slot-other>
-                  |     ^^^^^^^^^^^^
             "#]],
         );
     }
@@ -1282,7 +1231,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: object[items: array[object[active: boolean, name: boolean]]}>
+                <main-comp {params: object[items: array[object[active: boolean, name: boolean]]]}>
                 	<for {item in params.items}>
                 		<if {item.active}>
                 		</if>
@@ -1292,10 +1241,9 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Expected ',' or ']' after property type
-                  --> main.hop (line 1, col 80)
-                1 | <main-comp {params: object[items: array[object[active: boolean, name: boolean]]}>
-                  |                                                                                ^
+                main::main-comp
+                	{params: {items: array[{active: boolean, name: boolean}]}}
+                	[]
             "#]],
         );
     }
@@ -1371,7 +1319,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: object[sections: array[object[header: object[visible: boolean], items: array[object[data: object[valid: boolean]]]]]}>
+                <main-comp {params: object[sections: array[object[header: object[visible: boolean], items: array[object[data: object[valid: boolean]]]]]]}>
                 	<for {section in params.sections}>
                 		<if {section.header.visible}>
                 			<for {item in section.items}>
@@ -1383,10 +1331,9 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Expected ',' or ']' after property type
-                  --> main.hop (line 1, col 137)
-                 1 | <main-comp {params: object[sections: array[object[header: object[visible: boolean], items: array[object[data: object[valid: boolean]]]]]}>
-                   |                                                                                                                                         ^
+                main::main-comp
+                	{params: {sections: array[{header: {visible: boolean}, items: array[{data: {valid: boolean}}]}]}}
+                	[]
             "#]],
         );
     }
@@ -1691,7 +1638,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: object[config: object[debug: boolean], data: array[object[id: boolean, attributes: array[boolean]]]]]}>
+                <main-comp {params: object[config: object[debug: boolean], data: array[object[id: boolean, attributes: array[boolean]]]]}>
                 	<if {params.config.debug}>
                 	</if>
                 	<for {item in params.data}>
@@ -1705,10 +1652,9 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Unexpected token after parameter
-                  --> main.hop (line 1, col 121)
-                 1 | <main-comp {params: object[config: object[debug: boolean], data: array[object[id: boolean, attributes: array[boolean]]]]]}>
-                   |                                                                                                                         ^
+                main::main-comp
+                	{params: {config: {debug: boolean}, data: array[{attributes: array[boolean], id: boolean}]}}
+                	[]
             "#]],
         );
     }

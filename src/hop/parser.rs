@@ -220,7 +220,6 @@ fn collect_slots_from_children(
     }
 }
 
-
 fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Option<ToplevelNode> {
     let (t, range) = &tree.token;
 
@@ -1273,6 +1272,50 @@ mod tests {
                 slot-content
                 render
                 	with-data"#]],
+        );
+    }
+
+    // When slot-default is defined, it must be the only slot, otherwise the parser outputs an error.
+    #[test]
+    fn test_slot_default_must_be_only_slot() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <mixed-comp>
+                    <slot-default>Default slot</slot-default>
+                    <slot-other>Other slot</slot-other>
+                </mixed-comp>
+            "#},
+            expect![[r#"
+                error: When using slot-default, it must be the only slot in the component
+                3 |     <slot-default>Default slot</slot-default>
+                4 |     <slot-other>Other slot</slot-other>
+                  |     ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    // When a slot is defined twice in a component, the parser outputs an error.
+    #[test]
+    fn test_slot_defined_twice() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp>
+                    <slot-content>
+                        First definition
+                    </slot-content>
+                    <slot-content>
+                        Second definition
+                    </slot-content>
+                </main-comp>
+            "#},
+            expect![[r#"
+                error: Slot 'content' is already defined
+                5 |     </slot-content>
+                6 |     <slot-content>
+                  |     ^^^^^^^^^^^^^^
+            "#]],
         );
     }
 
