@@ -238,7 +238,7 @@ fn typecheck_node(
             range,
             ..
         }) => {
-            let condition_type = match typecheck_expr(condition, env, annotations, errors, *range) {
+            let condition_type = match typecheck_expr(condition, env, annotations, errors) {
                 Ok(t) => t,
                 Err(err) => {
                     errors.push(err);
@@ -312,7 +312,7 @@ fn typecheck_node(
                 for (arg_name, (expression, expr_range)) in params {
                     if let Some(expected_type) = comp_info.parameter_types.get(arg_name) {
                         let expr_type =
-                            match typecheck_expr(expression, env, annotations, errors, *expr_range)
+                            match typecheck_expr(expression, env, annotations, errors)
                             {
                                 Ok(t) => t,
                                 Err(err) => {
@@ -374,7 +374,6 @@ fn typecheck_node(
                     env,
                     annotations,
                     errors,
-                    set_attr.range,
                 ) {
                     Ok(t) => t,
                     Err(err) => {
@@ -489,7 +488,7 @@ fn typecheck_node(
         }) => {
             // Typecheck the array expression
             let array_type =
-                match typecheck_expr(array_expr, env, annotations, errors, array_expr.range()) {
+                match typecheck_expr(array_expr, env, annotations, errors) {
                     Ok(t) => t,
                     Err(err) => {
                         errors.push(err);
@@ -562,7 +561,6 @@ fn typecheck_node(
                 env,
                 annotations,
                 errors,
-                text_expr_node.range,
             ) {
                 Ok(t) => t,
                 Err(err) => {

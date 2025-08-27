@@ -1,5 +1,5 @@
 use super::parser::{BinaryOp, DopExpr, UnaryOp};
-use crate::common::{Environment, Range, RangeError};
+use crate::common::{Environment, RangeError};
 use crate::typechecker::TypeAnnotation;
 use std::collections::BTreeMap;
 use std::fmt;
@@ -72,13 +72,12 @@ pub fn typecheck_expr(
     env: &mut Environment<DopType>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut Vec<RangeError>,
-    range: Range,
 ) -> Result<DopType, RangeError> {
     match expr {
         DopExpr::Variable { name, .. } => {
             if let Some(var_type) = env.lookup(name) {
                 annotations.push(TypeAnnotation {
-                    range,
+                    range: expr.range(),
                     typ: var_type.clone(),
                     name: name.clone(),
                 });
@@ -86,7 +85,7 @@ pub fn typecheck_expr(
             } else {
                 Err(RangeError::new(
                     format!("Undefined variable: {}", name),
-                    range,
+                    expr.range(),
                 ))
             }
         }
@@ -98,7 +97,7 @@ pub fn typecheck_expr(
             property,
             ..
         } => {
-            let base_type = typecheck_expr(base_expr, env, annotations, errors, range)?;
+            let base_type = typecheck_expr(base_expr, env, annotations, errors)?;
 
             match &base_type {
                 DopType::Object(props) => {
@@ -107,13 +106,13 @@ pub fn typecheck_expr(
                     } else {
                         Err(RangeError::new(
                             format!("Property {} not found in object", property),
-                            range,
+                            expr.range(),
                         ))
                     }
                 }
                 _ => Err(RangeError::new(
                     format!("{} can not be used as an object", base_type),
-                    range,
+                    expr.range(),
                 )),
             }
         }
@@ -123,14 +122,14 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let left_type = typecheck_expr(left, env, annotations, errors, range)?;
-            let right_type = typecheck_expr(right, env, annotations, errors, range)?;
+            let left_type = typecheck_expr(left, env, annotations, errors)?;
+            let right_type = typecheck_expr(right, env, annotations, errors)?;
 
             // Both operands should have the same type for equality comparison
             if left_type != right_type {
                 return Err(RangeError::new(
                     format!("Can not compare {} to {}", left_type, right_type),
-                    range,
+                    expr.range(),
                 ));
             }
 
@@ -142,13 +141,13 @@ pub fn typecheck_expr(
             operand: expr,
             ..
         } => {
-            let expr_type = typecheck_expr(expr, env, annotations, errors, range)?;
+            let expr_type = typecheck_expr(expr, env, annotations, errors)?;
 
             // Negation only works on boolean expressions
             if !is_subtype(&expr_type, &DopType::Bool) {
                 return Err(RangeError::new(
                     "Negation operator can only be applied to boolean values".to_string(),
-                    range,
+                    expr.range(),
                 ));
             }
 
@@ -161,18 +160,18 @@ pub fn typecheck_expr(
                 Ok(DopType::Array(None))
             } else {
                 // Check the type of the first element
-                let first_type = typecheck_expr(&elements[0], env, annotations, errors, range)?;
+                let first_type = typecheck_expr(&elements[0], env, annotations, errors)?;
 
                 // Check that all elements have the same type
                 for element in elements.iter().skip(1) {
-                    let element_type = typecheck_expr(element, env, annotations, errors, range)?;
+                    let element_type = typecheck_expr(element, env, annotations, errors)?;
                     if element_type != first_type {
                         return Err(RangeError::new(
                             format!(
                                 "Array elements must all have the same type, found {} and {}",
                                 first_type, element_type
                             ),
-                            range,
+                            expr.range(),
                         ));
                     }
                 }
@@ -184,7 +183,7 @@ pub fn typecheck_expr(
             let mut object_properties = BTreeMap::new();
 
             for (key, value_expr) in properties {
-                let value_type = typecheck_expr(value_expr, env, annotations, errors, range)?;
+                let value_type = typecheck_expr(value_expr, env, annotations, errors)?;
                 object_properties.insert(key.clone(), value_type);
             }
 
@@ -226,7 +225,6 @@ mod tests {
             &mut env,
             &mut annotations,
             &mut errors,
-            Range::default(),
         ) {
             Ok(typ) => typ.to_string(),
             Err(e) => format!("Error: {}", e.message),

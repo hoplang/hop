@@ -376,7 +376,7 @@ error: Undefined variable: item
   --> main.hop (line 6, col 7)
 5 |     </for>
 6 |     <if {item.active}>
-  |          ^^^^^^^^^^^
+  |          ^^^^
 ## END
 
 When a variable is unused, the typechecker outputs an error.
