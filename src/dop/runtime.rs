@@ -24,7 +24,7 @@ pub fn evaluate_expr(
             }
             Ok(serde_json::Value::Array(array_values))
         }
-        DopExpr::ObjectLiteral { properties } => {
+        DopExpr::ObjectLiteral { properties, .. } => {
             let mut object_map = serde_json::Map::new();
             for (key, value_expr) in properties {
                 let value = evaluate_expr(value_expr, env)?;

@@ -180,7 +180,7 @@ pub fn typecheck_expr(
                 Ok(DopType::Array(Some(Box::new(first_type))))
             }
         }
-        DopExpr::ObjectLiteral { properties } => {
+        DopExpr::ObjectLiteral { properties, .. } => {
             let mut object_properties = BTreeMap::new();
 
             for (key, value_expr) in properties {

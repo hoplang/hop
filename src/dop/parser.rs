@@ -42,6 +42,7 @@ pub enum DopExpr {
     },
     ObjectLiteral {
         properties: BTreeMap<String, DopExpr>,
+        range: Range,
     },
     BinaryOp {
         left: Box<DopExpr>,
@@ -575,14 +576,19 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
 
             Ok(DopExpr::ArrayLiteral { elements })
         }
-        (DopToken::LeftBrace, _) => {
+        (DopToken::LeftBrace, start_range) => {
             // Parse {key1: value1, key2: value2, ...}
             let mut properties = BTreeMap::new();
 
             // Handle empty object
-            if let (DopToken::RightBrace, _) = tokenizer.peek() {
+            if let (DopToken::RightBrace, end_range) = tokenizer.peek() {
+                let close_range = *end_range;
                 tokenizer.advance()?; // consume }
-                return Ok(DopExpr::ObjectLiteral { properties });
+                let range = Range {
+                    start: start_range.start,
+                    end: close_range.end,
+                };
+                return Ok(DopExpr::ObjectLiteral { properties, range });
             }
 
             // Parse object properties
@@ -624,15 +630,25 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
                     (DopToken::Comma, _) => {
                         tokenizer.advance()?; // consume ,
                         // Check for trailing comma (closing brace after comma)
-                        if let (DopToken::RightBrace, _) = tokenizer.peek() {
+                        if let (DopToken::RightBrace, end_range) = tokenizer.peek() {
+                            let close_range = *end_range;
                             tokenizer.advance()?; // consume }
-                            break;
+                            let range = Range {
+                                start: start_range.start,
+                                end: close_range.end,
+                            };
+                            return Ok(DopExpr::ObjectLiteral { properties, range });
                         }
                         continue;
                     }
-                    (DopToken::RightBrace, _) => {
+                    (DopToken::RightBrace, end_range) => {
+                        let close_range = *end_range;
                         tokenizer.advance()?; // consume }
-                        break;
+                        let range = Range {
+                            start: start_range.start,
+                            end: close_range.end,
+                        };
+                        return Ok(DopExpr::ObjectLiteral { properties, range });
                     }
                     (_, range) => {
                         return Err(RangeError::new(
@@ -642,8 +658,6 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
                     }
                 }
             }
-
-            Ok(DopExpr::ObjectLiteral { properties })
         }
         (DopToken::LeftParen, _) => {
             let expr = parse_equality(tokenizer)?;
@@ -1826,6 +1840,16 @@ mod tests {
             expect![[r#"
                 ObjectLiteral {
                     properties: {},
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 3,
+                        },
+                    },
                 }
             "#]],
         );
@@ -1850,6 +1874,16 @@ mod tests {
                                     column: 14,
                                 },
                             },
+                        },
+                    },
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 15,
                         },
                     },
                 }
@@ -1889,6 +1923,16 @@ mod tests {
                                     column: 16,
                                 },
                             },
+                        },
+                    },
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 17,
                         },
                     },
                 }
@@ -1969,6 +2013,16 @@ mod tests {
                             },
                         },
                     },
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 42,
+                        },
+                    },
                 }
             "#]],
         );
@@ -1997,6 +2051,26 @@ mod tests {
                                     },
                                 },
                             },
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 10,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 26,
+                                },
+                            },
+                        },
+                    },
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 27,
                         },
                     },
                 }
@@ -2194,6 +2268,16 @@ mod tests {
                             },
                         },
                     },
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 4,
+                            column: 2,
+                        },
+                    },
                 }
             "#]],
         );
@@ -2218,6 +2302,16 @@ mod tests {
                                     column: 14,
                                 },
                             },
+                        },
+                    },
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 3,
+                            column: 2,
                         },
                     },
                 }
@@ -2296,6 +2390,16 @@ mod tests {
                                     column: 17,
                                 },
                             },
+                        },
+                    },
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 4,
+                            column: 2,
                         },
                     },
                 }
