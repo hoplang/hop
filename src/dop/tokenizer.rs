@@ -261,101 +261,964 @@ impl Iterator for DopTokenizer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::parse_test_cases;
-    use pretty_assertions::assert_eq;
+    use expect_test::{Expect, expect};
 
-    use std::fs;
-    use std::path::PathBuf;
-
-    fn tokenize_all(input: &str) -> String {
-        let mut result = Vec::new();
-        let mut tokenizer = match DopTokenizer::new(input, Position::new(1, 1)) {
-            Ok(t) => t,
-            Err(e) => return format!("ERROR: {:?}", e),
-        };
-
-        loop {
-            let (token, range) = tokenizer.peek();
-
-            let formatted = match token {
-                DopToken::Identifier(s) => format!("Identifier({})", s),
-                DopToken::StringLiteral(s) => format!("StringLiteral({})", s),
-                DopToken::BooleanLiteral(b) => format!("BooleanLiteral({})", b),
-                DopToken::NumberLiteral(n) => {
-                    if let Some(i) = n.as_i64() {
-                        format!("NumberLiteral({})", i)
-                    } else if let Some(f) = n.as_f64() {
-                        format!("NumberLiteral({})", f)
-                    } else {
-                        format!("NumberLiteral({:?})", n)
-                    }
-                }
-                DopToken::Equal => "Equal".to_string(),
-                DopToken::Not => "Not".to_string(),
-                DopToken::Dot => "Dot".to_string(),
-                DopToken::LeftParen => "LeftParen".to_string(),
-                DopToken::RightParen => "RightParen".to_string(),
-                DopToken::LeftBracket => "LeftBracket".to_string(),
-                DopToken::RightBracket => "RightBracket".to_string(),
-                DopToken::LeftBrace => "LeftBrace".to_string(),
-                DopToken::RightBrace => "RightBrace".to_string(),
-                DopToken::Colon => "Colon".to_string(),
-                DopToken::Comma => "Comma".to_string(),
-                DopToken::In => "In".to_string(),
-                // Type tokens
-                DopToken::TypeString => "TypeString".to_string(),
-                DopToken::TypeNumber => "TypeNumber".to_string(),
-                DopToken::TypeBoolean => "TypeBoolean".to_string(),
-                DopToken::TypeVoid => "TypeVoid".to_string(),
-                DopToken::TypeArray => "TypeArray".to_string(),
-                DopToken::TypeObject => "TypeObject".to_string(),
-                DopToken::Eof => "Eof".to_string(),
-            };
-
-            result.push(format!("{} {}", formatted, range));
-
-            if *token == DopToken::Eof {
-                break;
-            }
-
-            if tokenizer.advance().is_err() {
-                break;
-            }
-        }
-
-        result.join("\n")
+    fn check(input: &str, expected: Expect) {
+        let tokenizer =
+            DopTokenizer::new(input, Position::new(1, 1)).expect("Failed to create tokenizer");
+        let result: Vec<_> = tokenizer.collect();
+        let actual = format!("{:#?}", result);
+        expected.assert_eq(&actual);
     }
 
     #[test]
-    fn test_tokenize() {
-        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("test_data/dop/tokenizer.cases");
+    fn test_tokenize_simple_punctuation() {
+        check(
+            "( ) . ! ==",
+            expect![[r#"
+                [
+                    Ok(
+                        (
+                            LeftParen,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 1,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 2,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            RightParen,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 3,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 4,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            Dot,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 5,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 6,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            Not,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 7,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 8,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            Equal,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 9,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 11,
+                                },
+                            },
+                        ),
+                    ),
+                ]"#]],
+        );
+    }
 
-        let content = fs::read_to_string(&d).unwrap();
-        let test_cases = parse_test_cases(&content);
+    #[test]
+    fn test_tokenize_identifiers_keywords() {
+        check(
+            "foo in true false _test var123",
+            expect![[r#"
+                [
+                    Ok(
+                        (
+                            Identifier(
+                                "foo",
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 1,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 4,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            In,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 5,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 7,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            BooleanLiteral(
+                                true,
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 8,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 12,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            BooleanLiteral(
+                                false,
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 13,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 18,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            Identifier(
+                                "_test",
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 19,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 24,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            Identifier(
+                                "var123",
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 25,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 31,
+                                },
+                            },
+                        ),
+                    ),
+                ]"#]],
+        );
+    }
 
-        for (case_num, (archive, line_number)) in test_cases.iter().enumerate() {
-            let input = &archive
-                .get("in")
-                .expect("Missing 'in' section in test case")
-                .content;
-            let expected = archive
-                .get("out")
-                .expect("Missing 'out' section in test case")
-                .content
-                .trim();
+    #[test]
+    fn test_tokenize_string_literals() {
+        check(
+            "'hello' 'world with spaces' ''",
+            expect![[r#"
+                [
+                    Ok(
+                        (
+                            StringLiteral(
+                                "hello",
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 1,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 8,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            StringLiteral(
+                                "world with spaces",
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 9,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 28,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            StringLiteral(
+                                "",
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 29,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 31,
+                                },
+                            },
+                        ),
+                    ),
+                ]"#]],
+        );
+    }
 
-            println!("Test case {} (line {})", case_num + 1, line_number);
+    #[test]
+    fn test_tokenize_numbers() {
+        check(
+            "123 456.789 0 0.5",
+            expect![[r#"
+                [
+                    Ok(
+                        (
+                            NumberLiteral(
+                                Number(123),
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 1,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 4,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            NumberLiteral(
+                                Number(456.789),
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 5,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 12,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            NumberLiteral(
+                                Number(0),
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 13,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 14,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            NumberLiteral(
+                                Number(0.5),
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 15,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 18,
+                                },
+                            },
+                        ),
+                    ),
+                ]"#]],
+        );
+    }
 
-            let actual = tokenize_all(input);
+    #[test]
+    fn test_tokenize_multiline() {
+        check(
+            "foo\nbar",
+            expect![[r#"
+                [
+                    Ok(
+                        (
+                            Identifier(
+                                "foo",
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 1,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 4,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            Identifier(
+                                "bar",
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 2,
+                                    column: 1,
+                                },
+                                end: Position {
+                                    line: 2,
+                                    column: 4,
+                                },
+                            },
+                        ),
+                    ),
+                ]"#]],
+        );
+    }
 
-            assert_eq!(
-                actual,
-                expected,
-                "Mismatch in test case {} (line {})",
-                case_num + 1,
-                line_number
-            );
-        }
+    #[test]
+    fn test_tokenize_property_access() {
+        check(
+            "user.name",
+            expect![[r#"
+                [
+                    Ok(
+                        (
+                            Identifier(
+                                "user",
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 1,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 5,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            Dot,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 5,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 6,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            Identifier(
+                                "name",
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 6,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 10,
+                                },
+                            },
+                        ),
+                    ),
+                ]"#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_whitespace_handling() {
+        check(
+            "  foo   bar  ",
+            expect![[r#"
+                [
+                    Ok(
+                        (
+                            Identifier(
+                                "foo",
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 3,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 6,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            Identifier(
+                                "bar",
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 9,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 12,
+                                },
+                            },
+                        ),
+                    ),
+                ]"#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_complex_expression() {
+        check(
+            "user.name == 'admin'",
+            expect![[r#"
+                [
+                    Ok(
+                        (
+                            Identifier(
+                                "user",
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 1,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 5,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            Dot,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 5,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 6,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            Identifier(
+                                "name",
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 6,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 10,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            Equal,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 11,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 13,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            StringLiteral(
+                                "admin",
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 14,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 21,
+                                },
+                            },
+                        ),
+                    ),
+                ]"#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_parenthesized_expression() {
+        check(
+            "!(foo == true)",
+            expect![[r#"
+                [
+                    Ok(
+                        (
+                            Not,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 1,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 2,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            LeftParen,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 2,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 3,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            Identifier(
+                                "foo",
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 3,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 6,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            Equal,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 7,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 9,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            BooleanLiteral(
+                                true,
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 10,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 14,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            RightParen,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 14,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 15,
+                                },
+                            },
+                        ),
+                    ),
+                ]"#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_array_brackets() {
+        check(
+            "[1, 2, 3]",
+            expect![[r#"
+                [
+                    Ok(
+                        (
+                            LeftBracket,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 1,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 2,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            NumberLiteral(
+                                Number(1),
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 2,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 3,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            Comma,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 3,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 4,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            NumberLiteral(
+                                Number(2),
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 5,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 6,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            Comma,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 6,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 7,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            NumberLiteral(
+                                Number(3),
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 8,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 9,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            RightBracket,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 9,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 10,
+                                },
+                            },
+                        ),
+                    ),
+                ]"#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_empty_array() {
+        check(
+            "[]",
+            expect![[r#"
+                [
+                    Ok(
+                        (
+                            LeftBracket,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 1,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 2,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            RightBracket,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 2,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 3,
+                                },
+                            },
+                        ),
+                    ),
+                ]"#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_object_keyword() {
+        check(
+            "object",
+            expect![[r#"
+                [
+                    Ok(
+                        (
+                            TypeObject,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 1,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 7,
+                                },
+                            },
+                        ),
+                    ),
+                ]"#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_object_literal_syntax() {
+        check(
+            "{name: 'John'}",
+            expect![[r#"
+                [
+                    Ok(
+                        (
+                            LeftBrace,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 1,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 2,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            Identifier(
+                                "name",
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 2,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 6,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            Colon,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 6,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 7,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            StringLiteral(
+                                "John",
+                            ),
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 8,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 14,
+                                },
+                            },
+                        ),
+                    ),
+                    Ok(
+                        (
+                            RightBrace,
+                            Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 14,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 15,
+                                },
+                            },
+                        ),
+                    ),
+                ]"#]],
+        );
     }
 }

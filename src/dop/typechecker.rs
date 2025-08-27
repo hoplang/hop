@@ -196,7 +196,7 @@ mod tests {
     use crate::dop::DopTokenizer;
     use crate::dop::parse_parameters_with_types;
     use crate::dop::parser::parse_expr;
-    use expect_test::{expect, Expect};
+    use expect_test::{Expect, expect};
 
     fn check_typecheck(env_str: &str, expr_str: &str, expected: Expect) {
         let mut env = Environment::new();
@@ -204,8 +204,8 @@ mod tests {
         if !env_str.is_empty() {
             let mut tokenizer = DopTokenizer::new(env_str, crate::common::Position::new(1, 1))
                 .expect("Failed to create tokenizer");
-            let params = parse_parameters_with_types(&mut tokenizer)
-                .expect("Failed to parse environment");
+            let params =
+                parse_parameters_with_types(&mut tokenizer).expect("Failed to parse environment");
             for ((var_name, _), (var_type, _)) in params {
                 env.push(var_name.value, var_type);
             }
@@ -213,8 +213,7 @@ mod tests {
 
         let mut tokenizer = DopTokenizer::new(expr_str, crate::common::Position::new(1, 1))
             .expect("Failed to create tokenizer");
-        let expr = parse_expr(&mut tokenizer)
-            .expect("Failed to parse expression");
+        let expr = parse_expr(&mut tokenizer).expect("Failed to parse expression");
 
         let mut annotations = Vec::new();
         let mut errors = Vec::new();
@@ -235,11 +234,7 @@ mod tests {
 
     #[test]
     fn test_typecheck_basic_variable_lookup() {
-        check_typecheck(
-            "name: string",
-            "name",
-            expect!["string"],
-        );
+        check_typecheck("name: string", "name", expect!["string"]);
     }
 
     #[test]
@@ -253,56 +248,32 @@ mod tests {
 
     #[test]
     fn test_typecheck_string_literal() {
-        check_typecheck(
-            "",
-            "'hello world'",
-            expect!["string"],
-        );
+        check_typecheck("", "'hello world'", expect!["string"]);
     }
 
     #[test]
     fn test_typecheck_boolean_literal_true() {
-        check_typecheck(
-            "",
-            "true",
-            expect!["boolean"],
-        );
+        check_typecheck("", "true", expect!["boolean"]);
     }
 
     #[test]
     fn test_typecheck_boolean_literal_false() {
-        check_typecheck(
-            "",
-            "false",
-            expect!["boolean"],
-        );
+        check_typecheck("", "false", expect!["boolean"]);
     }
 
     #[test]
     fn test_typecheck_number_literal_integer() {
-        check_typecheck(
-            "",
-            "42",
-            expect!["number"],
-        );
+        check_typecheck("", "42", expect!["number"]);
     }
 
     #[test]
     fn test_typecheck_number_literal_float() {
-        check_typecheck(
-            "",
-            "3.14",
-            expect!["number"],
-        );
+        check_typecheck("", "3.14", expect!["number"]);
     }
 
     #[test]
     fn test_typecheck_property_access() {
-        check_typecheck(
-            "user: object[name: string]",
-            "user.name",
-            expect!["string"],
-        );
+        check_typecheck("user: object[name: string]", "user.name", expect!["string"]);
     }
 
     #[test]
@@ -325,29 +296,17 @@ mod tests {
 
     #[test]
     fn test_typecheck_equality_string() {
-        check_typecheck(
-            "name: string",
-            "name == 'alice'",
-            expect!["boolean"],
-        );
+        check_typecheck("name: string", "name == 'alice'", expect!["boolean"]);
     }
 
     #[test]
     fn test_typecheck_equality_number() {
-        check_typecheck(
-            "count: number",
-            "count == 42",
-            expect!["boolean"],
-        );
+        check_typecheck("count: number", "count == 42", expect!["boolean"]);
     }
 
     #[test]
     fn test_typecheck_equality_boolean() {
-        check_typecheck(
-            "enabled: boolean",
-            "enabled == true",
-            expect!["boolean"],
-        );
+        check_typecheck("enabled: boolean", "enabled == true", expect!["boolean"]);
     }
 
     #[test]
@@ -388,29 +347,17 @@ mod tests {
 
     #[test]
     fn test_typecheck_negation_variable() {
-        check_typecheck(
-            "enabled: boolean",
-            "!enabled",
-            expect!["boolean"],
-        );
+        check_typecheck("enabled: boolean", "!enabled", expect!["boolean"]);
     }
 
     #[test]
     fn test_typecheck_negation_true() {
-        check_typecheck(
-            "",
-            "!true",
-            expect!["boolean"],
-        );
+        check_typecheck("", "!true", expect!["boolean"]);
     }
 
     #[test]
     fn test_typecheck_negation_false() {
-        check_typecheck(
-            "",
-            "!false",
-            expect!["boolean"],
-        );
+        check_typecheck("", "!false", expect!["boolean"]);
     }
 
     #[test]
@@ -467,12 +414,14 @@ mod tests {
         );
     }
 
-    #[test] 
+    #[test]
     fn test_typecheck_nested_array_property_error() {
         check_typecheck(
             "config: object[users: array[object[profile: object[name: string, active: boolean]]]]",
             "config.users.profile.name",
-            expect!["Error: array[object[profile: object[active: boolean, name: string]]] can not be used as an object"],
+            expect![
+                "Error: array[object[profile: object[active: boolean, name: string]]] can not be used as an object"
+            ],
         );
     }
 
@@ -505,20 +454,12 @@ mod tests {
 
     #[test]
     fn test_typecheck_empty_object_literal() {
-        check_typecheck(
-            "",
-            "{}",
-            expect!["object[]"],
-        );
+        check_typecheck("", "{}", expect!["object[]"]);
     }
 
     #[test]
     fn test_typecheck_object_literal_single_property() {
-        check_typecheck(
-            "",
-            "{name: 'John'}",
-            expect!["object[name: string]"],
-        );
+        check_typecheck("", "{name: 'John'}", expect!["object[name: string]"]);
     }
 
     #[test]
@@ -550,20 +491,12 @@ mod tests {
 
     #[test]
     fn test_typecheck_array_trailing_comma_numbers() {
-        check_typecheck(
-            "",
-            "[\n\t1,\n\t2,\n\t3,\n]",
-            expect!["array[number]"],
-        );
+        check_typecheck("", "[\n\t1,\n\t2,\n\t3,\n]", expect!["array[number]"]);
     }
 
     #[test]
     fn test_typecheck_array_trailing_comma_single() {
-        check_typecheck(
-            "",
-            "[\n\t'hello',\n]",
-            expect!["array[string]"],
-        );
+        check_typecheck("", "[\n\t'hello',\n]", expect!["array[string]"]);
     }
 
     #[test]
@@ -577,11 +510,7 @@ mod tests {
 
     #[test]
     fn test_typecheck_object_literal_trailing_comma_single() {
-        check_typecheck(
-            "",
-            "{\n\tname: 'John',\n}",
-            expect!["object[name: string]"],
-        );
+        check_typecheck("", "{\n\tname: 'John',\n}", expect!["object[name: string]"]);
     }
 
     #[test]
@@ -595,11 +524,7 @@ mod tests {
 
     #[test]
     fn test_typecheck_empty_brace_syntax() {
-        check_typecheck(
-            "obj: {}",
-            "obj",
-            expect!["object[]"],
-        );
+        check_typecheck("obj: {}", "obj", expect!["object[]"]);
     }
 
     #[test]
@@ -619,5 +544,4 @@ mod tests {
             expect!["array[string]"],
         );
     }
-
 }
