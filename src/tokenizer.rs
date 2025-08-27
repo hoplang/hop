@@ -818,103 +818,31 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 7,
-                                    },
-                                },
+                                name_range: 1:2-1:7,
                                 value: "input",
                                 attributes: [
                                     Attribute {
                                         name: "type",
                                         value: "",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 8,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 15,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 14,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 14,
-                                            },
-                                        },
+                                        range: 1:8-1:15,
+                                        value_range: 1:14-1:14,
                                     },
                                     Attribute {
                                         name: "value",
                                         value: "",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 16,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 24,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 23,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 23,
-                                            },
-                                        },
+                                        range: 1:16-1:24,
+                                        value_range: 1:23-1:23,
                                     },
                                     Attribute {
                                         name: "disabled",
                                         value: "",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 25,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 36,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 35,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 35,
-                                            },
-                                        },
+                                        range: 1:25-1:36,
+                                        value_range: 1:35-1:35,
                                     },
                                 ],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 37,
-                                },
-                            },
+                            1:1-1:37,
                         ),
                     ),
                 ]"#]],
@@ -931,79 +859,25 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 4,
-                                    },
-                                },
+                                name_range: 1:2-1:4,
                                 value: "h1",
                                 attributes: [
                                     Attribute {
                                         name: "foo",
                                         value: "bar",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 5,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 14,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 10,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 13,
-                                            },
-                                        },
+                                        range: 1:5-1:14,
+                                        value_range: 1:10-1:13,
                                     },
                                     Attribute {
                                         name: "x",
                                         value: "y",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 14,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 19,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 17,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 18,
-                                            },
-                                        },
+                                        range: 1:14-1:19,
+                                        value_range: 1:17-1:18,
                                     },
                                 ],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 20,
-                                },
-                            },
+                            1:1-1:20,
                         ),
                     ),
                 ]"#]],
@@ -1020,79 +894,25 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: true,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 4,
-                                    },
-                                },
+                                name_range: 1:2-1:4,
                                 value: "h1",
                                 attributes: [
                                     Attribute {
                                         name: "foo",
                                         value: "",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 5,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 8,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 1,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 1,
-                                            },
-                                        },
+                                        range: 1:5-1:8,
+                                        value_range: 1:1-1:1,
                                     },
                                     Attribute {
                                         name: "bar",
                                         value: "",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 9,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 12,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 1,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 1,
-                                            },
-                                        },
+                                        range: 1:9-1:12,
+                                        value_range: 1:1-1:1,
                                     },
                                 ],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 14,
-                                },
-                            },
+                            1:1-1:14,
                         ),
                     ),
                 ]"#]],
@@ -1109,55 +929,19 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: true,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 4,
-                                    },
-                                },
+                                name_range: 1:2-1:4,
                                 value: "h1",
                                 attributes: [
                                     Attribute {
                                         name: "foo",
                                         value: "",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 5,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 8,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 1,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 1,
-                                            },
-                                        },
+                                        range: 1:5-1:8,
+                                        value_range: 1:1-1:1,
                                     },
                                 ],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 10,
-                                },
-                            },
+                            1:1-1:10,
                         ),
                     ),
                 ]"#]],
@@ -1177,45 +961,18 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 3,
-                                    },
-                                },
+                                name_range: 1:2-1:3,
                                 value: "p",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 4,
-                                },
-                            },
+                            1:1-1:4,
                         ),
                     ),
                     Ok(
                         (
                             Comment,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 4,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 12,
-                                },
-                            },
+                            1:4-1:12,
                         ),
                     ),
                     Ok(
@@ -1223,43 +980,16 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 12,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 1,
-                                },
-                            },
+                            1:12-2:1,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "p",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 2,
-                                        column: 3,
-                                    },
-                                    end: Position {
-                                        line: 2,
-                                        column: 4,
-                                    },
-                                },
+                                name_range: 2:3-2:4,
                             },
-                            Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 5,
-                                },
-                            },
+                            2:1-2:5,
                         ),
                     ),
                     Ok(
@@ -1267,16 +997,7 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 5,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 1,
-                                },
-                            },
+                            2:5-3:1,
                         ),
                     ),
                 ]"#]],
@@ -1297,30 +1018,12 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 10,
-                                    },
-                                },
+                                name_range: 1:2-1:10,
                                 value: "textarea",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 11,
-                                },
-                            },
+                            1:1-1:11,
                         ),
                     ),
                     Ok(
@@ -1328,73 +1031,28 @@ mod tests {
                             Text {
                                 value: "\n\t",
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 11,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 2,
-                                },
-                            },
+                            1:11-2:2,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 2,
-                                        column: 3,
-                                    },
-                                    end: Position {
-                                        line: 2,
-                                        column: 6,
-                                    },
-                                },
+                                name_range: 2:3-2:6,
                                 value: "div",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 2,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 7,
-                                },
-                            },
+                            2:2-2:7,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "div",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 2,
-                                        column: 9,
-                                    },
-                                    end: Position {
-                                        line: 2,
-                                        column: 12,
-                                    },
-                                },
+                                name_range: 2:9-2:12,
                             },
-                            Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 7,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 13,
-                                },
-                            },
+                            2:7-2:13,
                         ),
                     ),
                     Ok(
@@ -1402,43 +1060,16 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 13,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 1,
-                                },
-                            },
+                            2:13-3:1,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "textarea",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 3,
-                                        column: 3,
-                                    },
-                                    end: Position {
-                                        line: 3,
-                                        column: 11,
-                                    },
-                                },
+                                name_range: 3:3-3:11,
                             },
-                            Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 12,
-                                },
-                            },
+                            3:1-3:12,
                         ),
                     ),
                     Ok(
@@ -1446,16 +1077,7 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 12,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 1,
-                                },
-                            },
+                            3:12-4:1,
                         ),
                     ),
                 ]"#]],
@@ -1472,87 +1094,33 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 7,
-                                    },
-                                },
+                                name_range: 1:2-1:7,
                                 value: "title",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 8,
-                                },
-                            },
+                            1:1-1:8,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: true,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 9,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 19,
-                                    },
-                                },
+                                name_range: 1:9-1:19,
                                 value: "slot-title",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 8,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 21,
-                                },
-                            },
+                            1:8-1:21,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "title",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 23,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 28,
-                                    },
-                                },
+                                name_range: 1:23-1:28,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 21,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 29,
-                                },
-                            },
+                            1:21-1:29,
                         ),
                     ),
                 ]"#]],
@@ -1569,72 +1137,27 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 3,
-                                    },
-                                },
+                                name_range: 1:2-1:3,
                                 value: "p",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 4,
-                                },
-                            },
+                            1:1-1:4,
                         ),
                     ),
                     Ok(
                         (
                             Comment,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 4,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 12,
-                                },
-                            },
+                            1:4-1:12,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "p",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 14,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 15,
-                                    },
-                                },
+                                name_range: 1:14-1:15,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 12,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 16,
-                                },
-                            },
+                            1:12-1:16,
                         ),
                     ),
                 ]"#]],
@@ -1650,16 +1173,7 @@ mod tests {
                     Ok(
                         (
                             Comment,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 42,
-                                },
-                            },
+                            1:1-1:42,
                         ),
                     ),
                 ]"#]],
@@ -1682,72 +1196,27 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 3,
-                                    },
-                                },
+                                name_range: 1:2-1:3,
                                 value: "p",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 4,
-                                },
-                            },
+                            1:1-1:4,
                         ),
                     ),
                     Ok(
                         (
                             Comment,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 4,
-                                },
-                                end: Position {
-                                    line: 5,
-                                    column: 10,
-                                },
-                            },
+                            1:4-5:10,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "p",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 5,
-                                        column: 12,
-                                    },
-                                    end: Position {
-                                        line: 5,
-                                        column: 13,
-                                    },
-                                },
+                                name_range: 5:12-5:13,
                             },
-                            Range {
-                                start: Position {
-                                    line: 5,
-                                    column: 10,
-                                },
-                                end: Position {
-                                    line: 5,
-                                    column: 14,
-                                },
-                            },
+                            5:10-5:14,
                         ),
                     ),
                     Ok(
@@ -1755,16 +1224,7 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 5,
-                                    column: 14,
-                                },
-                                end: Position {
-                                    line: 6,
-                                    column: 1,
-                                },
-                            },
+                            5:14-6:1,
                         ),
                     ),
                 ]"#]],
@@ -1780,16 +1240,7 @@ mod tests {
                     Ok(
                         (
                             Comment,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 64,
-                                },
-                            },
+                            1:1-1:64,
                         ),
                     ),
                 ]"#]],
@@ -1805,16 +1256,7 @@ mod tests {
                     Ok(
                         (
                             Doctype,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 18,
-                                },
-                            },
+                            1:1-1:18,
                         ),
                     ),
                 ]"#]],
@@ -1831,27 +1273,9 @@ mod tests {
                         (
                             EndTag {
                                 value: "div",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 3,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 6,
-                                    },
-                                },
+                                name_range: 1:3-1:6,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 8,
-                                },
-                            },
+                            1:1-1:8,
                         ),
                     ),
                 ]"#]],
@@ -1868,30 +1292,12 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: true,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 4,
-                                    },
-                                },
+                                name_range: 1:2-1:4,
                                 value: "h1",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 6,
-                                },
-                            },
+                            1:1-1:6,
                         ),
                     ),
                 ]"#]],
@@ -1908,30 +1314,12 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: true,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 4,
-                                    },
-                                },
+                                name_range: 1:2-1:4,
                                 value: "h1",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 7,
-                                },
-                            },
+                            1:1-1:7,
                         ),
                     ),
                 ]"#]],
@@ -1953,30 +1341,12 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 7,
-                                    },
-                                },
+                                name_range: 1:2-1:7,
                                 value: "style",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 8,
-                                },
-                            },
+                            1:1-1:8,
                         ),
                     ),
                     Ok(
@@ -1984,43 +1354,16 @@ mod tests {
                             Text {
                                 value: "\n  body { color: red; }\n  .class { font-size: 12px; }\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 8,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 1,
-                                },
-                            },
+                            1:8-4:1,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "style",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 4,
-                                        column: 3,
-                                    },
-                                    end: Position {
-                                        line: 4,
-                                        column: 8,
-                                    },
-                                },
+                                name_range: 4:3-4:8,
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 9,
-                                },
-                            },
+                            4:1-4:9,
                         ),
                     ),
                     Ok(
@@ -2028,16 +1371,7 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 9,
-                                },
-                                end: Position {
-                                    line: 5,
-                                    column: 1,
-                                },
-                            },
+                            4:9-5:1,
                         ),
                     ),
                 ]"#]],
@@ -2061,57 +1395,21 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 4,
-                                    },
-                                },
+                                name_range: 1:2-1:4,
                                 value: "h1",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 5,
-                                },
-                            },
+                            1:1-1:5,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "h1",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 7,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 9,
-                                    },
-                                },
+                                name_range: 1:7-1:9,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 5,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 10,
-                                },
-                            },
+                            1:5-1:10,
                         ),
                     ),
                     Ok(
@@ -2119,73 +1417,28 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 10,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 1,
-                                },
-                            },
+                            1:10-2:1,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 2,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 2,
-                                        column: 4,
-                                    },
-                                },
+                                name_range: 2:2-2:4,
                                 value: "h2",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 5,
-                                },
-                            },
+                            2:1-2:5,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "h2",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 2,
-                                        column: 7,
-                                    },
-                                    end: Position {
-                                        line: 2,
-                                        column: 9,
-                                    },
-                                },
+                                name_range: 2:7-2:9,
                             },
-                            Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 5,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 10,
-                                },
-                            },
+                            2:5-2:10,
                         ),
                     ),
                     Ok(
@@ -2193,73 +1446,28 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 10,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 1,
-                                },
-                            },
+                            2:10-3:1,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 3,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 3,
-                                        column: 4,
-                                    },
-                                },
+                                name_range: 3:2-3:4,
                                 value: "h3",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 5,
-                                },
-                            },
+                            3:1-3:5,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "h3",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 3,
-                                        column: 7,
-                                    },
-                                    end: Position {
-                                        line: 3,
-                                        column: 9,
-                                    },
-                                },
+                                name_range: 3:7-3:9,
                             },
-                            Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 5,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 10,
-                                },
-                            },
+                            3:5-3:10,
                         ),
                     ),
                     Ok(
@@ -2267,73 +1475,28 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 10,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 1,
-                                },
-                            },
+                            3:10-4:1,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 4,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 4,
-                                        column: 4,
-                                    },
-                                },
+                                name_range: 4:2-4:4,
                                 value: "h4",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 5,
-                                },
-                            },
+                            4:1-4:5,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "h4",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 4,
-                                        column: 7,
-                                    },
-                                    end: Position {
-                                        line: 4,
-                                        column: 9,
-                                    },
-                                },
+                                name_range: 4:7-4:9,
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 5,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 10,
-                                },
-                            },
+                            4:5-4:10,
                         ),
                     ),
                     Ok(
@@ -2341,73 +1504,28 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 10,
-                                },
-                                end: Position {
-                                    line: 5,
-                                    column: 1,
-                                },
-                            },
+                            4:10-5:1,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 5,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 5,
-                                        column: 4,
-                                    },
-                                },
+                                name_range: 5:2-5:4,
                                 value: "h5",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 5,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 5,
-                                    column: 5,
-                                },
-                            },
+                            5:1-5:5,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "h5",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 5,
-                                        column: 7,
-                                    },
-                                    end: Position {
-                                        line: 5,
-                                        column: 9,
-                                    },
-                                },
+                                name_range: 5:7-5:9,
                             },
-                            Range {
-                                start: Position {
-                                    line: 5,
-                                    column: 5,
-                                },
-                                end: Position {
-                                    line: 5,
-                                    column: 10,
-                                },
-                            },
+                            5:5-5:10,
                         ),
                     ),
                     Ok(
@@ -2415,73 +1533,28 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 5,
-                                    column: 10,
-                                },
-                                end: Position {
-                                    line: 6,
-                                    column: 1,
-                                },
-                            },
+                            5:10-6:1,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 6,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 6,
-                                        column: 4,
-                                    },
-                                },
+                                name_range: 6:2-6:4,
                                 value: "h6",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 6,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 6,
-                                    column: 5,
-                                },
-                            },
+                            6:1-6:5,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "h6",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 6,
-                                        column: 7,
-                                    },
-                                    end: Position {
-                                        line: 6,
-                                        column: 9,
-                                    },
-                                },
+                                name_range: 6:7-6:9,
                             },
-                            Range {
-                                start: Position {
-                                    line: 6,
-                                    column: 5,
-                                },
-                                end: Position {
-                                    line: 6,
-                                    column: 10,
-                                },
-                            },
+                            6:5-6:10,
                         ),
                     ),
                     Ok(
@@ -2489,16 +1562,7 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 6,
-                                    column: 10,
-                                },
-                                end: Position {
-                                    line: 7,
-                                    column: 1,
-                                },
-                            },
+                            6:10-7:1,
                         ),
                     ),
                 ]"#]],
@@ -2521,103 +1585,31 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 5,
-                                    },
-                                },
+                                name_range: 1:2-1:5,
                                 value: "div",
                                 attributes: [
                                     Attribute {
                                         name: "class",
                                         value: "multiline",
-                                        range: Range {
-                                            start: Position {
-                                                line: 2,
-                                                column: 3,
-                                            },
-                                            end: Position {
-                                                line: 2,
-                                                column: 20,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 2,
-                                                column: 10,
-                                            },
-                                            end: Position {
-                                                line: 2,
-                                                column: 19,
-                                            },
-                                        },
+                                        range: 2:3-2:20,
+                                        value_range: 2:10-2:19,
                                     },
                                     Attribute {
                                         name: "id",
                                         value: "test",
-                                        range: Range {
-                                            start: Position {
-                                                line: 3,
-                                                column: 3,
-                                            },
-                                            end: Position {
-                                                line: 3,
-                                                column: 12,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 3,
-                                                column: 7,
-                                            },
-                                            end: Position {
-                                                line: 3,
-                                                column: 11,
-                                            },
-                                        },
+                                        range: 3:3-3:12,
+                                        value_range: 3:7-3:11,
                                     },
                                     Attribute {
                                         name: "data-value",
                                         value: "something",
-                                        range: Range {
-                                            start: Position {
-                                                line: 4,
-                                                column: 3,
-                                            },
-                                            end: Position {
-                                                line: 4,
-                                                column: 25,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 4,
-                                                column: 15,
-                                            },
-                                            end: Position {
-                                                line: 4,
-                                                column: 24,
-                                            },
-                                        },
+                                        range: 4:3-4:25,
+                                        value_range: 4:15-4:24,
                                     },
                                 ],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 26,
-                                },
-                            },
+                            1:1-4:26,
                         ),
                     ),
                     Ok(
@@ -2625,43 +1617,16 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 26,
-                                },
-                                end: Position {
-                                    line: 5,
-                                    column: 1,
-                                },
-                            },
+                            4:26-5:1,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "div",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 5,
-                                        column: 3,
-                                    },
-                                    end: Position {
-                                        line: 5,
-                                        column: 6,
-                                    },
-                                },
+                                name_range: 5:3-5:6,
                             },
-                            Range {
-                                start: Position {
-                                    line: 5,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 5,
-                                    column: 7,
-                                },
-                            },
+                            5:1-5:7,
                         ),
                     ),
                     Ok(
@@ -2669,16 +1634,7 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 5,
-                                    column: 7,
-                                },
-                                end: Position {
-                                    line: 6,
-                                    column: 1,
-                                },
-                            },
+                            5:7-6:1,
                         ),
                     ),
                 ]"#]],
@@ -2700,30 +1656,12 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 8,
-                                    },
-                                },
+                                name_range: 1:2-1:8,
                                 value: "script",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 9,
-                                },
-                            },
+                            1:1-1:9,
                         ),
                     ),
                     Ok(
@@ -2731,43 +1669,16 @@ mod tests {
                             Text {
                                 value: "\n  const html = \"<title>Nested</title>\";\n  document.write(html);\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 9,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 1,
-                                },
-                            },
+                            1:9-4:1,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "script",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 4,
-                                        column: 3,
-                                    },
-                                    end: Position {
-                                        line: 4,
-                                        column: 9,
-                                    },
-                                },
+                                name_range: 4:3-4:9,
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 10,
-                                },
-                            },
+                            4:1-4:10,
                         ),
                     ),
                     Ok(
@@ -2775,16 +1686,7 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 10,
-                                },
-                                end: Position {
-                                    line: 5,
-                                    column: 1,
-                                },
-                            },
+                            4:10-5:1,
                         ),
                     ),
                 ]"#]],
@@ -2801,30 +1703,12 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 11,
-                                    },
-                                },
+                                name_range: 1:2-1:11,
                                 value: "hop-x-raw",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 12,
-                                },
-                            },
+                            1:1-1:12,
                         ),
                     ),
                     Ok(
@@ -2832,43 +1716,16 @@ mod tests {
                             Text {
                                 value: "foo bar",
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 12,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 19,
-                                },
-                            },
+                            1:12-1:19,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "hop-x-raw",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 21,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 30,
-                                    },
-                                },
+                                name_range: 1:21-1:30,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 19,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 31,
-                                },
-                            },
+                            1:19-1:31,
                         ),
                     ),
                 ]"#]],
@@ -2889,30 +1746,12 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 11,
-                                    },
-                                },
+                                name_range: 1:2-1:11,
                                 value: "hop-x-raw",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 12,
-                                },
-                            },
+                            1:1-1:12,
                         ),
                     ),
                     Ok(
@@ -2920,43 +1759,16 @@ mod tests {
                             Text {
                                 value: "\n  <div>some html</div>\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 12,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 1,
-                                },
-                            },
+                            1:12-3:1,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "hop-x-raw",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 3,
-                                        column: 3,
-                                    },
-                                    end: Position {
-                                        line: 3,
-                                        column: 12,
-                                    },
-                                },
+                                name_range: 3:3-3:12,
                             },
-                            Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 13,
-                                },
-                            },
+                            3:1-3:13,
                         ),
                     ),
                     Ok(
@@ -2964,16 +1776,7 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 13,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 1,
-                                },
-                            },
+                            3:13-4:1,
                         ),
                     ),
                 ]"#]],
@@ -2990,114 +1793,42 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 3,
-                                    },
-                                },
+                                name_range: 1:2-1:3,
                                 value: "p",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 4,
-                                },
-                            },
+                            1:1-1:4,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "p",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 6,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 7,
-                                    },
-                                },
+                                name_range: 1:6-1:7,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 4,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 8,
-                                },
-                            },
+                            1:4-1:8,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 9,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 10,
-                                    },
-                                },
+                                name_range: 1:9-1:10,
                                 value: "p",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 8,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 11,
-                                },
-                            },
+                            1:8-1:11,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "p",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 13,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 14,
-                                    },
-                                },
+                                name_range: 1:13-1:14,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 11,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 15,
-                                },
-                            },
+                            1:11-1:15,
                         ),
                     ),
                 ]"#]],
@@ -3120,44 +1851,17 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 11,
-                                    },
-                                },
+                                name_range: 1:2-1:11,
                                 value: "main-comp",
                                 attributes: [],
                                 expression: Some(
                                     (
                                         "foo",
-                                        Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 13,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 16,
-                                            },
-                                        },
+                                        1:13-1:16,
                                     ),
                                 ),
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 18,
-                                },
-                            },
+                            1:1-1:18,
                         ),
                     ),
                     Ok(
@@ -3165,46 +1869,19 @@ mod tests {
                             Text {
                                 value: "\n\t",
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 18,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 2,
-                                },
-                            },
+                            1:18-2:2,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 2,
-                                        column: 3,
-                                    },
-                                    end: Position {
-                                        line: 2,
-                                        column: 9,
-                                    },
-                                },
+                                name_range: 2:3-2:9,
                                 value: "script",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 2,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 10,
-                                },
-                            },
+                            2:2-2:10,
                         ),
                     ),
                     Ok(
@@ -3212,43 +1889,16 @@ mod tests {
                             Text {
                                 value: "\n\t\tconst x = \"<div></div>\";\n\t",
                             },
-                            Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 10,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 2,
-                                },
-                            },
+                            2:10-4:2,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "script",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 4,
-                                        column: 4,
-                                    },
-                                    end: Position {
-                                        line: 4,
-                                        column: 10,
-                                    },
-                                },
+                                name_range: 4:4-4:10,
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 2,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 11,
-                                },
-                            },
+                            4:2-4:11,
                         ),
                     ),
                     Ok(
@@ -3256,43 +1906,16 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 11,
-                                },
-                                end: Position {
-                                    line: 5,
-                                    column: 1,
-                                },
-                            },
+                            4:11-5:1,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "main-comp",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 5,
-                                        column: 3,
-                                    },
-                                    end: Position {
-                                        line: 5,
-                                        column: 12,
-                                    },
-                                },
+                                name_range: 5:3-5:12,
                             },
-                            Range {
-                                start: Position {
-                                    line: 5,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 5,
-                                    column: 13,
-                                },
-                            },
+                            5:1-5:13,
                         ),
                     ),
                     Ok(
@@ -3300,16 +1923,7 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 5,
-                                    column: 13,
-                                },
-                                end: Position {
-                                    line: 6,
-                                    column: 1,
-                                },
-                            },
+                            5:13-6:1,
                         ),
                     ),
                 ]"#]],
@@ -3337,16 +1951,7 @@ mod tests {
                     Ok(
                         (
                             Doctype,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 16,
-                                },
-                            },
+                            1:1-1:16,
                         ),
                     ),
                     Ok(
@@ -3354,46 +1959,19 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 16,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 1,
-                                },
-                            },
+                            1:16-2:1,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 2,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 2,
-                                        column: 6,
-                                    },
-                                },
+                                name_range: 2:2-2:6,
                                 value: "html",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 7,
-                                },
-                            },
+                            2:1-2:7,
                         ),
                     ),
                     Ok(
@@ -3401,46 +1979,19 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 7,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 1,
-                                },
-                            },
+                            2:7-3:1,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 3,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 3,
-                                        column: 6,
-                                    },
-                                },
+                                name_range: 3:2-3:6,
                                 value: "head",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 7,
-                                },
-                            },
+                            3:1-3:7,
                         ),
                     ),
                     Ok(
@@ -3448,46 +1999,19 @@ mod tests {
                             Text {
                                 value: "\n  ",
                             },
-                            Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 7,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 3,
-                                },
-                            },
+                            3:7-4:3,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 4,
-                                        column: 4,
-                                    },
-                                    end: Position {
-                                        line: 4,
-                                        column: 9,
-                                    },
-                                },
+                                name_range: 4:4-4:9,
                                 value: "title",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 3,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 10,
-                                },
-                            },
+                            4:3-4:10,
                         ),
                     ),
                     Ok(
@@ -3495,43 +2019,16 @@ mod tests {
                             Text {
                                 value: "My Page",
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 10,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 17,
-                                },
-                            },
+                            4:10-4:17,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "title",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 4,
-                                        column: 19,
-                                    },
-                                    end: Position {
-                                        line: 4,
-                                        column: 24,
-                                    },
-                                },
+                                name_range: 4:19-4:24,
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 17,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 25,
-                                },
-                            },
+                            4:17-4:25,
                         ),
                     ),
                     Ok(
@@ -3539,43 +2036,16 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 25,
-                                },
-                                end: Position {
-                                    line: 5,
-                                    column: 1,
-                                },
-                            },
+                            4:25-5:1,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "head",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 5,
-                                        column: 3,
-                                    },
-                                    end: Position {
-                                        line: 5,
-                                        column: 7,
-                                    },
-                                },
+                                name_range: 5:3-5:7,
                             },
-                            Range {
-                                start: Position {
-                                    line: 5,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 5,
-                                    column: 8,
-                                },
-                            },
+                            5:1-5:8,
                         ),
                     ),
                     Ok(
@@ -3583,46 +2053,19 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 5,
-                                    column: 8,
-                                },
-                                end: Position {
-                                    line: 6,
-                                    column: 1,
-                                },
-                            },
+                            5:8-6:1,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 6,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 6,
-                                        column: 6,
-                                    },
-                                },
+                                name_range: 6:2-6:6,
                                 value: "body",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 6,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 6,
-                                    column: 7,
-                                },
-                            },
+                            6:1-6:7,
                         ),
                     ),
                     Ok(
@@ -3630,71 +2073,26 @@ mod tests {
                             Text {
                                 value: "\n  ",
                             },
-                            Range {
-                                start: Position {
-                                    line: 6,
-                                    column: 7,
-                                },
-                                end: Position {
-                                    line: 7,
-                                    column: 3,
-                                },
-                            },
+                            6:7-7:3,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 7,
-                                        column: 4,
-                                    },
-                                    end: Position {
-                                        line: 7,
-                                        column: 7,
-                                    },
-                                },
+                                name_range: 7:4-7:7,
                                 value: "div",
                                 attributes: [
                                     Attribute {
                                         name: "class",
                                         value: "container",
-                                        range: Range {
-                                            start: Position {
-                                                line: 7,
-                                                column: 8,
-                                            },
-                                            end: Position {
-                                                line: 7,
-                                                column: 25,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 7,
-                                                column: 15,
-                                            },
-                                            end: Position {
-                                                line: 7,
-                                                column: 24,
-                                            },
-                                        },
+                                        range: 7:8-7:25,
+                                        value_range: 7:15-7:24,
                                     },
                                 ],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 7,
-                                    column: 3,
-                                },
-                                end: Position {
-                                    line: 7,
-                                    column: 26,
-                                },
-                            },
+                            7:3-7:26,
                         ),
                     ),
                     Ok(
@@ -3702,43 +2100,16 @@ mod tests {
                             Text {
                                 value: "\n    Hello, world!\n  ",
                             },
-                            Range {
-                                start: Position {
-                                    line: 7,
-                                    column: 26,
-                                },
-                                end: Position {
-                                    line: 9,
-                                    column: 3,
-                                },
-                            },
+                            7:26-9:3,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "div",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 9,
-                                        column: 5,
-                                    },
-                                    end: Position {
-                                        line: 9,
-                                        column: 8,
-                                    },
-                                },
+                                name_range: 9:5-9:8,
                             },
-                            Range {
-                                start: Position {
-                                    line: 9,
-                                    column: 3,
-                                },
-                                end: Position {
-                                    line: 9,
-                                    column: 9,
-                                },
-                            },
+                            9:3-9:9,
                         ),
                     ),
                     Ok(
@@ -3746,43 +2117,16 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 9,
-                                    column: 9,
-                                },
-                                end: Position {
-                                    line: 10,
-                                    column: 1,
-                                },
-                            },
+                            9:9-10:1,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "body",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 10,
-                                        column: 3,
-                                    },
-                                    end: Position {
-                                        line: 10,
-                                        column: 7,
-                                    },
-                                },
+                                name_range: 10:3-10:7,
                             },
-                            Range {
-                                start: Position {
-                                    line: 10,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 10,
-                                    column: 8,
-                                },
-                            },
+                            10:1-10:8,
                         ),
                     ),
                     Ok(
@@ -3790,43 +2134,16 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 10,
-                                    column: 8,
-                                },
-                                end: Position {
-                                    line: 11,
-                                    column: 1,
-                                },
-                            },
+                            10:8-11:1,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "html",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 11,
-                                        column: 3,
-                                    },
-                                    end: Position {
-                                        line: 11,
-                                        column: 7,
-                                    },
-                                },
+                                name_range: 11:3-11:7,
                             },
-                            Range {
-                                start: Position {
-                                    line: 11,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 11,
-                                    column: 8,
-                                },
-                            },
+                            11:1-11:8,
                         ),
                     ),
                     Ok(
@@ -3834,16 +2151,7 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 11,
-                                    column: 8,
-                                },
-                                end: Position {
-                                    line: 12,
-                                    column: 1,
-                                },
-                            },
+                            11:8-12:1,
                         ),
                     ),
                 ]"#]],
@@ -3867,247 +2175,67 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 5,
-                                    },
-                                },
+                                name_range: 1:2-1:5,
                                 value: "svg",
                                 attributes: [
                                     Attribute {
                                         name: "xmlns",
                                         value: "http://www.w3.org/2000/svg",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 6,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 40,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 13,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 39,
-                                            },
-                                        },
+                                        range: 1:6-1:40,
+                                        value_range: 1:13-1:39,
                                     },
                                     Attribute {
                                         name: "width",
                                         value: "24",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 41,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 51,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 48,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 50,
-                                            },
-                                        },
+                                        range: 1:41-1:51,
+                                        value_range: 1:48-1:50,
                                     },
                                     Attribute {
                                         name: "height",
                                         value: "24",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 52,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 63,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 60,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 62,
-                                            },
-                                        },
+                                        range: 1:52-1:63,
+                                        value_range: 1:60-1:62,
                                     },
                                     Attribute {
                                         name: "viewBox",
                                         value: "0 0 24 24",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 64,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 83,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 73,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 82,
-                                            },
-                                        },
+                                        range: 1:64-1:83,
+                                        value_range: 1:73-1:82,
                                     },
                                     Attribute {
                                         name: "fill",
                                         value: "none",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 84,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 95,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 90,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 94,
-                                            },
-                                        },
+                                        range: 1:84-1:95,
+                                        value_range: 1:90-1:94,
                                     },
                                     Attribute {
                                         name: "stroke",
                                         value: "currentColor",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 96,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 117,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 104,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 116,
-                                            },
-                                        },
+                                        range: 1:96-1:117,
+                                        value_range: 1:104-1:116,
                                     },
                                     Attribute {
                                         name: "stroke-width",
                                         value: "2",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 118,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 134,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 132,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 133,
-                                            },
-                                        },
+                                        range: 1:118-1:134,
+                                        value_range: 1:132-1:133,
                                     },
                                     Attribute {
                                         name: "stroke-linecap",
                                         value: "round",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 135,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 157,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 151,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 156,
-                                            },
-                                        },
+                                        range: 1:135-1:157,
+                                        value_range: 1:151-1:156,
                                     },
                                     Attribute {
                                         name: "stroke-linejoin",
                                         value: "round",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 158,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 181,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 175,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 180,
-                                            },
-                                        },
+                                        range: 1:158-1:181,
+                                        value_range: 1:175-1:180,
                                     },
                                 ],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 182,
-                                },
-                            },
+                            1:1-1:182,
                         ),
                     ),
                     Ok(
@@ -4115,170 +2243,53 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 182,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 1,
-                                },
-                            },
+                            1:182-2:1,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 2,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 2,
-                                        column: 6,
-                                    },
-                                },
+                                name_range: 2:2-2:6,
                                 value: "line",
                                 attributes: [
                                     Attribute {
                                         name: "x1",
                                         value: "16.5",
-                                        range: Range {
-                                            start: Position {
-                                                line: 2,
-                                                column: 7,
-                                            },
-                                            end: Position {
-                                                line: 2,
-                                                column: 16,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 2,
-                                                column: 11,
-                                            },
-                                            end: Position {
-                                                line: 2,
-                                                column: 15,
-                                            },
-                                        },
+                                        range: 2:7-2:16,
+                                        value_range: 2:11-2:15,
                                     },
                                     Attribute {
                                         name: "y1",
                                         value: "9.4",
-                                        range: Range {
-                                            start: Position {
-                                                line: 2,
-                                                column: 17,
-                                            },
-                                            end: Position {
-                                                line: 2,
-                                                column: 25,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 2,
-                                                column: 21,
-                                            },
-                                            end: Position {
-                                                line: 2,
-                                                column: 24,
-                                            },
-                                        },
+                                        range: 2:17-2:25,
+                                        value_range: 2:21-2:24,
                                     },
                                     Attribute {
                                         name: "x2",
                                         value: "7.5",
-                                        range: Range {
-                                            start: Position {
-                                                line: 2,
-                                                column: 26,
-                                            },
-                                            end: Position {
-                                                line: 2,
-                                                column: 34,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 2,
-                                                column: 30,
-                                            },
-                                            end: Position {
-                                                line: 2,
-                                                column: 33,
-                                            },
-                                        },
+                                        range: 2:26-2:34,
+                                        value_range: 2:30-2:33,
                                     },
                                     Attribute {
                                         name: "y2",
                                         value: "4.21",
-                                        range: Range {
-                                            start: Position {
-                                                line: 2,
-                                                column: 35,
-                                            },
-                                            end: Position {
-                                                line: 2,
-                                                column: 44,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 2,
-                                                column: 39,
-                                            },
-                                            end: Position {
-                                                line: 2,
-                                                column: 43,
-                                            },
-                                        },
+                                        range: 2:35-2:44,
+                                        value_range: 2:39-2:43,
                                     },
                                 ],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 45,
-                                },
-                            },
+                            2:1-2:45,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "line",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 2,
-                                        column: 47,
-                                    },
-                                    end: Position {
-                                        line: 2,
-                                        column: 51,
-                                    },
-                                },
+                                name_range: 2:47-2:51,
                             },
-                            Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 45,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 52,
-                                },
-                            },
+                            2:45-2:52,
                         ),
                     ),
                     Ok(
@@ -4286,98 +2297,35 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 52,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 1,
-                                },
-                            },
+                            2:52-3:1,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 3,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 3,
-                                        column: 6,
-                                    },
-                                },
+                                name_range: 3:2-3:6,
                                 value: "path",
                                 attributes: [
                                     Attribute {
                                         name: "d",
                                         value: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z",
-                                        range: Range {
-                                            start: Position {
-                                                line: 3,
-                                                column: 7,
-                                            },
-                                            end: Position {
-                                                line: 3,
-                                                column: 132,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 3,
-                                                column: 10,
-                                            },
-                                            end: Position {
-                                                line: 3,
-                                                column: 131,
-                                            },
-                                        },
+                                        range: 3:7-3:132,
+                                        value_range: 3:10-3:131,
                                     },
                                 ],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 133,
-                                },
-                            },
+                            3:1-3:133,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "path",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 3,
-                                        column: 135,
-                                    },
-                                    end: Position {
-                                        line: 3,
-                                        column: 139,
-                                    },
-                                },
+                                name_range: 3:135-3:139,
                             },
-                            Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 133,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 140,
-                                },
-                            },
+                            3:133-3:140,
                         ),
                     ),
                     Ok(
@@ -4385,98 +2333,35 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 140,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 1,
-                                },
-                            },
+                            3:140-4:1,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 4,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 4,
-                                        column: 10,
-                                    },
-                                },
+                                name_range: 4:2-4:10,
                                 value: "polyline",
                                 attributes: [
                                     Attribute {
                                         name: "points",
                                         value: "3.27 6.96 12 12.01 20.73 6.96",
-                                        range: Range {
-                                            start: Position {
-                                                line: 4,
-                                                column: 11,
-                                            },
-                                            end: Position {
-                                                line: 4,
-                                                column: 49,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 4,
-                                                column: 19,
-                                            },
-                                            end: Position {
-                                                line: 4,
-                                                column: 48,
-                                            },
-                                        },
+                                        range: 4:11-4:49,
+                                        value_range: 4:19-4:48,
                                     },
                                 ],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 50,
-                                },
-                            },
+                            4:1-4:50,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "polyline",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 4,
-                                        column: 52,
-                                    },
-                                    end: Position {
-                                        line: 4,
-                                        column: 60,
-                                    },
-                                },
+                                name_range: 4:52-4:60,
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 50,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 61,
-                                },
-                            },
+                            4:50-4:61,
                         ),
                     ),
                     Ok(
@@ -4484,170 +2369,53 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 61,
-                                },
-                                end: Position {
-                                    line: 5,
-                                    column: 1,
-                                },
-                            },
+                            4:61-5:1,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 5,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 5,
-                                        column: 6,
-                                    },
-                                },
+                                name_range: 5:2-5:6,
                                 value: "line",
                                 attributes: [
                                     Attribute {
                                         name: "x1",
                                         value: "12",
-                                        range: Range {
-                                            start: Position {
-                                                line: 5,
-                                                column: 7,
-                                            },
-                                            end: Position {
-                                                line: 5,
-                                                column: 14,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 5,
-                                                column: 11,
-                                            },
-                                            end: Position {
-                                                line: 5,
-                                                column: 13,
-                                            },
-                                        },
+                                        range: 5:7-5:14,
+                                        value_range: 5:11-5:13,
                                     },
                                     Attribute {
                                         name: "y1",
                                         value: "22.08",
-                                        range: Range {
-                                            start: Position {
-                                                line: 5,
-                                                column: 15,
-                                            },
-                                            end: Position {
-                                                line: 5,
-                                                column: 25,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 5,
-                                                column: 19,
-                                            },
-                                            end: Position {
-                                                line: 5,
-                                                column: 24,
-                                            },
-                                        },
+                                        range: 5:15-5:25,
+                                        value_range: 5:19-5:24,
                                     },
                                     Attribute {
                                         name: "x2",
                                         value: "12",
-                                        range: Range {
-                                            start: Position {
-                                                line: 5,
-                                                column: 26,
-                                            },
-                                            end: Position {
-                                                line: 5,
-                                                column: 33,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 5,
-                                                column: 30,
-                                            },
-                                            end: Position {
-                                                line: 5,
-                                                column: 32,
-                                            },
-                                        },
+                                        range: 5:26-5:33,
+                                        value_range: 5:30-5:32,
                                     },
                                     Attribute {
                                         name: "y2",
                                         value: "12",
-                                        range: Range {
-                                            start: Position {
-                                                line: 5,
-                                                column: 34,
-                                            },
-                                            end: Position {
-                                                line: 5,
-                                                column: 41,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 5,
-                                                column: 38,
-                                            },
-                                            end: Position {
-                                                line: 5,
-                                                column: 40,
-                                            },
-                                        },
+                                        range: 5:34-5:41,
+                                        value_range: 5:38-5:40,
                                     },
                                 ],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 5,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 5,
-                                    column: 42,
-                                },
-                            },
+                            5:1-5:42,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "line",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 5,
-                                        column: 44,
-                                    },
-                                    end: Position {
-                                        line: 5,
-                                        column: 48,
-                                    },
-                                },
+                                name_range: 5:44-5:48,
                             },
-                            Range {
-                                start: Position {
-                                    line: 5,
-                                    column: 42,
-                                },
-                                end: Position {
-                                    line: 5,
-                                    column: 49,
-                                },
-                            },
+                            5:42-5:49,
                         ),
                     ),
                     Ok(
@@ -4655,43 +2423,16 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 5,
-                                    column: 49,
-                                },
-                                end: Position {
-                                    line: 6,
-                                    column: 1,
-                                },
-                            },
+                            5:49-6:1,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "svg",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 6,
-                                        column: 3,
-                                    },
-                                    end: Position {
-                                        line: 6,
-                                        column: 6,
-                                    },
-                                },
+                                name_range: 6:3-6:6,
                             },
-                            Range {
-                                start: Position {
-                                    line: 6,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 6,
-                                    column: 7,
-                                },
-                            },
+                            6:1-6:7,
                         ),
                     ),
                     Ok(
@@ -4699,16 +2440,7 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 6,
-                                    column: 7,
-                                },
-                                end: Position {
-                                    line: 7,
-                                    column: 1,
-                                },
-                            },
+                            6:7-7:1,
                         ),
                     ),
                 ]"#]],
@@ -4733,175 +2465,49 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 5,
-                                    },
-                                },
+                                name_range: 1:2-1:5,
                                 value: "svg",
                                 attributes: [
                                     Attribute {
                                         name: "xmlns",
                                         value: "http://www.w3.org/2000/svg",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 6,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 40,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 13,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 39,
-                                            },
-                                        },
+                                        range: 1:6-1:40,
+                                        value_range: 1:13-1:39,
                                     },
                                     Attribute {
                                         name: "width",
                                         value: "128",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 41,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 52,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 48,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 51,
-                                            },
-                                        },
+                                        range: 1:41-1:52,
+                                        value_range: 1:48-1:51,
                                     },
                                     Attribute {
                                         name: "height",
                                         value: "128",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 53,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 65,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 61,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 64,
-                                            },
-                                        },
+                                        range: 1:53-1:65,
+                                        value_range: 1:61-1:64,
                                     },
                                     Attribute {
                                         name: "version",
                                         value: "1.1",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 66,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 79,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 75,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 78,
-                                            },
-                                        },
+                                        range: 1:66-1:79,
+                                        value_range: 1:75-1:78,
                                     },
                                     Attribute {
                                         name: "viewBox",
                                         value: "0 0 128 128",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 80,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 101,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 89,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 100,
-                                            },
-                                        },
+                                        range: 1:80-1:101,
+                                        value_range: 1:89-1:100,
                                     },
                                     Attribute {
                                         name: "class",
                                         value: "size-12",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 102,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 117,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 109,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 116,
-                                            },
-                                        },
+                                        range: 1:102-1:117,
+                                        value_range: 1:109-1:116,
                                     },
                                 ],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 118,
-                                },
-                            },
+                            1:1-1:118,
                         ),
                     ),
                     Ok(
@@ -4909,71 +2515,26 @@ mod tests {
                             Text {
                                 value: "\n\t",
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 118,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 2,
-                                },
-                            },
+                            1:118-2:2,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 2,
-                                        column: 3,
-                                    },
-                                    end: Position {
-                                        line: 2,
-                                        column: 4,
-                                    },
-                                },
+                                name_range: 2:3-2:4,
                                 value: "g",
                                 attributes: [
                                     Attribute {
                                         name: "style",
                                         value: "fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;",
-                                        range: Range {
-                                            start: Position {
-                                                line: 2,
-                                                column: 5,
-                                            },
-                                            end: Position {
-                                                line: 2,
-                                                column: 112,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 2,
-                                                column: 12,
-                                            },
-                                            end: Position {
-                                                line: 2,
-                                                column: 111,
-                                            },
-                                        },
+                                        range: 2:5-2:112,
+                                        value_range: 2:12-2:111,
                                     },
                                 ],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 2,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 113,
-                                },
-                            },
+                            2:2-2:113,
                         ),
                     ),
                     Ok(
@@ -4981,98 +2542,35 @@ mod tests {
                             Text {
                                 value: "\n\t\t",
                             },
-                            Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 113,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 3,
-                                },
-                            },
+                            2:113-3:3,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 3,
-                                        column: 4,
-                                    },
-                                    end: Position {
-                                        line: 3,
-                                        column: 8,
-                                    },
-                                },
+                                name_range: 3:4-3:8,
                                 value: "path",
                                 attributes: [
                                     Attribute {
                                         name: "d",
                                         value: "M20.04 38 64 22l43.96 16L64 54Z",
-                                        range: Range {
-                                            start: Position {
-                                                line: 3,
-                                                column: 9,
-                                            },
-                                            end: Position {
-                                                line: 3,
-                                                column: 44,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 3,
-                                                column: 12,
-                                            },
-                                            end: Position {
-                                                line: 3,
-                                                column: 43,
-                                            },
-                                        },
+                                        range: 3:9-3:44,
+                                        value_range: 3:12-3:43,
                                     },
                                 ],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 3,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 45,
-                                },
-                            },
+                            3:3-3:45,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "path",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 3,
-                                        column: 47,
-                                    },
-                                    end: Position {
-                                        line: 3,
-                                        column: 51,
-                                    },
-                                },
+                                name_range: 3:47-3:51,
                             },
-                            Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 45,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 52,
-                                },
-                            },
+                            3:45-3:52,
                         ),
                     ),
                     Ok(
@@ -5080,98 +2578,35 @@ mod tests {
                             Text {
                                 value: "\n\t\t",
                             },
-                            Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 52,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 3,
-                                },
-                            },
+                            3:52-4:3,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 4,
-                                        column: 4,
-                                    },
-                                    end: Position {
-                                        line: 4,
-                                        column: 8,
-                                    },
-                                },
+                                name_range: 4:4-4:8,
                                 value: "path",
                                 attributes: [
                                     Attribute {
                                         name: "d",
                                         value: "M17.54 47.09v48l35.099 12.775",
-                                        range: Range {
-                                            start: Position {
-                                                line: 4,
-                                                column: 9,
-                                            },
-                                            end: Position {
-                                                line: 4,
-                                                column: 42,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 4,
-                                                column: 12,
-                                            },
-                                            end: Position {
-                                                line: 4,
-                                                column: 41,
-                                            },
-                                        },
+                                        range: 4:9-4:42,
+                                        value_range: 4:12-4:41,
                                     },
                                 ],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 3,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 43,
-                                },
-                            },
+                            4:3-4:43,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "path",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 4,
-                                        column: 45,
-                                    },
-                                    end: Position {
-                                        line: 4,
-                                        column: 49,
-                                    },
-                                },
+                                name_range: 4:45-4:49,
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 43,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 50,
-                                },
-                            },
+                            4:43-4:50,
                         ),
                     ),
                     Ok(
@@ -5179,98 +2614,35 @@ mod tests {
                             Text {
                                 value: "\n\t\t",
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 50,
-                                },
-                                end: Position {
-                                    line: 5,
-                                    column: 3,
-                                },
-                            },
+                            4:50-5:3,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 5,
-                                        column: 4,
-                                    },
-                                    end: Position {
-                                        line: 5,
-                                        column: 8,
-                                    },
-                                },
+                                name_range: 5:4-5:8,
                                 value: "path",
                                 attributes: [
                                     Attribute {
                                         name: "d",
                                         value: "M64 112V64l46.46-16.91v48L77.988 106.91",
-                                        range: Range {
-                                            start: Position {
-                                                line: 5,
-                                                column: 9,
-                                            },
-                                            end: Position {
-                                                line: 5,
-                                                column: 52,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 5,
-                                                column: 12,
-                                            },
-                                            end: Position {
-                                                line: 5,
-                                                column: 51,
-                                            },
-                                        },
+                                        range: 5:9-5:52,
+                                        value_range: 5:12-5:51,
                                     },
                                 ],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 5,
-                                    column: 3,
-                                },
-                                end: Position {
-                                    line: 5,
-                                    column: 53,
-                                },
-                            },
+                            5:3-5:53,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "path",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 5,
-                                        column: 55,
-                                    },
-                                    end: Position {
-                                        line: 5,
-                                        column: 59,
-                                    },
-                                },
+                                name_range: 5:55-5:59,
                             },
-                            Range {
-                                start: Position {
-                                    line: 5,
-                                    column: 53,
-                                },
-                                end: Position {
-                                    line: 5,
-                                    column: 60,
-                                },
-                            },
+                            5:53-5:60,
                         ),
                     ),
                     Ok(
@@ -5278,43 +2650,16 @@ mod tests {
                             Text {
                                 value: "\n\t",
                             },
-                            Range {
-                                start: Position {
-                                    line: 5,
-                                    column: 60,
-                                },
-                                end: Position {
-                                    line: 6,
-                                    column: 2,
-                                },
-                            },
+                            5:60-6:2,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "g",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 6,
-                                        column: 4,
-                                    },
-                                    end: Position {
-                                        line: 6,
-                                        column: 5,
-                                    },
-                                },
+                                name_range: 6:4-6:5,
                             },
-                            Range {
-                                start: Position {
-                                    line: 6,
-                                    column: 2,
-                                },
-                                end: Position {
-                                    line: 6,
-                                    column: 6,
-                                },
-                            },
+                            6:2-6:6,
                         ),
                     ),
                     Ok(
@@ -5322,43 +2667,16 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 6,
-                                    column: 6,
-                                },
-                                end: Position {
-                                    line: 7,
-                                    column: 1,
-                                },
-                            },
+                            6:6-7:1,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "svg",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 7,
-                                        column: 3,
-                                    },
-                                    end: Position {
-                                        line: 7,
-                                        column: 6,
-                                    },
-                                },
+                                name_range: 7:3-7:6,
                             },
-                            Range {
-                                start: Position {
-                                    line: 7,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 7,
-                                    column: 7,
-                                },
-                            },
+                            7:1-7:7,
                         ),
                     ),
                     Ok(
@@ -5366,16 +2684,7 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 7,
-                                    column: 7,
-                                },
-                                end: Position {
-                                    line: 8,
-                                    column: 1,
-                                },
-                            },
+                            7:7-8:1,
                         ),
                     ),
                 ]"#]],
@@ -5399,30 +2708,12 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 11,
-                                    },
-                                },
+                                name_range: 1:2-1:11,
                                 value: "main-comp",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 12,
-                                },
-                            },
+                            1:1-1:12,
                         ),
                     ),
                     Ok(
@@ -5430,71 +2721,26 @@ mod tests {
                             Text {
                                 value: "\n\t",
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 12,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 2,
-                                },
-                            },
+                            1:12-2:2,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 2,
-                                        column: 3,
-                                    },
-                                    end: Position {
-                                        line: 2,
-                                        column: 7,
-                                    },
-                                },
+                                name_range: 2:3-2:7,
                                 value: "form",
                                 attributes: [
                                     Attribute {
                                         name: "id",
                                         value: "form",
-                                        range: Range {
-                                            start: Position {
-                                                line: 2,
-                                                column: 8,
-                                            },
-                                            end: Position {
-                                                line: 2,
-                                                column: 17,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 2,
-                                                column: 12,
-                                            },
-                                            end: Position {
-                                                line: 2,
-                                                column: 16,
-                                            },
-                                        },
+                                        range: 2:8-2:17,
+                                        value_range: 2:12-2:16,
                                     },
                                 ],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 2,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 18,
-                                },
-                            },
+                            2:2-2:18,
                         ),
                     ),
                     Ok(
@@ -5502,95 +2748,32 @@ mod tests {
                             Text {
                                 value: "\n\t\t",
                             },
-                            Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 18,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 3,
-                                },
-                            },
+                            2:18-3:3,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 3,
-                                        column: 4,
-                                    },
-                                    end: Position {
-                                        line: 3,
-                                        column: 9,
-                                    },
-                                },
+                                name_range: 3:4-3:9,
                                 value: "input",
                                 attributes: [
                                     Attribute {
                                         name: "type",
                                         value: "text",
-                                        range: Range {
-                                            start: Position {
-                                                line: 3,
-                                                column: 10,
-                                            },
-                                            end: Position {
-                                                line: 3,
-                                                column: 21,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 3,
-                                                column: 16,
-                                            },
-                                            end: Position {
-                                                line: 3,
-                                                column: 20,
-                                            },
-                                        },
+                                        range: 3:10-3:21,
+                                        value_range: 3:16-3:20,
                                     },
                                     Attribute {
                                         name: "required",
                                         value: "",
-                                        range: Range {
-                                            start: Position {
-                                                line: 3,
-                                                column: 22,
-                                            },
-                                            end: Position {
-                                                line: 3,
-                                                column: 30,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 1,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 1,
-                                            },
-                                        },
+                                        range: 3:22-3:30,
+                                        value_range: 1:1-1:1,
                                     },
                                 ],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 3,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 31,
-                                },
-                            },
+                            3:3-3:31,
                         ),
                     ),
                     Ok(
@@ -5598,71 +2781,26 @@ mod tests {
                             Text {
                                 value: "\n\t\t",
                             },
-                            Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 31,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 3,
-                                },
-                            },
+                            3:31-4:3,
                         ),
                     ),
                     Ok(
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 4,
-                                        column: 4,
-                                    },
-                                    end: Position {
-                                        line: 4,
-                                        column: 10,
-                                    },
-                                },
+                                name_range: 4:4-4:10,
                                 value: "button",
                                 attributes: [
                                     Attribute {
                                         name: "type",
                                         value: "submit",
-                                        range: Range {
-                                            start: Position {
-                                                line: 4,
-                                                column: 11,
-                                            },
-                                            end: Position {
-                                                line: 4,
-                                                column: 24,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 4,
-                                                column: 17,
-                                            },
-                                            end: Position {
-                                                line: 4,
-                                                column: 23,
-                                            },
-                                        },
+                                        range: 4:11-4:24,
+                                        value_range: 4:17-4:23,
                                     },
                                 ],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 3,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 25,
-                                },
-                            },
+                            4:3-4:25,
                         ),
                     ),
                     Ok(
@@ -5670,43 +2808,16 @@ mod tests {
                             Text {
                                 value: "Send",
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 25,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 29,
-                                },
-                            },
+                            4:25-4:29,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "button",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 4,
-                                        column: 31,
-                                    },
-                                    end: Position {
-                                        line: 4,
-                                        column: 37,
-                                    },
-                                },
+                                name_range: 4:31-4:37,
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 29,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 38,
-                                },
-                            },
+                            4:29-4:38,
                         ),
                     ),
                     Ok(
@@ -5714,43 +2825,16 @@ mod tests {
                             Text {
                                 value: "\n\t",
                             },
-                            Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 38,
-                                },
-                                end: Position {
-                                    line: 5,
-                                    column: 2,
-                                },
-                            },
+                            4:38-5:2,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "form",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 5,
-                                        column: 4,
-                                    },
-                                    end: Position {
-                                        line: 5,
-                                        column: 8,
-                                    },
-                                },
+                                name_range: 5:4-5:8,
                             },
-                            Range {
-                                start: Position {
-                                    line: 5,
-                                    column: 2,
-                                },
-                                end: Position {
-                                    line: 5,
-                                    column: 9,
-                                },
-                            },
+                            5:2-5:9,
                         ),
                     ),
                     Ok(
@@ -5758,43 +2842,16 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 5,
-                                    column: 9,
-                                },
-                                end: Position {
-                                    line: 6,
-                                    column: 1,
-                                },
-                            },
+                            5:9-6:1,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "main-comp",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 6,
-                                        column: 3,
-                                    },
-                                    end: Position {
-                                        line: 6,
-                                        column: 12,
-                                    },
-                                },
+                                name_range: 6:3-6:12,
                             },
-                            Range {
-                                start: Position {
-                                    line: 6,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 6,
-                                    column: 13,
-                                },
-                            },
+                            6:1-6:13,
                         ),
                     ),
                     Ok(
@@ -5802,16 +2859,7 @@ mod tests {
                             Text {
                                 value: "\n",
                             },
-                            Range {
-                                start: Position {
-                                    line: 6,
-                                    column: 13,
-                                },
-                                end: Position {
-                                    line: 7,
-                                    column: 1,
-                                },
-                            },
+                            6:13-7:1,
                         ),
                     ),
                 ]"#]],
@@ -5828,44 +2876,17 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 4,
-                                    },
-                                },
+                                name_range: 1:2-1:4,
                                 value: "if",
                                 attributes: [],
                                 expression: Some(
                                     (
                                         "foo",
-                                        Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 6,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 9,
-                                            },
-                                        },
+                                        1:6-1:9,
                                     ),
                                 ),
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 11,
-                                },
-                            },
+                            1:1-1:11,
                         ),
                     ),
                 ]"#]],
@@ -5882,69 +2903,24 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 5,
-                                    },
-                                },
+                                name_range: 1:2-1:5,
                                 value: "div",
                                 attributes: [
                                     Attribute {
                                         name: "class",
                                         value: "test",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 6,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 18,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 13,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 17,
-                                            },
-                                        },
+                                        range: 1:6-1:18,
+                                        value_range: 1:13-1:17,
                                     },
                                 ],
                                 expression: Some(
                                     (
                                         "bar",
-                                        Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 20,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 23,
-                                            },
-                                        },
+                                        1:20-1:23,
                                     ),
                                 ),
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 25,
-                                },
-                            },
+                            1:1-1:25,
                         ),
                     ),
                 ]"#]],
@@ -5961,44 +2937,17 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 4,
-                                    },
-                                },
+                                name_range: 1:2-1:4,
                                 value: "if",
                                 attributes: [],
                                 expression: Some(
                                     (
                                         "user.name == 'John'",
-                                        Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 6,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 25,
-                                            },
-                                        },
+                                        1:6-1:25,
                                     ),
                                 ),
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 27,
-                                },
-                            },
+                            1:1-1:27,
                         ),
                     ),
                 ]"#]],
@@ -6015,44 +2964,17 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 11,
-                                    },
-                                },
+                                name_range: 1:2-1:11,
                                 value: "component",
                                 attributes: [],
                                 expression: Some(
                                     (
                                         "obj.prop.subprop",
-                                        Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 13,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 29,
-                                            },
-                                        },
+                                        1:13-1:29,
                                     ),
                                 ),
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 31,
-                                },
-                            },
+                            1:1-1:31,
                         ),
                     ),
                 ]"#]],
@@ -6069,69 +2991,24 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 8,
-                                    },
-                                },
+                                name_range: 1:2-1:8,
                                 value: "button",
                                 attributes: [
                                     Attribute {
                                         name: "disabled",
                                         value: "",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 9,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 17,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 1,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 1,
-                                            },
-                                        },
+                                        range: 1:9-1:17,
+                                        value_range: 1:1-1:1,
                                     },
                                 ],
                                 expression: Some(
                                     (
                                         "enabled == 'yes'",
-                                        Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 19,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 35,
-                                            },
-                                        },
+                                        1:19-1:35,
                                     ),
                                 ),
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 37,
-                                },
-                            },
+                            1:1-1:37,
                         ),
                     ),
                 ]"#]],
@@ -6148,44 +3025,17 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 7,
-                                    },
-                                },
+                                name_range: 1:2-1:7,
                                 value: "input",
                                 attributes: [],
                                 expression: Some(
                                     (
                                         "variable_name_123",
-                                        Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 9,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 26,
-                                            },
-                                        },
+                                        1:9-1:26,
                                     ),
                                 ),
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 28,
-                                },
-                            },
+                            1:1-1:28,
                         ),
                     ),
                 ]"#]],
@@ -6202,69 +3052,24 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 5,
-                                    },
-                                },
+                                name_range: 1:2-1:5,
                                 value: "div",
                                 attributes: [
                                     Attribute {
                                         name: "class",
                                         value: "test",
-                                        range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 6,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 18,
-                                            },
-                                        },
-                                        value_range: Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 13,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 17,
-                                            },
-                                        },
+                                        range: 1:6-1:18,
+                                        value_range: 1:13-1:17,
                                     },
                                 ],
                                 expression: Some(
                                     (
                                         "  user.name  ",
-                                        Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 20,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 33,
-                                            },
-                                        },
+                                        1:20-1:33,
                                     ),
                                 ),
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 35,
-                                },
-                            },
+                            1:1-1:35,
                         ),
                     ),
                 ]"#]],
@@ -6281,44 +3086,17 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 6,
-                                    },
-                                },
+                                name_range: 1:2-1:6,
                                 value: "span",
                                 attributes: [],
                                 expression: Some(
                                     (
                                         "'hello world'",
-                                        Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 8,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 21,
-                                            },
-                                        },
+                                        1:8-1:21,
                                     ),
                                 ),
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 23,
-                                },
-                            },
+                            1:1-1:23,
                         ),
                     ),
                 ]"#]],
@@ -6335,44 +3113,17 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 6,
-                                    },
-                                },
+                                name_range: 1:2-1:6,
                                 value: "form",
                                 attributes: [],
                                 expression: Some(
                                     (
                                         "(user.role == 'admin')",
-                                        Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 8,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 30,
-                                            },
-                                        },
+                                        1:8-1:30,
                                     ),
                                 ),
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 32,
-                                },
-                            },
+                            1:1-1:32,
                         ),
                     ),
                 ]"#]],
@@ -6389,44 +3140,17 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 9,
-                                    },
-                                },
+                                name_range: 1:2-1:9,
                                 value: "section",
                                 attributes: [],
                                 expression: Some(
                                     (
                                         "a == b == c",
-                                        Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 11,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 22,
-                                            },
-                                        },
+                                        1:11-1:22,
                                     ),
                                 ),
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 24,
-                                },
-                            },
+                            1:1-1:24,
                         ),
                     ),
                 ]"#]],
@@ -6443,44 +3167,17 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 5,
-                                    },
-                                },
+                                name_range: 1:2-1:5,
                                 value: "for",
                                 attributes: [],
                                 expression: Some(
                                     (
                                         "user in users",
-                                        Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 7,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 20,
-                                            },
-                                        },
+                                        1:7-1:20,
                                     ),
                                 ),
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 22,
-                                },
-                            },
+                            1:1-1:22,
                         ),
                     ),
                 ]"#]],
@@ -6497,44 +3194,17 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 5,
-                                    },
-                                },
+                                name_range: 1:2-1:5,
                                 value: "for",
                                 attributes: [],
                                 expression: Some(
                                     (
                                         "item in user.items",
-                                        Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 7,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 25,
-                                            },
-                                        },
+                                        1:7-1:25,
                                     ),
                                 ),
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 27,
-                                },
-                            },
+                            1:1-1:27,
                         ),
                     ),
                 ]"#]],
@@ -6551,44 +3221,17 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 5,
-                                    },
-                                },
+                                name_range: 1:2-1:5,
                                 value: "div",
                                 attributes: [],
                                 expression: Some(
                                     (
                                         "foo in bars",
-                                        Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 7,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 18,
-                                            },
-                                        },
+                                        1:7-1:18,
                                     ),
                                 ),
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 20,
-                                },
-                            },
+                            1:1-1:20,
                         ),
                     ),
                 ]"#]],
@@ -6605,30 +3248,12 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 4,
-                                    },
-                                },
+                                name_range: 1:2-1:4,
                                 value: "h1",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 5,
-                                },
-                            },
+                            1:1-1:5,
                         ),
                     ),
                     Ok(
@@ -6636,43 +3261,16 @@ mod tests {
                             Text {
                                 value: "Hello ",
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 5,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 11,
-                                },
-                            },
+                            1:5-1:11,
                         ),
                     ),
                     Ok(
                         (
                             Expression {
                                 value: "name",
-                                range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 12,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 16,
-                                    },
-                                },
+                                range: 1:12-1:16,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 11,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 17,
-                                },
-                            },
+                            1:11-1:17,
                         ),
                     ),
                     Ok(
@@ -6680,43 +3278,16 @@ mod tests {
                             Text {
                                 value: "!",
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 17,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 18,
-                                },
-                            },
+                            1:17-1:18,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "h1",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 20,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 22,
-                                    },
-                                },
+                                name_range: 1:20-1:22,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 18,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 23,
-                                },
-                            },
+                            1:18-1:23,
                         ),
                     ),
                 ]"#]],
@@ -6733,30 +3304,12 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 3,
-                                    },
-                                },
+                                name_range: 1:2-1:3,
                                 value: "p",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 4,
-                                },
-                            },
+                            1:1-1:4,
                         ),
                     ),
                     Ok(
@@ -6764,43 +3317,16 @@ mod tests {
                             Text {
                                 value: "User ",
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 4,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 9,
-                                },
-                            },
+                            1:4-1:9,
                         ),
                     ),
                     Ok(
                         (
                             Expression {
                                 value: "user.name",
-                                range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 10,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 19,
-                                    },
-                                },
+                                range: 1:10-1:19,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 9,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 20,
-                                },
-                            },
+                            1:9-1:20,
                         ),
                     ),
                     Ok(
@@ -6808,43 +3334,16 @@ mod tests {
                             Text {
                                 value: " has ",
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 20,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 25,
-                                },
-                            },
+                            1:20-1:25,
                         ),
                     ),
                     Ok(
                         (
                             Expression {
                                 value: "user.count",
-                                range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 26,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 36,
-                                    },
-                                },
+                                range: 1:26-1:36,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 25,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 37,
-                                },
-                            },
+                            1:25-1:37,
                         ),
                     ),
                     Ok(
@@ -6852,43 +3351,16 @@ mod tests {
                             Text {
                                 value: " items",
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 37,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 43,
-                                },
-                            },
+                            1:37-1:43,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "p",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 45,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 46,
-                                    },
-                                },
+                                name_range: 1:45-1:46,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 43,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 47,
-                                },
-                            },
+                            1:43-1:47,
                         ),
                     ),
                 ]"#]],
@@ -6905,57 +3377,21 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 6,
-                                    },
-                                },
+                                name_range: 1:2-1:6,
                                 value: "span",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 7,
-                                },
-                            },
+                            1:1-1:7,
                         ),
                     ),
                     Ok(
                         (
                             Expression {
                                 value: "greeting",
-                                range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 8,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 16,
-                                    },
-                                },
+                                range: 1:8-1:16,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 7,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 17,
-                                },
-                            },
+                            1:7-1:17,
                         ),
                     ),
                     Ok(
@@ -6963,43 +3399,16 @@ mod tests {
                             Text {
                                 value: " world!",
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 17,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 24,
-                                },
-                            },
+                            1:17-1:24,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "span",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 26,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 30,
-                                    },
-                                },
+                                name_range: 1:26-1:30,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 24,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 31,
-                                },
-                            },
+                            1:24-1:31,
                         ),
                     ),
                 ]"#]],
@@ -7016,30 +3425,12 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 5,
-                                    },
-                                },
+                                name_range: 1:2-1:5,
                                 value: "div",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 6,
-                                },
-                            },
+                            1:1-1:6,
                         ),
                     ),
                     Ok(
@@ -7047,70 +3438,25 @@ mod tests {
                             Text {
                                 value: "Price: ",
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 6,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 13,
-                                },
-                            },
+                            1:6-1:13,
                         ),
                     ),
                     Ok(
                         (
                             Expression {
                                 value: "price",
-                                range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 14,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 19,
-                                    },
-                                },
+                                range: 1:14-1:19,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 13,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 20,
-                                },
-                            },
+                            1:13-1:20,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "div",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 22,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 25,
-                                    },
-                                },
+                                name_range: 1:22-1:25,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 20,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 26,
-                                },
-                            },
+                            1:20-1:26,
                         ),
                     ),
                 ]"#]],
@@ -7127,84 +3473,30 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 4,
-                                    },
-                                },
+                                name_range: 1:2-1:4,
                                 value: "h2",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 5,
-                                },
-                            },
+                            1:1-1:5,
                         ),
                     ),
                     Ok(
                         (
                             Expression {
                                 value: "title",
-                                range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 6,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 11,
-                                    },
-                                },
+                                range: 1:6-1:11,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 5,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 12,
-                                },
-                            },
+                            1:5-1:12,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "h2",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 14,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 16,
-                                    },
-                                },
+                                name_range: 1:14-1:16,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 12,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 17,
-                                },
-                            },
+                            1:12-1:17,
                         ),
                     ),
                 ]"#]],
@@ -7221,30 +3513,12 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 3,
-                                    },
-                                },
+                                name_range: 1:2-1:3,
                                 value: "p",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 4,
-                                },
-                            },
+                            1:1-1:4,
                         ),
                     ),
                     Ok(
@@ -7252,70 +3526,25 @@ mod tests {
                             Text {
                                 value: "Status: ",
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 4,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 12,
-                                },
-                            },
+                            1:4-1:12,
                         ),
                     ),
                     Ok(
                         (
                             Expression {
                                 value: "user.profile.status == 'active'",
-                                range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 13,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 44,
-                                    },
-                                },
+                                range: 1:13-1:44,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 12,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 45,
-                                },
-                            },
+                            1:12-1:45,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "p",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 47,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 48,
-                                    },
-                                },
+                                name_range: 1:47-1:48,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 45,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 49,
-                                },
-                            },
+                            1:45-1:49,
                         ),
                     ),
                 ]"#]],
@@ -7332,30 +3561,12 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 6,
-                                    },
-                                },
+                                name_range: 1:2-1:6,
                                 value: "span",
                                 attributes: [],
                                 expression: None,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 7,
-                                },
-                            },
+                            1:1-1:7,
                         ),
                     ),
                     Ok(
@@ -7363,70 +3574,25 @@ mod tests {
                             Text {
                                 value: "Item: ",
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 7,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 13,
-                                },
-                            },
+                            1:7-1:13,
                         ),
                     ),
                     Ok(
                         (
                             Expression {
                                 value: "item.title",
-                                range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 14,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 24,
-                                    },
-                                },
+                                range: 1:14-1:24,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 13,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 25,
-                                },
-                            },
+                            1:13-1:25,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "span",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 27,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 31,
-                                    },
-                                },
+                                name_range: 1:27-1:31,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 25,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 32,
-                                },
-                            },
+                            1:25-1:32,
                         ),
                     ),
                 ]"#]],
@@ -7443,44 +3609,17 @@ mod tests {
                         (
                             StartTag {
                                 self_closing: false,
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 5,
-                                    },
-                                },
+                                name_range: 1:2-1:5,
                                 value: "div",
                                 attributes: [],
                                 expression: Some(
                                     (
                                         "className",
-                                        Range {
-                                            start: Position {
-                                                line: 1,
-                                                column: 7,
-                                            },
-                                            end: Position {
-                                                line: 1,
-                                                column: 16,
-                                            },
-                                        },
+                                        1:7-1:16,
                                     ),
                                 ),
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 18,
-                                },
-                            },
+                            1:1-1:18,
                         ),
                     ),
                     Ok(
@@ -7488,70 +3627,25 @@ mod tests {
                             Text {
                                 value: "Content: ",
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 18,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 27,
-                                },
-                            },
+                            1:18-1:27,
                         ),
                     ),
                     Ok(
                         (
                             Expression {
                                 value: "content",
-                                range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 28,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 35,
-                                    },
-                                },
+                                range: 1:28-1:35,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 27,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 36,
-                                },
-                            },
+                            1:27-1:36,
                         ),
                     ),
                     Ok(
                         (
                             EndTag {
                                 value: "div",
-                                name_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 38,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 41,
-                                    },
-                                },
+                                name_range: 1:38-1:41,
                             },
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 36,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 42,
-                                },
-                            },
+                            1:36-1:42,
                         ),
                     ),
                 ]"#]],

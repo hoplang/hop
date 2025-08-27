@@ -310,76 +310,31 @@ mod tests {
                     Ok(
                         (
                             LeftParen,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 2,
-                                },
-                            },
+                            1:1-1:2,
                         ),
                     ),
                     Ok(
                         (
                             RightParen,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 3,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 4,
-                                },
-                            },
+                            1:3-1:4,
                         ),
                     ),
                     Ok(
                         (
                             Dot,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 5,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 6,
-                                },
-                            },
+                            1:5-1:6,
                         ),
                     ),
                     Ok(
                         (
                             Not,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 7,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 8,
-                                },
-                            },
+                            1:7-1:8,
                         ),
                     ),
                     Ok(
                         (
                             Equal,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 9,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 11,
-                                },
-                            },
+                            1:9-1:11,
                         ),
                     ),
                 ]"#]],
@@ -397,31 +352,13 @@ mod tests {
                             Identifier(
                                 "foo",
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 4,
-                                },
-                            },
+                            1:1-1:4,
                         ),
                     ),
                     Ok(
                         (
                             In,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 5,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 7,
-                                },
-                            },
+                            1:5-1:7,
                         ),
                     ),
                     Ok(
@@ -429,16 +366,7 @@ mod tests {
                             BooleanLiteral(
                                 true,
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 8,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 12,
-                                },
-                            },
+                            1:8-1:12,
                         ),
                     ),
                     Ok(
@@ -446,16 +374,7 @@ mod tests {
                             BooleanLiteral(
                                 false,
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 13,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 18,
-                                },
-                            },
+                            1:13-1:18,
                         ),
                     ),
                     Ok(
@@ -463,16 +382,7 @@ mod tests {
                             Identifier(
                                 "_test",
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 19,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 24,
-                                },
-                            },
+                            1:19-1:24,
                         ),
                     ),
                     Ok(
@@ -480,16 +390,7 @@ mod tests {
                             Identifier(
                                 "var123",
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 25,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 31,
-                                },
-                            },
+                            1:25-1:31,
                         ),
                     ),
                 ]"#]],
@@ -507,16 +408,7 @@ mod tests {
                             StringLiteral(
                                 "hello",
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 8,
-                                },
-                            },
+                            1:1-1:8,
                         ),
                     ),
                     Ok(
@@ -524,16 +416,7 @@ mod tests {
                             StringLiteral(
                                 "world with spaces",
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 9,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 28,
-                                },
-                            },
+                            1:9-1:28,
                         ),
                     ),
                     Ok(
@@ -541,16 +424,7 @@ mod tests {
                             StringLiteral(
                                 "",
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 29,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 31,
-                                },
-                            },
+                            1:29-1:31,
                         ),
                     ),
                 ]"#]],
@@ -568,16 +442,7 @@ mod tests {
                             NumberLiteral(
                                 Number(123),
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 4,
-                                },
-                            },
+                            1:1-1:4,
                         ),
                     ),
                     Ok(
@@ -585,16 +450,7 @@ mod tests {
                             NumberLiteral(
                                 Number(456.789),
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 5,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 12,
-                                },
-                            },
+                            1:5-1:12,
                         ),
                     ),
                     Ok(
@@ -602,16 +458,7 @@ mod tests {
                             NumberLiteral(
                                 Number(0),
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 13,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 14,
-                                },
-                            },
+                            1:13-1:14,
                         ),
                     ),
                     Ok(
@@ -619,16 +466,7 @@ mod tests {
                             NumberLiteral(
                                 Number(0.5),
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 15,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 18,
-                                },
-                            },
+                            1:15-1:18,
                         ),
                     ),
                 ]"#]],
@@ -646,16 +484,7 @@ mod tests {
                             Identifier(
                                 "foo",
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 4,
-                                },
-                            },
+                            1:1-1:4,
                         ),
                     ),
                     Ok(
@@ -663,16 +492,7 @@ mod tests {
                             Identifier(
                                 "bar",
                             ),
-                            Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 4,
-                                },
-                            },
+                            2:1-2:4,
                         ),
                     ),
                 ]"#]],
@@ -690,31 +510,13 @@ mod tests {
                             Identifier(
                                 "user",
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 5,
-                                },
-                            },
+                            1:1-1:5,
                         ),
                     ),
                     Ok(
                         (
                             Dot,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 5,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 6,
-                                },
-                            },
+                            1:5-1:6,
                         ),
                     ),
                     Ok(
@@ -722,16 +524,7 @@ mod tests {
                             Identifier(
                                 "name",
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 6,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 10,
-                                },
-                            },
+                            1:6-1:10,
                         ),
                     ),
                 ]"#]],
@@ -749,16 +542,7 @@ mod tests {
                             Identifier(
                                 "foo",
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 3,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 6,
-                                },
-                            },
+                            1:3-1:6,
                         ),
                     ),
                     Ok(
@@ -766,16 +550,7 @@ mod tests {
                             Identifier(
                                 "bar",
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 9,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 12,
-                                },
-                            },
+                            1:9-1:12,
                         ),
                     ),
                 ]"#]],
@@ -793,31 +568,13 @@ mod tests {
                             Identifier(
                                 "user",
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 5,
-                                },
-                            },
+                            1:1-1:5,
                         ),
                     ),
                     Ok(
                         (
                             Dot,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 5,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 6,
-                                },
-                            },
+                            1:5-1:6,
                         ),
                     ),
                     Ok(
@@ -825,31 +582,13 @@ mod tests {
                             Identifier(
                                 "name",
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 6,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 10,
-                                },
-                            },
+                            1:6-1:10,
                         ),
                     ),
                     Ok(
                         (
                             Equal,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 11,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 13,
-                                },
-                            },
+                            1:11-1:13,
                         ),
                     ),
                     Ok(
@@ -857,16 +596,7 @@ mod tests {
                             StringLiteral(
                                 "admin",
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 14,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 21,
-                                },
-                            },
+                            1:14-1:21,
                         ),
                     ),
                 ]"#]],
@@ -882,31 +612,13 @@ mod tests {
                     Ok(
                         (
                             Not,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 2,
-                                },
-                            },
+                            1:1-1:2,
                         ),
                     ),
                     Ok(
                         (
                             LeftParen,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 2,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 3,
-                                },
-                            },
+                            1:2-1:3,
                         ),
                     ),
                     Ok(
@@ -914,31 +626,13 @@ mod tests {
                             Identifier(
                                 "foo",
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 3,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 6,
-                                },
-                            },
+                            1:3-1:6,
                         ),
                     ),
                     Ok(
                         (
                             Equal,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 7,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 9,
-                                },
-                            },
+                            1:7-1:9,
                         ),
                     ),
                     Ok(
@@ -946,31 +640,13 @@ mod tests {
                             BooleanLiteral(
                                 true,
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 10,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 14,
-                                },
-                            },
+                            1:10-1:14,
                         ),
                     ),
                     Ok(
                         (
                             RightParen,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 14,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 15,
-                                },
-                            },
+                            1:14-1:15,
                         ),
                     ),
                 ]"#]],
@@ -986,16 +662,7 @@ mod tests {
                     Ok(
                         (
                             LeftBracket,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 2,
-                                },
-                            },
+                            1:1-1:2,
                         ),
                     ),
                     Ok(
@@ -1003,31 +670,13 @@ mod tests {
                             NumberLiteral(
                                 Number(1),
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 2,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 3,
-                                },
-                            },
+                            1:2-1:3,
                         ),
                     ),
                     Ok(
                         (
                             Comma,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 3,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 4,
-                                },
-                            },
+                            1:3-1:4,
                         ),
                     ),
                     Ok(
@@ -1035,31 +684,13 @@ mod tests {
                             NumberLiteral(
                                 Number(2),
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 5,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 6,
-                                },
-                            },
+                            1:5-1:6,
                         ),
                     ),
                     Ok(
                         (
                             Comma,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 6,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 7,
-                                },
-                            },
+                            1:6-1:7,
                         ),
                     ),
                     Ok(
@@ -1067,31 +698,13 @@ mod tests {
                             NumberLiteral(
                                 Number(3),
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 8,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 9,
-                                },
-                            },
+                            1:8-1:9,
                         ),
                     ),
                     Ok(
                         (
                             RightBracket,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 9,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 10,
-                                },
-                            },
+                            1:9-1:10,
                         ),
                     ),
                 ]"#]],
@@ -1107,31 +720,13 @@ mod tests {
                     Ok(
                         (
                             LeftBracket,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 2,
-                                },
-                            },
+                            1:1-1:2,
                         ),
                     ),
                     Ok(
                         (
                             RightBracket,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 2,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 3,
-                                },
-                            },
+                            1:2-1:3,
                         ),
                     ),
                 ]"#]],
@@ -1147,16 +742,7 @@ mod tests {
                     Ok(
                         (
                             TypeObject,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 7,
-                                },
-                            },
+                            1:1-1:7,
                         ),
                     ),
                 ]"#]],
@@ -1172,16 +758,7 @@ mod tests {
                     Ok(
                         (
                             LeftBrace,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 2,
-                                },
-                            },
+                            1:1-1:2,
                         ),
                     ),
                     Ok(
@@ -1189,31 +766,13 @@ mod tests {
                             Identifier(
                                 "name",
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 2,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 6,
-                                },
-                            },
+                            1:2-1:6,
                         ),
                     ),
                     Ok(
                         (
                             Colon,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 6,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 7,
-                                },
-                            },
+                            1:6-1:7,
                         ),
                     ),
                     Ok(
@@ -1221,31 +780,13 @@ mod tests {
                             StringLiteral(
                                 "John",
                             ),
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 8,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 14,
-                                },
-                            },
+                            1:8-1:14,
                         ),
                     ),
                     Ok(
                         (
                             RightBrace,
-                            Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 14,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 15,
-                                },
-                            },
+                            1:14-1:15,
                         ),
                     ),
                 ]"#]],

@@ -915,86 +915,23 @@ mod tests {
                     left: BinaryOp {
                         left: Variable {
                             name: "a",
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 2,
-                                },
-                            },
+                            range: 1:1-1:2,
                         },
                         operator: Equal,
-                        operator_range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 3,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 5,
-                            },
-                        },
+                        operator_range: 1:3-1:5,
                         right: Variable {
                             name: "b",
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 6,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 7,
-                                },
-                            },
+                            range: 1:6-1:7,
                         },
-                        range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 1,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 7,
-                            },
-                        },
+                        range: 1:1-1:7,
                     },
                     operator: Equal,
-                    operator_range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 8,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 10,
-                        },
-                    },
+                    operator_range: 1:8-1:10,
                     right: Variable {
                         name: "c",
-                        range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 11,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 12,
-                            },
-                        },
+                        range: 1:11-1:12,
                     },
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 12,
-                        },
-                    },
+                    range: 1:1-1:12,
                 }
             "#]],
         );
@@ -1009,96 +946,24 @@ mod tests {
                     left: PropertyAccess {
                         object: Variable {
                             name: "user",
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 5,
-                                },
-                            },
+                            range: 1:1-1:5,
                         },
                         property: "name",
-                        property_range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 6,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 10,
-                            },
-                        },
-                        range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 1,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 10,
-                            },
-                        },
+                        property_range: 1:6-1:10,
+                        range: 1:1-1:10,
                     },
                     operator: Equal,
-                    operator_range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 11,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 13,
-                        },
-                    },
+                    operator_range: 1:11-1:13,
                     right: PropertyAccess {
                         object: Variable {
                             name: "admin",
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 14,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 19,
-                                },
-                            },
+                            range: 1:14-1:19,
                         },
                         property: "name",
-                        property_range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 20,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 24,
-                            },
-                        },
-                        range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 14,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 24,
-                            },
-                        },
+                        property_range: 1:20-1:24,
+                        range: 1:14-1:24,
                     },
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 24,
-                        },
-                    },
+                    range: 1:1-1:24,
                 }
             "#]],
         );
@@ -1115,104 +980,23 @@ mod tests {
                             object: PropertyAccess {
                                 object: Variable {
                                     name: "app",
-                                    range: Range {
-                                        start: Position {
-                                            line: 1,
-                                            column: 1,
-                                        },
-                                        end: Position {
-                                            line: 1,
-                                            column: 4,
-                                        },
-                                    },
+                                    range: 1:1-1:4,
                                 },
                                 property: "user",
-                                property_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 5,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 9,
-                                    },
-                                },
-                                range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 1,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 9,
-                                    },
-                                },
+                                property_range: 1:5-1:9,
+                                range: 1:1-1:9,
                             },
                             property: "profile",
-                            property_range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 10,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 17,
-                                },
-                            },
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 17,
-                                },
-                            },
+                            property_range: 1:10-1:17,
+                            range: 1:1-1:17,
                         },
                         property: "settings",
-                        property_range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 18,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 26,
-                            },
-                        },
-                        range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 1,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 26,
-                            },
-                        },
+                        property_range: 1:18-1:26,
+                        range: 1:1-1:26,
                     },
                     property: "theme",
-                    property_range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 27,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 32,
-                        },
-                    },
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 32,
-                        },
-                    },
+                    property_range: 1:27-1:32,
+                    range: 1:1-1:32,
                 }
             "#]],
         );
@@ -1225,16 +1009,7 @@ mod tests {
             expect![[r#"
                 StringLiteral {
                     value: "",
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 3,
-                        },
-                    },
+                    range: 1:1-1:3,
                 }
             "#]],
         );
@@ -1247,16 +1022,7 @@ mod tests {
             expect![[r#"
                 NumberLiteral {
                     value: Number(99),
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 3,
-                        },
-                    },
+                    range: 1:1-1:3,
                 }
             "#]],
         );
@@ -1269,16 +1035,7 @@ mod tests {
             expect![[r#"
                 NumberLiteral {
                     value: Number(3.14),
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 5,
-                        },
-                    },
+                    range: 1:1-1:5,
                 }
             "#]],
         );
@@ -1292,51 +1049,15 @@ mod tests {
                 BinaryOp {
                     left: Variable {
                         name: "x",
-                        range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 2,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 3,
-                            },
-                        },
+                        range: 1:2-1:3,
                     },
                     operator: Equal,
-                    operator_range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 4,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 6,
-                        },
-                    },
+                    operator_range: 1:4-1:6,
                     right: Variable {
                         name: "y",
-                        range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 7,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 8,
-                            },
-                        },
+                        range: 1:7-1:8,
                     },
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 2,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 8,
-                        },
-                    },
+                    range: 1:2-1:8,
                 }
             "#]],
         );
@@ -1350,38 +1071,11 @@ mod tests {
                 PropertyAccess {
                     object: Variable {
                         name: "user",
-                        range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 1,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 5,
-                            },
-                        },
+                        range: 1:1-1:5,
                     },
                     property: "name",
-                    property_range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 6,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 10,
-                        },
-                    },
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 10,
-                        },
-                    },
+                    property_range: 1:6-1:10,
+                    range: 1:1-1:10,
                 }
             "#]],
         );
@@ -1395,74 +1089,20 @@ mod tests {
                 BinaryOp {
                     left: StringLiteral {
                         value: "guest",
-                        range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 1,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 8,
-                            },
-                        },
+                        range: 1:1-1:8,
                     },
                     operator: Equal,
-                    operator_range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 9,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 11,
-                        },
-                    },
+                    operator_range: 1:9-1:11,
                     right: PropertyAccess {
                         object: Variable {
                             name: "user",
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 12,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 16,
-                                },
-                            },
+                            range: 1:12-1:16,
                         },
                         property: "role",
-                        property_range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 17,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 21,
-                            },
-                        },
-                        range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 12,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 21,
-                            },
-                        },
+                        property_range: 1:17-1:21,
+                        range: 1:12-1:21,
                     },
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 21,
-                        },
-                    },
+                    range: 1:1-1:21,
                 }
             "#]],
         );
@@ -1476,51 +1116,15 @@ mod tests {
                 BinaryOp {
                     left: Variable {
                         name: "x",
-                        range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 1,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 2,
-                            },
-                        },
+                        range: 1:1-1:2,
                     },
                     operator: Equal,
-                    operator_range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 3,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 5,
-                        },
-                    },
+                    operator_range: 1:3-1:5,
                     right: Variable {
                         name: "y",
-                        range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 6,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 7,
-                            },
-                        },
+                        range: 1:6-1:7,
                     },
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 7,
-                        },
-                    },
+                    range: 1:1-1:7,
                 }
             "#]],
         );
@@ -1533,16 +1137,7 @@ mod tests {
             expect![[r#"
                 StringLiteral {
                     value: "hello",
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 8,
-                        },
-                    },
+                    range: 1:1-1:8,
                 }
             "#]],
         );
@@ -1555,16 +1150,7 @@ mod tests {
             expect![[r#"
                 Variable {
                     name: "x",
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 2,
-                        },
-                    },
+                    range: 1:1-1:2,
                 }
             "#]],
         );
@@ -1578,51 +1164,15 @@ mod tests {
                 BinaryOp {
                     left: StringLiteral {
                         value: "apple",
-                        range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 1,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 8,
-                            },
-                        },
+                        range: 1:1-1:8,
                     },
                     operator: Equal,
-                    operator_range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 9,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 11,
-                        },
-                    },
+                    operator_range: 1:9-1:11,
                     right: StringLiteral {
                         value: "orange",
-                        range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 12,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 20,
-                            },
-                        },
+                        range: 1:12-1:20,
                     },
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 20,
-                        },
-                    },
+                    range: 1:1-1:20,
                 }
             "#]],
         );
@@ -1637,73 +1187,19 @@ mod tests {
                     left: PropertyAccess {
                         object: Variable {
                             name: "user",
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 1,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 5,
-                                },
-                            },
+                            range: 1:1-1:5,
                         },
                         property: "name",
-                        property_range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 6,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 10,
-                            },
-                        },
-                        range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 1,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 10,
-                            },
-                        },
+                        property_range: 1:6-1:10,
+                        range: 1:1-1:10,
                     },
                     operator: Equal,
-                    operator_range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 11,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 13,
-                        },
-                    },
+                    operator_range: 1:11-1:13,
                     right: StringLiteral {
                         value: "admin",
-                        range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 14,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 21,
-                            },
-                        },
+                        range: 1:14-1:21,
                     },
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 21,
-                        },
-                    },
+                    range: 1:1-1:21,
                 }
             "#]],
         );
@@ -1716,16 +1212,7 @@ mod tests {
             expect![[r#"
                 StringLiteral {
                     value: "hello world",
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 14,
-                        },
-                    },
+                    range: 1:1-1:14,
                 }
             "#]],
         );
@@ -1740,96 +1227,24 @@ mod tests {
                     left: PropertyAccess {
                         object: Variable {
                             name: "user",
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 3,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 7,
-                                },
-                            },
+                            range: 1:3-1:7,
                         },
                         property: "name",
-                        property_range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 10,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 14,
-                            },
-                        },
-                        range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 3,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 14,
-                            },
-                        },
+                        property_range: 1:10-1:14,
+                        range: 1:3-1:14,
                     },
                     operator: Equal,
-                    operator_range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 17,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 19,
-                        },
-                    },
+                    operator_range: 1:17-1:19,
                     right: PropertyAccess {
                         object: Variable {
                             name: "admin",
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 22,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 27,
-                                },
-                            },
+                            range: 1:22-1:27,
                         },
                         property: "name",
-                        property_range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 30,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 34,
-                            },
-                        },
-                        range: Range {
-                            start: Position {
-                                line: 1,
-                                column: 22,
-                            },
-                            end: Position {
-                                line: 1,
-                                column: 34,
-                            },
-                        },
+                        property_range: 1:30-1:34,
+                        range: 1:22-1:34,
                     },
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 3,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 34,
-                        },
-                    },
+                    range: 1:3-1:34,
                 }
             "#]],
         );
@@ -1842,16 +1257,7 @@ mod tests {
             expect![[r#"
                 ArrayLiteral {
                     elements: [],
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 3,
-                        },
-                    },
+                    range: 1:1-1:3,
                 }
             "#]],
         );
@@ -1866,54 +1272,18 @@ mod tests {
                     elements: [
                         NumberLiteral {
                             value: Number(1),
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 2,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 3,
-                                },
-                            },
+                            range: 1:2-1:3,
                         },
                         NumberLiteral {
                             value: Number(2),
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 5,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 6,
-                                },
-                            },
+                            range: 1:5-1:6,
                         },
                         NumberLiteral {
                             value: Number(3),
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 8,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 9,
-                                },
-                            },
+                            range: 1:8-1:9,
                         },
                     ],
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 10,
-                        },
-                    },
+                    range: 1:1-1:10,
                 }
             "#]],
         );
@@ -1928,54 +1298,18 @@ mod tests {
                     elements: [
                         NumberLiteral {
                             value: Number(1),
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 2,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 3,
-                                },
-                            },
+                            range: 1:2-1:3,
                         },
                         StringLiteral {
                             value: "hello",
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 5,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 12,
-                                },
-                            },
+                            range: 1:5-1:12,
                         },
                         BooleanLiteral {
                             value: true,
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 14,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 18,
-                                },
-                            },
+                            range: 1:14-1:18,
                         },
                     ],
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 19,
-                        },
-                    },
+                    range: 1:1-1:19,
                 }
             "#]],
         );
@@ -1992,93 +1326,30 @@ mod tests {
                             elements: [
                                 NumberLiteral {
                                     value: Number(1),
-                                    range: Range {
-                                        start: Position {
-                                            line: 1,
-                                            column: 3,
-                                        },
-                                        end: Position {
-                                            line: 1,
-                                            column: 4,
-                                        },
-                                    },
+                                    range: 1:3-1:4,
                                 },
                                 NumberLiteral {
                                     value: Number(2),
-                                    range: Range {
-                                        start: Position {
-                                            line: 1,
-                                            column: 6,
-                                        },
-                                        end: Position {
-                                            line: 1,
-                                            column: 7,
-                                        },
-                                    },
+                                    range: 1:6-1:7,
                                 },
                             ],
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 2,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 8,
-                                },
-                            },
+                            range: 1:2-1:8,
                         },
                         ArrayLiteral {
                             elements: [
                                 NumberLiteral {
                                     value: Number(3),
-                                    range: Range {
-                                        start: Position {
-                                            line: 1,
-                                            column: 11,
-                                        },
-                                        end: Position {
-                                            line: 1,
-                                            column: 12,
-                                        },
-                                    },
+                                    range: 1:11-1:12,
                                 },
                                 NumberLiteral {
                                     value: Number(4),
-                                    range: Range {
-                                        start: Position {
-                                            line: 1,
-                                            column: 14,
-                                        },
-                                        end: Position {
-                                            line: 1,
-                                            column: 15,
-                                        },
-                                    },
+                                    range: 1:14-1:15,
                                 },
                             ],
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 10,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 16,
-                                },
-                            },
+                            range: 1:10-1:16,
                         },
                     ],
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 17,
-                        },
-                    },
+                    range: 1:1-1:17,
                 }
             "#]],
         );
@@ -2093,64 +1364,19 @@ mod tests {
                     elements: [
                         Variable {
                             name: "x",
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 2,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 3,
-                                },
-                            },
+                            range: 1:2-1:3,
                         },
                         PropertyAccess {
                             object: Variable {
                                 name: "user",
-                                range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 5,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 9,
-                                    },
-                                },
+                                range: 1:5-1:9,
                             },
                             property: "name",
-                            property_range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 10,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 14,
-                                },
-                            },
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 5,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 14,
-                                },
-                            },
+                            property_range: 1:10-1:14,
+                            range: 1:5-1:14,
                         },
                     ],
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 15,
-                        },
-                    },
+                    range: 1:1-1:15,
                 }
             "#]],
         );
@@ -2163,16 +1389,7 @@ mod tests {
             expect![[r#"
                 ObjectLiteral {
                     properties: {},
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 3,
-                        },
-                    },
+                    range: 1:1-1:3,
                 }
             "#]],
         );
@@ -2187,28 +1404,10 @@ mod tests {
                     properties: {
                         "name": StringLiteral {
                             value: "John",
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 8,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 14,
-                                },
-                            },
+                            range: 1:8-1:14,
                         },
                     },
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 15,
-                        },
-                    },
+                    range: 1:1-1:15,
                 }
             "#]],
         );
@@ -2223,41 +1422,14 @@ mod tests {
                     properties: {
                         "a": StringLiteral {
                             value: "foo",
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 5,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 10,
-                                },
-                            },
+                            range: 1:5-1:10,
                         },
                         "b": NumberLiteral {
                             value: Number(1),
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 15,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 16,
-                                },
-                            },
+                            range: 1:15-1:16,
                         },
                     },
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 17,
-                        },
-                    },
+                    range: 1:1-1:17,
                 }
             "#]],
         );
@@ -2272,110 +1444,29 @@ mod tests {
                     properties: {
                         "active": UnaryOp {
                             operator: Not,
-                            operator_range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 27,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 28,
-                                },
-                            },
+                            operator_range: 1:27-1:28,
                             operand: PropertyAccess {
                                 object: Variable {
                                     name: "user",
-                                    range: Range {
-                                        start: Position {
-                                            line: 1,
-                                            column: 28,
-                                        },
-                                        end: Position {
-                                            line: 1,
-                                            column: 32,
-                                        },
-                                    },
+                                    range: 1:28-1:32,
                                 },
                                 property: "disabled",
-                                property_range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 33,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 41,
-                                    },
-                                },
-                                range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 28,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 41,
-                                    },
-                                },
+                                property_range: 1:33-1:41,
+                                range: 1:28-1:41,
                             },
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 27,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 41,
-                                },
-                            },
+                            range: 1:27-1:41,
                         },
                         "user": PropertyAccess {
                             object: Variable {
                                 name: "user",
-                                range: Range {
-                                    start: Position {
-                                        line: 1,
-                                        column: 8,
-                                    },
-                                    end: Position {
-                                        line: 1,
-                                        column: 12,
-                                    },
-                                },
+                                range: 1:8-1:12,
                             },
                             property: "name",
-                            property_range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 13,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 17,
-                                },
-                            },
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 8,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 17,
-                                },
-                            },
+                            property_range: 1:13-1:17,
+                            range: 1:8-1:17,
                         },
                     },
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 42,
-                        },
-                    },
+                    range: 1:1-1:42,
                 }
             "#]],
         );
@@ -2392,40 +1483,13 @@ mod tests {
                             properties: {
                                 "inner": StringLiteral {
                                     value: "value",
-                                    range: Range {
-                                        start: Position {
-                                            line: 1,
-                                            column: 18,
-                                        },
-                                        end: Position {
-                                            line: 1,
-                                            column: 25,
-                                        },
-                                    },
+                                    range: 1:18-1:25,
                                 },
                             },
-                            range: Range {
-                                start: Position {
-                                    line: 1,
-                                    column: 10,
-                                },
-                                end: Position {
-                                    line: 1,
-                                    column: 26,
-                                },
-                            },
+                            range: 1:10-1:26,
                         },
                     },
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 27,
-                        },
-                    },
+                    range: 1:1-1:27,
                 }
             "#]],
         );
@@ -2440,54 +1504,18 @@ mod tests {
                     elements: [
                         NumberLiteral {
                             value: Number(1),
-                            range: Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 2,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 3,
-                                },
-                            },
+                            range: 2:2-2:3,
                         },
                         NumberLiteral {
                             value: Number(2),
-                            range: Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 2,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 3,
-                                },
-                            },
+                            range: 3:2-3:3,
                         },
                         NumberLiteral {
                             value: Number(3),
-                            range: Range {
-                                start: Position {
-                                    line: 4,
-                                    column: 2,
-                                },
-                                end: Position {
-                                    line: 4,
-                                    column: 3,
-                                },
-                            },
+                            range: 4:2-4:3,
                         },
                     ],
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 5,
-                            column: 2,
-                        },
-                    },
+                    range: 1:1-5:2,
                 }
             "#]],
         );
@@ -2502,28 +1530,10 @@ mod tests {
                     elements: [
                         NumberLiteral {
                             value: Number(1),
-                            range: Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 2,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 3,
-                                },
-                            },
+                            range: 2:2-2:3,
                         },
                     ],
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 3,
-                            column: 2,
-                        },
-                    },
+                    range: 1:1-3:2,
                 }
             "#]],
         );
@@ -2539,109 +1549,28 @@ mod tests {
                         PropertyAccess {
                             object: Variable {
                                 name: "user",
-                                range: Range {
-                                    start: Position {
-                                        line: 2,
-                                        column: 2,
-                                    },
-                                    end: Position {
-                                        line: 2,
-                                        column: 6,
-                                    },
-                                },
+                                range: 2:2-2:6,
                             },
                             property: "name",
-                            property_range: Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 7,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 11,
-                                },
-                            },
-                            range: Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 2,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 11,
-                                },
-                            },
+                            property_range: 2:7-2:11,
+                            range: 2:2-2:11,
                         },
                         UnaryOp {
                             operator: Not,
-                            operator_range: Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 2,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 3,
-                                },
-                            },
+                            operator_range: 3:2-3:3,
                             operand: PropertyAccess {
                                 object: Variable {
                                     name: "user",
-                                    range: Range {
-                                        start: Position {
-                                            line: 3,
-                                            column: 3,
-                                        },
-                                        end: Position {
-                                            line: 3,
-                                            column: 7,
-                                        },
-                                    },
+                                    range: 3:3-3:7,
                                 },
                                 property: "disabled",
-                                property_range: Range {
-                                    start: Position {
-                                        line: 3,
-                                        column: 8,
-                                    },
-                                    end: Position {
-                                        line: 3,
-                                        column: 16,
-                                    },
-                                },
-                                range: Range {
-                                    start: Position {
-                                        line: 3,
-                                        column: 3,
-                                    },
-                                    end: Position {
-                                        line: 3,
-                                        column: 16,
-                                    },
-                                },
+                                property_range: 3:8-3:16,
+                                range: 3:3-3:16,
                             },
-                            range: Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 2,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 16,
-                                },
-                            },
+                            range: 3:2-3:16,
                         },
                     ],
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 4,
-                            column: 2,
-                        },
-                    },
+                    range: 1:1-4:2,
                 }
             "#]],
         );
@@ -2656,41 +1585,14 @@ mod tests {
                     properties: {
                         "a": StringLiteral {
                             value: "foo",
-                            range: Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 5,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 10,
-                                },
-                            },
+                            range: 2:5-2:10,
                         },
                         "b": NumberLiteral {
                             value: Number(1),
-                            range: Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 5,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 6,
-                                },
-                            },
+                            range: 3:5-3:6,
                         },
                     },
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 4,
-                            column: 2,
-                        },
-                    },
+                    range: 1:1-4:2,
                 }
             "#]],
         );
@@ -2705,28 +1607,10 @@ mod tests {
                     properties: {
                         "name": StringLiteral {
                             value: "John",
-                            range: Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 8,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 14,
-                                },
-                            },
+                            range: 2:8-2:14,
                         },
                     },
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 3,
-                            column: 2,
-                        },
-                    },
+                    range: 1:1-3:2,
                 }
             "#]],
         );
@@ -2741,110 +1625,29 @@ mod tests {
                     properties: {
                         "active": UnaryOp {
                             operator: Not,
-                            operator_range: Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 10,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 11,
-                                },
-                            },
+                            operator_range: 3:10-3:11,
                             operand: PropertyAccess {
                                 object: Variable {
                                     name: "user",
-                                    range: Range {
-                                        start: Position {
-                                            line: 3,
-                                            column: 11,
-                                        },
-                                        end: Position {
-                                            line: 3,
-                                            column: 15,
-                                        },
-                                    },
+                                    range: 3:11-3:15,
                                 },
                                 property: "disabled",
-                                property_range: Range {
-                                    start: Position {
-                                        line: 3,
-                                        column: 16,
-                                    },
-                                    end: Position {
-                                        line: 3,
-                                        column: 24,
-                                    },
-                                },
-                                range: Range {
-                                    start: Position {
-                                        line: 3,
-                                        column: 11,
-                                    },
-                                    end: Position {
-                                        line: 3,
-                                        column: 24,
-                                    },
-                                },
+                                property_range: 3:16-3:24,
+                                range: 3:11-3:24,
                             },
-                            range: Range {
-                                start: Position {
-                                    line: 3,
-                                    column: 10,
-                                },
-                                end: Position {
-                                    line: 3,
-                                    column: 24,
-                                },
-                            },
+                            range: 3:10-3:24,
                         },
                         "user": PropertyAccess {
                             object: Variable {
                                 name: "user",
-                                range: Range {
-                                    start: Position {
-                                        line: 2,
-                                        column: 8,
-                                    },
-                                    end: Position {
-                                        line: 2,
-                                        column: 12,
-                                    },
-                                },
+                                range: 2:8-2:12,
                             },
                             property: "name",
-                            property_range: Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 13,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 17,
-                                },
-                            },
-                            range: Range {
-                                start: Position {
-                                    line: 2,
-                                    column: 8,
-                                },
-                                end: Position {
-                                    line: 2,
-                                    column: 17,
-                                },
-                            },
+                            property_range: 2:13-2:17,
+                            range: 2:8-2:17,
                         },
                     },
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 1,
-                        },
-                        end: Position {
-                            line: 4,
-                            column: 2,
-                        },
-                    },
+                    range: 1:1-4:2,
                 }
             "#]],
         );

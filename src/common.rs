@@ -30,7 +30,7 @@ impl fmt::Display for Position {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, PartialOrd, Ord)]
 pub struct Range {
     pub start: Position,
     pub end: Position,
@@ -54,6 +54,12 @@ impl Range {
 impl fmt::Display for Range {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}-{}", self.start, self.end)
+    }
+}
+
+impl fmt::Debug for Range {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
     }
 }
 
