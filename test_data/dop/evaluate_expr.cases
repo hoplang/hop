@@ -291,7 +291,7 @@ Empty object literal should evaluate to empty object.
 -- env --
 {}
 -- expr --
-object()
+{}
 -- out --
 {}
 ## END
@@ -302,7 +302,7 @@ Object literal with single property should evaluate correctly.
 -- env --
 {}
 -- expr --
-object(name: 'John')
+{name: 'John'}
 -- out --
 {"name": "John"}
 ## END
@@ -313,7 +313,7 @@ Object literal with multiple properties should evaluate correctly.
 -- env --
 {}
 -- expr --
-object(a: 'foo', b: 1, c: true)
+{a: 'foo', b: 1, c: true}
 -- out --
 {"a": "foo", "b": 1, "c": true}
 ## END
@@ -324,7 +324,7 @@ Object literal with property access should evaluate correctly.
 -- env --
 {"user": {"name": "alice", "disabled": false}}
 -- expr --
-object(user: user.name, active: !user.disabled)
+{user: user.name, active: !user.disabled}
 -- out --
 {"active": true, "user": "alice"}
 ## END
@@ -335,7 +335,7 @@ Nested object literals should evaluate correctly.
 -- env --
 {}
 -- expr --
-object(nested: object(inner: 'value'))
+{nested: {inner: 'value'}}
 -- out --
 {"nested": {"inner": "value"}}
 ## END
@@ -372,10 +372,10 @@ Object literal with trailing comma should evaluate correctly.
 -- env --
 {}
 -- expr --
-object(
+{
 	a: 'foo',
 	b: 1,
-)
+}
 -- out --
 {"a": "foo", "b": 1}
 ## END
@@ -386,9 +386,9 @@ Object literal with trailing comma and single property should evaluate correctly
 -- env --
 {}
 -- expr --
-object(
+{
 	name: 'John',
-)
+}
 -- out --
 {"name": "John"}
 ## END

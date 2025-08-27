@@ -14,6 +14,8 @@ pub enum DopToken {
     RightParen,
     LeftBracket,
     RightBracket,
+    LeftBrace,
+    RightBrace,
     Colon,
     Comma,
     In,
@@ -126,6 +128,14 @@ impl DopTokenizer {
             ']' => {
                 self.cursor.advance();
                 DopToken::RightBracket
+            }
+            '{' => {
+                self.cursor.advance();
+                DopToken::LeftBrace
+            }
+            '}' => {
+                self.cursor.advance();
+                DopToken::RightBrace
             }
             ':' => {
                 self.cursor.advance();
@@ -287,6 +297,8 @@ mod tests {
                 DopToken::RightParen => "RightParen".to_string(),
                 DopToken::LeftBracket => "LeftBracket".to_string(),
                 DopToken::RightBracket => "RightBracket".to_string(),
+                DopToken::LeftBrace => "LeftBrace".to_string(),
+                DopToken::RightBrace => "RightBrace".to_string(),
                 DopToken::Colon => "Colon".to_string(),
                 DopToken::Comma => "Comma".to_string(),
                 DopToken::In => "In".to_string(),

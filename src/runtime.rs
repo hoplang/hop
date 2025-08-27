@@ -108,7 +108,9 @@ impl Program {
     }
 
     /// Get the parameter types for inspection
-    pub fn get_parameter_types(&self) -> &HashMap<String, HashMap<String, BTreeMap<String, DopType>>> {
+    pub fn get_parameter_types(
+        &self,
+    ) -> &HashMap<String, HashMap<String, BTreeMap<String, DopType>>> {
         &self.parameter_types
     }
 
@@ -164,12 +166,7 @@ impl Program {
         self.evaluate_component(module_name, component_name, params, &empty_slots, None)
     }
 
-    pub fn execute_preview(
-        &self,
-        module_name: &str,
-        component_name: &str,
-        params: std::collections::BTreeMap<String, serde_json::Value>,
-    ) -> Result<String> {
+    pub fn execute_preview(&self, module_name: &str, component_name: &str) -> Result<String> {
         let component_map = self
             .component_maps
             .get(module_name)
@@ -179,28 +176,17 @@ impl Program {
             .get(component_name)
             .ok_or_else(|| anyhow::anyhow!("Component '{}' not found", component_name))?;
 
-        // Use preview content if available, otherwise fall back to regular content
-        let content_to_render = match &component.preview {
-            Some(preview_nodes) => preview_nodes,
-            None => &component.children,
-        };
+        let preview = component
+            .preview
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("No preview for component '{}'", component_name))?;
 
         let mut result = String::new();
         let mut env = Self::init_environment(self.hop_mode);
 
-        // Set up environment with all parameters and their corresponding values
-        for (param_name, param) in &component.params {
-            let value = params
-                .get(param_name)
-                .cloned()
-                .unwrap_or_else(|| panic!("Missing parameter {param_name}"));
-            env.push(param.var_name.value.clone(), value);
-        }
-
         // Render each node in the preview content
-        let empty_slots = HashMap::new();
-        for node in content_to_render {
-            let rendered = self.evaluate_node(node, &empty_slots, &mut env, module_name)?;
+        for node in preview {
+            let rendered = self.evaluate_node(&node, &HashMap::new(), &mut env, module_name)?;
             result.push_str(&rendered);
         }
 

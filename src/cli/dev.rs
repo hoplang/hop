@@ -296,11 +296,7 @@ fn create_component_preview(
     }
 
     // Render the component using preview content if available
-    match program.execute_preview(
-        module_name,
-        component_name,
-        std::collections::BTreeMap::new(),
-    ) {
+    match program.execute_preview(module_name, component_name) {
         Ok(rendered_content) => {
             let combined_script = program.get_scripts();
 

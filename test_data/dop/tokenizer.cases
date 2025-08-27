@@ -157,13 +157,12 @@ Test object literal syntax
 
 ## BEGIN
 -- in --
-object(name: 'John')
+{name: 'John'}
 -- out --
-TypeObject 1:1-1:7
-LeftParen 1:7-1:8
-Identifier(name) 1:8-1:12
-Colon 1:12-1:13
-StringLiteral(John) 1:14-1:20
-RightParen 1:20-1:21
+LeftBrace 1:1-1:2
+Identifier(name) 1:2-1:6
+Colon 1:6-1:7
+StringLiteral(John) 1:8-1:14
+RightBrace 1:14-1:15
 Eof 2:1-2:1
 ## END

@@ -290,7 +290,7 @@ Empty object literal should parse successfully.
 
 ## BEGIN
 -- in --
-object()
+{}
 -- out --
 ObjectLiteral({})
 ## END
@@ -299,7 +299,7 @@ Object literal with single property should parse successfully.
 
 ## BEGIN
 -- in --
-object(name: 'John')
+{name: 'John'}
 -- out --
 ObjectLiteral({"name": StringLiteral("John")})
 ## END
@@ -308,7 +308,7 @@ Object literal with multiple properties should parse successfully.
 
 ## BEGIN
 -- in --
-object(a: 'foo', b: 1)
+{a: 'foo', b: 1}
 -- out --
 ObjectLiteral({"a": StringLiteral("foo"), "b": NumberLiteral(Number(1))})
 ## END
@@ -317,7 +317,7 @@ Object literal with complex expressions as values should parse successfully.
 
 ## BEGIN
 -- in --
-object(user: user.name, active: !user.disabled)
+{user: user.name, active: !user.disabled}
 -- out --
 ObjectLiteral({"active": UnaryOp(Not, PropertyAccess(Variable("user"), "disabled")), "user": PropertyAccess(Variable("user"), "name")})
 ## END
@@ -326,7 +326,7 @@ Object literal with nested object should parse successfully.
 
 ## BEGIN
 -- in --
-object(nested: object(inner: 'value'))
+{nested: {inner: 'value'}}
 -- out --
 ObjectLiteral({"nested": ObjectLiteral({"inner": StringLiteral("value")})})
 ## END
@@ -371,10 +371,10 @@ Object literal with trailing comma should parse successfully.
 
 ## BEGIN
 -- in --
-object(
+{
 	a: 'foo',
 	b: 1,
-)
+}
 -- out --
 ObjectLiteral({"a": StringLiteral("foo"), "b": NumberLiteral(Number(1))})
 ## END
@@ -383,9 +383,9 @@ Object literal with trailing comma and single property should parse successfully
 
 ## BEGIN
 -- in --
-object(
+{
 	name: 'John',
-)
+}
 -- out --
 ObjectLiteral({"name": StringLiteral("John")})
 ## END
@@ -394,10 +394,10 @@ Object literal with trailing comma and complex expressions should parse successf
 
 ## BEGIN
 -- in --
-object(
+{
 	user: user.name,
 	active: !user.disabled,
-)
+}
 -- out --
 ObjectLiteral({"active": UnaryOp(Not, PropertyAccess(Variable("user"), "disabled")), "user": PropertyAccess(Variable("user"), "name")})
 ## END

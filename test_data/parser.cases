@@ -243,8 +243,8 @@ render
 ## BEGIN
 -- main.hop --
 <main-comp {data: object[user: string]}>
-	<foo-comp {a: data} />
-	<bar-comp {b: data.user} />
+	<foo-comp {a: data}/>
+	<bar-comp {b: data.user}/>
 </main-comp>
 -- out --
 render

@@ -609,7 +609,7 @@ main::main-comp
 
 ## BEGIN
 -- main.hop --
-<main-comp {data: object[message: string]} entrypoint>
+<main-comp entrypoint {data: object[message: string]}>
     <h1>Hello World</h1>
     <p>{data.message}</p>
 </main-comp>

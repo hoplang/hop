@@ -251,6 +251,7 @@ fn parse_named_argument(tokenizer: &mut DopTokenizer) -> Result<(String, DopExpr
 //      | TypeVoid
 //      | TypeArray "[" type "]"
 //      | TypeObject "[" (Identifier ":" type ("," Identifier ":" type)*)? "]"
+//      | "{" (Identifier ":" type ("," Identifier ":" type)*)? "}"
 fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::DopType, RangeError> {
     use crate::dop::DopType;
     use std::collections::BTreeMap;
@@ -352,6 +353,70 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::DopType, Range
                 )),
             }
         }
+        (DopToken::LeftBrace, _) => {
+            // Parse {prop1: type1, prop2: type2, ...}
+            let mut properties = BTreeMap::new();
+
+            // Handle empty object type
+            if let (DopToken::RightBrace, _) = tokenizer.peek() {
+                tokenizer.advance()?; // consume }
+                return Ok(DopType::Object(properties));
+            }
+
+            loop {
+                // Parse property name
+                let prop_name = match tokenizer.advance()? {
+                    (DopToken::Identifier(name), _) => name,
+                    (_, range) => {
+                        return Err(RangeError::new(
+                            "Expected property name in object type".to_string(),
+                            range,
+                        ));
+                    }
+                };
+
+                // Expect colon
+                match tokenizer.advance()? {
+                    (DopToken::Colon, _) => {}
+                    (_, range) => {
+                        return Err(RangeError::new(
+                            "Expected ':' after property name in object type".to_string(),
+                            range,
+                        ));
+                    }
+                }
+
+                // Parse property type
+                let prop_type = parse_type(tokenizer)?;
+                properties.insert(prop_name, prop_type);
+
+                // Check for comma or closing brace
+                match tokenizer.peek() {
+                    (DopToken::Comma, _) => {
+                        tokenizer.advance()?; // consume ,
+                        
+                        // Check for trailing comma (closing brace after comma)
+                        if let (DopToken::RightBrace, _) = tokenizer.peek() {
+                            tokenizer.advance()?; // consume }
+                            break;
+                        }
+                        continue;
+                    }
+                    (DopToken::RightBrace, _) => {
+                        tokenizer.advance()?; // consume }
+                        break;
+                    }
+                    (_, range) => {
+                        return Err(RangeError::new(
+                            "Expected ',' or '}' after property type".to_string(),
+                            *range,
+                        ));
+                    }
+                }
+            }
+
+            Ok(DopType::Object(properties))
+        }
         (_, range) => Err(RangeError::new("Expected type name".to_string(), range)),
     }
 }
@@ -386,7 +451,7 @@ fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
 //         | BooleanLiteral
 //         | NumberLiteral
 //         | "[" ( equality ("," equality)* )? "]"
-//         | "object" "(" ( Identifier ":" equality ("," Identifier ":" equality)* )? ")"
+//         | "{" ( Identifier ":" equality ("," Identifier ":" equality)* )? "}"
 //         | "(" equality ")"
 fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
     match tokenizer.advance()? {
@@ -453,83 +518,75 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
 
             Ok(DopExpr::ArrayLiteral(elements))
         }
-        (DopToken::TypeObject, _) => {
-            // Parse object(key1: value1, key2: value2, ...)
-            match tokenizer.advance()? {
-                (DopToken::LeftParen, _) => {
-                    let mut properties = std::collections::BTreeMap::new();
+        (DopToken::LeftBrace, _) => {
+            // Parse {key1: value1, key2: value2, ...}
+            let mut properties = std::collections::BTreeMap::new();
 
-                    // Handle empty object
-                    if let (DopToken::RightParen, _) = tokenizer.peek() {
-                        tokenizer.advance()?; // consume )
-                        return Ok(DopExpr::ObjectLiteral(properties));
-                    }
-
-                    // Parse object properties
-                    loop {
-                        // Parse property name
-                        let prop_name = match tokenizer.advance()? {
-                            (DopToken::Identifier(name), _) => name,
-                            (_, range) => {
-                                return Err(RangeError::new(
-                                    "Expected property name in object literal".to_string(),
-                                    range,
-                                ));
-                            }
-                        };
-
-                        // Expect colon
-                        match tokenizer.advance()? {
-                            (DopToken::Colon, _) => {}
-                            (_, range) => {
-                                return Err(RangeError::new(
-                                    "Expected ':' after property name".to_string(),
-                                    range,
-                                ));
-                            }
-                        }
-
-                        // Parse property value
-                        let prop_value = parse_equality(tokenizer)?;
-                        if properties.contains_key(&prop_name) {
-                            return Err(RangeError::new(
-                                format!("Duplicate property name '{}'", prop_name),
-                                tokenizer.peek().1,
-                            ));
-                        }
-                        properties.insert(prop_name, prop_value);
-
-                        // Check for comma or closing parenthesis
-                        match tokenizer.peek() {
-                            (DopToken::Comma, _) => {
-                                tokenizer.advance()?; // consume ,
-                                // Check for trailing comma (closing paren after comma)
-                                if let (DopToken::RightParen, _) = tokenizer.peek() {
-                                    tokenizer.advance()?; // consume )
-                                    break;
-                                }
-                                continue;
-                            }
-                            (DopToken::RightParen, _) => {
-                                tokenizer.advance()?; // consume )
-                                break;
-                            }
-                            (_, range) => {
-                                return Err(RangeError::new(
-                                    "Expected ',' or ')' after property value".to_string(),
-                                    *range,
-                                ));
-                            }
-                        }
-                    }
-
-                    Ok(DopExpr::ObjectLiteral(properties))
-                }
-                (_, range) => Err(RangeError::new(
-                    "Expected '(' after 'object'".to_string(),
-                    range,
-                )),
+            // Handle empty object
+            if let (DopToken::RightBrace, _) = tokenizer.peek() {
+                tokenizer.advance()?; // consume }
+                return Ok(DopExpr::ObjectLiteral(properties));
             }
+
+            // Parse object properties
+            loop {
+                // Parse property name
+                let prop_name = match tokenizer.advance()? {
+                    (DopToken::Identifier(name), _) => name,
+                    (_, range) => {
+                        return Err(RangeError::new(
+                            "Expected property name in object literal".to_string(),
+                            range,
+                        ));
+                    }
+                };
+
+                // Expect colon
+                match tokenizer.advance()? {
+                    (DopToken::Colon, _) => {}
+                    (_, range) => {
+                        return Err(RangeError::new(
+                            "Expected ':' after property name".to_string(),
+                            range,
+                        ));
+                    }
+                }
+
+                // Parse property value
+                let prop_value = parse_equality(tokenizer)?;
+                if properties.contains_key(&prop_name) {
+                    return Err(RangeError::new(
+                        format!("Duplicate property name '{}'", prop_name),
+                        tokenizer.peek().1,
+                    ));
+                }
+                properties.insert(prop_name, prop_value);
+
+                // Check for comma or closing brace
+                match tokenizer.peek() {
+                    (DopToken::Comma, _) => {
+                        tokenizer.advance()?; // consume ,
+                        // Check for trailing comma (closing brace after comma)
+                        if let (DopToken::RightBrace, _) = tokenizer.peek() {
+                            tokenizer.advance()?; // consume }
+                            break;
+                        }
+                        continue;
+                    }
+                    (DopToken::RightBrace, _) => {
+                        tokenizer.advance()?; // consume }
+                        break;
+                    }
+                    (_, range) => {
+                        return Err(RangeError::new(
+                            "Expected ',' or '}' after property value".to_string(),
+                            *range,
+                        ));
+                    }
+                }
+            }
+
+            Ok(DopExpr::ObjectLiteral(properties))
         }
         (DopToken::LeftParen, _) => {
             let expr = parse_equality(tokenizer)?;

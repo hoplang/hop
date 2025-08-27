@@ -729,7 +729,12 @@ impl Tokenizer {
                 }
 
                 TokenizerState::TagExpressionContent => {
-                    if ch == '}' {
+                    // Temporary fix until we embed hop tokenizer here
+                    if self.cursor.match_str("}>")
+                        || self.cursor.match_str("} >")
+                        || self.cursor.match_str("}/>")
+                        || self.cursor.match_str("} />")
+                    {
                         // Store expression on current token and continue parsing tag
                         token_expression = Some((
                             mem::take(&mut expression_content),

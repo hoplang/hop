@@ -160,7 +160,7 @@
 
 <!---------------------------------------------------------------------------->
 
-<canvas-element {preview: string} style="position: absolute;">
+<canvas-element style="position: absolute;" {preview: string}>
 	<div class="flex flex-col gap-1 relative group p-4" data-id="resizable-container">
 		<div class="flex justify-between items-center">
 			<div data-id="title-area">
@@ -385,7 +385,7 @@
 
 <!---------------------------------------------------------------------------->
 
-<inspect-page {data: object[modules: array[object[name: string, components: array[object[name: string, has_preview: boolean, preview_url: string]]]], available_routes: array[string]]} entrypoint>
+<inspect-page entrypoint {data: object[modules: array[object[name: string, components: array[object[name: string, has_preview: boolean, preview_url: string]]]], available_routes: array[string]]}>
 	<!DOCTYPE html>
 	<html>
 	<head>

@@ -305,7 +305,7 @@ Empty object literal should have object type.
 ## BEGIN
 -- env --
 -- expr --
-object()
+{}
 -- out --
 object[]
 ## END
@@ -315,7 +315,7 @@ Object literal with single property should have correct object type.
 ## BEGIN
 -- env --
 -- expr --
-object(name: 'John')
+{name: 'John'}
 -- out --
 object[name: string]
 ## END
@@ -325,7 +325,7 @@ Object literal with multiple properties should have correct object type.
 ## BEGIN
 -- env --
 -- expr --
-object(a: 'foo', b: 1, c: true)
+{a: 'foo', b: 1, c: true}
 -- out --
 object[a: string, b: number, c: boolean]
 ## END
@@ -336,7 +336,7 @@ Object literal with complex expressions should have correct types.
 -- env --
 user: object[name: string, disabled: boolean]
 -- expr --
-object(user: user.name, active: !user.disabled)
+{user: user.name, active: !user.disabled}
 -- out --
 object[active: boolean, user: string]
 ## END
@@ -346,7 +346,7 @@ Nested object literals should have correct types.
 ## BEGIN
 -- env --
 -- expr --
-object(nested: object(inner: 'value'))
+{nested: {inner: 'value'}}
 -- out --
 object[nested: object[inner: string]]
 ## END
@@ -382,10 +382,10 @@ Object literal with trailing comma should have correct type.
 ## BEGIN
 -- env --
 -- expr --
-object(
+{
 	a: 'foo',
 	b: 1,
-)
+}
 -- out --
 object[a: string, b: number]
 ## END
@@ -395,9 +395,53 @@ Object literal with trailing comma and single property should have correct type.
 ## BEGIN
 -- env --
 -- expr --
-object(
+{
 	name: 'John',
-)
+}
 -- out --
 object[name: string]
+## END
+
+Object type with brace syntax should work correctly.
+
+## BEGIN
+-- env --
+user: {name: string, age: number}
+-- expr --
+user.name
+-- out --
+string
+## END
+
+Empty object type with brace syntax should work correctly.
+
+## BEGIN
+-- env --
+obj: {}
+-- expr --
+obj
+-- out --
+object[]
+## END
+
+Nested object types with brace syntax should work correctly.
+
+## BEGIN
+-- env --
+config: {database: {host: string, port: number}, cache: {enabled: boolean}}
+-- expr --
+config.database.host
+-- out --
+string
+## END
+
+Object type with array property using brace syntax should work correctly.
+
+## BEGIN
+-- env --
+data: {items: array[string], count: number}
+-- expr --
+data.items
+-- out --
+array[string]
 ## END
