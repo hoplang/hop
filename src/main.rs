@@ -3,8 +3,6 @@ mod common;
 mod dop;
 mod filesystem;
 mod tui;
-#[cfg(test)]
-mod test_utils;
 mod hop;
 
 use clap::{CommandFactory, Parser, Subcommand};

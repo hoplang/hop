@@ -1,11 +1,11 @@
-use anyhow::Context;
 use crate::filesystem::files::ProjectRoot;
+use anyhow::Context;
 use rayon::prelude::*;
 use std::fs;
 use std::path::Path;
 
-use crate::hop::compiler::compile;
 use crate::filesystem::files;
+use crate::hop::compiler::compile;
 use crate::hop::runtime::HopMode;
 use crate::tui::timing;
 

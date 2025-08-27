@@ -1,5 +1,5 @@
 use crate::common::Range;
-use crate::dop::{DopExpr, parser::DopVarName, DopType};
+use crate::dop::{DopExpr, DopType, parser::DopVarName};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq)]

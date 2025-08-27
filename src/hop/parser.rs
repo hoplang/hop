@@ -1,11 +1,11 @@
 use crate::common::{Range, RangeError, is_void_element};
+use crate::dop::{self, DopTokenizer};
 use crate::hop::ast::{
     Attribute, ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, DopExprAttribute,
-    DopVarNameAttribute, ErrorNode, ForNode, IfNode, ImportNode, NativeHTMLNode, Node,
-    RenderNode, SlotDefinitionNode, SlotReferenceNode, TextExpressionNode, TextNode,
-    XExecNode, XLoadJsonNode, XRawNode,
+    DopVarNameAttribute, ErrorNode, ForNode, IfNode, ImportNode, NativeHTMLNode, Node, RenderNode,
+    SlotDefinitionNode, SlotReferenceNode, TextExpressionNode, TextNode, XExecNode, XLoadJsonNode,
+    XRawNode,
 };
-use crate::dop::{self, DopTokenizer};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
 use std::collections::HashSet;

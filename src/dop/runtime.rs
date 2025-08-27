@@ -83,8 +83,8 @@ pub fn evaluate_expr(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hop::environment::Environment;
     use crate::dop::parse_expr;
+    use crate::hop::environment::Environment;
     use expect_test::{Expect, expect};
     use serde_json::json;
 

@@ -1,4 +1,4 @@
-fmt PATH='src/**/*':
+fmt PATH='src/**/*.rs':
   rustfmt --edition 2024 {{PATH}}
 
 test:

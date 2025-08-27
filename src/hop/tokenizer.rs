@@ -803,10 +803,7 @@ mod tests {
 
     #[test]
     fn test_tokenize_empty() {
-        check(
-            "",
-            expect!["[]"],
-        );
+        check("", expect!["[]"]);
     }
 
     #[test]

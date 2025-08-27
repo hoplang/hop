@@ -203,93 +203,86 @@ impl Default for TopoSorter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::parse_test_cases;
-
-    use std::{env, fs, path::PathBuf};
 
     #[test]
-    fn test_toposorter() {
-        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("test_data/toposorter.cases");
+    fn test_basic_sorting_and_cycle_detection() {
+        let mut toposorter = TopoSorter::new();
+        toposorter.add_dependency("a", "b");
+        toposorter.add_dependency("b", "c");
 
-        let content = fs::read_to_string(&d).unwrap();
-        let test_cases = parse_test_cases(&content);
+        // Should sort successfully
+        assert_eq!(toposorter.sort().unwrap(), vec!["c", "b", "a"]);
 
-        for (case_num, (archive, line_number)) in test_cases.iter().enumerate() {
-            let input = archive
-                .get("in")
-                .expect("Missing 'in' section in test case")
-                .content
-                .trim();
-            let expected = archive
-                .get("out")
-                .expect("Missing 'out' section in test case")
-                .content
-                .trim();
+        // Should still sort the same way
+        assert_eq!(toposorter.sort().unwrap(), vec!["c", "b", "a"]);
 
-            let mut toposorter = TopoSorter::new();
-            let mut lines: Vec<String> = Vec::new();
+        // Add a cycle
+        toposorter.add_dependency("c", "a");
 
-            println!("Test case {} (line {})", case_num + 1, line_number);
+        // Should detect cycle
+        let result = toposorter.sort();
+        assert!(result.is_err());
+        let cycle_error = result.unwrap_err();
+        assert_eq!(cycle_error.cycle, vec!["a", "b", "c"]);
+    }
 
-            for line in input.split('\n') {
-                let line = line.trim();
-                if line.is_empty() {
-                    continue;
-                }
+    #[test]
+    fn test_cycle_detection() {
+        let mut toposorter = TopoSorter::new();
+        toposorter.add_dependency("a", "b");
+        toposorter.add_dependency("b", "c");
+        toposorter.add_dependency("c", "a");
 
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.is_empty() {
-                    continue;
-                }
+        let result = toposorter.sort();
+        assert!(result.is_err());
+        let cycle_error = result.unwrap_err();
+        assert_eq!(cycle_error.cycle, vec!["a", "b", "c"]);
+    }
 
-                match parts[0] {
-                    "add_node" => {
-                        assert_eq!(parts.len(), 2, "add_node expects 1 argument");
-                        toposorter.add_node(parts[1].to_string());
-                    }
-                    "add_dependency" => {
-                        assert_eq!(parts.len(), 3, "add_dependency expects 2 arguments");
-                        toposorter.add_dependency(parts[1], parts[2]);
-                    }
-                    "sort" => {
-                        assert_eq!(parts.len(), 1, "sort expects no arguments");
-                        match toposorter.sort() {
-                            Ok(sorted) => {
-                                lines.push(format!("sorted: {}", sorted.join(" ")));
-                            }
-                            Err(cycle_error) => {
-                                lines.push(format!("cycle: {}", cycle_error.cycle.join(" ")));
-                            }
-                        }
-                    }
-                    "sort_subgraph" => {
-                        assert_eq!(parts.len(), 2, "sort_subgraph expects 1 argument");
-                        match toposorter.sort_subgraph(parts[1]) {
-                            Ok(sorted) => {
-                                lines.push(format!("subgraph: {}", sorted.join(" ")));
-                            }
-                            Err(cycle_error) => {
-                                lines.push(format!("cycle: {}", cycle_error.cycle.join(" ")));
-                            }
-                        }
-                    }
-                    "clear_dependencies" => {
-                        assert_eq!(parts.len(), 2, "clear_dependencies expects 1 argument");
-                        toposorter.clear_dependencies(parts[1]);
-                    }
-                    _ => panic!("Unknown command: {}", parts[0]),
-                }
-            }
+    #[test]
+    fn test_self_cycle() {
+        let mut toposorter = TopoSorter::new();
+        toposorter.add_dependency("a", "a");
 
-            let output = lines.join("\n");
-            assert_eq!(
-                output,
-                expected,
-                "Mismatch in test case {} (line {})",
-                case_num + 1,
-                line_number
-            );
-        }
+        let result = toposorter.sort();
+        assert!(result.is_err());
+        let cycle_error = result.unwrap_err();
+        assert_eq!(cycle_error.cycle, vec!["a"]);
+    }
+
+    #[test]
+    fn test_subgraph_sorting_and_dependencies() {
+        let mut toposorter = TopoSorter::new();
+        toposorter.add_dependency("a", "b");
+        toposorter.add_dependency("b", "c");
+        toposorter.add_dependency("c", "d");
+        toposorter.add_dependency("d", "e");
+
+        // Test subgraph sorting
+        assert_eq!(toposorter.sort_subgraph("b").unwrap(), vec!["b", "a"]);
+        assert_eq!(toposorter.sort_subgraph("c").unwrap(), vec!["c", "b", "a"]);
+        assert_eq!(
+            toposorter.sort_subgraph("d").unwrap(),
+            vec!["d", "c", "b", "a"]
+        );
+        assert_eq!(
+            toposorter.sort_subgraph("e").unwrap(),
+            vec!["e", "d", "c", "b", "a"]
+        );
+
+        // Full sort
+        assert_eq!(toposorter.sort().unwrap(), vec!["e", "d", "c", "b", "a"]);
+
+        // Clear dependencies and modify
+        toposorter.clear_dependencies("d");
+        toposorter.add_dependency("c", "e");
+        toposorter.add_dependency("e", "d");
+
+        // Test after modification
+        assert_eq!(toposorter.sort().unwrap(), vec!["d", "e", "c", "b", "a"]);
+        assert_eq!(
+            toposorter.sort_subgraph("e").unwrap(),
+            vec!["e", "c", "b", "a"]
+        );
     }
 }

@@ -3,9 +3,9 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use crate::common::escape_html;
-use crate::hop::compiler::compile;
 use crate::filesystem::files;
 use crate::hop;
+use crate::hop::compiler::compile;
 use crate::hop::runtime::HopMode;
 
 const ERROR_TEMPLATES: &str = include_str!("../../hop/error_pages.hop");
