@@ -241,7 +241,7 @@ fn typecheck_node(
             let condition_type = match typecheck_expr(condition, env, annotations, errors, *range) {
                 Ok(t) => t,
                 Err(err) => {
-                    errors.push(RangeError::new(err, *range));
+                    errors.push(err);
                     return; // Skip further processing of this branch
                 }
             };
@@ -316,7 +316,7 @@ fn typecheck_node(
                             {
                                 Ok(t) => t,
                                 Err(err) => {
-                                    errors.push(RangeError::new(err, *expr_range));
+                                    errors.push(err);
                                     continue; // Skip to next argument
                                 }
                             };
@@ -378,7 +378,7 @@ fn typecheck_node(
                 ) {
                     Ok(t) => t,
                     Err(err) => {
-                        errors.push(RangeError::new(err, set_attr.range));
+                        errors.push(err);
                         continue; // Skip this attribute
                     }
                 };
@@ -492,7 +492,7 @@ fn typecheck_node(
                 match typecheck_expr(array_expr, env, annotations, errors, *array_expr_range) {
                     Ok(t) => t,
                     Err(err) => {
-                        errors.push(RangeError::new(err, *array_expr_range));
+                        errors.push(err);
                         return; // Skip further processing of this for loop
                     }
                 };
@@ -566,7 +566,7 @@ fn typecheck_node(
             ) {
                 Ok(t) => t,
                 Err(err) => {
-                    errors.push(RangeError::new(err, text_expr_node.range));
+                    errors.push(err);
                     return; // Skip further processing
                 }
             };
