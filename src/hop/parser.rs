@@ -165,60 +165,6 @@ fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTree {
     stack.pop().unwrap().0
 }
 
-fn collect_slots_from_children(
-    children: &[HopNode],
-    slots: &mut HashSet<String>,
-    errors: &mut Vec<RangeError>,
-) {
-    for child in children {
-        match child {
-            HopNode::Text(_) => {}
-            HopNode::TextExpression(_) => {}
-            HopNode::Doctype(_) => {}
-            HopNode::SlotDefinition(SlotDefinitionNode { name, range, .. }) => {
-                if slots.contains(name) {
-                    errors.push(RangeError::slot_already_defined(name, *range));
-                } else {
-                    // Check if trying to mix default slot with other slots
-                    if (name == "default" && !slots.is_empty())
-                        || (slots.contains("default") && name != "default")
-                    {
-                        errors.push(RangeError::default_slot_with_other_slots(*range));
-                    } else {
-                        slots.insert(name.clone());
-                    }
-                }
-            }
-            HopNode::XExec(XExecNode { children, .. }) => {
-                collect_slots_from_children(children, slots, errors);
-            }
-            HopNode::If(IfNode { children, .. }) => {
-                collect_slots_from_children(children, slots, errors);
-            }
-            HopNode::For(ForNode { children, .. }) => {
-                collect_slots_from_children(children, slots, errors);
-            }
-            HopNode::NativeHTML(NativeHTMLNode { children, .. }) => {
-                collect_slots_from_children(children, slots, errors);
-            }
-            HopNode::ComponentReference(ComponentReferenceNode { children, .. }) => {
-                collect_slots_from_children(children, slots, errors);
-            }
-            HopNode::SlotReference(SlotReferenceNode { children, .. }) => {
-                collect_slots_from_children(children, slots, errors);
-            }
-            HopNode::Error(ErrorNode { children, .. }) => {
-                collect_slots_from_children(children, slots, errors);
-            }
-            HopNode::XRaw(XRawNode { children, .. }) => {
-                collect_slots_from_children(children, slots, errors);
-            }
-            HopNode::XLoadJson(XLoadJsonNode { children, .. }) => {
-                collect_slots_from_children(children, slots, errors);
-            }
-        }
-    }
-}
 
 fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Option<ToplevelNode> {
     let (t, range) = &tree.token;
@@ -333,7 +279,24 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                         .unwrap_or_else(Vec::new);
 
                     let mut slots = HashSet::new();
-                    collect_slots_from_children(&children, &mut slots, errors);
+                    for child in &children {
+                        for node in child.iter_depth_first() {
+                            if let HopNode::SlotDefinition(SlotDefinitionNode { name, range, .. }) = node {
+                                if slots.contains(name) {
+                                    errors.push(RangeError::slot_already_defined(name, *range));
+                                } else {
+                                    // Check if trying to mix default slot with other slots
+                                    if (name == "default" && !slots.is_empty())
+                                        || (slots.contains("default") && name != "default")
+                                    {
+                                        errors.push(RangeError::default_slot_with_other_slots(*range));
+                                    } else {
+                                        slots.insert(name.clone());
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     Some(ToplevelNode::ComponentDefinition(ComponentDefinitionNode {
                         name: name.to_string(),
