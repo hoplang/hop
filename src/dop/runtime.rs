@@ -79,139 +79,202 @@ pub fn evaluate_expr(
 
 #[cfg(test)]
 mod tests {
-
-    use crate::dop::parse_expr;
-
     use super::*;
-    use crate::test_utils::parse_test_cases;
-    use pretty_assertions::assert_eq;
+    use crate::common::Environment;
+    use crate::dop::parse_expr;
+    use expect_test::{Expect, expect};
+    use serde_json::json;
 
-    use std::fs;
-    use std::path::PathBuf;
-
-    #[test]
-    fn test_evaluate_expr() {
-        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("test_data/dop/evaluate_expr.cases");
-
-        let content = fs::read_to_string(&d).unwrap();
-        let test_cases = parse_test_cases(&content);
-
-        for (case_num, (archive, line_number)) in test_cases.iter().enumerate() {
-            let env_content = archive
-                .get("env")
-                .expect("Missing 'env' section in test case")
-                .content
-                .trim();
-            let expr_content = archive
-                .get("expr")
-                .expect("Missing 'expr' section in test case")
-                .content
-                .trim();
-
-            println!("Test case {} (line {})", case_num + 1, line_number);
-
-            // Parse the environment JSON
-            let env_json: serde_json::Value =
-                serde_json::from_str(env_content).unwrap_or_else(|e| {
-                    panic!(
-                        "Failed to parse environment JSON in test case {} (line {}): {}",
-                        case_num + 1,
-                        line_number,
-                        e
-                    );
-                });
-
-            // Create environment from JSON
-            let mut env = Environment::new();
-            if let serde_json::Value::Object(map) = env_json {
-                for (key, value) in map {
-                    env.push(key, value);
-                }
-            }
-
-            // Parse the expression
-            let mut tokenizer = crate::dop::tokenizer::DopTokenizer::new(
-                expr_content,
-                crate::common::Position::new(1, 1),
-            )
-            .unwrap_or_else(|e| {
-                panic!(
-                    "Failed to create tokenizer for '{}' in test case {} (line {}): {:?}",
-                    expr_content,
-                    case_num + 1,
-                    line_number,
-                    e
-                );
-            });
-            let expr = parse_expr(&mut tokenizer).unwrap_or_else(|e| {
-                panic!(
-                    "Failed to parse expression '{}' in test case {} (line {}): {:?}",
-                    expr_content,
-                    case_num + 1,
-                    line_number,
-                    e
-                );
-            });
-
-            // Check if this test case expects an error
-            if let Some(error_section) = archive.get("error") {
-                let expected_error = error_section.content.trim();
-
-                match evaluate_expr(&expr, &mut env) {
-                    Ok(result) => {
-                        panic!(
-                            "Expected error '{}' but got result '{}' in test case {} (line {})",
-                            expected_error,
-                            result,
-                            case_num + 1,
-                            line_number
-                        );
-                    }
-                    Err(err) => {
-                        let actual_error = err.to_string();
-                        assert_eq!(
-                            actual_error,
-                            expected_error,
-                            "Test case {} (line {}): Error message mismatch",
-                            case_num + 1,
-                            line_number
-                        );
-                    }
-                }
-            } else {
-                // This test case expects a successful result
-                let expected_section = archive
-                    .get("out")
-                    .expect("Missing 'out' section in test case");
-                let expected: serde_json::Value =
-                    serde_json::from_str(expected_section.content.trim()).unwrap_or_else(|e| {
-                        panic!(
-                            "Failed to parse expected result JSON in test case {} (line {}): {}",
-                            case_num + 1,
-                            line_number,
-                            e
-                        );
-                    });
-
-                let result = evaluate_expr(&expr, &mut env).unwrap_or_else(|e| {
-                    panic!(
-                        "Failed to evaluate expression '{}' in test case {} (line {}): {}",
-                        expr_content,
-                        case_num + 1,
-                        line_number,
-                        e
-                    );
-                });
-
-                assert_eq!(
-                    result,
-                    expected,
-                    "Test case {} (line {}): Result mismatch",
-                    case_num + 1,
-                    line_number
-                );
+    fn check(env_json: serde_json::Value, expr_str: &str, expected: Expect) {
+        // Create environment from JSON
+        let mut env = Environment::new();
+        if let serde_json::Value::Object(map) = env_json {
+            for (key, value) in map {
+                env.push(key, value);
             }
         }
+
+        // Parse the expression
+        let mut tokenizer =
+            crate::dop::tokenizer::DopTokenizer::new(expr_str, crate::common::Position::new(1, 1))
+                .expect("Failed to create tokenizer");
+
+        let expr = parse_expr(&mut tokenizer).expect("Failed to parse expression");
+
+        // Evaluate the expression
+        let actual = match evaluate_expr(&expr, &mut env) {
+            Ok(result) => format!("{}", result),
+            Err(e) => format!("error: {}", e),
+        };
+
+        expected.assert_eq(&actual);
+    }
+
+    #[test]
+    fn test_variable_lookup() {
+        check(json!({"name": "alice"}), "name", expect![["\"alice\""]]);
+    }
+
+    #[test]
+    fn test_string_literals() {
+        check(json!({}), "'hello world'", expect![["\"hello world\""]]);
+    }
+
+    #[test]
+    fn test_boolean_literals() {
+        check(json!({}), "true", expect!["true"]);
+        check(json!({}), "false", expect!["false"]);
+    }
+
+    #[test]
+    fn test_property_access() {
+        check(
+            json!({"user": {"name": "alice", "age": 30}}),
+            "user.name",
+            expect![["\"alice\""]],
+        );
+        check(
+            json!({"user": {"name": "alice", "age": 30}}),
+            "user.age",
+            expect![["30"]],
+        );
+    }
+
+    #[test]
+    fn test_deep_property_access() {
+        check(
+            json!({"app": {"user": {"profile": {"settings": {"theme": "dark"}}}}}),
+            "app.user.profile.settings.theme",
+            expect![["\"dark\""]],
+        );
+    }
+
+    #[test]
+    fn test_equality_comparison() {
+        check(
+            json!({"user": {"name": "alice"}, "admin": {"name": "alice"}}),
+            "user.name == admin.name",
+            expect![["true"]],
+        );
+        check(
+            json!({"user": {"name": "alice"}, "admin": {"name": "bob"}}),
+            "user.name == admin.name",
+            expect![["false"]],
+        );
+    }
+
+    #[test]
+    fn test_equality_with_literals() {
+        check(
+            json!({"status": "active"}),
+            "status == 'active'",
+            expect![["true"]],
+        );
+        check(json!({"count": 5}), "count == 5", expect![["true"]]);
+    }
+
+    #[test]
+    fn test_complex_equality() {
+        check(
+            json!({"a": 1, "b": 2, "c": 1}),
+            "a == b == false",
+            expect![["true"]],
+        );
+    }
+
+    #[test]
+    fn test_negation_operator() {
+        check(json!({"enabled": true}), "!enabled", expect![["false"]]);
+        check(json!({"enabled": false}), "!enabled", expect![["true"]]);
+        check(json!({}), "!true", expect![["false"]]);
+        check(json!({}), "!false", expect![["true"]]);
+    }
+
+    #[test]
+    fn test_array_literals() {
+        check(json!({}), "[]", expect![["[]"]]);
+        check(json!({}), "[1, 2, 3]", expect![["[1,2,3]"]]);
+        check(
+            json!({}),
+            "[42, 'hello', true]",
+            expect![["[42,\"hello\",true]"]],
+        );
+        check(json!({"x": 10, "y": 20}), "[x, y]", expect![["[10,20]"]]);
+        check(json!({}), "[[1, 2], [3, 4]]", expect![["[[1,2],[3,4]]"]]);
+        check(
+            json!({"user": {"name": "alice", "age": 30}}),
+            "[user.name, user.age]",
+            expect![["[\"alice\",30]"]],
+        );
+    }
+
+    #[test]
+    fn test_object_literals() {
+        check(json!({}), "{}", expect![["{}"]]);
+        check(
+            json!({}),
+            "{name: 'John'}",
+            expect![["{\"name\":\"John\"}"]],
+        );
+        check(
+            json!({}),
+            "{a: 'foo', b: 1, c: true}",
+            expect![["{\"a\":\"foo\",\"b\":1,\"c\":true}"]],
+        );
+        check(
+            json!({"user": {"name": "alice", "disabled": false}}),
+            "{user: user.name, active: !user.disabled}",
+            expect![["{\"active\":true,\"user\":\"alice\"}"]],
+        );
+        check(
+            json!({}),
+            "{nested: {inner: 'value'}}",
+            expect![["{\"nested\":{\"inner\":\"value\"}}"]],
+        );
+    }
+
+    #[test]
+    fn test_trailing_commas() {
+        check(json!({}), "[\n\t1,\n\t2,\n\t3,\n]", expect![["[1,2,3]"]]);
+        check(json!({}), "['hello',]", expect![["[\"hello\"]"]]);
+        check(
+            json!({}),
+            "{\n\ta: 'foo',\n\tb: 1,\n}",
+            expect![["{\"a\":\"foo\",\"b\":1}"]],
+        );
+        check(
+            json!({}),
+            "{\n\tname: 'John',\n}",
+            expect![["{\"name\":\"John\"}"]],
+        );
+    }
+
+    #[test]
+    fn test_errors() {
+        check(
+            json!({}),
+            "undefined_var",
+            expect![["error: Undefined variable: undefined_var"]],
+        );
+        check(
+            json!({"user": null}),
+            "user.name",
+            expect![["error: Cannot access property of null value"]],
+        );
+        check(
+            json!({"count": 42}),
+            "count.value",
+            expect![["error: Cannot access property of non-object"]],
+        );
+        check(
+            json!({"user": {"name": "alice"}}),
+            "user.age",
+            expect![["error: Property 'age' not found"]],
+        );
+        check(
+            json!({"name": "alice"}),
+            "!name",
+            expect![["error: Negation operator can only be applied to boolean values"]],
+        );
     }
 }
