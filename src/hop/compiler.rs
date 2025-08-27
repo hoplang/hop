@@ -1,6 +1,6 @@
 use crate::hop::parser::parse;
 use crate::hop::runtime::{HopMode, Program};
-use crate::hop::scriptcollector::ScriptCollector;
+use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
 use crate::hop::typechecker::{TypeResult, typecheck};
@@ -61,8 +61,8 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Res
 
         module_type_results.insert(module_name.clone(), type_info);
 
-        // Collect scripts from this module
-        script_collector.add_module(module_name.clone(), module.components.clone());
+        // Process scripts from this module
+        script_collector.process_module(&module_name, &module.components);
     }
 
     if error_formatter.has_errors() {
