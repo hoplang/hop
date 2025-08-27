@@ -1,5 +1,5 @@
 use crate::common::Range;
-use crate::dop::{DopExpr, DopType, parser::DopVarName};
+use crate::dop::{DopExpr, DopParameter, DopArgument, parser::DopVarName};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Attribute {
@@ -9,18 +9,6 @@ pub struct Attribute {
     pub value_range: Range,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct HopParameter {
-    pub var_name: DopVarName,
-    pub type_annotation: DopType,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct HopArgument {
-    pub name: String,
-    pub name_range: Range,
-    pub expression: DopExpr,
-}
 
 impl Attribute {
     pub fn new(name: String, value: String, range: Range, value_range: Range) -> Self {
@@ -67,7 +55,7 @@ pub struct ComponentReferenceNode {
     pub component: String,
     pub opening_name_range: Range,
     pub closing_name_range: Option<Range>,
-    pub args: Vec<HopArgument>,
+    pub args: Vec<DopArgument>,
     pub attributes: Vec<Attribute>,
     pub range: Range,
     pub children: Vec<HopNode>,
@@ -92,7 +80,7 @@ pub struct ComponentDefinitionNode {
     pub name: String,
     pub opening_name_range: Range,
     pub closing_name_range: Option<Range>,
-    pub params: Vec<HopParameter>,
+    pub params: Vec<DopParameter>,
     pub as_attr: Option<Attribute>,
     pub attributes: Vec<Attribute>,
     pub range: Range,

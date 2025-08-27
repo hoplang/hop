@@ -2,7 +2,7 @@ use crate::common::{Range, RangeError, is_void_element};
 use crate::dop::{self, DopTokenizer};
 use crate::hop::ast::{
     ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, DopExprAttribute, ErrorNode,
-    ForNode, HopNode, HopParameter, IfNode, ImportNode, NativeHTMLNode, RenderNode,
+    ForNode, HopNode, IfNode, ImportNode, NativeHTMLNode, RenderNode,
     SlotDefinitionNode, SlotReferenceNode, TextExpressionNode, TextNode, XExecNode, XLoadJsonNode,
     XRawNode,
 };
@@ -323,15 +323,7 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                                 }
                             };
                             match dop::parse_parameters_with_types(&mut tokenizer) {
-                                Ok(params) => params
-                                    .into_iter()
-                                    .map(|(var_name, range_dop_type)| {
-                                        HopParameter {
-                                            var_name,
-                                            type_annotation: range_dop_type.dop_type,
-                                        }
-                                    })
-                                    .collect(),
+                                Ok(params) => params,
                                 Err(error) => {
                                     errors.push(error);
                                     Vec::new()

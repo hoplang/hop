@@ -217,8 +217,8 @@ mod tests {
                 .expect("Failed to create tokenizer");
             let params =
                 parse_parameters_with_types(&mut tokenizer).expect("Failed to parse environment");
-            for (var_name, range_dop_type) in params {
-                env.push(var_name.value, range_dop_type.dop_type);
+            for param in params {
+                env.push(param.var_name.value, param.type_annotation);
             }
         }
 

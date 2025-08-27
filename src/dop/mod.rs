@@ -6,7 +6,7 @@ pub mod typechecker;
 
 pub use infer_type_from_json::{infer_type_from_json_file, load_json_file};
 pub use parser::{
-    DopExpr, parse_expr, parse_loop_header, parse_named_arguments, parse_parameters_with_types,
+    DopExpr, DopArgument, DopParameter, parse_expr, parse_loop_header, parse_named_arguments, parse_parameters_with_types,
 };
 pub use runtime::evaluate_expr;
 pub use tokenizer::DopTokenizer;

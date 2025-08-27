@@ -291,7 +291,7 @@ fn typecheck_node(
                 });
 
                 // Validate named arguments against parameter types
-                let provided_args: std::collections::HashSet<_> = params.iter().map(|arg| &arg.name).collect();
+                let provided_args: std::collections::HashSet<_> = params.iter().map(|arg| &arg.var_name.value).collect();
                 let expected_params: std::collections::HashSet<_> =
                     comp_info.parameter_types.keys().collect();
 
@@ -313,7 +313,7 @@ fn typecheck_node(
 
                 // Check each provided argument against its corresponding parameter type
                 for arg in params {
-                    if let Some(expected_type) = comp_info.parameter_types.get(&arg.name) {
+                    if let Some(expected_type) = comp_info.parameter_types.get(&arg.var_name.value) {
                         let expr_type = match typecheck_expr(&arg.expression, env, annotations, errors) {
                             Ok(t) => t,
                             Err(err) => {
@@ -326,7 +326,7 @@ fn typecheck_node(
                             errors.push(RangeError::new(
                                 format!(
                                     "Argument '{}' of type {} is incompatible with expected type {}",
-                                    arg.name, expr_type, expected_type,
+                                    arg.var_name.value, expr_type, expected_type,
                                 ),
                                 arg.expression.range(),
                             ));
@@ -334,7 +334,7 @@ fn typecheck_node(
                             annotations.push(TypeAnnotation {
                                 range: arg.expression.range(),
                                 typ: expr_type,
-                                name: format!("component parameter '{}'", arg.name),
+                                name: format!("component parameter '{}'", arg.var_name.value),
                             });
                         }
                     }

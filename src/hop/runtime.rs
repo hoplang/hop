@@ -317,7 +317,7 @@ impl Program {
             }) => {
                 let mut arg_values = std::collections::BTreeMap::new();
                 for arg in args {
-                    arg_values.insert(arg.name.clone(), evaluate_expr(&arg.expression, env)?);
+                    arg_values.insert(arg.var_name.value.clone(), evaluate_expr(&arg.expression, env)?);
                 }
 
                 let component_name = component;

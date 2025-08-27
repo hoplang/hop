@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use crate::common::{Range, RangeError};
 use crate::dop::tokenizer::{DopToken, DopTokenizer};
 use crate::dop::typechecker::RangeDopType;
-use crate::hop::ast::HopArgument;
+use crate::dop::DopType;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
@@ -86,6 +86,20 @@ pub struct DopVarName {
     pub range: Range,
 }
 
+/// A DopParameter represents a parsed parameter with type annotation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DopParameter {
+    pub var_name: DopVarName,
+    pub type_annotation: DopType,
+}
+
+/// A DopArgument represents a parsed argument with name and expression.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DopArgument {
+    pub var_name: DopVarName,
+    pub expression: DopExpr,
+}
+
 impl DopVarName {
     pub fn new(value: String, range: Range) -> Option<Self> {
         let mut chars = value.chars();
@@ -165,7 +179,7 @@ pub fn parse_loop_header(
 // parameter_with_type = Identifier ":" type
 fn parse_parameter_with_type(
     tokenizer: &mut DopTokenizer,
-) -> Result<(DopVarName, RangeDopType), RangeError> {
+) -> Result<DopParameter, RangeError> {
     // Parse parameter name
     let var_name = match tokenizer.advance()? {
         (DopToken::Identifier(name), range) => match DopVarName::new(name.clone(), range) {
@@ -190,13 +204,16 @@ fn parse_parameter_with_type(
         }
     };
 
-    Ok((var_name, range_dop_type))
+    Ok(DopParameter {
+        var_name,
+        type_annotation: range_dop_type.dop_type,
+    })
 }
 
 // parameters_with_types = parameter_with_type ("," parameter_with_type)* Eof
 pub fn parse_parameters_with_types(
     tokenizer: &mut DopTokenizer,
-) -> Result<Vec<(DopVarName, RangeDopType)>, RangeError> {
+) -> Result<Vec<DopParameter>, RangeError> {
     let mut params = Vec::new();
 
     // Parse first parameter
@@ -230,13 +247,14 @@ pub fn parse_parameters_with_types(
 // named_arguments = named_argument ("," named_argument)* Eof
 pub fn parse_named_arguments(
     tokenizer: &mut DopTokenizer,
-) -> Result<Vec<HopArgument>, RangeError> {
+) -> Result<Vec<DopArgument>, RangeError> {
     let mut args = Vec::new();
 
     let (name, name_range, expr) = parse_named_argument(tokenizer)?;
-    args.push(HopArgument {
-        name: name.clone(),
-        name_range,
+    let var_name = DopVarName::new(name.clone(), name_range)
+        .ok_or_else(|| RangeError::invalid_variable_name(&name, name_range))?;
+    args.push(DopArgument {
+        var_name,
         expression: expr,
     });
 
@@ -251,15 +269,16 @@ pub fn parse_named_arguments(
                 }
                 let (name, name_range, expr) = parse_named_argument(tokenizer)?;
                 // Check for duplicates
-                if args.iter().any(|arg| arg.name == name) {
+                if args.iter().any(|arg| arg.var_name.value == name) {
                     return Err(RangeError::new(
                         format!("Duplicate argument name '{}'", name),
                         name_range,
                     ));
                 }
-                args.push(HopArgument {
-                    name,
-                    name_range,
+                let var_name = DopVarName::new(name.clone(), name_range)
+                    .ok_or_else(|| RangeError::invalid_variable_name(&name, name_range))?;
+                args.push(DopArgument {
+                    var_name,
                     expression: expr,
                 });
             }
@@ -1660,9 +1679,11 @@ mod tests {
             "name: 'John'",
             expect![[r#"
                 [
-                    HopArgument {
-                        name: "name",
-                        name_range: 1:1-1:5,
+                    DopArgument {
+                        var_name: DopVarName {
+                            value: "name",
+                            range: 1:1-1:5,
+                        },
                         expression: StringLiteral {
                             value: "John",
                             range: 1:7-1:13,
@@ -1679,25 +1700,31 @@ mod tests {
             "name: 'John', age: 25, active: true",
             expect![[r#"
                 [
-                    HopArgument {
-                        name: "name",
-                        name_range: 1:1-1:5,
+                    DopArgument {
+                        var_name: DopVarName {
+                            value: "name",
+                            range: 1:1-1:5,
+                        },
                         expression: StringLiteral {
                             value: "John",
                             range: 1:7-1:13,
                         },
                     },
-                    HopArgument {
-                        name: "age",
-                        name_range: 1:15-1:18,
+                    DopArgument {
+                        var_name: DopVarName {
+                            value: "age",
+                            range: 1:15-1:18,
+                        },
                         expression: NumberLiteral {
                             value: Number(25),
                             range: 1:20-1:22,
                         },
                     },
-                    HopArgument {
-                        name: "active",
-                        name_range: 1:24-1:30,
+                    DopArgument {
+                        var_name: DopVarName {
+                            value: "active",
+                            range: 1:24-1:30,
+                        },
                         expression: BooleanLiteral {
                             value: true,
                             range: 1:32-1:36,
@@ -1714,9 +1741,11 @@ mod tests {
             "user: user.name, enabled: !user.disabled",
             expect![[r#"
                 [
-                    HopArgument {
-                        name: "user",
-                        name_range: 1:1-1:5,
+                    DopArgument {
+                        var_name: DopVarName {
+                            value: "user",
+                            range: 1:1-1:5,
+                        },
                         expression: PropertyAccess {
                             object: Variable {
                                 name: "user",
@@ -1727,9 +1756,11 @@ mod tests {
                             range: 1:7-1:16,
                         },
                     },
-                    HopArgument {
-                        name: "enabled",
-                        name_range: 1:18-1:25,
+                    DopArgument {
+                        var_name: DopVarName {
+                            value: "enabled",
+                            range: 1:18-1:25,
+                        },
                         expression: UnaryOp {
                             operator: Not,
                             operator_range: 1:27-1:28,
@@ -1756,17 +1787,21 @@ mod tests {
             "name: 'John', age: 25,",
             expect![[r#"
                 [
-                    HopArgument {
-                        name: "name",
-                        name_range: 1:1-1:5,
+                    DopArgument {
+                        var_name: DopVarName {
+                            value: "name",
+                            range: 1:1-1:5,
+                        },
                         expression: StringLiteral {
                             value: "John",
                             range: 1:7-1:13,
                         },
                     },
-                    HopArgument {
-                        name: "age",
-                        name_range: 1:15-1:18,
+                    DopArgument {
+                        var_name: DopVarName {
+                            value: "age",
+                            range: 1:15-1:18,
+                        },
                         expression: NumberLiteral {
                             value: Number(25),
                             range: 1:20-1:22,
