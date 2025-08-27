@@ -437,7 +437,7 @@ error: Unused variable item
 error: Unused variable p
   --> main.hop (line 1, col 12)
 1 | <bar-comp {p: string, s: string}>
-  |            ^^^^^^^^^
+  |            ^
 ## END
 
 ## BEGIN

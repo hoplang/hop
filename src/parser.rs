@@ -333,13 +333,13 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                             match dop::parse_parameters_with_types(&mut tokenizer) {
                                 Ok(params) => params
                                     .into_iter()
-                                    .map(|(var_name, type_annotation, range)| {
+                                    .map(|((var_name, var_name_range), (type_annotation, _))| {
                                         (
                                             var_name.value.clone(),
                                             DopVarNameAttribute {
                                                 var_name,
                                                 type_annotation,
-                                                range,
+                                                var_name_range,
                                             },
                                         )
                                     })

@@ -134,7 +134,7 @@ pub fn typecheck(
             let param_type = param.type_annotation.clone();
 
             annotations.push(TypeAnnotation {
-                range: param.range,
+                range: param.var_name_range,
                 typ: param_type.clone(),
                 name: param.var_name.value.clone(),
             });
@@ -159,7 +159,7 @@ pub fn typecheck(
             if !env.pop() {
                 errors.push(RangeError::unused_variable(
                     &param.var_name.value,
-                    param.range,
+                    param.var_name_range,
                 ));
             }
         }
@@ -176,7 +176,7 @@ pub fn typecheck(
         );
 
         if let Some(preview_nodes) = preview {
-            for (_, param) in params {
+            for param in params.values() {
                 env.push(param.var_name.value.clone(), param.type_annotation.clone());
             }
             for child in preview_nodes {

@@ -175,8 +175,8 @@ pub struct Attribute {
 #[derive(Debug, Clone, PartialEq)]
 pub struct DopVarNameAttribute {
     pub var_name: DopVarName,
+    pub var_name_range: Range,
     pub type_annotation: crate::dop::DopType,
-    pub range: Range,
 }
 
 impl Attribute {

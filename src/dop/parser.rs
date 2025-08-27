@@ -116,7 +116,7 @@ pub fn parse_loop_header(
 // parameter_with_type = Identifier ":" type
 fn parse_parameter_with_type(
     tokenizer: &mut DopTokenizer,
-) -> Result<(DopVarName, DopType, Range), RangeError> {
+) -> Result<((DopVarName, Range), (DopType, Range)), RangeError> {
     // Parse parameter name
     let (var_name, param_range) = match tokenizer.advance()? {
         (DopToken::Identifier(name), range) => match DopVarName::new(name.clone()) {
@@ -141,17 +141,13 @@ fn parse_parameter_with_type(
         }
     };
 
-    Ok((
-        var_name,
-        type_annotation,
-        Range::new(param_range.start, type_range.end),
-    ))
+    Ok(((var_name, param_range), (type_annotation, type_range)))
 }
 
 // parameters_with_types = parameter_with_type ("," parameter_with_type)* Eof
 pub fn parse_parameters_with_types(
     tokenizer: &mut DopTokenizer,
-) -> Result<Vec<(DopVarName, DopType, Range)>, RangeError> {
+) -> Result<Vec<((DopVarName, Range), (DopType, Range))>, RangeError> {
     let mut params = Vec::new();
 
     // Parse first parameter

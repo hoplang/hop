@@ -84,7 +84,10 @@ pub fn typecheck_expr(
                 });
                 Ok(var_type.clone())
             } else {
-                Err(RangeError::new(format!("Undefined variable: {}", name), range))
+                Err(RangeError::new(
+                    format!("Undefined variable: {}", name),
+                    range,
+                ))
             }
         }
         DopExpr::BooleanLiteral(_) => Ok(DopType::Bool),
@@ -98,10 +101,16 @@ pub fn typecheck_expr(
                     if let Some(prop_type) = props.get(property) {
                         Ok(prop_type.clone())
                     } else {
-                        Err(RangeError::new(format!("Property {} not found in object", property), range))
+                        Err(RangeError::new(
+                            format!("Property {} not found in object", property),
+                            range,
+                        ))
                     }
                 }
-                _ => Err(RangeError::new(format!("{} can not be used as an object", base_type), range)),
+                _ => Err(RangeError::new(
+                    format!("{} can not be used as an object", base_type),
+                    range,
+                )),
             }
         }
         DopExpr::BinaryOp(left, BinaryOp::Equal, right) => {
@@ -110,7 +119,10 @@ pub fn typecheck_expr(
 
             // Both operands should have the same type for equality comparison
             if left_type != right_type {
-                return Err(RangeError::new(format!("Can not compare {} to {}", left_type, right_type), range));
+                return Err(RangeError::new(
+                    format!("Can not compare {} to {}", left_type, right_type),
+                    range,
+                ));
             }
 
             // The result of == is always boolean
@@ -121,7 +133,10 @@ pub fn typecheck_expr(
 
             // Negation only works on boolean expressions
             if !is_subtype(&expr_type, &DopType::Bool) {
-                return Err(RangeError::new("Negation operator can only be applied to boolean values".to_string(), range));
+                return Err(RangeError::new(
+                    "Negation operator can only be applied to boolean values".to_string(),
+                    range,
+                ));
             }
 
             // The result of ! is always boolean
@@ -139,10 +154,13 @@ pub fn typecheck_expr(
                 for element in elements.iter().skip(1) {
                     let element_type = typecheck_expr(element, env, annotations, errors, range)?;
                     if element_type != first_type {
-                        return Err(RangeError::new(format!(
-                            "Array elements must all have the same type, found {} and {}",
-                            first_type, element_type
-                        ), range));
+                        return Err(RangeError::new(
+                            format!(
+                                "Array elements must all have the same type, found {} and {}",
+                                first_type, element_type
+                            ),
+                            range,
+                        ));
                     }
                 }
 
@@ -210,7 +228,7 @@ mod tests {
                         e
                     );
                 });
-                for (var_name, var_type, _range) in params {
+                for ((var_name, _), (var_type, _)) in params {
                     env.push(var_name.value, var_type);
                 }
             }
