@@ -25,16 +25,11 @@ enum ToplevelNode {
     Render(RenderNode),
 }
 
-#[derive(Clone, Debug)]
-struct EndToken {
-    name_range: Range,
-}
-
 #[derive(Debug, Clone)]
 struct TokenTree {
     token: (Token, Range),
     children: Vec<TokenTree>,
-    end_token: Option<EndToken>,
+    closing_tag_range: Option<Range>,
 }
 
 impl TokenTree {
@@ -42,7 +37,7 @@ impl TokenTree {
         TokenTree {
             token,
             children: Vec::new(),
-            end_token: None,
+            closing_tag_range: None,
         }
     }
 
@@ -54,8 +49,8 @@ impl TokenTree {
         self.children.push(tree);
     }
 
-    fn set_end_token(&mut self, token: EndToken) {
-        self.end_token = Some(token);
+    fn set_closing_tag_range(&mut self, range: Range) {
+        self.closing_tag_range = Some(range);
     }
 }
 
@@ -150,7 +145,7 @@ fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTree {
                                 stack.last_mut().unwrap().0.append_tree(unclosed);
                             }
                             let mut completed = stack.pop().unwrap();
-                            completed.0.set_end_token(EndToken { name_range });
+                            completed.0.set_closing_tag_range(name_range);
                             stack.last_mut().unwrap().0.append_tree(completed.0);
                         }
                     }
@@ -356,7 +351,7 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                     Some(ToplevelNode::ComponentDefinition(ComponentDefinitionNode {
                         name: name.to_string(),
                         opening_name_range: *name_range,
-                        closing_name_range: tree.end_token.as_ref().map(|token| token.name_range),
+                        closing_name_range: tree.closing_tag_range,
                         params: params_as_attrs,
                         as_attr,
                         attributes: attributes.clone(),
@@ -611,7 +606,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                     HopNode::ComponentReference(ComponentReferenceNode {
                         component: tag_name.to_string(),
                         opening_name_range: *name_range,
-                        closing_name_range: tree.end_token.as_ref().map(|token| token.name_range),
+                        closing_name_range: tree.closing_tag_range,
                         params: params_attrs,
                         attributes: attributes.clone(),
                         range: *token_range,
