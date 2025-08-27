@@ -319,30 +319,26 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                                 Ok(tokenizer) => tokenizer,
                                 Err(err) => {
                                     errors.push(err);
-                                    return std::collections::BTreeMap::new();
+                                    return Vec::new();
                                 }
                             };
                             match dop::parse_parameters_with_types(&mut tokenizer) {
                                 Ok(params) => params
                                     .into_iter()
-                                    .map(|((var_name, var_name_range), range_dop_type)| {
-                                        (
-                                            var_name.value.clone(),
-                                            HopParameter {
-                                                var_name,
-                                                type_annotation: range_dop_type.dop_type,
-                                                var_name_range,
-                                            },
-                                        )
+                                    .map(|(var_name, range_dop_type)| {
+                                        HopParameter {
+                                            var_name,
+                                            type_annotation: range_dop_type.dop_type,
+                                        }
                                     })
                                     .collect(),
                                 Err(error) => {
                                     errors.push(error);
-                                    std::collections::BTreeMap::new()
+                                    Vec::new()
                                 }
                             }
                         })
-                        .unwrap_or_else(std::collections::BTreeMap::new);
+                        .unwrap_or_else(Vec::new);
 
                     let mut slots = HashSet::new();
                     collect_slots_from_children(&children, &mut slots, errors);
@@ -589,7 +585,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                                 }
                             };
                             match dop::parse_named_arguments(&mut tokenizer) {
-                                Ok(named_args) => named_args.into_iter().collect(),
+                                Ok(named_args) => named_args,
                                 Err(err) => {
                                     errors.push(err);
                                     Vec::new()

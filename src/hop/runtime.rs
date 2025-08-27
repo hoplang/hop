@@ -218,7 +218,8 @@ impl Program {
 
         let mut env = Self::init_environment(self.hop_mode);
         // Set up environment with all parameters and their corresponding values
-        for (param_name, param) in &component.params {
+        for param in &component.params {
+            let param_name = &param.var_name.value;
             let value = params
                 .get(param_name)
                 .cloned()
@@ -315,8 +316,8 @@ impl Program {
                 ..
             }) => {
                 let mut arg_values = std::collections::BTreeMap::new();
-                for (arg_name, expr) in args {
-                    arg_values.insert(arg_name.clone(), evaluate_expr(expr, env)?);
+                for arg in args {
+                    arg_values.insert(arg.name.clone(), evaluate_expr(&arg.expression, env)?);
                 }
 
                 let component_name = component;
@@ -572,7 +573,7 @@ impl Program {
                 Ok(result)
             }
             HopNode::For(ForNode {
-                var_name: (var_name, _),
+                var_name,
                 array_expr,
                 children,
                 ..

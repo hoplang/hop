@@ -1,6 +1,5 @@
 use crate::common::Range;
 use crate::dop::{DopExpr, DopType, parser::DopVarName};
-use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Attribute {
@@ -13,8 +12,14 @@ pub struct Attribute {
 #[derive(Debug, Clone, PartialEq)]
 pub struct HopParameter {
     pub var_name: DopVarName,
-    pub var_name_range: Range,
     pub type_annotation: DopType,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HopArgument {
+    pub name: String,
+    pub name_range: Range,
+    pub expression: DopExpr,
 }
 
 impl Attribute {
@@ -62,7 +67,7 @@ pub struct ComponentReferenceNode {
     pub component: String,
     pub opening_name_range: Range,
     pub closing_name_range: Option<Range>,
-    pub args: Vec<(String, DopExpr)>,
+    pub args: Vec<HopArgument>,
     pub attributes: Vec<Attribute>,
     pub range: Range,
     pub children: Vec<HopNode>,
@@ -87,7 +92,7 @@ pub struct ComponentDefinitionNode {
     pub name: String,
     pub opening_name_range: Range,
     pub closing_name_range: Option<Range>,
-    pub params: BTreeMap<String, HopParameter>,
+    pub params: Vec<HopParameter>,
     pub as_attr: Option<Attribute>,
     pub attributes: Vec<Attribute>,
     pub range: Range,
@@ -149,7 +154,7 @@ pub struct XRawNode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForNode {
-    pub var_name: (DopVarName, Range),
+    pub var_name: DopVarName,
     pub array_expr: DopExpr,
     pub range: Range,
     pub children: Vec<HopNode>,

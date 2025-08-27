@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use crate::common::{Range, RangeError};
 use crate::dop::tokenizer::{DopToken, DopTokenizer};
 use crate::dop::typechecker::RangeDopType;
+use crate::hop::ast::HopArgument;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
@@ -82,10 +83,11 @@ impl DopExpr {
 #[derive(Debug, Clone, PartialEq)]
 pub struct DopVarName {
     pub value: String,
+    pub range: Range,
 }
 
 impl DopVarName {
-    pub fn new(value: String) -> Option<Self> {
+    pub fn new(value: String, range: Range) -> Option<Self> {
         let mut chars = value.chars();
         if !chars.next()?.is_ascii_lowercase() {
             return None;
@@ -93,7 +95,7 @@ impl DopVarName {
         if !chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
             return None;
         }
-        Some(DopVarName { value })
+        Some(DopVarName { value, range })
     }
 }
 
@@ -118,11 +120,11 @@ pub fn parse_expr(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
 // loop_header = Identifier "in" equality Eof
 pub fn parse_loop_header(
     tokenizer: &mut DopTokenizer,
-) -> Result<((DopVarName, Range), DopExpr), RangeError> {
+) -> Result<(DopVarName, DopExpr), RangeError> {
     // expect Identifier
     let var_name = match tokenizer.advance()? {
-        (DopToken::Identifier(name), range) => match DopVarName::new(name.clone()) {
-            Some(var_name) => (var_name, range),
+        (DopToken::Identifier(name), range) => match DopVarName::new(name.clone(), range) {
+            Some(var_name) => var_name,
             None => return Err(RangeError::invalid_variable_name(&name, range)),
         },
         (_, range) => {
@@ -163,11 +165,11 @@ pub fn parse_loop_header(
 // parameter_with_type = Identifier ":" type
 fn parse_parameter_with_type(
     tokenizer: &mut DopTokenizer,
-) -> Result<((DopVarName, Range), RangeDopType), RangeError> {
+) -> Result<(DopVarName, RangeDopType), RangeError> {
     // Parse parameter name
-    let (var_name, param_range) = match tokenizer.advance()? {
-        (DopToken::Identifier(name), range) => match DopVarName::new(name.clone()) {
-            Some(var_name) => (var_name, range),
+    let var_name = match tokenizer.advance()? {
+        (DopToken::Identifier(name), range) => match DopVarName::new(name.clone(), range) {
+            Some(var_name) => var_name,
             None => {
                 return Err(RangeError::invalid_variable_name(&name, range));
             }
@@ -188,13 +190,13 @@ fn parse_parameter_with_type(
         }
     };
 
-    Ok(((var_name, param_range), range_dop_type))
+    Ok((var_name, range_dop_type))
 }
 
 // parameters_with_types = parameter_with_type ("," parameter_with_type)* Eof
 pub fn parse_parameters_with_types(
     tokenizer: &mut DopTokenizer,
-) -> Result<Vec<((DopVarName, Range), RangeDopType)>, RangeError> {
+) -> Result<Vec<(DopVarName, RangeDopType)>, RangeError> {
     let mut params = Vec::new();
 
     // Parse first parameter
@@ -228,11 +230,15 @@ pub fn parse_parameters_with_types(
 // named_arguments = named_argument ("," named_argument)* Eof
 pub fn parse_named_arguments(
     tokenizer: &mut DopTokenizer,
-) -> Result<BTreeMap<String, DopExpr>, RangeError> {
-    let mut args = BTreeMap::new();
+) -> Result<Vec<HopArgument>, RangeError> {
+    let mut args = Vec::new();
 
-    let (name, expr) = parse_named_argument(tokenizer)?;
-    args.insert(name, expr);
+    let (name, name_range, expr) = parse_named_argument(tokenizer)?;
+    args.push(HopArgument {
+        name: name.clone(),
+        name_range,
+        expression: expr,
+    });
 
     loop {
         match tokenizer.peek() {
@@ -243,14 +249,19 @@ pub fn parse_named_arguments(
                 if let (DopToken::Eof, _) = tokenizer.peek() {
                     break;
                 }
-                let (name, expr) = parse_named_argument(tokenizer)?;
-                if args.contains_key(&name) {
+                let (name, name_range, expr) = parse_named_argument(tokenizer)?;
+                // Check for duplicates
+                if args.iter().any(|arg| arg.name == name) {
                     return Err(RangeError::new(
                         format!("Duplicate argument name '{}'", name),
-                        tokenizer.peek().1,
+                        name_range,
                     ));
                 }
-                args.insert(name, expr);
+                args.push(HopArgument {
+                    name,
+                    name_range,
+                    expression: expr,
+                });
             }
             (DopToken::Eof, _) => break,
             (_, range) => {
@@ -266,10 +277,10 @@ pub fn parse_named_arguments(
 }
 
 // named_argument = Identifier ":" expr
-fn parse_named_argument(tokenizer: &mut DopTokenizer) -> Result<(String, DopExpr), RangeError> {
+fn parse_named_argument(tokenizer: &mut DopTokenizer) -> Result<(String, Range, DopExpr), RangeError> {
     // Parse argument name
-    let arg_name = match tokenizer.advance()? {
-        (DopToken::Identifier(name), _) => name,
+    let (arg_name, name_range) = match tokenizer.advance()? {
+        (DopToken::Identifier(name), range) => (name, range),
         (_, range) => {
             return Err(RangeError::new("Expected argument name".to_string(), range));
         }
@@ -289,7 +300,7 @@ fn parse_named_argument(tokenizer: &mut DopTokenizer) -> Result<(String, DopExpr
     // Parse expression
     let expr = parse_equality(tokenizer)?;
 
-    Ok((arg_name, expr))
+    Ok((arg_name, name_range, expr))
 }
 
 // type = TypeString
@@ -1648,12 +1659,16 @@ mod tests {
         check_parse_named_arguments(
             "name: 'John'",
             expect![[r#"
-                {
-                    "name": StringLiteral {
-                        value: "John",
-                        range: 1:7-1:13,
+                [
+                    HopArgument {
+                        name: "name",
+                        name_range: 1:1-1:5,
+                        expression: StringLiteral {
+                            value: "John",
+                            range: 1:7-1:13,
+                        },
                     },
-                }
+                ]
             "#]],
         );
     }
@@ -1663,20 +1678,32 @@ mod tests {
         check_parse_named_arguments(
             "name: 'John', age: 25, active: true",
             expect![[r#"
-                {
-                    "active": BooleanLiteral {
-                        value: true,
-                        range: 1:32-1:36,
+                [
+                    HopArgument {
+                        name: "name",
+                        name_range: 1:1-1:5,
+                        expression: StringLiteral {
+                            value: "John",
+                            range: 1:7-1:13,
+                        },
                     },
-                    "age": NumberLiteral {
-                        value: Number(25),
-                        range: 1:20-1:22,
+                    HopArgument {
+                        name: "age",
+                        name_range: 1:15-1:18,
+                        expression: NumberLiteral {
+                            value: Number(25),
+                            range: 1:20-1:22,
+                        },
                     },
-                    "name": StringLiteral {
-                        value: "John",
-                        range: 1:7-1:13,
+                    HopArgument {
+                        name: "active",
+                        name_range: 1:24-1:30,
+                        expression: BooleanLiteral {
+                            value: true,
+                            range: 1:32-1:36,
+                        },
                     },
-                }
+                ]
             "#]],
         );
     }
@@ -1686,31 +1713,39 @@ mod tests {
         check_parse_named_arguments(
             "user: user.name, enabled: !user.disabled",
             expect![[r#"
-                {
-                    "enabled": UnaryOp {
-                        operator: Not,
-                        operator_range: 1:27-1:28,
-                        operand: PropertyAccess {
+                [
+                    HopArgument {
+                        name: "user",
+                        name_range: 1:1-1:5,
+                        expression: PropertyAccess {
                             object: Variable {
                                 name: "user",
-                                range: 1:28-1:32,
+                                range: 1:7-1:11,
                             },
-                            property: "disabled",
-                            property_range: 1:33-1:41,
-                            range: 1:28-1:41,
+                            property: "name",
+                            property_range: 1:12-1:16,
+                            range: 1:7-1:16,
                         },
-                        range: 1:27-1:41,
                     },
-                    "user": PropertyAccess {
-                        object: Variable {
-                            name: "user",
-                            range: 1:7-1:11,
+                    HopArgument {
+                        name: "enabled",
+                        name_range: 1:18-1:25,
+                        expression: UnaryOp {
+                            operator: Not,
+                            operator_range: 1:27-1:28,
+                            operand: PropertyAccess {
+                                object: Variable {
+                                    name: "user",
+                                    range: 1:28-1:32,
+                                },
+                                property: "disabled",
+                                property_range: 1:33-1:41,
+                                range: 1:28-1:41,
+                            },
+                            range: 1:27-1:41,
                         },
-                        property: "name",
-                        property_range: 1:12-1:16,
-                        range: 1:7-1:16,
                     },
-                }
+                ]
             "#]],
         );
     }
@@ -1720,16 +1755,24 @@ mod tests {
         check_parse_named_arguments(
             "name: 'John', age: 25,",
             expect![[r#"
-                {
-                    "age": NumberLiteral {
-                        value: Number(25),
-                        range: 1:20-1:22,
+                [
+                    HopArgument {
+                        name: "name",
+                        name_range: 1:1-1:5,
+                        expression: StringLiteral {
+                            value: "John",
+                            range: 1:7-1:13,
+                        },
                     },
-                    "name": StringLiteral {
-                        value: "John",
-                        range: 1:7-1:13,
+                    HopArgument {
+                        name: "age",
+                        name_range: 1:15-1:18,
+                        expression: NumberLiteral {
+                            value: Number(25),
+                            range: 1:20-1:22,
+                        },
                     },
-                }
+                ]
             "#]],
         );
     }
@@ -1741,7 +1784,7 @@ mod tests {
             expect![[r#"
                 error: Duplicate argument name 'name'
                 name: 'John', name: 'Jane'
-                                          ^
+                              ^^^^
             "#]],
         );
     }

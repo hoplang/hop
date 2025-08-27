@@ -132,11 +132,12 @@ pub fn typecheck(
 
         let mut parameter_types = BTreeMap::new();
 
-        for (param_name, param) in params {
+        for param in params {
+            let param_name = &param.var_name.value;
             let param_type = param.type_annotation.clone();
 
             annotations.push(TypeAnnotation {
-                range: param.var_name_range,
+                range: param.var_name.range,
                 typ: param_type.clone(),
                 name: param.var_name.value.clone(),
             });
@@ -157,11 +158,11 @@ pub fn typecheck(
         }
 
         // Check for unused variables (iterate in reverse to match push order)
-        for (_, param) in params.iter().rev() {
+        for param in params.iter().rev() {
             if !env.pop() {
                 errors.push(RangeError::unused_variable(
                     &param.var_name.value,
-                    param.var_name_range,
+                    param.var_name.range,
                 ));
             }
         }
@@ -178,7 +179,7 @@ pub fn typecheck(
         );
 
         if let Some(preview_nodes) = preview {
-            for param in params.values() {
+            for param in params {
                 env.push(param.var_name.value.clone(), param.type_annotation.clone());
             }
             for child in preview_nodes {
@@ -290,7 +291,7 @@ fn typecheck_node(
                 });
 
                 // Validate named arguments against parameter types
-                let provided_args: std::collections::HashSet<_> = params.iter().map(|(name, _)| name).collect();
+                let provided_args: std::collections::HashSet<_> = params.iter().map(|arg| &arg.name).collect();
                 let expected_params: std::collections::HashSet<_> =
                     comp_info.parameter_types.keys().collect();
 
@@ -311,9 +312,9 @@ fn typecheck_node(
                 }
 
                 // Check each provided argument against its corresponding parameter type
-                for (arg_name, expression) in params {
-                    if let Some(expected_type) = comp_info.parameter_types.get(arg_name) {
-                        let expr_type = match typecheck_expr(expression, env, annotations, errors) {
+                for arg in params {
+                    if let Some(expected_type) = comp_info.parameter_types.get(&arg.name) {
+                        let expr_type = match typecheck_expr(&arg.expression, env, annotations, errors) {
                             Ok(t) => t,
                             Err(err) => {
                                 errors.push(err);
@@ -325,15 +326,15 @@ fn typecheck_node(
                             errors.push(RangeError::new(
                                 format!(
                                     "Argument '{}' of type {} is incompatible with expected type {}",
-                                    arg_name, expr_type, expected_type,
+                                    arg.name, expr_type, expected_type,
                                 ),
-                                expression.range(),
+                                arg.expression.range(),
                             ));
                         } else {
                             annotations.push(TypeAnnotation {
-                                range: expression.range(),
+                                range: arg.expression.range(),
                                 typ: expr_type,
-                                name: format!("component parameter '{}'", arg_name),
+                                name: format!("component parameter '{}'", arg.name),
                             });
                         }
                     }
@@ -477,7 +478,7 @@ fn typecheck_node(
             }
         }
         HopNode::For(ForNode {
-            var_name: (var_name, var_name_range),
+            var_name,
             array_expr,
             children,
             ..
@@ -514,14 +515,14 @@ fn typecheck_node(
                 pushed = true;
                 // Add type annotation for the loop variable
                 annotations.push(TypeAnnotation {
-                    range: *var_name_range,
+                    range: var_name.range,
                     typ: element_type.clone(),
                     name: var_name.value.clone(),
                 });
             } else {
                 errors.push(RangeError::variable_is_already_defined(
                     &var_name.value,
-                    *var_name_range,
+                    var_name.range,
                 ));
             }
 
@@ -542,7 +543,7 @@ fn typecheck_node(
             if pushed && !env.pop() {
                 errors.push(RangeError::unused_variable(
                     &var_name.value,
-                    *var_name_range,
+                    var_name.range,
                 ));
             }
         }
