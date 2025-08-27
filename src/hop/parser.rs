@@ -1,7 +1,7 @@
 use crate::common::{Range, RangeError, is_void_element};
 use crate::dop::{self, DopTokenizer};
 use crate::hop::ast::{
-    Attribute, ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, DopExprAttribute,
+    ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, DopExprAttribute,
     DopVarNameAttribute, ErrorNode, ForNode, HopNode, IfNode, ImportNode, NativeHTMLNode,
     RenderNode, SlotDefinitionNode, SlotReferenceNode, TextExpressionNode, TextNode, XExecNode,
     XLoadJsonNode, XRawNode,
@@ -225,9 +225,6 @@ fn collect_slots_from_children(
     }
 }
 
-fn find_attribute(attrs: &[Attribute], value: &str) -> Option<Attribute> {
-    attrs.iter().find(|attr| attr.name == value).cloned()
-}
 
 fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Option<ToplevelNode> {
     let (t, range) = &tree.token;
@@ -242,7 +239,7 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
         } => {
             match value.as_str() {
                 "import" => {
-                    let component_attr = find_attribute(attributes, "component").or_else(|| {
+                    let component_attr = t.find_attribute("component").or_else(|| {
                         errors.push(RangeError::missing_required_attribute(
                             value,
                             "component",
@@ -250,7 +247,7 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                         ));
                         None
                     });
-                    let from_attr = find_attribute(attributes, "from").or_else(|| {
+                    let from_attr = t.find_attribute("from").or_else(|| {
                         errors.push(RangeError::missing_required_attribute(
                             value, "from", *range,
                         ));
@@ -275,7 +272,7 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                         .map(|child| construct_node(child, errors))
                         .collect();
 
-                    let file_attr = find_attribute(attributes, "file").or_else(|| {
+                    let file_attr = t.find_attribute("file").or_else(|| {
                         errors.push(RangeError::missing_required_attribute(
                             value, "file", *range,
                         ));
@@ -319,8 +316,8 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
 
                     let children = main_children;
 
-                    let as_attr = find_attribute(attributes, "as");
-                    let entrypoint = find_attribute(attributes, "entrypoint").is_some();
+                    let as_attr = t.find_attribute("as");
+                    let entrypoint = t.find_attribute("entrypoint").is_some();
                     let params_as_attrs = expression
                         .as_ref()
                         .map(|(expr_string, range)| {
@@ -506,7 +503,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                     }
                 },
                 "hop-x-exec" => {
-                    let cmd_attr = find_attribute(attributes, "cmd").or_else(|| {
+                    let cmd_attr = t.find_attribute("cmd").or_else(|| {
                         errors.push(RangeError::missing_required_attribute(
                             value,
                             "cmd",
@@ -536,7 +533,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                     })
                 }
                 "hop-x-load-json" => {
-                    let file_attr = find_attribute(attributes, "file").or_else(|| {
+                    let file_attr = t.find_attribute("file").or_else(|| {
                         errors.push(RangeError::missing_required_attribute(
                             value,
                             "file",
@@ -545,7 +542,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                         None
                     });
 
-                    let as_attr = find_attribute(attributes, "as").or_else(|| {
+                    let as_attr = t.find_attribute("as").or_else(|| {
                         errors.push(RangeError::missing_required_attribute(
                             value,
                             "as",

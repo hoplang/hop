@@ -28,6 +28,17 @@ pub enum Token {
     },
 }
 
+impl Token {
+    pub fn find_attribute(&self, value: &str) -> Option<Attribute> {
+        match self {
+            Token::StartTag { attributes, .. } => {
+                attributes.iter().find(|attr| attr.name == value).cloned()
+            }
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum TokenizerState {
     Text,
