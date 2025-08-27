@@ -748,6 +748,162 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_expr_error_trailing_tokens() {
+        check(
+            "x y",
+            expect![[r#"
+                error: Unexpected token at end of expression
+                x y
+                  ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_dot_no_identifier() {
+        check(
+            "user.",
+            expect![[r#"
+                error: Expected identifier after '.'
+                user.
+                     ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_dot_number() {
+        check(
+            "user.123",
+            expect![[r#"
+                error: Expected identifier after '.'
+                user.123
+                     ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_invalid_start() {
+        check(
+            "== x",
+            expect![[r#"
+                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+                == x
+                ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_unclosed_paren() {
+        check(
+            "(x == y",
+            expect![[r#"
+                error: Missing closing parenthesis
+                (x == y
+                       ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_unmatched_closing_paren() {
+        check(
+            "x == y)",
+            expect![[r#"
+                error: Unexpected token at end of expression
+                x == y)
+                      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_empty_parens() {
+        check(
+            "()",
+            expect![[r#"
+                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+                ()
+                 ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_invalid_after_equals() {
+        check(
+            "x == )",
+            expect![[r#"
+                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+                x == )
+                     ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_dot_at_start() {
+        check(
+            ".property",
+            expect![[r#"
+                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+                .property
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_double_dot() {
+        check(
+            "user..name",
+            expect![[r#"
+                error: Expected identifier after '.'
+                user..name
+                     ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_operator_at_end() {
+        check(
+            "x ==",
+            expect![[r#"
+                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+                x ==
+                    ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_not_without_operand() {
+        check(
+            "!",
+            expect![[r#"
+                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+                !
+                 ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_trailing_not() {
+        check(
+            "x !",
+            expect![[r#"
+                error: Unexpected token at end of expression
+                x !
+                  ^
+            "#]],
+        );
+    }
+
+    #[test]
     fn test_parse_expr_binary_op_chained() {
         check(
             "a == b == c",
@@ -1672,162 +1828,6 @@ mod tests {
                         },
                     },
                 }
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_error_trailing_tokens() {
-        check(
-            "x y",
-            expect![[r#"
-                error: Unexpected token at end of expression
-                x y
-                  ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_error_dot_no_identifier() {
-        check(
-            "user.",
-            expect![[r#"
-                error: Expected identifier after '.'
-                user.
-                     ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_error_dot_number() {
-        check(
-            "user.123",
-            expect![[r#"
-                error: Expected identifier after '.'
-                user.123
-                     ^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_error_invalid_start() {
-        check(
-            "== x",
-            expect![[r#"
-                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
-                == x
-                ^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_error_unclosed_paren() {
-        check(
-            "(x == y",
-            expect![[r#"
-                error: Missing closing parenthesis
-                (x == y
-                       ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_error_unmatched_closing_paren() {
-        check(
-            "x == y)",
-            expect![[r#"
-                error: Unexpected token at end of expression
-                x == y)
-                      ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_error_empty_parens() {
-        check(
-            "()",
-            expect![[r#"
-                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
-                ()
-                 ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_error_invalid_after_equals() {
-        check(
-            "x == )",
-            expect![[r#"
-                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
-                x == )
-                     ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_error_dot_at_start() {
-        check(
-            ".property",
-            expect![[r#"
-                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
-                .property
-                ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_error_double_dot() {
-        check(
-            "user..name",
-            expect![[r#"
-                error: Expected identifier after '.'
-                user..name
-                     ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_error_operator_at_end() {
-        check(
-            "x ==",
-            expect![[r#"
-                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
-                x ==
-                    ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_error_not_without_operand() {
-        check(
-            "!",
-            expect![[r#"
-                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
-                !
-                 ^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_parse_expr_error_trailing_not() {
-        check(
-            "x !",
-            expect![[r#"
-                error: Unexpected token at end of expression
-                x !
-                  ^
             "#]],
         );
     }
