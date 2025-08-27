@@ -311,7 +311,7 @@ fn typecheck_node(
                 }
 
                 // Check each provided argument against its corresponding parameter type
-                for (arg_name, (expression, expr_range)) in params {
+                for (arg_name, expression) in params {
                     if let Some(expected_type) = comp_info.parameter_types.get(arg_name) {
                         let expr_type = match typecheck_expr(expression, env, annotations, errors) {
                             Ok(t) => t,
@@ -327,11 +327,11 @@ fn typecheck_node(
                                     "Argument '{}' of type {} is incompatible with expected type {}",
                                     arg_name, expr_type, expected_type,
                                 ),
-                                *expr_range,
+                                expression.range(),
                             ));
                         } else {
                             annotations.push(TypeAnnotation {
-                                range: *expr_range,
+                                range: expression.range(),
                                 typ: expr_type,
                                 name: format!("component parameter '{}'", arg_name),
                             });
@@ -2233,10 +2233,10 @@ mod tests {
             "#},
             expect![[r#"
                 error: Argument 'config' of type number is incompatible with expected type {debug: boolean}
-                  --> main.hop (line 7, col 15)
+                  --> main.hop (line 7, col 23)
                 6 | <foo-comp>
                 7 |   <main-comp {config: 1}/>
-                  |               ^^^^^^^^^
+                  |                       ^
             "#]],
         );
     }
@@ -2360,10 +2360,10 @@ mod tests {
             "#},
             expect![[r#"
                 error: Argument 'message' of type number is incompatible with expected type string
-                  --> main.hop (line 5, col 16)
+                  --> main.hop (line 5, col 25)
                 4 | <main-comp>
                 5 |     <string-comp {message: 42}/>
-                  |                   ^^^^^^^^^^^
+                  |                            ^^
             "#]],
         );
     }
@@ -2382,10 +2382,10 @@ mod tests {
             "#},
             expect![[r#"
                 error: Argument 'user' of type string is incompatible with expected type {age: string, name: string}
-                  --> main.hop (line 5, col 14)
+                  --> main.hop (line 5, col 20)
                 4 | <main-comp>
                 5 |     <user-comp {user: 'invalid'}/>
-                  |                 ^^^^^^^^^^^^^^^
+                  |                       ^^^^^^^^^
             "#]],
         );
     }
@@ -2428,10 +2428,10 @@ mod tests {
             "#},
             expect![[r#"
                 error: Argument 'user' of type string is incompatible with expected type {name: string}
-                  --> main.hop (line 5, col 13)
+                  --> main.hop (line 5, col 19)
                 4 | <main-comp>
                 5 |     <new-comp {user: 'invalid'}/>
-                  |                ^^^^^^^^^^^^^^^
+                  |                      ^^^^^^^^^
             "#]],
         );
     }
@@ -2620,10 +2620,10 @@ mod tests {
             "#},
             expect![[r#"
                 error: Argument 'enabled' of type string is incompatible with expected type boolean
-                  --> main.hop (line 7, col 16)
+                  --> main.hop (line 7, col 25)
                 6 | <main-comp>
                 7 |     <toggle-comp {enabled: 'not a boolean'}/>
-                  |                   ^^^^^^^^^^^^^^^^^^^^^^^^
+                  |                            ^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -2716,10 +2716,10 @@ mod tests {
             "#},
             expect![[r#"
                 error: Argument 'data' of type {b: string} is incompatible with expected type {a: string}
-                  --> main.hop (line 6, col 12)
+                  --> main.hop (line 6, col 18)
                 5 | <main-comp {params: {data: {b: string}}}>
                 6 |     <needs-a {data: params.data}>
-                  |               ^^^^^^^^^^^^^^^^^
+                  |                     ^^^^^^^^^^^
             "#]],
         );
     }

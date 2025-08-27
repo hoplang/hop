@@ -315,7 +315,7 @@ impl Program {
                 ..
             }) => {
                 let mut params_values = std::collections::BTreeMap::new();
-                for (param_name, (expression, _)) in params {
+                for (param_name, expression) in params {
                     params_values.insert(param_name.clone(), evaluate_expr(expression, env)?);
                 }
 

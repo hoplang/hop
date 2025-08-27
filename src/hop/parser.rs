@@ -589,10 +589,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                                 }
                             };
                             match dop::parse_named_arguments(&mut tokenizer) {
-                                Ok(named_args) => named_args
-                                    .into_iter()
-                                    .map(|(name, expr)| (name, (expr, *range)))
-                                    .collect(),
+                                Ok(named_args) => named_args,
                                 Err(err) => {
                                     errors.push(err);
                                     std::collections::BTreeMap::new()
