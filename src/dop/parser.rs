@@ -23,6 +23,7 @@ pub enum DopExpr {
     PropertyAccess {
         object: Box<DopExpr>,
         property: String,
+        property_range: Range,
     },
     StringLiteral {
         value: String,
@@ -45,10 +46,12 @@ pub enum DopExpr {
     BinaryOp {
         left: Box<DopExpr>,
         operator: BinaryOp,
+        operator_range: Range,
         right: Box<DopExpr>,
     },
     UnaryOp {
         operator: UnaryOp,
+        operator_range: Range,
         operand: Box<DopExpr>,
     },
 }
@@ -467,11 +470,12 @@ fn parse_equality(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
     let mut expr = parse_unary(tokenizer)?;
 
     while let (DopToken::Equal, _) = tokenizer.peek() {
-        tokenizer.advance()?; // consume ==
+        let (_, operator_range) = tokenizer.advance()?; // consume ==
         let right = parse_unary(tokenizer)?;
         expr = DopExpr::BinaryOp {
             left: Box::new(expr),
             operator: BinaryOp::Equal,
+            operator_range,
             right: Box::new(right),
         };
     }
@@ -483,10 +487,11 @@ fn parse_equality(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
 fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
     match tokenizer.peek() {
         (DopToken::Not, _) => {
-            tokenizer.advance()?; // consume !
+            let (_, range) = tokenizer.advance()?; // consume !
             let expr = parse_unary(tokenizer)?; // Right associative for multiple !
             Ok(DopExpr::UnaryOp {
                 operator: UnaryOp::Not,
+                operator_range: range,
                 operand: Box::new(expr),
             })
         }
@@ -511,8 +516,12 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
                 tokenizer.advance()?; // consume .
 
                 match tokenizer.advance()? {
-                    (DopToken::Identifier(prop), _) => {
-                        expr = DopExpr::PropertyAccess { object: Box::new(expr), property: prop };
+                    (DopToken::Identifier(prop), property_range) => {
+                        expr = DopExpr::PropertyAccess {
+                            object: Box::new(expr),
+                            property: prop,
+                            property_range,
+                        };
                     }
                     (_, range) => {
                         return Err(RangeError::new(
@@ -705,6 +714,16 @@ mod tests {
                             },
                         },
                         operator: Equal,
+                        operator_range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 3,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 5,
+                            },
+                        },
                         right: Variable {
                             name: "b",
                             range: Range {
@@ -720,6 +739,16 @@ mod tests {
                         },
                     },
                     operator: Equal,
+                    operator_range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 8,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 10,
+                        },
+                    },
                     right: Variable {
                         name: "c",
                         range: Range {
@@ -759,8 +788,28 @@ mod tests {
                             },
                         },
                         property: "name",
+                        property_range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 6,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 10,
+                            },
+                        },
                     },
                     operator: Equal,
+                    operator_range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 11,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 13,
+                        },
+                    },
                     right: PropertyAccess {
                         object: Variable {
                             name: "admin",
@@ -776,6 +825,16 @@ mod tests {
                             },
                         },
                         property: "name",
+                        property_range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 20,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 24,
+                            },
+                        },
                     },
                 }
             "#]],
@@ -805,12 +864,52 @@ mod tests {
                                     },
                                 },
                                 property: "user",
+                                property_range: Range {
+                                    start: Position {
+                                        line: 1,
+                                        column: 5,
+                                    },
+                                    end: Position {
+                                        line: 1,
+                                        column: 9,
+                                    },
+                                },
                             },
                             property: "profile",
+                            property_range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 10,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 17,
+                                },
+                            },
                         },
                         property: "settings",
+                        property_range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 18,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 26,
+                            },
+                        },
                     },
                     property: "theme",
+                    property_range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 27,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 32,
+                        },
+                    },
                 }
             "#]],
         );
@@ -902,6 +1001,16 @@ mod tests {
                         },
                     },
                     operator: Equal,
+                    operator_range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 4,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 6,
+                        },
+                    },
                     right: Variable {
                         name: "y",
                         range: Range {
@@ -940,6 +1049,16 @@ mod tests {
                         },
                     },
                     property: "name",
+                    property_range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 6,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 10,
+                        },
+                    },
                 }
             "#]],
         );
@@ -965,6 +1084,16 @@ mod tests {
                         },
                     },
                     operator: Equal,
+                    operator_range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 9,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 11,
+                        },
+                    },
                     right: PropertyAccess {
                         object: Variable {
                             name: "user",
@@ -980,6 +1109,16 @@ mod tests {
                             },
                         },
                         property: "role",
+                        property_range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 17,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 21,
+                            },
+                        },
                     },
                 }
             "#]],
@@ -1006,6 +1145,16 @@ mod tests {
                         },
                     },
                     operator: Equal,
+                    operator_range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 3,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 5,
+                        },
+                    },
                     right: Variable {
                         name: "y",
                         range: Range {
@@ -1088,6 +1237,16 @@ mod tests {
                         },
                     },
                     operator: Equal,
+                    operator_range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 9,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 11,
+                        },
+                    },
                     right: StringLiteral {
                         value: "orange",
                         range: Range {
@@ -1127,8 +1286,28 @@ mod tests {
                             },
                         },
                         property: "name",
+                        property_range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 6,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 10,
+                            },
+                        },
                     },
                     operator: Equal,
+                    operator_range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 11,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 13,
+                        },
+                    },
                     right: StringLiteral {
                         value: "admin",
                         range: Range {
@@ -1190,8 +1369,28 @@ mod tests {
                             },
                         },
                         property: "name",
+                        property_range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 10,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 14,
+                            },
+                        },
                     },
                     operator: Equal,
+                    operator_range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 17,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 19,
+                        },
+                    },
                     right: PropertyAccess {
                         object: Variable {
                             name: "admin",
@@ -1207,6 +1406,16 @@ mod tests {
                             },
                         },
                         property: "name",
+                        property_range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 30,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 34,
+                            },
+                        },
                     },
                 }
             "#]],
@@ -1593,6 +1802,16 @@ mod tests {
                                 },
                             },
                             property: "name",
+                            property_range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 10,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 14,
+                                },
+                            },
                         },
                     ],
                 }
@@ -1686,6 +1905,16 @@ mod tests {
                     properties: {
                         "active": UnaryOp {
                             operator: Not,
+                            operator_range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 27,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 28,
+                                },
+                            },
                             operand: PropertyAccess {
                                 object: Variable {
                                     name: "user",
@@ -1701,6 +1930,16 @@ mod tests {
                                     },
                                 },
                                 property: "disabled",
+                                property_range: Range {
+                                    start: Position {
+                                        line: 1,
+                                        column: 33,
+                                    },
+                                    end: Position {
+                                        line: 1,
+                                        column: 41,
+                                    },
+                                },
                             },
                         },
                         "user": PropertyAccess {
@@ -1718,6 +1957,16 @@ mod tests {
                                 },
                             },
                             property: "name",
+                            property_range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 13,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 17,
+                                },
+                            },
                         },
                     },
                 }
@@ -1855,9 +2104,29 @@ mod tests {
                                 },
                             },
                             property: "name",
+                            property_range: Range {
+                                start: Position {
+                                    line: 2,
+                                    column: 7,
+                                },
+                                end: Position {
+                                    line: 2,
+                                    column: 11,
+                                },
+                            },
                         },
                         UnaryOp {
                             operator: Not,
+                            operator_range: Range {
+                                start: Position {
+                                    line: 3,
+                                    column: 2,
+                                },
+                                end: Position {
+                                    line: 3,
+                                    column: 3,
+                                },
+                            },
                             operand: PropertyAccess {
                                 object: Variable {
                                     name: "user",
@@ -1873,6 +2142,16 @@ mod tests {
                                     },
                                 },
                                 property: "disabled",
+                                property_range: Range {
+                                    start: Position {
+                                        line: 3,
+                                        column: 8,
+                                    },
+                                    end: Position {
+                                        line: 3,
+                                        column: 16,
+                                    },
+                                },
                             },
                         },
                     ],
@@ -1955,6 +2234,16 @@ mod tests {
                     properties: {
                         "active": UnaryOp {
                             operator: Not,
+                            operator_range: Range {
+                                start: Position {
+                                    line: 3,
+                                    column: 10,
+                                },
+                                end: Position {
+                                    line: 3,
+                                    column: 11,
+                                },
+                            },
                             operand: PropertyAccess {
                                 object: Variable {
                                     name: "user",
@@ -1970,6 +2259,16 @@ mod tests {
                                     },
                                 },
                                 property: "disabled",
+                                property_range: Range {
+                                    start: Position {
+                                        line: 3,
+                                        column: 16,
+                                    },
+                                    end: Position {
+                                        line: 3,
+                                        column: 24,
+                                    },
+                                },
                             },
                         },
                         "user": PropertyAccess {
@@ -1987,6 +2286,16 @@ mod tests {
                                 },
                             },
                             property: "name",
+                            property_range: Range {
+                                start: Position {
+                                    line: 2,
+                                    column: 13,
+                                },
+                                end: Position {
+                                    line: 2,
+                                    column: 17,
+                                },
+                            },
                         },
                     },
                 }

@@ -35,6 +35,7 @@ pub fn evaluate_expr(
         DopExpr::PropertyAccess {
             object: base_expr,
             property,
+            ..
         } => {
             let base_value = evaluate_expr(base_expr, env)?;
 
@@ -55,6 +56,7 @@ pub fn evaluate_expr(
             left,
             operator: BinaryOp::Equal,
             right,
+            ..
         } => {
             let left_value = evaluate_expr(left, env)?;
             let right_value = evaluate_expr(right, env)?;
@@ -64,6 +66,7 @@ pub fn evaluate_expr(
         DopExpr::UnaryOp {
             operator: UnaryOp::Not,
             operand: expr,
+            ..
         } => {
             let value = evaluate_expr(expr, env)?;
 

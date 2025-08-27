@@ -96,6 +96,7 @@ pub fn typecheck_expr(
         DopExpr::PropertyAccess {
             object: base_expr,
             property,
+            ..
         } => {
             let base_type = typecheck_expr(base_expr, env, annotations, errors, range)?;
 
@@ -120,6 +121,7 @@ pub fn typecheck_expr(
             left,
             operator: BinaryOp::Equal,
             right,
+            ..
         } => {
             let left_type = typecheck_expr(left, env, annotations, errors, range)?;
             let right_type = typecheck_expr(right, env, annotations, errors, range)?;
@@ -138,6 +140,7 @@ pub fn typecheck_expr(
         DopExpr::UnaryOp {
             operator: UnaryOp::Not,
             operand: expr,
+            ..
         } => {
             let expr_type = typecheck_expr(expr, env, annotations, errors, range)?;
 
