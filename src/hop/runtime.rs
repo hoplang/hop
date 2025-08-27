@@ -99,17 +99,14 @@ impl Program {
         }
     }
 
-    /// Get the collected scripts from the program
     pub fn get_scripts(&self) -> &str {
         &self.scripts
     }
 
-    /// Get the component maps for inspection
     pub fn get_component_maps(&self) -> &HashMap<String, HashMap<String, ComponentDefinitionNode>> {
         &self.component_maps
     }
 
-    /// Get the parameter types for inspection
     pub fn get_parameter_types(
         &self,
     ) -> &HashMap<String, HashMap<String, BTreeMap<String, DopType>>> {
@@ -199,7 +196,7 @@ impl Program {
         &self,
         module_name: &str,
         component_name: &str,
-        params: std::collections::BTreeMap<String, serde_json::Value>,
+        args: std::collections::BTreeMap<String, serde_json::Value>,
         slot_content: &HashMap<String, String>,
         additional_class: Option<&str>,
     ) -> Result<String> {
@@ -217,10 +214,11 @@ impl Program {
         })?;
 
         let mut env = Self::init_environment(self.hop_mode);
+
         // Set up environment with all parameters and their corresponding values
         for param in &component.params {
             let param_name = &param.var_name.value;
-            let value = params
+            let value = args
                 .get(param_name)
                 .cloned()
                 .unwrap_or_else(|| panic!("Missing parameter {param_name}"));
@@ -236,9 +234,9 @@ impl Program {
             Ok(result)
         } else {
             // For regular components, wrap in the specified element type
-            let mut element_type = "div".to_string();
+            let mut element_type = "div";
             if let Some(as_attr) = &component.as_attr {
-                element_type = as_attr.value.clone();
+                element_type = &as_attr.value;
             }
 
             let data_hop_id = format!("{}/{}", module_name, component_name);
@@ -317,7 +315,10 @@ impl Program {
             }) => {
                 let mut arg_values = std::collections::BTreeMap::new();
                 for arg in args {
-                    arg_values.insert(arg.var_name.value.clone(), evaluate_expr(&arg.expression, env)?);
+                    arg_values.insert(
+                        arg.var_name.value.clone(),
+                        evaluate_expr(&arg.expression, env)?,
+                    );
                 }
 
                 let component_name = component;
