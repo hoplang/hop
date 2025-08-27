@@ -75,7 +75,7 @@ pub fn typecheck_expr(
     range: Range,
 ) -> Result<DopType, RangeError> {
     match expr {
-        DopExpr::Variable { name } => {
+        DopExpr::Variable { name, .. } => {
             if let Some(var_type) = env.lookup(name) {
                 annotations.push(TypeAnnotation {
                     range,

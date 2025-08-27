@@ -18,6 +18,7 @@ pub enum UnaryOp {
 pub enum DopExpr {
     Variable {
         name: String,
+        range: Range,
     },
     PropertyAccess {
         object: Box<DopExpr>,
@@ -499,8 +500,8 @@ fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
 //         | "(" equality ")"
 fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
     match tokenizer.advance()? {
-        (DopToken::Identifier(name), _) => {
-            let mut expr = DopExpr::Variable { name };
+        (DopToken::Identifier(name), range) => {
+            let mut expr = DopExpr::Variable { name, range };
 
             // Handle property access
             while let (DopToken::Dot, _) = tokenizer.peek() {
@@ -689,15 +690,45 @@ mod tests {
                     left: BinaryOp {
                         left: Variable {
                             name: "a",
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 1,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 2,
+                                },
+                            },
                         },
                         operator: Equal,
                         right: Variable {
                             name: "b",
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 6,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 7,
+                                },
+                            },
                         },
                     },
                     operator: Equal,
                     right: Variable {
                         name: "c",
+                        range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 11,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 12,
+                            },
+                        },
                     },
                 }
             "#]],
@@ -713,6 +744,16 @@ mod tests {
                     left: PropertyAccess {
                         object: Variable {
                             name: "user",
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 1,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 5,
+                                },
+                            },
                         },
                         property: "name",
                     },
@@ -720,6 +761,16 @@ mod tests {
                     right: PropertyAccess {
                         object: Variable {
                             name: "admin",
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 14,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 19,
+                                },
+                            },
                         },
                         property: "name",
                     },
@@ -739,6 +790,16 @@ mod tests {
                             object: PropertyAccess {
                                 object: Variable {
                                     name: "app",
+                                    range: Range {
+                                        start: Position {
+                                            line: 1,
+                                            column: 1,
+                                        },
+                                        end: Position {
+                                            line: 1,
+                                            column: 4,
+                                        },
+                                    },
                                 },
                                 property: "user",
                             },
@@ -796,10 +857,30 @@ mod tests {
                 BinaryOp {
                     left: Variable {
                         name: "x",
+                        range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 2,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 3,
+                            },
+                        },
                     },
                     operator: Equal,
                     right: Variable {
                         name: "y",
+                        range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 7,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 8,
+                            },
+                        },
                     },
                 }
             "#]],
@@ -814,6 +895,16 @@ mod tests {
                 PropertyAccess {
                     object: Variable {
                         name: "user",
+                        range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 5,
+                            },
+                        },
                     },
                     property: "name",
                 }
@@ -834,6 +925,16 @@ mod tests {
                     right: PropertyAccess {
                         object: Variable {
                             name: "user",
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 12,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 16,
+                                },
+                            },
                         },
                         property: "role",
                     },
@@ -850,10 +951,30 @@ mod tests {
                 BinaryOp {
                     left: Variable {
                         name: "x",
+                        range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 2,
+                            },
+                        },
                     },
                     operator: Equal,
                     right: Variable {
                         name: "y",
+                        range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 6,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 7,
+                            },
+                        },
                     },
                 }
             "#]],
@@ -879,6 +1000,16 @@ mod tests {
             expect![[r#"
                 Variable {
                     name: "x",
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 2,
+                        },
+                    },
                 }
             "#]],
         );
@@ -911,6 +1042,16 @@ mod tests {
                     left: PropertyAccess {
                         object: Variable {
                             name: "user",
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 1,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 5,
+                                },
+                            },
                         },
                         property: "name",
                     },
@@ -944,6 +1085,16 @@ mod tests {
                     left: PropertyAccess {
                         object: Variable {
                             name: "user",
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 3,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 7,
+                                },
+                            },
                         },
                         property: "name",
                     },
@@ -951,6 +1102,16 @@ mod tests {
                     right: PropertyAccess {
                         object: Variable {
                             name: "admin",
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 22,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 27,
+                                },
+                            },
                         },
                         property: "name",
                     },
@@ -1213,10 +1374,30 @@ mod tests {
                     elements: [
                         Variable {
                             name: "x",
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 2,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 3,
+                                },
+                            },
                         },
                         PropertyAccess {
                             object: Variable {
                                 name: "user",
+                                range: Range {
+                                    start: Position {
+                                        line: 1,
+                                        column: 5,
+                                    },
+                                    end: Position {
+                                        line: 1,
+                                        column: 9,
+                                    },
+                                },
                             },
                             property: "name",
                         },
@@ -1285,6 +1466,16 @@ mod tests {
                             operand: PropertyAccess {
                                 object: Variable {
                                     name: "user",
+                                    range: Range {
+                                        start: Position {
+                                            line: 1,
+                                            column: 28,
+                                        },
+                                        end: Position {
+                                            line: 1,
+                                            column: 32,
+                                        },
+                                    },
                                 },
                                 property: "disabled",
                             },
@@ -1292,6 +1483,16 @@ mod tests {
                         "user": PropertyAccess {
                             object: Variable {
                                 name: "user",
+                                range: Range {
+                                    start: Position {
+                                        line: 1,
+                                        column: 8,
+                                    },
+                                    end: Position {
+                                        line: 1,
+                                        column: 12,
+                                    },
+                                },
                             },
                             property: "name",
                         },
@@ -1369,6 +1570,16 @@ mod tests {
                         PropertyAccess {
                             object: Variable {
                                 name: "user",
+                                range: Range {
+                                    start: Position {
+                                        line: 2,
+                                        column: 2,
+                                    },
+                                    end: Position {
+                                        line: 2,
+                                        column: 6,
+                                    },
+                                },
                             },
                             property: "name",
                         },
@@ -1377,6 +1588,16 @@ mod tests {
                             operand: PropertyAccess {
                                 object: Variable {
                                     name: "user",
+                                    range: Range {
+                                        start: Position {
+                                            line: 3,
+                                            column: 3,
+                                        },
+                                        end: Position {
+                                            line: 3,
+                                            column: 7,
+                                        },
+                                    },
                                 },
                                 property: "disabled",
                             },
@@ -1434,6 +1655,16 @@ mod tests {
                             operand: PropertyAccess {
                                 object: Variable {
                                     name: "user",
+                                    range: Range {
+                                        start: Position {
+                                            line: 3,
+                                            column: 11,
+                                        },
+                                        end: Position {
+                                            line: 3,
+                                            column: 15,
+                                        },
+                                    },
                                 },
                                 property: "disabled",
                             },
@@ -1441,6 +1672,16 @@ mod tests {
                         "user": PropertyAccess {
                             object: Variable {
                                 name: "user",
+                                range: Range {
+                                    start: Position {
+                                        line: 2,
+                                        column: 8,
+                                    },
+                                    end: Position {
+                                        line: 2,
+                                        column: 12,
+                                    },
+                                },
                             },
                             property: "name",
                         },
