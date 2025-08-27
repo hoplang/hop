@@ -1,5 +1,5 @@
 use super::parser::{BinaryOp, DopExpr, UnaryOp};
-use crate::common::RangeError;
+use crate::common::{Range, RangeError};
 use crate::hop::environment::Environment;
 use crate::hop::typechecker::TypeAnnotation;
 use std::collections::BTreeMap;
@@ -12,6 +12,12 @@ pub enum DopType {
     Bool,
     String,
     Number,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RangeDopType {
+    pub dop_type: DopType,
+    pub range: Range,
 }
 
 impl fmt::Display for DopType {
@@ -211,8 +217,8 @@ mod tests {
                 .expect("Failed to create tokenizer");
             let params =
                 parse_parameters_with_types(&mut tokenizer).expect("Failed to parse environment");
-            for ((var_name, _), (var_type, _)) in params {
-                env.push(var_name.value, var_type);
+            for ((var_name, _), range_dop_type) in params {
+                env.push(var_name.value, range_dop_type.dop_type);
             }
         }
 

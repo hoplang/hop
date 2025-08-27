@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use crate::common::{Range, RangeError};
-use crate::dop::DopType;
 use crate::dop::tokenizer::{DopToken, DopTokenizer};
+use crate::dop::{DopType, typechecker::RangeDopType};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
@@ -163,7 +163,7 @@ pub fn parse_loop_header(
 // parameter_with_type = Identifier ":" type
 fn parse_parameter_with_type(
     tokenizer: &mut DopTokenizer,
-) -> Result<((DopVarName, Range), (DopType, Range)), RangeError> {
+) -> Result<((DopVarName, Range), RangeDopType), RangeError> {
     // Parse parameter name
     let (var_name, param_range) = match tokenizer.advance()? {
         (DopToken::Identifier(name), range) => match DopVarName::new(name.clone()) {
@@ -188,13 +188,19 @@ fn parse_parameter_with_type(
         }
     };
 
-    Ok(((var_name, param_range), (type_annotation, type_range)))
+    Ok((
+        (var_name, param_range),
+        RangeDopType {
+            dop_type: type_annotation,
+            range: type_range,
+        },
+    ))
 }
 
 // parameters_with_types = parameter_with_type ("," parameter_with_type)* Eof
 pub fn parse_parameters_with_types(
     tokenizer: &mut DopTokenizer,
-) -> Result<Vec<((DopVarName, Range), (DopType, Range))>, RangeError> {
+) -> Result<Vec<((DopVarName, Range), RangeDopType)>, RangeError> {
     let mut params = Vec::new();
 
     // Parse first parameter
