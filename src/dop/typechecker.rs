@@ -95,6 +95,7 @@ pub fn typecheck_expr(
         DopExpr::PropertyAccess {
             object: base_expr,
             property,
+            property_range,
             ..
         } => {
             let base_type = typecheck_expr(base_expr, env, annotations, errors)?;
@@ -106,7 +107,7 @@ pub fn typecheck_expr(
                     } else {
                         Err(RangeError::new(
                             format!("Property {} not found in object", property),
-                            expr.range(),
+                            *property_range,
                         ))
                     }
                 }
@@ -277,6 +278,19 @@ mod tests {
     }
 
     #[test]
+    fn test_typecheck_property_access_on_undefined_variable() {
+        check(
+            "",
+            "notdefined.foo.bar",
+            expect![[r#"
+                error: Undefined variable: notdefined
+                notdefined.foo.bar
+                ^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn test_typecheck_property_access_on_non_object() {
         check(
             "count: number",
@@ -349,7 +363,7 @@ mod tests {
             expect![[r#"
                 error: Property unknown not found in object
                 data.unknown
-                ^^^^^^^^^^^^
+                     ^^^^^^^
             "#]],
         );
     }
