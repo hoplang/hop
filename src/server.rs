@@ -320,21 +320,28 @@ impl Server {
     pub fn get_error_diagnostics(&self, module_name: &str) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
 
+        let mut found_parse_errors = false;
+
         if let Some(parse_errors) = self.parse_errors.get(module_name) {
             for error in parse_errors {
                 diagnostics.push(Diagnostic {
                     message: error.message.clone(),
                     range: error.range,
                 });
+                found_parse_errors = true;
             }
         }
 
-        if let Some(typecheck_errors) = self.type_errors.get(module_name) {
-            for error in typecheck_errors {
-                diagnostics.push(Diagnostic {
-                    message: error.message.clone(),
-                    range: error.range,
-                });
+        // If there's parse errors for the file we do not emit the type errors since they may be
+        // non-sensical if parsing fails.
+        if !found_parse_errors {
+            if let Some(typecheck_errors) = self.type_errors.get(module_name) {
+                for error in typecheck_errors {
+                    diagnostics.push(Diagnostic {
+                        message: error.message.clone(),
+                        range: error.range,
+                    });
+                }
             }
         }
 
