@@ -31,7 +31,7 @@ fn get_ui_program() -> &'static runtime::Program {
 fn inject_hot_reload_script(html: &str) -> String {
     const HOT_RELOAD_SCRIPT: &str = r#"
 <script type="module">
-import Idiomorph from './idiomorph.js';
+import Idiomorph from '/idiomorph.js';
 
 const eventSource = new EventSource('/__hop_hot_reload');
 eventSource.onmessage = function(event) {
