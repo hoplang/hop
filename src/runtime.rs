@@ -5,7 +5,7 @@ use crate::common::{
 };
 use crate::dop;
 use crate::dop::{DopType, evaluate_expr, load_json_file};
-use crate::parser::Module;
+use crate::hop::parser::Module;
 use crate::typechecker::TypeResult;
 use anyhow::Result;
 use std::collections::{BTreeMap, HashMap};
@@ -763,7 +763,7 @@ impl Program {
 mod tests {
     use super::*;
     use crate::common::Range;
-    use crate::parser::parse;
+    use crate::hop::parser::parse;
     use crate::test_utils::parse_test_cases;
     use crate::hop::tokenizer::Token;
     use crate::hop::tokenizer::Tokenizer;

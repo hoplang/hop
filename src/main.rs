@@ -4,7 +4,6 @@ mod compiler;
 mod dop;
 mod error_formatter;
 mod files;
-mod parser;
 mod runtime;
 mod scriptcollector;
 mod server;

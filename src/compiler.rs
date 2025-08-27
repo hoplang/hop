@@ -1,5 +1,5 @@
 use crate::error_formatter::ErrorFormatter;
-use crate::parser::parse;
+use crate::hop::parser::parse;
 use crate::runtime::{HopMode, Program};
 use crate::scriptcollector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;

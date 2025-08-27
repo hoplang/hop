@@ -4,7 +4,7 @@ use crate::common::{
     SlotReferenceNode, XExecNode, XLoadJsonNode, XRawNode,
 };
 use crate::dop::{DopType, infer_type_from_json_file, is_subtype, typecheck_expr};
-use crate::parser::Module;
+use crate::hop::parser::Module;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -587,7 +587,7 @@ fn typecheck_node(
 mod tests {
     use super::*;
     use crate::error_formatter::ErrorFormatter;
-    use crate::parser::parse;
+    use crate::hop::parser::parse;
     use crate::test_utils::parse_test_cases;
     use crate::hop::tokenizer::Tokenizer;
     use pretty_assertions::assert_eq;
