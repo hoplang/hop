@@ -8,6 +8,7 @@ mod parser;
 mod runtime;
 mod scriptcollector;
 mod server;
+mod source_annotator;
 #[cfg(test)]
 mod test_utils;
 mod timing;

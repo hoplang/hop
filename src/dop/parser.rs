@@ -394,7 +394,7 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::DopType, Range
                 match tokenizer.peek() {
                     (DopToken::Comma, _) => {
                         tokenizer.advance()?; // consume ,
-                        
+
                         // Check for trailing comma (closing brace after comma)
                         if let (DopToken::RightBrace, _) = tokenizer.peek() {
                             tokenizer.advance()?; // consume }

@@ -334,11 +334,14 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                                 Ok(params) => params
                                     .into_iter()
                                     .map(|(var_name, type_annotation)| {
-                                        (var_name.value.clone(), DopVarNameAttribute {
-                                            var_name,
-                                            type_annotation,
-                                            range: *range,
-                                        })
+                                        (
+                                            var_name.value.clone(),
+                                            DopVarNameAttribute {
+                                                var_name,
+                                                type_annotation,
+                                                range: *range,
+                                            },
+                                        )
                                     })
                                     .collect(),
                                 Err(error) => {
@@ -591,7 +594,10 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
                                 }
                             };
                             match dop::parse_named_arguments(&mut tokenizer) {
-                                Ok(named_args) => named_args.into_iter().map(|(name, expr)| (name, (expr, *range))).collect(),
+                                Ok(named_args) => named_args
+                                    .into_iter()
+                                    .map(|(name, expr)| (name, (expr, *range)))
+                                    .collect(),
                                 Err(err) => {
                                     errors.push(err);
                                     std::collections::BTreeMap::new()

@@ -1,4 +1,5 @@
 use crate::dop::{DopExpr, parser::DopVarName};
+use crate::source_annotator::Annotation;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 
@@ -150,6 +151,16 @@ impl RangeError {
 
     pub fn unused_import(component: &str, range: Range) -> Self {
         Self::new(format!("Unused import: {component}"), range)
+    }
+}
+
+impl Annotation for RangeError {
+    fn range(&self) -> Range {
+        self.range
+    }
+
+    fn message(&self) -> &str {
+        &self.message
     }
 }
 
