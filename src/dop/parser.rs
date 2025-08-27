@@ -106,7 +106,7 @@ pub fn parse_expr(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
         (DopToken::Eof, _) => {}
         (token, range) => {
             return Err(RangeError::new(
-                format!("Unexpected token {}", token),
+                format!("Unexpected token '{}'", token),
                 *range,
             ));
         }
@@ -149,9 +149,9 @@ pub fn parse_loop_header(
     // expect Eof
     match tokenizer.peek() {
         (DopToken::Eof, _) => {}
-        (_, range) => {
+        (token, range) => {
             return Err(RangeError::new(
-                "Unexpected token at end of <for> expression".to_string(),
+                format!("Unexpected token '{}'", token),
                 *range,
             ));
         }
@@ -213,9 +213,9 @@ pub fn parse_parameters_with_types(
                 params.push(parse_parameter_with_type(tokenizer)?);
             }
             (DopToken::Eof, _) => break,
-            (_, range) => {
+            (token, range) => {
                 return Err(RangeError::new(
-                    "Unexpected token after parameter".to_string(),
+                    format!("Unexpected token {}", token),
                     *range,
                 ));
             }
@@ -393,9 +393,18 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<(DopType, Range), RangeErr
                                     Range::new(start_range.start, end_range.end),
                                 ));
                             }
-                            (_, range) => {
+                            (DopToken::Eof, range) => {
                                 return Err(RangeError::new(
-                                    "Expected ',' or ']' after property type".to_string(),
+                                    "Missing closing ]".to_string(),
+                                    *range,
+                                ));
+                            }
+                            (token, range) => {
+                                return Err(RangeError::new(
+                                    format!(
+                                        "Expected ',' or ']' after property type but got {}",
+                                        token
+                                    ),
                                     *range,
                                 ));
                             }
@@ -470,9 +479,12 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<(DopType, Range), RangeErr
                             Range::new(start_range.start, end_range.end),
                         ));
                     }
-                    (_, range) => {
+                    (DopToken::Eof, range) => {
+                        return Err(RangeError::new("Missing closing '}'".to_string(), *range));
+                    }
+                    (token, range) => {
                         return Err(RangeError::new(
-                            "Expected ',' or '}' after property type".to_string(),
+                            format!("Expected ',' or '}}' but got '{}'", token),
                             *range,
                         ));
                     }
@@ -718,7 +730,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
             range,
         )),
         (token, range) => Err(RangeError::new(
-            format!("Unexpected token: {}", token),
+            format!("Unexpected token '{}'", token),
             range,
         )),
     }
@@ -730,7 +742,7 @@ mod tests {
     use crate::tui::source_annotator::SourceAnnotator;
     use expect_test::{Expect, expect};
 
-    fn check(input: &str, expected: Expect) {
+    fn check_parse_expr(input: &str, expected: Expect) {
         let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1))
             .expect("Failed to create tokenizer");
 
@@ -750,12 +762,56 @@ mod tests {
         expected.assert_eq(&actual);
     }
 
+    fn check_parse_parameters_with_types(input: &str, expected: Expect) {
+        let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1))
+            .expect("Failed to create tokenizer");
+
+        let actual = match parse_parameters_with_types(&mut tokenizer) {
+            Ok(result) => format!("{:#?}\n", result),
+            Err(e) => {
+                let annotator = SourceAnnotator::new()
+                    .with_label("error")
+                    .with_underline('^')
+                    .without_location()
+                    .without_line_numbers();
+
+                annotator.annotate(input, &[e]).to_string()
+            }
+        };
+
+        expected.assert_eq(&actual);
+    }
+
+    #[test]
+    fn test_parse_parameters_with_types_trailing_brace() {
+        check_parse_parameters_with_types(
+            "params: {i: {j: {k: {l: boolean}}}}}",
+            expect![[r#"
+                error: Unexpected token }
+                params: {i: {j: {k: {l: boolean}}}}}
+                                                   ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_parameters_with_types_missing_brace() {
+        check_parse_parameters_with_types(
+            "params: {i: {j: {k: {l: boolean}}}",
+            expect![[r#"
+                error: Missing closing '}'
+                params: {i: {j: {k: {l: boolean}}}
+                                                  ^
+            "#]],
+        );
+    }
+
     #[test]
     fn test_parse_expr_error_trailing_tokens() {
-        check(
+        check_parse_expr(
             "x y",
             expect![[r#"
-                error: Unexpected token y
+                error: Unexpected token 'y'
                 x y
                   ^
             "#]],
@@ -764,7 +820,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_error_dot_no_identifier() {
-        check(
+        check_parse_expr(
             "user.",
             expect![[r#"
                 error: Expected identifier after '.'
@@ -776,7 +832,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_error_dot_number() {
-        check(
+        check_parse_expr(
             "user.123",
             expect![[r#"
                 error: Expected identifier after '.'
@@ -788,10 +844,10 @@ mod tests {
 
     #[test]
     fn test_parse_expr_error_invalid_start() {
-        check(
+        check_parse_expr(
             "== x",
             expect![[r#"
-                error: Unexpected token: ==
+                error: Unexpected token '=='
                 == x
                 ^^
             "#]],
@@ -800,7 +856,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_error_unclosed_paren() {
-        check(
+        check_parse_expr(
             "(x == y",
             expect![[r#"
                 error: Missing closing parenthesis
@@ -812,10 +868,10 @@ mod tests {
 
     #[test]
     fn test_parse_expr_error_unmatched_closing_paren() {
-        check(
+        check_parse_expr(
             "x == y)",
             expect![[r#"
-                error: Unexpected token )
+                error: Unexpected token ')'
                 x == y)
                       ^
             "#]],
@@ -824,10 +880,10 @@ mod tests {
 
     #[test]
     fn test_parse_expr_error_empty_parens() {
-        check(
+        check_parse_expr(
             "()",
             expect![[r#"
-                error: Unexpected token: )
+                error: Unexpected token ')'
                 ()
                  ^
             "#]],
@@ -836,10 +892,10 @@ mod tests {
 
     #[test]
     fn test_parse_expr_error_invalid_after_equals() {
-        check(
+        check_parse_expr(
             "x == )",
             expect![[r#"
-                error: Unexpected token: )
+                error: Unexpected token ')'
                 x == )
                      ^
             "#]],
@@ -848,10 +904,10 @@ mod tests {
 
     #[test]
     fn test_parse_expr_error_dot_at_start() {
-        check(
+        check_parse_expr(
             ".property",
             expect![[r#"
-                error: Unexpected token: .
+                error: Unexpected token '.'
                 .property
                 ^
             "#]],
@@ -860,7 +916,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_error_double_dot() {
-        check(
+        check_parse_expr(
             "user..name",
             expect![[r#"
                 error: Expected identifier after '.'
@@ -872,7 +928,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_error_operator_at_end() {
-        check(
+        check_parse_expr(
             "x ==",
             expect![[r#"
                 error: Unexpected end of expression
@@ -884,7 +940,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_error_not_without_operand() {
-        check(
+        check_parse_expr(
             "!",
             expect![[r#"
                 error: Unexpected end of expression
@@ -896,10 +952,10 @@ mod tests {
 
     #[test]
     fn test_parse_expr_error_trailing_not() {
-        check(
+        check_parse_expr(
             "x !",
             expect![[r#"
-                error: Unexpected token !
+                error: Unexpected token '!'
                 x !
                   ^
             "#]],
@@ -908,7 +964,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_binary_op_chained() {
-        check(
+        check_parse_expr(
             "a == b == c",
             expect![[r#"
                 BinaryOp {
@@ -939,7 +995,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_property_access_comparison() {
-        check(
+        check_parse_expr(
             "user.name == admin.name",
             expect![[r#"
                 BinaryOp {
@@ -971,7 +1027,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_property_access() {
-        check(
+        check_parse_expr(
             "app.user.profile.settings.theme",
             expect![[r#"
                 PropertyAccess {
@@ -1004,7 +1060,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_empty_string() {
-        check(
+        check_parse_expr(
             "''",
             expect![[r#"
                 StringLiteral {
@@ -1017,7 +1073,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_number_literal_integer() {
-        check(
+        check_parse_expr(
             "99",
             expect![[r#"
                 NumberLiteral {
@@ -1030,7 +1086,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_number_literal_float() {
-        check(
+        check_parse_expr(
             "3.14",
             expect![[r#"
                 NumberLiteral {
@@ -1043,7 +1099,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_parenthesized() {
-        check(
+        check_parse_expr(
             "(x == y)",
             expect![[r#"
                 BinaryOp {
@@ -1065,7 +1121,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_simple_property_access() {
-        check(
+        check_parse_expr(
             "user.name",
             expect![[r#"
                 PropertyAccess {
@@ -1083,7 +1139,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_string_comparison() {
-        check(
+        check_parse_expr(
             "'guest' == user.role",
             expect![[r#"
                 BinaryOp {
@@ -1110,7 +1166,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_variable_comparison() {
-        check(
+        check_parse_expr(
             "x == y",
             expect![[r#"
                 BinaryOp {
@@ -1132,7 +1188,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_string_literal() {
-        check(
+        check_parse_expr(
             "'hello'",
             expect![[r#"
                 StringLiteral {
@@ -1145,7 +1201,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_variable() {
-        check(
+        check_parse_expr(
             "x",
             expect![[r#"
                 Variable {
@@ -1158,7 +1214,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_string_literal_comparison() {
-        check(
+        check_parse_expr(
             "'apple' == 'orange'",
             expect![[r#"
                 BinaryOp {
@@ -1180,7 +1236,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_property_string_comparison() {
-        check(
+        check_parse_expr(
             "user.name == 'admin'",
             expect![[r#"
                 BinaryOp {
@@ -1207,7 +1263,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_string_with_space() {
-        check(
+        check_parse_expr(
             "'hello world'",
             expect![[r#"
                 StringLiteral {
@@ -1220,7 +1276,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_whitespace_handling() {
-        check(
+        check_parse_expr(
             "  user . name   ==   admin . name  ",
             expect![[r#"
                 BinaryOp {
@@ -1252,7 +1308,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_empty_array() {
-        check(
+        check_parse_expr(
             "[]",
             expect![[r#"
                 ArrayLiteral {
@@ -1265,7 +1321,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_array_numbers() {
-        check(
+        check_parse_expr(
             "[1, 2, 3]",
             expect![[r#"
                 ArrayLiteral {
@@ -1291,7 +1347,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_array_mixed_types() {
-        check(
+        check_parse_expr(
             "[1, 'hello', true]",
             expect![[r#"
                 ArrayLiteral {
@@ -1317,7 +1373,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_nested_arrays() {
-        check(
+        check_parse_expr(
             "[[1, 2], [3, 4]]",
             expect![[r#"
                 ArrayLiteral {
@@ -1357,7 +1413,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_array_variables() {
-        check(
+        check_parse_expr(
             "[x, user.name]",
             expect![[r#"
                 ArrayLiteral {
@@ -1384,7 +1440,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_empty_object() {
-        check(
+        check_parse_expr(
             "{}",
             expect![[r#"
                 ObjectLiteral {
@@ -1397,7 +1453,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_object_single_property() {
-        check(
+        check_parse_expr(
             "{name: 'John'}",
             expect![[r#"
                 ObjectLiteral {
@@ -1415,7 +1471,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_object_multiple_properties() {
-        check(
+        check_parse_expr(
             "{a: 'foo', b: 1}",
             expect![[r#"
                 ObjectLiteral {
@@ -1437,7 +1493,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_object_complex_expressions() {
-        check(
+        check_parse_expr(
             "{user: user.name, active: !user.disabled}",
             expect![[r#"
                 ObjectLiteral {
@@ -1474,7 +1530,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_object_nested() {
-        check(
+        check_parse_expr(
             "{nested: {inner: 'value'}}",
             expect![[r#"
                 ObjectLiteral {
@@ -1497,7 +1553,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_array_trailing_comma_multiline() {
-        check(
+        check_parse_expr(
             "[\n\t1,\n\t2,\n\t3,\n]",
             expect![[r#"
                 ArrayLiteral {
@@ -1523,7 +1579,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_array_trailing_comma_single() {
-        check(
+        check_parse_expr(
             "[\n\t1,\n]",
             expect![[r#"
                 ArrayLiteral {
@@ -1541,7 +1597,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_array_trailing_comma_complex() {
-        check(
+        check_parse_expr(
             "[\n\tuser.name,\n\t!user.disabled,\n]",
             expect![[r#"
                 ArrayLiteral {
@@ -1578,7 +1634,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_object_trailing_comma_multiline() {
-        check(
+        check_parse_expr(
             "{\n\ta: 'foo',\n\tb: 1,\n}",
             expect![[r#"
                 ObjectLiteral {
@@ -1600,7 +1656,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_object_trailing_comma_single() {
-        check(
+        check_parse_expr(
             "{\n\tname: 'John',\n}",
             expect![[r#"
                 ObjectLiteral {
@@ -1618,7 +1674,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_object_trailing_comma_complex() {
-        check(
+        check_parse_expr(
             "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
             expect![[r#"
                 ObjectLiteral {
