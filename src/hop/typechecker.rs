@@ -1000,7 +1000,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {items: object[foo: array[string]]}>
+                <main-comp {items: {foo: array[string]}}>
                   <for {items in items.foo}>
                   </for>
                 </main-comp>
@@ -1008,7 +1008,7 @@ mod tests {
             expect![[r#"
                 error: Variable items is already defined
                   --> main.hop (line 2, col 9)
-                1 | <main-comp {items: object[foo: array[string]]}>
+                1 | <main-comp {items: {foo: array[string]}}>
                 2 |   <for {items in items.foo}>
                   |         ^^^^^
             "#]],
@@ -1042,7 +1042,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {items: object[a: array[string], b: array[string]]}>
+                <main-comp {items: {a: array[string], b: array[string]}}>
                   <for {item in items.a}>
                     <for {item in items.b}>
                       <div>{item}</div>
@@ -1066,7 +1066,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: array[object[active: boolean]]}>
+                <main-comp {params: array[{active: boolean}]}>
                 	<for {item in params}>
                 	  <if {item.active}>
                 	  </if>
@@ -1180,7 +1180,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: array[object[k: boolean]]}>
+                <main-comp {params: array[{k: boolean}]}>
                 	<for {item in params}>
                 		<if {item.k}>
                 		</if>
@@ -1231,7 +1231,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: object[items: array[object[active: boolean, name: boolean]]]}>
+                <main-comp {params: {items: array[{active: boolean, name: boolean}]}}>
                 	<for {item in params.items}>
                 		<if {item.active}>
                 		</if>
@@ -1273,7 +1273,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: object[a: string, b: boolean]}>
+                <main-comp {params: {a: string, b: boolean}}>
                   <if {(params.a == 'str') == params.b}>
                     <div>Match</div>
                   </if>
@@ -1292,7 +1292,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: object[enabled: boolean, users: array[object[profile: object[verified: boolean], posts: array[object[published: boolean]]]]]}>
+                <main-comp {params: {enabled: boolean, users: array[{profile: {verified: boolean}, posts: array[{published: boolean}]}]}}>
                 	<if {params.enabled}>
                 		<for {user in params.users}>
                 			<if {user.profile.verified}>
@@ -1319,7 +1319,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: object[sections: array[object[header: object[visible: boolean], items: array[object[data: object[valid: boolean]]]]]]}>
+                <main-comp {params: {sections: array[{header: {visible: boolean}, items: array[{data: {valid: boolean}}]}]}}>
                 	<for {section in params.sections}>
                 		<if {section.header.visible}>
                 			<for {item in section.items}>
@@ -1343,7 +1343,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: object[i: object[j: object[k: object[l: boolean]]]]}>
+                <main-comp {params: {i: {j: {k: {l: boolean}}}}}>
                 	<if {params.i.j.k.l}>
                 	</if>
                 </main-comp>
@@ -1361,7 +1361,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: object[app: object[ui: object[theme: object[dark: boolean]], api: object[endpoints: object[users: object[enabled: boolean]]], database: object[connection: object[ssl: boolean]]]]}>
+                <main-comp {params: {app: {ui: {theme: {dark: boolean}}, api: {endpoints: {users: {enabled: boolean}}}, database: {connection: {ssl: boolean}}}}}>
                 	<if {params.app.ui.theme.dark}>
                 	</if>
                 	<if {params.app.api.endpoints.users.enabled}>
@@ -1405,7 +1405,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp entrypoint {data: object[message: string]}>
+                <main-comp entrypoint {data: {message: string}}>
                     <h1>Hello World</h1>
                     <p>{data.message}</p>
                 </main-comp>
@@ -1423,7 +1423,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: object[user: object[name: string], other_user: object[name: string], data: object[x: string, y: string]]}>
+                <main-comp {params: {user: {name: string}, other_user: {name: string}, data: {x: string, y: string}}}>
                   <if {params.user.name == params.other_user.name}>
                     <div>Same name</div>
                   </if>
@@ -1445,7 +1445,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: object[x: string, y: string]}>
+                <main-comp {params: {x: string, y: string}}>
                   <if {params.x == params.y}>
                     <div>Values are equal</div>
                   </if>
@@ -1464,7 +1464,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: object[foo: object[bar: array[boolean]]]}>
+                <main-comp {params: {foo: {bar: array[boolean]}}}>
                 	<for {j in params.foo.bar}>
                 		<if {j}>
                 		</if>
@@ -1484,7 +1484,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: array[object[a: boolean, b: boolean]]}>
+                <main-comp {params: array[{a: boolean, b: boolean}]}>
                 	<for {j in params}>
                 		<if {j.a}>
                 		</if>
@@ -1578,7 +1578,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- bar.hop --
-                <widget-comp {config: object[enabled: boolean, title: string]}>
+                <widget-comp {config: {enabled: boolean, title: string}}>
                   <if {config.enabled}>
                     <div>{config.title}</div>
                   </if>
@@ -1587,7 +1587,7 @@ mod tests {
                 -- foo.hop --
                 <import component="widget-comp" from="bar">
 
-                <panel-comp {data: object[items: array[object[enabled: boolean, title: string]]]}>
+                <panel-comp {data: {items: array[{enabled: boolean, title: string}]}}>
                   <for {item in data.items}>
                     <widget-comp {config: item}/>
                   </for>
@@ -1596,7 +1596,7 @@ mod tests {
                 -- main.hop --
                 <import component="panel-comp" from="foo">
 
-                <main-comp {settings: object[dashboard: object[items: array[object[enabled: boolean, title: string]]]]}>
+                <main-comp {settings: {dashboard: {items: array[{enabled: boolean, title: string}]}}}>
                   <panel-comp {data: settings.dashboard}/>
                 </main-comp>
             "#},
@@ -1638,7 +1638,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: object[config: object[debug: boolean], data: array[object[id: boolean, attributes: array[boolean]]]]}>
+                <main-comp {params: {config: {debug: boolean}, data: array[{id: boolean, attributes: array[boolean]}]}}>
                 	<if {params.config.debug}>
                 	</if>
                 	<for {item in params.data}>
@@ -1664,20 +1664,20 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <step3-comp {settings: object[enabled: boolean]}>
+                <step3-comp {settings: {enabled: boolean}}>
                 	<if {settings.enabled}>
                 	</if>
                 </step3-comp>
 
-                <step2-comp {config: object[settings: object[enabled: boolean]]}>
+                <step2-comp {config: {settings: {enabled: boolean}}}>
                 	<step3-comp {settings: config.settings}/>
                 </step2-comp>
 
-                <step1-comp {data: object[config: object[settings: object[enabled: boolean]]]}>
+                <step1-comp {data: {config: {settings: {enabled: boolean}}}}>
                 	<step2-comp {config: data.config}/>
                 </step1-comp>
 
-                <main-comp {params: object[config: object[settings: object[enabled: boolean]]]}>
+                <main-comp {params: {config: {settings: {enabled: boolean}}}}>
                 	<step1-comp {data: params}/>
                 </main-comp>
             "#},
@@ -1706,7 +1706,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-card {item: object[title: string, active: boolean, status: string]}>
+                <main-card {item: {title: string, active: boolean, status: string}}>
                   <div>{item.title}
                   </div>
                   <if {item.active}>
@@ -1715,13 +1715,13 @@ mod tests {
                   </if>
                 </main-card>
 
-                <main-list {items: array[object[title: string, active: boolean, status: string]]}>
+                <main-list {items: array[{title: string, active: boolean, status: string}]}>
                   <for {item in items}>
                     <main-card {item: item}/>
                   </for>
                 </main-list>
 
-                <main-comp {data: object[items: array[object[title: string, active: boolean, status: string]]]}>
+                <main-comp {data: {items: array[{title: string, active: boolean, status: string}]}}>
                   <main-list {items: data.items}/>
                 </main-comp>
             "#},
