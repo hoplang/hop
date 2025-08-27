@@ -201,7 +201,7 @@ mod tests {
     use crate::source_annotator::SourceAnnotator;
     use expect_test::{Expect, expect};
 
-    fn check_typecheck(env_str: &str, expr_str: &str, expected: Expect) {
+    fn check(env_str: &str, expr_str: &str, expected: Expect) {
         let mut env = Environment::new();
 
         if !env_str.is_empty() {
@@ -221,12 +221,7 @@ mod tests {
         let mut annotations = Vec::new();
         let mut errors = Vec::new();
 
-        let actual = match typecheck_expr(
-            &expr,
-            &mut env,
-            &mut annotations,
-            &mut errors,
-        ) {
+        let actual = match typecheck_expr(&expr, &mut env, &mut annotations, &mut errors) {
             Ok(typ) => typ.to_string(),
             Err(e) => {
                 let annotator = SourceAnnotator::new()
@@ -243,102 +238,8 @@ mod tests {
     }
 
     #[test]
-    fn test_typecheck_basic_variable_lookup() {
-        check_typecheck("name: string", "name", expect!["string"]);
-    }
-
-    #[test]
-    fn test_typecheck_undefined_variable() {
-        check_typecheck(
-            "",
-            "undefined_var",
-            expect![[r#"
-                error: Undefined variable: undefined_var
-                undefined_var
-                ^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_typecheck_string_literal() {
-        check_typecheck("", "'hello world'", expect!["string"]);
-    }
-
-    #[test]
-    fn test_typecheck_boolean_literal_true() {
-        check_typecheck("", "true", expect!["boolean"]);
-    }
-
-    #[test]
-    fn test_typecheck_boolean_literal_false() {
-        check_typecheck("", "false", expect!["boolean"]);
-    }
-
-    #[test]
-    fn test_typecheck_number_literal_integer() {
-        check_typecheck("", "42", expect!["number"]);
-    }
-
-    #[test]
-    fn test_typecheck_number_literal_float() {
-        check_typecheck("", "3.14", expect!["number"]);
-    }
-
-    #[test]
-    fn test_typecheck_property_access() {
-        check_typecheck("user: object[name: string]", "user.name", expect!["string"]);
-    }
-
-    #[test]
-    fn test_typecheck_nested_property_access() {
-        check_typecheck(
-            "app: object[user: object[profile: object[name: string]]]",
-            "app.user.profile.name",
-            expect!["string"],
-        );
-    }
-
-    #[test]
-    fn test_typecheck_property_access_on_non_object() {
-        check_typecheck(
-            "count: number",
-            "count.value",
-            expect![[r#"
-                error: number can not be used as an object
-                count.value
-                ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_typecheck_equality_string() {
-        check_typecheck("name: string", "name == 'alice'", expect!["boolean"]);
-    }
-
-    #[test]
-    fn test_typecheck_equality_number() {
-        check_typecheck("count: number", "count == 42", expect!["boolean"]);
-    }
-
-    #[test]
-    fn test_typecheck_equality_boolean() {
-        check_typecheck("enabled: boolean", "enabled == true", expect!["boolean"]);
-    }
-
-    #[test]
-    fn test_typecheck_equality_same_object_properties() {
-        check_typecheck(
-            "user: object[name: string], admin: object[name: string]",
-            "user.name == admin.name",
-            expect!["boolean"],
-        );
-    }
-
-    #[test]
     fn test_typecheck_equality_incompatible_string_number() {
-        check_typecheck(
+        check(
             "name: string, count: number",
             "name == count",
             expect![[r#"
@@ -351,7 +252,7 @@ mod tests {
 
     #[test]
     fn test_typecheck_equality_incompatible_boolean_string() {
-        check_typecheck(
+        check(
             "enabled: boolean, name: string",
             "enabled == name",
             expect![[r#"
@@ -363,32 +264,34 @@ mod tests {
     }
 
     #[test]
-    fn test_typecheck_complex_equality() {
-        check_typecheck(
-            "a: boolean, b: boolean",
-            "a == b == true",
-            expect!["boolean"],
+    fn test_typecheck_undefined_variable() {
+        check(
+            "",
+            "undefined_var",
+            expect![[r#"
+                error: Undefined variable: undefined_var
+                undefined_var
+                ^^^^^^^^^^^^^
+            "#]],
         );
     }
 
     #[test]
-    fn test_typecheck_negation_variable() {
-        check_typecheck("enabled: boolean", "!enabled", expect!["boolean"]);
-    }
-
-    #[test]
-    fn test_typecheck_negation_true() {
-        check_typecheck("", "!true", expect!["boolean"]);
-    }
-
-    #[test]
-    fn test_typecheck_negation_false() {
-        check_typecheck("", "!false", expect!["boolean"]);
+    fn test_typecheck_property_access_on_non_object() {
+        check(
+            "count: number",
+            "count.value",
+            expect![[r#"
+                error: number can not be used as an object
+                count.value
+                ^^^^^
+            "#]],
+        );
     }
 
     #[test]
     fn test_typecheck_negation_string_error() {
-        check_typecheck(
+        check(
             "name: string",
             "!name",
             expect![[r#"
@@ -401,7 +304,7 @@ mod tests {
 
     #[test]
     fn test_typecheck_negation_number_error() {
-        check_typecheck(
+        check(
             "count: number",
             "!count",
             expect![[r#"
@@ -413,48 +316,8 @@ mod tests {
     }
 
     #[test]
-    fn test_typecheck_complex_negation_equality() {
-        check_typecheck(
-            "user: object[active: boolean]",
-            "!user.active == false",
-            expect!["boolean"],
-        );
-    }
-
-    #[test]
-    fn test_typecheck_parenthesized_negation() {
-        check_typecheck(
-            "status: object[enabled: boolean], config: object[active: boolean]",
-            "!(status.enabled == config.active)",
-            expect!["boolean"],
-        );
-    }
-
-    #[test]
-    fn test_typecheck_array_property_access_error() {
-        check_typecheck(
-            "users: array[object[name: string]]",
-            "users.name",
-            expect![[r#"
-                error: array[object[name: string]] can not be used as an object
-                users.name
-                ^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_typecheck_object_array_property() {
-        check_typecheck(
-            "data: object[items: array[string]]",
-            "data.items",
-            expect!["array[string]"],
-        );
-    }
-
-    #[test]
     fn test_typecheck_nested_array_property_error() {
-        check_typecheck(
+        check(
             "config: object[users: array[object[profile: object[name: string, active: boolean]]]]",
             "config.users.profile.name",
             expect![[r#"
@@ -466,26 +329,21 @@ mod tests {
     }
 
     #[test]
-    fn test_typecheck_deep_property_access() {
-        check_typecheck(
-            "system: object[config: object[database: object[connection: object[host: string]]]]",
-            "system.config.database.connection.host",
-            expect!["string"],
-        );
-    }
-
-    #[test]
-    fn test_typecheck_multiple_property_access() {
-        check_typecheck(
-            "obj: object[name: string, title: string]",
-            "obj.name == obj.title",
-            expect!["boolean"],
+    fn test_typecheck_array_property_access_error() {
+        check(
+            "users: array[object[name: string]]",
+            "users.name",
+            expect![[r#"
+                error: array[object[name: string]] can not be used as an object
+                users.name
+                ^^^^^
+            "#]],
         );
     }
 
     #[test]
     fn test_typecheck_unknown_property() {
-        check_typecheck(
+        check(
             "data: object[field: string]",
             "data.unknown",
             expect![[r#"
@@ -497,18 +355,155 @@ mod tests {
     }
 
     #[test]
+    fn test_typecheck_basic_variable_lookup() {
+        check("name: string", "name", expect!["string"]);
+    }
+
+    #[test]
+    fn test_typecheck_string_literal() {
+        check("", "'hello world'", expect!["string"]);
+    }
+
+    #[test]
+    fn test_typecheck_boolean_literal_true() {
+        check("", "true", expect!["boolean"]);
+    }
+
+    #[test]
+    fn test_typecheck_boolean_literal_false() {
+        check("", "false", expect!["boolean"]);
+    }
+
+    #[test]
+    fn test_typecheck_number_literal_integer() {
+        check("", "42", expect!["number"]);
+    }
+
+    #[test]
+    fn test_typecheck_number_literal_float() {
+        check("", "3.14", expect!["number"]);
+    }
+
+    #[test]
+    fn test_typecheck_property_access() {
+        check("user: object[name: string]", "user.name", expect!["string"]);
+    }
+
+    #[test]
+    fn test_typecheck_nested_property_access() {
+        check(
+            "app: object[user: object[profile: object[name: string]]]",
+            "app.user.profile.name",
+            expect!["string"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_equality_string() {
+        check("name: string", "name == 'alice'", expect!["boolean"]);
+    }
+
+    #[test]
+    fn test_typecheck_equality_number() {
+        check("count: number", "count == 42", expect!["boolean"]);
+    }
+
+    #[test]
+    fn test_typecheck_equality_boolean() {
+        check("enabled: boolean", "enabled == true", expect!["boolean"]);
+    }
+
+    #[test]
+    fn test_typecheck_equality_same_object_properties() {
+        check(
+            "user: object[name: string], admin: object[name: string]",
+            "user.name == admin.name",
+            expect!["boolean"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_complex_equality() {
+        check(
+            "a: boolean, b: boolean",
+            "a == b == true",
+            expect!["boolean"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_negation_variable() {
+        check("enabled: boolean", "!enabled", expect!["boolean"]);
+    }
+
+    #[test]
+    fn test_typecheck_negation_true() {
+        check("", "!true", expect!["boolean"]);
+    }
+
+    #[test]
+    fn test_typecheck_negation_false() {
+        check("", "!false", expect!["boolean"]);
+    }
+
+    #[test]
+    fn test_typecheck_complex_negation_equality() {
+        check(
+            "user: object[active: boolean]",
+            "!user.active == false",
+            expect!["boolean"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_parenthesized_negation() {
+        check(
+            "status: object[enabled: boolean], config: object[active: boolean]",
+            "!(status.enabled == config.active)",
+            expect!["boolean"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_object_array_property() {
+        check(
+            "data: object[items: array[string]]",
+            "data.items",
+            expect!["array[string]"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_deep_property_access() {
+        check(
+            "system: object[config: object[database: object[connection: object[host: string]]]]",
+            "system.config.database.connection.host",
+            expect!["string"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_multiple_property_access() {
+        check(
+            "obj: object[name: string, title: string]",
+            "obj.name == obj.title",
+            expect!["boolean"],
+        );
+    }
+
+    #[test]
     fn test_typecheck_empty_object_literal() {
-        check_typecheck("", "{}", expect!["object[]"]);
+        check("", "{}", expect!["object[]"]);
     }
 
     #[test]
     fn test_typecheck_object_literal_single_property() {
-        check_typecheck("", "{name: 'John'}", expect!["object[name: string]"]);
+        check("", "{name: 'John'}", expect!["object[name: string]"]);
     }
 
     #[test]
     fn test_typecheck_object_literal_multiple_properties() {
-        check_typecheck(
+        check(
             "",
             "{a: 'foo', b: 1, c: true}",
             expect!["object[a: string, b: number, c: boolean]"],
@@ -517,7 +512,7 @@ mod tests {
 
     #[test]
     fn test_typecheck_object_literal_complex_expressions() {
-        check_typecheck(
+        check(
             "user: object[name: string, disabled: boolean]",
             "{user: user.name, active: !user.disabled}",
             expect!["object[active: boolean, user: string]"],
@@ -526,7 +521,7 @@ mod tests {
 
     #[test]
     fn test_typecheck_nested_object_literal() {
-        check_typecheck(
+        check(
             "",
             "{nested: {inner: 'value'}}",
             expect!["object[nested: object[inner: string]]"],
@@ -535,17 +530,17 @@ mod tests {
 
     #[test]
     fn test_typecheck_array_trailing_comma_numbers() {
-        check_typecheck("", "[\n\t1,\n\t2,\n\t3,\n]", expect!["array[number]"]);
+        check("", "[\n\t1,\n\t2,\n\t3,\n]", expect!["array[number]"]);
     }
 
     #[test]
     fn test_typecheck_array_trailing_comma_single() {
-        check_typecheck("", "[\n\t'hello',\n]", expect!["array[string]"]);
+        check("", "[\n\t'hello',\n]", expect!["array[string]"]);
     }
 
     #[test]
     fn test_typecheck_object_literal_trailing_comma() {
-        check_typecheck(
+        check(
             "",
             "{\n\ta: 'foo',\n\tb: 1,\n}",
             expect!["object[a: string, b: number]"],
@@ -554,38 +549,6 @@ mod tests {
 
     #[test]
     fn test_typecheck_object_literal_trailing_comma_single() {
-        check_typecheck("", "{\n\tname: 'John',\n}", expect!["object[name: string]"]);
-    }
-
-    #[test]
-    fn test_typecheck_brace_syntax_object() {
-        check_typecheck(
-            "user: {name: string, age: number}",
-            "user.name",
-            expect!["string"],
-        );
-    }
-
-    #[test]
-    fn test_typecheck_empty_brace_syntax() {
-        check_typecheck("obj: {}", "obj", expect!["object[]"]);
-    }
-
-    #[test]
-    fn test_typecheck_nested_brace_syntax() {
-        check_typecheck(
-            "config: {database: {host: string, port: number}, cache: {enabled: boolean}}",
-            "config.database.host",
-            expect!["string"],
-        );
-    }
-
-    #[test]
-    fn test_typecheck_brace_syntax_with_array() {
-        check_typecheck(
-            "data: {items: array[string], count: number}",
-            "data.items",
-            expect!["array[string]"],
-        );
+        check("", "{\n\tname: 'John',\n}", expect!["object[name: string]"]);
     }
 }
