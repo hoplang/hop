@@ -1746,7 +1746,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: object[i: object[j: object[k: object[l: boolean]], k: boolean]]}>
+                <main-comp {params: {i: {j: {k: {l: boolean}}, k: boolean}}}>
                 	<if {params.i.j.k.l}>
                 		<if {params.i.k}>
                 		</if>
@@ -1766,7 +1766,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: object[i: object[j: object[k: object[l: boolean]], k: boolean]]}>
+                <main-comp {params: {i: {j: {k: {l: boolean}}, k: boolean}}}>
                 	<if {params.i.j.k.l}>
                 	</if>
                 	<if {params.i.k}>
@@ -1786,7 +1786,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: object[tags: array[boolean], categories: array[boolean], metadata: object[title: boolean]]}>
+                <main-comp {params: {tags: array[boolean], categories: array[boolean], metadata: {title: boolean}}}>
                 	<for {tag in params.tags}>
                 		<if {tag}>
                 		</if>
@@ -1846,12 +1846,12 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <execute-step {step: object[condition: boolean]}>
+                <execute-step {step: {condition: boolean}}>
                 	<if {step.condition}>
                 	</if>
                 </execute-step>
 
-                <execute-workflow {workflow: object[enabled: boolean, steps: array[object[condition: boolean]]]}>
+                <execute-workflow {workflow: {enabled: boolean, steps: array[{condition: boolean}]}}>
                 	<if {workflow.enabled}>
                 		<for {step in workflow.steps}>
                 			<execute-step {step: step}/>
@@ -1859,7 +1859,7 @@ mod tests {
                 	</if>
                 </execute-workflow>
 
-                <main-comp {params: object[workflows: array[object[enabled: boolean, steps: array[object[condition: boolean]]]]]}>
+                <main-comp {params: {workflows: array[{enabled: boolean, steps: array[{condition: boolean}]}]}}>
                 	<for {workflow in params.workflows}>
                 		<execute-workflow {workflow: workflow}/>
                 	</for>
@@ -1912,7 +1912,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <process-item {item: object[children: array[object[visible: boolean]], status: object[active: boolean]]}>
+                <process-item {item: {children: array[{visible: boolean}], status: {active: boolean}}}>
                 	<if {item.status.active}>
                 	</if>
                 	<for {child in item.children}>
@@ -1921,7 +1921,7 @@ mod tests {
                 	</for>
                 </process-item>
 
-                <main-comp {params: object[items: array[object[children: array[object[visible: boolean]], status: object[active: boolean]]]]}>
+                <main-comp {params: {items: array[{children: array[{visible: boolean}], status: {active: boolean}}]}}>
                 	<for {item in params.items}>
                 		<process-item {item: item}/>
                 	</for>
@@ -1944,7 +1944,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {user: object[url: string, theme: string]}>
+                <main-comp {user: {url: string, theme: string}}>
                   <a set-href="user.url" set-class="user.theme">Link</a>
                 </main-comp>
             "#},
@@ -1992,7 +1992,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {data: object[message: string]}>
+                <main-comp {data: {message: string}}>
                   <div>{data.message}
                   </div>
                 </main-comp>
@@ -2010,7 +2010,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: object[role: string]}>
+                <main-comp {params: {role: string}}>
                   <if {params.role == 'admin'}>
                     <div>Admin</div>
                   </if>
@@ -2077,7 +2077,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {data: object[message: string]}>
+                <main-comp {data: {message: string}}>
                 	<hop-x-raw>foo bar</hop-x-raw>
                 	<div>{data.message}</div>
                 </main-comp>
@@ -2138,7 +2138,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {user: object[isActive: boolean]}>
+                <main-comp {user: {isActive: boolean}}>
                   <if {user.isActive}>
                     <div>User is active</div>
                   </if>
@@ -2158,7 +2158,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {data: object[status: string]}>
+                <main-comp {data: {status: string}}>
                   <if {data.status == 'approved'}>
                     <div>Status is approved</div>
                   </if>
@@ -2200,7 +2200,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {config: object[enabled: boolean, debug: boolean]}>
+                <main-comp {config: {enabled: boolean, debug: boolean}}>
                   <if {config.enabled}>
                     <div>Feature enabled</div>
                     <if {config.debug}>
@@ -2222,7 +2222,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {config: object[debug: boolean]}>
+                <main-comp {config: {debug: boolean}}>
                   <if {config.debug}>
                     <div>Debug mode on</div>
                   </if>
@@ -2288,7 +2288,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: object[mode: string]}>
+                <main-comp {params: {mode: string}}>
                   <if {params.mode == HOP_MODE}>
                     <div>Mode matches</div>
                   </if>
@@ -2307,7 +2307,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {params: object[foo: string]}>
+                <main-comp {params: {foo: string}}>
                   <if {params.foo == 'foo'}>
                     eq 1
                   </if>
@@ -2329,7 +2329,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {data: array[object[title: string, items: array[string]]]}>
+                <main-comp {data: array[{title: string, items: array[string]}]}>
                 	<for {section in data}>
                 		<h1>{section.title}</h1>
                 		<for {item in section.items}>
@@ -2373,7 +2373,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <user-comp {user: object[name: string, age: string]}>
+                <user-comp {user: {name: string, age: string}}>
                 	<div>{user.name} ({user.age})</div>
                 </user-comp>
                 <main-comp>
@@ -2395,10 +2395,10 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <user-comp {user: object[name: string, active: string]}>
+                <user-comp {user: {name: string, active: string}}>
                 	<div>{user.name}: {user.active}</div>
                 </user-comp>
-                <main-comp {data: object[profile: object[name: string, active: string]]}>
+                <main-comp {data: {profile: {name: string, active: string}}}>
                 	<user-comp {user: data.profile}/>
                 </main-comp>
             "#},
@@ -2419,7 +2419,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <new-comp {user: object[name: string]}>
+                <new-comp {user: {name: string}}>
                 	<div>{user.name}</div>
                 </new-comp>
                 <main-comp>
@@ -2460,7 +2460,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <user-comp {user: object[name: string]}>
+                <user-comp {user: {name: string}}>
                 	<div>{user.name}</div>
                 </user-comp>
             "#},
@@ -2538,7 +2538,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <profile-comp {profile: object[user: object[name: string, age: number]]}>
+                <profile-comp {profile: {user: {name: string, age: number}}}>
                 	<div>{profile.user.name}</div>
                 	<if {profile.user.age == 25}>
                 		<div>Quarter century</div>
@@ -2583,7 +2583,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <card-comp {data: object[title: string, content: string, tags: array[string], metadata: object[author: string, published: boolean]]}>
+                <card-comp {data: {title: string, content: string, tags: array[string], metadata: {author: string, published: boolean}}}>
                 	<h1>{data.title}</h1>
                 	<p>{data.content}</p>
                 	<div>{data.metadata.author}</div>
@@ -2634,7 +2634,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- item-display.hop --
-                <item-display {item: object[id: number, name: string, active: boolean]}>
+                <item-display {item: {id: number, name: string, active: boolean}}>
                 	<div>{item.name}</div>
                 	<if {item.active}>
                 		<span>Active item</span>
@@ -2645,14 +2645,14 @@ mod tests {
                 </item-display>
                 -- data-list.hop --
                 <import component="item-display" from="item-display">
-                <data-list {items: array[object[id: number, name: string, active: boolean]]}>
+                <data-list {items: array[{id: number, name: string, active: boolean}]}>
                 	<for {item in items}>
                 		<item-display {item: item}/>
                 	</for>
                 </data-list>
                 -- main.hop --
                 <import component="data-list" from="data-list">
-                <main-comp {items: array[object[id: number, name: string, active: boolean]]}>
+                <main-comp {items: array[{id: number, name: string, active: boolean}]}>
                 	<data-list {items: items}/>
                 </main-comp>
             "#},
@@ -2678,11 +2678,11 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <needs-a {data: object[a: string]}>
+                <needs-a {data: {a: string}}>
                 	<div>{data.a}</div>
                 </needs-a>
 
-                <main-comp {params: object[data: object[a: string, b: string]]}>
+                <main-comp {params: {data: {a: string, b: string}}}>
                 	<needs-a {data: params.data}>
                 	</needs-a>
                 </main-comp>
@@ -2705,11 +2705,11 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <needs-a {data: object[a: string]}>
+                <needs-a {data: {a: string}}>
                 	<div>{data.a}</div>
                 </needs-a>
 
-                <main-comp {params: object[data: object[b: string]]}>
+                <main-comp {params: {data: {b: string}}}>
                 	<needs-a {data: params.data}>
                 	</needs-a>
                 </main-comp>
@@ -2717,7 +2717,7 @@ mod tests {
             expect![[r#"
                 error: Argument 'data' of type {b: string} is incompatible with expected type {a: string}
                   --> main.hop (line 6, col 12)
-                5 | <main-comp {params: object[data: object[b: string]]}>
+                5 | <main-comp {params: {data: {b: string}}}>
                 6 |     <needs-a {data: params.data}>
                   |               ^^^^^^^^^^^^^^^^^
             "#]],

@@ -385,7 +385,7 @@
 
 <!---------------------------------------------------------------------------->
 
-<inspect-page entrypoint {data: object[modules: array[object[name: string, components: array[object[name: string, has_preview: boolean, preview_url: string]]]], available_routes: array[string]]}>
+<inspect-page entrypoint {data: {modules: array[{name: string, components: array[{name: string, has_preview: boolean, preview_url: string}]}], available_routes: array[string]}}>
 	<!DOCTYPE html>
 	<html>
 	<head>

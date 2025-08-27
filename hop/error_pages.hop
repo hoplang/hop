@@ -53,7 +53,7 @@
 	</hop-x-preview>
 </error-not-found-error>
 
-<generic-error entrypoint {error: object[message: string]}>
+<generic-error entrypoint {error: {message: string}}>
 	<!DOCTYPE html>
 	<html>
 	<head>
