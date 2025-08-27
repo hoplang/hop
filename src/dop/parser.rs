@@ -1,4 +1,7 @@
+use std::collections::BTreeMap;
+
 use crate::common::{Range, RangeError};
+use crate::dop::DopType;
 use crate::dop::tokenizer::{DopToken, DopTokenizer};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -19,7 +22,7 @@ pub enum DopExpr {
     BooleanLiteral(bool),
     NumberLiteral(serde_json::Number),
     ArrayLiteral(Vec<DopExpr>),
-    ObjectLiteral(std::collections::BTreeMap<String, DopExpr>),
+    ObjectLiteral(BTreeMap<String, DopExpr>),
     BinaryOp(Box<DopExpr>, BinaryOp, Box<DopExpr>),
     UnaryOp(UnaryOp, Box<DopExpr>),
 }
@@ -113,7 +116,7 @@ pub fn parse_loop_header(
 // parameter_with_type = Identifier ":" type
 fn parse_parameter_with_type(
     tokenizer: &mut DopTokenizer,
-) -> Result<(DopVarName, crate::dop::DopType), RangeError> {
+) -> Result<(DopVarName, DopType), RangeError> {
     // Parse parameter name
     let var_name = match tokenizer.advance()? {
         (DopToken::Identifier(name), range) => match DopVarName::new(name.clone()) {
@@ -144,7 +147,7 @@ fn parse_parameter_with_type(
 // parameters_with_types = parameter_with_type ("," parameter_with_type)* Eof
 pub fn parse_parameters_with_types(
     tokenizer: &mut DopTokenizer,
-) -> Result<Vec<(DopVarName, crate::dop::DopType)>, RangeError> {
+) -> Result<Vec<(DopVarName, DopType)>, RangeError> {
     let mut params = Vec::new();
 
     // Parse first parameter
@@ -179,8 +182,8 @@ pub fn parse_parameters_with_types(
 // named_argument = Identifier ":" expr
 pub fn parse_named_arguments(
     tokenizer: &mut DopTokenizer,
-) -> Result<std::collections::BTreeMap<String, DopExpr>, RangeError> {
-    let mut args = std::collections::BTreeMap::new();
+) -> Result<BTreeMap<String, DopExpr>, RangeError> {
+    let mut args = BTreeMap::new();
 
     // Parse first argument
     let (name, expr) = parse_named_argument(tokenizer)?;
@@ -252,7 +255,7 @@ fn parse_named_argument(tokenizer: &mut DopTokenizer) -> Result<(String, DopExpr
 //      | TypeArray "[" type "]"
 //      | TypeObject "[" (Identifier ":" type ("," Identifier ":" type)*)? "]"
 //      | "{" (Identifier ":" type ("," Identifier ":" type)*)? "}"
-fn parse_type(tokenizer: &mut DopTokenizer) -> Result<crate::dop::DopType, RangeError> {
+fn parse_type(tokenizer: &mut DopTokenizer) -> Result<DopType, RangeError> {
     use crate::dop::DopType;
     use std::collections::BTreeMap;
 
@@ -520,7 +523,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
         }
         (DopToken::LeftBrace, _) => {
             // Parse {key1: value1, key2: value2, ...}
-            let mut properties = std::collections::BTreeMap::new();
+            let mut properties = BTreeMap::new();
 
             // Handle empty object
             if let (DopToken::RightBrace, _) = tokenizer.peek() {
@@ -613,8 +616,8 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::parse_test_cases;
     use crate::source_annotator::SourceAnnotator;
+    use crate::test_utils::parse_test_cases;
 
     use std::fs;
     use std::path::PathBuf;
@@ -660,7 +663,7 @@ mod tests {
                         .with_underline('^')
                         .without_location()
                         .without_line_numbers();
-                    
+
                     annotator.annotate(input, &[e]).trim().to_string()
                 }
             };

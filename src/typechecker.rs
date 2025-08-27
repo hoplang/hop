@@ -154,8 +154,8 @@ pub fn typecheck(
             );
         }
 
-        // Check for unused variables
-        for (_, param) in params.iter() {
+        // Check for unused variables (iterate in reverse to match push order)
+        for (_, param) in params.iter().rev() {
             if !env.pop() {
                 errors.push(RangeError::unused_variable(
                     &param.var_name.value,

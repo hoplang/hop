@@ -428,15 +428,16 @@ error: Unused variable item
 ## END
 ## BEGIN
 -- main.hop --
-<bar-comp {p: string}>
+<bar-comp {p: string, s: string}>
   <div>
+  	{s}
   </div>
 </bar-comp>
 -- out --
 error: Unused variable p
   --> main.hop (line 1, col 12)
-1 | <bar-comp {p: string}>
-  |            ^^^^^^^^^
+1 | <bar-comp {p: string, s: string}>
+  |            ^^^^^^^^^^^^^^^^^^^^
 ## END
 
 ## BEGIN
