@@ -1,9 +1,9 @@
 use crate::tui::error_formatter::ErrorFormatter;
 use crate::hop::parser::parse;
 use crate::hop::runtime::{HopMode, Program};
-use crate::scriptcollector::ScriptCollector;
+use crate::hop::scriptcollector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
-use crate::toposorter::TopoSorter;
+use crate::hop::toposorter::TopoSorter;
 use crate::hop::typechecker::{TypeResult, typecheck};
 use std::collections::HashMap;
 

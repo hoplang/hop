@@ -1,4 +1,5 @@
-use crate::common::{Environment, Position, Range, RangeError};
+use crate::common::{Position, Range, RangeError};
+use crate::hop::environment::Environment;
 use crate::hop::ast::{
     ComponentDefinitionNode, ComponentReferenceNode, ErrorNode, ForNode, IfNode,
     ImportNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode,

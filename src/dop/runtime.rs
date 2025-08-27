@@ -1,5 +1,5 @@
 use super::parser::{BinaryOp, DopExpr, UnaryOp};
-use crate::common::Environment;
+use crate::hop::environment::Environment;
 use anyhow::Result;
 
 pub fn evaluate_expr(
@@ -83,7 +83,7 @@ pub fn evaluate_expr(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::Environment;
+    use crate::hop::environment::Environment;
     use crate::dop::parse_expr;
     use expect_test::{Expect, expect};
     use serde_json::json;

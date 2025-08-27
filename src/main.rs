@@ -1,18 +1,14 @@
 mod cli;
 mod common;
-mod compiler;
 mod dop;
-mod files;
-mod scriptcollector;
-mod server;
+mod filesystem;
 mod tui;
 #[cfg(test)]
 mod test_utils;
 mod hop;
-mod toposorter;
 
 use clap::{CommandFactory, Parser, Subcommand};
-use files::ProjectRoot;
+use filesystem::files::ProjectRoot;
 use std::path::Path;
 
 #[derive(Parser)]

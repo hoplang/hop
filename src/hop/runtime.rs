@@ -1,4 +1,5 @@
-use crate::common::{Environment, escape_html, is_void_element};
+use crate::common::{escape_html, is_void_element};
+use crate::hop::environment::Environment;
 use crate::hop::ast::{
     ComponentDefinitionNode, ComponentReferenceNode, ErrorNode, ForNode, IfNode,
     NativeHTMLNode, Node, RenderNode, SlotDefinitionNode, SlotReferenceNode, XExecNode,

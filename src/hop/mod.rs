@@ -1,5 +1,10 @@
 pub mod ast;
+pub mod compiler;
+pub mod environment;
 pub mod parser;
 pub mod runtime;
+pub mod scriptcollector;
+pub mod server;
 pub mod tokenizer;
+pub mod toposorter;
 pub mod typechecker;
