@@ -65,14 +65,14 @@ pub struct ComponentReferenceNode {
     pub params: BTreeMap<String, (DopExpr, Range)>,
     pub attributes: Vec<Attribute>,
     pub range: Range,
-    pub children: Vec<Node>,
+    pub children: Vec<HopNode>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IfNode {
     pub condition: DopExpr,
     pub range: Range,
-    pub children: Vec<Node>,
+    pub children: Vec<HopNode>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -91,8 +91,8 @@ pub struct ComponentDefinitionNode {
     pub as_attr: Option<Attribute>,
     pub attributes: Vec<Attribute>,
     pub range: Range,
-    pub children: Vec<Node>,
-    pub preview: Option<Vec<Node>>,
+    pub children: Vec<HopNode>,
+    pub preview: Option<Vec<HopNode>>,
     pub entrypoint: bool,
     pub slots: Vec<String>,
 }
@@ -102,49 +102,49 @@ pub struct NativeHTMLNode {
     pub tag_name: String,
     pub attributes: Vec<Attribute>,
     pub range: Range,
-    pub children: Vec<Node>,
+    pub children: Vec<HopNode>,
     pub set_attributes: Vec<DopExprAttribute>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ErrorNode {
     pub range: Range,
-    pub children: Vec<Node>,
+    pub children: Vec<HopNode>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SlotDefinitionNode {
     pub name: String,
     pub range: Range,
-    pub children: Vec<Node>,
+    pub children: Vec<HopNode>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SlotReferenceNode {
     pub name: String,
     pub range: Range,
-    pub children: Vec<Node>,
+    pub children: Vec<HopNode>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RenderNode {
     pub file_attr: Attribute,
     pub range: Range,
-    pub children: Vec<Node>,
+    pub children: Vec<HopNode>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct XExecNode {
     pub cmd_attr: Attribute,
     pub range: Range,
-    pub children: Vec<Node>,
+    pub children: Vec<HopNode>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct XRawNode {
     pub trim: bool,
     pub range: Range,
-    pub children: Vec<Node>,
+    pub children: Vec<HopNode>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -152,7 +152,7 @@ pub struct ForNode {
     pub var_name: (DopVarName, Range),
     pub array_expr: DopExpr,
     pub range: Range,
-    pub children: Vec<Node>,
+    pub children: Vec<HopNode>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -160,7 +160,7 @@ pub struct XLoadJsonNode {
     pub file_attr: Attribute,
     pub as_attr: Attribute,
     pub range: Range,
-    pub children: Vec<Node>,
+    pub children: Vec<HopNode>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -170,7 +170,7 @@ pub struct TextExpressionNode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Node {
+pub enum HopNode {
     Doctype(DoctypeNode),
     Text(TextNode),
     TextExpression(TextExpressionNode),

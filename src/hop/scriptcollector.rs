@@ -1,4 +1,4 @@
-use crate::hop::ast::{ComponentDefinitionNode, Node};
+use crate::hop::ast::{ComponentDefinitionNode, HopNode};
 use std::collections::HashMap;
 
 pub struct ScriptCollector {
@@ -16,27 +16,27 @@ impl ScriptCollector {
         self.modules.insert(module_name, components);
     }
 
-    fn get_all_descendants(&self, nodes: &[Node]) -> Vec<Node> {
+    fn get_all_descendants(&self, nodes: &[HopNode]) -> Vec<HopNode> {
         let mut result = Vec::new();
         for node in nodes {
             result.push(node.clone());
             match node {
-                Node::NativeHTML(native_html_node) => {
+                HopNode::NativeHTML(native_html_node) => {
                     result.extend(self.get_all_descendants(&native_html_node.children));
                 }
-                Node::If(if_node) => {
+                HopNode::If(if_node) => {
                     result.extend(self.get_all_descendants(&if_node.children));
                 }
-                Node::For(for_node) => {
+                HopNode::For(for_node) => {
                     result.extend(self.get_all_descendants(&for_node.children));
                 }
-                Node::ComponentReference(render_node) => {
+                HopNode::ComponentReference(render_node) => {
                     result.extend(self.get_all_descendants(&render_node.children));
                 }
-                Node::XRaw(xraw_node) => {
+                HopNode::XRaw(xraw_node) => {
                     result.extend(self.get_all_descendants(&xraw_node.children));
                 }
-                Node::XLoadJson(xloadjson_node) => {
+                HopNode::XLoadJson(xloadjson_node) => {
                     result.extend(self.get_all_descendants(&xloadjson_node.children));
                 }
                 _ => {
@@ -56,7 +56,7 @@ impl ScriptCollector {
                 let all_nodes = self.get_all_descendants(&component.children);
                 for node in all_nodes {
                     match node {
-                        Node::NativeHTML(native_html_node) => {
+                        HopNode::NativeHTML(native_html_node) => {
                             if native_html_node.tag_name != "script" {
                                 continue;
                             }
@@ -70,7 +70,7 @@ impl ScriptCollector {
                             }
 
                             let script_content = match &native_html_node.children[0] {
-                                Node::Text(text_node) => &text_node.value,
+                                HopNode::Text(text_node) => &text_node.value,
                                 _ => panic!("Script tag child should be a text node"),
                             };
 

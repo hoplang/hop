@@ -1,8 +1,8 @@
 use crate::common::{Position, Range, RangeError};
 use crate::dop::{DopType, infer_type_from_json_file, is_subtype, typecheck_expr};
 use crate::hop::ast::{
-    ComponentDefinitionNode, ComponentReferenceNode, ErrorNode, ForNode, IfNode, ImportNode,
-    NativeHTMLNode, Node, RenderNode, SlotDefinitionNode, SlotReferenceNode, XExecNode,
+    ComponentDefinitionNode, ComponentReferenceNode, ErrorNode, ForNode, HopNode, IfNode,
+    ImportNode, NativeHTMLNode, RenderNode, SlotDefinitionNode, SlotReferenceNode, XExecNode,
     XLoadJsonNode, XRawNode,
 };
 use crate::hop::environment::Environment;
@@ -225,7 +225,7 @@ pub fn typecheck(
 }
 
 fn typecheck_node(
-    node: &Node,
+    node: &HopNode,
     component_info: &HashMap<String, ComponentInfo>,
     env: &mut Environment<DopType>,
     annotations: &mut Vec<TypeAnnotation>,
@@ -234,7 +234,7 @@ fn typecheck_node(
     errors: &mut Vec<RangeError>,
 ) {
     match node {
-        Node::If(IfNode {
+        HopNode::If(IfNode {
             condition,
             children,
             range,
@@ -266,7 +266,7 @@ fn typecheck_node(
                 );
             }
         }
-        Node::ComponentReference(ComponentReferenceNode {
+        HopNode::ComponentReference(ComponentReferenceNode {
             component,
             params,
             children,
@@ -341,7 +341,7 @@ fn typecheck_node(
 
                 // Validate slots
                 for child in children {
-                    if let Node::SlotReference(SlotReferenceNode { name, range, .. }) = child {
+                    if let HopNode::SlotReference(SlotReferenceNode { name, range, .. }) = child {
                         if !comp_info.slots.contains(name) {
                             errors.push(RangeError::undefined_slot(name, component, *range));
                         }
@@ -363,7 +363,7 @@ fn typecheck_node(
                 );
             }
         }
-        Node::NativeHTML(NativeHTMLNode {
+        HopNode::NativeHTML(NativeHTMLNode {
             set_attributes,
             children,
             ..
@@ -405,11 +405,11 @@ fn typecheck_node(
                 );
             }
         }
-        Node::SlotDefinition(SlotDefinitionNode { children, .. })
-        | Node::SlotReference(SlotReferenceNode { children, .. })
-        | Node::XExec(XExecNode { children, .. })
-        | Node::XRaw(XRawNode { children, .. })
-        | Node::Error(ErrorNode { children, .. }) => {
+        HopNode::SlotDefinition(SlotDefinitionNode { children, .. })
+        | HopNode::SlotReference(SlotReferenceNode { children, .. })
+        | HopNode::XExec(XExecNode { children, .. })
+        | HopNode::XRaw(XRawNode { children, .. })
+        | HopNode::Error(ErrorNode { children, .. }) => {
             for child in children {
                 typecheck_node(
                     child,
@@ -422,7 +422,7 @@ fn typecheck_node(
                 );
             }
         }
-        Node::XLoadJson(XLoadJsonNode {
+        HopNode::XLoadJson(XLoadJsonNode {
             file_attr,
             as_attr,
             children,
@@ -476,7 +476,7 @@ fn typecheck_node(
                 errors.push(RangeError::unused_variable(var_name, *range));
             }
         }
-        Node::For(ForNode {
+        HopNode::For(ForNode {
             var_name: (var_name, var_name_range),
             array_expr,
             children,
@@ -546,10 +546,10 @@ fn typecheck_node(
                 ));
             }
         }
-        Node::Text(_) | Node::Doctype(_) => {
+        HopNode::Text(_) | HopNode::Doctype(_) => {
             // No typechecking needed
         }
-        Node::TextExpression(text_expr_node) => {
+        HopNode::TextExpression(text_expr_node) => {
             // Typecheck the expression and ensure it's a string
             let expr_type =
                 match typecheck_expr(&text_expr_node.expression, env, annotations, errors) {

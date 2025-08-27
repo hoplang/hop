@@ -2,8 +2,9 @@ use crate::common::{escape_html, is_void_element};
 use crate::dop;
 use crate::dop::{DopType, evaluate_expr, load_json_file};
 use crate::hop::ast::{
-    ComponentDefinitionNode, ComponentReferenceNode, ErrorNode, ForNode, IfNode, NativeHTMLNode,
-    Node, RenderNode, SlotDefinitionNode, SlotReferenceNode, XExecNode, XLoadJsonNode, XRawNode,
+    ComponentDefinitionNode, ComponentReferenceNode, ErrorNode, ForNode, HopNode, IfNode,
+    NativeHTMLNode, RenderNode, SlotDefinitionNode, SlotReferenceNode, XExecNode, XLoadJsonNode,
+    XRawNode,
 };
 use crate::hop::environment::Environment;
 use crate::hop::parser::Module;
@@ -279,13 +280,13 @@ impl Program {
 
     pub fn evaluate_node(
         &self,
-        node: &Node,
+        node: &HopNode,
         slot_content: &HashMap<String, String>,
         env: &mut Environment<serde_json::Value>,
         current_module: &str,
     ) -> Result<String> {
         match node {
-            Node::If(IfNode {
+            HopNode::If(IfNode {
                 condition,
                 children,
                 ..
@@ -306,7 +307,7 @@ impl Program {
                     Ok(String::new())
                 }
             }
-            Node::ComponentReference(ComponentReferenceNode {
+            HopNode::ComponentReference(ComponentReferenceNode {
                 component,
                 params,
                 attributes,
@@ -344,7 +345,8 @@ impl Program {
                 let mut non_slot_children = Vec::new();
 
                 for child in children {
-                    if let Node::SlotReference(SlotReferenceNode { name, children, .. }) = child {
+                    if let HopNode::SlotReference(SlotReferenceNode { name, children, .. }) = child
+                    {
                         let mut slot_html = String::new();
                         for slot_child in children {
                             slot_html.push_str(&self.evaluate_node(
@@ -393,7 +395,7 @@ impl Program {
                     additional_class,
                 )
             }
-            Node::NativeHTML(NativeHTMLNode {
+            HopNode::NativeHTML(NativeHTMLNode {
                 children,
                 tag_name,
                 attributes,
@@ -444,7 +446,7 @@ impl Program {
 
                 Ok(result)
             }
-            Node::Error(ErrorNode { children, .. }) => {
+            HopNode::Error(ErrorNode { children, .. }) => {
                 let mut result = String::new();
                 for child in children {
                     result.push_str(&self.evaluate_node(
@@ -456,13 +458,13 @@ impl Program {
                 }
                 Ok(result)
             }
-            Node::Text(text_node) => Ok(text_node.value.clone()),
-            Node::TextExpression(text_expr_node) => {
+            HopNode::Text(text_node) => Ok(text_node.value.clone()),
+            HopNode::TextExpression(text_expr_node) => {
                 let result = evaluate_expr(&text_expr_node.expression, env)?;
                 Ok(escape_html(result.as_str().unwrap_or("")))
             }
-            Node::Doctype(_) => Ok("<!DOCTYPE html>".to_string()),
-            Node::SlotDefinition(SlotDefinitionNode { name, children, .. }) => {
+            HopNode::Doctype(_) => Ok("<!DOCTYPE html>".to_string()),
+            HopNode::SlotDefinition(SlotDefinitionNode { name, children, .. }) => {
                 // Check if we have supply-slot content for this slot
                 if let Some(supplied_html) = slot_content.get(name) {
                     // Use the pre-evaluated supplied content
@@ -481,7 +483,7 @@ impl Program {
                     Ok(result)
                 }
             }
-            Node::SlotReference(SlotReferenceNode { children, .. }) => {
+            HopNode::SlotReference(SlotReferenceNode { children, .. }) => {
                 let mut result = String::new();
                 for child in children {
                     result.push_str(&self.evaluate_node(
@@ -493,7 +495,7 @@ impl Program {
                 }
                 Ok(result)
             }
-            Node::XExec(XExecNode {
+            HopNode::XExec(XExecNode {
                 cmd_attr, children, ..
             }) => {
                 // Collect child content as stdin
@@ -511,7 +513,7 @@ impl Program {
                 let command = &cmd_attr.value;
                 self.execute_command(command, &stdin_content)
             }
-            Node::XRaw(XRawNode { trim, children, .. }) => {
+            HopNode::XRaw(XRawNode { trim, children, .. }) => {
                 // For hop-x-raw nodes, just render the inner content without the tags
                 let mut result = String::new();
                 for child in children {
@@ -529,7 +531,7 @@ impl Program {
                     Ok(result)
                 }
             }
-            Node::XLoadJson(XLoadJsonNode {
+            HopNode::XLoadJson(XLoadJsonNode {
                 file_attr,
                 as_attr,
                 children,
@@ -569,7 +571,7 @@ impl Program {
 
                 Ok(result)
             }
-            Node::For(ForNode {
+            HopNode::For(ForNode {
                 var_name: (var_name, _),
                 array_expr,
                 children,
@@ -602,12 +604,12 @@ impl Program {
 
     fn evaluate_node_entrypoint(
         &self,
-        node: &Node,
+        node: &HopNode,
         env: &mut Environment<serde_json::Value>,
         current_module: &str,
     ) -> Result<String> {
         match node {
-            Node::NativeHTML(NativeHTMLNode {
+            HopNode::NativeHTML(NativeHTMLNode {
                 tag_name,
                 attributes,
                 children,
