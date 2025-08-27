@@ -1,5 +1,5 @@
 use crate::common::Range;
-use crate::dop::{DopExpr, DopParameter, DopArgument, parser::DopVarName};
+use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Attribute {
@@ -8,7 +8,6 @@ pub struct Attribute {
     pub range: Range,
     pub value_range: Range,
 }
-
 
 impl Attribute {
     pub fn new(name: String, value: String, range: Range, value_range: Range) -> Self {
@@ -177,4 +176,104 @@ pub enum HopNode {
     XExec(XExecNode),
     XRaw(XRawNode),
     XLoadJson(XLoadJsonNode),
+}
+
+impl HopNode {
+    pub fn children(&self) -> &[HopNode] {
+        match self {
+            HopNode::ComponentReference(node) => &node.children,
+            HopNode::SlotDefinition(node) => &node.children,
+            HopNode::SlotReference(node) => &node.children,
+            HopNode::If(node) => &node.children,
+            HopNode::For(node) => &node.children,
+            HopNode::NativeHTML(node) => &node.children,
+            HopNode::Error(node) => &node.children,
+            HopNode::XExec(node) => &node.children,
+            HopNode::XRaw(node) => &node.children,
+            HopNode::XLoadJson(node) => &node.children,
+            // Leaf nodes with no children
+            HopNode::Doctype(_) => &[],
+            HopNode::Text(_) => &[],
+            HopNode::TextExpression(_) => &[],
+        }
+    }
+
+    pub fn iter_depth_first(&self) -> DepthFirstIterator {
+        DepthFirstIterator::new(self)
+    }
+}
+
+pub struct DepthFirstIterator<'a> {
+    stack: Vec<&'a HopNode>,
+}
+
+impl<'a> DepthFirstIterator<'a> {
+    fn new(root: &'a HopNode) -> Self {
+        Self { stack: vec![root] }
+    }
+}
+
+impl<'a> Iterator for DepthFirstIterator<'a> {
+    type Item = &'a HopNode;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let current = self.stack.pop()?;
+
+        // Add children in reverse order so they're visited in correct order
+        for child in current.children().iter().rev() {
+            self.stack.push(child);
+        }
+
+        Some(current)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::Range;
+
+    #[test]
+    fn test_depth_first_iterator() {
+        // Create a simple tree: div -> (p, span -> text)
+        let text_node = HopNode::Text(TextNode {
+            value: "hello".to_string(),
+            range: Range::default(),
+        });
+
+        let span_node = HopNode::NativeHTML(NativeHTMLNode {
+            tag_name: "span".to_string(),
+            attributes: vec![],
+            range: Range::default(),
+            children: vec![text_node],
+            set_attributes: vec![],
+        });
+
+        let p_node = HopNode::NativeHTML(NativeHTMLNode {
+            tag_name: "p".to_string(),
+            attributes: vec![],
+            range: Range::default(),
+            children: vec![],
+            set_attributes: vec![],
+        });
+
+        let div_node = HopNode::NativeHTML(NativeHTMLNode {
+            tag_name: "div".to_string(),
+            attributes: vec![],
+            range: Range::default(),
+            children: vec![p_node, span_node],
+            set_attributes: vec![],
+        });
+
+        let nodes: Vec<&HopNode> = div_node.iter_depth_first().collect();
+
+        // Should visit: div, p, span, text
+        assert_eq!(nodes.len(), 4);
+
+        // Check the order
+        assert!(matches!(nodes[0], HopNode::NativeHTML(node) if node.tag_name == "div"));
+        assert!(matches!(nodes[1], HopNode::NativeHTML(node) if node.tag_name == "p"));
+        assert!(matches!(nodes[2], HopNode::NativeHTML(node) if node.tag_name == "span"));
+        assert!(matches!(nodes[3], HopNode::Text(node) if node.value == "hello"));
+    }
 }
