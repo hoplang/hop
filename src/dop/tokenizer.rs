@@ -25,7 +25,6 @@ pub enum DopToken {
     TypeBoolean,
     TypeVoid,
     TypeArray,
-    TypeObject,
     Eof,
 }
 
@@ -53,7 +52,6 @@ impl fmt::Display for DopToken {
             DopToken::TypeBoolean => write!(f, "boolean"),
             DopToken::TypeVoid => write!(f, "void"),
             DopToken::TypeArray => write!(f, "array"),
-            DopToken::TypeObject => write!(f, "object"),
             DopToken::Eof => write!(f, "EOF"),
         }
     }
@@ -218,7 +216,6 @@ impl DopTokenizer {
                     "in" => DopToken::In,
                     "true" => DopToken::BooleanLiteral(true),
                     "false" => DopToken::BooleanLiteral(false),
-                    "object" => DopToken::TypeObject,
                     // Type keywords
                     "string" => DopToken::TypeString,
                     "number" => DopToken::TypeNumber,
@@ -727,22 +724,6 @@ mod tests {
                         (
                             RightBracket,
                             1:2-1:3,
-                        ),
-                    ),
-                ]"#]],
-        );
-    }
-
-    #[test]
-    fn test_tokenize_object_keyword() {
-        check(
-            "object",
-            expect![[r#"
-                [
-                    Ok(
-                        (
-                            TypeObject,
-                            1:1-1:7,
                         ),
                     ),
                 ]"#]],
