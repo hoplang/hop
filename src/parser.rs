@@ -5,8 +5,8 @@ use crate::common::{
     XExecNode, XLoadJsonNode, XRawNode, is_void_element,
 };
 use crate::dop::{self, DopTokenizer};
-use crate::tokenizer::Token;
-use crate::tokenizer::Tokenizer;
+use crate::hop::tokenizer::Token;
+use crate::hop::tokenizer::Tokenizer;
 use std::collections::HashSet;
 
 fn is_valid_component_name(name: &str) -> bool {

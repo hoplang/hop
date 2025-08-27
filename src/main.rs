@@ -12,7 +12,7 @@ mod source_annotator;
 #[cfg(test)]
 mod test_utils;
 mod timing;
-mod tokenizer;
+mod hop;
 mod toposorter;
 mod typechecker;
 

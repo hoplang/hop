@@ -765,8 +765,8 @@ mod tests {
     use crate::common::Range;
     use crate::parser::parse;
     use crate::test_utils::parse_test_cases;
-    use crate::tokenizer::Token;
-    use crate::tokenizer::Tokenizer;
+    use crate::hop::tokenizer::Token;
+    use crate::hop::tokenizer::Tokenizer;
     use crate::typechecker::{TypeResult, typecheck};
     use pretty_assertions::assert_eq;
 

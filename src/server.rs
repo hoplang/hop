@@ -1,6 +1,6 @@
 use crate::common::{Position, Range, RangeError};
 use crate::parser::{Module, parse};
-use crate::tokenizer::Tokenizer;
+use crate::hop::tokenizer::Tokenizer;
 use crate::toposorter::TopoSorter;
 use crate::typechecker::{TypeResult, typecheck};
 use std::collections::HashMap;

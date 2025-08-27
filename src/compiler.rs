@@ -2,7 +2,7 @@ use crate::error_formatter::ErrorFormatter;
 use crate::parser::parse;
 use crate::runtime::{HopMode, Program};
 use crate::scriptcollector::ScriptCollector;
-use crate::tokenizer::Tokenizer;
+use crate::hop::tokenizer::Tokenizer;
 use crate::toposorter::TopoSorter;
 use crate::typechecker::{TypeResult, typecheck};
 use std::collections::HashMap;
