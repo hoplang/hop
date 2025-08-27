@@ -10,16 +10,6 @@ use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
 use std::collections::HashSet;
 
-fn is_valid_component_name(name: &str) -> bool {
-    if name.is_empty() || name.starts_with('-') || name.ends_with('-') {
-        return false;
-    }
-    if name.starts_with("hop-") {
-        return false;
-    }
-    name.contains('-')
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module {
     pub name: String,
@@ -33,33 +23,6 @@ enum ToplevelNode {
     Import(ImportNode),
     ComponentDefinition(ComponentDefinitionNode),
     Render(RenderNode),
-}
-
-pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> Module {
-    let tree = build_tree(tokenizer, errors);
-
-    let mut components = Vec::new();
-    let mut imports = Vec::new();
-    let mut renders = Vec::new();
-
-    for child in &tree.children {
-        if let Some(toplevel_node) = construct_toplevel_node(child, errors) {
-            match toplevel_node {
-                ToplevelNode::Import(import_data) => imports.push(import_data),
-                ToplevelNode::ComponentDefinition(component_data) => {
-                    components.push(component_data)
-                }
-                ToplevelNode::Render(render_data) => renders.push(render_data),
-            }
-        }
-    }
-
-    Module {
-        name: module_name,
-        components,
-        imports,
-        renders,
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -94,6 +57,43 @@ impl TokenTree {
     fn set_end_token(&mut self, token: EndToken) {
         self.end_token = Some(token);
     }
+}
+
+pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> Module {
+    let tree = build_tree(tokenizer, errors);
+
+    let mut components = Vec::new();
+    let mut imports = Vec::new();
+    let mut renders = Vec::new();
+
+    for child in &tree.children {
+        if let Some(toplevel_node) = construct_toplevel_node(child, errors) {
+            match toplevel_node {
+                ToplevelNode::Import(import_data) => imports.push(import_data),
+                ToplevelNode::ComponentDefinition(component_data) => {
+                    components.push(component_data)
+                }
+                ToplevelNode::Render(render_data) => renders.push(render_data),
+            }
+        }
+    }
+
+    Module {
+        name: module_name,
+        components,
+        imports,
+        renders,
+    }
+}
+
+fn is_valid_component_name(name: &str) -> bool {
+    if name.is_empty() || name.starts_with('-') || name.ends_with('-') {
+        return false;
+    }
+    if name.starts_with("hop-") {
+        return false;
+    }
+    name.contains('-')
 }
 
 fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTree {
