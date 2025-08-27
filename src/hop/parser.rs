@@ -994,7 +994,7 @@ mod tests {
     fn test_parser_nested_loops_complex_types() {
         check(
             indoc! {"
-                <main-comp {sections: array[object[title: string, items: array[string]]]}>
+                <main-comp {sections: array[{title: string, items: array[string]}]}>
                     <div>
                         <for {section in sections}>
                             <div>
@@ -1061,7 +1061,7 @@ mod tests {
     fn test_parser_entrypoint_with_data_param() {
         check(
             indoc! {"
-                <main-comp entrypoint {data: object[message: string]}>
+                <main-comp entrypoint {data: {message: string}}>
                     <h1>Hello World</h1>
                     <p>{data.message}</p>
                 </main-comp>
@@ -1118,7 +1118,7 @@ mod tests {
     fn test_parser_complex_nested_loops() {
         check(
             indoc! {"
-                <main-comp {i: array[object[s: object[t: array[string]]]]}>
+                <main-comp {i: array[{s: {t: array[string]}}]}>
                     <for {j in i}>
                         <for {k in j.s.t}>
                             <if {k}>
@@ -1195,7 +1195,7 @@ mod tests {
     fn test_parser_component_with_params() {
         check(
             indoc! {"
-                <main-comp {data: object[user: string]}>
+                <main-comp {data: {user: string}}>
                     <foo-comp {a: data}/>
                     <bar-comp {b: data.user}/>
                 </main-comp>
@@ -1240,7 +1240,7 @@ mod tests {
     fn test_parser_set_attributes() {
         check(
             indoc! {r#"
-                <main-comp {user: object[url: string, theme: string]}>
+                <main-comp {user: {url: string, theme: string}}>
                     <a set-href="user.url" set-class="user.theme">Link</a>
                 </main-comp>
             "#},
@@ -1453,7 +1453,7 @@ mod tests {
     fn test_parser_param_object_type() {
         check(
             indoc! {"
-                <main-comp {user: object[name: string, age: number]}>
+                <main-comp {user: {name: string, age: number}}>
                     <div>{user.name} is {user.age} years old</div>
                 </main-comp>
             "},
@@ -1466,7 +1466,7 @@ mod tests {
     fn test_parser_param_nested_types() {
         check(
             indoc! {"
-                <main-comp {data: array[object[title: string, items: array[string]]]}>
+                <main-comp {data: array[{title: string, items: array[string]}]}>
                     <for {section in data}>
                         <h1>{section.title}</h1>
                         <for {item in section.items}>

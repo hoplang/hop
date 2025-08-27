@@ -333,7 +333,7 @@ mod tests {
     #[test]
     fn test_typecheck_nested_array_property_error() {
         check(
-            "config: object[users: array[object[profile: object[name: string, active: boolean]]]]",
+            "config: {users: array[{profile: {name: string, active: boolean}}]}",
             "config.users.profile.name",
             expect![[r#"
                 error: array[{profile: {active: boolean, name: string}}] can not be used as an object
@@ -346,7 +346,7 @@ mod tests {
     #[test]
     fn test_typecheck_array_property_access_error() {
         check(
-            "users: array[object[name: string]]",
+            "users: array[{name: string}]",
             "users.name",
             expect![[r#"
                 error: array[{name: string}] can not be used as an object
@@ -359,7 +359,7 @@ mod tests {
     #[test]
     fn test_typecheck_unknown_property() {
         check(
-            "data: object[field: string]",
+            "data: {field: string}",
             "data.unknown",
             expect![[r#"
                 error: Property unknown not found in object
@@ -401,13 +401,13 @@ mod tests {
 
     #[test]
     fn test_typecheck_property_access() {
-        check("user: object[name: string]", "user.name", expect!["string"]);
+        check("user: {name: string}", "user.name", expect!["string"]);
     }
 
     #[test]
     fn test_typecheck_nested_property_access() {
         check(
-            "app: object[user: object[profile: object[name: string]]]",
+            "app: {user: {profile: {name: string}}}",
             "app.user.profile.name",
             expect!["string"],
         );
@@ -431,7 +431,7 @@ mod tests {
     #[test]
     fn test_typecheck_equality_same_object_properties() {
         check(
-            "user: object[name: string], admin: object[name: string]",
+            "user: {name: string}, admin: {name: string}",
             "user.name == admin.name",
             expect!["boolean"],
         );
@@ -464,7 +464,7 @@ mod tests {
     #[test]
     fn test_typecheck_complex_negation_equality() {
         check(
-            "user: object[active: boolean]",
+            "user: {active: boolean}",
             "!user.active == false",
             expect!["boolean"],
         );
@@ -473,7 +473,7 @@ mod tests {
     #[test]
     fn test_typecheck_parenthesized_negation() {
         check(
-            "status: object[enabled: boolean], config: object[active: boolean]",
+            "status: {enabled: boolean}, config: {active: boolean}",
             "!(status.enabled == config.active)",
             expect!["boolean"],
         );
@@ -482,7 +482,7 @@ mod tests {
     #[test]
     fn test_typecheck_object_array_property() {
         check(
-            "data: object[items: array[string]]",
+            "data: {items: array[string]}",
             "data.items",
             expect!["array[string]"],
         );
@@ -491,7 +491,7 @@ mod tests {
     #[test]
     fn test_typecheck_deep_property_access() {
         check(
-            "system: object[config: object[database: object[connection: object[host: string]]]]",
+            "system: {config: {database: {connection: {host: string}}}}",
             "system.config.database.connection.host",
             expect!["string"],
         );
@@ -500,7 +500,7 @@ mod tests {
     #[test]
     fn test_typecheck_multiple_property_access() {
         check(
-            "obj: object[name: string, title: string]",
+            "obj: {name: string, title: string}",
             "obj.name == obj.title",
             expect!["boolean"],
         );
@@ -528,7 +528,7 @@ mod tests {
     #[test]
     fn test_typecheck_object_literal_complex_expressions() {
         check(
-            "user: object[name: string, disabled: boolean]",
+            "user: {name: string, disabled: boolean}",
             "{user: user.name, active: !user.disabled}",
             expect!["{active: boolean, user: string}"],
         );

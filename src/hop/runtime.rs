@@ -878,8 +878,8 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 <main-comp {
-                    user: object[name: string],
-                    admin: object[name: string],
+                    user: {name: string},
+                    admin: {name: string},
                     status: string,
                     expected_status: string,
                 }>
@@ -911,7 +911,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {items: array[object[show: boolean, data: string]]}>
+                <main-comp {items: array[{show: boolean, data: string}]}>
                     <for {item in items}>
                         <if {item.show}>
                             <div>{item.data}</div>
@@ -938,7 +938,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {items: array[object[name: string, type: string]]}>
+                <main-comp {items: array[{name: string, type: string}]}>
                   <for {item in items}>
                     <div>
                       <span>{item.name}</span>
@@ -1034,7 +1034,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {users: array[object[name: string]]}>
+                <main-comp {users: array[{name: string}]}>
                   <for {user in users}>
                     <div>{user.name}</div>
                   </for>
@@ -1358,7 +1358,7 @@ mod tests {
                 <main-comp entrypoint {
                     title: string,
                     active_count: string,
-                    users: array[object[name: string, active: boolean, admin: boolean]],
+                    users: array[{name: string, active: boolean, admin: boolean}],
                 }>
                     <main-card>
                         <with-header>
@@ -1556,7 +1556,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {user: object[isActive: boolean, role: string]}>
+                <main-comp {user: {isActive: boolean, role: string}}>
                   <if {user.isActive}>
                     <div>Welcome active user!</div>
                   </if>
@@ -1583,7 +1583,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {config: object[enabled: boolean, debug: boolean]}>
+                <main-comp {config: {enabled: boolean, debug: boolean}}>
                   <if {config.enabled}>
                     <div>Feature is enabled</div>
                     <if {config.debug}>
