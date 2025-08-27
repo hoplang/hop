@@ -268,7 +268,7 @@ fn typecheck_node(
         }
         HopNode::ComponentReference(ComponentReferenceNode {
             component,
-            params,
+            args: params,
             children,
             opening_name_range,
             closing_name_range,
@@ -290,7 +290,7 @@ fn typecheck_node(
                 });
 
                 // Validate named arguments against parameter types
-                let provided_args: std::collections::HashSet<_> = params.keys().collect();
+                let provided_args: std::collections::HashSet<_> = params.iter().map(|(name, _)| name).collect();
                 let expected_params: std::collections::HashSet<_> =
                     comp_info.parameter_types.keys().collect();
 

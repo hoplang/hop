@@ -1,10 +1,10 @@
 use crate::common::{Range, RangeError, is_void_element};
 use crate::dop::{self, DopTokenizer};
 use crate::hop::ast::{
-    ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, DopExprAttribute,
-    DopVarNameAttribute, ErrorNode, ForNode, HopNode, IfNode, ImportNode, NativeHTMLNode,
-    RenderNode, SlotDefinitionNode, SlotReferenceNode, TextExpressionNode, TextNode, XExecNode,
-    XLoadJsonNode, XRawNode,
+    ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, DopExprAttribute, ErrorNode,
+    ForNode, HopNode, HopParameter, IfNode, ImportNode, NativeHTMLNode, RenderNode,
+    SlotDefinitionNode, SlotReferenceNode, TextExpressionNode, TextNode, XExecNode, XLoadJsonNode,
+    XRawNode,
 };
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
@@ -328,7 +328,7 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                                     .map(|((var_name, var_name_range), range_dop_type)| {
                                         (
                                             var_name.value.clone(),
-                                            DopVarNameAttribute {
+                                            HopParameter {
                                                 var_name,
                                                 type_annotation: range_dop_type.dop_type,
                                                 var_name_range,
@@ -589,21 +589,21 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                                 }
                             };
                             match dop::parse_named_arguments(&mut tokenizer) {
-                                Ok(named_args) => named_args,
+                                Ok(named_args) => named_args.into_iter().collect(),
                                 Err(err) => {
                                     errors.push(err);
-                                    std::collections::BTreeMap::new()
+                                    Vec::new()
                                 }
                             }
                         }
-                        None => std::collections::BTreeMap::new(),
+                        None => Vec::new(),
                     };
 
                     HopNode::ComponentReference(ComponentReferenceNode {
                         component: tag_name.to_string(),
                         opening_name_range: *name_range,
                         closing_name_range: tree.closing_tag_range,
-                        params: params_attrs,
+                        args: params_attrs,
                         attributes: attributes.clone(),
                         range: *token_range,
                         children,

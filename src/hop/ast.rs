@@ -11,7 +11,7 @@ pub struct Attribute {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct DopVarNameAttribute {
+pub struct HopParameter {
     pub var_name: DopVarName,
     pub var_name_range: Range,
     pub type_annotation: DopType,
@@ -62,7 +62,7 @@ pub struct ComponentReferenceNode {
     pub component: String,
     pub opening_name_range: Range,
     pub closing_name_range: Option<Range>,
-    pub params: BTreeMap<String, DopExpr>,
+    pub args: Vec<(String, DopExpr)>,
     pub attributes: Vec<Attribute>,
     pub range: Range,
     pub children: Vec<HopNode>,
@@ -87,7 +87,7 @@ pub struct ComponentDefinitionNode {
     pub name: String,
     pub opening_name_range: Range,
     pub closing_name_range: Option<Range>,
-    pub params: BTreeMap<String, DopVarNameAttribute>,
+    pub params: BTreeMap<String, HopParameter>,
     pub as_attr: Option<Attribute>,
     pub attributes: Vec<Attribute>,
     pub range: Range,

@@ -309,14 +309,14 @@ impl Program {
             }
             HopNode::ComponentReference(ComponentReferenceNode {
                 component,
-                params,
+                args,
                 attributes,
                 children,
                 ..
             }) => {
-                let mut params_values = std::collections::BTreeMap::new();
-                for (param_name, expression) in params {
-                    params_values.insert(param_name.clone(), evaluate_expr(expression, env)?);
+                let mut arg_values = std::collections::BTreeMap::new();
+                for (arg_name, expr) in args {
+                    arg_values.insert(arg_name.clone(), evaluate_expr(expr, env)?);
                 }
 
                 let component_name = component;
@@ -390,7 +390,7 @@ impl Program {
                 self.evaluate_component(
                     &target_module,
                     component_name,
-                    params_values,
+                    arg_values,
                     &new_slot_content,
                     additional_class,
                 )
