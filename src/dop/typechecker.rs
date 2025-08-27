@@ -169,6 +169,7 @@ mod tests {
     use crate::dop::parse_parameters_with_types;
     use crate::dop::parser::parse_expr;
     use crate::test_utils::parse_test_cases;
+    use pretty_assertions::assert_eq;
 
     use std::fs;
     use std::path::PathBuf;

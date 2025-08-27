@@ -768,6 +768,7 @@ mod tests {
     use crate::tokenizer::Token;
     use crate::tokenizer::Tokenizer;
     use crate::typechecker::{TypeResult, typecheck};
+    use pretty_assertions::assert_eq;
 
     use std::fs;
     use std::path::PathBuf;
