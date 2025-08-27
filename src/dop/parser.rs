@@ -226,17 +226,14 @@ pub fn parse_parameters_with_types(
 }
 
 // named_arguments = named_argument ("," named_argument)* Eof
-// named_argument = Identifier ":" expr
 pub fn parse_named_arguments(
     tokenizer: &mut DopTokenizer,
 ) -> Result<BTreeMap<String, DopExpr>, RangeError> {
     let mut args = BTreeMap::new();
 
-    // Parse first argument
     let (name, expr) = parse_named_argument(tokenizer)?;
     args.insert(name, expr);
 
-    // Parse additional arguments if any (comma-separated)
     loop {
         match tokenizer.peek() {
             (DopToken::Comma, _) => {
@@ -300,7 +297,6 @@ fn parse_named_argument(tokenizer: &mut DopTokenizer) -> Result<(String, DopExpr
 //      | TypeBoolean
 //      | TypeVoid
 //      | TypeArray "[" type "]"
-//      | TypeObject "[" (Identifier ":" type ("," Identifier ":" type)*)? "]"
 //      | "{" (Identifier ":" type ("," Identifier ":" type)*)? "}"
 fn parse_type(tokenizer: &mut DopTokenizer) -> Result<(DopType, Range), RangeError> {
     use crate::dop::DopType;
@@ -311,7 +307,6 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<(DopType, Range), RangeErr
         (DopToken::TypeNumber, range) => Ok((DopType::Number, range)),
         (DopToken::TypeBoolean, range) => Ok((DopType::Bool, range)),
         (DopToken::TypeArray, start_range) => {
-            // Expect [inner_type]
             match tokenizer.peek() {
                 (DopToken::LeftBracket, _) => {
                     tokenizer.advance()?; // consume [
@@ -338,7 +333,6 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<(DopType, Range), RangeErr
             }
         }
         (DopToken::LeftBrace, start_range) => {
-            // Parse {prop1: type1, prop2: type2, ...}
             let mut properties = BTreeMap::new();
 
             // Handle empty object type
