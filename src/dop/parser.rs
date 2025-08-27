@@ -104,9 +104,9 @@ pub fn parse_expr(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
     // expect Eof
     match tokenizer.peek() {
         (DopToken::Eof, _) => {}
-        (_, range) => {
+        (token, range) => {
             return Err(RangeError::new(
-                "Unexpected token at end of expression".to_string(),
+                format!("Unexpected token {}", token),
                 *range,
             ));
         }
@@ -713,9 +713,12 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
                 )),
             }
         }
-        (_, range) => Err(RangeError::new(
-            "Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis"
-                .to_string(),
+        (DopToken::Eof, range) => Err(RangeError::new(
+            "Unexpected end of expression".to_string(),
+            range,
+        )),
+        (token, range) => Err(RangeError::new(
+            format!("Unexpected token: {}", token),
             range,
         )),
     }
@@ -752,7 +755,7 @@ mod tests {
         check(
             "x y",
             expect![[r#"
-                error: Unexpected token at end of expression
+                error: Unexpected token y
                 x y
                   ^
             "#]],
@@ -788,7 +791,7 @@ mod tests {
         check(
             "== x",
             expect![[r#"
-                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+                error: Unexpected token: ==
                 == x
                 ^^
             "#]],
@@ -812,7 +815,7 @@ mod tests {
         check(
             "x == y)",
             expect![[r#"
-                error: Unexpected token at end of expression
+                error: Unexpected token )
                 x == y)
                       ^
             "#]],
@@ -824,7 +827,7 @@ mod tests {
         check(
             "()",
             expect![[r#"
-                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+                error: Unexpected token: )
                 ()
                  ^
             "#]],
@@ -836,7 +839,7 @@ mod tests {
         check(
             "x == )",
             expect![[r#"
-                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+                error: Unexpected token: )
                 x == )
                      ^
             "#]],
@@ -848,7 +851,7 @@ mod tests {
         check(
             ".property",
             expect![[r#"
-                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+                error: Unexpected token: .
                 .property
                 ^
             "#]],
@@ -872,7 +875,7 @@ mod tests {
         check(
             "x ==",
             expect![[r#"
-                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+                error: Unexpected end of expression
                 x ==
                     ^
             "#]],
@@ -884,7 +887,7 @@ mod tests {
         check(
             "!",
             expect![[r#"
-                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+                error: Unexpected end of expression
                 !
                  ^
             "#]],
@@ -896,7 +899,7 @@ mod tests {
         check(
             "x !",
             expect![[r#"
-                error: Unexpected token at end of expression
+                error: Unexpected token !
                 x !
                   ^
             "#]],

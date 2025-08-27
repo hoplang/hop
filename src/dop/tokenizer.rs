@@ -1,5 +1,5 @@
 use crate::common::{Position, Range, RangeError};
-use std::{mem, str::FromStr};
+use std::{fmt, mem, str::FromStr};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DopToken {
@@ -27,6 +27,36 @@ pub enum DopToken {
     TypeArray,
     TypeObject,
     Eof,
+}
+
+impl fmt::Display for DopToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DopToken::Identifier(name) => write!(f, "{}", name),
+            DopToken::StringLiteral(s) => write!(f, "'{}'", s),
+            DopToken::BooleanLiteral(b) => write!(f, "{}", b),
+            DopToken::NumberLiteral(n) => write!(f, "{}", n),
+            DopToken::Equal => write!(f, "=="),
+            DopToken::Not => write!(f, "!"),
+            DopToken::Dot => write!(f, "."),
+            DopToken::LeftParen => write!(f, "("),
+            DopToken::RightParen => write!(f, ")"),
+            DopToken::LeftBracket => write!(f, "["),
+            DopToken::RightBracket => write!(f, "]"),
+            DopToken::LeftBrace => write!(f, "{{"),
+            DopToken::RightBrace => write!(f, "}}"),
+            DopToken::Colon => write!(f, ":"),
+            DopToken::Comma => write!(f, ","),
+            DopToken::In => write!(f, "in"),
+            DopToken::TypeString => write!(f, "string"),
+            DopToken::TypeNumber => write!(f, "number"),
+            DopToken::TypeBoolean => write!(f, "boolean"),
+            DopToken::TypeVoid => write!(f, "void"),
+            DopToken::TypeArray => write!(f, "array"),
+            DopToken::TypeObject => write!(f, "object"),
+            DopToken::Eof => write!(f, "EOF"),
+        }
+    }
 }
 
 struct Cursor {
