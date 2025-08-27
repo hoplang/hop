@@ -2,7 +2,7 @@ fmt PATH='src/**/*':
   rustfmt --edition 2024 {{PATH}}
 
 test:
-	cargo test
+	cargo test --quiet
 
 update-tests:
 	UPDATE_EXPECT=1 cargo test
