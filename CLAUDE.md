@@ -63,6 +63,20 @@ When a void tag is closed with an end tag the parser outputs an error.
 
 When you add tests to the project you are expected to add them to these files. It is considered good practice to add a comment above each test case.
 
+### Snapshot Testing
+
+Some tests use snapshot testing with the [expect-test](https://github.com/rust-analyzer/expect-test) library instead of the txtar format. These are inline tests with `expect!` macros that capture expected output.
+
+For example, the DOP expression parser tests in `src/dop/parser.rs` use snapshot testing.
+
+To update snapshots when the expected output changes, set the `UPDATE_EXPECT` environment variable:
+
+```bash
+nix develop --command env UPDATE_EXPECT=1 cargo test
+```
+
+This will automatically update the inline `expect!` blocks with the new actual output.
+
 ## The hop language
 
 Typical hop code looks like this:

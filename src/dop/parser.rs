@@ -658,64 +658,795 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
 mod tests {
     use super::*;
     use crate::source_annotator::SourceAnnotator;
-    use crate::test_utils::parse_test_cases;
+    use expect_test::{Expect, expect};
 
-    use std::fs;
-    use std::path::PathBuf;
+    fn check(input: &str, expected: Expect) {
+        let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1))
+            .expect("Failed to create tokenizer");
+
+        let actual = match parse_expr(&mut tokenizer) {
+            Ok(result) => format!("{:#?}\n", result),
+            Err(e) => {
+                let annotator = SourceAnnotator::new()
+                    .with_label("error")
+                    .with_underline('^')
+                    .without_location()
+                    .without_line_numbers();
+
+                annotator.annotate(input, &[e]).to_string()
+            }
+        };
+
+        expected.assert_eq(&actual);
+    }
 
     #[test]
-    fn test_parse_expr() {
-        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("test_data/dop/parse_expr.cases");
-
-        let content = fs::read_to_string(&d).unwrap();
-        let test_cases = parse_test_cases(&content);
-
-        for (case_num, (archive, line_number)) in test_cases.iter().enumerate() {
-            let input = archive
-                .get("in")
-                .expect("Missing 'in' section in test case")
-                .content
-                .trim();
-            let expected = archive
-                .get("out")
-                .expect("Missing 'out' section in test case")
-                .content
-                .trim();
-
-            println!("Test case {} (line {})", case_num + 1, line_number);
-
-            let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1))
-                .unwrap_or_else(|e| {
-                    panic!(
-                        "Failed to create tokenizer for '{}' in test case {} (line {}): {:?}",
-                        input,
-                        case_num + 1,
-                        line_number,
-                        e
-                    );
-                });
-
-            let actual = match parse_expr(&mut tokenizer) {
-                Ok(result) => format!("{:?}", result),
-                Err(e) => {
-                    let annotator = SourceAnnotator::new()
-                        .with_label("error")
-                        .with_underline('^')
-                        .without_location()
-                        .without_line_numbers();
-
-                    annotator.annotate(input, &[e]).trim().to_string()
+    fn test_parse_expr_binary_op_chained() {
+        check(
+            "a == b == c",
+            expect![[r#"
+                BinaryOp {
+                    left: BinaryOp {
+                        left: Variable {
+                            name: "a",
+                        },
+                        operator: Equal,
+                        right: Variable {
+                            name: "b",
+                        },
+                    },
+                    operator: Equal,
+                    right: Variable {
+                        name: "c",
+                    },
                 }
-            };
+            "#]],
+        );
+    }
 
-            assert_eq!(
-                actual,
-                expected,
-                "Mismatch in test case {} (line {})",
-                case_num + 1,
-                line_number
-            );
-        }
+    #[test]
+    fn test_parse_expr_property_access_comparison() {
+        check(
+            "user.name == admin.name",
+            expect![[r#"
+                BinaryOp {
+                    left: PropertyAccess {
+                        object: Variable {
+                            name: "user",
+                        },
+                        property: "name",
+                    },
+                    operator: Equal,
+                    right: PropertyAccess {
+                        object: Variable {
+                            name: "admin",
+                        },
+                        property: "name",
+                    },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_property_access() {
+        check(
+            "app.user.profile.settings.theme",
+            expect![[r#"
+                PropertyAccess {
+                    object: PropertyAccess {
+                        object: PropertyAccess {
+                            object: PropertyAccess {
+                                object: Variable {
+                                    name: "app",
+                                },
+                                property: "user",
+                            },
+                            property: "profile",
+                        },
+                        property: "settings",
+                    },
+                    property: "theme",
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_empty_string() {
+        check(
+            "''",
+            expect![[r#"
+                StringLiteral {
+                    value: "",
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_number_literal_integer() {
+        check(
+            "99",
+            expect![[r#"
+                NumberLiteral {
+                    value: Number(99),
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_number_literal_float() {
+        check(
+            "3.14",
+            expect![[r#"
+                NumberLiteral {
+                    value: Number(3.14),
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_parenthesized() {
+        check(
+            "(x == y)",
+            expect![[r#"
+                BinaryOp {
+                    left: Variable {
+                        name: "x",
+                    },
+                    operator: Equal,
+                    right: Variable {
+                        name: "y",
+                    },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_simple_property_access() {
+        check(
+            "user.name",
+            expect![[r#"
+                PropertyAccess {
+                    object: Variable {
+                        name: "user",
+                    },
+                    property: "name",
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_string_comparison() {
+        check(
+            "'guest' == user.role",
+            expect![[r#"
+                BinaryOp {
+                    left: StringLiteral {
+                        value: "guest",
+                    },
+                    operator: Equal,
+                    right: PropertyAccess {
+                        object: Variable {
+                            name: "user",
+                        },
+                        property: "role",
+                    },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_variable_comparison() {
+        check(
+            "x == y",
+            expect![[r#"
+                BinaryOp {
+                    left: Variable {
+                        name: "x",
+                    },
+                    operator: Equal,
+                    right: Variable {
+                        name: "y",
+                    },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_string_literal() {
+        check(
+            "'hello'",
+            expect![[r#"
+                StringLiteral {
+                    value: "hello",
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_variable() {
+        check(
+            "x",
+            expect![[r#"
+                Variable {
+                    name: "x",
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_string_literal_comparison() {
+        check(
+            "'apple' == 'orange'",
+            expect![[r#"
+                BinaryOp {
+                    left: StringLiteral {
+                        value: "apple",
+                    },
+                    operator: Equal,
+                    right: StringLiteral {
+                        value: "orange",
+                    },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_property_string_comparison() {
+        check(
+            "user.name == 'admin'",
+            expect![[r#"
+                BinaryOp {
+                    left: PropertyAccess {
+                        object: Variable {
+                            name: "user",
+                        },
+                        property: "name",
+                    },
+                    operator: Equal,
+                    right: StringLiteral {
+                        value: "admin",
+                    },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_string_with_space() {
+        check(
+            "'hello world'",
+            expect![[r#"
+                StringLiteral {
+                    value: "hello world",
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_whitespace_handling() {
+        check(
+            "  user . name   ==   admin . name  ",
+            expect![[r#"
+                BinaryOp {
+                    left: PropertyAccess {
+                        object: Variable {
+                            name: "user",
+                        },
+                        property: "name",
+                    },
+                    operator: Equal,
+                    right: PropertyAccess {
+                        object: Variable {
+                            name: "admin",
+                        },
+                        property: "name",
+                    },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_trailing_tokens() {
+        check(
+            "x y",
+            expect![[r#"
+                error: Unexpected token at end of expression
+                x y
+                  ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_dot_no_identifier() {
+        check(
+            "user.",
+            expect![[r#"
+                error: Expected identifier after '.'
+                user.
+                     ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_dot_number() {
+        check(
+            "user.123",
+            expect![[r#"
+                error: Expected identifier after '.'
+                user.123
+                     ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_invalid_start() {
+        check(
+            "== x",
+            expect![[r#"
+                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+                == x
+                ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_unclosed_paren() {
+        check(
+            "(x == y",
+            expect![[r#"
+                error: Missing closing parenthesis
+                (x == y
+                       ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_unmatched_closing_paren() {
+        check(
+            "x == y)",
+            expect![[r#"
+                error: Unexpected token at end of expression
+                x == y)
+                      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_empty_parens() {
+        check(
+            "()",
+            expect![[r#"
+                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+                ()
+                 ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_invalid_after_equals() {
+        check(
+            "x == )",
+            expect![[r#"
+                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+                x == )
+                     ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_dot_at_start() {
+        check(
+            ".property",
+            expect![[r#"
+                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+                .property
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_double_dot() {
+        check(
+            "user..name",
+            expect![[r#"
+                error: Expected identifier after '.'
+                user..name
+                     ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_operator_at_end() {
+        check(
+            "x ==",
+            expect![[r#"
+                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+                x ==
+                    ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_not_without_operand() {
+        check(
+            "!",
+            expect![[r#"
+                error: Expected identifier, string literal, number literal, array literal, object literal, or opening parenthesis
+                !
+                 ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_trailing_not() {
+        check(
+            "x !",
+            expect![[r#"
+                error: Unexpected token at end of expression
+                x !
+                  ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_empty_array() {
+        check(
+            "[]",
+            expect![[r#"
+                ArrayLiteral {
+                    elements: [],
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_array_numbers() {
+        check(
+            "[1, 2, 3]",
+            expect![[r#"
+                ArrayLiteral {
+                    elements: [
+                        NumberLiteral {
+                            value: Number(1),
+                        },
+                        NumberLiteral {
+                            value: Number(2),
+                        },
+                        NumberLiteral {
+                            value: Number(3),
+                        },
+                    ],
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_array_mixed_types() {
+        check(
+            "[1, 'hello', true]",
+            expect![[r#"
+                ArrayLiteral {
+                    elements: [
+                        NumberLiteral {
+                            value: Number(1),
+                        },
+                        StringLiteral {
+                            value: "hello",
+                        },
+                        BooleanLiteral {
+                            value: true,
+                        },
+                    ],
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_nested_arrays() {
+        check(
+            "[[1, 2], [3, 4]]",
+            expect![[r#"
+                ArrayLiteral {
+                    elements: [
+                        ArrayLiteral {
+                            elements: [
+                                NumberLiteral {
+                                    value: Number(1),
+                                },
+                                NumberLiteral {
+                                    value: Number(2),
+                                },
+                            ],
+                        },
+                        ArrayLiteral {
+                            elements: [
+                                NumberLiteral {
+                                    value: Number(3),
+                                },
+                                NumberLiteral {
+                                    value: Number(4),
+                                },
+                            ],
+                        },
+                    ],
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_array_variables() {
+        check(
+            "[x, user.name]",
+            expect![[r#"
+                ArrayLiteral {
+                    elements: [
+                        Variable {
+                            name: "x",
+                        },
+                        PropertyAccess {
+                            object: Variable {
+                                name: "user",
+                            },
+                            property: "name",
+                        },
+                    ],
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_empty_object() {
+        check(
+            "{}",
+            expect![[r#"
+                ObjectLiteral {
+                    properties: {},
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_object_single_property() {
+        check(
+            "{name: 'John'}",
+            expect![[r#"
+                ObjectLiteral {
+                    properties: {
+                        "name": StringLiteral {
+                            value: "John",
+                        },
+                    },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_object_multiple_properties() {
+        check(
+            "{a: 'foo', b: 1}",
+            expect![[r#"
+                ObjectLiteral {
+                    properties: {
+                        "a": StringLiteral {
+                            value: "foo",
+                        },
+                        "b": NumberLiteral {
+                            value: Number(1),
+                        },
+                    },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_object_complex_expressions() {
+        check(
+            "{user: user.name, active: !user.disabled}",
+            expect![[r#"
+                ObjectLiteral {
+                    properties: {
+                        "active": UnaryOp {
+                            operator: Not,
+                            operand: PropertyAccess {
+                                object: Variable {
+                                    name: "user",
+                                },
+                                property: "disabled",
+                            },
+                        },
+                        "user": PropertyAccess {
+                            object: Variable {
+                                name: "user",
+                            },
+                            property: "name",
+                        },
+                    },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_object_nested() {
+        check(
+            "{nested: {inner: 'value'}}",
+            expect![[r#"
+                ObjectLiteral {
+                    properties: {
+                        "nested": ObjectLiteral {
+                            properties: {
+                                "inner": StringLiteral {
+                                    value: "value",
+                                },
+                            },
+                        },
+                    },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_array_trailing_comma_multiline() {
+        check(
+            "[\n\t1,\n\t2,\n\t3,\n]",
+            expect![[r#"
+                ArrayLiteral {
+                    elements: [
+                        NumberLiteral {
+                            value: Number(1),
+                        },
+                        NumberLiteral {
+                            value: Number(2),
+                        },
+                        NumberLiteral {
+                            value: Number(3),
+                        },
+                    ],
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_array_trailing_comma_single() {
+        check(
+            "[\n\t1,\n]",
+            expect![[r#"
+                ArrayLiteral {
+                    elements: [
+                        NumberLiteral {
+                            value: Number(1),
+                        },
+                    ],
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_array_trailing_comma_complex() {
+        check(
+            "[\n\tuser.name,\n\t!user.disabled,\n]",
+            expect![[r#"
+                ArrayLiteral {
+                    elements: [
+                        PropertyAccess {
+                            object: Variable {
+                                name: "user",
+                            },
+                            property: "name",
+                        },
+                        UnaryOp {
+                            operator: Not,
+                            operand: PropertyAccess {
+                                object: Variable {
+                                    name: "user",
+                                },
+                                property: "disabled",
+                            },
+                        },
+                    ],
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_object_trailing_comma_multiline() {
+        check(
+            "{\n\ta: 'foo',\n\tb: 1,\n}",
+            expect![[r#"
+                ObjectLiteral {
+                    properties: {
+                        "a": StringLiteral {
+                            value: "foo",
+                        },
+                        "b": NumberLiteral {
+                            value: Number(1),
+                        },
+                    },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_object_trailing_comma_single() {
+        check(
+            "{\n\tname: 'John',\n}",
+            expect![[r#"
+                ObjectLiteral {
+                    properties: {
+                        "name": StringLiteral {
+                            value: "John",
+                        },
+                    },
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_object_trailing_comma_complex() {
+        check(
+            "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
+            expect![[r#"
+                ObjectLiteral {
+                    properties: {
+                        "active": UnaryOp {
+                            operator: Not,
+                            operand: PropertyAccess {
+                                object: Variable {
+                                    name: "user",
+                                },
+                                property: "disabled",
+                            },
+                        },
+                        "user": PropertyAccess {
+                            object: Variable {
+                                name: "user",
+                            },
+                            property: "name",
+                        },
+                    },
+                }
+            "#]],
+        );
     }
 }
