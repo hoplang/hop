@@ -727,7 +727,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::source_annotator::SourceAnnotator;
+    use crate::tui::source_annotator::SourceAnnotator;
     use expect_test::{Expect, expect};
 
     fn check(input: &str, expected: Expect) {

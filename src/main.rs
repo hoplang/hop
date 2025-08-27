@@ -7,7 +7,7 @@ mod files;
 mod runtime;
 mod scriptcollector;
 mod server;
-mod source_annotator;
+mod tui;
 #[cfg(test)]
 mod test_utils;
 mod timing;

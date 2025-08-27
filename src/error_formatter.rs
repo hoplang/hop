@@ -1,5 +1,5 @@
 use crate::common::RangeError;
-use crate::source_annotator::SourceAnnotator;
+use crate::tui::source_annotator::SourceAnnotator;
 
 #[derive(Debug)]
 struct ModuleInfo {

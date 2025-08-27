@@ -1,6 +1,7 @@
-use crate::common::{
-    ComponentDefinitionNode, ComponentReferenceNode, Environment, ErrorNode, ForNode, IfNode,
-    ImportNode, NativeHTMLNode, Node, Position, Range, RangeError, RenderNode, SlotDefinitionNode,
+use crate::common::{Environment, Position, Range, RangeError};
+use crate::hop::ast::{
+    ComponentDefinitionNode, ComponentReferenceNode, ErrorNode, ForNode, IfNode,
+    ImportNode, NativeHTMLNode, Node, RenderNode, SlotDefinitionNode,
     SlotReferenceNode, XExecNode, XLoadJsonNode, XRawNode,
 };
 use crate::dop::{DopType, infer_type_from_json_file, is_subtype, typecheck_expr};

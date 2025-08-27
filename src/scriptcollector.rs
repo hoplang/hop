@@ -1,4 +1,4 @@
-use crate::common::{ComponentDefinitionNode, Node};
+use crate::hop::ast::{ComponentDefinitionNode, Node};
 use std::collections::HashMap;
 
 pub struct ScriptCollector {

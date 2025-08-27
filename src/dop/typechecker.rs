@@ -199,7 +199,7 @@ mod tests {
     use crate::dop::DopTokenizer;
     use crate::dop::parse_parameters_with_types;
     use crate::dop::parser::parse_expr;
-    use crate::source_annotator::SourceAnnotator;
+    use crate::tui::source_annotator::SourceAnnotator;
     use expect_test::{Expect, expect};
 
     fn check(env_str: &str, expr_str: &str, expected: Expect) {
