@@ -16,7 +16,7 @@ pub fn evaluate_expr(
         }
         DopExpr::StringLiteral { value } => Ok(serde_json::Value::String(value.clone())),
         DopExpr::BooleanLiteral { value } => Ok(serde_json::Value::Bool(*value)),
-        DopExpr::NumberLiteral { value } => Ok(serde_json::Value::Number(value.clone())),
+        DopExpr::NumberLiteral { value, .. } => Ok(serde_json::Value::Number(value.clone())),
         DopExpr::ArrayLiteral { elements } => {
             let mut array_values = Vec::new();
             for element in elements {

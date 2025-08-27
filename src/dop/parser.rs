@@ -32,6 +32,7 @@ pub enum DopExpr {
     },
     NumberLiteral {
         value: serde_json::Number,
+        range: Range,
     },
     ArrayLiteral {
         elements: Vec<DopExpr>,
@@ -524,7 +525,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
         }
         (DopToken::StringLiteral(value), _) => Ok(DopExpr::StringLiteral { value }),
         (DopToken::BooleanLiteral(value), _) => Ok(DopExpr::BooleanLiteral { value }),
-        (DopToken::NumberLiteral(value), _) => Ok(DopExpr::NumberLiteral { value }),
+        (DopToken::NumberLiteral(value), range) => Ok(DopExpr::NumberLiteral { value, range }),
         (DopToken::LeftBracket, _) => {
             let mut elements = Vec::new();
 
@@ -832,6 +833,16 @@ mod tests {
             expect![[r#"
                 NumberLiteral {
                     value: Number(99),
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 3,
+                        },
+                    },
                 }
             "#]],
         );
@@ -844,6 +855,16 @@ mod tests {
             expect![[r#"
                 NumberLiteral {
                     value: Number(3.14),
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 5,
+                        },
+                    },
                 }
             "#]],
         );
@@ -1297,12 +1318,42 @@ mod tests {
                     elements: [
                         NumberLiteral {
                             value: Number(1),
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 2,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 3,
+                                },
+                            },
                         },
                         NumberLiteral {
                             value: Number(2),
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 5,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 6,
+                                },
+                            },
                         },
                         NumberLiteral {
                             value: Number(3),
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 8,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 9,
+                                },
+                            },
                         },
                     ],
                 }
@@ -1319,6 +1370,16 @@ mod tests {
                     elements: [
                         NumberLiteral {
                             value: Number(1),
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 2,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 3,
+                                },
+                            },
                         },
                         StringLiteral {
                             value: "hello",
@@ -1343,9 +1404,29 @@ mod tests {
                             elements: [
                                 NumberLiteral {
                                     value: Number(1),
+                                    range: Range {
+                                        start: Position {
+                                            line: 1,
+                                            column: 3,
+                                        },
+                                        end: Position {
+                                            line: 1,
+                                            column: 4,
+                                        },
+                                    },
                                 },
                                 NumberLiteral {
                                     value: Number(2),
+                                    range: Range {
+                                        start: Position {
+                                            line: 1,
+                                            column: 6,
+                                        },
+                                        end: Position {
+                                            line: 1,
+                                            column: 7,
+                                        },
+                                    },
                                 },
                             ],
                         },
@@ -1353,9 +1434,29 @@ mod tests {
                             elements: [
                                 NumberLiteral {
                                     value: Number(3),
+                                    range: Range {
+                                        start: Position {
+                                            line: 1,
+                                            column: 11,
+                                        },
+                                        end: Position {
+                                            line: 1,
+                                            column: 12,
+                                        },
+                                    },
                                 },
                                 NumberLiteral {
                                     value: Number(4),
+                                    range: Range {
+                                        start: Position {
+                                            line: 1,
+                                            column: 14,
+                                        },
+                                        end: Position {
+                                            line: 1,
+                                            column: 15,
+                                        },
+                                    },
                                 },
                             ],
                         },
@@ -1447,6 +1548,16 @@ mod tests {
                         },
                         "b": NumberLiteral {
                             value: Number(1),
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 15,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 16,
+                                },
+                            },
                         },
                     },
                 }
@@ -1531,12 +1642,42 @@ mod tests {
                     elements: [
                         NumberLiteral {
                             value: Number(1),
+                            range: Range {
+                                start: Position {
+                                    line: 2,
+                                    column: 2,
+                                },
+                                end: Position {
+                                    line: 2,
+                                    column: 3,
+                                },
+                            },
                         },
                         NumberLiteral {
                             value: Number(2),
+                            range: Range {
+                                start: Position {
+                                    line: 3,
+                                    column: 2,
+                                },
+                                end: Position {
+                                    line: 3,
+                                    column: 3,
+                                },
+                            },
                         },
                         NumberLiteral {
                             value: Number(3),
+                            range: Range {
+                                start: Position {
+                                    line: 4,
+                                    column: 2,
+                                },
+                                end: Position {
+                                    line: 4,
+                                    column: 3,
+                                },
+                            },
                         },
                     ],
                 }
@@ -1553,6 +1694,16 @@ mod tests {
                     elements: [
                         NumberLiteral {
                             value: Number(1),
+                            range: Range {
+                                start: Position {
+                                    line: 2,
+                                    column: 2,
+                                },
+                                end: Position {
+                                    line: 2,
+                                    column: 3,
+                                },
+                            },
                         },
                     ],
                 }
@@ -1620,6 +1771,16 @@ mod tests {
                         },
                         "b": NumberLiteral {
                             value: Number(1),
+                            range: Range {
+                                start: Position {
+                                    line: 3,
+                                    column: 5,
+                                },
+                                end: Position {
+                                    line: 3,
+                                    column: 6,
+                                },
+                            },
                         },
                     },
                 }
