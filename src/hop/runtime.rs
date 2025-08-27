@@ -7,7 +7,7 @@ use crate::hop::ast::{
 use crate::dop;
 use crate::dop::{DopType, evaluate_expr, load_json_file};
 use crate::hop::parser::Module;
-use crate::typechecker::TypeResult;
+use crate::hop::typechecker::TypeResult;
 use anyhow::Result;
 use std::collections::{BTreeMap, HashMap};
 use std::io::Write;
@@ -768,7 +768,7 @@ mod tests {
     use crate::test_utils::parse_test_cases;
     use crate::hop::tokenizer::Token;
     use crate::hop::tokenizer::Tokenizer;
-    use crate::typechecker::{TypeResult, typecheck};
+    use crate::hop::typechecker::{TypeResult, typecheck};
     use pretty_assertions::assert_eq;
 
     use std::fs;

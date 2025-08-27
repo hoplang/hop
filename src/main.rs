@@ -2,18 +2,14 @@ mod cli;
 mod common;
 mod compiler;
 mod dop;
-mod error_formatter;
 mod files;
-mod runtime;
 mod scriptcollector;
 mod server;
 mod tui;
 #[cfg(test)]
 mod test_utils;
-mod timing;
 mod hop;
 mod toposorter;
-mod typechecker;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use files::ProjectRoot;

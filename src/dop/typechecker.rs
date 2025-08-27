@@ -1,6 +1,6 @@
 use super::parser::{BinaryOp, DopExpr, UnaryOp};
 use crate::common::{Environment, RangeError};
-use crate::typechecker::TypeAnnotation;
+use crate::hop::typechecker::TypeAnnotation;
 use std::collections::BTreeMap;
 use std::fmt;
 

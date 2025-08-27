@@ -587,7 +587,7 @@ fn typecheck_node(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error_formatter::ErrorFormatter;
+    use crate::tui::error_formatter::ErrorFormatter;
     use crate::hop::parser::parse;
     use crate::test_utils::parse_test_cases;
     use crate::hop::tokenizer::Tokenizer;

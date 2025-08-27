@@ -670,7 +670,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Node {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error_formatter::ErrorFormatter;
+    use crate::tui::error_formatter::ErrorFormatter;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 

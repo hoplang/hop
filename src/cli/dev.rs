@@ -5,17 +5,17 @@ use std::sync::OnceLock;
 use crate::common::escape_html;
 use crate::compiler::compile;
 use crate::files;
-use crate::runtime;
-use crate::runtime::HopMode;
+use crate::hop;
+use crate::hop::runtime::HopMode;
 
 const ERROR_TEMPLATES: &str = include_str!("../../hop/error_pages.hop");
 const INSPECT_TEMPLATES: &str = include_str!("../../hop/inspector.hop");
 const UI_TEMPLATES: &str = include_str!("../../hop/ui.hop");
 const ICONS_TEMPLATES: &str = include_str!("../../hop/icons.hop");
 
-static CACHED_UI_PROGRAM: OnceLock<runtime::Program> = OnceLock::new();
+static CACHED_UI_PROGRAM: OnceLock<hop::runtime::Program> = OnceLock::new();
 
-fn get_ui_program() -> &'static runtime::Program {
+fn get_ui_program() -> &'static hop::runtime::Program {
     CACHED_UI_PROGRAM.get_or_init(|| {
         let modules = vec![
             ("hop/error_pages".to_string(), ERROR_TEMPLATES.to_string()),
@@ -130,7 +130,7 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
     }
 }
 
-fn create_inspect_page(program: &runtime::Program) -> String {
+fn create_inspect_page(program: &hop::runtime::Program) -> String {
     let inspect_program = get_ui_program();
 
     let component_maps = program.get_component_maps();
@@ -277,7 +277,7 @@ window.addEventListener("beforeunload", function() {
 }
 
 fn create_component_preview(
-    program: &runtime::Program,
+    program: &hop::runtime::Program,
     module_name: &str,
     component_name: &str,
 ) -> Result<String, String> {
@@ -494,7 +494,7 @@ pub async fn execute(
     let local_root = root.clone();
     let request_handler = async move |req: Request| {
         // Compile the program
-        let program = match (|| -> anyhow::Result<runtime::Program> {
+        let program = match (|| -> anyhow::Result<hop::runtime::Program> {
             let modules = files::load_all_hop_modules(&local_root)?;
             compile(modules, HopMode::Dev)
         })() {

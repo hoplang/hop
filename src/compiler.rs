@@ -1,10 +1,10 @@
-use crate::error_formatter::ErrorFormatter;
+use crate::tui::error_formatter::ErrorFormatter;
 use crate::hop::parser::parse;
-use crate::runtime::{HopMode, Program};
+use crate::hop::runtime::{HopMode, Program};
 use crate::scriptcollector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
 use crate::toposorter::TopoSorter;
-use crate::typechecker::{TypeResult, typecheck};
+use crate::hop::typechecker::{TypeResult, typecheck};
 use std::collections::HashMap;
 
 pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Result<Program> {

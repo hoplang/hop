@@ -6,8 +6,8 @@ use std::path::Path;
 
 use crate::compiler::compile;
 use crate::files;
-use crate::runtime::HopMode;
-use crate::timing;
+use crate::hop::runtime::HopMode;
+use crate::tui::timing;
 
 fn copy_dir_recursive(
     src: &Path,
