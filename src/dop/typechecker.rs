@@ -155,7 +155,7 @@ pub fn typecheck_expr(
             // The result of ! is always boolean
             Ok(DopType::Bool)
         }
-        DopExpr::ArrayLiteral { elements } => {
+        DopExpr::ArrayLiteral { elements, .. } => {
             if elements.is_empty() {
                 // Empty array has unknown element type
                 Ok(DopType::Array(None))

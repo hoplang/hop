@@ -24,6 +24,7 @@ pub enum DopExpr {
         object: Box<DopExpr>,
         property: String,
         property_range: Range,
+        range: Range,
     },
     StringLiteral {
         value: String,
@@ -39,6 +40,7 @@ pub enum DopExpr {
     },
     ArrayLiteral {
         elements: Vec<DopExpr>,
+        range: Range,
     },
     ObjectLiteral {
         properties: BTreeMap<String, DopExpr>,
@@ -49,12 +51,31 @@ pub enum DopExpr {
         operator: BinaryOp,
         operator_range: Range,
         right: Box<DopExpr>,
+        range: Range,
     },
     UnaryOp {
         operator: UnaryOp,
         operator_range: Range,
         operand: Box<DopExpr>,
+        range: Range,
     },
+}
+
+impl DopExpr {
+    /// Returns the range of this expression in the source code
+    pub fn range(&self) -> Range {
+        match self {
+            DopExpr::Variable { range, .. } => *range,
+            DopExpr::PropertyAccess { range, .. } => *range,
+            DopExpr::StringLiteral { range, .. } => *range,
+            DopExpr::BooleanLiteral { range, .. } => *range,
+            DopExpr::NumberLiteral { range, .. } => *range,
+            DopExpr::ArrayLiteral { range, .. } => *range,
+            DopExpr::ObjectLiteral { range, .. } => *range,
+            DopExpr::BinaryOp { range, .. } => *range,
+            DopExpr::UnaryOp { range, .. } => *range,
+        }
+    }
 }
 
 /// A DopVarName represents a validated variable name in dop.
@@ -473,11 +494,14 @@ fn parse_equality(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
     while let (DopToken::Equal, _) = tokenizer.peek() {
         let (_, operator_range) = tokenizer.advance()?; // consume ==
         let right = parse_unary(tokenizer)?;
+        let start = expr.range().start;
+        let end = right.range().end;
         expr = DopExpr::BinaryOp {
             left: Box::new(expr),
             operator: BinaryOp::Equal,
             operator_range,
             right: Box::new(right),
+            range: Range::new(start, end),
         };
     }
 
@@ -488,12 +512,14 @@ fn parse_equality(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
 fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
     match tokenizer.peek() {
         (DopToken::Not, _) => {
-            let (_, range) = tokenizer.advance()?; // consume !
+            let (_, operator_range) = tokenizer.advance()?; // consume !
             let expr = parse_unary(tokenizer)?; // Right associative for multiple !
+            let end = expr.range().end;
             Ok(DopExpr::UnaryOp {
                 operator: UnaryOp::Not,
-                operator_range: range,
+                operator_range,
                 operand: Box::new(expr),
+                range: Range::new(operator_range.start, end),
             })
         }
         _ => parse_primary(tokenizer),
@@ -518,10 +544,15 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
 
                 match tokenizer.advance()? {
                     (DopToken::Identifier(prop), property_range) => {
+                        let start = expr.range().start;
                         expr = DopExpr::PropertyAccess {
                             object: Box::new(expr),
                             property: prop,
                             property_range,
+                            range: Range {
+                                start,
+                                end: property_range.end,
+                            },
                         };
                     }
                     (_, range) => {
@@ -538,13 +569,18 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
         (DopToken::StringLiteral(value), range) => Ok(DopExpr::StringLiteral { value, range }),
         (DopToken::BooleanLiteral(value), range) => Ok(DopExpr::BooleanLiteral { value, range }),
         (DopToken::NumberLiteral(value), range) => Ok(DopExpr::NumberLiteral { value, range }),
-        (DopToken::LeftBracket, _) => {
+        (DopToken::LeftBracket, start_range) => {
             let mut elements = Vec::new();
 
             // Handle empty array
-            if let (DopToken::RightBracket, _) = tokenizer.peek() {
+            if let (DopToken::RightBracket, end_range) = tokenizer.peek() {
+                let close_range = *end_range;
                 tokenizer.advance()?; // consume ]
-                return Ok(DopExpr::ArrayLiteral { elements });
+                let range = Range {
+                    start: start_range.start,
+                    end: close_range.end,
+                };
+                return Ok(DopExpr::ArrayLiteral { elements, range });
             }
 
             // Parse array elements
@@ -555,15 +591,25 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
                     (DopToken::Comma, _) => {
                         tokenizer.advance()?; // consume ,
                         // Check for trailing comma (closing bracket after comma)
-                        if let (DopToken::RightBracket, _) = tokenizer.peek() {
+                        if let (DopToken::RightBracket, end_range) = tokenizer.peek() {
+                            let close_range = *end_range;
                             tokenizer.advance()?; // consume ]
-                            break;
+                            let range = Range {
+                                start: start_range.start,
+                                end: close_range.end,
+                            };
+                            return Ok(DopExpr::ArrayLiteral { elements, range });
                         }
                         continue;
                     }
-                    (DopToken::RightBracket, _) => {
+                    (DopToken::RightBracket, end_range) => {
+                        let close_range = *end_range;
                         tokenizer.advance()?; // consume ]
-                        break;
+                        let range = Range {
+                            start: start_range.start,
+                            end: close_range.end,
+                        };
+                        return Ok(DopExpr::ArrayLiteral { elements, range });
                     }
                     (_, range) => {
                         return Err(RangeError::new(
@@ -573,8 +619,6 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
                     }
                 }
             }
-
-            Ok(DopExpr::ArrayLiteral { elements })
         }
         (DopToken::LeftBrace, start_range) => {
             // Parse {key1: value1, key2: value2, ...}
@@ -751,6 +795,16 @@ mod tests {
                                 },
                             },
                         },
+                        range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 7,
+                            },
+                        },
                     },
                     operator: Equal,
                     operator_range: Range {
@@ -774,6 +828,16 @@ mod tests {
                                 line: 1,
                                 column: 12,
                             },
+                        },
+                    },
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 12,
                         },
                     },
                 }
@@ -806,6 +870,16 @@ mod tests {
                             start: Position {
                                 line: 1,
                                 column: 6,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 10,
+                            },
+                        },
+                        range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 1,
                             },
                             end: Position {
                                 line: 1,
@@ -849,6 +923,26 @@ mod tests {
                                 column: 24,
                             },
                         },
+                        range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 14,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 24,
+                            },
+                        },
+                    },
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 24,
+                        },
                     },
                 }
             "#]],
@@ -888,12 +982,32 @@ mod tests {
                                         column: 9,
                                     },
                                 },
+                                range: Range {
+                                    start: Position {
+                                        line: 1,
+                                        column: 1,
+                                    },
+                                    end: Position {
+                                        line: 1,
+                                        column: 9,
+                                    },
+                                },
                             },
                             property: "profile",
                             property_range: Range {
                                 start: Position {
                                     line: 1,
                                     column: 10,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 17,
+                                },
+                            },
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 1,
                                 },
                                 end: Position {
                                     line: 1,
@@ -912,12 +1026,32 @@ mod tests {
                                 column: 26,
                             },
                         },
+                        range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 26,
+                            },
+                        },
                     },
                     property: "theme",
                     property_range: Range {
                         start: Position {
                             line: 1,
                             column: 27,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 32,
+                        },
+                    },
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
                         },
                         end: Position {
                             line: 1,
@@ -1038,6 +1172,16 @@ mod tests {
                             },
                         },
                     },
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 2,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 8,
+                        },
+                    },
                 }
             "#]],
         );
@@ -1067,6 +1211,16 @@ mod tests {
                         start: Position {
                             line: 1,
                             column: 6,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 10,
+                        },
+                    },
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
                         },
                         end: Position {
                             line: 1,
@@ -1133,6 +1287,26 @@ mod tests {
                                 column: 21,
                             },
                         },
+                        range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 12,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 21,
+                            },
+                        },
+                    },
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 21,
+                        },
                     },
                 }
             "#]],
@@ -1180,6 +1354,16 @@ mod tests {
                                 line: 1,
                                 column: 7,
                             },
+                        },
+                    },
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 7,
                         },
                     },
                 }
@@ -1274,6 +1458,16 @@ mod tests {
                             },
                         },
                     },
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 20,
+                        },
+                    },
                 }
             "#]],
         );
@@ -1310,6 +1504,16 @@ mod tests {
                                 column: 10,
                             },
                         },
+                        range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 10,
+                            },
+                        },
                     },
                     operator: Equal,
                     operator_range: Range {
@@ -1333,6 +1537,16 @@ mod tests {
                                 line: 1,
                                 column: 21,
                             },
+                        },
+                    },
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 21,
                         },
                     },
                 }
@@ -1393,6 +1607,16 @@ mod tests {
                                 column: 14,
                             },
                         },
+                        range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 3,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 14,
+                            },
+                        },
                     },
                     operator: Equal,
                     operator_range: Range {
@@ -1429,6 +1653,26 @@ mod tests {
                                 line: 1,
                                 column: 34,
                             },
+                        },
+                        range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 22,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 34,
+                            },
+                        },
+                    },
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 3,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 34,
                         },
                     },
                 }
@@ -1599,6 +1843,16 @@ mod tests {
             expect![[r#"
                 ArrayLiteral {
                     elements: [],
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 3,
+                        },
+                    },
                 }
             "#]],
         );
@@ -1651,6 +1905,16 @@ mod tests {
                             },
                         },
                     ],
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 10,
+                        },
+                    },
                 }
             "#]],
         );
@@ -1703,6 +1967,16 @@ mod tests {
                             },
                         },
                     ],
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 19,
+                        },
+                    },
                 }
             "#]],
         );
@@ -1744,6 +2018,16 @@ mod tests {
                                     },
                                 },
                             ],
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 2,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 8,
+                                },
+                            },
                         },
                         ArrayLiteral {
                             elements: [
@@ -1774,8 +2058,28 @@ mod tests {
                                     },
                                 },
                             ],
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 10,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 16,
+                                },
+                            },
                         },
                     ],
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 17,
+                        },
+                    },
                 }
             "#]],
         );
@@ -1826,8 +2130,28 @@ mod tests {
                                     column: 14,
                                 },
                             },
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 5,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 14,
+                                },
+                            },
                         },
                     ],
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 15,
+                        },
+                    },
                 }
             "#]],
         );
@@ -1984,6 +2308,26 @@ mod tests {
                                         column: 41,
                                     },
                                 },
+                                range: Range {
+                                    start: Position {
+                                        line: 1,
+                                        column: 28,
+                                    },
+                                    end: Position {
+                                        line: 1,
+                                        column: 41,
+                                    },
+                                },
+                            },
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 27,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 41,
+                                },
                             },
                         },
                         "user": PropertyAccess {
@@ -2005,6 +2349,16 @@ mod tests {
                                 start: Position {
                                     line: 1,
                                     column: 13,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 17,
+                                },
+                            },
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 8,
                                 },
                                 end: Position {
                                     line: 1,
@@ -2125,6 +2479,16 @@ mod tests {
                             },
                         },
                     ],
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 5,
+                            column: 2,
+                        },
+                    },
                 }
             "#]],
         );
@@ -2151,6 +2515,16 @@ mod tests {
                             },
                         },
                     ],
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 3,
+                            column: 2,
+                        },
+                    },
                 }
             "#]],
         );
@@ -2182,6 +2556,16 @@ mod tests {
                                 start: Position {
                                     line: 2,
                                     column: 7,
+                                },
+                                end: Position {
+                                    line: 2,
+                                    column: 11,
+                                },
+                            },
+                            range: Range {
+                                start: Position {
+                                    line: 2,
+                                    column: 2,
                                 },
                                 end: Position {
                                     line: 2,
@@ -2226,9 +2610,39 @@ mod tests {
                                         column: 16,
                                     },
                                 },
+                                range: Range {
+                                    start: Position {
+                                        line: 3,
+                                        column: 3,
+                                    },
+                                    end: Position {
+                                        line: 3,
+                                        column: 16,
+                                    },
+                                },
+                            },
+                            range: Range {
+                                start: Position {
+                                    line: 3,
+                                    column: 2,
+                                },
+                                end: Position {
+                                    line: 3,
+                                    column: 16,
+                                },
                             },
                         },
                     ],
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 4,
+                            column: 2,
+                        },
+                    },
                 }
             "#]],
         );
@@ -2363,6 +2777,26 @@ mod tests {
                                         column: 24,
                                     },
                                 },
+                                range: Range {
+                                    start: Position {
+                                        line: 3,
+                                        column: 11,
+                                    },
+                                    end: Position {
+                                        line: 3,
+                                        column: 24,
+                                    },
+                                },
+                            },
+                            range: Range {
+                                start: Position {
+                                    line: 3,
+                                    column: 10,
+                                },
+                                end: Position {
+                                    line: 3,
+                                    column: 24,
+                                },
                             },
                         },
                         "user": PropertyAccess {
@@ -2384,6 +2818,16 @@ mod tests {
                                 start: Position {
                                     line: 2,
                                     column: 13,
+                                },
+                                end: Position {
+                                    line: 2,
+                                    column: 17,
+                                },
+                            },
+                            range: Range {
+                                start: Position {
+                                    line: 2,
+                                    column: 8,
                                 },
                                 end: Position {
                                     line: 2,
