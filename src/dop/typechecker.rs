@@ -196,141 +196,428 @@ mod tests {
     use crate::dop::DopTokenizer;
     use crate::dop::parse_parameters_with_types;
     use crate::dop::parser::parse_expr;
-    use crate::test_utils::parse_test_cases;
-    use pretty_assertions::assert_eq;
+    use expect_test::{expect, Expect};
 
-    use std::fs;
-    use std::path::PathBuf;
+    fn check_typecheck(env_str: &str, expr_str: &str, expected: Expect) {
+        let mut env = Environment::new();
 
-    #[test]
-    fn test_dop_typechecker() {
-        let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        d.push("test_data/dop/typechecker.cases");
-
-        let content = fs::read_to_string(&d).unwrap();
-        let test_cases = parse_test_cases(&content);
-
-        for (case_num, (archive, line_number)) in test_cases.iter().enumerate() {
-            let env_section = archive
-                .get("env")
-                .expect("Missing 'env' section in test case")
-                .content
-                .trim();
-
-            let mut env = Environment::new();
-
-            if !env_section.is_empty() {
-                let mut tokenizer =
-                    DopTokenizer::new(env_section, crate::common::Position::new(1, 1))
-                        .unwrap_or_else(|e| {
-                            panic!(
-                                "Failed to create tokenizer in test case {} (line {}): {:?}",
-                                case_num + 1,
-                                line_number,
-                                e
-                            );
-                        });
-                let params = parse_parameters_with_types(&mut tokenizer).unwrap_or_else(|e| {
-                    panic!(
-                        "Parse error in test case {} (line {}): {:?}",
-                        case_num + 1,
-                        line_number,
-                        e
-                    );
-                });
-                for ((var_name, _), (var_type, _)) in params {
-                    env.push(var_name.value, var_type);
-                }
-            }
-
-            let expr_content = archive
-                .get("expr")
-                .expect("Missing 'expr' section in test case")
-                .content
-                .trim();
-
-            let mut tokenizer = DopTokenizer::new(expr_content, crate::common::Position::new(1, 1))
-                .unwrap_or_else(|e| {
-                    panic!(
-                        "Failed to create tokenizer for '{}' in test case {} (line {}): {:?}",
-                        expr_content,
-                        case_num + 1,
-                        line_number,
-                        e
-                    );
-                });
-            let expr = parse_expr(&mut tokenizer).unwrap_or_else(|e| {
-                panic!(
-                    "Failed to parse expression '{}' in test case {} (line {}): {:?}",
-                    expr_content,
-                    case_num + 1,
-                    line_number,
-                    e
-                );
-            });
-
-            let mut annotations = Vec::new();
-            let mut errors = Vec::new();
-
-            let result_type = typecheck_expr(
-                &expr,
-                &mut env,
-                &mut annotations,
-                &mut errors,
-                Range::default(),
-            );
-
-            // Check if this test case expects an error
-            if let Some(error_section) = archive.get("error") {
-                let expected_error = error_section.content.trim();
-
-                match result_type {
-                    Err(actual_error) => {
-                        assert_eq!(
-                            actual_error.message,
-                            expected_error,
-                            "Test case {} (line {}): Error message mismatch",
-                            case_num + 1,
-                            line_number
-                        );
-                    }
-                    Ok(successful_type) => {
-                        panic!(
-                            "Expected error '{}' but got successful result '{}' in test case {} (line {})",
-                            expected_error,
-                            successful_type,
-                            case_num + 1,
-                            line_number
-                        );
-                    }
-                }
-            } else {
-                // This test case expects a successful result
-                match result_type {
-                    Ok(actual_type) => {
-                        let expected_section = archive
-                            .get("out")
-                            .expect("Missing 'out' section in test case");
-                        let expected = expected_section.content.trim();
-
-                        assert_eq!(
-                            actual_type.to_string(),
-                            expected,
-                            "Test case {} (line {}): Type mismatch",
-                            case_num + 1,
-                            line_number
-                        );
-                    }
-                    Err(error_message) => {
-                        panic!(
-                            "Expected successful result but got error '{}' in test case {} (line {})",
-                            error_message.message,
-                            case_num + 1,
-                            line_number
-                        );
-                    }
-                }
+        if !env_str.is_empty() {
+            let mut tokenizer = DopTokenizer::new(env_str, crate::common::Position::new(1, 1))
+                .expect("Failed to create tokenizer");
+            let params = parse_parameters_with_types(&mut tokenizer)
+                .expect("Failed to parse environment");
+            for ((var_name, _), (var_type, _)) in params {
+                env.push(var_name.value, var_type);
             }
         }
+
+        let mut tokenizer = DopTokenizer::new(expr_str, crate::common::Position::new(1, 1))
+            .expect("Failed to create tokenizer");
+        let expr = parse_expr(&mut tokenizer)
+            .expect("Failed to parse expression");
+
+        let mut annotations = Vec::new();
+        let mut errors = Vec::new();
+
+        let actual = match typecheck_expr(
+            &expr,
+            &mut env,
+            &mut annotations,
+            &mut errors,
+            Range::default(),
+        ) {
+            Ok(typ) => typ.to_string(),
+            Err(e) => format!("Error: {}", e.message),
+        };
+
+        expected.assert_eq(&actual);
     }
+
+    #[test]
+    fn test_typecheck_basic_variable_lookup() {
+        check_typecheck(
+            "name: string",
+            "name",
+            expect!["string"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_undefined_variable() {
+        check_typecheck(
+            "",
+            "undefined_var",
+            expect!["Error: Undefined variable: undefined_var"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_string_literal() {
+        check_typecheck(
+            "",
+            "'hello world'",
+            expect!["string"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_boolean_literal_true() {
+        check_typecheck(
+            "",
+            "true",
+            expect!["boolean"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_boolean_literal_false() {
+        check_typecheck(
+            "",
+            "false",
+            expect!["boolean"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_number_literal_integer() {
+        check_typecheck(
+            "",
+            "42",
+            expect!["number"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_number_literal_float() {
+        check_typecheck(
+            "",
+            "3.14",
+            expect!["number"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_property_access() {
+        check_typecheck(
+            "user: object[name: string]",
+            "user.name",
+            expect!["string"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_nested_property_access() {
+        check_typecheck(
+            "app: object[user: object[profile: object[name: string]]]",
+            "app.user.profile.name",
+            expect!["string"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_property_access_on_non_object() {
+        check_typecheck(
+            "count: number",
+            "count.value",
+            expect!["Error: number can not be used as an object"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_equality_string() {
+        check_typecheck(
+            "name: string",
+            "name == 'alice'",
+            expect!["boolean"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_equality_number() {
+        check_typecheck(
+            "count: number",
+            "count == 42",
+            expect!["boolean"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_equality_boolean() {
+        check_typecheck(
+            "enabled: boolean",
+            "enabled == true",
+            expect!["boolean"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_equality_same_object_properties() {
+        check_typecheck(
+            "user: object[name: string], admin: object[name: string]",
+            "user.name == admin.name",
+            expect!["boolean"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_equality_incompatible_string_number() {
+        check_typecheck(
+            "name: string, count: number",
+            "name == count",
+            expect!["Error: Can not compare string to number"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_equality_incompatible_boolean_string() {
+        check_typecheck(
+            "enabled: boolean, name: string",
+            "enabled == name",
+            expect!["Error: Can not compare boolean to string"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_complex_equality() {
+        check_typecheck(
+            "a: boolean, b: boolean",
+            "a == b == true",
+            expect!["boolean"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_negation_variable() {
+        check_typecheck(
+            "enabled: boolean",
+            "!enabled",
+            expect!["boolean"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_negation_true() {
+        check_typecheck(
+            "",
+            "!true",
+            expect!["boolean"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_negation_false() {
+        check_typecheck(
+            "",
+            "!false",
+            expect!["boolean"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_negation_string_error() {
+        check_typecheck(
+            "name: string",
+            "!name",
+            expect!["Error: Negation operator can only be applied to boolean values"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_negation_number_error() {
+        check_typecheck(
+            "count: number",
+            "!count",
+            expect!["Error: Negation operator can only be applied to boolean values"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_complex_negation_equality() {
+        check_typecheck(
+            "user: object[active: boolean]",
+            "!user.active == false",
+            expect!["boolean"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_parenthesized_negation() {
+        check_typecheck(
+            "status: object[enabled: boolean], config: object[active: boolean]",
+            "!(status.enabled == config.active)",
+            expect!["boolean"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_array_property_access_error() {
+        check_typecheck(
+            "users: array[object[name: string]]",
+            "users.name",
+            expect!["Error: array[object[name: string]] can not be used as an object"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_object_array_property() {
+        check_typecheck(
+            "data: object[items: array[string]]",
+            "data.items",
+            expect!["array[string]"],
+        );
+    }
+
+    #[test] 
+    fn test_typecheck_nested_array_property_error() {
+        check_typecheck(
+            "config: object[users: array[object[profile: object[name: string, active: boolean]]]]",
+            "config.users.profile.name",
+            expect!["Error: array[object[profile: object[active: boolean, name: string]]] can not be used as an object"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_deep_property_access() {
+        check_typecheck(
+            "system: object[config: object[database: object[connection: object[host: string]]]]",
+            "system.config.database.connection.host",
+            expect!["string"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_multiple_property_access() {
+        check_typecheck(
+            "obj: object[name: string, title: string]",
+            "obj.name == obj.title",
+            expect!["boolean"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_unknown_property() {
+        check_typecheck(
+            "data: object[field: string]",
+            "data.unknown",
+            expect!["Error: Property unknown not found in object"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_empty_object_literal() {
+        check_typecheck(
+            "",
+            "{}",
+            expect!["object[]"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_object_literal_single_property() {
+        check_typecheck(
+            "",
+            "{name: 'John'}",
+            expect!["object[name: string]"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_object_literal_multiple_properties() {
+        check_typecheck(
+            "",
+            "{a: 'foo', b: 1, c: true}",
+            expect!["object[a: string, b: number, c: boolean]"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_object_literal_complex_expressions() {
+        check_typecheck(
+            "user: object[name: string, disabled: boolean]",
+            "{user: user.name, active: !user.disabled}",
+            expect!["object[active: boolean, user: string]"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_nested_object_literal() {
+        check_typecheck(
+            "",
+            "{nested: {inner: 'value'}}",
+            expect!["object[nested: object[inner: string]]"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_array_trailing_comma_numbers() {
+        check_typecheck(
+            "",
+            "[\n\t1,\n\t2,\n\t3,\n]",
+            expect!["array[number]"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_array_trailing_comma_single() {
+        check_typecheck(
+            "",
+            "[\n\t'hello',\n]",
+            expect!["array[string]"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_object_literal_trailing_comma() {
+        check_typecheck(
+            "",
+            "{\n\ta: 'foo',\n\tb: 1,\n}",
+            expect!["object[a: string, b: number]"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_object_literal_trailing_comma_single() {
+        check_typecheck(
+            "",
+            "{\n\tname: 'John',\n}",
+            expect!["object[name: string]"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_brace_syntax_object() {
+        check_typecheck(
+            "user: {name: string, age: number}",
+            "user.name",
+            expect!["string"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_empty_brace_syntax() {
+        check_typecheck(
+            "obj: {}",
+            "obj",
+            expect!["object[]"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_nested_brace_syntax() {
+        check_typecheck(
+            "config: {database: {host: string, port: number}, cache: {enabled: boolean}}",
+            "config.database.host",
+            expect!["string"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_brace_syntax_with_array() {
+        check_typecheck(
+            "data: {items: array[string], count: number}",
+            "data.items",
+            expect!["array[string]"],
+        );
+    }
+
 }
