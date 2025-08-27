@@ -210,7 +210,7 @@ mod tests {
                         e
                     );
                 });
-                for (var_name, var_type) in params {
+                for (var_name, var_type, _range) in params {
                     env.push(var_name.value, var_type);
                 }
             }
