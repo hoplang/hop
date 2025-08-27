@@ -14,8 +14,8 @@ pub fn evaluate_expr(
                 Err(anyhow::anyhow!("Undefined variable: {}", name))
             }
         }
-        DopExpr::StringLiteral { value } => Ok(serde_json::Value::String(value.clone())),
-        DopExpr::BooleanLiteral { value } => Ok(serde_json::Value::Bool(*value)),
+        DopExpr::StringLiteral { value, .. } => Ok(serde_json::Value::String(value.clone())),
+        DopExpr::BooleanLiteral { value, .. } => Ok(serde_json::Value::Bool(*value)),
         DopExpr::NumberLiteral { value, .. } => Ok(serde_json::Value::Number(value.clone())),
         DopExpr::ArrayLiteral { elements } => {
             let mut array_values = Vec::new();

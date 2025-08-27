@@ -26,9 +26,11 @@ pub enum DopExpr {
     },
     StringLiteral {
         value: String,
+        range: Range,
     },
     BooleanLiteral {
         value: bool,
+        range: Range,
     },
     NumberLiteral {
         value: serde_json::Number,
@@ -523,8 +525,8 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
 
             Ok(expr)
         }
-        (DopToken::StringLiteral(value), _) => Ok(DopExpr::StringLiteral { value }),
-        (DopToken::BooleanLiteral(value), _) => Ok(DopExpr::BooleanLiteral { value }),
+        (DopToken::StringLiteral(value), range) => Ok(DopExpr::StringLiteral { value, range }),
+        (DopToken::BooleanLiteral(value), range) => Ok(DopExpr::BooleanLiteral { value, range }),
         (DopToken::NumberLiteral(value), range) => Ok(DopExpr::NumberLiteral { value, range }),
         (DopToken::LeftBracket, _) => {
             let mut elements = Vec::new();
@@ -821,6 +823,16 @@ mod tests {
             expect![[r#"
                 StringLiteral {
                     value: "",
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 3,
+                        },
+                    },
                 }
             "#]],
         );
@@ -941,6 +953,16 @@ mod tests {
                 BinaryOp {
                     left: StringLiteral {
                         value: "guest",
+                        range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 8,
+                            },
+                        },
                     },
                     operator: Equal,
                     right: PropertyAccess {
@@ -1009,6 +1031,16 @@ mod tests {
             expect![[r#"
                 StringLiteral {
                     value: "hello",
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 8,
+                        },
+                    },
                 }
             "#]],
         );
@@ -1044,10 +1076,30 @@ mod tests {
                 BinaryOp {
                     left: StringLiteral {
                         value: "apple",
+                        range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 1,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 8,
+                            },
+                        },
                     },
                     operator: Equal,
                     right: StringLiteral {
                         value: "orange",
+                        range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 12,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 20,
+                            },
+                        },
                     },
                 }
             "#]],
@@ -1079,6 +1131,16 @@ mod tests {
                     operator: Equal,
                     right: StringLiteral {
                         value: "admin",
+                        range: Range {
+                            start: Position {
+                                line: 1,
+                                column: 14,
+                            },
+                            end: Position {
+                                line: 1,
+                                column: 21,
+                            },
+                        },
                     },
                 }
             "#]],
@@ -1092,6 +1154,16 @@ mod tests {
             expect![[r#"
                 StringLiteral {
                     value: "hello world",
+                    range: Range {
+                        start: Position {
+                            line: 1,
+                            column: 1,
+                        },
+                        end: Position {
+                            line: 1,
+                            column: 14,
+                        },
+                    },
                 }
             "#]],
         );
@@ -1383,9 +1455,29 @@ mod tests {
                         },
                         StringLiteral {
                             value: "hello",
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 5,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 12,
+                                },
+                            },
                         },
                         BooleanLiteral {
                             value: true,
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 14,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 18,
+                                },
+                            },
                         },
                     ],
                 }
@@ -1529,6 +1621,16 @@ mod tests {
                     properties: {
                         "name": StringLiteral {
                             value: "John",
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 8,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 14,
+                                },
+                            },
                         },
                     },
                 }
@@ -1545,6 +1647,16 @@ mod tests {
                     properties: {
                         "a": StringLiteral {
                             value: "foo",
+                            range: Range {
+                                start: Position {
+                                    line: 1,
+                                    column: 5,
+                                },
+                                end: Position {
+                                    line: 1,
+                                    column: 10,
+                                },
+                            },
                         },
                         "b": NumberLiteral {
                             value: Number(1),
@@ -1624,6 +1736,16 @@ mod tests {
                             properties: {
                                 "inner": StringLiteral {
                                     value: "value",
+                                    range: Range {
+                                        start: Position {
+                                            line: 1,
+                                            column: 18,
+                                        },
+                                        end: Position {
+                                            line: 1,
+                                            column: 25,
+                                        },
+                                    },
                                 },
                             },
                         },
@@ -1768,6 +1890,16 @@ mod tests {
                     properties: {
                         "a": StringLiteral {
                             value: "foo",
+                            range: Range {
+                                start: Position {
+                                    line: 2,
+                                    column: 5,
+                                },
+                                end: Position {
+                                    line: 2,
+                                    column: 10,
+                                },
+                            },
                         },
                         "b": NumberLiteral {
                             value: Number(1),
@@ -1797,6 +1929,16 @@ mod tests {
                     properties: {
                         "name": StringLiteral {
                             value: "John",
+                            range: Range {
+                                start: Position {
+                                    line: 2,
+                                    column: 8,
+                                },
+                                end: Position {
+                                    line: 2,
+                                    column: 14,
+                                },
+                            },
                         },
                     },
                 }
