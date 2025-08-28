@@ -640,7 +640,7 @@ mod tests {
                 lines.push(s);
             }
         }
-        lines.join("\n")
+        lines.join("\n") + "\n"
     }
 
     pub fn format_tree(root: &HopNode, depth: usize) -> String {
@@ -979,7 +979,8 @@ mod tests {
                 		div
                 			h2
                 			for
-                				p"#]],
+                				p
+            "#]],
         );
     }
 
@@ -1000,7 +1001,8 @@ mod tests {
                 doctype
                 html
                 	body
-                		div"#]],
+                		div
+            "#]],
         );
     }
 
@@ -1019,7 +1021,8 @@ mod tests {
             "#},
             expect![[r#"
                 script
-                style"#]],
+                style
+            "#]],
         );
     }
 
@@ -1034,7 +1037,8 @@ mod tests {
             "},
             expect![[r#"
                 h1
-                p"#]],
+                p
+            "#]],
         );
     }
 
@@ -1060,7 +1064,8 @@ mod tests {
                 if
                 	div
                 if
-                	div"#]],
+                	div
+            "#]],
         );
     }
 
@@ -1076,7 +1081,8 @@ mod tests {
             "},
             expect![[r#"
                 if
-                	div"#]],
+                	div
+            "#]],
         );
     }
 
@@ -1105,7 +1111,8 @@ mod tests {
                 		if
                 for
                 	for
-                		for"#]],
+                		for
+            "#]],
         );
     }
 
@@ -1122,7 +1129,8 @@ mod tests {
             "},
             expect![[r#"
                 if
-                	for"#]],
+                	for
+            "#]],
         );
     }
 
@@ -1138,7 +1146,8 @@ mod tests {
             "},
             expect![[r#"
                 for
-                	div"#]],
+                	div
+            "#]],
         );
     }
 
@@ -1153,7 +1162,8 @@ mod tests {
             "},
             expect![[r#"
                 render
-                render"#]],
+                render
+            "#]],
         );
     }
 
@@ -1168,7 +1178,8 @@ mod tests {
             "},
             expect![[r#"
                 render
-                render"#]],
+                render
+            "#]],
         );
     }
 
@@ -1184,7 +1195,8 @@ mod tests {
             "},
             expect![[r#"
                 for
-                	div"#]],
+                	div
+            "#]],
         );
     }
 
@@ -1198,7 +1210,9 @@ mod tests {
                     </script>
                 </main-comp>
             "#},
-            expect!["script"],
+            expect![[r#"
+                script
+            "#]],
         );
     }
 
@@ -1210,7 +1224,9 @@ mod tests {
                     <a set-href="user.url" set-class="user.theme">Link</a>
                 </main-comp>
             "#},
-            expect!["a"],
+            expect![[r#"
+                a
+            "#]],
         );
     }
 
@@ -1238,7 +1254,8 @@ mod tests {
             expect![[r#"
                 slot-content
                 render
-                	with-data"#]],
+                	with-data
+            "#]],
         );
     }
 
@@ -1302,7 +1319,8 @@ mod tests {
             expect![[r#"
                 slot-default
                 render
-                	with-default"#]],
+                	with-default
+            "#]],
         );
     }
 
@@ -1334,7 +1352,8 @@ mod tests {
                 			path
                 	ul
                 		li
-                			a"#]],
+                			a
+            "#]],
         );
     }
 
@@ -1352,7 +1371,8 @@ mod tests {
             expect![[r#"
                 form
                 	input
-                	button"#]],
+                	button
+            "#]],
         );
     }
 
@@ -1369,7 +1389,8 @@ mod tests {
             "},
             expect![[r#"
                 if
-                	div"#]],
+                	div
+            "#]],
         );
     }
 
@@ -1388,7 +1409,8 @@ mod tests {
             expect![[r#"
                 if
                 	div
-                	button"#]],
+                	button
+            "#]],
         );
     }
 
@@ -1405,7 +1427,8 @@ mod tests {
             "},
             expect![[r#"
                 for
-                	div"#]],
+                	div
+            "#]],
         );
     }
 
@@ -1424,7 +1447,8 @@ mod tests {
             expect![[r#"
                 for
                 	div
-                	p"#]],
+                	p
+            "#]],
         );
     }
 
@@ -1437,7 +1461,9 @@ mod tests {
                     <div>{data}</div>
                 </main-comp>
             "},
-            expect!["div"],
+            expect![[r#"
+                div
+            "#]],
         );
     }
 
@@ -1454,7 +1480,8 @@ mod tests {
             "},
             expect![[r#"
                 for
-                	div"#]],
+                	div
+            "#]],
         );
     }
 
@@ -1467,7 +1494,9 @@ mod tests {
                     <div>{user.name} is {user.age} years old</div>
                 </main-comp>
             "},
-            expect!["div"],
+            expect![[r#"
+                div
+            "#]],
         );
     }
 
@@ -1489,7 +1518,8 @@ mod tests {
                 for
                 	h1
                 	for
-                		div"#]],
+                		div
+            "#]],
         );
     }
 }
