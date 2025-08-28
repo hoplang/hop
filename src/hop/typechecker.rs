@@ -3,7 +3,6 @@ use crate::dop::{DopType, infer_type_from_json_file, is_subtype, typecheck_expr}
 use crate::hop::ast::{ComponentDefinitionNode, HopNode, ImportNode, RenderNode};
 use crate::hop::environment::Environment;
 use crate::hop::parser::Module;
-use crate::tui::source_annotator::Annotation;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -13,16 +12,6 @@ pub struct TypeAnnotation {
     pub name: String,
 }
 
-impl Annotation for TypeAnnotation {
-    fn range(&self) -> Range {
-        self.range
-    }
-
-    fn message(&self) -> String {
-        format!("`{}`: `{}`", self.name, self.typ)
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentDefinitionLink {
     pub reference_opening_name_range: Range,
@@ -30,7 +19,7 @@ pub struct ComponentDefinitionLink {
     pub definition_module: String,
     pub definition_component_name: String,
     pub definition_opening_name_range: Range,
-    pub definition_closing_name_range: Option<Range>,
+    definition_closing_name_range: Option<Range>,
 }
 
 impl ComponentDefinitionLink {
@@ -45,9 +34,9 @@ impl ComponentDefinitionLink {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentInfo {
-    pub parameter_types: BTreeMap<String, DopType>,
-    pub slots: Vec<String>,
-    pub definition_module: String,
+    definition_module: String,
+    parameter_types: BTreeMap<String, DopType>,
+    slots: Vec<String>,
     pub definition_opening_name_range: Range,
     pub definition_closing_name_range: Option<Range>,
 }
@@ -57,20 +46,6 @@ pub struct TypeResult {
     pub component_info: HashMap<String, ComponentInfo>,
     pub type_annotations: Vec<TypeAnnotation>,
     pub component_definition_links: Vec<ComponentDefinitionLink>,
-}
-
-impl TypeResult {
-    pub fn new(
-        component_info: HashMap<String, ComponentInfo>,
-        type_annotations: Vec<TypeAnnotation>,
-        component_definition_links: Vec<ComponentDefinitionLink>,
-    ) -> Self {
-        TypeResult {
-            component_info,
-            type_annotations,
-            component_definition_links,
-        }
-    }
 }
 
 pub fn typecheck(
@@ -227,9 +202,11 @@ pub fn typecheck(
         }
     }
 
-    let final_annotations = type_annotations;
-
-    TypeResult::new(component_info, final_annotations, definition_links)
+    TypeResult {
+        component_info,
+        type_annotations,
+        component_definition_links: definition_links,
+    }
 }
 
 fn typecheck_node(
@@ -603,43 +580,44 @@ mod tests {
 
         // Process all .hop files in the archive
         for file in archive.iter() {
-            if file.name.ends_with(".hop") {
-                let mut errors = Vec::new();
-                let tokenizer = Tokenizer::new(file.content.trim());
-                let module_name = file.name.trim_end_matches(".hop");
-                let module = parse(module_name.to_string(), tokenizer, &mut errors);
+            if !file.name.ends_with(".hop") {
+                panic!("Got invalid file name")
+            }
+            let mut errors = Vec::new();
+            let tokenizer = Tokenizer::new(file.content.trim());
+            let module_name = file.name.trim_end_matches(".hop");
+            let module = parse(module_name.to_string(), tokenizer, &mut errors);
 
-                if !errors.is_empty() {
-                    panic!("Got parse errors: {:#?}", errors);
-                }
+            if !errors.is_empty() {
+                panic!("Got parse errors: {:#?}", errors);
+            }
 
-                let type_result = typecheck(&module, &module_type_results, &mut errors);
+            let type_result = typecheck(&module, &module_type_results, &mut errors);
 
-                if !errors.is_empty() {
-                    error_formatter.add_errors(
-                        module_name.to_string(),
-                        file.content.trim().to_string(),
-                        errors,
-                    );
-                } else {
-                    module_type_results.insert(module.name.clone(), type_result.clone());
+            if !errors.is_empty() {
+                error_formatter.add_errors(
+                    module_name.to_string(),
+                    file.content.trim().to_string(),
+                    errors,
+                );
+            } else {
+                module_type_results.insert(module.name.clone(), type_result.clone());
 
-                    for c in module.component_nodes {
-                        let component_info = type_result
-                            .component_info
-                            .get(&c.name)
-                            .expect("Component info not found");
-                        let param_types_str = component_info
-                            .parameter_types
-                            .iter()
-                            .map(|(name, typ)| format!("{}: {}", name, typ))
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        all_output_lines.push(format!(
-                            "{}::{}\n\t{{{}}}\n\t{:?}\n",
-                            module.name, c.name, param_types_str, component_info.slots
-                        ));
-                    }
+                for c in module.component_nodes {
+                    let component_info = type_result
+                        .component_info
+                        .get(&c.name)
+                        .expect("Component info not found");
+                    let param_types_str = component_info
+                        .parameter_types
+                        .iter()
+                        .map(|(name, typ)| format!("{}: {}", name, typ))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    all_output_lines.push(format!(
+                        "{}::{}\n\t{{{}}}\n\t{:?}\n",
+                        module.name, c.name, param_types_str, component_info.slots
+                    ));
                 }
             }
         }

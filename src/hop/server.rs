@@ -210,23 +210,16 @@ impl Server {
 
         // Check if we're on a component definition
         for (component_name, component_info) in &type_result.component_info {
-            // TODO: These should always be equal?
-            // Refactor and remove field from struct
-            if component_info.definition_module == module_name {
-                let is_on_definition = component_info
-                    .definition_opening_name_range
-                    .contains_position(position)
-                    || component_info
-                        .definition_closing_name_range
-                        .is_some_and(|range| range.contains_position(position));
+            let is_on_definition = component_info
+                .definition_opening_name_range
+                .contains_position(position)
+                || component_info
+                    .definition_closing_name_range
+                    .is_some_and(|range| range.contains_position(position));
 
-                if is_on_definition {
-                    // We're on a definition, collect all rename locations
-                    return Some(self.collect_component_rename_locations(
-                        component_name,
-                        &component_info.definition_module,
-                    ));
-                }
+            if is_on_definition {
+                // We're on a definition, collect all rename locations
+                return Some(self.collect_component_rename_locations(component_name, module_name));
             }
         }
 
