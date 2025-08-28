@@ -403,20 +403,18 @@ mod tests {
     use indoc::indoc;
     use simple_txtar::Archive;
 
-    fn server_from_txtar(archive: &str) -> Server {
+    fn server_from_archive(archive: &Archive) -> Server {
         let mut server = Server::new();
-
-        for file in Archive::from(archive).iter() {
+        for file in archive.iter() {
             let module_name = file.name.replace(".hop", "");
             server.update_module(module_name, &file.content);
         }
-
         server
     }
 
-    fn check_rename_locations(archive: &str, expected: Expect) {
-        let archive_obj = Archive::from(archive);
-        let (cleaned_archive, markers) = extract_markers_from_archive(&archive_obj);
+    fn check_rename_locations(input: &str, expected: Expect) {
+        let (archive, markers) = extract_markers_from_archive(&Archive::from(input));
+        let server = server_from_archive(&archive);
 
         if markers.len() != 1 {
             panic!(
@@ -428,19 +426,17 @@ mod tests {
         let marker = &markers[0];
         let module = marker.filename.replace(".hop", "");
 
-        let server = server_from_txtar(&cleaned_archive.to_string());
         let mut locs = server
             .get_rename_locations(&module, marker.position)
-            .unwrap_or_default();
+            .expect("Expected locations to be defined");
+
         locs.sort();
 
         let mut output = Vec::new();
 
-        // Use cleaned_archive for annotations to avoid showing marker lines
-        for file in cleaned_archive.iter() {
+        for file in archive.iter() {
             let module_name = file.name.replace(".hop", "");
 
-            // Get all locations for this module
             let module_locs: Vec<RenameLocation> = locs
                 .iter()
                 .filter(|l| l.module == module_name)
@@ -460,9 +456,8 @@ mod tests {
         expected.assert_eq(&output.join("\n"));
     }
 
-    fn check_definition_location(archive: &str, expected: Expect) {
-        let archive_obj = Archive::from(archive);
-        let (cleaned_archive, markers) = extract_markers_from_archive(&archive_obj);
+    fn check_definition_location(input: &str, expected: Expect) {
+        let (archive, markers) = extract_markers_from_archive(&Archive::from(input));
 
         if markers.len() != 1 {
             panic!(
@@ -474,57 +469,49 @@ mod tests {
         let marker = &markers[0];
         let module = marker.filename.replace(".hop", "");
 
-        let server = server_from_txtar(&cleaned_archive.to_string());
-        let loc = server.get_definition_location(&module, marker.position);
+        let server = server_from_archive(&archive);
+        let loc = server
+            .get_definition_location(&module, marker.position)
+            .expect("Expected definition location to be defined");
 
-        let output = match loc {
-            Some(def_loc) => {
-                // Use cleaned_archive for annotations
-                if let Some(file) = cleaned_archive
-                    .iter()
-                    .find(|f| f.name.replace(".hop", "") == def_loc.module)
-                {
-                    SourceAnnotator::new()
-                        .with_filename(&file.name)
-                        .with_location()
-                        .annotate(&file.content, &[def_loc])
-                } else {
-                    "File not found".to_string()
-                }
-            }
-            None => "No definition found".to_string(),
-        };
+        let file = archive
+            .iter()
+            .find(|f| f.name.replace(".hop", "") == loc.module)
+            .expect("File not found in archive");
+
+        let output = SourceAnnotator::new()
+            .with_filename(&file.name)
+            .with_location()
+            .annotate(&file.content, &[loc]);
 
         expected.assert_eq(&output);
     }
 
     fn check_error_diagnostics(archive: &str, module: &str, expected: Expect) {
-        let server = server_from_txtar(archive);
+        let server = server_from_archive(&Archive::from(archive));
         let diagnostics = server.get_error_diagnostics(module);
 
-        let output = if diagnostics.is_empty() {
-            "".to_string()
-        } else {
-            let archive = Archive::from(archive);
-            if let Some(file) = archive
-                .iter()
-                .find(|f| f.name.replace(".hop", "") == module)
-            {
-                SourceAnnotator::new()
-                    .with_filename(&file.name)
-                    .with_location()
-                    .annotate(&file.content, &diagnostics)
-            } else {
-                "File not found".to_string()
-            }
-        };
+        if diagnostics.is_empty() {
+            panic!("Expected diagnostics to be non-empty");
+        }
+
+        let archive = Archive::from(archive);
+        let file = archive
+            .iter()
+            .find(|f| f.name.replace(".hop", "") == module)
+            .expect("File not found in archive");
+
+        let output = SourceAnnotator::new()
+            .with_filename(&file.name)
+            .with_location()
+            .annotate(&file.content, &diagnostics);
 
         expected.assert_eq(&output);
     }
 
-    fn check_renameable_symbol(archive: &str, expected: Expect) {
-        let archive_obj = Archive::from(archive);
-        let (cleaned_archive, markers) = extract_markers_from_archive(&archive_obj);
+    fn check_renameable_symbol(input: &str, expected: Expect) {
+        let (archive, markers) = extract_markers_from_archive(&Archive::from(input));
+        let server = server_from_archive(&archive);
 
         if markers.len() != 1 {
             panic!(
@@ -536,33 +523,25 @@ mod tests {
         let marker = &markers[0];
         let module = marker.filename.replace(".hop", "");
 
-        let server = server_from_txtar(&cleaned_archive.to_string());
-        let symbol = server.get_renameable_symbol(&module, marker.position);
+        let symbol = server
+            .get_renameable_symbol(&module, marker.position)
+            .expect("Expected symbol to be defined");
 
-        let output = match symbol {
-            Some(sym) => {
-                // Use cleaned_archive for annotations
-                if let Some(file) = cleaned_archive
-                    .iter()
-                    .find(|f| f.name.replace(".hop", "") == module)
-                {
-                    SourceAnnotator::new()
-                        .with_filename(&file.name)
-                        .with_location()
-                        .annotate(&file.content, &[sym])
-                } else {
-                    "File not found".to_string()
-                }
-            }
-            None => "".to_string(),
-        };
+        let file = archive
+            .iter()
+            .find(|f| f.name.replace(".hop", "") == module)
+            .expect("Could not find file in archive");
+
+        let output = SourceAnnotator::new()
+            .with_filename(&file.name)
+            .with_location()
+            .annotate(&file.content, &[symbol]);
 
         expected.assert_eq(&output);
     }
 
     fn check_hover_info(archive: &str, expected: Expect) {
-        let archive_obj = Archive::from(archive);
-        let (cleaned_archive, markers) = extract_markers_from_archive(&archive_obj);
+        let (archive, markers) = extract_markers_from_archive(&Archive::from(archive));
 
         if markers.len() != 1 {
             panic!(
@@ -574,26 +553,20 @@ mod tests {
         let marker = &markers[0];
         let module = marker.filename.replace(".hop", "");
 
-        let server = server_from_txtar(&cleaned_archive.to_string());
-        let hover = server.get_hover_info(&module, marker.position);
+        let server = server_from_archive(&archive);
+        let hover = server
+            .get_hover_info(&module, marker.position)
+            .expect("Expected hover info to be defined");
 
-        let output = match hover {
-            Some(hover_info) => {
-                // Use cleaned_archive for annotations
-                if let Some(file) = cleaned_archive
-                    .iter()
-                    .find(|f| f.name.replace(".hop", "") == module)
-                {
-                    SourceAnnotator::new()
-                        .with_filename(&file.name)
-                        .with_location()
-                        .annotate(&file.content, &[hover_info])
-                } else {
-                    "File not found".to_string()
-                }
-            }
-            None => "".to_string(),
-        };
+        let file = archive
+            .iter()
+            .find(|f| f.name.replace(".hop", "") == module)
+            .expect("Could not find file in archive");
+
+        let output = SourceAnnotator::new()
+            .with_filename(&file.name)
+            .with_location()
+            .annotate(&file.content, &[hover]);
 
         expected.assert_eq(&output);
     }
