@@ -195,7 +195,7 @@ pub fn parse_arguments(tokenizer: &mut DopTokenizer) -> Result<Vec<DopArgument>,
                     .iter()
                     .any(|other| other.var_name.value == arg.var_name.value)
                 {
-                    return Err(RangeError::duplicate_argument_name(
+                    return Err(RangeError::duplicate_argument(
                         &arg.var_name.value,
                         arg.var_name.range,
                     ));
@@ -264,10 +264,7 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<RangeDopType, RangeError> 
                 tokenizer.expect_token(DopToken::Colon)?;
                 let typ = parse_type(tokenizer)?;
                 if properties.contains_key(&prop_name) {
-                    return Err(RangeError::duplicate_property_name(
-                        &prop_name,
-                        prop_name_range,
-                    ));
+                    return Err(RangeError::duplicate_property(&prop_name, prop_name_range));
                 }
                 properties.insert(prop_name, typ.dop_type);
 
@@ -461,10 +458,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, RangeError> {
             loop {
                 let (prop_name, prop_name_range) = tokenizer.expect_property_name()?;
                 if properties.contains_key(&prop_name) {
-                    return Err(RangeError::duplicate_property_name(
-                        &prop_name,
-                        prop_name_range,
-                    ));
+                    return Err(RangeError::duplicate_property(&prop_name, prop_name_range));
                 }
 
                 tokenizer.expect_token(DopToken::Colon)?;
@@ -1657,7 +1651,7 @@ mod tests {
         check_parse_named_arguments(
             "name: 'John', name: 'Jane'",
             expect![[r#"
-                error: Duplicate argument name 'name'
+                error: Duplicate argument 'name'
                 name: 'John', name: 'Jane'
                               ^^^^
             "#]],

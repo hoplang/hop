@@ -173,12 +173,12 @@ impl RangeError {
         Self::new("Expected property name".to_string(), range)
     }
 
-    pub fn duplicate_argument_name(name: &str, range: Range) -> Self {
-        Self::new(format!("Duplicate argument name '{name}'"), range)
+    pub fn duplicate_argument(name: &str, range: Range) -> Self {
+        Self::new(format!("Duplicate argument '{name}'"), range)
     }
 
-    pub fn duplicate_property_name(name: &str, range: Range) -> Self {
-        Self::new(format!("Duplicate property name '{name}'"), range)
+    pub fn duplicate_property(name: &str, range: Range) -> Self {
+        Self::new(format!("Duplicate property '{name}'"), range)
     }
 }
 
