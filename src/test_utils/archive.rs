@@ -1,4 +1,6 @@
-use simple_txtar::{Archive, Builder};
+use super::position_marker::extract_position;
+use crate::common::Position;
+use simple_txtar::{Archive, Builder, File};
 use std::{env, fs, path::{Path, PathBuf}};
 
 /// Creates a temporary directory with files from a txtar Archive.
@@ -20,6 +22,8 @@ pub fn temp_dir_from_archive(archive: &Archive) -> std::io::Result<PathBuf> {
 }
 
 /// Recursively walks a directory and creates an Archive from all files found.
+/// 
+/// Files are sorted by path to ensure deterministic output across different filesystems.
 pub fn archive_from_dir(dir: &Path) -> std::io::Result<Archive> {
     let mut builder = Builder::new();
     archive_from_dir_recursive(dir, dir, &mut builder)?;
@@ -31,8 +35,12 @@ fn archive_from_dir_recursive(
     current_dir: &Path,
     builder: &mut Builder,
 ) -> std::io::Result<()> {
-    for entry in fs::read_dir(current_dir)? {
-        let entry = entry?;
+    let mut entries: Vec<_> = fs::read_dir(current_dir)?.collect::<Result<Vec<_>, _>>()?;
+    // Sort entries to ensure deterministic output - fs::read_dir() order is not guaranteed
+    // and can vary between filesystems and OS implementations
+    entries.sort_by_key(|entry| entry.path());
+    
+    for entry in entries {
         let path = entry.path();
         
         if path.is_dir() {
@@ -48,4 +56,35 @@ fn archive_from_dir_recursive(
         }
     }
     Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MarkerInfo {
+    pub filename: String,
+    pub position: Position,
+}
+
+/// Extracts all position markers from an archive and returns the cleaned archive
+/// along with information about each marker found.
+///
+/// # Returns
+/// - The cleaned archive (with all markers removed)
+/// - A vector of MarkerInfo containing filenames and positions for each marker
+pub fn extract_markers_from_archive(archive: &Archive) -> (Archive, Vec<MarkerInfo>) {
+    let mut markers = Vec::new();
+    let mut builder = Builder::new();
+    
+    for file in archive.iter() {
+        if let Some((clean_content, pos)) = extract_position(&file.content) {
+            markers.push(MarkerInfo {
+                filename: file.name.clone(),
+                position: pos,
+            });
+            builder.file(File::new(file.name.clone(), clean_content));
+        } else {
+            builder.file(file.clone());
+        }
+    }
+    
+    (builder.build(), markers)
 }

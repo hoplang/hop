@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn test_build_with_hop_file() {
         use expect_test::expect;
-        
+
         let archive = Archive::from(indoc! {"
             -- src/components.hop --
             <hello-world>
@@ -148,13 +148,10 @@ mod tests {
 
         let result = execute(&root, &dir.join("out"), None, None);
         assert!(result.is_ok());
-        let outputs = result.unwrap();
-        assert_eq!(outputs.len(), 1);
+        assert_eq!(result.unwrap().len(), 1);
 
-        // Use archive_from_dir to capture the entire output directory structure
-        let output_archive = archive_from_dir(&dir.join("out")).unwrap();
-        let archive_string = output_archive.to_string();
-        
+        let archive_string = archive_from_dir(&dir.join("out")).unwrap().to_string();
+
         expect![[r#"
             -- foo/bar/index.html --
 
@@ -171,7 +168,7 @@ mod tests {
     #[test]
     fn test_build_has_hop_mode_build() {
         use expect_test::expect;
-        
+
         let archive = Archive::from(indoc! {"
             -- build.hop --
             <render file=\"index.html\">
@@ -183,13 +180,10 @@ mod tests {
 
         let result = execute(&root, &dir.join("out"), None, None);
         assert!(result.is_ok());
-        let outputs = result.unwrap();
-        assert_eq!(outputs.len(), 1);
+        assert_eq!(result.unwrap().len(), 1);
 
-        // Use archive_from_dir to capture the entire output directory structure
-        let output_archive = archive_from_dir(&dir.join("out")).unwrap();
-        let archive_string = output_archive.to_string();
-        
+        let archive_string = archive_from_dir(&dir.join("out")).unwrap().to_string();
+
         expect![[r#"
             -- index.html --
 
@@ -203,7 +197,7 @@ mod tests {
     #[test]
     fn test_build_with_staticdir() {
         use expect_test::expect;
-        
+
         let archive = Archive::from(indoc! {"
             -- build.hop --
             <render file=\"index.html\">
@@ -223,25 +217,21 @@ mod tests {
 
         let result = execute(&root, &output_dir, None, Some(static_dir.to_str().unwrap()));
         assert!(result.is_ok());
-        let outputs = result.unwrap();
 
-        // Should have 4 files: index.html + 3 static files
-        assert_eq!(outputs.len(), 4);
+        assert_eq!(result.unwrap().len(), 4);
 
-        // Use archive_from_dir to capture the entire output directory structure
-        let output_archive = archive_from_dir(&output_dir).unwrap();
-        let archive_string = output_archive.to_string();
-        
+        let archive_string = archive_from_dir(&output_dir).unwrap().to_string();
+
         expect![[r#"
-            -- style.css --
-            body { color: red; }
-            -- script.js --
-            console.log('hello world');
             -- images/logo.png --
             fake image data
             -- index.html --
 
               Hello from build.hop!
+            -- script.js --
+            console.log('hello world');
+            -- style.css --
+            body { color: red; }
         "#]]
         .assert_eq(&archive_string);
     }

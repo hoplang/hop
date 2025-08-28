@@ -397,7 +397,7 @@ impl Server {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::marked_archive::extract_markers_from_archive;
+    use crate::test_utils::archive::extract_markers_from_archive;
     use crate::tui::source_annotator::SourceAnnotator;
     use expect_test::{Expect, expect};
     use indoc::indoc;
