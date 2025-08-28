@@ -243,151 +243,165 @@ impl Default for SourceAnnotator {
 mod tests {
     use super::*;
     use crate::common::Position;
+    use expect_test::{Expect, expect};
+
+    fn check(
+        annotator: SourceAnnotator,
+        source: &str,
+        annotations: Vec<SimpleAnnotation>,
+        expect: Expect,
+    ) {
+        let actual = annotator.annotate(source, &annotations);
+        expect.assert_eq(&actual);
+    }
 
     #[test]
     fn test_simple_annotation() {
-        let annotation = SimpleAnnotation {
+        let annotations = vec![SimpleAnnotation {
             range: Range::new(Position::new(2, 15), Position::new(2, 19)),
             message: "Test error".to_string(),
-        };
+        }];
+        let source = "there is\n    some code here";
 
-        let output = SourceAnnotator::new().annotate("there is\n    some code here", &[annotation]);
-
-        let expected = r#"
-Test error
-2 |     some code here
-  |               ^^^^
-"#
-        .trim_start();
-        assert_eq!(output, expected);
+        check(
+            SourceAnnotator::new(),
+            source,
+            annotations,
+            expect![[r#"
+                Test error
+                2 |     some code here
+                  |               ^^^^
+            "#]],
+        );
     }
 
     #[test]
     fn test_with_label() {
-        let annotation = SimpleAnnotation {
+        let annotations = vec![SimpleAnnotation {
             range: Range::new(Position::new(1, 1), Position::new(1, 5)),
             message: "Missing semicolon".to_string(),
-        };
+        }];
+        let source = "code";
 
-        let output = SourceAnnotator::new()
-            .with_label("error")
-            .annotate("code", &[annotation]);
-
-        let expected = r#"
-error: Missing semicolon
-1 | code
-  | ^^^^
-"#
-        .trim_start();
-        assert_eq!(output, expected);
+        check(
+            SourceAnnotator::new().with_label("error"),
+            source,
+            annotations,
+            expect![[r#"
+                error: Missing semicolon
+                1 | code
+                  | ^^^^
+            "#]],
+        );
     }
 
     #[test]
     fn test_with_custom_underline() {
-        let annotation = SimpleAnnotation {
+        let annotations = vec![SimpleAnnotation {
             range: Range::new(Position::new(1, 1), Position::new(1, 5)),
             message: "Warning".to_string(),
-        };
+        }];
+        let source = "code";
 
-        let output = SourceAnnotator::new()
-            .with_underline('~')
-            .annotate("code", &[annotation]);
-
-        let expected = r#"
-Warning
-1 | code
-  | ~~~~
-"#
-        .trim_start();
-        assert_eq!(output, expected);
+        check(
+            SourceAnnotator::new().with_underline('~'),
+            source,
+            annotations,
+            expect![[r#"
+                Warning
+                1 | code
+                  | ~~~~
+            "#]],
+        );
     }
 
     #[test]
     fn test_with_location_info() {
-        let annotation = SimpleAnnotation {
+        let annotations = vec![SimpleAnnotation {
             range: Range::new(Position::new(2, 8), Position::new(2, 12)),
             message: "Type error".to_string(),
-        };
+        }];
+        let source = "first line\nsecond line";
 
-        let output = SourceAnnotator::new()
-            .with_location()
-            .with_filename("main.rs")
-            .annotate("first line\nsecond line", &[annotation]);
-
-        let expected = r#"
-Type error
-  --> main.rs (line 2, col 8)
-2 | second line
-  |        ^^^^
-"#
-        .trim_start();
-        assert_eq!(output, expected);
+        check(
+            SourceAnnotator::new()
+                .with_location()
+                .with_filename("main.rs"),
+            source,
+            annotations,
+            expect![[r#"
+                Type error
+                  --> main.rs (line 2, col 8)
+                2 | second line
+                  |        ^^^^
+            "#]],
+        );
     }
 
     #[test]
     fn test_with_lines_before() {
-        let annotation = SimpleAnnotation {
+        let annotations = vec![SimpleAnnotation {
             range: Range::new(Position::new(3, 6), Position::new(3, 11)),
             message: "Error here".to_string(),
-        };
+        }];
+        let source = "line one\nline two\nline three\nline four";
 
-        let output = SourceAnnotator::new()
-            .with_lines_before(2)
-            .annotate("line one\nline two\nline three\nline four", &[annotation]);
-
-        let expected = r#"
-Error here
-1 | line one
-2 | line two
-3 | line three
-  |      ^^^^^
-"#
-        .trim_start();
-        assert_eq!(output, expected);
+        check(
+            SourceAnnotator::new().with_lines_before(2),
+            source,
+            annotations,
+            expect![[r#"
+                Error here
+                1 | line one
+                2 | line two
+                3 | line three
+                  |      ^^^^^
+            "#]],
+        );
     }
 
     #[test]
     fn test_with_lines_after() {
-        let annotation = SimpleAnnotation {
+        let annotations = vec![SimpleAnnotation {
             range: Range::new(Position::new(2, 6), Position::new(2, 9)),
             message: "Error here".to_string(),
-        };
+        }];
 
         let source = "line one\nline two\nline three\nline four";
-        let actual = SourceAnnotator::new()
-            .with_lines_after(2)
-            .annotate(source, &[annotation]);
 
-        let expected = r#"
-Error here
-2 | line two
-  |      ^^^
-3 | line three
-4 | line four
-"#
-        .trim_start();
-        assert_eq!(actual, expected);
+        check(
+            SourceAnnotator::new().with_lines_after(2),
+            source,
+            annotations,
+            expect![[r#"
+                Error here
+                2 | line two
+                  |      ^^^
+                3 | line three
+                4 | line four
+            "#]],
+        );
     }
 
     #[test]
     fn test_tab_expansion() {
-        let actual = SourceAnnotator::new().with_lines_before(1).annotate(
-            "code\n\tcode",
-            &[SimpleAnnotation {
-                range: Range::new(Position::new(2, 2), Position::new(2, 6)),
-                message: "Tab test".to_string(),
-            }],
-        );
+        let annotations = vec![SimpleAnnotation {
+            range: Range::new(Position::new(2, 2), Position::new(2, 6)),
+            message: "Tab test".to_string(),
+        }];
+        let source = "code\n\tcode";
 
-        // Tab should be expanded to 4 spaces
-        let expected = r#"
-Tab test
-1 | code
-2 |     code
-  |     ^^^^
-"#
-        .trim_start();
-        assert_eq!(actual, expected);
+        check(
+            SourceAnnotator::new().with_lines_before(1),
+            source,
+            annotations,
+            expect![[r#"
+                Tab test
+                1 | code
+                2 |     code
+                  |     ^^^^
+            "#]],
+        );
     }
 
     #[test]
@@ -404,60 +418,64 @@ Tab test
         ];
 
         let source = "line one\nline two\nline three";
-        let actual = SourceAnnotator::new().annotate(source, &annotations);
 
-        let expected = r#"
-First error
-1 | line one
-  |      ^^^
+        check(
+            SourceAnnotator::new(),
+            source,
+            annotations,
+            expect![[r#"
+                First error
+                1 | line one
+                  |      ^^^
 
-Second error
-3 | line three
-  |      ^^^^^
-"#
-        .trim_start();
-        assert_eq!(actual, expected);
+                Second error
+                3 | line three
+                  |      ^^^^^
+            "#]],
+        );
     }
 
     #[test]
     fn test_unicode_emoji_width() {
-        let annotation = SimpleAnnotation {
+        let annotations = vec![SimpleAnnotation {
             range: Range::new(Position::new(1, 6), Position::new(1, 10)),
             message: "After emoji".to_string(),
-        };
+        }];
 
         // Emoji is 4 bytes (positions 1-4), space is 1 byte (position 5)
         // "code" starts at byte position 6
-        let actual = SourceAnnotator::new().annotate("😀 code", &[annotation]);
+        let source = "😀 code";
 
-        // The underline should align correctly considering emoji takes 2 display columns
-        let expected = r#"
-After emoji
-1 | 😀 code
-  |    ^^^^
-"#
-        .trim_start();
-        assert_eq!(actual, expected);
+        check(
+            SourceAnnotator::new(),
+            source,
+            annotations,
+            expect![[r#"
+                After emoji
+                1 | 😀 code
+                  |    ^^^^
+            "#]],
+        );
     }
 
     #[test]
     fn test_location_without_filename() {
-        let annotation = SimpleAnnotation {
+        let annotations = vec![SimpleAnnotation {
             range: Range::new(Position::new(1, 6), Position::new(1, 10)),
             message: "Error without filename".to_string(),
-        };
+        }];
+        let source = "some code";
 
-        let actual = SourceAnnotator::new()
-            .with_location()
-            .annotate("some code", &[annotation]);
-
-        let expected = r#"
-Error without filename
-  --> (line 1, col 6)
-1 | some code
-  |      ^^^^
-"#
-        .trim_start();
-        assert_eq!(actual, expected);
+        check(
+            SourceAnnotator::new().with_location(),
+            source,
+            annotations,
+            expect![[r#"
+                Error without filename
+                  --> (line 1, col 6)
+                1 | some code
+                  |      ^^^^
+            "#]],
+        );
     }
 }
