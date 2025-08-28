@@ -416,29 +416,29 @@ impl Tokenizer {
                         self.state = TokenizerState::BeforeAttrValue;
                     } else if ch.is_whitespace() {
                         // Push current attribute
-                        token_attributes.push(Attribute::new(
-                            mem::take(&mut attribute_name),
-                            mem::take(&mut attribute_value),
-                            Range {
+                        token_attributes.push(Attribute {
+                            name: mem::take(&mut attribute_name),
+                            value: mem::take(&mut attribute_value),
+                            range: Range {
                                 start: attribute_start,
                                 end: self.cursor.get_position(),
                             },
-                            Range::default(),
-                        ));
+                            value_range: Range::default(),
+                        });
                         attribute_start = self.cursor.get_position();
                         self.cursor.advance();
                         self.state = TokenizerState::BeforeAttrName;
                     } else if ch == '>' {
                         // Push current attribute
-                        token_attributes.push(Attribute::new(
-                            mem::take(&mut attribute_name),
-                            mem::take(&mut attribute_value),
-                            Range {
+                        token_attributes.push(Attribute {
+                            name: mem::take(&mut attribute_name),
+                            value: mem::take(&mut attribute_value),
+                            range: Range {
                                 start: attribute_start,
                                 end: self.cursor.get_position(),
                             },
-                            Range::default(),
-                        ));
+                            value_range: Range::default(),
+                        });
                         if is_tag_name_with_raw_content(&token_value) {
                             self.stored_tag_name = token_value.clone();
                             self.cursor.advance();
@@ -469,15 +469,15 @@ impl Tokenizer {
                         }
                     } else if ch == '/' {
                         // Push current attribute
-                        token_attributes.push(Attribute::new(
-                            mem::take(&mut attribute_name),
-                            mem::take(&mut attribute_value),
-                            Range {
+                        token_attributes.push(Attribute {
+                            name: mem::take(&mut attribute_name),
+                            value: mem::take(&mut attribute_value),
+                            range: Range {
                                 start: attribute_start,
                                 end: self.cursor.get_position(),
                             },
-                            Range::default(),
-                        ));
+                            value_range: Range::default(),
+                        });
                         self.cursor.advance();
                         self.state = TokenizerState::SelfClosing;
                     } else {
@@ -516,15 +516,15 @@ impl Tokenizer {
                         let attribute_value_end = self.cursor.get_position();
                         self.cursor.advance();
                         // Push current attribute
-                        token_attributes.push(Attribute::new(
-                            mem::take(&mut attribute_name),
-                            mem::take(&mut attribute_value),
-                            Range {
+                        token_attributes.push(Attribute {
+                            name: mem::take(&mut attribute_name),
+                            value: mem::take(&mut attribute_value),
+                            range: Range {
                                 start: attribute_start,
                                 end: self.cursor.get_position(),
                             },
-                            Range::new(attribute_value_start, attribute_value_end),
-                        ));
+                            value_range: Range::new(attribute_value_start, attribute_value_end),
+                        });
                         attribute_start = self.cursor.get_position();
                         self.state = TokenizerState::BeforeAttrName;
                     } else {
@@ -539,15 +539,15 @@ impl Tokenizer {
                         let attribute_value_end = self.cursor.get_position();
                         self.cursor.advance();
                         // Push current attribute
-                        token_attributes.push(Attribute::new(
-                            mem::take(&mut attribute_name),
-                            mem::take(&mut attribute_value),
-                            Range {
+                        token_attributes.push(Attribute {
+                            name: mem::take(&mut attribute_name),
+                            value: mem::take(&mut attribute_value),
+                            range: Range {
                                 start: attribute_start,
                                 end: self.cursor.get_position(),
                             },
-                            Range::new(attribute_value_start, attribute_value_end),
-                        ));
+                            value_range: Range::new(attribute_value_start, attribute_value_end),
+                        });
                         attribute_start = self.cursor.get_position();
                         self.state = TokenizerState::BeforeAttrName;
                     } else {

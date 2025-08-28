@@ -1,9 +1,7 @@
 use crate::common::{escape_html, is_void_element};
 use crate::dop;
 use crate::dop::{DopType, evaluate_expr, load_json_file};
-use crate::hop::ast::{
-    ComponentDefinitionNode, HopNode, RenderNode,
-};
+use crate::hop::ast::{ComponentDefinitionNode, HopNode, RenderNode};
 use crate::hop::environment::Environment;
 use crate::hop::parser::Module;
 use crate::hop::typechecker::TypeResult;
@@ -345,8 +343,7 @@ impl Program {
                 let mut non_slot_children = Vec::new();
 
                 for child in children {
-                    if let HopNode::SlotReference { name, children, .. } = child
-                    {
+                    if let HopNode::SlotReference { name, children, .. } = child {
                         let mut slot_html = String::new();
                         for slot_child in children {
                             slot_html.push_str(&self.evaluate_node(

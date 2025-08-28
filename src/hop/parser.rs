@@ -1,8 +1,6 @@
 use crate::common::{Range, RangeError, is_void_element};
 use crate::dop::{self, DopTokenizer};
-use crate::hop::ast::{
-    ComponentDefinitionNode, DopExprAttribute, HopNode, ImportNode, RenderNode,
-};
+use crate::hop::ast::{ComponentDefinitionNode, DopExprAttribute, HopNode, ImportNode, RenderNode};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
 use std::collections::HashSet;
@@ -298,10 +296,7 @@ fn construct_top_level_node(
                     let mut slots = HashSet::new();
                     for child in &children {
                         for node in child.iter_depth_first() {
-                            if let HopNode::SlotDefinition {
-                                name, range, ..
-                            } = node
-                            {
+                            if let HopNode::SlotDefinition { name, range, .. } = node {
                                 if slots.contains(name) {
                                     errors.push(RangeError::slot_already_defined(name, *range));
                                 } else {
@@ -598,11 +593,11 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                                         }
                                     };
                                 match dop::parse_expr(&mut tokenizer) {
-                                    Ok(expression) => Some(DopExprAttribute::new(
-                                        attr.name.to_string(),
+                                    Ok(expression) => Some(DopExprAttribute {
+                                        name: attr.name.to_string(),
                                         expression,
-                                        attr.range,
-                                    )),
+                                        range: attr.range,
+                                    }),
                                     Err(err) => {
                                         errors.push(err);
                                         None

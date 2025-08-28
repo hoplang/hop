@@ -9,32 +9,11 @@ pub struct Attribute {
     pub value_range: Range,
 }
 
-impl Attribute {
-    pub fn new(name: String, value: String, range: Range, value_range: Range) -> Self {
-        Attribute {
-            name,
-            value,
-            range,
-            value_range,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct DopExprAttribute {
     pub name: String,
     pub expression: DopExpr,
     pub range: Range,
-}
-
-impl DopExprAttribute {
-    pub fn new(name: String, expression: DopExpr, range: Range) -> Self {
-        DopExprAttribute {
-            name,
-            expression,
-            range,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

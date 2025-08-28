@@ -17,7 +17,10 @@ impl ScriptCollector {
         for component in components {
             for child in &component.children {
                 for node in child.iter_depth_first() {
-                    if let HopNode::NativeHTML { tag_name, children, .. } = node {
+                    if let HopNode::NativeHTML {
+                        tag_name, children, ..
+                    } = node
+                    {
                         if tag_name != "script" {
                             continue;
                         }

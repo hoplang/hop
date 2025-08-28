@@ -1,8 +1,6 @@
 use crate::common::{Position, Range, RangeError};
 use crate::dop::{DopType, infer_type_from_json_file, is_subtype, typecheck_expr};
-use crate::hop::ast::{
-    ComponentDefinitionNode, HopNode, ImportNode, RenderNode,
-};
+use crate::hop::ast::{ComponentDefinitionNode, HopNode, ImportNode, RenderNode};
 use crate::hop::environment::Environment;
 use crate::hop::parser::Module;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -289,7 +287,8 @@ fn typecheck_node(
                 });
 
                 // Validate named arguments against parameter types
-                let provided_args: std::collections::HashSet<_> = params.iter().map(|arg| &arg.var_name.value).collect();
+                let provided_args: std::collections::HashSet<_> =
+                    params.iter().map(|arg| &arg.var_name.value).collect();
                 let expected_params: std::collections::HashSet<_> =
                     comp_info.parameter_types.keys().collect();
 
@@ -311,14 +310,16 @@ fn typecheck_node(
 
                 // Check each provided argument against its corresponding parameter type
                 for arg in params {
-                    if let Some(expected_type) = comp_info.parameter_types.get(&arg.var_name.value) {
-                        let expr_type = match typecheck_expr(&arg.expression, env, annotations, errors) {
-                            Ok(t) => t,
-                            Err(err) => {
-                                errors.push(err);
-                                continue; // Skip to next argument
-                            }
-                        };
+                    if let Some(expected_type) = comp_info.parameter_types.get(&arg.var_name.value)
+                    {
+                        let expr_type =
+                            match typecheck_expr(&arg.expression, env, annotations, errors) {
+                                Ok(t) => t,
+                                Err(err) => {
+                                    errors.push(err);
+                                    continue; // Skip to next argument
+                                }
+                            };
 
                         if !is_subtype(&expr_type, expected_type) {
                             errors.push(RangeError::new(
@@ -539,25 +540,23 @@ fn typecheck_node(
 
             // Pop the loop variable from scope
             if pushed && !env.pop() {
-                errors.push(RangeError::unused_variable(
-                    &var_name.value,
-                    var_name.range,
-                ));
+                errors.push(RangeError::unused_variable(&var_name.value, var_name.range));
             }
         }
         HopNode::Text { .. } | HopNode::Doctype { .. } => {
             // No typechecking needed
         }
-        HopNode::TextExpression { expression, range, .. } => {
+        HopNode::TextExpression {
+            expression, range, ..
+        } => {
             // Typecheck the expression and ensure it's a string
-            let expr_type =
-                match typecheck_expr(expression, env, annotations, errors) {
-                    Ok(t) => t,
-                    Err(err) => {
-                        errors.push(err);
-                        return; // Skip further processing
-                    }
-                };
+            let expr_type = match typecheck_expr(expression, env, annotations, errors) {
+                Ok(t) => t,
+                Err(err) => {
+                    errors.push(err);
+                    return; // Skip further processing
+                }
+            };
             if !is_subtype(&expr_type, &DopType::String) {
                 errors.push(RangeError::new(
                     format!("Expected string for text expression, got {}", expr_type),
