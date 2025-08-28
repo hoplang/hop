@@ -24,6 +24,13 @@ pub struct ImportNode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct RenderNode {
+    pub file_attr: Attribute,
+    pub range: Range,
+    pub children: Vec<HopNode>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ComponentDefinitionNode {
     pub name: String,
     pub opening_name_range: Range,
@@ -36,13 +43,6 @@ pub struct ComponentDefinitionNode {
     pub preview: Option<Vec<HopNode>>,
     pub entrypoint: bool,
     pub slots: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct RenderNode {
-    pub file_attr: Attribute,
-    pub range: Range,
-    pub children: Vec<HopNode>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
