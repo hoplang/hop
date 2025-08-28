@@ -1,9 +1,7 @@
 use crate::common::{Range, RangeError, is_void_element};
 use crate::dop::{self, DopTokenizer};
 use crate::hop::ast::{
-    ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, DopExprAttribute, ErrorNode,
-    ForNode, HopNode, IfNode, ImportNode, NativeHTMLNode, RenderNode, SlotDefinitionNode,
-    SlotReferenceNode, TextExpressionNode, TextNode, XExecNode, XLoadJsonNode, XRawNode,
+    ComponentDefinitionNode, DopExprAttribute, HopNode, ImportNode, RenderNode,
 };
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
@@ -300,9 +298,9 @@ fn construct_top_level_node(
                     let mut slots = HashSet::new();
                     for child in &children {
                         for node in child.iter_depth_first() {
-                            if let HopNode::SlotDefinition(SlotDefinitionNode {
+                            if let HopNode::SlotDefinition {
                                 name, range, ..
-                            }) = node
+                            } = node
                             {
                                 if slots.contains(name) {
                                     errors.push(RangeError::slot_already_defined(name, *range));
@@ -354,37 +352,37 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
     let t = &tree.token;
 
     match t {
-        Token::Doctype => HopNode::Doctype(DoctypeNode {
+        Token::Doctype => HopNode::Doctype {
             value: "".to_string(),
             range: tree.opening_tag_range,
-        }),
-        Token::Text { value } => HopNode::Text(TextNode {
+        },
+        Token::Text { value } => HopNode::Text {
             value: value.clone(),
             range: tree.opening_tag_range,
-        }),
+        },
         Token::Expression { value, range } => {
             // Expression tokens represent {expression} in text content
             let mut tokenizer = match DopTokenizer::new(value, range.start) {
                 Ok(tokenizer) => tokenizer,
                 Err(err) => {
                     errors.push(err);
-                    return HopNode::Error(ErrorNode {
+                    return HopNode::Error {
                         range: *range,
                         children: vec![],
-                    });
+                    };
                 }
             };
             match dop::parse_expr(&mut tokenizer) {
-                Ok(expr) => HopNode::TextExpression(TextExpressionNode {
+                Ok(expr) => HopNode::TextExpression {
                     expression: expr,
                     range: *range,
-                }),
+                },
                 Err(err) => {
                     errors.push(err);
-                    HopNode::Error(ErrorNode {
+                    HopNode::Error {
                         range: tree.opening_tag_range,
                         children: vec![],
-                    })
+                    }
                 }
             }
         }
@@ -402,24 +400,24 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                             Ok(tokenizer) => tokenizer,
                             Err(err) => {
                                 errors.push(err);
-                                return HopNode::Error(ErrorNode {
+                                return HopNode::Error {
                                     range: *expr_range,
                                     children: vec![],
-                                });
+                                };
                             }
                         };
                         match dop::parse_expr(&mut tokenizer) {
-                            Ok(condition) => HopNode::If(IfNode {
+                            Ok(condition) => HopNode::If {
                                 condition,
                                 range: *expr_range,
                                 children,
-                            }),
+                            },
                             Err(err) => {
                                 errors.push(err);
-                                HopNode::Error(ErrorNode {
+                                HopNode::Error {
                                     range: tree.opening_tag_range,
                                     children,
-                                })
+                                }
                             }
                         }
                     }
@@ -428,10 +426,10 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                             "Missing expression in <if> tag".to_string(),
                             tree.opening_tag_range,
                         ));
-                        HopNode::Error(ErrorNode {
+                        HopNode::Error {
                             range: tree.opening_tag_range,
                             children,
-                        })
+                        }
                     }
                 },
                 "for" => match expression {
@@ -440,25 +438,25 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                             Ok(tokenizer) => tokenizer,
                             Err(err) => {
                                 errors.push(err);
-                                return HopNode::Error(ErrorNode {
+                                return HopNode::Error {
                                     range: *expr_range,
                                     children: vec![],
-                                });
+                                };
                             }
                         };
                         match dop::parse_loop_header(&mut tokenizer) {
-                            Ok((var_name, array_expr)) => HopNode::For(ForNode {
+                            Ok((var_name, array_expr)) => HopNode::For {
                                 var_name,
                                 array_expr,
                                 range: tree.opening_tag_range,
                                 children,
-                            }),
+                            },
                             Err(error) => {
                                 errors.push(error);
-                                HopNode::Error(ErrorNode {
+                                HopNode::Error {
                                     range: tree.opening_tag_range,
                                     children,
-                                })
+                                }
                             }
                         }
                     }
@@ -467,10 +465,10 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                             "Missing loop generator expression in <for> tag".to_string(),
                             tree.opening_tag_range,
                         ));
-                        HopNode::Error(ErrorNode {
+                        HopNode::Error {
                             range: tree.opening_tag_range,
                             children,
-                        })
+                        }
                     }
                 },
                 "hop-x-exec" => {
@@ -484,24 +482,24 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                     });
 
                     match cmd_attr {
-                        Some(cmd_attr) => HopNode::XExec(XExecNode {
+                        Some(cmd_attr) => HopNode::XExec {
                             cmd_attr,
                             range: tree.opening_tag_range,
                             children,
-                        }),
-                        None => HopNode::Error(ErrorNode {
+                        },
+                        None => HopNode::Error {
                             range: tree.opening_tag_range,
                             children,
-                        }),
+                        },
                     }
                 }
                 "hop-x-raw" => {
                     let has_trim = attributes.iter().any(|attr| attr.name == "trim");
-                    HopNode::XRaw(XRawNode {
+                    HopNode::XRaw {
                         trim: has_trim,
                         range: tree.opening_tag_range,
                         children,
-                    })
+                    }
                 }
                 "hop-x-load-json" => {
                     let file_attr = t.find_attribute("file").or_else(|| {
@@ -523,33 +521,33 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                     });
 
                     match (file_attr, as_attr) {
-                        (Some(file_attr), Some(as_attr)) => HopNode::XLoadJson(XLoadJsonNode {
+                        (Some(file_attr), Some(as_attr)) => HopNode::XLoadJson {
                             file_attr,
                             as_attr,
                             range: tree.opening_tag_range,
                             children,
-                        }),
-                        _ => HopNode::Error(ErrorNode {
+                        },
+                        _ => HopNode::Error {
                             range: tree.opening_tag_range,
                             children,
-                        }),
+                        },
                     }
                 }
                 tag_name if tag_name.starts_with("slot-") => {
                     let slot_name = &tag_name[5..]; // Remove "slot-" prefix
-                    HopNode::SlotDefinition(SlotDefinitionNode {
+                    HopNode::SlotDefinition {
                         name: slot_name.to_string(),
                         range: tree.opening_tag_range,
                         children,
-                    })
+                    }
                 }
                 tag_name if tag_name.starts_with("with-") => {
                     let slot_name = &tag_name[5..]; // Remove "with-" prefix
-                    HopNode::SlotReference(SlotReferenceNode {
+                    HopNode::SlotReference {
                         name: slot_name.to_string(),
                         range: tree.opening_tag_range,
                         children,
-                    })
+                    }
                 }
                 tag_name if is_valid_component_name(tag_name) => {
                     // This is a component render (contains dash)
@@ -559,10 +557,10 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                                 Ok(tokenizer) => tokenizer,
                                 Err(err) => {
                                     errors.push(err);
-                                    return HopNode::Error(ErrorNode {
+                                    return HopNode::Error {
                                         range: *range,
                                         children: vec![],
-                                    });
+                                    };
                                 }
                             };
                             match dop::parse_arguments(&mut tokenizer) {
@@ -576,7 +574,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                         None => Vec::new(),
                     };
 
-                    HopNode::ComponentReference(ComponentReferenceNode {
+                    HopNode::ComponentReference {
                         component: tag_name.to_string(),
                         opening_name_range: *name_range,
                         closing_name_range: tree.closing_tag_name_range,
@@ -584,7 +582,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                         attributes: attributes.clone(),
                         range: tree.opening_tag_range,
                         children,
-                    })
+                    }
                 }
                 _ => {
                     let mut set_attributes = Vec::new();
@@ -616,13 +614,13 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                         }
                     }
 
-                    HopNode::NativeHTML(NativeHTMLNode {
+                    HopNode::NativeHTML {
                         tag_name: value.clone(),
                         attributes: attributes.clone(),
                         range: tree.opening_tag_range,
                         children,
                         set_attributes,
-                    })
+                    }
                 }
             }
         }
@@ -657,54 +655,54 @@ mod tests {
             let indent = "\t".repeat(depth);
 
             match node {
-                HopNode::Doctype(_) => {
+                HopNode::Doctype { .. } => {
                     lines.push(format!("{}doctype", indent));
                 }
-                HopNode::ComponentReference(ComponentReferenceNode { children, .. }) => {
+                HopNode::ComponentReference { children, .. } => {
                     lines.push(format!("{}render", indent));
                     for child in children {
                         format_node(child, depth + 1, lines);
                     }
                 }
-                HopNode::If(IfNode { children, .. }) => {
+                HopNode::If { children, .. } => {
                     lines.push(format!("{}if", indent));
                     for child in children {
                         format_node(child, depth + 1, lines);
                     }
                 }
-                HopNode::For(ForNode { children, .. }) => {
+                HopNode::For { children, .. } => {
                     lines.push(format!("{}for", indent));
                     for child in children {
                         format_node(child, depth + 1, lines);
                     }
                 }
-                HopNode::NativeHTML(NativeHTMLNode {
+                HopNode::NativeHTML {
                     tag_name, children, ..
-                }) => {
+                } => {
                     lines.push(format!("{}{}", indent, tag_name));
                     for child in children {
                         format_node(child, depth + 1, lines);
                     }
                 }
-                HopNode::SlotDefinition(SlotDefinitionNode { name, children, .. }) => {
+                HopNode::SlotDefinition { name, children, .. } => {
                     lines.push(format!("{}slot-{}", indent, name));
                     for child in children {
                         format_node(child, depth + 1, lines);
                     }
                 }
-                HopNode::SlotReference(SlotReferenceNode { name, children, .. }) => {
+                HopNode::SlotReference { name, children, .. } => {
                     lines.push(format!("{}with-{}", indent, name));
                     for child in children {
                         format_node(child, depth + 1, lines);
                     }
                 }
-                HopNode::XExec(XExecNode { children, .. }) => {
+                HopNode::XExec { children, .. } => {
                     lines.push(format!("{}hop-x-exec", indent));
                     for child in children {
                         format_node(child, depth + 1, lines);
                     }
                 }
-                HopNode::XRaw(XRawNode { children, .. }) => {
+                HopNode::XRaw { children, .. } => {
                     lines.push(format!("{}hop-x-raw", indent));
                     for child in children {
                         format_node(child, depth + 1, lines);

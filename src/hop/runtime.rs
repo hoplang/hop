@@ -2,9 +2,7 @@ use crate::common::{escape_html, is_void_element};
 use crate::dop;
 use crate::dop::{DopType, evaluate_expr, load_json_file};
 use crate::hop::ast::{
-    ComponentDefinitionNode, ComponentReferenceNode, ErrorNode, ForNode, HopNode, IfNode,
-    NativeHTMLNode, RenderNode, SlotDefinitionNode, SlotReferenceNode, XExecNode, XLoadJsonNode,
-    XRawNode,
+    ComponentDefinitionNode, HopNode, RenderNode,
 };
 use crate::hop::environment::Environment;
 use crate::hop::parser::Module;
@@ -285,11 +283,11 @@ impl Program {
         current_module: &str,
     ) -> Result<String> {
         match node {
-            HopNode::If(IfNode {
+            HopNode::If {
                 condition,
                 children,
                 ..
-            }) => {
+            } => {
                 let condition_value = dop::evaluate_expr(condition, env)?;
                 if condition_value.as_bool().unwrap_or(false) {
                     let mut result = String::new();
@@ -306,13 +304,13 @@ impl Program {
                     Ok(String::new())
                 }
             }
-            HopNode::ComponentReference(ComponentReferenceNode {
+            HopNode::ComponentReference {
                 component,
                 args,
                 attributes,
                 children,
                 ..
-            }) => {
+            } => {
                 let mut arg_values = std::collections::BTreeMap::new();
                 for arg in args {
                     arg_values.insert(
@@ -347,7 +345,7 @@ impl Program {
                 let mut non_slot_children = Vec::new();
 
                 for child in children {
-                    if let HopNode::SlotReference(SlotReferenceNode { name, children, .. }) = child
+                    if let HopNode::SlotReference { name, children, .. } = child
                     {
                         let mut slot_html = String::new();
                         for slot_child in children {
@@ -397,13 +395,13 @@ impl Program {
                     additional_class,
                 )
             }
-            HopNode::NativeHTML(NativeHTMLNode {
+            HopNode::NativeHTML {
                 children,
                 tag_name,
                 attributes,
                 set_attributes,
                 ..
-            }) => {
+            } => {
                 // Skip style nodes
                 if tag_name == "style" {
                     return Ok(String::new());
@@ -448,7 +446,7 @@ impl Program {
 
                 Ok(result)
             }
-            HopNode::Error(ErrorNode { children, .. }) => {
+            HopNode::Error { children, .. } => {
                 let mut result = String::new();
                 for child in children {
                     result.push_str(&self.evaluate_node(
@@ -460,13 +458,13 @@ impl Program {
                 }
                 Ok(result)
             }
-            HopNode::Text(text_node) => Ok(text_node.value.clone()),
-            HopNode::TextExpression(text_expr_node) => {
-                let result = evaluate_expr(&text_expr_node.expression, env)?;
+            HopNode::Text { value, .. } => Ok(value.clone()),
+            HopNode::TextExpression { expression, .. } => {
+                let result = evaluate_expr(expression, env)?;
                 Ok(escape_html(result.as_str().unwrap_or("")))
             }
-            HopNode::Doctype(_) => Ok("<!DOCTYPE html>".to_string()),
-            HopNode::SlotDefinition(SlotDefinitionNode { name, children, .. }) => {
+            HopNode::Doctype { .. } => Ok("<!DOCTYPE html>".to_string()),
+            HopNode::SlotDefinition { name, children, .. } => {
                 // Check if we have supply-slot content for this slot
                 if let Some(supplied_html) = slot_content.get(name) {
                     // Use the pre-evaluated supplied content
@@ -485,7 +483,7 @@ impl Program {
                     Ok(result)
                 }
             }
-            HopNode::SlotReference(SlotReferenceNode { children, .. }) => {
+            HopNode::SlotReference { children, .. } => {
                 let mut result = String::new();
                 for child in children {
                     result.push_str(&self.evaluate_node(
@@ -497,9 +495,9 @@ impl Program {
                 }
                 Ok(result)
             }
-            HopNode::XExec(XExecNode {
+            HopNode::XExec {
                 cmd_attr, children, ..
-            }) => {
+            } => {
                 // Collect child content as stdin
                 let mut stdin_content = String::new();
                 for child in children {
@@ -515,7 +513,7 @@ impl Program {
                 let command = &cmd_attr.value;
                 self.execute_command(command, &stdin_content)
             }
-            HopNode::XRaw(XRawNode { trim, children, .. }) => {
+            HopNode::XRaw { trim, children, .. } => {
                 // For hop-x-raw nodes, just render the inner content without the tags
                 let mut result = String::new();
                 for child in children {
@@ -533,12 +531,12 @@ impl Program {
                     Ok(result)
                 }
             }
-            HopNode::XLoadJson(XLoadJsonNode {
+            HopNode::XLoadJson {
                 file_attr,
                 as_attr,
                 children,
                 ..
-            }) => {
+            } => {
                 // Load JSON data from file
                 let file_path = &file_attr.value;
                 let var_name = &as_attr.value;
@@ -573,12 +571,12 @@ impl Program {
 
                 Ok(result)
             }
-            HopNode::For(ForNode {
+            HopNode::For {
                 var_name,
                 array_expr,
                 children,
                 ..
-            }) => {
+            } => {
                 let array_value = evaluate_expr(array_expr, env)?;
 
                 let array = array_value
@@ -611,13 +609,13 @@ impl Program {
         current_module: &str,
     ) -> Result<String> {
         match node {
-            HopNode::NativeHTML(NativeHTMLNode {
+            HopNode::NativeHTML {
                 tag_name,
                 attributes,
                 children,
                 set_attributes,
                 ..
-            }) => {
+            } => {
                 // For entrypoints, preserve script and style tags
                 let mut result = format!("<{}", tag_name);
                 for attr in attributes {

@@ -17,21 +17,21 @@ impl ScriptCollector {
         for component in components {
             for child in &component.children {
                 for node in child.iter_depth_first() {
-                    if let HopNode::NativeHTML(native_html_node) = node {
-                        if native_html_node.tag_name != "script" {
+                    if let HopNode::NativeHTML { tag_name, children, .. } = node {
+                        if tag_name != "script" {
                             continue;
                         }
 
-                        if native_html_node.children.is_empty() {
+                        if children.is_empty() {
                             continue;
                         }
 
-                        if native_html_node.children.len() != 1 {
+                        if children.len() != 1 {
                             panic!("Script tag should have exactly one child");
                         }
 
-                        let script_content = match &native_html_node.children[0] {
-                            HopNode::Text(text_node) => &text_node.value,
+                        let script_content = match &children[0] {
+                            HopNode::Text { value, .. } => value,
                             _ => panic!("Script tag child should be a text node"),
                         };
 
