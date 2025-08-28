@@ -3,14 +3,14 @@ use crate::hop::runtime::{HopMode, Program};
 use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
-use crate::hop::typechecker::{TypeResult, typecheck};
+use crate::hop::typechecker::{ComponentTypeInformation, typecheck};
 use crate::tui::error_formatter::ErrorFormatter;
 use std::collections::HashMap;
 
 pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Result<Program> {
     let modules_map: HashMap<String, String> = modules.into_iter().collect();
     let mut modules = Vec::new();
-    let mut type_results: HashMap<String, TypeResult> = HashMap::new();
+    let mut type_results: HashMap<String, HashMap<String, ComponentTypeInformation>> = HashMap::new();
     let mut module_sorter = TopoSorter::new();
     let mut script_collector = ScriptCollector::new();
 
@@ -53,7 +53,9 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Res
             continue;
         };
         let mut errors = Vec::new();
-        let type_info = typecheck(module, &type_results, &mut errors);
+        let mut type_annotations = Vec::new();
+        let mut component_definition_links = Vec::new();
+        let type_info = typecheck(module, &type_results, &mut errors, &mut type_annotations, &mut component_definition_links);
         if !errors.is_empty() {
             let source_code = modules_map.get(&module_name).unwrap();
             error_formatter.add_errors(module_name.clone(), source_code.clone(), errors);

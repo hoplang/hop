@@ -2,7 +2,7 @@ use crate::common::{Position, Range, RangeError};
 use crate::hop::parser::{Module, parse};
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
-use crate::hop::typechecker::{TypeResult, typecheck};
+use crate::hop::typechecker::{ComponentDefinitionLink, TypeAnnotation, ComponentTypeInformation, typecheck};
 use crate::tui::source_annotator::Annotation;
 use std::collections::HashMap;
 
@@ -108,7 +108,9 @@ impl Annotation for RenameableSymbol {
 
 pub struct Server {
     asts: HashMap<String, Module>,
-    type_results: HashMap<String, TypeResult>,
+    component_type_information: HashMap<String, HashMap<String, ComponentTypeInformation>>,
+    type_annotations: HashMap<String, Vec<TypeAnnotation>>,
+    component_definition_links: HashMap<String, Vec<ComponentDefinitionLink>>,
     parse_errors: HashMap<String, Vec<RangeError>>,
     type_errors: HashMap<String, Vec<RangeError>>,
     topo_sorter: TopoSorter,
@@ -118,7 +120,9 @@ impl Server {
     pub fn new() -> Self {
         Server {
             asts: HashMap::new(),
-            type_results: HashMap::new(),
+            component_type_information: HashMap::new(),
+            type_annotations: HashMap::new(),
+            component_definition_links: HashMap::new(),
             parse_errors: HashMap::new(),
             type_errors: HashMap::new(),
             topo_sorter: TopoSorter::new(),
@@ -135,23 +139,42 @@ impl Server {
             None => return,
         };
 
-        let mut type_errors = Vec::new();
-        let type_result = typecheck(module, &self.type_results, &mut type_errors);
+        let type_errors = self.type_errors.entry(module_name.to_string()).or_default();
+        let type_annotations = self
+            .type_annotations
+            .entry(module_name.to_string())
+            .or_default();
+        let component_definition_links = self
+            .component_definition_links
+            .entry(module_name.to_string())
+            .or_default();
 
-        self.type_results
-            .insert(module_name.to_string(), type_result);
-        self.type_errors
-            .insert(module_name.to_string(), type_errors);
+        type_errors.clear();
+        type_annotations.clear();
+        component_definition_links.clear();
+
+        let component_type_info = typecheck(
+            module,
+            &self.component_type_information,
+            type_errors,
+            type_annotations,
+            component_definition_links,
+        );
+        self.component_type_information
+            .insert(module_name.to_string(), component_type_info);
     }
 
     fn parse_module(&mut self, module_name: &str, source_code: &str) {
-        let mut parse_errors = Vec::new();
+        let parse_errors = self
+            .parse_errors
+            .entry(module_name.to_string())
+            .or_default();
+        parse_errors.clear();
+
         let tokenizer = Tokenizer::new(source_code);
-        let module = parse(module_name.to_string(), tokenizer, &mut parse_errors);
+        let module = parse(module_name.to_string(), tokenizer, parse_errors);
 
         self.asts.insert(module_name.to_string(), module);
-        self.parse_errors
-            .insert(module_name.to_string(), parse_errors);
     }
 
     pub fn update_module(&mut self, module_name: String, source_code: &str) -> Vec<String> {
@@ -183,9 +206,8 @@ impl Server {
     }
 
     pub fn get_hover_info(&self, module_name: &str, position: Position) -> Option<HoverInfo> {
-        self.type_results
+        self.type_annotations
             .get(module_name)?
-            .type_annotations
             .iter()
             .find(|a| a.range.contains_position(position))
             .map(|annotation| HoverInfo {
@@ -199,9 +221,8 @@ impl Server {
         module_name: &str,
         position: Position,
     ) -> Option<DefinitionLocation> {
-        self.type_results
+        self.component_definition_links
             .get(module_name)?
-            .component_definition_links
             .iter()
             .find(|link| link.reference_name_contains_position(position))
             .map(|link| DefinitionLocation {
@@ -215,10 +236,10 @@ impl Server {
         module_name: &str,
         position: Position,
     ) -> Option<Vec<RenameLocation>> {
-        let type_result = self.type_results.get(module_name)?;
+        let component_definition_links = self.component_definition_links.get(module_name)?;
 
         // Check if we're on a component reference
-        for link in &type_result.component_definition_links {
+        for link in component_definition_links {
             if link.reference_name_contains_position(position) {
                 return Some(self.collect_component_rename_locations(
                     &link.definition_component_name,
@@ -257,10 +278,10 @@ impl Server {
         module_name: &str,
         position: Position,
     ) -> Option<RenameableSymbol> {
-        let type_result = self.type_results.get(module_name)?;
+        let component_definition_links = self.component_definition_links.get(module_name)?;
 
         // Check if we're on a component reference
-        for link in &type_result.component_definition_links {
+        for link in component_definition_links {
             if link
                 .reference_opening_name_range
                 .contains_position(position)
@@ -340,8 +361,8 @@ impl Server {
             }
         }
 
-        for (module_name, type_result) in &self.type_results {
-            for link in &type_result.component_definition_links {
+        for (module_name, component_definition_links) in &self.component_definition_links {
+            for link in component_definition_links {
                 if link.definition_component_name == component_name
                     && link.definition_module == definition_module
                 {

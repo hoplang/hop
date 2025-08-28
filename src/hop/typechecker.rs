@@ -41,20 +41,14 @@ pub struct ComponentTypeInformation {
     definition_closing_name_range: Option<Range>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct TypeResult {
-    component_type_information: HashMap<String, ComponentTypeInformation>,
-    pub type_annotations: Vec<TypeAnnotation>,
-    pub component_definition_links: Vec<ComponentDefinitionLink>,
-}
 
 pub fn typecheck(
     module: &Module,
-    import_type_results: &HashMap<String, TypeResult>,
+    import_type_information: &HashMap<String, HashMap<String, ComponentTypeInformation>>,
     errors: &mut Vec<RangeError>,
-) -> TypeResult {
-    let mut type_annotations: Vec<TypeAnnotation> = Vec::new();
-    let mut definition_links: Vec<ComponentDefinitionLink> = Vec::new();
+    type_annotations: &mut Vec<TypeAnnotation>,
+    component_definition_links: &mut Vec<ComponentDefinitionLink>,
+) -> HashMap<String, ComponentTypeInformation> {
     let mut current_module_type_information = HashMap::new();
     let mut imported_components: HashMap<String, Range> = HashMap::new();
 
@@ -68,8 +62,8 @@ pub fn typecheck(
         let from_module = &from_attr.value;
         let component_name = &component_attr.value;
 
-        if let Some(type_result) = import_type_results.get(from_module) {
-            if let Some(comp_info) = type_result.component_type_information.get(component_name) {
+        if let Some(module_type_info) = import_type_information.get(from_module) {
+            if let Some(comp_info) = module_type_info.get(component_name) {
                 if current_module_type_information.contains_key(component_name) {
                     errors.push(RangeError::component_is_already_defined(
                         component_name,
@@ -135,8 +129,8 @@ pub fn typecheck(
                 child,
                 &current_module_type_information,
                 &mut env,
-                &mut type_annotations,
-                &mut definition_links,
+                type_annotations,
+                component_definition_links,
                 errors,
             );
         }
@@ -171,8 +165,8 @@ pub fn typecheck(
                     child,
                     &current_module_type_information,
                     &mut env,
-                    &mut type_annotations,
-                    &mut definition_links,
+                    type_annotations,
+                    component_definition_links,
                     errors,
                 );
             }
@@ -189,18 +183,14 @@ pub fn typecheck(
                 child,
                 &current_module_type_information,
                 &mut env,
-                &mut type_annotations,
-                &mut definition_links,
+                type_annotations,
+                component_definition_links,
                 errors,
             );
         }
     }
 
-    TypeResult {
-        component_type_information: current_module_type_information,
-        type_annotations,
-        component_definition_links: definition_links,
-    }
+    current_module_type_information
 }
 
 fn typecheck_node(
@@ -208,7 +198,7 @@ fn typecheck_node(
     component_info: &HashMap<String, ComponentTypeInformation>,
     env: &mut Environment<DopType>,
     annotations: &mut Vec<TypeAnnotation>,
-    definition_links: &mut Vec<ComponentDefinitionLink>,
+    component_definition_links: &mut Vec<ComponentDefinitionLink>,
     errors: &mut Vec<RangeError>,
 ) {
     match node {
@@ -238,7 +228,7 @@ fn typecheck_node(
                     component_info,
                     env,
                     annotations,
-                    definition_links,
+                    component_definition_links,
                     errors,
                 );
             }
@@ -254,7 +244,7 @@ fn typecheck_node(
         } => {
             if let Some(comp_info) = component_info.get(component) {
                 // Add definition link for go-to-definition
-                definition_links.push(ComponentDefinitionLink {
+                component_definition_links.push(ComponentDefinitionLink {
                     reference_opening_name_range: *opening_name_range,
                     reference_closing_name_range: *closing_name_range,
                     definition_module: comp_info.definition_module.clone(),
@@ -334,7 +324,7 @@ fn typecheck_node(
                     component_info,
                     env,
                     annotations,
-                    definition_links,
+                    component_definition_links,
                     errors,
                 );
             }
@@ -375,7 +365,7 @@ fn typecheck_node(
                     component_info,
                     env,
                     annotations,
-                    definition_links,
+                    component_definition_links,
                     errors,
                 );
             }
@@ -391,7 +381,7 @@ fn typecheck_node(
                     component_info,
                     env,
                     annotations,
-                    definition_links,
+                    component_definition_links,
                     errors,
                 );
             }
@@ -439,7 +429,7 @@ fn typecheck_node(
                     component_info,
                     env,
                     annotations,
-                    definition_links,
+                    component_definition_links,
                     errors,
                 );
             }
@@ -505,7 +495,7 @@ fn typecheck_node(
                     component_info,
                     env,
                     annotations,
-                    definition_links,
+                    component_definition_links,
                     errors,
                 );
             }
@@ -560,7 +550,7 @@ mod tests {
         let archive = Archive::from(archive_str);
         let mut error_formatter = ErrorFormatter::new();
         let mut all_output_lines = Vec::new();
-        let mut module_type_results: HashMap<String, TypeResult> = HashMap::new();
+        let mut module_type_results: HashMap<String, HashMap<String, ComponentTypeInformation>> = HashMap::new();
 
         // Process all .hop files in the archive
         for file in archive.iter() {
@@ -576,7 +566,9 @@ mod tests {
                 panic!("Got parse errors: {:#?}", errors);
             }
 
-            let type_result = typecheck(&module, &module_type_results, &mut errors);
+            let mut type_annotations = Vec::new();
+            let mut component_definition_links = Vec::new();
+            let type_result = typecheck(&module, &module_type_results, &mut errors, &mut type_annotations, &mut component_definition_links);
 
             if !errors.is_empty() {
                 error_formatter.add_errors(
@@ -589,7 +581,6 @@ mod tests {
 
                 for c in module.component_nodes {
                     let component_info = type_result
-                        .component_type_information
                         .get(&c.name)
                         .expect("Component info not found");
                     let param_types_str = component_info

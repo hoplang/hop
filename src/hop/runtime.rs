@@ -734,7 +734,7 @@ mod tests {
     use super::*;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
-    use crate::hop::typechecker::{TypeResult, typecheck};
+    use crate::hop::typechecker::{ComponentTypeInformation, typecheck};
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use simple_txtar::Archive;
@@ -743,7 +743,7 @@ mod tests {
         let archive = Archive::from(archive_str);
 
         let mut modules = Vec::new();
-        let mut type_results: HashMap<String, TypeResult> = HashMap::new();
+        let mut type_results: HashMap<String, HashMap<String, ComponentTypeInformation>> = HashMap::new();
         for file in archive.iter() {
             if file.name.ends_with(".hop") {
                 let module_name = file.name.trim_end_matches(".hop").to_string();
@@ -758,7 +758,9 @@ mod tests {
                     panic!("Parse errors in {}: {:?}", module_name, errors);
                 }
 
-                let type_info = typecheck(&module, &type_results, &mut errors);
+                let mut type_annotations = Vec::new();
+                let mut component_definition_links = Vec::new();
+                let type_info = typecheck(&module, &type_results, &mut errors, &mut type_annotations, &mut component_definition_links);
                 if !errors.is_empty() {
                     panic!("Type errors in {}: {:?}", module_name, errors);
                 }
