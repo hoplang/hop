@@ -279,29 +279,30 @@ impl Program {
         slot_content: &HashMap<String, String>,
         env: &mut Environment<serde_json::Value>,
         current_module: &str,
-    ) -> Result<String> {
+    ) -> anyhow::Result<String> {
         match node {
             HopNode::If {
                 condition,
                 children,
                 ..
-            } => {
-                let condition_value = dop::evaluate_expr(condition, env)?;
-                if condition_value.as_bool().unwrap_or(false) {
+            } => match dop::evaluate_expr(condition, env)?.as_bool() {
+                Some(cond) => {
                     let mut result = String::new();
-                    for child in children {
-                        result.push_str(&self.evaluate_node(
-                            child,
-                            slot_content,
-                            env,
-                            current_module,
-                        )?);
+                    if cond {
+                        for child in children {
+                            result.push_str(&self.evaluate_node(
+                                child,
+                                slot_content,
+                                env,
+                                current_module,
+                            )?);
+                        }
                     }
                     Ok(result)
-                } else {
-                    Ok(String::new())
                 }
-            }
+                None => anyhow::bail!("Could not evaluate condition to boolean"),
+            },
+
             HopNode::ComponentReference {
                 component,
                 args,
@@ -318,25 +319,23 @@ impl Program {
                 }
 
                 let component_name = component;
-                let mut target_module = current_module.to_string();
 
-                if let Some(current_module_import_map) = self.import_maps.get(current_module) {
-                    if let Some(imported_module) = current_module_import_map.get(component_name) {
-                        target_module = imported_module.clone();
-                    }
-                }
+                let target_module = self
+                    .import_maps
+                    .get(current_module)
+                    .and_then(|import_map| import_map.get(component_name))
+                    .cloned()
+                    .unwrap_or_else(|| current_module.to_string());
 
-                // Check if target component has only a default slot
                 let target_component = self
                     .component_maps
                     .get(&target_module)
-                    .and_then(|module_map| module_map.get(component_name));
+                    .and_then(|module_map| module_map.get(component_name))
+                    .expect("Could not find target component");
 
-                let has_only_default_slot = target_component
-                    .map(|comp| {
-                        comp.slots.len() == 1 && comp.slots.contains(&"default".to_string())
-                    })
-                    .unwrap_or(false);
+                // Check if target component has only a default slot
+                let has_only_default_slot =
+                    target_component.slots.len() == 1 && target_component.slots[0] == "default";
 
                 // Collect and evaluate supply-slot mappings
                 let mut new_slot_content: HashMap<String, String> = HashMap::new();
