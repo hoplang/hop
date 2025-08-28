@@ -3,6 +3,7 @@ use crate::dop::{DopType, infer_type_from_json_file, is_subtype, typecheck_expr}
 use crate::hop::ast::{ComponentDefinitionNode, HopNode, ImportNode, RenderNode};
 use crate::hop::environment::Environment;
 use crate::hop::parser::Module;
+use crate::tui::source_annotator::Annotation;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -10,6 +11,16 @@ pub struct TypeAnnotation {
     pub range: Range,
     pub typ: DopType,
     pub name: String,
+}
+
+impl Annotation for TypeAnnotation {
+    fn range(&self) -> Range {
+        self.range
+    }
+
+    fn message(&self) -> String {
+        format!("`{}`: `{}`", self.name, self.typ)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

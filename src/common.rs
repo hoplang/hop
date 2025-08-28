@@ -187,8 +187,8 @@ impl Annotation for RangeError {
         self.range
     }
 
-    fn message(&self) -> &str {
-        &self.message
+    fn message(&self) -> String {
+        self.message.clone()
     }
 }
 

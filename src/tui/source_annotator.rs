@@ -4,7 +4,7 @@ use unicode_width::UnicodeWidthStr;
 /// Trait for any annotation that can be displayed on source code
 pub trait Annotation {
     fn range(&self) -> Range;
-    fn message(&self) -> &str;
+    fn message(&self) -> String;
 }
 
 /// Simple annotation implementation for basic use cases
@@ -18,8 +18,8 @@ impl Annotation for SimpleAnnotation {
         self.range
     }
 
-    fn message(&self) -> &str {
-        &self.message
+    fn message(&self) -> String {
+        self.message.clone()
     }
 }
 
