@@ -397,6 +397,7 @@ impl Server {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::marked_archive::extract_markers_from_archive;
     use crate::tui::source_annotator::SourceAnnotator;
     use expect_test::{Expect, expect};
     use indoc::indoc;
@@ -413,17 +414,30 @@ mod tests {
         server
     }
 
-    fn check_rename_locations(archive: &str, module: &str, position: Position, expected: Expect) {
-        let server = server_from_txtar(archive);
+    fn check_rename_locations(archive: &str, expected: Expect) {
+        let archive_obj = Archive::from(archive);
+        let (cleaned_archive, markers) = extract_markers_from_archive(&archive_obj);
+
+        if markers.len() != 1 {
+            panic!(
+                "Expected exactly one position marker, found {}",
+                markers.len()
+            );
+        }
+
+        let marker = &markers[0];
+        let module = marker.filename.replace(".hop", "");
+
+        let server = server_from_txtar(&cleaned_archive.to_string());
         let mut locs = server
-            .get_rename_locations(module, position)
+            .get_rename_locations(&module, marker.position)
             .unwrap_or_default();
         locs.sort();
 
         let mut output = Vec::new();
-        let archive = Archive::from(archive);
 
-        for file in archive.iter() {
+        // Use cleaned_archive for annotations to avoid showing marker lines
+        for file in cleaned_archive.iter() {
             let module_name = file.name.replace(".hop", "");
 
             // Get all locations for this module
@@ -446,19 +460,27 @@ mod tests {
         expected.assert_eq(&output.join("\n"));
     }
 
-    fn check_definition_location(
-        archive: &str,
-        module: &str,
-        position: Position,
-        expected: Expect,
-    ) {
-        let server = server_from_txtar(archive);
-        let loc = server.get_definition_location(module, position);
+    fn check_definition_location(archive: &str, expected: Expect) {
+        let archive_obj = Archive::from(archive);
+        let (cleaned_archive, markers) = extract_markers_from_archive(&archive_obj);
+
+        if markers.len() != 1 {
+            panic!(
+                "Expected exactly one position marker, found {}",
+                markers.len()
+            );
+        }
+
+        let marker = &markers[0];
+        let module = marker.filename.replace(".hop", "");
+
+        let server = server_from_txtar(&cleaned_archive.to_string());
+        let loc = server.get_definition_location(&module, marker.position);
 
         let output = match loc {
             Some(def_loc) => {
-                let archive = Archive::from(archive);
-                if let Some(file) = archive
+                // Use cleaned_archive for annotations
+                if let Some(file) = cleaned_archive
                     .iter()
                     .find(|f| f.name.replace(".hop", "") == def_loc.module)
                 {
@@ -500,14 +522,27 @@ mod tests {
         expected.assert_eq(&output);
     }
 
-    fn check_renameable_symbol(archive: &str, module: &str, position: Position, expected: Expect) {
-        let server = server_from_txtar(archive);
-        let symbol = server.get_renameable_symbol(module, position);
+    fn check_renameable_symbol(archive: &str, expected: Expect) {
+        let archive_obj = Archive::from(archive);
+        let (cleaned_archive, markers) = extract_markers_from_archive(&archive_obj);
+
+        if markers.len() != 1 {
+            panic!(
+                "Expected exactly one position marker, found {}",
+                markers.len()
+            );
+        }
+
+        let marker = &markers[0];
+        let module = marker.filename.replace(".hop", "");
+
+        let server = server_from_txtar(&cleaned_archive.to_string());
+        let symbol = server.get_renameable_symbol(&module, marker.position);
 
         let output = match symbol {
             Some(sym) => {
-                let archive = Archive::from(archive);
-                if let Some(file) = archive
+                // Use cleaned_archive for annotations
+                if let Some(file) = cleaned_archive
                     .iter()
                     .find(|f| f.name.replace(".hop", "") == module)
                 {
@@ -525,14 +560,27 @@ mod tests {
         expected.assert_eq(&output);
     }
 
-    fn check_hover_info(archive: &str, module: &str, position: Position, expected: Expect) {
-        let server = server_from_txtar(archive);
-        let hover = server.get_hover_info(module, position);
+    fn check_hover_info(archive: &str, expected: Expect) {
+        let archive_obj = Archive::from(archive);
+        let (cleaned_archive, markers) = extract_markers_from_archive(&archive_obj);
+
+        if markers.len() != 1 {
+            panic!(
+                "Expected exactly one position marker, found {}",
+                markers.len()
+            );
+        }
+
+        let marker = &markers[0];
+        let module = marker.filename.replace(".hop", "");
+
+        let server = server_from_txtar(&cleaned_archive.to_string());
+        let hover = server.get_hover_info(&module, marker.position);
 
         let output = match hover {
             Some(hover_info) => {
-                let archive = Archive::from(archive);
-                if let Some(file) = archive
+                // Use cleaned_archive for annotations
+                if let Some(file) = cleaned_archive
                     .iter()
                     .find(|f| f.name.replace(".hop", "") == module)
                 {
@@ -564,10 +612,9 @@ mod tests {
 
                 <main-comp>
                   <hello-world />
+                   ^
                 </main-comp>
             "#},
-            "main",
-            Position::new(4, 4),
             expect![[r#"
                 Definition
                   --> hop/components.hop (line 1, col 2)
@@ -591,10 +638,9 @@ mod tests {
 
                 <main-comp>
                   <hello-world />
+                   ^
                 </main-comp>
             "#},
-            "main",
-            Position::new(4, 4),
             expect![[r#"
                 Rename
                   --> components.hop (line 1, col 2)
@@ -625,6 +671,7 @@ mod tests {
             indoc! {r#"
                 -- components.hop --
                 <hello-world>
+                 ^
                   <h1>Hello World</h1>
                 </hello-world>
 
@@ -635,8 +682,6 @@ mod tests {
                   <hello-world />
                 </main-comp>
             "#},
-            "components",
-            Position::new(1, 2),
             expect![[r#"
                 Rename
                   --> components.hop (line 1, col 2)
@@ -674,6 +719,7 @@ mod tests {
                 </hello-world>
 
                 <main-comp>
+                 ^
                   <hello-world />
                 </main-comp>
 
@@ -684,8 +730,6 @@ mod tests {
                   <hello-world />
                 </main-comp>
             "#},
-            "components",
-            Position::new(5, 2),
             expect![[r#"
                 Rename
                   --> components.hop (line 5, col 2)
@@ -706,11 +750,10 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 <hello-world>
+                 ^
                   <h1>Hello World</h1>
                 </hello-world>
             "#},
-            "main",
-            Position::new(1, 2),
             expect![[r#"
                 Renameable symbol: hello-world
                   --> main.hop (line 1, col 2)
@@ -726,11 +769,10 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 <main-comp {user: {name: string}}>
+                              ^
                   <h1>Hello {user.name}</h1>
                 </main-comp>
             "#},
-            "main",
-            Position::new(1, 15),
             expect![[r#"
                 `user`: `{name: string}`
                   --> main.hop (line 1, col 13)
