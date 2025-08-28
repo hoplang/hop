@@ -32,16 +32,16 @@ struct TokenTree {
 }
 
 impl TokenTree {
-    fn new(token: (Token, Range)) -> Self {
+    fn new(token: Token, range: Range) -> Self {
         TokenTree {
-            token,
+            token: (token, range),
             children: Vec::new(),
             closing_tag_range: None,
         }
     }
 
-    fn append_node(&mut self, token: (Token, Range)) {
-        self.children.push(TokenTree::new(token));
+    fn append_node(&mut self, token: Token, range: Range) {
+        self.children.push(TokenTree::new(token, range));
     }
 
     fn append_tree(&mut self, tree: TokenTree) {
@@ -106,7 +106,7 @@ fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTree {
         expression: None,
     };
     stack.push(StackElement {
-        tree: TokenTree::new((root_token, Range::default())),
+        tree: TokenTree::new(root_token, Range::default()),
         tag_name: "root".to_string(),
     });
 
@@ -120,7 +120,7 @@ fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTree {
                         continue;
                     }
                     Token::Doctype | Token::Text { .. } | Token::Expression { .. } => {
-                        stack.last_mut().unwrap().tree.append_node((token, range));
+                        stack.last_mut().unwrap().tree.append_node(token, range);
                     }
                     Token::StartTag {
                         ref value,
@@ -128,10 +128,10 @@ fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTree {
                         ..
                     } => {
                         if is_void_element(value) || self_closing {
-                            stack.last_mut().unwrap().tree.append_node((token, range));
+                            stack.last_mut().unwrap().tree.append_node(token, range);
                         } else {
                             stack.push(StackElement {
-                                tree: TokenTree::new((token.clone(), range)),
+                                tree: TokenTree::new(token.clone(), range),
                                 tag_name: value.clone(),
                             });
                         }
