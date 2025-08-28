@@ -214,17 +214,19 @@ impl Server {
         }
 
         // Check if we're on a component definition
-        for (component_name, component_info) in &type_result.component_info {
-            let is_on_definition = component_info
-                .definition_opening_name_range
-                .contains_position(position)
-                || component_info
-                    .definition_closing_name_range
-                    .is_some_and(|range| range.contains_position(position));
+        if let Some(module) = self.modules.get(module_name) {
+            for component_node in &module.component_nodes {
+                let is_on_definition = component_node
+                    .opening_name_range
+                    .contains_position(position)
+                    || component_node
+                        .closing_name_range
+                        .is_some_and(|range| range.contains_position(position));
 
-            if is_on_definition {
-                // We're on a definition, collect all rename locations
-                return Some(self.collect_component_rename_locations(component_name, module_name));
+                if is_on_definition {
+                    // We're on a definition, collect all rename locations
+                    return Some(self.collect_component_rename_locations(&component_node.name, module_name));
+                }
             }
         }
 
@@ -264,22 +266,24 @@ impl Server {
         }
 
         // Check if we're on a component definition
-        for (component_name, component_info) in &type_result.component_info {
-            if component_info
-                .definition_opening_name_range
-                .contains_position(position)
-            {
-                return Some(RenameableSymbol {
-                    current_name: component_name.clone(),
-                    range: component_info.definition_opening_name_range,
-                });
-            }
-            if let Some(closing_range) = component_info.definition_closing_name_range {
-                if closing_range.contains_position(position) {
+        if let Some(module) = self.modules.get(module_name) {
+            for component_node in &module.component_nodes {
+                if component_node
+                    .opening_name_range
+                    .contains_position(position)
+                {
                     return Some(RenameableSymbol {
-                        current_name: component_name.clone(),
-                        range: closing_range,
+                        current_name: component_node.name.clone(),
+                        range: component_node.opening_name_range,
                     });
+                }
+                if let Some(closing_range) = component_node.closing_name_range {
+                    if closing_range.contains_position(position) {
+                        return Some(RenameableSymbol {
+                            current_name: component_node.name.clone(),
+                            range: closing_range,
+                        });
+                    }
                 }
             }
         }
@@ -298,23 +302,21 @@ impl Server {
     ) -> Vec<RenameLocation> {
         let mut locations = Vec::new();
 
-        if let Some(component_info) = self
-            .type_results
-            .get(definition_module)
-            .and_then(|t| t.component_info.get(component_name))
-        {
-            // Add the definition's opening tag name
-            locations.push(RenameLocation {
-                module: definition_module.to_string(),
-                range: component_info.definition_opening_name_range,
-            });
-
-            // Add the definition's closing tag name if it exists
-            if let Some(closing_range) = component_info.definition_closing_name_range {
+        if let Some(module) = self.modules.get(definition_module) {
+            if let Some(component_node) = module.component_nodes.iter().find(|node| node.name == component_name) {
+                // Add the definition's opening tag name
                 locations.push(RenameLocation {
                     module: definition_module.to_string(),
-                    range: closing_range,
+                    range: component_node.opening_name_range,
                 });
+
+                // Add the definition's closing tag name if it exists
+                if let Some(closing_range) = component_node.closing_name_range {
+                    locations.push(RenameLocation {
+                        module: definition_module.to_string(),
+                        range: closing_range,
+                    });
+                }
             }
         }
 

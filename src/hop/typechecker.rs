@@ -33,17 +33,17 @@ impl ComponentDefinitionLink {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ComponentInfo {
+pub struct ComponentTypeInformation {
     definition_module: String,
     parameter_types: BTreeMap<String, DopType>,
     slots: Vec<String>,
-    pub definition_opening_name_range: Range,
-    pub definition_closing_name_range: Option<Range>,
+    definition_opening_name_range: Range,
+    definition_closing_name_range: Option<Range>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeResult {
-    pub component_info: HashMap<String, ComponentInfo>,
+    component_type_information: HashMap<String, ComponentTypeInformation>,
     pub type_annotations: Vec<TypeAnnotation>,
     pub component_definition_links: Vec<ComponentDefinitionLink>,
 }
@@ -70,7 +70,7 @@ pub fn typecheck(
         let component_name = &component_attr.value;
 
         if let Some(type_result) = import_type_results.get(from_module) {
-            if let Some(comp_info) = type_result.component_info.get(component_name) {
+            if let Some(comp_info) = type_result.component_type_information.get(component_name) {
                 if component_info.contains_key(component_name) {
                     errors.push(RangeError::component_is_already_defined(
                         component_name,
@@ -151,7 +151,7 @@ pub fn typecheck(
 
         component_info.insert(
             name.clone(),
-            ComponentInfo {
+            ComponentTypeInformation {
                 parameter_types,
                 slots: slots.clone(),
                 definition_module: module.name.clone(),
@@ -203,7 +203,7 @@ pub fn typecheck(
     }
 
     TypeResult {
-        component_info,
+        component_type_information: component_info,
         type_annotations,
         component_definition_links: definition_links,
     }
@@ -211,7 +211,7 @@ pub fn typecheck(
 
 fn typecheck_node(
     node: &HopNode,
-    component_info: &HashMap<String, ComponentInfo>,
+    component_info: &HashMap<String, ComponentTypeInformation>,
     env: &mut Environment<DopType>,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<ComponentDefinitionLink>,
@@ -605,7 +605,7 @@ mod tests {
 
                 for c in module.component_nodes {
                     let component_info = type_result
-                        .component_info
+                        .component_type_information
                         .get(&c.name)
                         .expect("Component info not found");
                     let param_types_str = component_info
