@@ -125,7 +125,7 @@ impl Server {
     pub fn get_hover_info(&self, module_name: &str, position: Position) -> Option<HoverInfo> {
         self.type_results
             .get(module_name)?
-            .annotations
+            .type_annotations
             .iter()
             .find(|a| a.range.contains_position(position))
             .map(|annotation| HoverInfo {

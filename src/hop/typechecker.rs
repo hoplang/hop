@@ -44,20 +44,20 @@ pub struct ComponentInfo {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeResult {
     pub component_info: HashMap<String, ComponentInfo>,
-    pub annotations: Vec<TypeAnnotation>,
+    pub type_annotations: Vec<TypeAnnotation>,
     pub component_definition_links: Vec<ComponentDefinitionLink>,
 }
 
 impl TypeResult {
     pub fn new(
         component_info: HashMap<String, ComponentInfo>,
-        annotations: Vec<TypeAnnotation>,
-        definition_links: Vec<ComponentDefinitionLink>,
+        type_annotations: Vec<TypeAnnotation>,
+        component_definition_links: Vec<ComponentDefinitionLink>,
     ) -> Self {
         TypeResult {
             component_info,
-            annotations,
-            component_definition_links: definition_links,
+            type_annotations,
+            component_definition_links,
         }
     }
 }
@@ -67,7 +67,7 @@ pub fn typecheck(
     import_type_results: &HashMap<String, TypeResult>,
     errors: &mut Vec<RangeError>,
 ) -> TypeResult {
-    let mut annotations: Vec<TypeAnnotation> = Vec::new();
+    let mut type_annotations: Vec<TypeAnnotation> = Vec::new();
     let mut definition_links: Vec<ComponentDefinitionLink> = Vec::new();
     let mut component_info = HashMap::new();
     let mut imported_components: HashMap<String, Range> = HashMap::new();
@@ -132,7 +132,7 @@ pub fn typecheck(
             let param_name = &param.var_name.value;
             let param_type = param.type_annotation.clone();
 
-            annotations.push(TypeAnnotation {
+            type_annotations.push(TypeAnnotation {
                 range: param.var_name.range,
                 typ: param_type.clone(),
                 name: param.var_name.value.clone(),
@@ -146,7 +146,7 @@ pub fn typecheck(
                 child,
                 &component_info,
                 &mut env,
-                &mut annotations,
+                &mut type_annotations,
                 &mut definition_links,
                 &mut referenced_components,
                 errors,
@@ -183,7 +183,7 @@ pub fn typecheck(
                     child,
                     &component_info,
                     &mut env,
-                    &mut annotations,
+                    &mut type_annotations,
                     &mut definition_links,
                     &mut referenced_components,
                     errors,
@@ -202,7 +202,7 @@ pub fn typecheck(
                 child,
                 &component_info,
                 &mut env,
-                &mut annotations,
+                &mut type_annotations,
                 &mut definition_links,
                 &mut referenced_components,
                 errors,
@@ -216,7 +216,7 @@ pub fn typecheck(
         }
     }
 
-    let final_annotations = annotations;
+    let final_annotations = type_annotations;
 
     TypeResult::new(component_info, final_annotations, definition_links)
 }
