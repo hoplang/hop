@@ -107,7 +107,7 @@ impl Annotation for RenameableSymbol {
 }
 
 pub struct Server {
-    modules: HashMap<String, Module>,
+    asts: HashMap<String, Module>,
     type_results: HashMap<String, TypeResult>,
     parse_errors: HashMap<String, Vec<RangeError>>,
     type_errors: HashMap<String, Vec<RangeError>>,
@@ -117,7 +117,7 @@ pub struct Server {
 impl Server {
     pub fn new() -> Self {
         Server {
-            modules: HashMap::new(),
+            asts: HashMap::new(),
             type_results: HashMap::new(),
             parse_errors: HashMap::new(),
             type_errors: HashMap::new(),
@@ -126,43 +126,57 @@ impl Server {
     }
 
     pub fn has_module(&self, module_name: &str) -> bool {
-        self.modules.contains_key(module_name)
+        self.asts.contains_key(module_name)
     }
 
-    pub fn update_module(&mut self, name: String, source_code: &str) -> Vec<String> {
+    fn typecheck_module(&mut self, module_name: &str) {
+        let module = match self.asts.get(module_name) {
+            Some(module) => module,
+            None => return,
+        };
+
+        let mut type_errors = Vec::new();
+        let type_result = typecheck(module, &self.type_results, &mut type_errors);
+
+        self.type_results
+            .insert(module_name.to_string(), type_result);
+        self.type_errors
+            .insert(module_name.to_string(), type_errors);
+    }
+
+    fn parse_module(&mut self, module_name: &str, source_code: &str) {
         let mut parse_errors = Vec::new();
         let tokenizer = Tokenizer::new(source_code);
-        let module = parse(name.clone(), tokenizer, &mut parse_errors);
+        let module = parse(module_name.to_string(), tokenizer, &mut parse_errors);
 
-        self.topo_sorter.clear_dependencies(&name);
-        self.topo_sorter.add_node(name.clone());
+        self.asts.insert(module_name.to_string(), module);
+        self.parse_errors
+            .insert(module_name.to_string(), parse_errors);
+    }
 
-        for import_node in &module.import_nodes {
+    pub fn update_module(&mut self, module_name: String, source_code: &str) -> Vec<String> {
+        self.parse_module(module_name.as_str(), source_code);
+
+        self.topo_sorter.add_node(module_name.clone());
+        self.topo_sorter.clear_dependencies(&module_name);
+
+        let ast = match self.asts.get(&module_name) {
+            Some(module) => module,
+            None => return vec![],
+        };
+
+        for import_node in &ast.import_nodes {
             self.topo_sorter
-                .add_dependency(&name, &import_node.from_attr.value);
+                .add_dependency(&module_name, &import_node.from_attr.value);
         }
 
-        self.modules.insert(name.clone(), module);
-        self.parse_errors.insert(name.clone(), parse_errors);
-
-        let dependent_modules = match self.topo_sorter.sort_subgraph(&name) {
+        let dependent_modules = match self.topo_sorter.sort_subgraph(&module_name) {
             Ok(nodes) => nodes,
-            Err(_) => vec![name],
+            Err(_) => vec![module_name],
         };
 
         for module_name in &dependent_modules {
-            let module = match self.modules.get(module_name) {
-                Some(module) => module,
-                None => continue,
-            };
-
-            let mut type_errors = Vec::new();
-            let type_result = typecheck(module, &self.type_results, &mut type_errors);
-
-            self.type_results
-                .insert(module_name.to_string(), type_result);
-            self.type_errors
-                .insert(module_name.to_string(), type_errors);
+            self.typecheck_module(module_name)
         }
 
         dependent_modules
@@ -214,7 +228,7 @@ impl Server {
         }
 
         // Check if we're on a component definition
-        if let Some(module) = self.modules.get(module_name) {
+        if let Some(module) = self.asts.get(module_name) {
             for component_node in &module.component_nodes {
                 let is_on_definition = component_node
                     .opening_name_range
@@ -268,7 +282,7 @@ impl Server {
         }
 
         // Check if we're on a component definition
-        if let Some(module) = self.modules.get(module_name) {
+        if let Some(module) = self.asts.get(module_name) {
             for component_node in &module.component_nodes {
                 if component_node
                     .opening_name_range
@@ -304,7 +318,7 @@ impl Server {
     ) -> Vec<RenameLocation> {
         let mut locations = Vec::new();
 
-        if let Some(module) = self.modules.get(definition_module) {
+        if let Some(module) = self.asts.get(definition_module) {
             if let Some(component_node) = module
                 .component_nodes
                 .iter()
@@ -349,7 +363,7 @@ impl Server {
         }
 
         // Find all import statements that import this component
-        for (module_name, module) in &self.modules {
+        for (module_name, module) in &self.asts {
             for import in &module.import_nodes {
                 if import.component_attr.value == component_name
                     && import.from_attr.value == definition_module
