@@ -3,7 +3,7 @@ use crate::dop;
 use crate::dop::{evaluate_expr, load_json_file};
 use crate::hop::ast::{ComponentDefinitionNode, HopNode, RenderNode};
 use crate::hop::environment::Environment;
-use crate::hop::parser::Module;
+use crate::hop::parser::HopAST;
 use anyhow::Result;
 use std::collections::HashMap;
 use std::io::Write;
@@ -38,7 +38,7 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn new(modules: Vec<Module>, scripts: String, hop_mode: HopMode) -> Self {
+    pub fn new(modules: Vec<HopAST>, scripts: String, hop_mode: HopMode) -> Self {
         let mut component_maps = HashMap::new();
         let mut import_maps = HashMap::new();
         let mut render_nodes = Vec::new();
@@ -743,7 +743,8 @@ mod tests {
         let archive = Archive::from(archive_str);
 
         let mut modules = Vec::new();
-        let mut type_results: HashMap<String, HashMap<String, ComponentTypeInformation>> = HashMap::new();
+        let mut type_results: HashMap<String, HashMap<String, ComponentTypeInformation>> =
+            HashMap::new();
         for file in archive.iter() {
             if file.name.ends_with(".hop") {
                 let module_name = file.name.trim_end_matches(".hop").to_string();
@@ -760,7 +761,13 @@ mod tests {
 
                 let mut type_annotations = Vec::new();
                 let mut component_definition_links = Vec::new();
-                let type_info = typecheck(&module, &type_results, &mut errors, &mut type_annotations, &mut component_definition_links);
+                let type_info = typecheck(
+                    &module,
+                    &type_results,
+                    &mut errors,
+                    &mut type_annotations,
+                    &mut component_definition_links,
+                );
                 if !errors.is_empty() {
                     panic!("Type errors in {}: {:?}", module_name, errors);
                 }

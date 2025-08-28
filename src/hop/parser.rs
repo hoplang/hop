@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use super::ast::TopLevelHopNode;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Module {
+pub struct HopAST {
     pub name: String,
     pub component_nodes: Vec<ComponentDefinitionNode>,
     pub import_nodes: Vec<ImportNode>,
@@ -46,7 +46,7 @@ impl TokenTree {
     }
 }
 
-pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> Module {
+pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> HopAST {
     let tree = build_tree(tokenizer, errors);
 
     let mut components = Vec::new();
@@ -65,7 +65,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<RangeEr
         }
     }
 
-    Module {
+    HopAST {
         name: module_name,
         component_nodes: components,
         import_nodes: imports,

@@ -1,8 +1,10 @@
 use crate::common::{Position, Range, RangeError};
-use crate::hop::parser::{Module, parse};
+use crate::hop::parser::{HopAST, parse};
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
-use crate::hop::typechecker::{ComponentDefinitionLink, TypeAnnotation, ComponentTypeInformation, typecheck};
+use crate::hop::typechecker::{
+    ComponentDefinitionLink, ComponentTypeInformation, TypeAnnotation, typecheck,
+};
 use crate::tui::source_annotator::Annotation;
 use std::collections::HashMap;
 
@@ -107,7 +109,7 @@ impl Annotation for RenameableSymbol {
 }
 
 pub struct Server {
-    asts: HashMap<String, Module>,
+    asts: HashMap<String, HopAST>,
     component_type_information: HashMap<String, HashMap<String, ComponentTypeInformation>>,
     type_annotations: HashMap<String, Vec<TypeAnnotation>>,
     component_definition_links: HashMap<String, Vec<ComponentDefinitionLink>>,

@@ -2,7 +2,7 @@ use crate::common::{Position, Range, RangeError};
 use crate::dop::{DopType, infer_type_from_json_file, is_subtype, typecheck_expr};
 use crate::hop::ast::{ComponentDefinitionNode, HopNode, ImportNode, RenderNode};
 use crate::hop::environment::Environment;
-use crate::hop::parser::Module;
+use crate::hop::parser::HopAST;
 use std::collections::{BTreeMap, HashMap};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -41,9 +41,8 @@ pub struct ComponentTypeInformation {
     definition_closing_name_range: Option<Range>,
 }
 
-
 pub fn typecheck(
-    module: &Module,
+    module: &HopAST,
     import_type_information: &HashMap<String, HashMap<String, ComponentTypeInformation>>,
     errors: &mut Vec<RangeError>,
     type_annotations: &mut Vec<TypeAnnotation>,
@@ -550,7 +549,8 @@ mod tests {
         let archive = Archive::from(archive_str);
         let mut error_formatter = ErrorFormatter::new();
         let mut all_output_lines = Vec::new();
-        let mut module_type_results: HashMap<String, HashMap<String, ComponentTypeInformation>> = HashMap::new();
+        let mut module_type_results: HashMap<String, HashMap<String, ComponentTypeInformation>> =
+            HashMap::new();
 
         // Process all .hop files in the archive
         for file in archive.iter() {
@@ -568,7 +568,13 @@ mod tests {
 
             let mut type_annotations = Vec::new();
             let mut component_definition_links = Vec::new();
-            let type_result = typecheck(&module, &module_type_results, &mut errors, &mut type_annotations, &mut component_definition_links);
+            let type_result = typecheck(
+                &module,
+                &module_type_results,
+                &mut errors,
+                &mut type_annotations,
+                &mut component_definition_links,
+            );
 
             if !errors.is_empty() {
                 error_formatter.add_errors(
@@ -580,9 +586,8 @@ mod tests {
                 module_type_results.insert(module.name.clone(), type_result.clone());
 
                 for c in module.component_nodes {
-                    let component_info = type_result
-                        .get(&c.name)
-                        .expect("Component info not found");
+                    let component_info =
+                        type_result.get(&c.name).expect("Component info not found");
                     let param_types_str = component_info
                         .parameter_types
                         .iter()
