@@ -210,6 +210,8 @@ impl Server {
 
         // Check if we're on a component definition
         for (component_name, component_info) in &type_result.component_info {
+            // TODO: These should always be equal?
+            // Refactor and remove field from struct
             if component_info.definition_module == module_name {
                 let is_on_definition = component_info
                     .definition_opening_name_range
@@ -320,8 +322,6 @@ impl Server {
 
         for (module_name, type_result) in &self.type_results {
             for link in &type_result.component_definition_links {
-                // TODO: These should always be equal?
-                // Refactor and remove field from struct
                 if link.definition_component_name == component_name
                     && link.definition_module == definition_module
                 {
@@ -523,7 +523,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_definition() {
+    fn test_get_definition_from_component_reference() {
         check_definition_location(
             indoc! {r#"
                 -- hop/components.hop --
