@@ -130,19 +130,19 @@ mod tests {
     fn test_build_with_hop_file() {
         use expect_test::expect;
 
-        let archive = Archive::from(indoc! {"
+        let archive = Archive::from(indoc! {r#"
             -- src/components.hop --
             <hello-world>
               <h1>Build.hop Test</h1>
               <p>This content comes from a build.hop file.</p>
             </hello-world>
             -- build.hop --
-            <import component=\"hello-world\" from=\"src/components\" />
+            <import component="hello-world" from="src/components" />
 
-            <render file=\"foo/bar/index.html\">
+            <render file="foo/bar/index.html">
               <hello-world />
             </render>
-        "});
+        "#});
         let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
@@ -169,20 +169,21 @@ mod tests {
     fn test_build_has_hop_mode_build() {
         use expect_test::expect;
 
-        let archive = Archive::from(indoc! {"
+        let archive = Archive::from(indoc! {r#"
             -- build.hop --
-            <render file=\"index.html\">
+            <render file="index.html">
               mode: {HOP_MODE}
             </render>
-        "});
+        "#});
         let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
+        let output_dir = &dir.join("out");
 
-        let result = execute(&root, &dir.join("out"), None, None);
+        let result = execute(&root, output_dir, None, None);
         assert!(result.is_ok());
         assert_eq!(result.unwrap().len(), 1);
 
-        let archive_string = archive_from_dir(&dir.join("out")).unwrap().to_string();
+        let archive_string = archive_from_dir(output_dir).unwrap().to_string();
 
         expect![[r#"
             -- index.html --
@@ -198,9 +199,9 @@ mod tests {
     fn test_build_with_staticdir() {
         use expect_test::expect;
 
-        let archive = Archive::from(indoc! {"
+        let archive = Archive::from(indoc! {r#"
             -- build.hop --
-            <render file=\"index.html\">
+            <render file="index.html">
               Hello from build.hop!
             </render>
             -- static/style.css --
@@ -209,18 +210,18 @@ mod tests {
             console.log('hello world');
             -- static/images/logo.png --
             fake image data
-        "});
+        "#});
         let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
-        let output_dir = dir.join("out");
+        let output_dir = &dir.join("out");
         let static_dir = dir.join("static");
 
-        let result = execute(&root, &output_dir, None, Some(static_dir.to_str().unwrap()));
+        let result = execute(&root, output_dir, None, Some(static_dir.to_str().unwrap()));
         assert!(result.is_ok());
 
         assert_eq!(result.unwrap().len(), 4);
 
-        let archive_string = archive_from_dir(&output_dir).unwrap().to_string();
+        let archive_string = archive_from_dir(output_dir).unwrap().to_string();
 
         expect![[r#"
             -- images/logo.png --

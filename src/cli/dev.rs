@@ -547,6 +547,7 @@ mod tests {
     use super::*;
     use crate::test_utils::archive::temp_dir_from_archive;
     use axum_test::TestServer;
+    use expect_test::expect;
     use indoc::indoc;
     use simple_txtar::Archive;
     use std::fs;
@@ -555,12 +556,12 @@ mod tests {
     /// index.html entry should be rendered when the user issues a GET to /.
     #[tokio::test]
     async fn test_dev_and_get_index() {
-        let archive = Archive::from(indoc! {"
+        let archive = Archive::from(indoc! {r#"
             -- build.hop --
-            <render file=\"index.html\">
+            <render file="index.html">
               Hello from build.hop!
             </render>
-        "});
+        "#});
         let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
@@ -572,14 +573,66 @@ mod tests {
         response.assert_status_ok();
 
         let body = response.text();
-        assert!(body.contains("Hello from build.hop!"));
+        expect![[r#"
+
+              Hello from build.hop!
+
+            <script type="module">
+            import Idiomorph from '/idiomorph.js';
+
+            const eventSource = new EventSource('/__hop_hot_reload');
+            eventSource.onmessage = function(event) {
+                if (event.data === 'reload') {
+                    fetch(window.location.href)
+                        .then(response => response.text())
+                        .then(html => {
+                            const parser = new DOMParser();
+                            const doc = parser.parseFromString(html, 'text/html');
+                            // Morph the entire document to enable head merging
+                            Idiomorph.morph(document.documentElement, doc.documentElement, {
+                                head: {
+                                    shouldPreserve: function(elt) {
+                                        // Preserve elements with im-preserve attribute (default behavior)
+                                        if (elt.getAttribute('im-preserve') === 'true') {
+                                            return true;
+                                        }
+                                        // Preserve Tailwind CSS style tags
+                                        if (elt.tagName === 'STYLE' && elt.textContent && 
+                                            elt.textContent.includes('/*! tailwindcss')) {
+                                            return true;
+                                        }
+                                        return false;
+                                    }
+                                }
+                            });
+                        })
+                        .catch(error => {
+                            console.error('Hot reload fetch error:', error);
+                        });
+                }
+            };
+            eventSource.onerror = function(event) {
+                console.log('Hot reload connection error:', event);
+                setTimeout(() => {
+                    eventSource.close();
+                    location.reload();
+                }, 1000);
+            };
+            window.addEventListener("beforeunload", function() {
+                // This is important on chrome, not closing the event source will leave it open even when the
+                // user navigates away.
+                eventSource.close();
+            });
+            </script>
+        "#]]
+        .assert_eq(&body);
     }
 
     /// When the user changes the contents of the build.hop file after running `hop dev` the
     /// changes should be reflected when the user sends a request to the server.
     #[tokio::test]
     async fn test_dev_from_hop_dynamic_update() -> anyhow::Result<()> {
-        let archive = Archive::from(indoc! {"
+        let archive = Archive::from(indoc! {r#"
             -- src/test.hop --
             <foo-comp>
               message is foo
@@ -588,12 +641,12 @@ mod tests {
               message is bar
             </bar-comp>
             -- build.hop --
-            <import component=\"foo-comp\" from=\"src/test\" />
+            <import component="foo-comp" from="src/test" />
 
-            <render file=\"index.html\">
+            <render file="index.html">
               <foo-comp />
             </render>
-        "});
+        "#});
         let dir = temp_dir_from_archive(&archive)?;
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
@@ -626,16 +679,16 @@ mod tests {
     /// from the given directory.
     #[tokio::test]
     async fn test_dev_from_hop_static_files() {
-        let archive = Archive::from(indoc! {"
+        let archive = Archive::from(indoc! {r#"
             -- build.hop --
-            <render file=\"index.html\">
+            <render file="index.html">
               hello world!
             </render>
             -- static/css/style.css --
             body { background: blue; }
             -- static/js/script.js --
-            console.log(\"Hello from static file\");
-        "});
+            console.log("Hello from static file");
+        "#});
         let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
@@ -648,29 +701,87 @@ mod tests {
         let response = server.get("/").await;
         response.assert_status_ok();
         let body = response.text();
-        assert!(body.contains("hello world!"));
+        expect![[r#"
+
+              hello world!
+
+            <script type="module">
+            import Idiomorph from '/idiomorph.js';
+
+            const eventSource = new EventSource('/__hop_hot_reload');
+            eventSource.onmessage = function(event) {
+                if (event.data === 'reload') {
+                    fetch(window.location.href)
+                        .then(response => response.text())
+                        .then(html => {
+                            const parser = new DOMParser();
+                            const doc = parser.parseFromString(html, 'text/html');
+                            // Morph the entire document to enable head merging
+                            Idiomorph.morph(document.documentElement, doc.documentElement, {
+                                head: {
+                                    shouldPreserve: function(elt) {
+                                        // Preserve elements with im-preserve attribute (default behavior)
+                                        if (elt.getAttribute('im-preserve') === 'true') {
+                                            return true;
+                                        }
+                                        // Preserve Tailwind CSS style tags
+                                        if (elt.tagName === 'STYLE' && elt.textContent && 
+                                            elt.textContent.includes('/*! tailwindcss')) {
+                                            return true;
+                                        }
+                                        return false;
+                                    }
+                                }
+                            });
+                        })
+                        .catch(error => {
+                            console.error('Hot reload fetch error:', error);
+                        });
+                }
+            };
+            eventSource.onerror = function(event) {
+                console.log('Hot reload connection error:', event);
+                setTimeout(() => {
+                    eventSource.close();
+                    location.reload();
+                }, 1000);
+            };
+            window.addEventListener("beforeunload", function() {
+                // This is important on chrome, not closing the event source will leave it open even when the
+                // user navigates away.
+                eventSource.close();
+            });
+            </script>
+        "#]]
+        .assert_eq(&body);
 
         let response = server.get("/css/style.css").await;
         response.assert_status_ok();
         let body = response.text();
-        assert!(body.contains("body { background: blue; }"));
+        expect![[r#"
+            body { background: blue; }
+        "#]]
+        .assert_eq(&body);
 
         let response = server.get("/js/script.js").await;
         response.assert_status_ok();
         let body = response.text();
-        assert!(body.contains("console.log(\"Hello from static file\");"));
+        expect![[r#"
+            console.log("Hello from static file");
+        "#]]
+        .assert_eq(&body);
     }
 
     /// When the user calls `hop dev` the global HOP_MODE variable should
     /// be set to 'build'.
     #[tokio::test]
     async fn test_dev_has_hop_mode_dev() {
-        let archive = Archive::from(indoc! {"
+        let archive = Archive::from(indoc! {r#"
             -- build.hop --
-            <render file=\"index.html\">
+            <render file="index.html">
               mode: {HOP_MODE}
             </render>
-        "});
+        "#});
         let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
@@ -681,25 +792,77 @@ mod tests {
         let response = server.get("/").await;
         response.assert_status_ok();
         let body = response.text();
-        assert!(body.contains("mode: dev"));
+        expect![[r#"
+
+              mode: dev
+
+            <script type="module">
+            import Idiomorph from '/idiomorph.js';
+
+            const eventSource = new EventSource('/__hop_hot_reload');
+            eventSource.onmessage = function(event) {
+                if (event.data === 'reload') {
+                    fetch(window.location.href)
+                        .then(response => response.text())
+                        .then(html => {
+                            const parser = new DOMParser();
+                            const doc = parser.parseFromString(html, 'text/html');
+                            // Morph the entire document to enable head merging
+                            Idiomorph.morph(document.documentElement, doc.documentElement, {
+                                head: {
+                                    shouldPreserve: function(elt) {
+                                        // Preserve elements with im-preserve attribute (default behavior)
+                                        if (elt.getAttribute('im-preserve') === 'true') {
+                                            return true;
+                                        }
+                                        // Preserve Tailwind CSS style tags
+                                        if (elt.tagName === 'STYLE' && elt.textContent && 
+                                            elt.textContent.includes('/*! tailwindcss')) {
+                                            return true;
+                                        }
+                                        return false;
+                                    }
+                                }
+                            });
+                        })
+                        .catch(error => {
+                            console.error('Hot reload fetch error:', error);
+                        });
+                }
+            };
+            eventSource.onerror = function(event) {
+                console.log('Hot reload connection error:', event);
+                setTimeout(() => {
+                    eventSource.close();
+                    location.reload();
+                }, 1000);
+            };
+            window.addEventListener("beforeunload", function() {
+                // This is important on chrome, not closing the event source will leave it open even when the
+                // user navigates away.
+                eventSource.close();
+            });
+            </script>
+        "#]]
+        .assert_eq(&body);
     }
 
     /// When the user calls `hop dev` and requests a path that doesn't exist in the manifest,
     /// a 404 page should be returned with available routes.
     #[tokio::test]
     async fn test_dev_404_with_helpful_message() {
-        let archive = Archive::from(indoc! {"
+        let archive = Archive::from(indoc! {r#"
             -- build.hop --
-            <render file=\"index.html\">
+            <render file="index.html">
               Hello world!
             </render>
-            <render file=\"about.html\">
+            <render file="about.html">
               The about page
             </render>
-            <render file=\"foo/bar.html\">
+            <render file="foo/bar.html">
               The nested page
             </render>
-        "});
+        "#});
         let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
@@ -712,29 +875,125 @@ mod tests {
         response.assert_status(axum::http::StatusCode::NOT_FOUND);
 
         let body = response.text();
-        assert!(body.contains("404 Not Found"));
-        assert!(body.contains("/nonexistent"));
-        assert!(body.contains("Available routes"));
-        assert!(body.contains("href=\"/\""));
-        assert!(body.contains("href=\"/about\""));
-        assert!(body.contains("href=\"/foo/bar\""));
-        assert!(body.contains(">/</a>"));
-        assert!(body.contains(">/about</a>"));
-        assert!(body.contains(">/foo/bar</a>"));
-        assert!(body.contains("build.hop"));
+        expect![[r#"
 
-        // Verify hot reload script is included
-        assert!(body.contains("/__hop_hot_reload"));
+            	<!DOCTYPE html>
+            	<html>
+            	<head>
+            		<title>404 Not Found</title>
+            		<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+            		<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+                    <style>
+                      body { font-family: "JetBrains Mono"; }
+                    </style>
+            	</head>
+            	<body>
+            		<div data-hop-id="hop/ui/page-container" class="max-w-6xl px-4 my-12 mx-auto">
+	
+            			<div data-hop-id="hop/error_pages/error-not-found-error" class="flex flex-col gap-4">
+            	<div data-hop-id="hop/ui/heading-box" class="border border-2 shadow-[4px_4px_rgba(0,0,0,0.1)]">
+            	<div class="p-3 py-2 flex justify-between border-b-2">
+            		<div>
+            			<span class="font-medium uppercase">
+            			  Error
+            			</span>
+            			Route not found
+            		</div>
+            	</div>
+            	<div class="p-5 gap-5 flex flex-col" data-id="body">
+		
+            			<div>
+            			The requested route <span data-hop-id="hop/error_pages/code-text">
+            	<code class="italic">/nonexistent</code>
+            </span> was not found in the build file.
+            			</div>
+            			Available routes:<br>
+            			<ul class="ml-6" style="list-style-type: square;">
+				
+					
+            					  <li><a href="/">/</a></li>
+					
+            					  <li><a href="/about">/about</a></li>
+					
+            					  <li><a href="/foo/bar">/foo/bar</a></li>
+					
+				
+            			</ul>
+            			<p>
+            				To add this route, update your <span data-hop-id="hop/error_pages/code-text">
+            	<code class="italic">build.hop</code>
+            </span> file with an entry for this path.
+            			</p>
+		
+            	</div>
+	
+            </div>
+	
+            </div>
+		
+            </div>
+	
+            <script type="module">
+            import Idiomorph from '/idiomorph.js';
+
+            const eventSource = new EventSource('/__hop_hot_reload');
+            eventSource.onmessage = function(event) {
+                if (event.data === 'reload') {
+                    fetch(window.location.href)
+                        .then(response => response.text())
+                        .then(html => {
+                            const parser = new DOMParser();
+                            const doc = parser.parseFromString(html, 'text/html');
+                            // Morph the entire document to enable head merging
+                            Idiomorph.morph(document.documentElement, doc.documentElement, {
+                                head: {
+                                    shouldPreserve: function(elt) {
+                                        // Preserve elements with im-preserve attribute (default behavior)
+                                        if (elt.getAttribute('im-preserve') === 'true') {
+                                            return true;
+                                        }
+                                        // Preserve Tailwind CSS style tags
+                                        if (elt.tagName === 'STYLE' && elt.textContent && 
+                                            elt.textContent.includes('/*! tailwindcss')) {
+                                            return true;
+                                        }
+                                        return false;
+                                    }
+                                }
+                            });
+                        })
+                        .catch(error => {
+                            console.error('Hot reload fetch error:', error);
+                        });
+                }
+            };
+            eventSource.onerror = function(event) {
+                console.log('Hot reload connection error:', event);
+                setTimeout(() => {
+                    eventSource.close();
+                    location.reload();
+                }, 1000);
+            };
+            window.addEventListener("beforeunload", function() {
+                // This is important on chrome, not closing the event source will leave it open even when the
+                // user navigates away.
+                eventSource.close();
+            });
+            </script>
+            </body>
+            	</html>
+        "#]]
+        .assert_eq(&body);
     }
 
     /// When the user calls `hop dev` and the program doesn't compile an error should be returned.
     #[tokio::test]
     async fn test_dev_compile_error() {
-        let archive = Archive::from(indoc! {"
+        let archive = Archive::from(indoc! {r#"
             -- build.hop --
-            <render file=\"index.html\">
+            <render file="index.html">
                 <div>
-        "});
+        "#});
         let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
