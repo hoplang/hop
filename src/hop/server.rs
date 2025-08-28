@@ -396,6 +396,7 @@ mod tests {
     use super::*;
     use crate::tui::source_annotator::SourceAnnotator;
     use expect_test::{Expect, expect};
+    use indoc::indoc;
     use simple_txtar::Archive;
 
     fn server_from_txtar(archive: &str) -> Server {
@@ -480,7 +481,10 @@ mod tests {
             "".to_string()
         } else {
             let archive = Archive::from(archive);
-            if let Some(file) = archive.iter().find(|f| f.name.replace(".hop", "") == module) {
+            if let Some(file) = archive
+                .iter()
+                .find(|f| f.name.replace(".hop", "") == module)
+            {
                 SourceAnnotator::new()
                     .with_filename(&file.name)
                     .with_location()
@@ -493,19 +497,17 @@ mod tests {
         expected.assert_eq(&output);
     }
 
-    fn check_renameable_symbol(
-        archive: &str,
-        module: &str,
-        position: Position,
-        expected: Expect,
-    ) {
+    fn check_renameable_symbol(archive: &str, module: &str, position: Position, expected: Expect) {
         let server = server_from_txtar(archive);
         let symbol = server.get_renameable_symbol(module, position);
 
         let output = match symbol {
             Some(sym) => {
                 let archive = Archive::from(archive);
-                if let Some(file) = archive.iter().find(|f| f.name.replace(".hop", "") == module) {
+                if let Some(file) = archive
+                    .iter()
+                    .find(|f| f.name.replace(".hop", "") == module)
+                {
                     SourceAnnotator::new()
                         .with_filename(&file.name)
                         .with_location()
@@ -523,19 +525,19 @@ mod tests {
     #[test]
     fn test_get_definition() {
         check_definition_location(
-            r#"
--- hop/components.hop --
-<hello-world>
-  <h1>Hello World</h1>
-</hello-world>
+            indoc! {r#"
+                -- hop/components.hop --
+                <hello-world>
+                  <h1>Hello World</h1>
+                </hello-world>
 
--- main.hop --
-<import component="hello-world" from="hop/components" />
+                -- main.hop --
+                <import component="hello-world" from="hop/components" />
 
-<main-comp>
-  <hello-world />
-</main-comp>
-"#,
+                <main-comp>
+                  <hello-world />
+                </main-comp>
+            "#},
             "main",
             Position::new(4, 4),
             expect![[r#"
@@ -550,19 +552,19 @@ mod tests {
     #[test]
     fn test_get_rename_locations_from_component_reference() {
         check_rename_locations(
-            r#"
--- components.hop --
-<hello-world>
-  <h1>Hello World</h1>
-</hello-world>
+            indoc! {r#"
+                -- components.hop --
+                <hello-world>
+                  <h1>Hello World</h1>
+                </hello-world>
 
--- main.hop --
-<import component="hello-world" from="components" />
+                -- main.hop --
+                <import component="hello-world" from="components" />
 
-<main-comp>
-  <hello-world />
-</main-comp>
-"#,
+                <main-comp>
+                  <hello-world />
+                </main-comp>
+            "#},
             "main",
             Position::new(4, 4),
             expect![[r#"
@@ -592,19 +594,19 @@ mod tests {
     #[test]
     fn test_get_rename_locations_from_component_definition() {
         check_rename_locations(
-            r#"
--- components.hop --
-<hello-world>
-  <h1>Hello World</h1>
-</hello-world>
+            indoc! {r#"
+                -- components.hop --
+                <hello-world>
+                  <h1>Hello World</h1>
+                </hello-world>
 
--- main.hop --
-<import component="hello-world" from="components" />
+                -- main.hop --
+                <import component="hello-world" from="components" />
 
-<main-comp>
-  <hello-world />
-</main-comp>
-"#,
+                <main-comp>
+                  <hello-world />
+                </main-comp>
+            "#},
             "components",
             Position::new(1, 2),
             expect![[r#"
@@ -637,23 +639,23 @@ mod tests {
     #[test]
     fn test_get_rename_locations_main_comp_scoped() {
         check_rename_locations(
-            r#"
--- components.hop --
-<hello-world>
-  <h1>Hello World</h1>
-</hello-world>
+            indoc! {r#"
+                -- components.hop --
+                <hello-world>
+                  <h1>Hello World</h1>
+                </hello-world>
 
-<main-comp>
-  <hello-world />
-</main-comp>
+                <main-comp>
+                  <hello-world />
+                </main-comp>
 
--- main.hop --
-<import component="hello-world" from="components" />
+                -- main.hop --
+                <import component="hello-world" from="components" />
 
-<main-comp>
-  <hello-world />
-</main-comp>
-"#,
+                <main-comp>
+                  <hello-world />
+                </main-comp>
+            "#},
             "components",
             Position::new(5, 2),
             expect![[r#"
@@ -673,12 +675,12 @@ mod tests {
     #[test]
     fn test_get_renameable_symbol() {
         check_renameable_symbol(
-            r#"
--- main.hop --
-<hello-world>
-  <h1>Hello World</h1>
-</hello-world>
-"#,
+            indoc! {r#"
+                -- main.hop --
+                <hello-world>
+                  <h1>Hello World</h1>
+                </hello-world>
+            "#},
             "main",
             Position::new(1, 2),
             expect![[r#"
@@ -693,13 +695,13 @@ mod tests {
     #[test]
     fn test_get_error_diagnostics_parse_errors() {
         check_error_diagnostics(
-            r#"
--- main.hop --
-<main-comp>
-  <div>
-  <span>unclosed span
-</main-comp>
-"#,
+            indoc! {r#"
+                -- main.hop --
+                <main-comp>
+                  <div>
+                  <span>unclosed span
+                </main-comp>
+            "#},
             "main",
             expect![[r#"
                 Unclosed <span>
