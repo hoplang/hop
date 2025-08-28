@@ -1,4 +1,4 @@
-use crate::tui::source_annotator::Annotation;
+use crate::{dop::tokenizer::DopToken, tui::source_annotator::Annotation};
 use std::fmt;
 
 /// Represents a position in source code
@@ -155,6 +155,30 @@ impl RangeError {
 
     pub fn unused_import(component: &str, range: Range) -> Self {
         Self::new(format!("Unused import: {component}"), range)
+    }
+
+    pub fn expected_token(token: &DopToken, range: Range) -> Self {
+        Self::new(format!("Expected token '{token}'"), range)
+    }
+
+    pub fn unexpected_token(token: &DopToken, range: Range) -> Self {
+        Self::new(format!("Unexpected token '{token}'"), range)
+    }
+
+    pub fn expected_variable_name(range: Range) -> Self {
+        Self::new("Expected variable name".to_string(), range)
+    }
+
+    pub fn expected_property_name(range: Range) -> Self {
+        Self::new("Expected property name".to_string(), range)
+    }
+
+    pub fn duplicate_argument_name(name: &str, range: Range) -> Self {
+        Self::new(format!("Duplicate argument name '{name}'"), range)
+    }
+
+    pub fn duplicate_property_name(name: &str, range: Range) -> Self {
+        Self::new(format!("Duplicate property name '{name}'"), range)
     }
 }
 

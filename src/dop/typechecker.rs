@@ -204,7 +204,7 @@ pub fn typecheck_expr(
 mod tests {
     use super::*;
     use crate::dop::DopTokenizer;
-    use crate::dop::parse_parameters_with_types;
+    use crate::dop::parse_parameters;
     use crate::dop::parser::parse_expr;
     use crate::tui::source_annotator::SourceAnnotator;
     use expect_test::{Expect, expect};
@@ -215,8 +215,7 @@ mod tests {
         if !env_str.is_empty() {
             let mut tokenizer = DopTokenizer::new(env_str, crate::common::Position::new(1, 1))
                 .expect("Failed to create tokenizer");
-            let params =
-                parse_parameters_with_types(&mut tokenizer).expect("Failed to parse environment");
+            let params = parse_parameters(&mut tokenizer).expect("Failed to parse environment");
             for param in params {
                 env.push(param.var_name.value, param.type_annotation);
             }

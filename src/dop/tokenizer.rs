@@ -1,6 +1,8 @@
 use crate::common::{Position, Range, RangeError};
 use std::{fmt, mem, str::FromStr};
 
+use super::parser::DopVarName;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum DopToken {
     Identifier(String),
@@ -126,6 +128,36 @@ impl DopTokenizer {
 
     pub fn peek(&self) -> &(DopToken, Range) {
         &self.current_token
+    }
+
+    pub fn expect_token(&mut self, expected: DopToken) -> Result<(DopToken, Range), RangeError> {
+        let (actual, range) = self.advance()?;
+        if actual != expected {
+            Err(RangeError::expected_token(&expected, range))
+        } else {
+            Ok((actual, range))
+        }
+    }
+
+    pub fn expect_variable_name(&mut self) -> Result<DopVarName, RangeError> {
+        match self.advance()? {
+            (DopToken::Identifier(name), range) => DopVarName::new(name, range),
+            (_, range) => Err(RangeError::expected_variable_name(range)),
+        }
+    }
+
+    pub fn expect_eof(&self) -> Result<(), RangeError> {
+        match self.peek() {
+            (DopToken::Eof, _) => Ok(()),
+            (token, range) => Err(RangeError::unexpected_token(token, *range)),
+        }
+    }
+
+    pub fn expect_property_name(&mut self) -> Result<(String, Range), RangeError> {
+        match self.advance()? {
+            (DopToken::Identifier(name), range) => Ok((name, range)),
+            (_, range) => Err(RangeError::expected_property_name(range)),
+        }
     }
 
     pub fn advance(&mut self) -> Result<(DopToken, Range), RangeError> {

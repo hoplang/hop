@@ -2,9 +2,8 @@ use crate::common::{Range, RangeError, is_void_element};
 use crate::dop::{self, DopTokenizer};
 use crate::hop::ast::{
     ComponentDefinitionNode, ComponentReferenceNode, DoctypeNode, DopExprAttribute, ErrorNode,
-    ForNode, HopNode, IfNode, ImportNode, NativeHTMLNode, RenderNode,
-    SlotDefinitionNode, SlotReferenceNode, TextExpressionNode, TextNode, XExecNode, XLoadJsonNode,
-    XRawNode,
+    ForNode, HopNode, IfNode, ImportNode, NativeHTMLNode, RenderNode, SlotDefinitionNode,
+    SlotReferenceNode, TextExpressionNode, TextNode, XExecNode, XLoadJsonNode, XRawNode,
 };
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
@@ -165,7 +164,6 @@ fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTree {
     stack.pop().unwrap().0
 }
 
-
 fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Option<ToplevelNode> {
     let (t, range) = &tree.token;
 
@@ -268,7 +266,7 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                                     return Vec::new();
                                 }
                             };
-                            match dop::parse_parameters_with_types(&mut tokenizer) {
+                            match dop::parse_parameters(&mut tokenizer) {
                                 Ok(params) => params,
                                 Err(error) => {
                                     errors.push(error);
@@ -281,7 +279,10 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                     let mut slots = HashSet::new();
                     for child in &children {
                         for node in child.iter_depth_first() {
-                            if let HopNode::SlotDefinition(SlotDefinitionNode { name, range, .. }) = node {
+                            if let HopNode::SlotDefinition(SlotDefinitionNode {
+                                name, range, ..
+                            }) = node
+                            {
                                 if slots.contains(name) {
                                     errors.push(RangeError::slot_already_defined(name, *range));
                                 } else {
@@ -289,7 +290,9 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                                     if (name == "default" && !slots.is_empty())
                                         || (slots.contains("default") && name != "default")
                                     {
-                                        errors.push(RangeError::default_slot_with_other_slots(*range));
+                                        errors.push(RangeError::default_slot_with_other_slots(
+                                            *range,
+                                        ));
                                     } else {
                                         slots.insert(name.clone());
                                     }
@@ -539,7 +542,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                                     });
                                 }
                             };
-                            match dop::parse_named_arguments(&mut tokenizer) {
+                            match dop::parse_arguments(&mut tokenizer) {
                                 Ok(named_args) => named_args,
                                 Err(err) => {
                                     errors.push(err);
@@ -875,7 +878,7 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                error: Expected 'in' keyword in <for> tag
+                error: Expected token 'in'
                 1 | <main-comp>
                 2 |     <for {foo}>
                   |              ^
