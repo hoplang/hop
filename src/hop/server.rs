@@ -12,10 +12,28 @@ pub struct HoverInfo {
     pub range: Range,
 }
 
+impl Annotation for HoverInfo {
+    fn range(&self) -> Range {
+        self.range
+    }
+    fn message(&self) -> String {
+        self.type_str.clone()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct DefinitionLocation {
     pub module: String,
     pub range: Range,
+}
+
+impl Annotation for DefinitionLocation {
+    fn range(&self) -> Range {
+        self.range
+    }
+    fn message(&self) -> String {
+        "Definition".to_string()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -24,10 +42,28 @@ pub struct Diagnostic {
     pub range: Range,
 }
 
+impl Annotation for Diagnostic {
+    fn range(&self) -> Range {
+        self.range
+    }
+    fn message(&self) -> String {
+        self.message.clone()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenameLocation {
     pub module: String,
     pub range: Range,
+}
+
+impl Annotation for RenameLocation {
+    fn range(&self) -> Range {
+        self.range
+    }
+    fn message(&self) -> String {
+        "Rename".to_string()
+    }
 }
 
 impl PartialOrd for RenameLocation {
@@ -55,60 +91,19 @@ impl Ord for RenameLocation {
     }
 }
 
-impl Annotation for RenameLocation {
-    fn range(&self) -> Range {
-        self.range
-    }
-
-    fn message(&self) -> String {
-        "Rename".to_string()
-    }
-}
-
-impl Annotation for DefinitionLocation {
-    fn range(&self) -> Range {
-        self.range
-    }
-
-    fn message(&self) -> String {
-        "Definition".to_string()
-    }
-}
-
-impl Annotation for Diagnostic {
-    fn range(&self) -> Range {
-        self.range
-    }
-
-    fn message(&self) -> String {
-        self.message.clone()
-    }
+#[derive(Debug, Clone, PartialEq)]
+pub struct RenameableSymbol {
+    pub current_name: String,
+    pub range: Range,
 }
 
 impl Annotation for RenameableSymbol {
     fn range(&self) -> Range {
         self.range
     }
-
     fn message(&self) -> String {
         format!("Renameable symbol: {}", self.current_name)
     }
-}
-
-impl Annotation for HoverInfo {
-    fn range(&self) -> Range {
-        self.range
-    }
-
-    fn message(&self) -> String {
-        self.type_str.clone()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct RenameableSymbol {
-    pub current_name: String,
-    pub range: Range,
 }
 
 pub struct Server {
