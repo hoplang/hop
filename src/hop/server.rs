@@ -3,6 +3,7 @@ use crate::hop::parser::{Module, parse};
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
 use crate::hop::typechecker::{TypeResult, typecheck};
+use crate::tui::source_annotator::Annotation;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -51,6 +52,46 @@ impl Ord for RenameLocation {
             }
             other => other,
         }
+    }
+}
+
+impl Annotation for RenameLocation {
+    fn range(&self) -> Range {
+        self.range
+    }
+
+    fn message(&self) -> String {
+        "Rename".to_string()
+    }
+}
+
+impl Annotation for DefinitionLocation {
+    fn range(&self) -> Range {
+        self.range
+    }
+
+    fn message(&self) -> String {
+        "Definition".to_string()
+    }
+}
+
+impl Annotation for Diagnostic {
+    fn range(&self) -> Range {
+        self.range
+    }
+
+    fn message(&self) -> String {
+        self.message.clone()
+    }
+}
+
+impl Annotation for RenameableSymbol {
+    fn range(&self) -> Range {
+        self.range
+    }
+
+    fn message(&self) -> String {
+        format!("Renameable symbol: {}", self.current_name)
     }
 }
 
@@ -279,7 +320,8 @@ impl Server {
 
         for (module_name, type_result) in &self.type_results {
             for link in &type_result.component_definition_links {
-                // Check if this link refers to our component definition
+                // TODO: These should always be equal?
+                // Refactor and remove field from struct
                 if link.definition_component_name == component_name
                     && link.definition_module == definition_module
                 {
@@ -352,6 +394,8 @@ impl Server {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tui::source_annotator::SourceAnnotator;
+    use expect_test::{Expect, expect};
     use simple_txtar::Archive;
 
     fn server_from_txtar(archive: &str) -> Server {
@@ -365,9 +409,120 @@ mod tests {
         server
     }
 
+    fn check_rename_locations(archive: &str, module: &str, position: Position, expected: Expect) {
+        let server = server_from_txtar(archive);
+        let mut locs = server
+            .get_rename_locations(module, position)
+            .unwrap_or_default();
+        locs.sort();
+
+        let mut output = Vec::new();
+        let archive = Archive::from(archive);
+
+        for file in archive.iter() {
+            let module_name = file.name.replace(".hop", "");
+
+            // Get all locations for this module
+            let module_locs: Vec<RenameLocation> = locs
+                .iter()
+                .filter(|l| l.module == module_name)
+                .cloned()
+                .collect();
+
+            if !module_locs.is_empty() {
+                output.push(
+                    SourceAnnotator::new()
+                        .with_filename(&file.name)
+                        .with_location()
+                        .annotate(&file.content, &module_locs),
+                );
+            }
+        }
+
+        expected.assert_eq(&output.join("\n"));
+    }
+
+    fn check_definition_location(
+        archive: &str,
+        module: &str,
+        position: Position,
+        expected: Expect,
+    ) {
+        let server = server_from_txtar(archive);
+        let loc = server.get_definition_location(module, position);
+
+        let output = match loc {
+            Some(def_loc) => {
+                let archive = Archive::from(archive);
+                if let Some(file) = archive
+                    .iter()
+                    .find(|f| f.name.replace(".hop", "") == def_loc.module)
+                {
+                    SourceAnnotator::new()
+                        .with_filename(&file.name)
+                        .with_location()
+                        .annotate(&file.content, &[def_loc])
+                } else {
+                    "File not found".to_string()
+                }
+            }
+            None => "No definition found".to_string(),
+        };
+
+        expected.assert_eq(&output);
+    }
+
+    fn check_error_diagnostics(archive: &str, module: &str, expected: Expect) {
+        let server = server_from_txtar(archive);
+        let diagnostics = server.get_error_diagnostics(module);
+
+        let output = if diagnostics.is_empty() {
+            "".to_string()
+        } else {
+            let archive = Archive::from(archive);
+            if let Some(file) = archive.iter().find(|f| f.name.replace(".hop", "") == module) {
+                SourceAnnotator::new()
+                    .with_filename(&file.name)
+                    .with_location()
+                    .annotate(&file.content, &diagnostics)
+            } else {
+                "File not found".to_string()
+            }
+        };
+
+        expected.assert_eq(&output);
+    }
+
+    fn check_renameable_symbol(
+        archive: &str,
+        module: &str,
+        position: Position,
+        expected: Expect,
+    ) {
+        let server = server_from_txtar(archive);
+        let symbol = server.get_renameable_symbol(module, position);
+
+        let output = match symbol {
+            Some(sym) => {
+                let archive = Archive::from(archive);
+                if let Some(file) = archive.iter().find(|f| f.name.replace(".hop", "") == module) {
+                    SourceAnnotator::new()
+                        .with_filename(&file.name)
+                        .with_location()
+                        .annotate(&file.content, &[sym])
+                } else {
+                    "File not found".to_string()
+                }
+            }
+            None => "".to_string(),
+        };
+
+        expected.assert_eq(&output);
+    }
+
     #[test]
     fn test_get_definition() {
-        let server = server_from_txtar(
+        check_definition_location(
             r#"
 -- hop/components.hop --
 <hello-world>
@@ -381,22 +536,20 @@ mod tests {
   <hello-world />
 </main-comp>
 "#,
-        );
-
-        assert_eq!(
-            server
-                .get_definition_location("main", Position::new(4, 4))
-                .unwrap(),
-            DefinitionLocation {
-                module: "hop/components".to_string(),
-                range: Range::new(Position::new(1, 2), Position::new(1, 13))
-            }
+            "main",
+            Position::new(4, 4),
+            expect![[r#"
+                Definition
+                  --> hop/components.hop (line 1, col 2)
+                1 | <hello-world>
+                  |  ^^^^^^^^^^^
+            "#]],
         );
     }
 
     #[test]
-    fn test_get_rename_locations() {
-        let server = server_from_txtar(
+    fn test_get_rename_locations_from_component_reference() {
+        check_rename_locations(
             r#"
 -- components.hop --
 <hello-world>
@@ -410,82 +563,136 @@ mod tests {
   <hello-world />
 </main-comp>
 "#,
-        );
+            "main",
+            Position::new(4, 4),
+            expect![[r#"
+                Rename
+                  --> components.hop (line 1, col 2)
+                1 | <hello-world>
+                  |  ^^^^^^^^^^^
 
-        let rename_locations = server.get_rename_locations("main", Position::new(4, 4));
-        assert!(rename_locations.is_some());
-        let mut locations = rename_locations.unwrap();
-        locations.sort();
-        assert_eq!(
-            locations,
-            vec![
-                RenameLocation {
-                    module: "components".to_string(),
-                    range: Range {
-                        start: Position { line: 1, column: 2 },
-                        end: Position {
-                            line: 1,
-                            column: 13,
-                        },
-                    },
-                },
-                RenameLocation {
-                    module: "components".to_string(),
-                    range: Range {
-                        start: Position { line: 3, column: 3 },
-                        end: Position {
-                            line: 3,
-                            column: 14,
-                        },
-                    },
-                },
-                RenameLocation {
-                    module: "main".to_string(),
-                    range: Range {
-                        start: Position {
-                            line: 1,
-                            column: 20,
-                        },
-                        end: Position {
-                            line: 1,
-                            column: 31,
-                        },
-                    },
-                },
-                RenameLocation {
-                    module: "main".to_string(),
-                    range: Range {
-                        start: Position { line: 4, column: 4 },
-                        end: Position {
-                            line: 4,
-                            column: 15,
-                        },
-                    },
-                },
-            ]
+                Rename
+                  --> components.hop (line 3, col 3)
+                3 | </hello-world>
+                  |   ^^^^^^^^^^^
+
+                Rename
+                  --> main.hop (line 1, col 20)
+                1 | <import component="hello-world" from="components" />
+                  |                    ^^^^^^^^^^^
+
+                Rename
+                  --> main.hop (line 4, col 4)
+                4 |   <hello-world />
+                  |    ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_get_rename_locations_from_component_definition() {
+        check_rename_locations(
+            r#"
+-- components.hop --
+<hello-world>
+  <h1>Hello World</h1>
+</hello-world>
+
+-- main.hop --
+<import component="hello-world" from="components" />
+
+<main-comp>
+  <hello-world />
+</main-comp>
+"#,
+            "components",
+            Position::new(1, 2),
+            expect![[r#"
+                Rename
+                  --> components.hop (line 1, col 2)
+                1 | <hello-world>
+                  |  ^^^^^^^^^^^
+
+                Rename
+                  --> components.hop (line 3, col 3)
+                3 | </hello-world>
+                  |   ^^^^^^^^^^^
+
+                Rename
+                  --> main.hop (line 1, col 20)
+                1 | <import component="hello-world" from="components" />
+                  |                    ^^^^^^^^^^^
+
+                Rename
+                  --> main.hop (line 4, col 4)
+                4 |   <hello-world />
+                  |    ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    // Make sure that when we rename a component in a module that has
+    // the same name as a module in some other component, the module in
+    // the other component is left unchanged.
+    #[test]
+    fn test_get_rename_locations_main_comp_scoped() {
+        check_rename_locations(
+            r#"
+-- components.hop --
+<hello-world>
+  <h1>Hello World</h1>
+</hello-world>
+
+<main-comp>
+  <hello-world />
+</main-comp>
+
+-- main.hop --
+<import component="hello-world" from="components" />
+
+<main-comp>
+  <hello-world />
+</main-comp>
+"#,
+            "components",
+            Position::new(5, 2),
+            expect![[r#"
+                Rename
+                  --> components.hop (line 5, col 2)
+                5 | <main-comp>
+                  |  ^^^^^^^^^
+
+                Rename
+                  --> components.hop (line 7, col 3)
+                7 | </main-comp>
+                  |   ^^^^^^^^^
+            "#]],
         );
     }
 
     #[test]
     fn test_get_renameable_symbol() {
-        let server = server_from_txtar(
+        check_renameable_symbol(
             r#"
 -- main.hop --
 <hello-world>
   <h1>Hello World</h1>
 </hello-world>
 "#,
+            "main",
+            Position::new(1, 2),
+            expect![[r#"
+                Renameable symbol: hello-world
+                  --> main.hop (line 1, col 2)
+                1 | <hello-world>
+                  |  ^^^^^^^^^^^
+            "#]],
         );
-
-        let symbol = server.get_renameable_symbol("main", Position::new(1, 2));
-        assert!(symbol.is_some());
-        let symbol = symbol.unwrap();
-        assert_eq!(symbol.current_name, "hello-world");
     }
 
     #[test]
     fn test_get_error_diagnostics_parse_errors() {
-        let server = server_from_txtar(
+        check_error_diagnostics(
             r#"
 -- main.hop --
 <main-comp>
@@ -493,26 +700,18 @@ mod tests {
   <span>unclosed span
 </main-comp>
 "#,
-        );
+            "main",
+            expect![[r#"
+                Unclosed <span>
+                  --> main.hop (line 3, col 3)
+                3 |   <span>unclosed span
+                  |   ^^^^^^
 
-        assert_eq!(
-            server.get_error_diagnostics("main"),
-            vec![
-                Diagnostic {
-                    message: "Unclosed <span>".to_string(),
-                    range: Range {
-                        start: Position { line: 3, column: 3 },
-                        end: Position { line: 3, column: 9 },
-                    },
-                },
-                Diagnostic {
-                    message: "Unclosed <div>".to_string(),
-                    range: Range {
-                        start: Position { line: 2, column: 3 },
-                        end: Position { line: 2, column: 8 },
-                    },
-                },
-            ]
+                Unclosed <div>
+                  --> main.hop (line 2, col 3)
+                2 |   <div>
+                  |   ^^^^^
+            "#]],
         );
     }
 }
