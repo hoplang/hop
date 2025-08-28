@@ -10,9 +10,9 @@ use super::ast::TopLevelHopNode;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module {
     pub name: String,
-    pub components: Vec<ComponentDefinitionNode>,
-    pub imports: Vec<ImportNode>,
-    pub renders: Vec<RenderNode>,
+    pub component_nodes: Vec<ComponentDefinitionNode>,
+    pub import_nodes: Vec<ImportNode>,
+    pub render_nodes: Vec<RenderNode>,
 }
 
 #[derive(Debug, Clone)]
@@ -67,9 +67,9 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<RangeEr
 
     Module {
         name: module_name,
-        components,
-        imports,
-        renders,
+        component_nodes: components,
+        import_nodes: imports,
+        render_nodes: renders,
     }
 }
 
@@ -720,7 +720,7 @@ mod tests {
             efmt.add_errors("test".to_string(), input.to_string(), errors);
             efmt.format_all_errors()
         } else {
-            for component in module.components {
+            for component in module.component_nodes {
                 if component.name == "main-comp" {
                     return expected.assert_eq(&format_component_definition(&component));
                 }

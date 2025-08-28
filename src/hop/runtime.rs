@@ -1,12 +1,11 @@
 use crate::common::{escape_html, is_void_element};
 use crate::dop;
-use crate::dop::{DopType, evaluate_expr, load_json_file};
+use crate::dop::{evaluate_expr, load_json_file};
 use crate::hop::ast::{ComponentDefinitionNode, HopNode, RenderNode};
 use crate::hop::environment::Environment;
 use crate::hop::parser::Module;
-use crate::hop::typechecker::TypeResult;
 use anyhow::Result;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::io::Write;
 use std::process::{Command, Stdio};
 
@@ -33,62 +32,39 @@ impl HopMode {
 pub struct Program {
     component_maps: HashMap<String, HashMap<String, ComponentDefinitionNode>>,
     import_maps: HashMap<String, HashMap<String, String>>,
-    parameter_types: HashMap<String, HashMap<String, BTreeMap<String, DopType>>>,
-    render_nodes: HashMap<String, Vec<RenderNode>>,
+    render_nodes: Vec<RenderNode>,
     scripts: String,
     hop_mode: HopMode,
 }
 
 impl Program {
-    pub fn new(
-        modules: HashMap<String, Module>,
-        type_results: HashMap<String, TypeResult>,
-        scripts: String,
-        hop_mode: HopMode,
-    ) -> Self {
+    pub fn new(modules: Vec<Module>, scripts: String, hop_mode: HopMode) -> Self {
         let mut component_maps = HashMap::new();
         let mut import_maps = HashMap::new();
-        let mut parameter_types = HashMap::new();
-        let mut render_nodes = HashMap::new();
+        let mut render_nodes = Vec::new();
 
-        for (module_name, module) in modules {
-            // Build component map
-            let mut component_map = HashMap::new();
-            for comp_node in &module.components {
-                component_map.insert(comp_node.name.clone(), comp_node.clone());
-            }
+        for module in modules {
+            let component_map: HashMap<_, _> = module
+                .component_nodes
+                .into_iter()
+                .map(|comp| (comp.name.clone(), comp))
+                .collect();
 
-            // Build import map
-            let mut import_map = HashMap::new();
-            for import_node in &module.imports {
-                import_map.insert(
-                    import_node.component_attr.value.clone(),
-                    import_node.from_attr.value.clone(),
-                );
-            }
+            let import_map: HashMap<_, _> = module
+                .import_nodes
+                .into_iter()
+                .map(|import| (import.component_attr.value, import.from_attr.value))
+                .collect();
 
-            // Store render nodes if any
-            if !module.renders.is_empty() {
-                render_nodes.insert(module_name.clone(), module.renders.clone());
-            }
+            render_nodes.extend(module.render_nodes);
 
-            // Extract parameter types from type results
-            if let Some(type_info) = type_results.get(&module_name) {
-                let mut module_parameter_types = HashMap::new();
-                for (name, info) in &type_info.component_info {
-                    module_parameter_types.insert(name.clone(), info.parameter_types.clone());
-                }
-                parameter_types.insert(module_name.clone(), module_parameter_types);
-            }
-
-            component_maps.insert(module_name.clone(), component_map);
-            import_maps.insert(module_name.clone(), import_map);
+            component_maps.insert(module.name.clone(), component_map);
+            import_maps.insert(module.name.clone(), import_map);
         }
 
         Program {
             component_maps,
             import_maps,
-            parameter_types,
             render_nodes,
             scripts,
             hop_mode,
@@ -103,18 +79,11 @@ impl Program {
         &self.component_maps
     }
 
-    pub fn get_parameter_types(
-        &self,
-    ) -> &HashMap<String, HashMap<String, BTreeMap<String, DopType>>> {
-        &self.parameter_types
-    }
-
     /// Get all file_attr values from render nodes across all modules
     /// I.e. files specified in <render file="index.html">
     pub fn get_render_file_paths(&self) -> Vec<String> {
         self.render_nodes
-            .values()
-            .flatten()
+            .iter()
             .map(|render_node| render_node.file_attr.value.clone())
             .collect()
     }
@@ -122,17 +91,15 @@ impl Program {
     /// Render the content for a specific file path
     pub fn render_file(&self, file_path: &str) -> Result<String> {
         // Find the render node with the matching file_attr.value
-        for render_nodes in self.render_nodes.values() {
-            for node in render_nodes {
-                if node.file_attr.value == file_path {
-                    let mut env = Self::init_environment(self.hop_mode);
-                    let mut content = String::new();
-                    for child in &node.children {
-                        let rendered = self.evaluate_node_entrypoint(child, &mut env, "build")?;
-                        content.push_str(&rendered);
-                    }
-                    return Ok(content);
+        for node in &self.render_nodes {
+            if node.file_attr.value == file_path {
+                let mut env = Self::init_environment(self.hop_mode);
+                let mut content = String::new();
+                for child in &node.children {
+                    let rendered = self.evaluate_node_entrypoint(child, &mut env, "build")?;
+                    content.push_str(&rendered);
                 }
+                return Ok(content);
             }
         }
         Err(anyhow::anyhow!(
@@ -194,7 +161,7 @@ impl Program {
         component_name: &str,
         args: std::collections::BTreeMap<String, serde_json::Value>,
         slot_content: &HashMap<String, String>,
-        additional_class: Option<&str>,
+        additional_classes: Option<&str>,
     ) -> Result<String> {
         let component_map = self
             .component_maps
@@ -248,7 +215,7 @@ impl Program {
                 {
                     if attr.name == "class" {
                         added_class = true;
-                        match additional_class {
+                        match additional_classes {
                             None => result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value)),
                             Some(cls) => result
                                 .push_str(&format!(" {}=\"{} {}\"", attr.name, attr.value, cls)),
@@ -260,7 +227,7 @@ impl Program {
             }
 
             // If component doesn't have a class attribute but the reference does, add it
-            if let (Some(cls), false) = (additional_class, added_class) {
+            if let (Some(cls), false) = (additional_classes, added_class) {
                 result.push_str(&format!(" class=\"{}\"", cls))
             }
             result.push('>');
@@ -300,8 +267,37 @@ impl Program {
                     }
                     Ok(result)
                 }
-                None => anyhow::bail!("Could not evaluate condition to boolean"),
+                None => anyhow::bail!("Could not evaluate expression to boolean"),
             },
+
+            HopNode::For {
+                var_name,
+                array_expr,
+                children,
+                ..
+            } => {
+                let array_value = evaluate_expr(array_expr, env)?;
+
+                let array = array_value
+                    .as_array()
+                    .ok_or_else(|| anyhow::anyhow!("For loop expects an array"))?;
+
+                let mut result = String::new();
+                for item in array {
+                    env.push(var_name.value.clone(), item.clone());
+                    for child in children {
+                        result.push_str(&self.evaluate_node(
+                            child,
+                            slot_content,
+                            env,
+                            current_module,
+                        )?);
+                    }
+                    env.pop();
+                }
+
+                Ok(result)
+            }
 
             HopNode::ComponentReference {
                 component,
@@ -378,7 +374,7 @@ impl Program {
                 }
 
                 // Extract class attribute from component reference
-                let additional_class = attributes
+                let additional_classes = attributes
                     .iter()
                     .find(|attr| attr.name == "class")
                     .map(|attr| attr.value.as_str());
@@ -388,9 +384,43 @@ impl Program {
                     component_name,
                     arg_values,
                     &new_slot_content,
-                    additional_class,
+                    additional_classes,
                 )
             }
+
+            HopNode::SlotDefinition { name, children, .. } => {
+                // Check if we have supply-slot content for this slot
+                if let Some(supplied_html) = slot_content.get(name) {
+                    // Use the pre-evaluated supplied content
+                    Ok(supplied_html.clone())
+                } else {
+                    // Render the default content
+                    let mut result = String::new();
+                    for child in children {
+                        result.push_str(&self.evaluate_node(
+                            child,
+                            slot_content,
+                            env,
+                            current_module,
+                        )?);
+                    }
+                    Ok(result)
+                }
+            }
+
+            HopNode::SlotReference { children, .. } => {
+                let mut result = String::new();
+                for child in children {
+                    result.push_str(&self.evaluate_node(
+                        child,
+                        slot_content,
+                        env,
+                        current_module,
+                    )?);
+                }
+                Ok(result)
+            }
+
             HopNode::NativeHTML {
                 children,
                 tag_name,
@@ -442,55 +472,20 @@ impl Program {
 
                 Ok(result)
             }
-            HopNode::Error { children, .. } => {
-                let mut result = String::new();
-                for child in children {
-                    result.push_str(&self.evaluate_node(
-                        child,
-                        slot_content,
-                        env,
-                        current_module,
-                    )?);
-                }
-                Ok(result)
-            }
+
+            HopNode::Error { .. } => Ok(String::new()),
+
             HopNode::Text { value, .. } => Ok(value.clone()),
+
             HopNode::TextExpression { expression, .. } => {
-                let result = evaluate_expr(expression, env)?;
-                Ok(escape_html(result.as_str().unwrap_or("")))
+                match evaluate_expr(expression, env)?.as_str() {
+                    Some(s) => Ok(escape_html(s)),
+                    None => anyhow::bail!("Could not evaluate expression to string"),
+                }
             }
+
             HopNode::Doctype { .. } => Ok("<!DOCTYPE html>".to_string()),
-            HopNode::SlotDefinition { name, children, .. } => {
-                // Check if we have supply-slot content for this slot
-                if let Some(supplied_html) = slot_content.get(name) {
-                    // Use the pre-evaluated supplied content
-                    Ok(supplied_html.clone())
-                } else {
-                    // Render the default content
-                    let mut result = String::new();
-                    for child in children {
-                        result.push_str(&self.evaluate_node(
-                            child,
-                            slot_content,
-                            env,
-                            current_module,
-                        )?);
-                    }
-                    Ok(result)
-                }
-            }
-            HopNode::SlotReference { children, .. } => {
-                let mut result = String::new();
-                for child in children {
-                    result.push_str(&self.evaluate_node(
-                        child,
-                        slot_content,
-                        env,
-                        current_module,
-                    )?);
-                }
-                Ok(result)
-            }
+
             HopNode::XExec {
                 cmd_attr, children, ..
             } => {
@@ -507,8 +502,9 @@ impl Program {
 
                 // Execute the command with stdin
                 let command = &cmd_attr.value;
-                self.execute_command(command, &stdin_content)
+                Self::execute_command(command, &stdin_content)
             }
+
             HopNode::XRaw { trim, children, .. } => {
                 // For hop-x-raw nodes, just render the inner content without the tags
                 let mut result = String::new();
@@ -527,6 +523,7 @@ impl Program {
                     Ok(result)
                 }
             }
+
             HopNode::XLoadJson {
                 file_attr,
                 as_attr,
@@ -564,34 +561,6 @@ impl Program {
 
                 // Pop the JSON variable from scope
                 env.pop();
-
-                Ok(result)
-            }
-            HopNode::For {
-                var_name,
-                array_expr,
-                children,
-                ..
-            } => {
-                let array_value = evaluate_expr(array_expr, env)?;
-
-                let array = array_value
-                    .as_array()
-                    .ok_or_else(|| anyhow::anyhow!("For loop expects an array"))?;
-
-                let mut result = String::new();
-                for item in array {
-                    env.push(var_name.value.clone(), item.clone());
-                    for child in children {
-                        result.push_str(&self.evaluate_node(
-                            child,
-                            slot_content,
-                            env,
-                            current_module,
-                        )?);
-                    }
-                    env.pop();
-                }
 
                 Ok(result)
             }
@@ -657,7 +626,7 @@ impl Program {
     /// execute_command is used by the experimental <hop-x-exec> command
     /// which allows an external program to be executed from the context of a
     /// hop program.
-    fn execute_command(&self, command: &str, stdin_content: &str) -> Result<String> {
+    fn execute_command(command: &str, stdin_content: &str) -> Result<String> {
         // Parse the command and arguments
         let parts: Vec<&str> = command.split_whitespace().collect();
         if parts.is_empty() {
@@ -700,6 +669,8 @@ impl Program {
         }
     }
 
+    /// trim_raw_string is used by the experimental <hop-x-raw> node
+    /// and allows indentation to be trimmed.
     fn trim_raw_string(input: &str) -> String {
         let lines: Vec<&str> = input.lines().collect();
         if lines.is_empty() {
@@ -771,44 +742,37 @@ mod tests {
     fn check(archive_str: &str, data_json: &str, expected: Expect) {
         let archive = Archive::from(archive_str);
 
-        // Collect all modules from .hop files in order
-        let mut modules_source = Vec::new();
+        let mut modules = Vec::new();
+        let mut type_results: HashMap<String, TypeResult> = HashMap::new();
         for file in archive.iter() {
             if file.name.ends_with(".hop") {
-                let module_name = file.name.trim_end_matches(".hop");
-                modules_source.push((module_name.to_string(), file.content.trim().to_string()));
+                let module_name = file.name.trim_end_matches(".hop").to_string();
+                let source_code = file.content.trim().to_string();
+                let mut errors = Vec::new();
+                let module = parse(
+                    module_name.clone(),
+                    Tokenizer::new(&source_code),
+                    &mut errors,
+                );
+                if !errors.is_empty() {
+                    panic!("Parse errors in {}: {:?}", module_name, errors);
+                }
+
+                let type_info = typecheck(&module, &type_results, &mut errors);
+                if !errors.is_empty() {
+                    panic!("Type errors in {}: {:?}", module_name, errors);
+                }
+
+                modules.push(module);
+                type_results.insert(module_name.clone(), type_info);
             }
         }
 
-        // Parse and typecheck modules
-        let mut parsed_modules = HashMap::new();
-        let mut module_type_results: HashMap<String, TypeResult> = HashMap::new();
-
-        for (module_name, source_code) in &modules_source {
-            let mut errors = Vec::new();
-            let tokenizer = Tokenizer::new(source_code);
-            let module = parse(module_name.clone(), tokenizer, &mut errors);
-
-            let type_info = typecheck(&module, &module_type_results, &mut errors);
-            if !errors.is_empty() {
-                panic!("Errors in {}: {:?}", module_name, errors);
-            }
-
-            parsed_modules.insert(module_name.clone(), module);
-            module_type_results.insert(module_name.clone(), type_info);
-        }
-
-        let program = Program::new(
-            parsed_modules,
-            module_type_results,
-            String::new(),
-            HopMode::Build,
-        );
+        let program = Program::new(modules, String::new(), HopMode::Build);
 
         let data: serde_json::Value =
             serde_json::from_str(data_json).expect("Failed to parse JSON data");
 
-        // Convert JSON object fields to individual named parameters
         let mut params = std::collections::BTreeMap::new();
         if let serde_json::Value::Object(obj) = data {
             for (key, value) in obj {

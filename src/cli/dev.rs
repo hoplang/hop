@@ -134,7 +134,6 @@ fn create_inspect_page(program: &hop::runtime::Program) -> String {
     let inspect_program = get_ui_program();
 
     let component_maps = program.get_component_maps();
-    let parameter_types = program.get_parameter_types();
 
     let mut modules_data = Vec::new();
 
@@ -153,24 +152,6 @@ fn create_inspect_page(program: &hop::runtime::Program) -> String {
             let encoded_module = module_name.replace("/", "%2F");
             let encoded_component = component_name.replace("/", "%2F");
 
-            let parameter_type = if let Some(module_types) = parameter_types.get(module_name) {
-                if let Some(param_map) = module_types.get(component_name) {
-                    if param_map.is_empty() {
-                        Some("()".to_string())
-                    } else {
-                        let params: Vec<String> = param_map
-                            .iter()
-                            .map(|(name, typ)| format!("{}: {}", name, typ))
-                            .collect();
-                        Some(format!("({})", params.join(", ")))
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
             let slots_text = if component_def.slots.is_empty() {
                 None
             } else {
@@ -182,7 +163,6 @@ fn create_inspect_page(program: &hop::runtime::Program) -> String {
                 "has_preview": has_preview,
                 "link": format!("/_inspect/{encoded_module}/{encoded_component}"),
                 "preview_url": format!("/_preview/{encoded_module}/{encoded_component}"),
-                "parameter_type": parameter_type,
                 "is_entrypoint": component_def.entrypoint,
                 "slots": component_def.slots,
                 "slots_text": slots_text

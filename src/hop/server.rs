@@ -91,7 +91,7 @@ impl Server {
         self.topo_sorter.clear_dependencies(&name);
         self.topo_sorter.add_node(name.clone());
 
-        for import_node in &module.imports {
+        for import_node in &module.import_nodes {
             self.topo_sorter
                 .add_dependency(&name, &import_node.from_attr.value);
         }
@@ -302,7 +302,7 @@ impl Server {
 
         // Find all import statements that import this component
         for (module_name, module) in &self.modules {
-            for import in &module.imports {
+            for import in &module.import_nodes {
                 if import.component_attr.value == component_name
                     && import.from_attr.value == definition_module
                 {
