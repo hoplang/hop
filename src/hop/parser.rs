@@ -9,19 +9,14 @@ use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
 use std::collections::HashSet;
 
+use super::ast::TopLevelHopNode;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module {
     pub name: String,
     pub components: Vec<ComponentDefinitionNode>,
     pub imports: Vec<ImportNode>,
     pub renders: Vec<RenderNode>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum ToplevelNode {
-    Import(ImportNode),
-    ComponentDefinition(ComponentDefinitionNode),
-    Render(RenderNode),
 }
 
 #[derive(Debug, Clone)]
@@ -63,13 +58,13 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<RangeEr
     let mut renders = Vec::new();
 
     for child in &tree.children {
-        if let Some(toplevel_node) = construct_toplevel_node(child, errors) {
+        if let Some(toplevel_node) = construct_top_level_node(child, errors) {
             match toplevel_node {
-                ToplevelNode::Import(import_data) => imports.push(import_data),
-                ToplevelNode::ComponentDefinition(component_data) => {
+                TopLevelHopNode::Import(import_data) => imports.push(import_data),
+                TopLevelHopNode::ComponentDefinition(component_data) => {
                     components.push(component_data)
                 }
-                ToplevelNode::Render(render_data) => renders.push(render_data),
+                TopLevelHopNode::Render(render_data) => renders.push(render_data),
             }
         }
     }
@@ -180,7 +175,10 @@ fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTree {
     stack.pop().unwrap().tree
 }
 
-fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Option<ToplevelNode> {
+fn construct_top_level_node(
+    tree: &TokenTree,
+    errors: &mut Vec<RangeError>,
+) -> Option<TopLevelHopNode> {
     let t = &tree.token;
 
     match t {
@@ -212,7 +210,7 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
 
                     match (component_attr, from_attr) {
                         (Some(component_attr), Some(from_attr)) => {
-                            Some(ToplevelNode::Import(ImportNode {
+                            Some(TopLevelHopNode::Import(ImportNode {
                                 component_attr,
                                 from_attr,
                                 range: tree.opening_tag_range,
@@ -238,7 +236,7 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                     });
 
                     file_attr.map(|file_attr| {
-                        ToplevelNode::Render(RenderNode {
+                        TopLevelHopNode::Render(RenderNode {
                             file_attr,
                             range: tree.opening_tag_range,
                             children,
@@ -324,19 +322,21 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                         }
                     }
 
-                    Some(ToplevelNode::ComponentDefinition(ComponentDefinitionNode {
-                        name: name.to_string(),
-                        opening_name_range: *name_range,
-                        closing_name_range: tree.closing_tag_name_range,
-                        params: params_as_attrs,
-                        as_attr,
-                        attributes: attributes.clone(),
-                        range: tree.opening_tag_range,
-                        children,
-                        preview: preview_children,
-                        entrypoint,
-                        slots: slots.into_iter().collect(),
-                    }))
+                    Some(TopLevelHopNode::ComponentDefinition(
+                        ComponentDefinitionNode {
+                            name: name.to_string(),
+                            opening_name_range: *name_range,
+                            closing_name_range: tree.closing_tag_name_range,
+                            params: params_as_attrs,
+                            as_attr,
+                            attributes: attributes.clone(),
+                            range: tree.opening_tag_range,
+                            children,
+                            preview: preview_children,
+                            entrypoint,
+                            slots: slots.into_iter().collect(),
+                        },
+                    ))
                 }
             }
         }
