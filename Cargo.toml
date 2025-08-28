@@ -26,7 +26,6 @@ rayon = "1.8"
 
 [dev-dependencies]
 simple_txtar = "1.1.0"
-pretty_assertions = "1.4.1"
 axum-test = "17.0"
 rand = "0.9"
 expect-test = "1.5"

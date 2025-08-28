@@ -95,7 +95,6 @@ pub fn format_timing_visualization(timings: &[(&str, u128)]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pretty_assertions::assert_eq;
 
     #[test]
     fn test_timing_visualization_with_multiple_phases() {
