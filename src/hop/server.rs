@@ -225,7 +225,9 @@ impl Server {
 
                 if is_on_definition {
                     // We're on a definition, collect all rename locations
-                    return Some(self.collect_component_rename_locations(&component_node.name, module_name));
+                    return Some(
+                        self.collect_component_rename_locations(&component_node.name, module_name),
+                    );
                 }
             }
         }
@@ -303,7 +305,11 @@ impl Server {
         let mut locations = Vec::new();
 
         if let Some(module) = self.modules.get(definition_module) {
-            if let Some(component_node) = module.component_nodes.iter().find(|node| node.name == component_name) {
+            if let Some(component_node) = module
+                .component_nodes
+                .iter()
+                .find(|node| node.name == component_name)
+            {
                 // Add the definition's opening tag name
                 locations.push(RenameLocation {
                     module: definition_module.to_string(),

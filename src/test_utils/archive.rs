@@ -1,10 +1,13 @@
 use super::position_marker::extract_position;
 use crate::common::Position;
 use simple_txtar::{Archive, Builder, File};
-use std::{env, fs, path::{Path, PathBuf}};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 
 /// Creates a temporary directory with files from a txtar Archive.
-/// 
+///
 /// The directory is created with a random name in the system temp directory
 /// and populated with all files from the archive.
 pub fn temp_dir_from_archive(archive: &Archive) -> std::io::Result<PathBuf> {
@@ -22,7 +25,7 @@ pub fn temp_dir_from_archive(archive: &Archive) -> std::io::Result<PathBuf> {
 }
 
 /// Recursively walks a directory and creates an Archive from all files found.
-/// 
+///
 /// Files are sorted by path to ensure deterministic output across different filesystems.
 pub fn archive_from_dir(dir: &Path) -> std::io::Result<Archive> {
     let mut builder = Builder::new();
@@ -39,20 +42,18 @@ fn archive_from_dir_recursive(
     // Sort entries to ensure deterministic output - fs::read_dir() order is not guaranteed
     // and can vary between filesystems and OS implementations
     entries.sort_by_key(|entry| entry.path());
-    
+
     for entry in entries {
         let path = entry.path();
-        
+
         if path.is_dir() {
             archive_from_dir_recursive(base_dir, &path, builder)?;
         } else {
-            let relative_path = path.strip_prefix(base_dir)
+            let relative_path = path
+                .strip_prefix(base_dir)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
             let content = fs::read_to_string(&path)?;
-            builder.file((
-                relative_path.to_string_lossy().to_string(),
-                content,
-            ));
+            builder.file((relative_path.to_string_lossy().to_string(), content));
         }
     }
     Ok(())
@@ -73,7 +74,7 @@ pub struct MarkerInfo {
 pub fn extract_markers_from_archive(archive: &Archive) -> (Archive, Vec<MarkerInfo>) {
     let mut markers = Vec::new();
     let mut builder = Builder::new();
-    
+
     for file in archive.iter() {
         if let Some((clean_content, pos)) = extract_position(&file.content) {
             markers.push(MarkerInfo {
@@ -85,6 +86,6 @@ pub fn extract_markers_from_archive(archive: &Archive) -> (Archive, Vec<MarkerIn
             builder.file(file.clone());
         }
     }
-    
+
     (builder.build(), markers)
 }

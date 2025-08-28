@@ -120,7 +120,7 @@ impl RangeError {
             range,
         )
     }
-    pub fn undefined_module(module: &str, range: Range) -> Self {
+    pub fn import_from_undefined_module(module: &str, range: Range) -> Self {
         Self::new(format!("Module {module} is not defined"), range)
     }
 

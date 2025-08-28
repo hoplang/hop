@@ -3,7 +3,7 @@ use crate::dop::{DopType, infer_type_from_json_file, is_subtype, typecheck_expr}
 use crate::hop::ast::{ComponentDefinitionNode, HopNode, ImportNode, RenderNode};
 use crate::hop::environment::Environment;
 use crate::hop::parser::Module;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeAnnotation {
@@ -55,9 +55,8 @@ pub fn typecheck(
 ) -> TypeResult {
     let mut type_annotations: Vec<TypeAnnotation> = Vec::new();
     let mut definition_links: Vec<ComponentDefinitionLink> = Vec::new();
-    let mut component_info = HashMap::new();
+    let mut current_module_type_information = HashMap::new();
     let mut imported_components: HashMap<String, Range> = HashMap::new();
-    let mut referenced_components: HashSet<String> = HashSet::new();
 
     for ImportNode {
         from_attr,
@@ -71,13 +70,14 @@ pub fn typecheck(
 
         if let Some(type_result) = import_type_results.get(from_module) {
             if let Some(comp_info) = type_result.component_type_information.get(component_name) {
-                if component_info.contains_key(component_name) {
+                if current_module_type_information.contains_key(component_name) {
                     errors.push(RangeError::component_is_already_defined(
                         component_name,
                         *range,
                     ));
                 } else {
-                    component_info.insert(component_name.clone(), comp_info.clone());
+                    current_module_type_information
+                        .insert(component_name.clone(), comp_info.clone());
                     imported_components.insert(component_name.clone(), *range);
                 }
             } else {
@@ -88,7 +88,10 @@ pub fn typecheck(
                 ));
             }
         } else {
-            errors.push(RangeError::undefined_module(from_module, *range));
+            errors.push(RangeError::import_from_undefined_module(
+                from_module,
+                *range,
+            ));
         }
     }
     let mut env = Environment::new();
@@ -107,7 +110,7 @@ pub fn typecheck(
         ..
     } in &module.component_nodes
     {
-        if component_info.contains_key(name) {
+        if current_module_type_information.contains_key(name) {
             errors.push(RangeError::component_is_already_defined(name, *range));
             continue;
         }
@@ -130,11 +133,10 @@ pub fn typecheck(
         for child in children {
             typecheck_node(
                 child,
-                &component_info,
+                &current_module_type_information,
                 &mut env,
                 &mut type_annotations,
                 &mut definition_links,
-                &mut referenced_components,
                 errors,
             );
         }
@@ -149,7 +151,7 @@ pub fn typecheck(
             }
         }
 
-        component_info.insert(
+        current_module_type_information.insert(
             name.clone(),
             ComponentTypeInformation {
                 parameter_types,
@@ -167,11 +169,10 @@ pub fn typecheck(
             for child in preview_nodes {
                 typecheck_node(
                     child,
-                    &component_info,
+                    &current_module_type_information,
                     &mut env,
                     &mut type_annotations,
                     &mut definition_links,
-                    &mut referenced_components,
                     errors,
                 );
             }
@@ -186,24 +187,17 @@ pub fn typecheck(
         for child in children {
             typecheck_node(
                 child,
-                &component_info,
+                &current_module_type_information,
                 &mut env,
                 &mut type_annotations,
                 &mut definition_links,
-                &mut referenced_components,
                 errors,
             );
         }
     }
 
-    for (component_name, import_range) in imported_components {
-        if !referenced_components.contains(&component_name) {
-            errors.push(RangeError::unused_import(&component_name, import_range));
-        }
-    }
-
     TypeResult {
-        component_type_information: component_info,
+        component_type_information: current_module_type_information,
         type_annotations,
         component_definition_links: definition_links,
     }
@@ -215,7 +209,6 @@ fn typecheck_node(
     env: &mut Environment<DopType>,
     annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<ComponentDefinitionLink>,
-    referenced_components: &mut HashSet<String>,
     errors: &mut Vec<RangeError>,
 ) {
     match node {
@@ -246,7 +239,6 @@ fn typecheck_node(
                     env,
                     annotations,
                     definition_links,
-                    referenced_components,
                     errors,
                 );
             }
@@ -260,9 +252,6 @@ fn typecheck_node(
             range,
             ..
         } => {
-            // Track that this component is being referenced
-            referenced_components.insert(component.clone());
-
             if let Some(comp_info) = component_info.get(component) {
                 // Add definition link for go-to-definition
                 definition_links.push(ComponentDefinitionLink {
@@ -346,7 +335,6 @@ fn typecheck_node(
                     env,
                     annotations,
                     definition_links,
-                    referenced_components,
                     errors,
                 );
             }
@@ -388,7 +376,6 @@ fn typecheck_node(
                     env,
                     annotations,
                     definition_links,
-                    referenced_components,
                     errors,
                 );
             }
@@ -405,7 +392,6 @@ fn typecheck_node(
                     env,
                     annotations,
                     definition_links,
-                    referenced_components,
                     errors,
                 );
             }
@@ -454,7 +440,6 @@ fn typecheck_node(
                     env,
                     annotations,
                     definition_links,
-                    referenced_components,
                     errors,
                 );
             }
@@ -521,7 +506,6 @@ fn typecheck_node(
                     env,
                     annotations,
                     definition_links,
-                    referenced_components,
                     errors,
                 );
             }
@@ -814,7 +798,7 @@ mod tests {
         );
     }
 
-    // When a component is imported without being used the typechecker outputs an error.
+    // A component may be imported without being used.
     #[test]
     fn test_unused_import() {
         check(
@@ -830,10 +814,13 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                error: Unused import: foo-comp
-                  --> main.hop (line 1, col 1)
-                1 | <import component="foo-comp" from="other">
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                other::foo-comp
+                	{}
+                	[]
+
+                main::main-comp
+                	{}
+                	[]
             "#]],
         );
     }
