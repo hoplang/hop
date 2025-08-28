@@ -545,37 +545,23 @@ pub async fn execute(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::archive::temp_dir_from_archive;
     use axum_test::TestServer;
+    use indoc::indoc;
     use simple_txtar::Archive;
-    use std::{env, fs};
-
-    fn temp_dir_from_txtar(archive: &str) -> std::io::Result<std::path::PathBuf> {
-        let r = rand::random::<u64>();
-        let temp_dir = env::temp_dir().join(format!("hop_test_{}", r));
-        fs::create_dir_all(&temp_dir)?;
-        for file in Archive::from(archive).iter() {
-            let file_path = temp_dir.join(&file.name);
-            if let Some(parent) = file_path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            fs::write(&file_path, &file.content)?;
-        }
-        Ok(temp_dir)
-    }
+    use std::fs;
 
     /// When the user calls `hop dev` and has a entry for `index.html` in the manifest file, the
     /// index.html entry should be rendered when the user issues a GET to /.
     #[tokio::test]
     async fn test_dev_and_get_index() {
-        let dir = temp_dir_from_txtar(
-            r#"
--- build.hop --
-<render file="index.html">
-  Hello from build.hop!
-</render>
-"#,
-        )
-        .unwrap();
+        let archive = Archive::from(indoc! {"
+            -- build.hop --
+            <render file=\"index.html\">
+              Hello from build.hop!
+            </render>
+        "});
+        let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
         let (router, _watcher) = execute(&root, None, None).await.unwrap();
@@ -593,23 +579,22 @@ mod tests {
     /// changes should be reflected when the user sends a request to the server.
     #[tokio::test]
     async fn test_dev_from_hop_dynamic_update() -> anyhow::Result<()> {
-        let dir = temp_dir_from_txtar(
-            r#"
--- src/test.hop --
-<foo-comp>
-  message is foo
-</foo-comp>
-<bar-comp>
-  message is bar
-</bar-comp>
--- build.hop --
-<import component="foo-comp" from="src/test" />
+        let archive = Archive::from(indoc! {"
+            -- src/test.hop --
+            <foo-comp>
+              message is foo
+            </foo-comp>
+            <bar-comp>
+              message is bar
+            </bar-comp>
+            -- build.hop --
+            <import component=\"foo-comp\" from=\"src/test\" />
 
-<render file="index.html">
-  <foo-comp />
-</render>
-"#,
-        )?;
+            <render file=\"index.html\">
+              <foo-comp />
+            </render>
+        "});
+        let dir = temp_dir_from_archive(&archive)?;
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
         let (router, _watcher) = execute(&root, None, None).await?;
@@ -641,19 +626,17 @@ mod tests {
     /// from the given directory.
     #[tokio::test]
     async fn test_dev_from_hop_static_files() {
-        let dir = temp_dir_from_txtar(
-            r#"
--- build.hop --
-<render file="index.html">
-  hello world!
-</render>
--- static/css/style.css --
-body { background: blue; }
--- static/js/script.js --
-console.log("Hello from static file");
-"#,
-        )
-        .unwrap();
+        let archive = Archive::from(indoc! {"
+            -- build.hop --
+            <render file=\"index.html\">
+              hello world!
+            </render>
+            -- static/css/style.css --
+            body { background: blue; }
+            -- static/js/script.js --
+            console.log(\"Hello from static file\");
+        "});
+        let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
         let (router, _watcher) = execute(&root, Some(&dir.join("static")), None)
@@ -682,15 +665,13 @@ console.log("Hello from static file");
     /// be set to 'build'.
     #[tokio::test]
     async fn test_dev_has_hop_mode_dev() {
-        let dir = temp_dir_from_txtar(
-            r#"
--- build.hop --
-<render file="index.html">
-  mode: {HOP_MODE}
-</render>
-"#,
-        )
-        .unwrap();
+        let archive = Archive::from(indoc! {"
+            -- build.hop --
+            <render file=\"index.html\">
+              mode: {HOP_MODE}
+            </render>
+        "});
+        let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
         let (router, _watcher) = execute(&root, None, None).await.unwrap();
@@ -707,21 +688,19 @@ console.log("Hello from static file");
     /// a 404 page should be returned with available routes.
     #[tokio::test]
     async fn test_dev_404_with_helpful_message() {
-        let dir = temp_dir_from_txtar(
-            r#"
--- build.hop --
-<render file="index.html">
-  Hello world!
-</render>
-<render file="about.html">
-  The about page
-</render>
-<render file="foo/bar.html">
-  The nested page
-</render>
-"#,
-        )
-        .unwrap();
+        let archive = Archive::from(indoc! {"
+            -- build.hop --
+            <render file=\"index.html\">
+              Hello world!
+            </render>
+            <render file=\"about.html\">
+              The about page
+            </render>
+            <render file=\"foo/bar.html\">
+              The nested page
+            </render>
+        "});
+        let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
         let (router, _watcher) = execute(&root, None, None).await.unwrap();
@@ -751,14 +730,12 @@ console.log("Hello from static file");
     /// When the user calls `hop dev` and the program doesn't compile an error should be returned.
     #[tokio::test]
     async fn test_dev_compile_error() {
-        let dir = temp_dir_from_txtar(
-            r#"
--- build.hop --
-<render file="index.html">
-    <div>
-"#,
-        )
-        .unwrap();
+        let archive = Archive::from(indoc! {"
+            -- build.hop --
+            <render file=\"index.html\">
+                <div>
+        "});
+        let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
         let (router, _watcher) = execute(&root, None, None).await.unwrap();

@@ -120,43 +120,30 @@ pub fn execute(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::archive::{archive_from_dir, temp_dir_from_archive};
+    use indoc::indoc;
     use simple_txtar::Archive;
-    use std::{env, fs};
-
-    fn temp_dir_from_txtar(archive: &str) -> std::io::Result<std::path::PathBuf> {
-        let r = rand::random::<u64>();
-        let temp_dir = env::temp_dir().join(format!("hop_test_{}", r));
-        fs::create_dir_all(&temp_dir)?;
-        for file in Archive::from(archive).iter() {
-            let file_path = temp_dir.join(&file.name);
-            if let Some(parent) = file_path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            fs::write(&file_path, &file.content)?;
-        }
-        Ok(temp_dir)
-    }
 
     /// When the user calls `hop build` with a build.hop file, the rendered content
     /// should be written to the specified output files.
     #[test]
     fn test_build_with_hop_file() {
-        let dir = temp_dir_from_txtar(
-            r#"
--- src/components.hop --
-<hello-world>
-  <h1>Build.hop Test</h1>
-  <p>This content comes from a build.hop file.</p>
-</hello-world>
--- build.hop --
-<import component="hello-world" from="src/components" />
+        use expect_test::expect;
+        
+        let archive = Archive::from(indoc! {"
+            -- src/components.hop --
+            <hello-world>
+              <h1>Build.hop Test</h1>
+              <p>This content comes from a build.hop file.</p>
+            </hello-world>
+            -- build.hop --
+            <import component=\"hello-world\" from=\"src/components\" />
 
-<render file="foo/bar/index.html">
-  <hello-world />
-</render>
-"#,
-        )
-        .unwrap();
+            <render file=\"foo/bar/index.html\">
+              <hello-world />
+            </render>
+        "});
+        let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
         let result = execute(&root, &dir.join("out"), None, None);
@@ -164,26 +151,34 @@ mod tests {
         let outputs = result.unwrap();
         assert_eq!(outputs.len(), 1);
 
-        // Check that the output file was created with the correct content
-        let output_path = dir.join("out/foo/bar/index.html");
-        let content = std::fs::read_to_string(&output_path).unwrap();
-        assert!(content.contains("Build.hop Test"));
-        assert!(content.contains("This content comes from a build.hop file"));
+        // Use archive_from_dir to capture the entire output directory structure
+        let output_archive = archive_from_dir(&dir.join("out")).unwrap();
+        let archive_string = output_archive.to_string();
+        
+        expect![[r#"
+            -- foo/bar/index.html --
+
+              <div data-hop-id="src/components/hello-world">
+              <h1>Build.hop Test</h1>
+              <p>This content comes from a build.hop file.</p>
+            </div>
+        "#]]
+        .assert_eq(&archive_string);
     }
 
     /// When the user calls `hop build` the global HOP_MODE variable should
     /// be set to 'build'.
     #[test]
     fn test_build_has_hop_mode_build() {
-        let dir = temp_dir_from_txtar(
-            r#"
--- build.hop --
-<render file="index.html">
-  mode: {HOP_MODE}
-</render>
-"#,
-        )
-        .unwrap();
+        use expect_test::expect;
+        
+        let archive = Archive::from(indoc! {"
+            -- build.hop --
+            <render file=\"index.html\">
+              mode: {HOP_MODE}
+            </render>
+        "});
+        let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
         let result = execute(&root, &dir.join("out"), None, None);
@@ -191,31 +186,37 @@ mod tests {
         let outputs = result.unwrap();
         assert_eq!(outputs.len(), 1);
 
-        // Check that the output file was created with the correct content
-        let output_path = dir.join("out").join("index.html");
-        let content = std::fs::read_to_string(&output_path).unwrap();
-        assert!(content.contains("mode: build"));
+        // Use archive_from_dir to capture the entire output directory structure
+        let output_archive = archive_from_dir(&dir.join("out")).unwrap();
+        let archive_string = output_archive.to_string();
+        
+        expect![[r#"
+            -- index.html --
+
+              mode: build
+        "#]]
+        .assert_eq(&archive_string);
     }
 
     /// When the user calls `hop build` with a staticdir parameter, files should be copied
     /// from the static directory to the output directory.
     #[test]
     fn test_build_with_staticdir() {
-        let dir = temp_dir_from_txtar(
-            r#"
--- build.hop --
-<render file="index.html">
-  Hello from build.hop!
-</render>
--- static/style.css --
-body { color: red; }
--- static/script.js --
-console.log('hello world');
--- static/images/logo.png --
-fake image data
-"#,
-        )
-        .unwrap();
+        use expect_test::expect;
+        
+        let archive = Archive::from(indoc! {"
+            -- build.hop --
+            <render file=\"index.html\">
+              Hello from build.hop!
+            </render>
+            -- static/style.css --
+            body { color: red; }
+            -- static/script.js --
+            console.log('hello world');
+            -- static/images/logo.png --
+            fake image data
+        "});
+        let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
         let output_dir = dir.join("out");
         let static_dir = dir.join("static");
@@ -227,28 +228,21 @@ fake image data
         // Should have 4 files: index.html + 3 static files
         assert_eq!(outputs.len(), 4);
 
-        // Check that all files were copied correctly
-        let index_path = output_dir.join("index.html");
-        let style_path = output_dir.join("style.css");
-        let script_path = output_dir.join("script.js");
-        let image_path = output_dir.join("images").join("logo.png");
+        // Use archive_from_dir to capture the entire output directory structure
+        let output_archive = archive_from_dir(&output_dir).unwrap();
+        let archive_string = output_archive.to_string();
+        
+        expect![[r#"
+            -- style.css --
+            body { color: red; }
+            -- script.js --
+            console.log('hello world');
+            -- images/logo.png --
+            fake image data
+            -- index.html --
 
-        assert!(index_path.exists());
-        assert!(style_path.exists());
-        assert!(script_path.exists());
-        assert!(image_path.exists());
-
-        // Verify content
-        let index_content = std::fs::read_to_string(&index_path).unwrap();
-        assert!(index_content.contains("Hello from build.hop!"));
-
-        let style_content = std::fs::read_to_string(&style_path).unwrap();
-        assert!(style_content.contains("body { color: red; }"));
-
-        let script_content = std::fs::read_to_string(&script_path).unwrap();
-        assert!(script_content.contains("console.log('hello world');"));
-
-        let image_content = std::fs::read_to_string(&image_path).unwrap();
-        assert!(image_content.contains("fake image data"));
+              Hello from build.hop!
+        "#]]
+        .assert_eq(&archive_string);
     }
 }
