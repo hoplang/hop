@@ -91,7 +91,12 @@ fn is_valid_component_name(name: &str) -> bool {
 }
 
 fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTree {
-    let mut stack: Vec<(TokenTree, String)> = Vec::new();
+    struct StackElement {
+        tree: TokenTree,
+        tag_name: String,
+    }
+
+    let mut stack: Vec<StackElement> = Vec::new();
 
     let root_token = Token::StartTag {
         self_closing: false,
@@ -100,10 +105,10 @@ fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTree {
         name_range: Range::default(),
         expression: None,
     };
-    stack.push((
-        TokenTree::new((root_token, Range::default())),
-        "root".to_string(),
-    ));
+    stack.push(StackElement {
+        tree: TokenTree::new((root_token, Range::default())),
+        tag_name: "root".to_string(),
+    });
 
     for t in tokenizer {
         match t {
@@ -115,7 +120,7 @@ fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTree {
                         continue;
                     }
                     Token::Doctype | Token::Text { .. } | Token::Expression { .. } => {
-                        stack.last_mut().unwrap().0.append_node((token, range));
+                        stack.last_mut().unwrap().tree.append_node((token, range));
                     }
                     Token::StartTag {
                         ref value,
@@ -123,9 +128,12 @@ fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTree {
                         ..
                     } => {
                         if is_void_element(value) || self_closing {
-                            stack.last_mut().unwrap().0.append_node((token, range));
+                            stack.last_mut().unwrap().tree.append_node((token, range));
                         } else {
-                            stack.push((TokenTree::new((token.clone(), range)), value.clone()));
+                            stack.push(StackElement {
+                                tree: TokenTree::new((token.clone(), range)),
+                                tag_name: value.clone(),
+                            });
                         }
                     }
                     Token::EndTag {
@@ -135,17 +143,20 @@ fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTree {
                     } => {
                         if is_void_element(value) {
                             errors.push(RangeError::closed_void_tag(value, range));
-                        } else if !stack.iter().any(|(_, v)| *v == *value) {
+                        } else if !stack.iter().any(|el| el.tag_name == *value) {
                             errors.push(RangeError::unmatched_closing_tag(value, range));
                         } else {
-                            while stack.last().unwrap().1 != *value {
-                                let (unclosed, value) = stack.pop().unwrap();
-                                errors.push(RangeError::unclosed_tag(&value, unclosed.token.1));
-                                stack.last_mut().unwrap().0.append_tree(unclosed);
+                            while stack.last().unwrap().tag_name != *value {
+                                let unclosed = stack.pop().unwrap();
+                                errors.push(RangeError::unclosed_tag(
+                                    &unclosed.tag_name,
+                                    unclosed.tree.token.1,
+                                ));
+                                stack.last_mut().unwrap().tree.append_tree(unclosed.tree);
                             }
                             let mut completed = stack.pop().unwrap();
-                            completed.0.set_closing_tag_range(name_range);
-                            stack.last_mut().unwrap().0.append_tree(completed.0);
+                            completed.tree.set_closing_tag_range(name_range);
+                            stack.last_mut().unwrap().tree.append_tree(completed.tree);
                         }
                     }
                     Token::Eof => {
@@ -157,11 +168,14 @@ fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTree {
     }
 
     while stack.len() > 1 {
-        let (tree, value) = stack.pop().unwrap();
-        errors.push(RangeError::unclosed_tag(&value, tree.token.1));
+        let unclosed = stack.pop().unwrap();
+        errors.push(RangeError::unclosed_tag(
+            &unclosed.tag_name,
+            unclosed.tree.token.1,
+        ));
     }
 
-    stack.pop().unwrap().0
+    stack.pop().unwrap().tree
 }
 
 fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Option<ToplevelNode> {
