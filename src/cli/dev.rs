@@ -510,14 +510,18 @@ pub async fn execute(
         let path = req.uri().path();
 
         // Convert request path to file path format
-        let file_path = match path {
-            "/" => "index.html",
-            path if path.starts_with('/') => &path[1..],
-            path => path,
+        let mut file_path = match path {
+            "/" => "index.html".to_string(),
+            path if path.starts_with('/') => path[1..].to_string(),
+            path => path.to_string(),
         };
 
+        if !file_path.ends_with(".html") {
+            file_path += ".html";
+        }
+
         // Try to render the requested file
-        match program.render_file(file_path) {
+        match program.render_file(&file_path) {
             Ok(content) => Ok(Html(inject_hot_reload_script(&content))),
             Err(_) => {
                 let available_paths: Vec<String> = program
