@@ -4,6 +4,7 @@ mod dop;
 mod filesystem;
 mod tui;
 mod hop;
+mod test_utils;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use filesystem::files::ProjectRoot;

@@ -95,6 +95,16 @@ impl Annotation for RenameableSymbol {
     }
 }
 
+impl Annotation for HoverInfo {
+    fn range(&self) -> Range {
+        self.range
+    }
+
+    fn message(&self) -> String {
+        self.type_str.clone()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct RenameableSymbol {
     pub current_name: String,
@@ -515,6 +525,31 @@ mod tests {
         expected.assert_eq(&output);
     }
 
+    fn check_hover_info(archive: &str, module: &str, position: Position, expected: Expect) {
+        let server = server_from_txtar(archive);
+        let hover = server.get_hover_info(module, position);
+
+        let output = match hover {
+            Some(hover_info) => {
+                let archive = Archive::from(archive);
+                if let Some(file) = archive
+                    .iter()
+                    .find(|f| f.name.replace(".hop", "") == module)
+                {
+                    SourceAnnotator::new()
+                        .with_filename(&file.name)
+                        .with_location()
+                        .annotate(&file.content, &[hover_info])
+                } else {
+                    "File not found".to_string()
+                }
+            }
+            None => "".to_string(),
+        };
+
+        expected.assert_eq(&output);
+    }
+
     #[test]
     fn test_get_definition_from_component_reference() {
         check_definition_location(
@@ -681,6 +716,26 @@ mod tests {
                   --> main.hop (line 1, col 2)
                 1 | <hello-world>
                   |  ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_get_hover_info() {
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp {user: {name: string}}>
+                  <h1>Hello {user.name}</h1>
+                </main-comp>
+            "#},
+            "main",
+            Position::new(1, 15),
+            expect![[r#"
+                `user`: `{name: string}`
+                  --> main.hop (line 1, col 13)
+                1 | <main-comp {user: {name: string}}>
+                  |             ^^^^
             "#]],
         );
     }
