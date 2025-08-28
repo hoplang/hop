@@ -95,6 +95,18 @@ pub fn format_timing_visualization(timings: &[(&str, u128)]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use expect_test::{Expect, expect};
+
+    fn check(timings: Vec<(&str, u128)>, expect: Expect) {
+        let actual = format_timing_visualization(&timings);
+        let actual_with_pipes = actual
+            .lines()
+            .map(|line| format!("|{}", line))
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        expect.assert_eq(&actual_with_pipes);
+    }
 
     #[test]
     fn test_timing_visualization_with_multiple_phases() {
@@ -105,16 +117,29 @@ mod tests {
             ("file writing", 5),
         ];
 
-        let output = format_timing_visualization(&timings);
+        check(
+            timings,
+            expect![[r#"
+                |
+                |  module loading       ━━━━                             10ms
+                |  compilation          ━━━━━━━━━━━━━━━━━━               50ms
+                |  file rendering       ━━━━━━━                          20ms
+                |  file writing         ━━                                5ms
+            "#]],
+        );
+    }
 
-        assert_eq!(
-            output,
-            r#"
-  module loading       ━━━━                             10ms
-  compilation          ━━━━━━━━━━━━━━━━━━               50ms
-  file rendering       ━━━━━━━                          20ms
-  file writing         ━━                                5ms
-"#
+    #[test]
+    fn test_timing_visualization_with_two_phases() {
+        let timings = vec![("module loading", 100), ("compilation", 0)];
+
+        check(
+            timings,
+            expect![[r#"
+                |
+                |  module loading       ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  100ms
+                |  compilation          ━                                 0ms
+            "#]],
         );
     }
 }
