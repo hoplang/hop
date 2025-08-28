@@ -29,7 +29,7 @@ struct TokenTree {
     token: Token,
     children: Vec<TokenTree>,
     opening_tag_range: Range,
-    closing_tag_range: Option<Range>,
+    closing_tag_name_range: Option<Range>,
 }
 
 impl TokenTree {
@@ -38,7 +38,7 @@ impl TokenTree {
             token,
             children: Vec::new(),
             opening_tag_range: range,
-            closing_tag_range: None,
+            closing_tag_name_range: None,
         }
     }
 
@@ -50,8 +50,8 @@ impl TokenTree {
         self.children.push(tree);
     }
 
-    fn set_closing_tag_range(&mut self, range: Range) {
-        self.closing_tag_range = Some(range);
+    fn set_closing_tag_name_range(&mut self, range: Range) {
+        self.closing_tag_name_range = Some(range);
     }
 }
 
@@ -157,7 +157,7 @@ fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTree {
                                 stack.last_mut().unwrap().tree.append_tree(unclosed.tree);
                             }
                             let mut completed = stack.pop().unwrap();
-                            completed.tree.set_closing_tag_range(name_range);
+                            completed.tree.set_closing_tag_name_range(name_range);
                             stack.last_mut().unwrap().tree.append_tree(completed.tree);
                         }
                     }
@@ -327,7 +327,7 @@ fn construct_toplevel_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> Op
                     Some(ToplevelNode::ComponentDefinition(ComponentDefinitionNode {
                         name: name.to_string(),
                         opening_name_range: *name_range,
-                        closing_name_range: tree.closing_tag_range,
+                        closing_name_range: tree.closing_tag_name_range,
                         params: params_as_attrs,
                         as_attr,
                         attributes: attributes.clone(),
@@ -579,7 +579,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                     HopNode::ComponentReference(ComponentReferenceNode {
                         component: tag_name.to_string(),
                         opening_name_range: *name_range,
-                        closing_name_range: tree.closing_tag_range,
+                        closing_name_range: tree.closing_tag_name_range,
                         args: params_attrs,
                         attributes: attributes.clone(),
                         range: tree.opening_tag_range,
