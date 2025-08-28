@@ -29,55 +29,7 @@ fn get_ui_program() -> &'static hop::runtime::Program {
 }
 
 fn inject_hot_reload_script(html: &str) -> String {
-    const HOT_RELOAD_SCRIPT: &str = r#"
-<script type="module">
-import Idiomorph from '/idiomorph.js';
-
-const eventSource = new EventSource('/__hop_hot_reload');
-eventSource.onmessage = function(event) {
-    if (event.data === 'reload') {
-        fetch(window.location.href)
-            .then(response => response.text())
-            .then(html => {
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(html, 'text/html');
-                // Morph the entire document to enable head merging
-                Idiomorph.morph(document.documentElement, doc.documentElement, {
-                    head: {
-                        shouldPreserve: function(elt) {
-                            // Preserve elements with im-preserve attribute (default behavior)
-                            if (elt.getAttribute('im-preserve') === 'true') {
-                                return true;
-                            }
-                            // Preserve Tailwind CSS style tags
-                            if (elt.tagName === 'STYLE' && elt.textContent && 
-                                elt.textContent.includes('/*! tailwindcss')) {
-                                return true;
-                            }
-                            return false;
-                        }
-                    }
-                });
-            })
-            .catch(error => {
-                console.error('Hot reload fetch error:', error);
-            });
-    }
-};
-eventSource.onerror = function(event) {
-    console.log('Hot reload connection error:', event);
-    setTimeout(() => {
-        eventSource.close();
-        location.reload();
-    }, 1000);
-};
-window.addEventListener("beforeunload", function() {
-    // This is important on chrome, not closing the event source will leave it open even when the
-    // user navigates away.
-    eventSource.close();
-});
-</script>
-"#;
+    const HOT_RELOAD_SCRIPT: &str = r#"<script type="module" src="/_hop/hmr.js"></script>"#;
 
     // Try to inject before closing body tag, fallback to end of document
     if let Some(body_end_pos) = html.rfind("</body>") {
@@ -94,9 +46,10 @@ window.addEventListener("beforeunload", function() {
         result
     } else {
         // If no body or html tags found, append to end
-        let mut result = String::with_capacity(html.len() + HOT_RELOAD_SCRIPT.len());
+        let mut result = String::with_capacity(html.len() + HOT_RELOAD_SCRIPT.len() + 1);
         result.push_str(html);
         result.push_str(HOT_RELOAD_SCRIPT);
+        result.push('\n');
         result
     }
 }
@@ -185,63 +138,7 @@ fn create_inspect_page(program: &hop::runtime::Program) -> String {
     params.insert("data".to_string(), inspect_data);
     match inspect_program.execute_simple("hop/inspector", "inspect-page", params) {
         Ok(html) => {
-            let hot_reload_script = r#"
-<script type="module">
-import Idiomorph from './idiomorph.js';
-
-const eventSource = new EventSource('/__hop_hot_reload');
-eventSource.onmessage = async function(event) {
-    if (event.data === 'reload') {
-        // Reload all iframes
-        const iframes = document.querySelectorAll('iframe');
-        for (const iframe of iframes) {
-            try {
-                const previewUrl = iframe.src;
-                const response = await fetch(previewUrl);
-                const html = await response.text();
-                if (iframe.contentDocument) {
-                    // Parse the HTML and morph the entire iframe document
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    if (iframe.contentDocument && iframe.contentDocument.documentElement) {
-                        Idiomorph.morph(iframe.contentDocument.documentElement, doc.documentElement, {
-                            head: {
-                                shouldPreserve: function(elt) {
-                                    // Preserve elements with im-preserve attribute (default behavior)
-                                    if (elt.getAttribute('im-preserve') === 'true') {
-                                        return true;
-                                    }
-                                    // Preserve Tailwind CSS style tags
-                                    if (elt.tagName === 'STYLE' && elt.textContent && 
-                                        elt.textContent.includes('/*! tailwindcss')) {
-                                        return true;
-                                    }
-                                    return false;
-                                }
-                            }
-                        });
-                    }
-                }
-            } catch (error) {
-                console.error('Error reloading iframe:', error);
-                // Fallback to full iframe reload
-                iframe.src = iframe.src;
-            }
-        }
-    }
-};
-eventSource.onerror = function(event) {
-    console.log('Hot reload connection error:', event);
-    setTimeout(() => {
-        eventSource.close();
-        location.reload();
-    }, 1000);
-};
-window.addEventListener("beforeunload", function() {
-    eventSource.close();
-});
-</script>
-"#;
+            let hot_reload_script = r#"<script type="module" src="/_hop/inspector.js"></script>"#;
 
             html.replace(
                 "</body>",
@@ -344,7 +241,7 @@ fn create_file_watcher(
 /// Create a router that responds to requests for the output files specified in the build.hop file.
 ///
 /// Also sets up a watcher that watches all source files used to construct the output files.
-/// The watcher emits SSE-events on the `/__hop_hot_reload` route. There is also an injected
+/// The watcher emits SSE-events on the `/_hop/event_source` route. There is also an injected
 /// script on in all `html` files that listens to SSE-events on that route and performs
 /// hot-reloading when an event is emitted.
 ///
@@ -373,7 +270,7 @@ pub async fn execute(
     // Add SSE endpoint for hot reload events
     let (watcher, channel) = create_file_watcher(root)?;
     router = router.route(
-        "/__hop_hot_reload",
+        "/_hop/event_source",
         get(async move || {
             Sse::new(
                 BroadcastStream::new(channel.subscribe())
@@ -439,11 +336,33 @@ pub async fn execute(
 
     // Add idiomorph.js serving endpoint
     router = router.route(
-        "/idiomorph.js",
+        "/_hop/idiomorph.js",
         get(async move || {
             axum::response::Response::builder()
                 .header("Content-Type", "application/javascript")
-                .body(Body::from(include_str!("../../idiomorph.js")))
+                .body(Body::from(include_str!("_hop/idiomorph.js")))
+                .unwrap()
+        }),
+    );
+
+    // Add hot reload script serving endpoint
+    router = router.route(
+        "/_hop/hmr.js",
+        get(async move || {
+            axum::response::Response::builder()
+                .header("Content-Type", "application/javascript")
+                .body(Body::from(include_str!("_hop/hmr.js")))
+                .unwrap()
+        }),
+    );
+
+    // Add inspector script serving endpoint
+    router = router.route(
+        "/_hop/inspector.js",
+        get(async move || {
+            axum::response::Response::builder()
+                .header("Content-Type", "application/javascript")
+                .body(Body::from(include_str!("_hop/inspector.js")))
                 .unwrap()
         }),
     );
@@ -546,11 +465,27 @@ pub async fn execute(
 mod tests {
     use super::*;
     use crate::test_utils::archive::temp_dir_from_archive;
-    use axum_test::TestServer;
-    use expect_test::expect;
+    use axum::http;
+    use axum_test::{TestResponse, TestServer};
+    use expect_test::{Expect, expect};
     use indoc::indoc;
     use simple_txtar::Archive;
     use std::fs;
+
+    fn check_response(response: TestResponse, status: http::StatusCode, expected: &Expect) {
+        response.assert_status(status);
+        expected.assert_eq(&response.text());
+    }
+
+    fn check_response_contains(response: TestResponse, status: http::StatusCode, contains: &str) {
+        response.assert_status(status);
+        let body = response.text();
+        assert!(
+            body.contains(contains),
+            "Response body does not contain: {}",
+            contains
+        );
+    }
 
     /// When the user calls `hop dev` and has a entry for `index.html` in the manifest file, the
     /// index.html entry should be rendered when the user issues a GET to /.
@@ -569,69 +504,21 @@ mod tests {
 
         let server = TestServer::new(router).unwrap();
 
-        let response = server.get("/").await;
-        response.assert_status_ok();
+        check_response(
+            server.get("/").await,
+            http::StatusCode::OK,
+            &expect![[r#"
 
-        let body = response.text();
-        expect![[r#"
-
-              Hello from build.hop!
-
-            <script type="module">
-            import Idiomorph from '/idiomorph.js';
-
-            const eventSource = new EventSource('/__hop_hot_reload');
-            eventSource.onmessage = function(event) {
-                if (event.data === 'reload') {
-                    fetch(window.location.href)
-                        .then(response => response.text())
-                        .then(html => {
-                            const parser = new DOMParser();
-                            const doc = parser.parseFromString(html, 'text/html');
-                            // Morph the entire document to enable head merging
-                            Idiomorph.morph(document.documentElement, doc.documentElement, {
-                                head: {
-                                    shouldPreserve: function(elt) {
-                                        // Preserve elements with im-preserve attribute (default behavior)
-                                        if (elt.getAttribute('im-preserve') === 'true') {
-                                            return true;
-                                        }
-                                        // Preserve Tailwind CSS style tags
-                                        if (elt.tagName === 'STYLE' && elt.textContent && 
-                                            elt.textContent.includes('/*! tailwindcss')) {
-                                            return true;
-                                        }
-                                        return false;
-                                    }
-                                }
-                            });
-                        })
-                        .catch(error => {
-                            console.error('Hot reload fetch error:', error);
-                        });
-                }
-            };
-            eventSource.onerror = function(event) {
-                console.log('Hot reload connection error:', event);
-                setTimeout(() => {
-                    eventSource.close();
-                    location.reload();
-                }, 1000);
-            };
-            window.addEventListener("beforeunload", function() {
-                // This is important on chrome, not closing the event source will leave it open even when the
-                // user navigates away.
-                eventSource.close();
-            });
-            </script>
-        "#]]
-        .assert_eq(&body);
+                  Hello from build.hop!
+                <script type="module" src="/_hop/hmr.js"></script>
+            "#]],
+        );
     }
 
     /// When the user changes the contents of the build.hop file after running `hop dev` the
     /// changes should be reflected when the user sends a request to the server.
     #[tokio::test]
-    async fn test_dev_from_hop_dynamic_update() -> anyhow::Result<()> {
+    async fn test_dev_from_hop_dynamic_update() {
         let archive = Archive::from(indoc! {r#"
             -- src/test.hop --
             <foo-comp>
@@ -647,32 +534,48 @@ mod tests {
               <foo-comp />
             </render>
         "#});
-        let dir = temp_dir_from_archive(&archive)?;
+        let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
-        let (router, _watcher) = execute(&root, None, None).await?;
+        let (router, _watcher) = execute(&root, None, None).await.unwrap();
 
         let server = TestServer::new(router).unwrap();
 
-        let response = server.get("/").await;
-        response.assert_status_ok();
-        let body = response.text();
-        assert!(body.contains("message is foo"));
+        check_response(
+            server.get("/").await,
+            http::StatusCode::OK,
+            &expect![[r#"
+
+                  <div data-hop-id="src/test/foo-comp">
+                  message is foo
+                </div>
+                <script type="module" src="/_hop/hmr.js"></script>
+            "#]],
+        );
 
         fs::write(
             dir.join("build.hop"),
-            r#"<import component="bar-comp" from="src/test" />
+            indoc! {r#"
+                <import component="bar-comp" from="src/test" />
 
-<render file="index.html">
-  <bar-comp />
-</render>"#,
-        )?;
+                <render file="index.html">
+                  <bar-comp />
+                </render>
+            "#},
+        )
+        .unwrap();
 
-        let response = server.get("/").await;
-        response.assert_status_ok();
-        let body = response.text();
-        assert!(body.contains("message is bar"));
-        Ok(())
+        check_response(
+            server.get("/").await,
+            http::StatusCode::OK,
+            &expect![[r#"
+
+                  <div data-hop-id="src/test/bar-comp">
+                  message is bar
+                </div>
+                <script type="module" src="/_hop/hmr.js"></script>
+            "#]],
+        );
     }
 
     /// When the user calls `hop dev` with a servedir parameter, static files should be served
@@ -699,81 +602,40 @@ mod tests {
         let server = TestServer::new(router).unwrap();
 
         let response = server.get("/").await;
-        response.assert_status_ok();
-        let body = response.text();
-        expect![[r#"
+        check_response(
+            response,
+            http::StatusCode::OK,
+            &expect![[r#"
 
-              hello world!
+                  hello world!
+                <script type="module" src="/_hop/hmr.js"></script>
+            "#]],
+        );
 
-            <script type="module">
-            import Idiomorph from '/idiomorph.js';
+        check_response(
+            server.get("/css/style.css").await,
+            http::StatusCode::OK,
+            &expect![[r#"
+                body { background: blue; }
+            "#]],
+        );
 
-            const eventSource = new EventSource('/__hop_hot_reload');
-            eventSource.onmessage = function(event) {
-                if (event.data === 'reload') {
-                    fetch(window.location.href)
-                        .then(response => response.text())
-                        .then(html => {
-                            const parser = new DOMParser();
-                            const doc = parser.parseFromString(html, 'text/html');
-                            // Morph the entire document to enable head merging
-                            Idiomorph.morph(document.documentElement, doc.documentElement, {
-                                head: {
-                                    shouldPreserve: function(elt) {
-                                        // Preserve elements with im-preserve attribute (default behavior)
-                                        if (elt.getAttribute('im-preserve') === 'true') {
-                                            return true;
-                                        }
-                                        // Preserve Tailwind CSS style tags
-                                        if (elt.tagName === 'STYLE' && elt.textContent && 
-                                            elt.textContent.includes('/*! tailwindcss')) {
-                                            return true;
-                                        }
-                                        return false;
-                                    }
-                                }
-                            });
-                        })
-                        .catch(error => {
-                            console.error('Hot reload fetch error:', error);
-                        });
-                }
-            };
-            eventSource.onerror = function(event) {
-                console.log('Hot reload connection error:', event);
-                setTimeout(() => {
-                    eventSource.close();
-                    location.reload();
-                }, 1000);
-            };
-            window.addEventListener("beforeunload", function() {
-                // This is important on chrome, not closing the event source will leave it open even when the
-                // user navigates away.
-                eventSource.close();
-            });
-            </script>
-        "#]]
-        .assert_eq(&body);
-
-        let response = server.get("/css/style.css").await;
-        response.assert_status_ok();
-        let body = response.text();
-        expect![[r#"
-            body { background: blue; }
-        "#]]
-        .assert_eq(&body);
-
-        let response = server.get("/js/script.js").await;
-        response.assert_status_ok();
-        let body = response.text();
-        expect![[r#"
-            console.log("Hello from static file");
-        "#]]
-        .assert_eq(&body);
+        check_response(
+            server.get("/js/script.js").await,
+            http::StatusCode::OK,
+            &expect![[r#"
+                console.log("Hello from static file");
+            "#]],
+        );
+        check_response_contains(
+            server.get("/_hop/hmr.js").await,
+            http::StatusCode::OK,
+            "new EventSource('/_hop/event_source')",
+        );
     }
 
     /// When the user calls `hop dev` the global HOP_MODE variable should
-    /// be set to 'build'.
+    /// be set to 'dev'.
     #[tokio::test]
     async fn test_dev_has_hop_mode_dev() {
         let archive = Archive::from(indoc! {r#"
@@ -789,62 +651,15 @@ mod tests {
 
         let server = TestServer::new(router).unwrap();
 
-        let response = server.get("/").await;
-        response.assert_status_ok();
-        let body = response.text();
-        expect![[r#"
+        check_response(
+            server.get("/").await,
+            http::StatusCode::OK,
+            &expect![[r#"
 
-              mode: dev
-
-            <script type="module">
-            import Idiomorph from '/idiomorph.js';
-
-            const eventSource = new EventSource('/__hop_hot_reload');
-            eventSource.onmessage = function(event) {
-                if (event.data === 'reload') {
-                    fetch(window.location.href)
-                        .then(response => response.text())
-                        .then(html => {
-                            const parser = new DOMParser();
-                            const doc = parser.parseFromString(html, 'text/html');
-                            // Morph the entire document to enable head merging
-                            Idiomorph.morph(document.documentElement, doc.documentElement, {
-                                head: {
-                                    shouldPreserve: function(elt) {
-                                        // Preserve elements with im-preserve attribute (default behavior)
-                                        if (elt.getAttribute('im-preserve') === 'true') {
-                                            return true;
-                                        }
-                                        // Preserve Tailwind CSS style tags
-                                        if (elt.tagName === 'STYLE' && elt.textContent && 
-                                            elt.textContent.includes('/*! tailwindcss')) {
-                                            return true;
-                                        }
-                                        return false;
-                                    }
-                                }
-                            });
-                        })
-                        .catch(error => {
-                            console.error('Hot reload fetch error:', error);
-                        });
-                }
-            };
-            eventSource.onerror = function(event) {
-                console.log('Hot reload connection error:', event);
-                setTimeout(() => {
-                    eventSource.close();
-                    location.reload();
-                }, 1000);
-            };
-            window.addEventListener("beforeunload", function() {
-                // This is important on chrome, not closing the event source will leave it open even when the
-                // user navigates away.
-                eventSource.close();
-            });
-            </script>
-        "#]]
-        .assert_eq(&body);
+                  mode: dev
+                <script type="module" src="/_hop/hmr.js"></script>
+            "#]],
+        );
     }
 
     /// When the user calls `hop dev` and requests a path that doesn't exist in the manifest,
@@ -872,10 +687,10 @@ mod tests {
 
         // Test non-existent path
         let response = server.get("/nonexistent").await;
-        response.assert_status(axum::http::StatusCode::NOT_FOUND);
-
-        let body = response.text();
-        expect![[r#"
+        check_response(
+            response,
+            http::StatusCode::NOT_FOUND,
+            &expect![[r#"
 
             	<!DOCTYPE html>
             	<html>
@@ -932,58 +747,10 @@ mod tests {
             </div>
 		
             </div>
-	
-            <script type="module">
-            import Idiomorph from '/idiomorph.js';
-
-            const eventSource = new EventSource('/__hop_hot_reload');
-            eventSource.onmessage = function(event) {
-                if (event.data === 'reload') {
-                    fetch(window.location.href)
-                        .then(response => response.text())
-                        .then(html => {
-                            const parser = new DOMParser();
-                            const doc = parser.parseFromString(html, 'text/html');
-                            // Morph the entire document to enable head merging
-                            Idiomorph.morph(document.documentElement, doc.documentElement, {
-                                head: {
-                                    shouldPreserve: function(elt) {
-                                        // Preserve elements with im-preserve attribute (default behavior)
-                                        if (elt.getAttribute('im-preserve') === 'true') {
-                                            return true;
-                                        }
-                                        // Preserve Tailwind CSS style tags
-                                        if (elt.tagName === 'STYLE' && elt.textContent && 
-                                            elt.textContent.includes('/*! tailwindcss')) {
-                                            return true;
-                                        }
-                                        return false;
-                                    }
-                                }
-                            });
-                        })
-                        .catch(error => {
-                            console.error('Hot reload fetch error:', error);
-                        });
-                }
-            };
-            eventSource.onerror = function(event) {
-                console.log('Hot reload connection error:', event);
-                setTimeout(() => {
-                    eventSource.close();
-                    location.reload();
-                }, 1000);
-            };
-            window.addEventListener("beforeunload", function() {
-                // This is important on chrome, not closing the event source will leave it open even when the
-                // user navigates away.
-                eventSource.close();
-            });
-            </script>
-            </body>
+            	<script type="module" src="/_hop/hmr.js"></script></body>
             	</html>
-        "#]]
-        .assert_eq(&body);
+        "#]],
+        );
     }
 
     /// When the user calls `hop dev` and the program doesn't compile an error should be returned.
