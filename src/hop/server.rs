@@ -208,7 +208,7 @@ impl Server {
     ) -> Option<Vec<RenameLocation>> {
         let type_result = self.type_results.get(module_name)?;
 
-        // First, check if we're on a component reference
+        // Check if we're on a component reference
         for link in &type_result.component_definition_links {
             if link.reference_name_contains_position(position) {
                 return Some(self.collect_component_rename_locations(
@@ -246,7 +246,7 @@ impl Server {
     ) -> Option<RenameableSymbol> {
         let type_result = self.type_results.get(module_name)?;
 
-        // First, check if we're on a component reference
+        // Check if we're on a component reference
         for link in &type_result.component_definition_links {
             if link
                 .reference_opening_name_range
@@ -414,8 +414,6 @@ mod tests {
 
     fn check_rename_locations(input: &str, expected: Expect) {
         let (archive, markers) = extract_markers_from_archive(&Archive::from(input));
-        let server = server_from_archive(&archive);
-
         if markers.len() != 1 {
             panic!(
                 "Expected exactly one position marker, found {}",
@@ -426,7 +424,7 @@ mod tests {
         let marker = &markers[0];
         let module = marker.filename.replace(".hop", "");
 
-        let mut locs = server
+        let mut locs = server_from_archive(&archive)
             .get_rename_locations(&module, marker.position)
             .expect("Expected locations to be defined");
 
@@ -469,8 +467,7 @@ mod tests {
         let marker = &markers[0];
         let module = marker.filename.replace(".hop", "");
 
-        let server = server_from_archive(&archive);
-        let loc = server
+        let loc = server_from_archive(&archive)
             .get_definition_location(&module, marker.position)
             .expect("Expected definition location to be defined");
 
@@ -487,15 +484,14 @@ mod tests {
         expected.assert_eq(&output);
     }
 
-    fn check_error_diagnostics(archive: &str, module: &str, expected: Expect) {
-        let server = server_from_archive(&Archive::from(archive));
-        let diagnostics = server.get_error_diagnostics(module);
+    fn check_error_diagnostics(input: &str, module: &str, expected: Expect) {
+        let archive = Archive::from(input);
+        let diagnostics = server_from_archive(&archive).get_error_diagnostics(module);
 
         if diagnostics.is_empty() {
             panic!("Expected diagnostics to be non-empty");
         }
 
-        let archive = Archive::from(archive);
         let file = archive
             .iter()
             .find(|f| f.name.replace(".hop", "") == module)
@@ -511,8 +507,6 @@ mod tests {
 
     fn check_renameable_symbol(input: &str, expected: Expect) {
         let (archive, markers) = extract_markers_from_archive(&Archive::from(input));
-        let server = server_from_archive(&archive);
-
         if markers.len() != 1 {
             panic!(
                 "Expected exactly one position marker, found {}",
@@ -523,7 +517,7 @@ mod tests {
         let marker = &markers[0];
         let module = marker.filename.replace(".hop", "");
 
-        let symbol = server
+        let symbol = server_from_archive(&archive)
             .get_renameable_symbol(&module, marker.position)
             .expect("Expected symbol to be defined");
 
@@ -553,8 +547,7 @@ mod tests {
         let marker = &markers[0];
         let module = marker.filename.replace(".hop", "");
 
-        let server = server_from_archive(&archive);
-        let hover = server
+        let hover_info = server_from_archive(&archive)
             .get_hover_info(&module, marker.position)
             .expect("Expected hover info to be defined");
 
@@ -566,7 +559,7 @@ mod tests {
         let output = SourceAnnotator::new()
             .with_filename(&file.name)
             .with_location()
-            .annotate(&file.content, &[hover]);
+            .annotate(&file.content, &[hover_info]);
 
         expected.assert_eq(&output);
     }
