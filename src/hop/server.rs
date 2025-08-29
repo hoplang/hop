@@ -9,7 +9,7 @@ use crate::hop::typechecker::{
 use crate::tui::source_annotator::Annotation;
 use std::collections::HashMap;
 
-use super::ast::HopNode;
+use super::ast::{ComponentDefinitionLocation, HopNode};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct HoverInfo {
@@ -241,70 +241,82 @@ impl Server {
         module_name: &str,
         position: Position,
     ) -> Option<Vec<RenameLocation>> {
-        let component_definition_links = self.component_definition_links.get(module_name)?;
+        let ast = self.asts.get(module_name)?;
+        match ast.find_node_at_position(position) {
+            Some(HopNode::ComponentReference {
+                component,
+                opening_name_range,
+                closing_name_range,
+                definition_location,
+                ..
+            }) => {
+                let is_on_tag_name = opening_name_range.contains_position(position)
+                    || closing_name_range.is_some_and(|range| range.contains_position(position));
 
-        // Check if we're on a component reference
-        for link in component_definition_links {
-            if link.reference_name_contains_position(position) {
-                return Some(self.collect_component_rename_locations(
-                    &link.definition_component_name,
-                    &link.definition_module,
-                ));
-            }
-        }
-
-        // Check if we're on a native HTML element
-        if let Some(ast) = self.asts.get(module_name) {
-            if let Some(node) = ast.find_node_at_position(position) {
-                if let Some(HopNode::NativeHTML { .. }) = Some(node) {
-                    let is_on_tag_name = node
-                        .opening_name_range()
-                        .is_some_and(|range| range.contains_position(position))
-                        || node
-                            .closing_name_range()
-                            .is_some_and(|range| range.contains_position(position));
-
-                    if is_on_tag_name {
-                        let mut locations = Vec::new();
-
-                        // Add the opening tag name
-                        if let Some(opening_range) = node.opening_name_range() {
-                            locations.push(RenameLocation {
-                                module: module_name.to_string(),
-                                range: opening_range,
-                            });
+                if is_on_tag_name {
+                    match definition_location {
+                        ComponentDefinitionLocation::SameModule => {
+                            return Some(
+                                self.collect_component_rename_locations(component, module_name),
+                            );
                         }
-
-                        // Add the closing tag name if it exists
-                        if let Some(closing_range) = node.closing_name_range() {
-                            locations.push(RenameLocation {
-                                module: module_name.to_string(),
-                                range: closing_range,
-                            });
+                        ComponentDefinitionLocation::OtherModule(target_module) => {
+                            return Some(
+                                self.collect_component_rename_locations(component, target_module),
+                            );
                         }
-
-                        return Some(locations);
+                        ComponentDefinitionLocation::Unresolved => {
+                            // Component definition not found, return empty locations
+                            return Some(Vec::new());
+                        }
                     }
                 }
             }
+            Some(HopNode::NativeHTML {
+                opening_name_range,
+                closing_name_range,
+                ..
+            }) => {
+                let is_on_tag_name = opening_name_range.contains_position(position)
+                    || closing_name_range.is_some_and(|range| range.contains_position(position));
+
+                if is_on_tag_name {
+                    let mut locations = Vec::new();
+
+                    // Add the opening tag name
+                    locations.push(RenameLocation {
+                        module: module_name.to_string(),
+                        range: *opening_name_range,
+                    });
+
+                    // Add the closing tag name if it exists
+                    if let Some(closing_range) = closing_name_range {
+                        locations.push(RenameLocation {
+                            module: module_name.to_string(),
+                            range: *closing_range,
+                        });
+                    }
+
+                    return Some(locations);
+                }
+            }
+            _ => (),
         }
 
         // Check if we're on a component definition
-        if let Some(ast) = self.asts.get(module_name) {
-            for component_node in ast.get_component_nodes() {
-                let is_on_definition = component_node
-                    .opening_name_range
-                    .contains_position(position)
-                    || component_node
-                        .closing_name_range
-                        .is_some_and(|range| range.contains_position(position));
+        for component_node in ast.get_component_nodes() {
+            let is_on_definition = component_node
+                .opening_name_range
+                .contains_position(position)
+                || component_node
+                    .closing_name_range
+                    .is_some_and(|range| range.contains_position(position));
 
-                if is_on_definition {
-                    // We're on a definition, collect all rename locations
-                    return Some(
-                        self.collect_component_rename_locations(&component_node.name, module_name),
-                    );
-                }
+            if is_on_definition {
+                // We're on a definition, collect all rename locations
+                return Some(
+                    self.collect_component_rename_locations(&component_node.name, module_name),
+                );
             }
         }
 
@@ -323,19 +335,19 @@ impl Server {
 
         if let Some(node) = ast.find_node_at_position(position) {
             if let Some(tag_name) = node.tag_name() {
-                if let Some(opening_range) = node.opening_name_range() {
-                    if opening_range.contains_position(position) {
+                if let Some(range) = node.opening_name_range() {
+                    if range.contains_position(position) {
                         return Some(RenameableSymbol {
                             current_name: tag_name.to_string(),
-                            range: opening_range,
+                            range,
                         });
                     }
                 }
-                if let Some(closing_range) = node.closing_name_range() {
-                    if closing_range.contains_position(position) {
+                if let Some(range) = node.closing_name_range() {
+                    if range.contains_position(position) {
                         return Some(RenameableSymbol {
                             current_name: tag_name.to_string(),
-                            range: closing_range,
+                            range,
                         });
                     }
                 }
@@ -390,10 +402,10 @@ impl Server {
                 });
 
                 // Add the definition's closing tag name if it exists
-                if let Some(closing_range) = component_node.closing_name_range {
+                if let Some(range) = component_node.closing_name_range {
                     locations.push(RenameLocation {
                         module: definition_module.to_string(),
-                        range: closing_range,
+                        range,
                     });
                 }
             }
@@ -411,10 +423,10 @@ impl Server {
                     });
 
                     // Add the reference's closing tag name if it exists
-                    if let Some(name_range) = link.reference_closing_name_range {
+                    if let Some(range) = link.reference_closing_name_range {
                         locations.push(RenameLocation {
                             module: module_name.clone(),
-                            range: name_range,
+                            range,
                         });
                     }
                 }
@@ -935,6 +947,32 @@ mod tests {
                   --> main.hop (line 2, col 3)
                 2 |   <div>
                   |   ^^^^^
+            "#]],
+        );
+    }
+
+    // Even when there's parse errors we should be able to rename.
+    #[test]
+    fn test_rename_with_parse_errors() {
+        check_rename_locations(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp>
+                  ^
+                  <div>
+                  <span>unclosed span
+                </main-comp>
+            "#},
+            expect![[r#"
+                Rename
+                  --> main.hop (line 1, col 2)
+                1 | <main-comp>
+                  |  ^^^^^^^^^
+
+                Rename
+                  --> main.hop (line 4, col 3)
+                4 | </main-comp>
+                  |   ^^^^^^^^^
             "#]],
         );
     }
