@@ -2,9 +2,9 @@ mod cli;
 mod common;
 mod dop;
 mod filesystem;
-mod tui;
 mod hop;
 mod test_utils;
+mod tui;
 
 use clap::{CommandFactory, Parser, Subcommand};
 use filesystem::files::ProjectRoot;
@@ -153,7 +153,7 @@ async fn main() -> anyhow::Result<()> {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
-            let (router, _watcher, _program) = cli::dev::execute(
+            let (router, _watcher) = cli::dev::execute(
                 &root,
                 staticdir.as_deref().map(Path::new),
                 scriptfile.as_deref(),

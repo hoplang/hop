@@ -154,11 +154,7 @@ pub async fn execute(
     root: &ProjectRoot,
     static_dir: Option<&Path>,
     script_file: Option<&str>,
-) -> anyhow::Result<(
-    axum::Router,
-    notify::RecommendedWatcher,
-    Arc<RwLock<Program>>,
-)> {
+) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher)> {
     use axum::body::Body;
     use axum::extract::Request;
     use axum::http::StatusCode;
@@ -285,7 +281,7 @@ pub async fn execute(
         router = router.fallback(request_handler);
     }
 
-    Ok((router, watcher, shared_program))
+    Ok((router, watcher))
 }
 
 #[cfg(test)]
@@ -327,7 +323,7 @@ mod tests {
         let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
-        let (router, _watcher, _program) = execute(&root, None, None).await.unwrap();
+        let (router, _watcher) = execute(&root, None, None).await.unwrap();
 
         let server = TestServer::new(router).unwrap();
 
@@ -364,7 +360,7 @@ mod tests {
         let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
-        let (router, _watcher, _program) = execute(&root, None, None).await.unwrap();
+        let (router, _watcher) = execute(&root, None, None).await.unwrap();
 
         let server = TestServer::new(router).unwrap();
 
@@ -426,7 +422,7 @@ mod tests {
         let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
-        let (router, _watcher, _program) = execute(&root, Some(&dir.join("static")), None)
+        let (router, _watcher) = execute(&root, Some(&dir.join("static")), None)
             .await
             .unwrap();
 
@@ -478,7 +474,7 @@ mod tests {
         let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
-        let (router, _watcher, _program) = execute(&root, None, None).await.unwrap();
+        let (router, _watcher) = execute(&root, None, None).await.unwrap();
 
         let server = TestServer::new(router).unwrap();
 
@@ -512,7 +508,7 @@ mod tests {
         let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
-        let (router, _watcher, _program) = execute(&root, None, None).await.unwrap();
+        let (router, _watcher) = execute(&root, None, None).await.unwrap();
 
         let server = TestServer::new(router).unwrap();
 
@@ -591,7 +587,7 @@ mod tests {
         let dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::find_upwards(&dir).unwrap();
 
-        let (router, _watcher, _program) = execute(&root, None, None).await.unwrap();
+        let (router, _watcher) = execute(&root, None, None).await.unwrap();
 
         let server = TestServer::new(router).unwrap();
 
