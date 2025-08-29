@@ -374,48 +374,25 @@ impl Server {
                         range: n.component_attr.value_range,
                     }),
             );
-            for component_definition in ast.get_component_definition_nodes() {
-                for child in &component_definition.children {
-                    for node in child.iter_depth_first() {
-                        if let HopNode::ComponentReference {
-                            component,
-                            definition_location: Some(defined_in),
-                            ..
-                        } = node
-                        {
-                            if defined_in == definition_module && component == component_name {
-                                for range in node.name_ranges() {
-                                    locations.push(RenameLocation {
-                                        module: module_name.clone(),
-                                        range,
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            for render_node in ast.get_render_nodes() {
-                for child in &render_node.children {
-                    for node in child.iter_depth_first() {
-                        if let HopNode::ComponentReference {
-                            component,
-                            definition_location: Some(defined_in),
-                            ..
-                        } = node
-                        {
-                            if defined_in == definition_module && component == component_name {
-                                for range in node.name_ranges() {
-                                    locations.push(RenameLocation {
-                                        module: module_name.clone(),
-                                        range,
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+
+            locations.extend(
+                ast.iter_all_nodes()
+                    .filter(|node| {
+                        matches!(
+                            node,
+                            HopNode::ComponentReference {
+                                component,
+                                definition_location: Some(defined_in),
+                                ..
+                            } if defined_in == definition_module && component == component_name
+                        )
+                    })
+                    .flat_map(|node| node.name_ranges())
+                    .map(|range| RenameLocation {
+                        module: module_name.clone(),
+                        range,
+                    }),
+            );
         }
 
         locations

@@ -40,6 +40,20 @@ impl HopAST {
         &self.render_nodes
     }
 
+    /// Returns an iterator over all nodes in the AST, depth-first.
+    /// This includes all nodes from both render nodes and component definitions.
+    pub fn iter_all_nodes(&self) -> impl Iterator<Item = &HopNode> {
+        self.render_nodes
+            .iter()
+            .flat_map(|def| &def.children)
+            .chain(
+                self.component_nodes
+                    .iter()
+                    .flat_map(|render| &render.children),
+            )
+            .flat_map(|child| child.iter_depth_first())
+    }
+
     /// Finds the deepest AST node that contains the given position.
     ///
     /// # Example
