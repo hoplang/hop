@@ -678,7 +678,7 @@ mod tests {
         } else {
             for component in module.get_component_nodes() {
                 if component.name == "main-comp" {
-                    return expected.assert_eq(&format_component_definition(&component));
+                    return expected.assert_eq(&format_component_definition(component));
                 }
             }
             String::new()

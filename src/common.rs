@@ -153,10 +153,6 @@ impl RangeError {
         )
     }
 
-    pub fn unused_import(component: &str, range: Range) -> Self {
-        Self::new(format!("Unused import: {component}"), range)
-    }
-
     pub fn expected_token(token: &DopToken, range: Range) -> Self {
         Self::new(format!("Expected token '{token}'"), range)
     }

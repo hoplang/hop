@@ -316,7 +316,7 @@ impl HopNode {
     pub fn name_ranges(&self) -> impl Iterator<Item = Range> {
         self.opening_name_range()
             .into_iter()
-            .chain(self.closing_name_range().into_iter())
+            .chain(self.closing_name_range())
     }
 }
 
