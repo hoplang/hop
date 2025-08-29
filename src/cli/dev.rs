@@ -5,6 +5,7 @@ use std::sync::{Arc, OnceLock, RwLock};
 use crate::filesystem::files;
 use crate::hop::compiler::compile;
 use crate::hop::program::{HopMode, Program};
+use axum::extract::State;
 
 const ERROR_TEMPLATES: &str = include_str!("../../hop/error_pages.hop");
 const UI_TEMPLATES: &str = include_str!("../../hop/ui.hop");
@@ -57,6 +58,67 @@ fn inject_hot_reload_script(html: &str) -> String {
         result.push_str(HOT_RELOAD_SCRIPT);
         result.push('\n');
         result
+    }
+}
+
+async fn handle_script(
+    State(program): State<Arc<RwLock<Program>>>,
+) -> axum::response::Response<axum::body::Body> {
+    use axum::body::Body;
+
+    let program = program.read().unwrap();
+    axum::response::Response::builder()
+        .header("Content-Type", "application/javascript")
+        .body(Body::from(program.get_scripts().to_string()))
+        .unwrap()
+}
+
+async fn handle_request(
+    State(program): State<Arc<RwLock<Program>>>,
+    req: axum::extract::Request,
+) -> Result<axum::response::Html<String>, (axum::http::StatusCode, axum::response::Html<String>)> {
+    use axum::http::StatusCode;
+    use axum::response::Html;
+
+    // Get the program from shared state
+    let program = program.read().unwrap();
+
+    let path = req.uri().path();
+
+    // Convert request path to file path format
+    let mut file_path = match path {
+        "/" => "index.html".to_string(),
+        path if path.starts_with('/') => path[1..].to_string(),
+        path => path.to_string(),
+    };
+
+    if !file_path.ends_with(".html") {
+        file_path += ".html";
+    }
+
+    // Try to render the requested file
+    match program.render_file(&file_path) {
+        Ok(content) => Ok(Html(inject_hot_reload_script(&content))),
+        Err(_) => {
+            let available_paths: Vec<String> = program
+                .get_render_file_paths()
+                .iter()
+                .map(|file_path| {
+                    if file_path == "index.html" {
+                        "/".to_string()
+                    } else if file_path.ends_with(".html") {
+                        format!("/{}", file_path.strip_suffix(".html").unwrap())
+                    } else {
+                        format!("/{}", file_path)
+                    }
+                })
+                .collect();
+
+            Err((
+                StatusCode::NOT_FOUND,
+                Html(create_not_found_page(req.uri().path(), &available_paths)),
+            ))
+        }
     }
 }
 
@@ -155,10 +217,6 @@ pub async fn execute(
     static_dir: Option<&Path>,
     script_file: Option<&str>,
 ) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher)> {
-    use axum::body::Body;
-    use axum::extract::Request;
-    use axum::http::StatusCode;
-    use axum::response::Html;
     use axum::response::sse::{Event, Sse};
     use axum::routing::get;
     use tokio_stream::StreamExt;
@@ -174,11 +232,12 @@ pub async fn execute(
 
     // Add SSE endpoint for hot reload events
     let (watcher, channel) = create_file_watcher(root, shared_program.clone())?;
+    let channel_clone = channel.clone();
     router = router.route(
         "/_hop/event_source",
         get(async move || {
             Sse::new(
-                BroadcastStream::new(channel.subscribe())
+                BroadcastStream::new(channel_clone.subscribe())
                     .map(|_| Ok::<Event, axum::Error>(Event::default().data("reload"))),
             )
         }),
@@ -188,6 +247,7 @@ pub async fn execute(
     router = router.route(
         "/_hop/idiomorph.js",
         get(async move || {
+            use axum::body::Body;
             axum::response::Response::builder()
                 .header("Content-Type", "application/javascript")
                 .body(Body::from(include_str!("_hop/idiomorph.js")))
@@ -199,6 +259,7 @@ pub async fn execute(
     router = router.route(
         "/_hop/hmr.js",
         get(async move || {
+            use axum::body::Body;
             axum::response::Response::builder()
                 .header("Content-Type", "application/javascript")
                 .body(Body::from(include_str!("_hop/hmr.js")))
@@ -209,64 +270,8 @@ pub async fn execute(
     // Add script serving endpoint if script_file is specified
     if let Some(script_filename) = script_file {
         let script_path = format!("/{}", script_filename);
-        let program_clone = shared_program.clone();
-        router = router.route(
-            &script_path,
-            get(
-                async move || -> Result<axum::response::Response<Body>, axum::http::StatusCode> {
-                    let program = program_clone.read().unwrap();
-                    Ok(axum::response::Response::builder()
-                        .header("Content-Type", "application/javascript")
-                        .body(Body::from(program.get_scripts().to_string()))
-                        .unwrap())
-                },
-            ),
-        );
+        router = router.route(&script_path, get(handle_script));
     }
-
-    let program_clone = shared_program.clone();
-    let request_handler = async move |req: Request| {
-        // Get the program from shared state
-        let program = program_clone.read().unwrap();
-
-        let path = req.uri().path();
-
-        // Convert request path to file path format
-        let mut file_path = match path {
-            "/" => "index.html".to_string(),
-            path if path.starts_with('/') => path[1..].to_string(),
-            path => path.to_string(),
-        };
-
-        if !file_path.ends_with(".html") {
-            file_path += ".html";
-        }
-
-        // Try to render the requested file
-        match program.render_file(&file_path) {
-            Ok(content) => Ok(Html(inject_hot_reload_script(&content))),
-            Err(_) => {
-                let available_paths: Vec<String> = program
-                    .get_render_file_paths()
-                    .iter()
-                    .map(|file_path| {
-                        if file_path == "index.html" {
-                            "/".to_string()
-                        } else if file_path.ends_with(".html") {
-                            format!("/{}", file_path.strip_suffix(".html").unwrap())
-                        } else {
-                            format!("/{}", file_path)
-                        }
-                    })
-                    .collect();
-
-                Err((
-                    StatusCode::NOT_FOUND,
-                    Html(create_not_found_page(req.uri().path(), &available_paths)),
-                ))
-            }
-        }
-    };
 
     // Set up static file serving if specified
     if let Some(static_dir) = static_dir {
@@ -275,13 +280,15 @@ pub async fn execute(
             anyhow::bail!("servedir '{}' is not a directory", static_dir.display());
         }
         router = router.fallback_service(
-            tower_http::services::ServeDir::new(static_dir).fallback(get(request_handler)),
+            tower_http::services::ServeDir::new(static_dir)
+                .fallback(get(handle_request).with_state(shared_program.clone())),
         );
     } else {
-        router = router.fallback(request_handler);
+        router = router.fallback(handle_request);
     }
 
-    Ok((router, watcher))
+    // Add shared state to router
+    Ok((router.with_state(shared_program), watcher))
 }
 
 #[cfg(test)]
@@ -325,7 +332,7 @@ mod tests {
 
         let (router, _watcher) = execute(&root, None, None).await.unwrap();
 
-        let server = TestServer::new(router).unwrap();
+        let server = TestServer::new(router.into_make_service()).unwrap();
 
         check_response(
             server.get("/").await,
@@ -362,7 +369,7 @@ mod tests {
 
         let (router, _watcher) = execute(&root, None, None).await.unwrap();
 
-        let server = TestServer::new(router).unwrap();
+        let server = TestServer::new(router.into_make_service()).unwrap();
 
         check_response(
             server.get("/").await,
@@ -426,7 +433,7 @@ mod tests {
             .await
             .unwrap();
 
-        let server = TestServer::new(router).unwrap();
+        let server = TestServer::new(router.into_make_service()).unwrap();
 
         let response = server.get("/").await;
         check_response(
@@ -476,7 +483,7 @@ mod tests {
 
         let (router, _watcher) = execute(&root, None, None).await.unwrap();
 
-        let server = TestServer::new(router).unwrap();
+        let server = TestServer::new(router.into_make_service()).unwrap();
 
         check_response(
             server.get("/").await,
@@ -510,7 +517,7 @@ mod tests {
 
         let (router, _watcher) = execute(&root, None, None).await.unwrap();
 
-        let server = TestServer::new(router).unwrap();
+        let server = TestServer::new(router.into_make_service()).unwrap();
 
         // Test non-existent path
         let response = server.get("/nonexistent").await;
@@ -589,7 +596,7 @@ mod tests {
 
         let (router, _watcher) = execute(&root, None, None).await.unwrap();
 
-        let server = TestServer::new(router).unwrap();
+        let server = TestServer::new(router.into_make_service()).unwrap();
 
         // With parse errors, the program still exists but has no render nodes,
         // so we get a 404 with no available routes
