@@ -154,21 +154,15 @@ impl RangeError {
         Self::new(format!("Variable {var} is already defined"), range)
     }
 
-    pub fn undefined_slot(slot: &str, component: &str, range: Range) -> Self {
+    pub fn undefined_slot(component: &str, range: Range) -> Self {
         Self::new(
-            format!("Slot '{slot}' is not defined in component {component}"),
+            format!("Component {component} does not have a slot-default"),
             range,
         )
     }
 
-    pub fn slot_already_defined(slot: &str, range: Range) -> Self {
-        Self::new(format!("Slot '{slot}' is already defined"), range)
-    }
-    pub fn default_slot_with_other_slots(range: Range) -> Self {
-        Self::new(
-            "When using slot-default, it must be the only slot in the component".to_string(),
-            range,
-        )
+    pub fn slot_already_defined(range: Range) -> Self {
+        Self::new("slot-default is already defined".to_string(), range)
     }
 
     pub fn expected_token(token: &DopToken, range: Range) -> Self {
@@ -226,7 +220,7 @@ pub fn escape_html(text: &str) -> String {
 // Return true if the string represents a void element
 // The void elements are `area`, `base`, `br`, `col`, `embed`, `hr`,
 // `img`, `input`, `link`, `meta`, `param`, `source`, `track` and `wbr`
-// (native HTML nodes) as well as `import` (defined by hop).
+// (native HTML nodes) as well as `import` and `slot-default` (defined by hop).
 pub fn is_void_element(el: &str) -> bool {
     matches!(
         el,
@@ -245,5 +239,6 @@ pub fn is_void_element(el: &str) -> bool {
             | "track"
             | "wbr"
             | "import"
+            | "slot-default"
     )
 }

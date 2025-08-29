@@ -518,36 +518,33 @@ mod tests {
                 	<div class="p-3 py-2 flex justify-between border-b-2">
                 		<div>
                 			<span class="font-medium uppercase">
-                			  Error
+                			  Error - Route not found
                 			</span>
-                			Route not found
                 		</div>
                 	</div>
                 	<div class="p-5 gap-5 flex flex-col" data-id="body">
 		
-                			<div>
-                			The requested route <span data-hop-id="hop/error_pages/code-text">
+                		<div>
+                		The requested route <span data-hop-id="hop/error_pages/code-text">
                 	<code class="italic">/nonexistent</code>
                 </span> was not found in the build file.
-                			</div>
-                			Available routes:<br>
-                			<ul class="ml-6" style="list-style-type: square;">
-				
-					
-                					  <li><a href="/">/</a></li>
-					
-                					  <li><a href="/about">/about</a></li>
-					
-                					  <li><a href="/foo/bar">/foo/bar</a></li>
-					
-				
-                			</ul>
-                			<p>
-                				To add this route, update your <span data-hop-id="hop/error_pages/code-text">
+                		</div>
+                		Available routes:<br>
+                		<ul class="ml-6" style="list-style-type: square;">
+			
+                				<li><a href="/">/</a></li>
+			
+                				<li><a href="/about">/about</a></li>
+			
+                				<li><a href="/foo/bar">/foo/bar</a></li>
+			
+                		</ul>
+                		<p>
+                			To add this route, update your <span data-hop-id="hop/error_pages/code-text">
                 	<code class="italic">build.hop</code>
                 </span> file with an entry for this path.
-                			</p>
-		
+                		</p>
+	
                 	</div>
                 </div>
                 </div>

@@ -40,8 +40,8 @@ pub struct ComponentTypeInformation {
     definition_range: Range,
     // Track the parameter types for the component.
     parameter_types: Vec<DopParameter>,
-    // Track the slot names of the component.
-    slots: Vec<String>,
+    // Track whether the component has a slot-default.
+    has_slot: bool,
 }
 
 pub fn typecheck(
@@ -88,7 +88,7 @@ pub fn typecheck(
         name,
         params,
         children,
-        slots,
+        has_slot,
         opening_name_range,
         ..
     } in module.get_component_definition_nodes()
@@ -131,7 +131,7 @@ pub fn typecheck(
             name.clone(),
             ComponentTypeInformation {
                 parameter_types,
-                slots: slots.clone(),
+                has_slot: *has_slot,
                 definition_module: module.name.clone(),
                 definition_range: *opening_name_range,
             },
@@ -272,13 +272,9 @@ fn typecheck_node(
                     }
                 }
 
-                // Validate slots
-                for child in children {
-                    if let HopNode::SlotReference { name, range, .. } = child {
-                        if !comp_info.slots.contains(name) {
-                            errors.push(RangeError::undefined_slot(name, component, *range));
-                        }
-                    }
+                // Validate that content is only passed to components with slot-default
+                if !children.is_empty() && !comp_info.has_slot {
+                    errors.push(RangeError::undefined_slot(component, *range));
                 }
             } else {
                 errors.push(RangeError::undefined_component(component, *range));
@@ -336,9 +332,10 @@ fn typecheck_node(
                 );
             }
         }
-        HopNode::SlotDefinition { children, .. }
-        | HopNode::SlotReference { children, .. }
-        | HopNode::XExec { children, .. }
+        HopNode::SlotDefinition { .. } => {
+            // slot-default is now a void tag, nothing to check
+        }
+        HopNode::XExec { children, .. }
         | HopNode::XRaw { children, .. }
         | HopNode::Error { children, .. } => {
             for child in children {
@@ -562,8 +559,9 @@ mod tests {
                         .collect::<Vec<_>>()
                         .join(", ");
                     all_output_lines.push(format!(
-                        "{}::{}\n\t{{{}}}\n\t{:?}\n",
-                        module.name, c.name, param_types_str, component_info.slots
+                        "{}::{}\n\t{{{}}}\n\t{}\n",
+                        module.name, c.name, param_types_str, 
+                        component_info.has_slot
                     ));
                 }
             }
@@ -596,7 +594,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{}
-                	[]
+                	false
             "#]],
         );
     }
@@ -701,11 +699,11 @@ mod tests {
             expect![[r#"
                 other::foo-comp
                 	{}
-                	[]
+                	false
 
                 main::main-comp
                 	{}
-                	[]
+                	false
             "#]],
         );
     }
@@ -753,70 +751,62 @@ mod tests {
             expect![[r#"
                 other::foo-comp
                 	{}
-                	[]
+                	false
 
                 main::foo-comp
                 	{}
-                	[]
+                	false
             "#]],
         );
     }
 
-    // Two components are allowed to have slots with the same name.
+    // Two components can both have slot-default.
     #[test]
-    fn test_same_slot_name_in_different_components() {
+    fn test_both_components_can_have_default_slot() {
         check(
             indoc! {r#"
                 -- main.hop --
                 <main-comp>
-                    <slot-content>
-                        First definition
-                    </slot-content>
+                    <slot-default/>
                 </main-comp>
                 <foo-comp>
-                    <slot-content>
-                        First definition
-                    </slot-content>
+                    <slot-default/>
                 </foo-comp>
             "#},
             expect![[r#"
                 main::main-comp
                 	{}
-                	["content"]
+                	true
 
                 main::foo-comp
                 	{}
-                	["content"]
+                	true
             "#]],
         );
     }
 
-    // When an undefined slot is referenced, the typechecker outputs an error.
+    // When content is passed to a component without slot-default, the typechecker outputs an error.
     #[test]
     fn test_undefined_slot_reference() {
         check(
             indoc! {r#"
                 -- main.hop --
                 <main-comp>
-                    <strong>
-                        <slot-data></slot-data>
-                    </strong>
+                    <strong>No slot here</strong>
                 </main-comp>
 
                 <bar-comp>
                     <main-comp>
-                        <with-invalid>
-                            This slot doesn't exist
-                        </with-invalid>
+                        This component has no slot
                     </main-comp>
                 </bar-comp>
             "#},
             expect![[r#"
-                error: Slot 'invalid' is not defined in component main-comp
-                  --> main.hop (line 9, col 9)
-                 8 |     <main-comp>
-                 9 |         <with-invalid>
-                   |         ^^^^^^^^^^^^^^
+                error: Component main-comp does not have a slot-default
+                  --> main.hop (line 6, col 5)
+                5 | <bar-comp>
+                6 |     <main-comp>
+                  |     ^^^^^^^^^^^
             "#]],
         );
     }
@@ -828,27 +818,23 @@ mod tests {
             indoc! {r#"
                 -- other.hop --
                 <foo-comp>
-                    <strong>
-                        <slot-data></slot-data>
-                    </strong>
+                    <strong>No slot here</strong>
                 </foo-comp>
                 -- main.hop --
                 <import component="foo-comp" from="other">
 
                 <bar-comp>
                     <foo-comp>
-                        <with-invalid>
-                            This slot doesn't exist
-                        </with-invalid>
+                        This component has no slot
                     </foo-comp>
                 </bar-comp>
             "#},
             expect![[r#"
-                error: Slot 'invalid' is not defined in component foo-comp
-                  --> main.hop (line 5, col 9)
+                error: Component foo-comp does not have a slot-default
+                  --> main.hop (line 4, col 5)
+                3 | <bar-comp>
                 4 |     <foo-comp>
-                5 |         <with-invalid>
-                  |         ^^^^^^^^^^^^^^
+                  |     ^^^^^^^^^^
             "#]],
         );
     }
@@ -1102,27 +1088,27 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{params: {items: array[{active: boolean, name: boolean}]}}
-                	[]
+                	false
             "#]],
         );
     }
 
-    // A component should be able to define the <head> tag and define a slot for the <title> tag.
+    // A component should be able to define the <head> tag and a default slot.
     #[test]
-    fn test_head_tag_with_title_slot() {
+    fn test_head_tag_with_default_slot() {
         check(
             indoc! {r#"
                 -- main.hop --
                 <custom-head>
                 	<head>
-                		<title><slot-title/></title>
+                		<title><slot-default/></title>
                 	</head>
                 </custom-head>
             "#},
             expect![[r#"
                 main::custom-head
                 	{}
-                	["title"]
+                	true
             "#]],
         );
     }
@@ -1141,7 +1127,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{params: {a: string, b: boolean}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1168,7 +1154,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{params: {enabled: boolean, users: array[{posts: array[{published: boolean}], profile: {verified: boolean}}]}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1192,7 +1178,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{params: {sections: array[{header: {visible: boolean}, items: array[{data: {valid: boolean}}]}]}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1210,7 +1196,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{params: {i: {j: {k: {l: boolean}}}}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1232,7 +1218,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{params: {app: {api: {endpoints: {users: {enabled: boolean}}}, database: {connection: {ssl: boolean}}, ui: {theme: {dark: boolean}}}}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1254,7 +1240,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1272,7 +1258,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{data: {message: string}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1294,7 +1280,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{params: {data: {x: string, y: string}, other_user: {name: string}, user: {name: string}}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1313,7 +1299,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{params: {x: string, y: string}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1333,7 +1319,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{params: {foo: {bar: array[boolean]}}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1357,7 +1343,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{params: array[{a: boolean, b: boolean}]}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1379,7 +1365,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{i: array[array[boolean]]}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1399,7 +1385,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{i: array[boolean]}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1423,11 +1409,11 @@ mod tests {
             expect![[r#"
                 utils::button-comp
                 	{text: string}
-                	[]
+                	false
 
                 main::main-comp
                 	{label: string}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1462,15 +1448,15 @@ mod tests {
             expect![[r#"
                 bar::widget-comp
                 	{config: {enabled: boolean, title: string}}
-                	[]
+                	false
 
                 foo::panel-comp
                 	{data: {items: array[{enabled: boolean, title: string}]}}
-                	[]
+                	false
 
                 main::main-comp
                 	{settings: {dashboard: {items: array[{enabled: boolean, title: string}]}}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1487,7 +1473,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{params: string}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1513,7 +1499,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{params: {config: {debug: boolean}, data: array[{attributes: array[boolean], id: boolean}]}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1543,19 +1529,19 @@ mod tests {
             expect![[r#"
                 main::step3-comp
                 	{settings: {enabled: boolean}}
-                	[]
+                	false
 
                 main::step2-comp
                 	{config: {settings: {enabled: boolean}}}
-                	[]
+                	false
 
                 main::step1-comp
                 	{data: {config: {settings: {enabled: boolean}}}}
-                	[]
+                	false
 
                 main::main-comp
                 	{params: {config: {settings: {enabled: boolean}}}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1587,15 +1573,15 @@ mod tests {
             expect![[r#"
                 main::main-card
                 	{item: {active: boolean, status: string, title: string}}
-                	[]
+                	false
 
                 main::main-list
                 	{items: array[{active: boolean, status: string, title: string}]}
-                	[]
+                	false
 
                 main::main-comp
                 	{data: {items: array[{active: boolean, status: string, title: string}]}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1615,7 +1601,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{params: {i: {j: {k: {l: boolean}}, k: boolean}}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1635,7 +1621,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{params: {i: {j: {k: {l: boolean}}, k: boolean}}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1661,7 +1647,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{params: {categories: array[boolean], metadata: {title: boolean}, tags: array[boolean]}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1687,15 +1673,15 @@ mod tests {
             expect![[r#"
                 main::main-bar
                 	{p: boolean}
-                	[]
+                	false
 
                 main::main-foo
                 	{p: boolean}
-                	[]
+                	false
 
                 main::main-comp
                 	{i: boolean}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1727,15 +1713,15 @@ mod tests {
             expect![[r#"
                 main::execute-step
                 	{step: {condition: boolean}}
-                	[]
+                	false
 
                 main::execute-workflow
                 	{workflow: {enabled: boolean, steps: array[{condition: boolean}]}}
-                	[]
+                	false
 
                 main::main-comp
                 	{params: {workflows: array[{enabled: boolean, steps: array[{condition: boolean}]}]}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1757,11 +1743,11 @@ mod tests {
             expect![[r#"
                 main::foo-comp
                 	{p: boolean}
-                	[]
+                	false
 
                 main::main-comp
                 	{i: boolean}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1789,11 +1775,11 @@ mod tests {
             expect![[r#"
                 main::process-item
                 	{item: {children: array[{visible: boolean}], status: {active: boolean}}}
-                	[]
+                	false
 
                 main::main-comp
                 	{params: {items: array[{children: array[{visible: boolean}], status: {active: boolean}}]}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1810,7 +1796,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{user: {theme: string, url: string}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1822,26 +1808,24 @@ mod tests {
                 -- main.hop --
                 <main-comp>
                     <strong>
-                        <slot-data></slot-data>
+                        <slot-default/>
                     </strong>
                 </main-comp>
 
                 <bar-comp>
                     <main-comp>
-                        <with-data>
-                            Here's the content for the 'data' slot
-                        </with-data>
+                        Here's the content for the default slot
                     </main-comp>
                 </bar-comp>
             "#},
             expect![[r#"
                 main::main-comp
                 	{}
-                	["data"]
+                	true
 
                 main::bar-comp
                 	{}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1859,7 +1843,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{data: {message: string}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1878,7 +1862,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{params: {role: string}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1902,7 +1886,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{params: array[array[array[boolean]]]}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1944,7 +1928,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{data: {message: string}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1964,7 +1948,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{}
-                	[]
+                	false
             "#]],
         );
     }
@@ -1986,7 +1970,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{}
-                	[]
+                	false
             "#]],
         );
     }
@@ -2006,7 +1990,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{user: {isActive: boolean}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -2026,7 +2010,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{data: {status: string}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -2071,7 +2055,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{config: {debug: boolean, enabled: boolean}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -2113,7 +2097,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{}
-                	[]
+                	false
             "#]],
         );
     }
@@ -2136,7 +2120,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{}
-                	[]
+                	false
             "#]],
         );
     }
@@ -2156,7 +2140,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{params: {mode: string}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -2178,7 +2162,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{params: {foo: string}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -2200,7 +2184,7 @@ mod tests {
             expect![[r#"
                 main::main-comp
                 	{data: array[{items: array[string], title: string}]}
-                	[]
+                	false
             "#]],
         );
     }
@@ -2264,11 +2248,11 @@ mod tests {
             expect![[r#"
                 main::user-comp
                 	{user: {active: string, name: string}}
-                	[]
+                	false
 
                 main::main-comp
                 	{data: {profile: {active: string, name: string}}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -2308,7 +2292,7 @@ mod tests {
             expect![[r#"
                 main::string-comp
                 	{message: string}
-                	[]
+                	false
             "#]],
         );
     }
@@ -2326,7 +2310,7 @@ mod tests {
             expect![[r#"
                 main::user-comp
                 	{user: {name: string}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -2346,7 +2330,7 @@ mod tests {
             expect![[r#"
                 main::list-comp
                 	{items: array[string]}
-                	[]
+                	false
             "#]],
         );
     }
@@ -2366,7 +2350,7 @@ mod tests {
             expect![[r#"
                 main::toggle-comp
                 	{enabled: boolean}
-                	[]
+                	false
             "#]],
         );
     }
@@ -2386,7 +2370,7 @@ mod tests {
             expect![[r#"
                 main::counter-comp
                 	{count: number}
-                	[]
+                	false
             "#]],
         );
     }
@@ -2407,7 +2391,7 @@ mod tests {
             expect![[r#"
                 main::profile-comp
                 	{profile: {user: {age: number, name: string}}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -2431,7 +2415,7 @@ mod tests {
             expect![[r#"
                 main::matrix-comp
                 	{matrix: array[array[number]]}
-                	[]
+                	false
             "#]],
         );
     }
@@ -2457,7 +2441,7 @@ mod tests {
             expect![[r#"
                 main::card-comp
                 	{data: {content: string, metadata: {author: string, published: boolean}, tags: array[string], title: string}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -2518,15 +2502,15 @@ mod tests {
             expect![[r#"
                 item-display::item-display
                 	{item: {active: boolean, id: number, name: string}}
-                	[]
+                	false
 
                 data-list::data-list
                 	{items: array[{active: boolean, id: number, name: string}]}
-                	[]
+                	false
 
                 main::main-comp
                 	{items: array[{active: boolean, id: number, name: string}]}
-                	[]
+                	false
             "#]],
         );
     }
@@ -2542,18 +2526,17 @@ mod tests {
                 </needs-a>
 
                 <main-comp {params: {data: {a: string, b: string}}}>
-                	<needs-a {data: params.data}>
-                	</needs-a>
+                	<needs-a {data: params.data}/>
                 </main-comp>
             "#},
             expect![[r#"
                 main::needs-a
                 	{data: {a: string}}
-                	[]
+                	false
 
                 main::main-comp
                 	{params: {data: {a: string, b: string}}}
-                	[]
+                	false
             "#]],
         );
     }
@@ -2569,15 +2552,14 @@ mod tests {
                 </needs-a>
 
                 <main-comp {params: {data: {b: string}}}>
-                	<needs-a {data: params.data}>
-                	</needs-a>
+                	<needs-a {data: params.data}/>
                 </main-comp>
             "#},
             expect![[r#"
                 error: Argument 'data' of type {b: string} is incompatible with expected type {a: string}
                   --> main.hop (line 6, col 18)
                 5 | <main-comp {params: {data: {b: string}}}>
-                6 |     <needs-a {data: params.data}>
+                6 |     <needs-a {data: params.data}/>
                   |                     ^^^^^^^^^^^
             "#]],
         );

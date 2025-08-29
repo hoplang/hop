@@ -6,30 +6,25 @@
 </code-text>
 
 <error-generic-error class="flex flex-col gap-4">
-	<heading-box>
-		<with-title>Error</with-title>
-		<with-body>
-			<slot-default/>
-		</with-body>
+	<heading-box {title: 'Error'}>
+		<slot-default/>
 	</heading-box>
 </error-generic-error>
 
-<error-not-found-error class="flex flex-col gap-4">
-	<heading-box>
-		<with-title>Error</with-title>
-		<with-heading>Route not found</with-heading>
-		<with-body>
-			<div>
-			The requested route <code-text><slot-requested-path /></code-text> was not found in the build file.
-			</div>
-			Available routes:<br/>
-			<ul class="ml-6" style="list-style-type: square;">
-				<slot-available-routes/>
-			</ul>
-			<p>
-				To add this route, update your <code-text>build.hop</code-text> file with an entry for this path.
-			</p>
-		</with-body>
+<error-not-found-error class="flex flex-col gap-4" {requested_path: string, available_routes: array[string]}>
+	<heading-box {title: 'Error - Route not found'}>
+		<div>
+		The requested route <code-text>{requested_path}</code-text> was not found in the build file.
+		</div>
+		Available routes:<br/>
+		<ul class="ml-6" style="list-style-type: square;">
+			<for {route in available_routes}>
+				<li><a set-href="route">{route}</a></li>
+			</for>
+		</ul>
+		<p>
+			To add this route, update your <code-text>build.hop</code-text> file with an entry for this path.
+		</p>
 	</heading-box>
 </error-not-found-error>
 
@@ -67,14 +62,7 @@
 	</head>
 	<body>
 		<page-container>
-			<error-not-found-error>
-				<with-requested-path>{path}</with-requested-path>
-				<with-available-routes>
-					<for {route in available_routes}>
-					  <li><a set-href="route">{route}</a></li>
-					</for>
-				</with-available-routes>
-			</error-not-found-error>
+			<error-not-found-error {requested_path: path, available_routes: available_routes} />
 		</page-container>
 	</body>
 	</html>

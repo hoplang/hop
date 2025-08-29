@@ -136,7 +136,7 @@ pub struct ComponentDefinitionNode {
     pub range: Range,
     pub children: Vec<HopNode>,
     pub entrypoint: bool,
-    pub slots: Vec<String>,
+    pub has_slot: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -171,14 +171,7 @@ pub enum HopNode {
         children: Vec<HopNode>,
     },
     SlotDefinition {
-        name: String,
         range: Range,
-        children: Vec<HopNode>,
-    },
-    SlotReference {
-        name: String,
-        range: Range,
-        children: Vec<HopNode>,
     },
     If {
         condition: DopExpr,
@@ -226,8 +219,7 @@ impl HopNode {
     pub fn children(&self) -> &[HopNode] {
         match self {
             HopNode::ComponentReference { children, .. } => children,
-            HopNode::SlotDefinition { children, .. } => children,
-            HopNode::SlotReference { children, .. } => children,
+            HopNode::SlotDefinition { .. } => &[],
             HopNode::If { children, .. } => children,
             HopNode::For { children, .. } => children,
             HopNode::NativeHTML { children, .. } => children,
@@ -305,7 +297,6 @@ impl Ranged for HopNode {
             HopNode::TextExpression { range, .. } => *range,
             HopNode::ComponentReference { range, .. } => *range,
             HopNode::SlotDefinition { range, .. } => *range,
-            HopNode::SlotReference { range, .. } => *range,
             HopNode::If { range, .. } => *range,
             HopNode::For { range, .. } => *range,
             HopNode::NativeHTML { range, .. } => *range,
@@ -520,53 +511,14 @@ mod tests {
         check_find_node_at_position(
             indoc! {"
                 <main-comp>
-                    <slot-content>
+                    <slot-default/>
                           ^
-                        Default content
-                    </slot-content>
                 </main-comp>
             "},
             expect![[r#"
                 Some(
                     SlotDefinition {
-                        name: "content",
-                        range: 2:5-4:20,
-                        children: [
-                            Text {
-                                value: "\n        Default content\n    ",
-                                range: 2:19-4:5,
-                            },
-                        ],
-                    },
-                )
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_find_node_at_position_slot_reference() {
-        check_find_node_at_position(
-            indoc! {"
-                <main-comp>
-                    <foo-comp>
-                        <with-data>
-                              ^
-                            Custom content
-                        </with-data>
-                    </foo-comp>
-                </main-comp>
-            "},
-            expect![[r#"
-                Some(
-                    SlotReference {
-                        name: "data",
-                        range: 3:9-5:21,
-                        children: [
-                            Text {
-                                value: "\n            Custom content\n        ",
-                                range: 3:20-5:9,
-                            },
-                        ],
+                        range: 2:5-2:20,
                     },
                 )
             "#]],

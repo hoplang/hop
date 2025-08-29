@@ -305,40 +305,17 @@ impl Program {
                     .and_then(|module_map| module_map.get(component_name))
                     .expect("Could not find target component");
 
-                // Check if target component has only a default slot
-                let has_only_default_slot =
-                    target_component.slots.len() == 1 && target_component.slots[0] == "default";
+                // Check if target component has a default slot
+                let has_default_slot = target_component.has_slot;
 
-                // Collect and evaluate supply-slot mappings
+                // Collect slot content
                 let mut new_slot_content: HashMap<String, String> = HashMap::new();
-                let mut non_slot_children = Vec::new();
-
-                for child in children {
-                    if let HopNode::SlotReference { name, children, .. } = child {
-                        let mut slot_html = String::new();
-                        for slot_child in children {
-                            slot_html.push_str(&self.evaluate_node(
-                                slot_child,
-                                slot_content,
-                                env,
-                                current_module,
-                            )?);
-                        }
-                        new_slot_content.insert(name.clone(), slot_html);
-                    } else if has_only_default_slot {
-                        // For components with only default slot, collect non-slot children
-                        non_slot_children.push(child);
-                    }
-                }
-
-                // If component has only default slot and we have non-slot children,
-                // pass them as default slot content
-                if has_only_default_slot
-                    && !non_slot_children.is_empty()
-                    && !new_slot_content.contains_key("default")
-                {
+                
+                // If component has default slot and there are children,
+                // pass all children as default slot content
+                if has_default_slot && !children.is_empty() {
                     let mut default_html = String::new();
-                    for child in non_slot_children {
+                    for child in children {
                         default_html.push_str(&self.evaluate_node(
                             child,
                             slot_content,
@@ -364,37 +341,15 @@ impl Program {
                 )
             }
 
-            HopNode::SlotDefinition { name, children, .. } => {
-                // Check if we have supply-slot content for this slot
-                if let Some(supplied_html) = slot_content.get(name) {
+            HopNode::SlotDefinition { .. } => {
+                // Check if we have content for the default slot
+                if let Some(supplied_html) = slot_content.get("default") {
                     // Use the pre-evaluated supplied content
                     Ok(supplied_html.clone())
                 } else {
-                    // Render the default content
-                    let mut result = String::new();
-                    for child in children {
-                        result.push_str(&self.evaluate_node(
-                            child,
-                            slot_content,
-                            env,
-                            current_module,
-                        )?);
-                    }
-                    Ok(result)
+                    // No content was provided for the slot, return empty
+                    Ok(String::new())
                 }
-            }
-
-            HopNode::SlotReference { children, .. } => {
-                let mut result = String::new();
-                for child in children {
-                    result.push_str(&self.evaluate_node(
-                        child,
-                        slot_content,
-                        env,
-                        current_module,
-                    )?);
-                }
-                Ok(result)
             }
 
             HopNode::NativeHTML {
@@ -1052,22 +1007,20 @@ mod tests {
                 -- main.hop --
                 <foo-comp>
                     <div class="foo">
-                        <h1><slot-title /></h1>
-                        <p><slot-content /></p>
+                        <slot-default />
                     </div>
                 </foo-comp>
 
                 <bar-comp>
                     <foo-comp>
-                        <with-title><slot-title/></with-title>
-                        <with-content><slot-content/></with-content>
+                        <slot-default/>
                     </foo-comp>
                 </bar-comp>
 
                 <main-comp entrypoint>
                     <bar-comp>
-                        <with-title>Bar Title</with-title>
-                        <with-content>Bar Content</with-content>
+                        <h1>Bar Title</h1>
+                        <p>Bar Content</p>
                     </bar-comp>
                 </main-comp>
             "#},
@@ -1113,16 +1066,14 @@ mod tests {
                 -- main.hop --
                 <main-card>
                     <div class="card">
-                        <slot-content></slot-content>
+                        <slot-default/>
                     </div>
                 </main-card>
 
                 <main-comp entrypoint {title: string, message: string}>
                     <main-card>
-                        <with-content>
-                            <h1>{title}</h1>
-                            <p>{message}</p>
-                        </with-content>
+                        <h1>{title}</h1>
+                        <p>{message}</p>
                     </main-card>
                 </main-comp>
             "#},
@@ -1133,8 +1084,8 @@ mod tests {
             expect![[r#"
                     <div data-hop-id="main/main-card">
                     <div class="card">
-                            <h1>Hello World</h1>
-                            <p>This text comes from outside params</p>
+                        <h1>Hello World</h1>
+                        <p>This text comes from outside params</p>
                     </div>
                 </div>
             "#]],
@@ -1147,12 +1098,12 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 <my-button>
-                	<slot-default>Default Button</slot-default>
+                	<slot-default/>
                 </my-button>
 
                 <main-comp entrypoint>
                 	<my-button>Click me!</my-button>
-                	<my-button><with-default>Custom Button</with-default></my-button>
+                	<my-button>Custom Button</my-button>
                 </main-comp>
             "#},
             "{}",
@@ -1174,22 +1125,17 @@ mod tests {
                 -- main.hop --
                 <main-layout>
                     <div class="page">
-                        <header>
-                            <slot-title></slot-title>
-                        </header>
-                        <main>
-                            <slot-content></slot-content>
-                        </main>
+                        <slot-default/>
                     </div>
                 </main-layout>
 
                 <main-comp entrypoint>
                     <main-layout>
-                        <with-title>My Custom Title</with-title>
-                        <with-content>
+                        <header>My Custom Title</header>
+                        <main>
                             <p>This is custom content</p>
                             <p>With multiple paragraphs</p>
-                        </with-content>
+                        </main>
                     </main-layout>
                 </main-comp>
             "#},
@@ -1197,9 +1143,7 @@ mod tests {
             expect![[r#"
                     <div data-hop-id="main/main-layout">
                     <div class="page">
-                        <header>
-                            My Custom Title
-                        </header>
+                        <header>My Custom Title</header>
                         <main>
                             <p>This is custom content</p>
                             <p>With multiple paragraphs</p>
@@ -1217,44 +1161,35 @@ mod tests {
                 -- main.hop --
                 <page-layout>
                     <div class="page">
-                        <slot-content></slot-content>
+                        <slot-default/>
                     </div>
                 </page-layout>
 
                 <modal-wrapper>
                     <div class="modal-container">
-                        <slot-modal></slot-modal>
+                        <slot-default/>
                     </div>
                 </modal-wrapper>
 
                 <modal-comp>
                     <div class="modal">
-                        <div class="modal-header">
-                            <slot-header></slot-header>
-                        </div>
-                        <div class="modal-body">
-                            <slot-body></slot-body>
-                        </div>
+                        <slot-default/>
                     </div>
                 </modal-comp>
 
                 <main-comp entrypoint {page_title: string}>
                     <page-layout>
-                        <with-content>
-                            <h1>{page_title}</h1>
-                            <modal-wrapper>
-                                <with-modal>
-                                    <modal-comp>
-                                        <with-header>
-                						  	<span>header</span>
-                                        </with-header>
-                                        <with-body>
-                                            <span>body</span>
-                                        </with-body>
-                                    </modal-comp>
-                                </with-modal>
-                            </modal-wrapper>
-                        </with-content>
+                        <h1>{page_title}</h1>
+                        <modal-wrapper>
+                            <modal-comp>
+                                <div class="modal-header">
+                                    <span>header</span>
+                                </div>
+                                <div class="modal-body">
+                                    <span>body</span>
+                                </div>
+                            </modal-comp>
+                        </modal-wrapper>
                     </page-layout>
                 </main-comp>
             "#},
@@ -1264,17 +1199,17 @@ mod tests {
             expect![[r#"
                     <div data-hop-id="main/page-layout">
                     <div class="page">
-                            <h1>Welcome Page</h1>
-                            <div data-hop-id="main/modal-wrapper">
+                        <h1>Welcome Page</h1>
+                        <div data-hop-id="main/modal-wrapper">
                     <div class="modal-container">
-                                    <div data-hop-id="main/modal-comp">
+                            <div data-hop-id="main/modal-comp">
                     <div class="modal">
-                        <div class="modal-header">
-                						  	<span>header</span>
-                        </div>
-                        <div class="modal-body">
-                                            <span>body</span>
-                        </div>
+                                <div class="modal-header">
+                                    <span>header</span>
+                                </div>
+                                <div class="modal-body">
+                                    <span>body</span>
+                                </div>
                     </div>
                 </div>
                     </div>
@@ -1292,11 +1227,7 @@ mod tests {
                 -- main.hop --
                 <main-card>
                     <div class="card">
-                        <slot-header></slot-header>
-                        <div class="body">
-                            <slot-content></slot-content>
-                        </div>
-                        <slot-footer></slot-footer>
+                        <slot-default/>
                     </div>
                 </main-card>
 
@@ -1306,10 +1237,8 @@ mod tests {
                     users: array[{name: string, active: boolean, admin: boolean}],
                 }>
                     <main-card>
-                        <with-header>
-                            <h1>{title}</h1>
-                        </with-header>
-                        <with-content>
+                        <h1>{title}</h1>
+                        <div class="body">
                             <for {user in users}>
                                 <if {user.active}>
                                     <div class="user-item">
@@ -1320,10 +1249,8 @@ mod tests {
                                     </div>
                                 </if>
                             </for>
-                        </with-content>
-                        <with-footer>
-                            <p>Total active users: <span>{active_count}</span></p>
-                        </with-footer>
+                        </div>
+                        <p>Total active users: <span>{active_count}</span></p>
                     </main-card>
                 </main-comp>
             "#},
@@ -1341,7 +1268,7 @@ mod tests {
             expect![[r#"
                     <div data-hop-id="main/main-card">
                     <div class="card">
-                            <h1>User Management</h1>
+                        <h1>User Management</h1>
                         <div class="body">
                                     <div class="user-item">
                                         <span>Alice</span>
@@ -1355,7 +1282,7 @@ mod tests {
                                             <strong> (Admin)</strong>
                                     </div>
                         </div>
-                            <p>Total active users: <span>3</span></p>
+                        <p>Total active users: <span>3</span></p>
                     </div>
                 </div>
             "#]],
@@ -1369,13 +1296,13 @@ mod tests {
                 -- main.hop --
                 <wrapper-comp>
                     <div>
-                        <slot-content></slot-content>
+                        <slot-default/>
                     </div>
                 </wrapper-comp>
 
                 <main-comp entrypoint>
                     <wrapper-comp>
-                        <with-content>Custom</with-content>
+                        Custom
                     </wrapper-comp>
                 </main-comp>
             "#},

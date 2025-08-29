@@ -201,23 +201,14 @@ fn construct_top_level_node(
                         })
                         .unwrap_or_else(Vec::new);
 
-                    let mut slots = HashSet::new();
+                    let mut has_default_slot = false;
                     for child in &children {
                         for node in child.iter_depth_first() {
-                            if let HopNode::SlotDefinition { name, range, .. } = node {
-                                if slots.contains(name) {
-                                    errors.push(RangeError::slot_already_defined(name, *range));
+                            if let HopNode::SlotDefinition { range, .. } = node {
+                                if has_default_slot {
+                                    errors.push(RangeError::slot_already_defined(*range));
                                 } else {
-                                    // Check if trying to mix default slot with other slots
-                                    if (name == "default" && !slots.is_empty())
-                                        || (slots.contains("default") && name != "default")
-                                    {
-                                        errors.push(RangeError::default_slot_with_other_slots(
-                                            *range,
-                                        ));
-                                    } else {
-                                        slots.insert(name.clone());
-                                    }
+                                    has_default_slot = true;
                                 }
                             }
                         }
@@ -240,7 +231,7 @@ fn construct_top_level_node(
                             range: tree.range(),
                             children,
                             entrypoint,
-                            slots: slots.into_iter().collect(),
+                            has_slot: has_default_slot,
                         },
                     ))
                 }
@@ -459,20 +450,9 @@ fn construct_node(
                         },
                     }
                 }
-                tag_name if tag_name.starts_with("slot-") => {
-                    let slot_name = &tag_name[5..]; // Remove "slot-" prefix
+                "slot-default" => {
                     HopNode::SlotDefinition {
-                        name: slot_name.to_string(),
                         range: tree.range(),
-                        children,
-                    }
-                }
-                tag_name if tag_name.starts_with("with-") => {
-                    let slot_name = &tag_name[5..]; // Remove "with-" prefix
-                    HopNode::SlotReference {
-                        name: slot_name.to_string(),
-                        range: tree.range(),
-                        children,
                     }
                 }
                 tag_name if is_valid_component_name(tag_name) => {
@@ -631,17 +611,8 @@ mod tests {
                         format_node(child, depth + 1, lines);
                     }
                 }
-                HopNode::SlotDefinition { name, children, .. } => {
-                    lines.push(format!("{}slot-{}", indent, name));
-                    for child in children {
-                        format_node(child, depth + 1, lines);
-                    }
-                }
-                HopNode::SlotReference { name, children, .. } => {
-                    lines.push(format!("{}with-{}", indent, name));
-                    for child in children {
-                        format_node(child, depth + 1, lines);
-                    }
+                HopNode::SlotDefinition { .. } => {
+                    lines.push(format!("{}slot-default", indent));
                 }
                 HopNode::XExec { children, .. } => {
                     lines.push(format!("{}hop-x-exec", indent));
@@ -908,46 +879,22 @@ mod tests {
         );
     }
 
-    // When slot-default is defined, it must be the only slot, otherwise the parser outputs an error.
+    // When slot-default is defined twice in a component, the parser outputs an error.
     #[test]
-    fn test_slot_default_must_be_only_slot() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                <mixed-comp>
-                    <slot-default>Default slot</slot-default>
-                    <slot-other>Other slot</slot-other>
-                </mixed-comp>
-            "#},
-            expect![[r#"
-                error: When using slot-default, it must be the only slot in the component
-                3 |     <slot-default>Default slot</slot-default>
-                4 |     <slot-other>Other slot</slot-other>
-                  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    // When a slot is defined twice in a component, the parser outputs an error.
-    #[test]
-    fn test_slot_defined_twice() {
+    fn test_slot_default_defined_twice() {
         check(
             indoc! {r#"
                 -- main.hop --
                 <main-comp>
-                    <slot-content>
-                        First definition
-                    </slot-content>
-                    <slot-content>
-                        Second definition
-                    </slot-content>
+                    <slot-default/>
+                    <slot-default/>
                 </main-comp>
             "#},
             expect![[r#"
-                error: Slot 'content' is already defined
-                5 |     </slot-content>
-                6 |     <slot-content>
-                  |     ^^^^^^^^^^^^^^
+                error: slot-default is already defined
+                3 |     <slot-default/>
+                4 |     <slot-default/>
+                  |     ^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -1226,52 +1173,19 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_parser_slots_basic() {
-        check(
-            indoc! {r#"
-                <main-comp>
-                    <slot-content>
-                        Default content
-                    </slot-content>
-                    <other-comp>
-                        <with-data>
-                            Custom content
-                        </with-data>
-                    </other-comp>
-                </main-comp>
-
-                <other-comp>
-                    <slot-data>
-                        Other content
-                    </slot-data>
-                </other-comp>
-            "#},
-            expect![[r#"
-                slot-content
-                render
-                	with-data
-            "#]],
-        );
-    }
 
     #[test]
     fn test_parser_slots_default() {
         check(
             indoc! {r#"
                 <main-comp>
-                    <slot-default>
-                        Default content
-                    </slot-default>
-                    <button-comp>
-                        <with-default>Custom Button</with-default>
-                    </button-comp>
+                    <slot-default/>
+                    <button-comp>Custom Button</button-comp>
                 </main-comp>
             "#},
             expect![[r#"
                 slot-default
                 render
-                	with-default
             "#]],
         );
     }
