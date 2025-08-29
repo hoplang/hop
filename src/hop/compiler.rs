@@ -1,9 +1,9 @@
-use crate::hop::server::HopMode;
-use crate::hop::server::Server;
+use crate::hop::program::HopMode;
+use crate::hop::program::Program;
 use crate::tui::error_formatter::ErrorFormatter;
 
-pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Result<Server> {
-    let mut server = Server::new(hop_mode);
+pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Result<Program> {
+    let mut server = Program::new(hop_mode);
     for (module_name, source_code) in modules {
         server.update_module(module_name, &source_code);
     }

@@ -1,5 +1,5 @@
 use crate::filesystem::files::ProjectRoot;
-use crate::hop::server::HopMode;
+use crate::hop::program::HopMode;
 use anyhow::Context;
 use rayon::prelude::*;
 use std::fs;

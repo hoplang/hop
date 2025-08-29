@@ -1,6 +1,6 @@
 use crate::common::Position;
 use crate::filesystem::files::{self as files, ProjectRoot};
-use crate::hop::server::{DefinitionLocation, HopMode, HoverInfo, RenameLocation, Server};
+use crate::hop::program::{DefinitionLocation, HopMode, HoverInfo, Program, RenameLocation};
 use std::path::Path;
 use tokio::sync::RwLock;
 use tower_lsp::jsonrpc::Result;
@@ -9,14 +9,14 @@ use tower_lsp::{Client, LanguageServer, LspService, Server as LspServer};
 
 pub struct HopLanguageServer {
     client: Client,
-    server: RwLock<Server>,
+    program: RwLock<Program>,
 }
 
 impl HopLanguageServer {
     pub fn new(client: Client) -> Self {
         Self {
             client,
-            server: RwLock::new(Server::new(HopMode::Dev)),
+            program: RwLock::new(Program::new(HopMode::Dev)),
         }
     }
 
@@ -71,12 +71,12 @@ impl HopLanguageServer {
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         for (module_name, content) in all_modules {
             {
-                let server = self.server.read().await;
+                let server = self.program.read().await;
                 if server.has_module(&module_name) {
                     continue;
                 }
             }
-            let mut server = self.server.write().await;
+            let mut server = self.program.write().await;
             server.update_module(module_name, &content);
         }
 
@@ -85,7 +85,7 @@ impl HopLanguageServer {
 
     async fn publish_diagnostics(&self, root: &ProjectRoot, uri: &Url) {
         let module_name = Self::uri_to_module_name(uri, root);
-        let server = self.server.read().await;
+        let server = self.program.read().await;
         let diagnostics = server.get_error_diagnostics(&module_name);
 
         let lsp_diagnostics: Vec<tower_lsp::lsp_types::Diagnostic> = diagnostics
@@ -152,7 +152,7 @@ impl LanguageServer for HopLanguageServer {
         if let Some(change) = params.content_changes.into_iter().next() {
             let changed_modules: Vec<String>;
             {
-                let mut server = self.server.write().await;
+                let mut server = self.program.write().await;
                 changed_modules = server.update_module(module_name, &change.text);
             }
             for c in changed_modules {
@@ -168,7 +168,7 @@ impl LanguageServer for HopLanguageServer {
         let root = Self::find_root(&uri).unwrap();
         let module_name = Self::uri_to_module_name(&uri, &root);
 
-        let server = self.server.read().await;
+        let server = self.program.read().await;
         Ok(server
             .get_hover_info(&module_name, Self::from_lsp_position(position))
             .map(|h| self.convert_hover(h)))
@@ -183,7 +183,7 @@ impl LanguageServer for HopLanguageServer {
         let root = Self::find_root(&uri).unwrap();
         let module_name = Self::uri_to_module_name(&uri, &root);
 
-        let server = self.server.read().await;
+        let server = self.program.read().await;
 
         Ok(server
             .get_definition_location(&module_name, Self::from_lsp_position(position))
@@ -204,7 +204,7 @@ impl LanguageServer for HopLanguageServer {
         let root = Self::find_root(&uri).unwrap();
         let module_name = Self::uri_to_module_name(&uri, &root);
 
-        let server = self.server.read().await;
+        let server = self.program.read().await;
 
         if let Some(renameable_symbol) =
             server.get_renameable_symbol(&module_name, Self::from_lsp_position(position))
@@ -225,7 +225,7 @@ impl LanguageServer for HopLanguageServer {
         let root = Self::find_root(&uri).unwrap();
         let module_name = Self::uri_to_module_name(&uri, &root);
 
-        let server = self.server.read().await;
+        let server = self.program.read().await;
 
         if let Some(rename_locations) =
             server.get_rename_locations(&module_name, Self::from_lsp_position(position))

@@ -3,7 +3,7 @@ pub mod compiler;
 pub mod environment;
 pub mod parser;
 pub mod script_collector;
-pub mod server;
+pub mod program;
 pub mod token_tree;
 pub mod tokenizer;
 pub mod toposorter;

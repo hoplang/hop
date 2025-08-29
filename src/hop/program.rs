@@ -149,7 +149,7 @@ impl Annotated for RenameableSymbol {
     }
 }
 
-pub struct Server {
+pub struct Program {
     asts: HashMap<String, HopAST>,
     type_information: HashMap<String, ModuleTypeInformation>,
     type_annotations: HashMap<String, Vec<TypeAnnotation>>,
@@ -161,13 +161,13 @@ pub struct Server {
     hop_mode: HopMode,
 }
 
-impl Default for Server {
+impl Default for Program {
     fn default() -> Self {
         Self::new(HopMode::Dev)
     }
 }
 
-impl Server {
+impl Program {
     pub fn new(hop_mode: HopMode) -> Self {
         Self {
             asts: HashMap::new(),
@@ -1066,8 +1066,8 @@ mod tests {
     use indoc::indoc;
     use simple_txtar::Archive;
 
-    fn server_from_archive(archive: &Archive) -> Server {
-        let mut server = Server::default();
+    fn server_from_archive(archive: &Archive) -> Program {
+        let mut server = Program::default();
         for file in archive.iter() {
             let module_name = file.name.replace(".hop", "");
             server.update_module(module_name, &file.content);
