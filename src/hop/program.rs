@@ -168,6 +168,39 @@ impl Default for Program {
 }
 
 impl Program {
+    /// Handles cycle errors by adding type errors for all modules in the cycle
+    fn handle_cycle_error(&mut self, cycle_error: &crate::hop::toposorter::CycleError) {
+        // Create display string for the cycle, showing the complete loop
+        let cycle_display = if let Some(first) = cycle_error.cycle.first() {
+            format!("{} → {}", cycle_error.cycle.join(" → "), first)
+        } else {
+            cycle_error.cycle.join(" → ")
+        };
+
+        // For each module in the cycle, report errors at specific import locations
+        for module_name in &cycle_error.cycle {
+            // Clear existing type errors and add cycle-specific errors
+            let type_errors = self.type_errors.entry(module_name.clone()).or_default();
+            type_errors.clear();
+            
+            // Find import nodes that create cycles
+            if let Some(ast) = self.asts.get(module_name) {
+                for import_node in ast.get_import_nodes() {
+                    if cycle_error.cycle.contains(&import_node.from_attr.value) {
+                        let error = RangeError {
+                            message: format!(
+                                "Circular import detected: {} imports {} which creates a dependency cycle: {}",
+                                module_name, import_node.from_attr.value, cycle_display
+                            ),
+                            range: import_node.from_attr.value_range,
+                        };
+                        type_errors.push(error);
+                    }
+                }
+            }
+        }
+    }
+
     pub fn new(hop_mode: HopMode) -> Self {
         Self {
             asts: HashMap::new(),
@@ -180,6 +213,37 @@ impl Program {
             topo_sorter: TopoSorter::default(),
             hop_mode,
         }
+    }
+
+    pub fn from_modules(modules: HashMap<String, String>, hop_mode: HopMode) -> Self {
+        let mut program = Self::new(hop_mode);
+
+        for (module_name, source_code) in &modules {
+            program.parse_module(module_name, source_code);
+        }
+
+        for (module_name, ast) in &program.asts {
+            program.topo_sorter.add_node(module_name.clone());
+            for import_node in ast.get_import_nodes() {
+                program
+                    .topo_sorter
+                    .add_dependency(module_name, &import_node.from_attr.value);
+            }
+        }
+
+        let sorted_modules = match program.topo_sorter.sort() {
+            Ok(modules) => modules,
+            Err(cycle_error) => {
+                program.handle_cycle_error(&cycle_error);
+                return program;
+            }
+        };
+
+        for module_name in &sorted_modules {
+            program.typecheck_module(module_name);
+        }
+
+        program
     }
 
     pub fn get_parse_errors(&self) -> &HashMap<String, Vec<RangeError>> {
@@ -261,8 +325,12 @@ impl Program {
         }
 
         let dependent_modules = match self.topo_sorter.sort_subgraph(&module_name) {
-            Ok(nodes) => nodes,
-            Err(_) => vec![module_name],
+            Ok(modules) => modules,
+            Err(cycle_error) => {
+                self.handle_cycle_error(&cycle_error);
+                // Return just the updated module for processing
+                vec![module_name]
+            }
         };
 
         for module_name in &dependent_modules {
@@ -1067,12 +1135,12 @@ mod tests {
     use simple_txtar::Archive;
 
     fn server_from_archive(archive: &Archive) -> Program {
-        let mut server = Program::default();
+        let mut map = HashMap::new();
         for file in archive.iter() {
             let module_name = file.name.replace(".hop", "");
-            server.update_module(module_name, &file.content);
+            map.insert(module_name, file.content.clone());
         }
-        server
+        Program::from_modules(map, HopMode::Dev)
     }
 
     fn check_evaluate_component(archive_str: &str, data_json: &str, expected: Expect) {
@@ -1202,6 +1270,39 @@ mod tests {
             .add_annotations(&file.content, &diagnostics);
 
         expected.assert_eq(&output);
+    }
+
+    fn check_type_errors(input: &str, expected: Expect) {
+        let archive = Archive::from(input);
+        let program = server_from_archive(&archive);
+
+        let mut output = Vec::new();
+
+        // Get all modules that have type errors
+        let type_errors = program.get_type_errors();
+        let mut modules_with_errors: Vec<_> = type_errors
+            .iter()
+            .filter(|(_, errors)| !errors.is_empty())
+            .collect();
+
+        // Sort by module name for consistent output
+        modules_with_errors.sort_by_key(|(module_name, _)| module_name.as_str());
+
+        for (module_name, errors) in modules_with_errors {
+            let file = archive
+                .iter()
+                .find(|f| f.name.replace(".hop", "") == *module_name)
+                .expect("File not found in archive");
+
+            let annotated = SourceAnnotator::new()
+                .with_filename(&file.name)
+                .with_location()
+                .add_annotations(&file.content, errors);
+
+            output.push(annotated);
+        }
+
+        expected.assert_eq(&output.join("\n"));
     }
 
     fn check_renameable_symbol(input: &str, expected: Expect) {
@@ -2473,6 +2574,42 @@ mod tests {
                 <div data-hop-id="main/main-comp">
                 	<div data-hop-id="main/my-button" class="px-4 py-2">Click me</div>
                 </div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_cycle_error_reporting() {
+        check_type_errors(
+            indoc! {r#"
+                -- a.hop --
+                <import component="b-comp" from="b" />
+                <a-comp>
+                  <b-comp />
+                </a-comp>
+
+                -- b.hop --
+                <import component="a-comp" from="a" />
+                <b-comp>
+                  <a-comp />
+                </b-comp>
+
+                -- c.hop --
+                <import component="a-comp" from="a" />
+                <c-comp>
+                  <a-comp />
+                </c-comp>
+            "#},
+            expect![[r#"
+                Circular import detected: a imports b which creates a dependency cycle: a → b → a
+                  --> a.hop (line 1, col 34)
+                1 | <import component="b-comp" from="b" />
+                  |                                  ^
+
+                Circular import detected: b imports a which creates a dependency cycle: a → b → a
+                  --> b.hop (line 1, col 34)
+                1 | <import component="a-comp" from="a" />
+                  |                                  ^
             "#]],
         );
     }

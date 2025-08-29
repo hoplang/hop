@@ -135,16 +135,16 @@ pub fn module_name_to_path(module_name: &str, root: &ProjectRoot) -> PathBuf {
     base.join(format!("{}.hop", module_path))
 }
 
-/// Load all hop modules from a base directory, returning (module_name, content) pairs
-pub fn load_all_hop_modules(base_dir: &ProjectRoot) -> anyhow::Result<Vec<(String, String)>> {
+/// Load all hop modules from a base directory, returning a HashMap of module_name -> content
+pub fn load_all_hop_modules(base_dir: &ProjectRoot) -> anyhow::Result<std::collections::HashMap<String, String>> {
     let all_hop_files = find_hop_files(base_dir)?;
-    let mut modules = Vec::new();
+    let mut modules = std::collections::HashMap::new();
 
     for path in all_hop_files {
         let module_name = path_to_module_name(&path, base_dir)?;
         let content = std::fs::read_to_string(&path)
             .with_context(|| format!("Failed to read file {:?}", path))?;
-        modules.push((module_name, content));
+        modules.insert(module_name, content);
     }
 
     Ok(modules)

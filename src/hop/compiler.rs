@@ -1,12 +1,10 @@
 use crate::hop::program::HopMode;
 use crate::hop::program::Program;
 use crate::tui::error_formatter::ErrorFormatter;
+use std::collections::HashMap;
 
-pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Result<Program> {
-    let mut server = Program::new(hop_mode);
-    for (module_name, source_code) in modules {
-        server.update_module(module_name, &source_code);
-    }
+pub fn compile(modules: HashMap<String, String>, hop_mode: HopMode) -> anyhow::Result<Program> {
+    let server = Program::from_modules(modules, hop_mode);
 
     let source_code = server.get_source_code();
 

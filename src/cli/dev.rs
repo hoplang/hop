@@ -21,25 +21,15 @@ static CACHED_UI_SERVER: OnceLock<Program> = OnceLock::new();
 
 fn get_ui_program() -> &'static Program {
     CACHED_UI_SERVER.get_or_init(|| {
-        let modules = vec![
-            ("hop/error_pages".to_string(), ERROR_TEMPLATES.to_string()),
-            ("hop/ui".to_string(), UI_TEMPLATES.to_string()),
-            ("hop/icons".to_string(), ICONS_TEMPLATES.to_string()),
-        ];
+        let mut modules = std::collections::HashMap::new();
+        modules.insert("hop/error_pages".to_string(), ERROR_TEMPLATES.to_string());
+        modules.insert("hop/ui".to_string(), UI_TEMPLATES.to_string());
+        modules.insert("hop/icons".to_string(), ICONS_TEMPLATES.to_string());
 
         compile(modules, HopMode::Dev).expect("Failed to compile UI templates")
     })
 }
 
-/// Creates a Program from modules, returning it even if there are parse or type errors.
-/// This is useful for the dev server which needs to display errors in the UI.
-fn create_program(modules: Vec<(String, String)>, hop_mode: HopMode) -> Program {
-    let mut program = Program::new(hop_mode);
-    for (module_name, source_code) in modules {
-        program.update_module(module_name, &source_code);
-    }
-    program
-}
 
 fn inject_hot_reload_script(html: &str) -> String {
     const HOT_RELOAD_SCRIPT: &str = r#"<script type="module" src="/_hop/hmr.js"></script>"#;
@@ -214,7 +204,7 @@ fn create_file_watcher(
                     if is_hop_file {
                         // Reload all modules from scratch
                         if let Ok(modules) = files::load_all_hop_modules(&local_root) {
-                            let new_program = create_program(modules, HopMode::Dev);
+                            let new_program = Program::from_modules(modules, HopMode::Dev);
                             if let Ok(mut program) = state.program.write() {
                                 *program = new_program;
                             }
@@ -257,7 +247,7 @@ pub async fn execute(
     let (reload_channel, _) = tokio::sync::broadcast::channel::<()>(100);
 
     let app_state = AppState {
-        program: Arc::new(RwLock::new(create_program(modules, HopMode::Dev))),
+        program: Arc::new(RwLock::new(Program::from_modules(modules, HopMode::Dev))),
         reload_channel,
     };
 
