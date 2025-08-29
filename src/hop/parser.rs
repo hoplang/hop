@@ -494,7 +494,7 @@ fn construct_node(
                                 None
                             }
                         }),
-                        definition_location,
+                        definition_module: definition_location,
                         args: params_attrs,
                         attributes: attributes.clone(),
                         range: tree.range(),

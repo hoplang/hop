@@ -25,6 +25,10 @@ impl HopAST {
         }
     }
 
+    pub fn get_component_definition(&self, name: &str) -> Option<&ComponentDefinitionNode> {
+        self.component_nodes.iter().find(|&n| n.name == name)
+    }
+
     /// Returns a reference to all component definition nodes in the AST.
     pub fn get_component_definition_nodes(&self) -> &[ComponentDefinitionNode] {
         &self.component_nodes
@@ -161,9 +165,9 @@ pub enum HopNode {
     },
     ComponentReference {
         component: String,
+        definition_module: Option<String>,
         opening_name_range: Range,
         closing_name_range: Option<Range>,
-        definition_location: Option<String>,
         args: Vec<DopArgument>,
         attributes: Vec<Attribute>,
         range: Range,
@@ -419,11 +423,11 @@ mod tests {
                 Some(
                     ComponentReference {
                         component: "foo-bar",
+                        definition_module: None,
                         opening_name_range: 2:6-2:13,
                         closing_name_range: Some(
                             2:23-2:30,
                         ),
-                        definition_location: None,
                         args: [],
                         attributes: [],
                         range: 2:5-2:31,

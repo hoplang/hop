@@ -2,7 +2,7 @@ use crate::common::{escape_html, is_void_element};
 use crate::dop;
 use crate::dop::{evaluate_expr, load_json_file};
 use crate::hop::ast::HopAST;
-use crate::hop::ast::{ComponentDefinitionNode, HopNode, RenderNode};
+use crate::hop::ast::HopNode;
 use crate::hop::environment::Environment;
 use anyhow::Result;
 use std::collections::HashMap;
@@ -30,47 +30,26 @@ impl HopMode {
 /// Program represents a compiled hop program that can execute components and entrypoints
 #[derive(Clone)]
 pub struct Program {
-    component_maps: HashMap<String, HashMap<String, ComponentDefinitionNode>>,
-    import_maps: HashMap<String, HashMap<String, String>>,
-    render_nodes: Vec<RenderNode>,
+    ast_map: HashMap<String, HopAST>,
     scripts: String,
     hop_mode: HopMode,
 }
 
 impl Program {
-    pub fn new(modules: Vec<HopAST>, scripts: String, hop_mode: HopMode) -> Self {
-        let mut component_maps = HashMap::new();
-        let mut import_maps = HashMap::new();
+    pub fn new(asts: Vec<HopAST>, scripts: String, hop_mode: HopMode) -> Self {
+        let mut ast_map = HashMap::new();
         let mut render_nodes = Vec::new();
 
-        for module in modules {
-            let component_map: HashMap<_, _> = module
-                .get_component_definition_nodes()
-                .iter()
-                .map(|comp| (comp.name.clone(), comp.clone()))
-                .collect();
+        for ast in asts {
+            render_nodes.extend(ast.get_render_nodes().iter().cloned());
 
-            let import_map: HashMap<_, _> = module
-                .get_import_nodes()
-                .iter()
-                .map(|import| {
-                    (
-                        import.component_attr.value.clone(),
-                        import.from_attr.value.clone(),
-                    )
-                })
-                .collect();
+            let module_name = ast.name.clone();
 
-            render_nodes.extend(module.get_render_nodes().iter().cloned());
-
-            component_maps.insert(module.name.clone(), component_map);
-            import_maps.insert(module.name.clone(), import_map);
+            ast_map.insert(module_name.clone(), ast);
         }
 
         Program {
-            component_maps,
-            import_maps,
-            render_nodes,
+            ast_map,
             scripts,
             hop_mode,
         }
@@ -83,24 +62,29 @@ impl Program {
     /// Get all file_attr values from render nodes across all modules
     /// I.e. files specified in <render file="index.html">
     pub fn get_render_file_paths(&self) -> Vec<String> {
-        self.render_nodes
-            .iter()
-            .map(|render_node| render_node.file_attr.value.clone())
-            .collect()
+        let mut result = Vec::new();
+        for ast in self.ast_map.values() {
+            for node in ast.get_render_nodes() {
+                result.push(node.file_attr.value.clone())
+            }
+        }
+        result
     }
 
     /// Render the content for a specific file path
     pub fn render_file(&self, file_path: &str) -> Result<String> {
         // Find the render node with the matching file_attr.value
-        for node in &self.render_nodes {
-            if node.file_attr.value == file_path {
-                let mut env = Self::init_environment(self.hop_mode);
-                let mut content = String::new();
-                for child in &node.children {
-                    let rendered = self.evaluate_node_entrypoint(child, &mut env, "build")?;
-                    content.push_str(&rendered);
+        for ast in self.ast_map.values() {
+            for node in ast.get_render_nodes() {
+                if node.file_attr.value == file_path {
+                    let mut env = Self::init_environment(self.hop_mode);
+                    let mut content = String::new();
+                    for child in &node.children {
+                        let rendered = self.evaluate_node_entrypoint(child, &mut env, "build")?;
+                        content.push_str(&rendered);
+                    }
+                    return Ok(content);
                 }
-                return Ok(content);
             }
         }
         Err(anyhow::anyhow!(
@@ -127,18 +111,20 @@ impl Program {
         slot_content: Option<&str>,
         additional_classes: Option<&str>,
     ) -> Result<String> {
-        let component_map = self
-            .component_maps
+        let ast = self
+            .ast_map
             .get(module_name)
             .ok_or_else(|| anyhow::anyhow!("Module '{}' not found", module_name))?;
 
-        let component = component_map.get(component_name).ok_or_else(|| {
-            anyhow::anyhow!(
-                "Component '{}' not found in module '{}'",
-                component_name,
-                module_name
-            )
-        })?;
+        let component = ast
+            .get_component_definition(component_name)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Component '{}' not found in module '{}'",
+                    component_name,
+                    module_name
+                )
+            })?;
 
         let mut env = Self::init_environment(self.hop_mode);
 
@@ -263,6 +249,7 @@ impl Program {
                 component,
                 args,
                 attributes,
+                definition_module,
                 children,
                 ..
             } => {
@@ -273,18 +260,15 @@ impl Program {
 
                 let component_name = component;
 
-                let target_module = self
-                    .import_maps
-                    .get(current_module)
-                    .and_then(|import_map| import_map.get(component_name))
-                    .cloned()
-                    .unwrap_or_else(|| current_module.to_string());
+                let target_module = definition_module
+                    .as_ref()
+                    .expect("Could not find definition module for component reference");
 
                 let target_component = self
-                    .component_maps
-                    .get(&target_module)
-                    .and_then(|module_map| module_map.get(component_name))
-                    .expect("Could not find target component");
+                    .ast_map
+                    .get(target_module)
+                    .and_then(|ast| ast.get_component_definition(component_name))
+                    .expect("Could not find target component for component reference");
 
                 // Check if target component has a default slot
                 let has_default_slot = target_component.has_slot;
@@ -312,7 +296,7 @@ impl Program {
                     .map(|attr| attr.value.as_str());
 
                 self.evaluate_component(
-                    &target_module,
+                    target_module,
                     component_name,
                     arg_values,
                     slot_html.as_deref(),

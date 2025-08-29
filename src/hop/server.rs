@@ -283,7 +283,7 @@ impl Server {
         match node {
             HopNode::ComponentReference {
                 component,
-                definition_location,
+                definition_module: definition_location,
                 ..
             } => definition_location.as_ref().map(|target_module| {
                 self.collect_component_rename_locations(component, target_module)
@@ -397,7 +397,7 @@ impl Server {
                             node,
                             HopNode::ComponentReference {
                                 component,
-                                definition_location: Some(defined_in),
+                                definition_module: Some(defined_in),
                                 ..
                             } if defined_in == definition_module && component == component_name
                         )
