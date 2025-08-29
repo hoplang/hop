@@ -4,8 +4,7 @@ use std::sync::OnceLock;
 
 use crate::filesystem::files;
 use crate::hop::compiler::compile;
-use crate::hop::runtime::HopMode;
-use crate::hop::server::Server;
+use crate::hop::server::{HopMode, Server};
 
 const ERROR_TEMPLATES: &str = include_str!("../../hop/error_pages.hop");
 const UI_TEMPLATES: &str = include_str!("../../hop/ui.hop");

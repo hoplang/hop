@@ -1,7 +1,6 @@
 use crate::common::Position;
 use crate::filesystem::files::{self as files, ProjectRoot};
-use crate::hop::runtime::HopMode;
-use crate::hop::server::{DefinitionLocation, HoverInfo, RenameLocation, Server};
+use crate::hop::server::{DefinitionLocation, HopMode, HoverInfo, RenameLocation, Server};
 use std::path::Path;
 use tokio::sync::RwLock;
 use tower_lsp::jsonrpc::Result;

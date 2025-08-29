@@ -1,4 +1,5 @@
 use crate::filesystem::files::ProjectRoot;
+use crate::hop::server::HopMode;
 use anyhow::Context;
 use rayon::prelude::*;
 use std::fs;
@@ -6,7 +7,6 @@ use std::path::Path;
 
 use crate::filesystem::files;
 use crate::hop::compiler::compile;
-use crate::hop::runtime::HopMode;
 use crate::tui::timing;
 
 fn copy_dir_recursive(

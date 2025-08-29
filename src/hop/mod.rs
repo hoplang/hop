@@ -2,7 +2,6 @@ pub mod ast;
 pub mod compiler;
 pub mod environment;
 pub mod parser;
-pub mod runtime;
 pub mod script_collector;
 pub mod server;
 pub mod token_tree;
