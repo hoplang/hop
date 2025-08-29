@@ -130,37 +130,6 @@ impl SourceAnnotator {
         output
     }
 
-    pub fn add_ranges<R: Ranged>(&self, source: &str, ranges: &[R]) -> String {
-        let mut output = String::new();
-        let lines: Vec<&str> = source.lines().collect();
-
-        for (i, ranged) in ranges.iter().enumerate() {
-            if i > 0 {
-                output.push('\n');
-            }
-
-            let range = ranged.range();
-
-            if self.show_location {
-                if let Some(ref filename) = self.filename {
-                    output.push_str(&format!(
-                        "  --> {} (line {}, col {})\n",
-                        filename, range.start.line, range.start.column
-                    ));
-                } else {
-                    output.push_str(&format!(
-                        "  --> (line {}, col {})\n",
-                        range.start.line, range.start.column
-                    ));
-                }
-            }
-
-            self.add_source_context(&mut output, &lines, range);
-        }
-
-        output
-    }
-
     fn add_source_context(&self, output: &mut String, lines: &[&str], range: Range) {
         let start_line = range.start.line;
         let max_line_num_width = if self.show_line_numbers {
@@ -506,42 +475,5 @@ mod tests {
                   |      ^^^^
             "#]],
         );
-    }
-
-    #[test]
-    fn test_annotate_ranges_only() {
-        let ranges = vec![
-            Range::new(Position::new(1, 6), Position::new(1, 9)),
-            Range::new(Position::new(3, 1), Position::new(3, 5)),
-        ];
-        let source = "line one\nline two\nline three";
-
-        let annotator = SourceAnnotator::new();
-        let actual = annotator.add_ranges(source, &ranges);
-        expect![[r#"
-            1 | line one
-              |      ^^^
-
-            3 | line three
-              | ^^^^
-        "#]]
-        .assert_eq(&actual);
-    }
-
-    #[test]
-    fn test_annotate_ranges_with_location() {
-        let ranges = vec![Range::new(Position::new(2, 6), Position::new(2, 9))];
-        let source = "line one\nline two";
-
-        let annotator = SourceAnnotator::new()
-            .with_location()
-            .with_filename("test.hop");
-        let actual = annotator.add_ranges(source, &ranges);
-        expect![[r#"
-              --> test.hop (line 2, col 6)
-            2 | line two
-              |      ^^^
-        "#]]
-        .assert_eq(&actual);
     }
 }
