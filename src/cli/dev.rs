@@ -61,6 +61,24 @@ fn inject_hot_reload_script(html: &str) -> String {
     }
 }
 
+async fn handle_idiomorph() -> axum::response::Response<axum::body::Body> {
+    use axum::body::Body;
+
+    axum::response::Response::builder()
+        .header("Content-Type", "application/javascript")
+        .body(Body::from(include_str!("_hop/idiomorph.js")))
+        .unwrap()
+}
+
+async fn handle_hmr() -> axum::response::Response<axum::body::Body> {
+    use axum::body::Body;
+
+    axum::response::Response::builder()
+        .header("Content-Type", "application/javascript")
+        .body(Body::from(include_str!("_hop/hmr.js")))
+        .unwrap()
+}
+
 async fn handle_script(
     State(program): State<Arc<RwLock<Program>>>,
 ) -> axum::response::Response<axum::body::Body> {
@@ -228,7 +246,9 @@ pub async fn execute(
     let shared_program = Arc::new(RwLock::new(initial_program));
 
     // Set up file watcher for hot reloading
-    let mut router = axum::Router::new();
+    let mut router = axum::Router::new()
+        .route("/_hop/idiomorph.js", get(handle_idiomorph))
+        .route("/_hop/hmr.js", get(handle_hmr));
 
     // Add SSE endpoint for hot reload events
     let (watcher, channel) = create_file_watcher(root, shared_program.clone())?;
@@ -240,30 +260,6 @@ pub async fn execute(
                 BroadcastStream::new(channel_clone.subscribe())
                     .map(|_| Ok::<Event, axum::Error>(Event::default().data("reload"))),
             )
-        }),
-    );
-
-    // Add idiomorph.js serving endpoint
-    router = router.route(
-        "/_hop/idiomorph.js",
-        get(async move || {
-            use axum::body::Body;
-            axum::response::Response::builder()
-                .header("Content-Type", "application/javascript")
-                .body(Body::from(include_str!("_hop/idiomorph.js")))
-                .unwrap()
-        }),
-    );
-
-    // Add hot reload script serving endpoint
-    router = router.route(
-        "/_hop/hmr.js",
-        get(async move || {
-            use axum::body::Body;
-            axum::response::Response::builder()
-                .header("Content-Type", "application/javascript")
-                .body(Body::from(include_str!("_hop/hmr.js")))
-                .unwrap()
         }),
     );
 
