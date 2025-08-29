@@ -1,9 +1,9 @@
 use crate::common::{Range, RangeError, Ranged};
-use crate::dop::{DopType, infer_type_from_json_file, is_subtype, typecheck_expr};
+use crate::dop::{DopParameter, DopType, infer_type_from_json_file, is_subtype, typecheck_expr};
 use crate::hop::ast::HopAST;
 use crate::hop::ast::{ComponentDefinitionNode, HopNode, ImportNode, RenderNode};
 use crate::hop::environment::Environment;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeAnnotation {
@@ -39,7 +39,7 @@ pub struct ComponentTypeInformation {
     definition_module: String,
     definition_range: Range,
     // Track the parameter types for the component.
-    parameter_types: BTreeMap<String, DopType>,
+    parameter_types: Vec<DopParameter>,
     // Track the slot names of the component.
     slots: Vec<String>,
 }
@@ -94,10 +94,9 @@ pub fn typecheck(
         ..
     } in module.get_component_definition_nodes()
     {
-        let mut parameter_types = BTreeMap::new();
+        let parameter_types = params.clone();
 
         for param in params {
-            let param_name = &param.var_name.value;
             let param_type = param.type_annotation.clone();
 
             type_annotations.push(TypeAnnotation {
@@ -105,8 +104,7 @@ pub fn typecheck(
                 typ: param_type.clone(),
                 name: param.var_name.value.clone(),
             });
-            env.push(param.var_name.value.clone(), param_type.clone());
-            parameter_types.insert(param_name.clone(), param_type);
+            env.push(param.var_name.value.clone(), param_type);
         }
 
         for child in children {
@@ -245,7 +243,7 @@ fn typecheck_node(
                 let provided_args: std::collections::HashSet<_> =
                     args.iter().map(|arg| &arg.var_name.value).collect();
                 let expected_params: std::collections::HashSet<_> =
-                    comp_info.parameter_types.keys().collect();
+                    comp_info.parameter_types.iter().map(|p| &p.var_name.value).collect();
 
                 // Check for missing required parameters
                 for param_name in expected_params.difference(&provided_args) {
@@ -265,7 +263,7 @@ fn typecheck_node(
 
                 // Check each provided argument against its corresponding parameter type
                 for arg in args {
-                    if let Some(expected_type) = comp_info.parameter_types.get(&arg.var_name.value)
+                    if let Some(param) = comp_info.parameter_types.iter().find(|p| p.var_name.value == arg.var_name.value)
                     {
                         let expr_type =
                             match typecheck_expr(&arg.expression, env, annotations, errors) {
@@ -276,11 +274,11 @@ fn typecheck_node(
                                 }
                             };
 
-                        if !is_subtype(&expr_type, expected_type) {
+                        if !is_subtype(&expr_type, &param.type_annotation) {
                             errors.push(RangeError::new(
                                 format!(
                                     "Argument '{}' of type {} is incompatible with expected type {}",
-                                    arg.var_name.value, expr_type, expected_type,
+                                    arg.var_name.value, expr_type, param.type_annotation,
                                 ),
                                 arg.expression.range(),
                             ));
@@ -580,7 +578,7 @@ mod tests {
                     let param_types_str = component_info
                         .parameter_types
                         .iter()
-                        .map(|(name, typ)| format!("{}: {}", name, typ))
+                        .map(|p| format!("{}: {}", p.var_name.value, p.type_annotation))
                         .collect::<Vec<_>>()
                         .join(", ");
                     all_output_lines.push(format!(
