@@ -253,12 +253,11 @@ pub async fn execute(
     use tower_http::services::ServeDir;
 
     let modules = files::load_all_hop_modules(root)?;
-    let initial_program = create_program(modules, HopMode::Dev);
 
     let (reload_channel, _) = tokio::sync::broadcast::channel::<()>(100);
 
     let app_state = AppState {
-        program: Arc::new(RwLock::new(initial_program)),
+        program: Arc::new(RwLock::new(create_program(modules, HopMode::Dev))),
         reload_channel,
     };
 
