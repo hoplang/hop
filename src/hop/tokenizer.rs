@@ -5,36 +5,58 @@ use crate::hop::ast::Attribute;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
-    Doctype,
-    Comment,
-    Eof,
-    Expression {
-        value: String,
+    Doctype {
         range: Range,
     },
-    StartTag {
+    Comment {
+        range: Range,
+    },
+    Eof {
+        range: Range,
+    },
+    Expression {
+        value: String,
+        expression_range: Range,
+        range: Range,
+    },
+    OpeningTag {
         self_closing: bool,
         name_range: Range,
         value: String,
         attributes: Vec<Attribute>,
         expression: Option<(String, Range)>,
+        range: Range,
     },
-    EndTag {
+    ClosingTag {
         value: String,
         name_range: Range,
+        range: Range,
     },
     Text {
         value: String,
+        range: Range,
     },
 }
 
 impl Token {
     pub fn find_attribute(&self, value: &str) -> Option<Attribute> {
         match self {
-            Token::StartTag { attributes, .. } => {
+            Token::OpeningTag { attributes, .. } => {
                 attributes.iter().find(|attr| attr.name == value).cloned()
             }
             _ => None,
+        }
+    }
+
+    pub fn range(&self) -> Range {
+        match self {
+            Token::Doctype { range } => *range,
+            Token::Comment { range } => *range,
+            Token::Eof { range } => *range,
+            Token::Expression { range, .. } => *range,
+            Token::OpeningTag { range, .. } => *range,
+            Token::ClosingTag { range, .. } => *range,
+            Token::Text { range, .. } => *range,
         }
     }
 }
@@ -42,11 +64,11 @@ impl Token {
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum TokenizerState {
     Text,
-    TagOpen,
-    StartTagName,
-    EndTagOpen,
-    EndTagName,
-    AfterEndTagName,
+    TagStart,
+    OpeningTagName,
+    ClosingTagStart,
+    ClosingTagName,
+    AfterClosingTagName,
     BeforeAttrName,
     AttrName,
     BeforeAttrValue,
@@ -152,7 +174,7 @@ impl Tokenizer {
         }
     }
 
-    fn advance(&mut self) -> Result<(Token, Range), RangeError> {
+    fn advance(&mut self) -> Result<Token, RangeError> {
         let mut token_value = String::new();
         let token_start = self.cursor.get_position();
         let mut token_attributes = Vec::new();
@@ -173,20 +195,20 @@ impl Tokenizer {
                 TokenizerState::Text => {
                     if ch == '<' {
                         if !token_value.is_empty() {
-                            return Ok((
-                                Token::Text { value: token_value },
-                                Range::new(token_start, self.cursor.get_position()),
-                            ));
+                            return Ok(Token::Text {
+                                value: token_value,
+                                range: Range::new(token_start, self.cursor.get_position()),
+                            });
                         }
                         self.cursor.advance();
                         tag_name_start = self.cursor.get_position();
-                        self.state = TokenizerState::TagOpen;
+                        self.state = TokenizerState::TagStart;
                     } else if ch == '{' {
                         if !token_value.is_empty() {
-                            return Ok((
-                                Token::Text { value: token_value },
-                                Range::new(token_start, self.cursor.get_position()),
-                            ));
+                            return Ok(Token::Text {
+                                value: token_value,
+                                range: Range::new(token_start, self.cursor.get_position()),
+                            });
                         }
                         self.cursor.advance();
                         expression_start = self.cursor.get_position();
@@ -198,16 +220,16 @@ impl Tokenizer {
                     }
                 }
 
-                TokenizerState::TagOpen => {
+                TokenizerState::TagStart => {
                     if ch.is_ascii_alphabetic() {
                         token_value.push(ch);
                         self.cursor.advance();
                         tag_name_end = self.cursor.get_position();
-                        self.state = TokenizerState::StartTagName;
+                        self.state = TokenizerState::OpeningTagName;
                     } else if ch == '/' {
                         self.cursor.advance();
                         tag_name_start = self.cursor.get_position();
-                        self.state = TokenizerState::EndTagOpen;
+                        self.state = TokenizerState::ClosingTagStart;
                     } else if ch == '!' {
                         self.cursor.advance();
                         self.state = TokenizerState::MarkupDeclaration;
@@ -222,12 +244,12 @@ impl Tokenizer {
                     }
                 }
 
-                TokenizerState::StartTagName => {
+                TokenizerState::OpeningTagName => {
                     if ch == '-' || ch.is_ascii_alphanumeric() {
                         token_value.push(ch);
                         self.cursor.advance();
                         tag_name_end = self.cursor.get_position();
-                        self.state = TokenizerState::StartTagName;
+                        self.state = TokenizerState::OpeningTagName;
                     } else if ch.is_whitespace() {
                         self.cursor.advance();
                         self.state = TokenizerState::BeforeAttrName;
@@ -240,29 +262,25 @@ impl Tokenizer {
                             self.stored_tag_name = token_value.clone();
                             self.cursor.advance();
                             self.state = TokenizerState::RawtextData;
-                            return Ok((
-                                Token::StartTag {
-                                    value: token_value,
-                                    self_closing: false,
-                                    attributes: token_attributes,
-                                    name_range: Range::new(tag_name_start, tag_name_end),
-                                    expression: token_expression,
-                                },
-                                Range::new(token_start, self.cursor.get_position()),
-                            ));
+                            return Ok(Token::OpeningTag {
+                                value: token_value,
+                                self_closing: false,
+                                attributes: token_attributes,
+                                name_range: Range::new(tag_name_start, tag_name_end),
+                                expression: token_expression,
+                                range: Range::new(token_start, self.cursor.get_position()),
+                            });
                         } else {
                             self.cursor.advance();
                             self.state = TokenizerState::Text;
-                            return Ok((
-                                Token::StartTag {
-                                    value: token_value,
-                                    self_closing: false,
-                                    attributes: token_attributes,
-                                    name_range: Range::new(tag_name_start, tag_name_end),
-                                    expression: token_expression,
-                                },
-                                Range::new(token_start, self.cursor.get_position()),
-                            ));
+                            return Ok(Token::OpeningTag {
+                                value: token_value,
+                                self_closing: false,
+                                attributes: token_attributes,
+                                name_range: Range::new(tag_name_start, tag_name_end),
+                                expression: token_expression,
+                                range: Range::new(token_start, self.cursor.get_position()),
+                            });
                         }
                     } else if ch == '/' {
                         self.cursor.advance();
@@ -278,12 +296,12 @@ impl Tokenizer {
                     }
                 }
 
-                TokenizerState::EndTagOpen => {
+                TokenizerState::ClosingTagStart => {
                     if ch.is_ascii_alphabetic() {
                         token_value.push(ch);
                         self.cursor.advance();
                         tag_name_end = self.cursor.get_position();
-                        self.state = TokenizerState::EndTagName;
+                        self.state = TokenizerState::ClosingTagName;
                     } else {
                         let start_pos = self.cursor.get_position();
                         self.cursor.advance();
@@ -295,25 +313,23 @@ impl Tokenizer {
                     }
                 }
 
-                TokenizerState::EndTagName => {
+                TokenizerState::ClosingTagName => {
                     if ch == '-' || ch.is_ascii_alphanumeric() {
                         token_value.push(ch);
                         self.cursor.advance();
                         tag_name_end = self.cursor.get_position();
-                        self.state = TokenizerState::EndTagName;
+                        self.state = TokenizerState::ClosingTagName;
                     } else if ch == '>' {
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
-                        return Ok((
-                            Token::EndTag {
-                                value: token_value,
-                                name_range: Range::new(tag_name_start, tag_name_end),
-                            },
-                            Range::new(token_start, self.cursor.get_position()),
-                        ));
+                        return Ok(Token::ClosingTag {
+                            value: token_value,
+                            name_range: Range::new(tag_name_start, tag_name_end),
+                            range: Range::new(token_start, self.cursor.get_position()),
+                        });
                     } else if ch.is_whitespace() {
                         self.cursor.advance();
-                        self.state = TokenizerState::AfterEndTagName;
+                        self.state = TokenizerState::AfterClosingTagName;
                     } else {
                         let start_pos = self.cursor.get_position();
                         self.cursor.advance();
@@ -325,20 +341,18 @@ impl Tokenizer {
                     }
                 }
 
-                TokenizerState::AfterEndTagName => {
+                TokenizerState::AfterClosingTagName => {
                     if ch.is_whitespace() {
                         self.cursor.advance();
-                        self.state = TokenizerState::AfterEndTagName;
+                        self.state = TokenizerState::AfterClosingTagName;
                     } else if ch == '>' {
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
-                        return Ok((
-                            Token::EndTag {
-                                value: token_value,
-                                name_range: Range::new(tag_name_start, tag_name_end),
-                            },
-                            Range::new(token_start, self.cursor.get_position()),
-                        ));
+                        return Ok(Token::ClosingTag {
+                            value: token_value,
+                            name_range: Range::new(tag_name_start, tag_name_end),
+                            range: Range::new(token_start, self.cursor.get_position()),
+                        });
                     } else {
                         let start_pos = self.cursor.get_position();
                         self.cursor.advance();
@@ -371,29 +385,25 @@ impl Tokenizer {
                             self.stored_tag_name = token_value.clone();
                             self.cursor.advance();
                             self.state = TokenizerState::RawtextData;
-                            return Ok((
-                                Token::StartTag {
-                                    self_closing: false,
-                                    value: token_value,
-                                    attributes: token_attributes,
-                                    expression: token_expression,
-                                    name_range: Range::new(tag_name_start, tag_name_end),
-                                },
-                                Range::new(token_start, self.cursor.get_position()),
-                            ));
+                            return Ok(Token::OpeningTag {
+                                self_closing: false,
+                                value: token_value,
+                                attributes: token_attributes,
+                                expression: token_expression,
+                                name_range: Range::new(tag_name_start, tag_name_end),
+                                range: Range::new(token_start, self.cursor.get_position()),
+                            });
                         } else {
                             self.cursor.advance();
                             self.state = TokenizerState::Text;
-                            return Ok((
-                                Token::StartTag {
-                                    self_closing: false,
-                                    value: token_value,
-                                    attributes: token_attributes,
-                                    expression: token_expression,
-                                    name_range: Range::new(tag_name_start, tag_name_end),
-                                },
-                                Range::new(token_start, self.cursor.get_position()),
-                            ));
+                            return Ok(Token::OpeningTag {
+                                self_closing: false,
+                                value: token_value,
+                                attributes: token_attributes,
+                                expression: token_expression,
+                                name_range: Range::new(tag_name_start, tag_name_end),
+                                range: Range::new(token_start, self.cursor.get_position()),
+                            });
                         }
                     } else {
                         let start_pos = self.cursor.get_position();
@@ -443,29 +453,25 @@ impl Tokenizer {
                             self.stored_tag_name = token_value.clone();
                             self.cursor.advance();
                             self.state = TokenizerState::RawtextData;
-                            return Ok((
-                                Token::StartTag {
-                                    self_closing: false,
-                                    value: token_value,
-                                    attributes: token_attributes,
-                                    expression: token_expression,
-                                    name_range: Range::new(tag_name_start, tag_name_end),
-                                },
-                                Range::new(token_start, self.cursor.get_position()),
-                            ));
+                            return Ok(Token::OpeningTag {
+                                self_closing: false,
+                                value: token_value,
+                                attributes: token_attributes,
+                                expression: token_expression,
+                                name_range: Range::new(tag_name_start, tag_name_end),
+                                range: Range::new(token_start, self.cursor.get_position()),
+                            });
                         } else {
                             self.cursor.advance();
                             self.state = TokenizerState::Text;
-                            return Ok((
-                                Token::StartTag {
-                                    self_closing: false,
-                                    value: token_value,
-                                    attributes: token_attributes,
-                                    expression: token_expression,
-                                    name_range: Range::new(tag_name_start, tag_name_end),
-                                },
-                                Range::new(token_start, self.cursor.get_position()),
-                            ));
+                            return Ok(Token::OpeningTag {
+                                self_closing: false,
+                                value: token_value,
+                                attributes: token_attributes,
+                                expression: token_expression,
+                                name_range: Range::new(tag_name_start, tag_name_end),
+                                range: Range::new(token_start, self.cursor.get_position()),
+                            });
                         }
                     } else if ch == '/' {
                         // Push current attribute
@@ -561,16 +567,14 @@ impl Tokenizer {
                     if ch == '>' {
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
-                        return Ok((
-                            Token::StartTag {
-                                self_closing: true,
-                                value: token_value,
-                                attributes: token_attributes,
-                                expression: token_expression,
-                                name_range: Range::new(tag_name_start, tag_name_end),
-                            },
-                            Range::new(token_start, self.cursor.get_position()),
-                        ));
+                        return Ok(Token::OpeningTag {
+                            self_closing: true,
+                            value: token_value,
+                            attributes: token_attributes,
+                            expression: token_expression,
+                            name_range: Range::new(tag_name_start, tag_name_end),
+                            range: Range::new(token_start, self.cursor.get_position()),
+                        });
                     } else {
                         let start_pos = self.cursor.get_position();
                         self.cursor.advance();
@@ -604,10 +608,9 @@ impl Tokenizer {
                     if self.cursor.match_str("-->") {
                         self.cursor.advance_n(3);
                         self.state = TokenizerState::Text;
-                        return Ok((
-                            Token::Comment,
-                            Range::new(token_start, self.cursor.get_position()),
-                        ));
+                        return Ok(Token::Comment {
+                            range: Range::new(token_start, self.cursor.get_position()),
+                        });
                     } else {
                         token_value.push(ch);
                         self.cursor.advance();
@@ -662,10 +665,9 @@ impl Tokenizer {
                             }
                             self.cursor.advance();
                             self.state = TokenizerState::Text;
-                            return Ok((
-                                Token::Doctype,
-                                Range::new(token_start, self.cursor.get_position()),
-                            ));
+                            return Ok(Token::Doctype {
+                                range: Range::new(token_start, self.cursor.get_position()),
+                            });
                         } else {
                             let start_pos = self.cursor.get_position();
                             self.cursor.advance();
@@ -690,10 +692,10 @@ impl Tokenizer {
                     if self.cursor.match_str(&end_tag) {
                         if !token_value.is_empty() {
                             self.state = TokenizerState::RawtextData;
-                            return Ok((
-                                Token::Text { value: token_value },
-                                Range::new(token_start, self.cursor.get_position()),
-                            ));
+                            return Ok(Token::Text {
+                                value: token_value,
+                                range: Range::new(token_start, self.cursor.get_position()),
+                            });
                         } else {
                             // No accumulated content, create and return end tag token directly
                             let tag_name = self.stored_tag_name.clone();
@@ -703,13 +705,11 @@ impl Tokenizer {
                             tag_name_end = self.cursor.get_position();
                             self.cursor.advance_n(1); // consume >
                             self.state = TokenizerState::Text;
-                            return Ok((
-                                Token::EndTag {
-                                    value: tag_name,
-                                    name_range: Range::new(tag_name_start, tag_name_end),
-                                },
-                                Range::new(token_start, self.cursor.get_position()),
-                            ));
+                            return Ok(Token::ClosingTag {
+                                value: tag_name,
+                                name_range: Range::new(tag_name_start, tag_name_end),
+                                range: Range::new(token_start, self.cursor.get_position()),
+                            });
                         }
                     } else {
                         token_value.push(ch);
@@ -726,13 +726,11 @@ impl Tokenizer {
                         };
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
-                        return Ok((
-                            Token::Expression {
-                                value: expression_content,
-                                range: expression_range,
-                            },
-                            Range::new(token_start, self.cursor.get_position()),
-                        ));
+                        return Ok(Token::Expression {
+                            value: expression_content,
+                            expression_range,
+                            range: Range::new(token_start, self.cursor.get_position()),
+                        });
                     } else {
                         expression_content.push(ch);
                         self.cursor.advance();
@@ -769,28 +767,27 @@ impl Tokenizer {
 
         // End of input - return any accumulated token
         if !token_value.is_empty() {
-            return Ok((
-                Token::Text { value: token_value },
-                Range::new(token_start, self.cursor.get_position()),
-            ));
+            return Ok(Token::Text {
+                value: token_value,
+                range: Range::new(token_start, self.cursor.get_position()),
+            });
         }
 
         // No more tokens - return Eof token
-        Ok((
-            Token::Eof,
-            Range::new(token_start, self.cursor.get_position()),
-        ))
+        Ok(Token::Eof {
+            range: Range::new(token_start, self.cursor.get_position()),
+        })
     }
 }
 
 impl Iterator for Tokenizer {
-    type Item = Result<(Token, Range), RangeError>;
+    type Item = Result<Token, RangeError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.advance() {
             Err(err) => Some(Err(err)),
-            Ok((Token::Eof, _)) => None,
-            Ok((t, range)) => Some(Ok((t, range))),
+            Ok(Token::Eof { .. }) => None,
+            Ok(t) => Some(Ok(t)),
         }
     }
 }
@@ -808,6 +805,23 @@ mod tests {
     fn check(input: &str, expected: Expect) {
         let tokenizer = Tokenizer::new(input);
         let result: Vec<_> = tokenizer.collect();
+
+        // Validate that ranges are contiguous
+        let mut iter = result.iter().peekable();
+        while let Some(token_result) = iter.next() {
+            if let (Ok(current_token), Some(Ok(next_token))) = (token_result, iter.peek()) {
+                let current_range = current_token.range();
+                let next_range = next_token.range();
+                if current_range.end != next_range.start {
+                    panic!(
+                        "Non-contiguous ranges detected: token ends at {:?}, but next token starts at {:?}. \
+                         Current token: {:?}, Next token: {:?}",
+                        current_range.end, next_range.start, current_token, next_token
+                    );
+                }
+            }
+        }
+
         let actual = format!("{:#?}", result);
         expected.assert_eq(&actual);
     }
@@ -824,35 +838,33 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:7,
-                                value: "input",
-                                attributes: [
-                                    Attribute {
-                                        name: "type",
-                                        value: "",
-                                        range: 1:8-1:15,
-                                        value_range: 1:14-1:14,
-                                    },
-                                    Attribute {
-                                        name: "value",
-                                        value: "",
-                                        range: 1:16-1:24,
-                                        value_range: 1:23-1:23,
-                                    },
-                                    Attribute {
-                                        name: "disabled",
-                                        value: "",
-                                        range: 1:25-1:36,
-                                        value_range: 1:35-1:35,
-                                    },
-                                ],
-                                expression: None,
-                            },
-                            1:1-1:37,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:7,
+                            value: "input",
+                            attributes: [
+                                Attribute {
+                                    name: "type",
+                                    value: "",
+                                    range: 1:8-1:15,
+                                    value_range: 1:14-1:14,
+                                },
+                                Attribute {
+                                    name: "value",
+                                    value: "",
+                                    range: 1:16-1:24,
+                                    value_range: 1:23-1:23,
+                                },
+                                Attribute {
+                                    name: "disabled",
+                                    value: "",
+                                    range: 1:25-1:36,
+                                    value_range: 1:35-1:35,
+                                },
+                            ],
+                            expression: None,
+                            range: 1:1-1:37,
+                        },
                     ),
                 ]"#]],
         );
@@ -865,29 +877,27 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:4,
-                                value: "h1",
-                                attributes: [
-                                    Attribute {
-                                        name: "foo",
-                                        value: "bar",
-                                        range: 1:5-1:14,
-                                        value_range: 1:10-1:13,
-                                    },
-                                    Attribute {
-                                        name: "x",
-                                        value: "y",
-                                        range: 1:14-1:19,
-                                        value_range: 1:17-1:18,
-                                    },
-                                ],
-                                expression: None,
-                            },
-                            1:1-1:20,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:4,
+                            value: "h1",
+                            attributes: [
+                                Attribute {
+                                    name: "foo",
+                                    value: "bar",
+                                    range: 1:5-1:14,
+                                    value_range: 1:10-1:13,
+                                },
+                                Attribute {
+                                    name: "x",
+                                    value: "y",
+                                    range: 1:14-1:19,
+                                    value_range: 1:17-1:18,
+                                },
+                            ],
+                            expression: None,
+                            range: 1:1-1:20,
+                        },
                     ),
                 ]"#]],
         );
@@ -900,29 +910,27 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: true,
-                                name_range: 1:2-1:4,
-                                value: "h1",
-                                attributes: [
-                                    Attribute {
-                                        name: "foo",
-                                        value: "",
-                                        range: 1:5-1:8,
-                                        value_range: 1:1-1:1,
-                                    },
-                                    Attribute {
-                                        name: "bar",
-                                        value: "",
-                                        range: 1:9-1:12,
-                                        value_range: 1:1-1:1,
-                                    },
-                                ],
-                                expression: None,
-                            },
-                            1:1-1:14,
-                        ),
+                        OpeningTag {
+                            self_closing: true,
+                            name_range: 1:2-1:4,
+                            value: "h1",
+                            attributes: [
+                                Attribute {
+                                    name: "foo",
+                                    value: "",
+                                    range: 1:5-1:8,
+                                    value_range: 1:1-1:1,
+                                },
+                                Attribute {
+                                    name: "bar",
+                                    value: "",
+                                    range: 1:9-1:12,
+                                    value_range: 1:1-1:1,
+                                },
+                            ],
+                            expression: None,
+                            range: 1:1-1:14,
+                        },
                     ),
                 ]"#]],
         );
@@ -935,23 +943,21 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: true,
-                                name_range: 1:2-1:4,
-                                value: "h1",
-                                attributes: [
-                                    Attribute {
-                                        name: "foo",
-                                        value: "",
-                                        range: 1:5-1:8,
-                                        value_range: 1:1-1:1,
-                                    },
-                                ],
-                                expression: None,
-                            },
-                            1:1-1:10,
-                        ),
+                        OpeningTag {
+                            self_closing: true,
+                            name_range: 1:2-1:4,
+                            value: "h1",
+                            attributes: [
+                                Attribute {
+                                    name: "foo",
+                                    value: "",
+                                    range: 1:5-1:8,
+                                    value_range: 1:1-1:1,
+                                },
+                            ],
+                            expression: None,
+                            range: 1:1-1:10,
+                        },
                     ),
                 ]"#]],
         );
@@ -967,47 +973,38 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:3,
-                                value: "p",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:1-1:4,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:3,
+                            value: "p",
+                            attributes: [],
+                            expression: None,
+                            range: 1:1-1:4,
+                        },
                     ),
                     Ok(
-                        (
-                            Comment,
-                            1:4-1:12,
-                        ),
+                        Comment {
+                            range: 1:4-1:12,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            1:12-2:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 1:12-2:1,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "p",
-                                name_range: 2:3-2:4,
-                            },
-                            2:1-2:5,
-                        ),
+                        ClosingTag {
+                            value: "p",
+                            name_range: 2:3-2:4,
+                            range: 2:1-2:5,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            2:5-3:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 2:5-3:1,
+                        },
                     ),
                 ]"#]],
         );
@@ -1024,70 +1021,56 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:10,
-                                value: "textarea",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:1-1:11,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:10,
+                            value: "textarea",
+                            attributes: [],
+                            expression: None,
+                            range: 1:1-1:11,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n\t",
-                            },
-                            1:11-2:2,
-                        ),
+                        Text {
+                            value: "\n\t",
+                            range: 1:11-2:2,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 2:3-2:6,
-                                value: "div",
-                                attributes: [],
-                                expression: None,
-                            },
-                            2:2-2:7,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 2:3-2:6,
+                            value: "div",
+                            attributes: [],
+                            expression: None,
+                            range: 2:2-2:7,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "div",
-                                name_range: 2:9-2:12,
-                            },
-                            2:7-2:13,
-                        ),
+                        ClosingTag {
+                            value: "div",
+                            name_range: 2:9-2:12,
+                            range: 2:7-2:13,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            2:13-3:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 2:13-3:1,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "textarea",
-                                name_range: 3:3-3:11,
-                            },
-                            3:1-3:12,
-                        ),
+                        ClosingTag {
+                            value: "textarea",
+                            name_range: 3:3-3:11,
+                            range: 3:1-3:12,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            3:12-4:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 3:12-4:1,
+                        },
                     ),
                 ]"#]],
         );
@@ -1100,37 +1083,31 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:7,
-                                value: "title",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:1-1:8,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:7,
+                            value: "title",
+                            attributes: [],
+                            expression: None,
+                            range: 1:1-1:8,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: true,
-                                name_range: 1:9-1:19,
-                                value: "slot-title",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:8-1:21,
-                        ),
+                        OpeningTag {
+                            self_closing: true,
+                            name_range: 1:9-1:19,
+                            value: "slot-title",
+                            attributes: [],
+                            expression: None,
+                            range: 1:8-1:21,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "title",
-                                name_range: 1:23-1:28,
-                            },
-                            1:21-1:29,
-                        ),
+                        ClosingTag {
+                            value: "title",
+                            name_range: 1:23-1:28,
+                            range: 1:21-1:29,
+                        },
                     ),
                 ]"#]],
         );
@@ -1143,31 +1120,26 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:3,
-                                value: "p",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:1-1:4,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:3,
+                            value: "p",
+                            attributes: [],
+                            expression: None,
+                            range: 1:1-1:4,
+                        },
                     ),
                     Ok(
-                        (
-                            Comment,
-                            1:4-1:12,
-                        ),
+                        Comment {
+                            range: 1:4-1:12,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "p",
-                                name_range: 1:14-1:15,
-                            },
-                            1:12-1:16,
-                        ),
+                        ClosingTag {
+                            value: "p",
+                            name_range: 1:14-1:15,
+                            range: 1:12-1:16,
+                        },
                     ),
                 ]"#]],
         );
@@ -1180,10 +1152,9 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            Comment,
-                            1:1-1:42,
-                        ),
+                        Comment {
+                            range: 1:1-1:42,
+                        },
                     ),
                 ]"#]],
         );
@@ -1202,39 +1173,32 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:3,
-                                value: "p",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:1-1:4,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:3,
+                            value: "p",
+                            attributes: [],
+                            expression: None,
+                            range: 1:1-1:4,
+                        },
                     ),
                     Ok(
-                        (
-                            Comment,
-                            1:4-5:10,
-                        ),
+                        Comment {
+                            range: 1:4-5:10,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "p",
-                                name_range: 5:12-5:13,
-                            },
-                            5:10-5:14,
-                        ),
+                        ClosingTag {
+                            value: "p",
+                            name_range: 5:12-5:13,
+                            range: 5:10-5:14,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            5:14-6:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 5:14-6:1,
+                        },
                     ),
                 ]"#]],
         );
@@ -1247,10 +1211,9 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            Comment,
-                            1:1-1:64,
-                        ),
+                        Comment {
+                            range: 1:1-1:64,
+                        },
                     ),
                 ]"#]],
         );
@@ -1263,10 +1226,9 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            Doctype,
-                            1:1-1:18,
-                        ),
+                        Doctype {
+                            range: 1:1-1:18,
+                        },
                     ),
                 ]"#]],
         );
@@ -1279,13 +1241,11 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            EndTag {
-                                value: "div",
-                                name_range: 1:3-1:6,
-                            },
-                            1:1-1:8,
-                        ),
+                        ClosingTag {
+                            value: "div",
+                            name_range: 1:3-1:6,
+                            range: 1:1-1:8,
+                        },
                     ),
                 ]"#]],
         );
@@ -1298,16 +1258,14 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: true,
-                                name_range: 1:2-1:4,
-                                value: "h1",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:1-1:6,
-                        ),
+                        OpeningTag {
+                            self_closing: true,
+                            name_range: 1:2-1:4,
+                            value: "h1",
+                            attributes: [],
+                            expression: None,
+                            range: 1:1-1:6,
+                        },
                     ),
                 ]"#]],
         );
@@ -1320,16 +1278,14 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: true,
-                                name_range: 1:2-1:4,
-                                value: "h1",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:1-1:7,
-                        ),
+                        OpeningTag {
+                            self_closing: true,
+                            name_range: 1:2-1:4,
+                            value: "h1",
+                            attributes: [],
+                            expression: None,
+                            range: 1:1-1:7,
+                        },
                     ),
                 ]"#]],
         );
@@ -1347,41 +1303,33 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:7,
-                                value: "style",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:1-1:8,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:7,
+                            value: "style",
+                            attributes: [],
+                            expression: None,
+                            range: 1:1-1:8,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n  body { color: red; }\n  .class { font-size: 12px; }\n",
-                            },
-                            1:8-4:1,
-                        ),
+                        Text {
+                            value: "\n  body { color: red; }\n  .class { font-size: 12px; }\n",
+                            range: 1:8-4:1,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "style",
-                                name_range: 4:3-4:8,
-                            },
-                            4:1-4:9,
-                        ),
+                        ClosingTag {
+                            value: "style",
+                            name_range: 4:3-4:8,
+                            range: 4:1-4:9,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            4:9-5:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 4:9-5:1,
+                        },
                     ),
                 ]"#]],
         );
@@ -1401,178 +1349,142 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:4,
-                                value: "h1",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:1-1:5,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:4,
+                            value: "h1",
+                            attributes: [],
+                            expression: None,
+                            range: 1:1-1:5,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "h1",
-                                name_range: 1:7-1:9,
-                            },
-                            1:5-1:10,
-                        ),
+                        ClosingTag {
+                            value: "h1",
+                            name_range: 1:7-1:9,
+                            range: 1:5-1:10,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            1:10-2:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 1:10-2:1,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 2:2-2:4,
-                                value: "h2",
-                                attributes: [],
-                                expression: None,
-                            },
-                            2:1-2:5,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 2:2-2:4,
+                            value: "h2",
+                            attributes: [],
+                            expression: None,
+                            range: 2:1-2:5,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "h2",
-                                name_range: 2:7-2:9,
-                            },
-                            2:5-2:10,
-                        ),
+                        ClosingTag {
+                            value: "h2",
+                            name_range: 2:7-2:9,
+                            range: 2:5-2:10,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            2:10-3:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 2:10-3:1,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 3:2-3:4,
-                                value: "h3",
-                                attributes: [],
-                                expression: None,
-                            },
-                            3:1-3:5,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 3:2-3:4,
+                            value: "h3",
+                            attributes: [],
+                            expression: None,
+                            range: 3:1-3:5,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "h3",
-                                name_range: 3:7-3:9,
-                            },
-                            3:5-3:10,
-                        ),
+                        ClosingTag {
+                            value: "h3",
+                            name_range: 3:7-3:9,
+                            range: 3:5-3:10,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            3:10-4:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 3:10-4:1,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 4:2-4:4,
-                                value: "h4",
-                                attributes: [],
-                                expression: None,
-                            },
-                            4:1-4:5,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 4:2-4:4,
+                            value: "h4",
+                            attributes: [],
+                            expression: None,
+                            range: 4:1-4:5,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "h4",
-                                name_range: 4:7-4:9,
-                            },
-                            4:5-4:10,
-                        ),
+                        ClosingTag {
+                            value: "h4",
+                            name_range: 4:7-4:9,
+                            range: 4:5-4:10,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            4:10-5:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 4:10-5:1,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 5:2-5:4,
-                                value: "h5",
-                                attributes: [],
-                                expression: None,
-                            },
-                            5:1-5:5,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 5:2-5:4,
+                            value: "h5",
+                            attributes: [],
+                            expression: None,
+                            range: 5:1-5:5,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "h5",
-                                name_range: 5:7-5:9,
-                            },
-                            5:5-5:10,
-                        ),
+                        ClosingTag {
+                            value: "h5",
+                            name_range: 5:7-5:9,
+                            range: 5:5-5:10,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            5:10-6:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 5:10-6:1,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 6:2-6:4,
-                                value: "h6",
-                                attributes: [],
-                                expression: None,
-                            },
-                            6:1-6:5,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 6:2-6:4,
+                            value: "h6",
+                            attributes: [],
+                            expression: None,
+                            range: 6:1-6:5,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "h6",
-                                name_range: 6:7-6:9,
-                            },
-                            6:5-6:10,
-                        ),
+                        ClosingTag {
+                            value: "h6",
+                            name_range: 6:7-6:9,
+                            range: 6:5-6:10,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            6:10-7:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 6:10-7:1,
+                        },
                     ),
                 ]"#]],
         );
@@ -1591,60 +1503,52 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:5,
-                                value: "div",
-                                attributes: [
-                                    Attribute {
-                                        name: "class",
-                                        value: "multiline",
-                                        range: 2:3-2:20,
-                                        value_range: 2:10-2:19,
-                                    },
-                                    Attribute {
-                                        name: "id",
-                                        value: "test",
-                                        range: 3:3-3:12,
-                                        value_range: 3:7-3:11,
-                                    },
-                                    Attribute {
-                                        name: "data-value",
-                                        value: "something",
-                                        range: 4:3-4:25,
-                                        value_range: 4:15-4:24,
-                                    },
-                                ],
-                                expression: None,
-                            },
-                            1:1-4:26,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:5,
+                            value: "div",
+                            attributes: [
+                                Attribute {
+                                    name: "class",
+                                    value: "multiline",
+                                    range: 2:3-2:20,
+                                    value_range: 2:10-2:19,
+                                },
+                                Attribute {
+                                    name: "id",
+                                    value: "test",
+                                    range: 3:3-3:12,
+                                    value_range: 3:7-3:11,
+                                },
+                                Attribute {
+                                    name: "data-value",
+                                    value: "something",
+                                    range: 4:3-4:25,
+                                    value_range: 4:15-4:24,
+                                },
+                            ],
+                            expression: None,
+                            range: 1:1-4:26,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            4:26-5:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 4:26-5:1,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "div",
-                                name_range: 5:3-5:6,
-                            },
-                            5:1-5:7,
-                        ),
+                        ClosingTag {
+                            value: "div",
+                            name_range: 5:3-5:6,
+                            range: 5:1-5:7,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            5:7-6:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 5:7-6:1,
+                        },
                     ),
                 ]"#]],
         );
@@ -1662,41 +1566,33 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:8,
-                                value: "script",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:1-1:9,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:8,
+                            value: "script",
+                            attributes: [],
+                            expression: None,
+                            range: 1:1-1:9,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n  const html = \"<title>Nested</title>\";\n  document.write(html);\n",
-                            },
-                            1:9-4:1,
-                        ),
+                        Text {
+                            value: "\n  const html = \"<title>Nested</title>\";\n  document.write(html);\n",
+                            range: 1:9-4:1,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "script",
-                                name_range: 4:3-4:9,
-                            },
-                            4:1-4:10,
-                        ),
+                        ClosingTag {
+                            value: "script",
+                            name_range: 4:3-4:9,
+                            range: 4:1-4:10,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            4:10-5:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 4:10-5:1,
+                        },
                     ),
                 ]"#]],
         );
@@ -1709,33 +1605,27 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:11,
-                                value: "hop-x-raw",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:1-1:12,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:11,
+                            value: "hop-x-raw",
+                            attributes: [],
+                            expression: None,
+                            range: 1:1-1:12,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "foo bar",
-                            },
-                            1:12-1:19,
-                        ),
+                        Text {
+                            value: "foo bar",
+                            range: 1:12-1:19,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "hop-x-raw",
-                                name_range: 1:21-1:30,
-                            },
-                            1:19-1:31,
-                        ),
+                        ClosingTag {
+                            value: "hop-x-raw",
+                            name_range: 1:21-1:30,
+                            range: 1:19-1:31,
+                        },
                     ),
                 ]"#]],
         );
@@ -1752,41 +1642,33 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:11,
-                                value: "hop-x-raw",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:1-1:12,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:11,
+                            value: "hop-x-raw",
+                            attributes: [],
+                            expression: None,
+                            range: 1:1-1:12,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n  <div>some html</div>\n",
-                            },
-                            1:12-3:1,
-                        ),
+                        Text {
+                            value: "\n  <div>some html</div>\n",
+                            range: 1:12-3:1,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "hop-x-raw",
-                                name_range: 3:3-3:12,
-                            },
-                            3:1-3:13,
-                        ),
+                        ClosingTag {
+                            value: "hop-x-raw",
+                            name_range: 3:3-3:12,
+                            range: 3:1-3:13,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            3:13-4:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 3:13-4:1,
+                        },
                     ),
                 ]"#]],
         );
@@ -1799,46 +1681,38 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:3,
-                                value: "p",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:1-1:4,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:3,
+                            value: "p",
+                            attributes: [],
+                            expression: None,
+                            range: 1:1-1:4,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "p",
-                                name_range: 1:6-1:7,
-                            },
-                            1:4-1:8,
-                        ),
+                        ClosingTag {
+                            value: "p",
+                            name_range: 1:6-1:7,
+                            range: 1:4-1:8,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:9-1:10,
-                                value: "p",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:8-1:11,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:9-1:10,
+                            value: "p",
+                            attributes: [],
+                            expression: None,
+                            range: 1:8-1:11,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "p",
-                                name_range: 1:13-1:14,
-                            },
-                            1:11-1:15,
-                        ),
+                        ClosingTag {
+                            value: "p",
+                            name_range: 1:13-1:14,
+                            range: 1:11-1:15,
+                        },
                     ),
                 ]"#]],
         );
@@ -1857,83 +1731,67 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:11,
-                                value: "main-comp",
-                                attributes: [],
-                                expression: Some(
-                                    (
-                                        "foo",
-                                        1:13-1:16,
-                                    ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:11,
+                            value: "main-comp",
+                            attributes: [],
+                            expression: Some(
+                                (
+                                    "foo",
+                                    1:13-1:16,
                                 ),
-                            },
-                            1:1-1:18,
-                        ),
+                            ),
+                            range: 1:1-1:18,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n\t",
-                            },
-                            1:18-2:2,
-                        ),
+                        Text {
+                            value: "\n\t",
+                            range: 1:18-2:2,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 2:3-2:9,
-                                value: "script",
-                                attributes: [],
-                                expression: None,
-                            },
-                            2:2-2:10,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 2:3-2:9,
+                            value: "script",
+                            attributes: [],
+                            expression: None,
+                            range: 2:2-2:10,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n\t\tconst x = \"<div></div>\";\n\t",
-                            },
-                            2:10-4:2,
-                        ),
+                        Text {
+                            value: "\n\t\tconst x = \"<div></div>\";\n\t",
+                            range: 2:10-4:2,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "script",
-                                name_range: 4:4-4:10,
-                            },
-                            4:2-4:11,
-                        ),
+                        ClosingTag {
+                            value: "script",
+                            name_range: 4:4-4:10,
+                            range: 4:2-4:11,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            4:11-5:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 4:11-5:1,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "main-comp",
-                                name_range: 5:3-5:12,
-                            },
-                            5:1-5:13,
-                        ),
+                        ClosingTag {
+                            value: "main-comp",
+                            name_range: 5:3-5:12,
+                            range: 5:1-5:13,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            5:13-6:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 5:13-6:1,
+                        },
                     ),
                 ]"#]],
         );
@@ -1958,210 +1816,167 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            Doctype,
-                            1:1-1:16,
-                        ),
+                        Doctype {
+                            range: 1:1-1:16,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            1:16-2:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 1:16-2:1,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 2:2-2:6,
-                                value: "html",
-                                attributes: [],
-                                expression: None,
-                            },
-                            2:1-2:7,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 2:2-2:6,
+                            value: "html",
+                            attributes: [],
+                            expression: None,
+                            range: 2:1-2:7,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            2:7-3:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 2:7-3:1,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 3:2-3:6,
-                                value: "head",
-                                attributes: [],
-                                expression: None,
-                            },
-                            3:1-3:7,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 3:2-3:6,
+                            value: "head",
+                            attributes: [],
+                            expression: None,
+                            range: 3:1-3:7,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n  ",
-                            },
-                            3:7-4:3,
-                        ),
+                        Text {
+                            value: "\n  ",
+                            range: 3:7-4:3,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 4:4-4:9,
-                                value: "title",
-                                attributes: [],
-                                expression: None,
-                            },
-                            4:3-4:10,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 4:4-4:9,
+                            value: "title",
+                            attributes: [],
+                            expression: None,
+                            range: 4:3-4:10,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "My Page",
-                            },
-                            4:10-4:17,
-                        ),
+                        Text {
+                            value: "My Page",
+                            range: 4:10-4:17,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "title",
-                                name_range: 4:19-4:24,
-                            },
-                            4:17-4:25,
-                        ),
+                        ClosingTag {
+                            value: "title",
+                            name_range: 4:19-4:24,
+                            range: 4:17-4:25,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            4:25-5:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 4:25-5:1,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "head",
-                                name_range: 5:3-5:7,
-                            },
-                            5:1-5:8,
-                        ),
+                        ClosingTag {
+                            value: "head",
+                            name_range: 5:3-5:7,
+                            range: 5:1-5:8,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            5:8-6:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 5:8-6:1,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 6:2-6:6,
-                                value: "body",
-                                attributes: [],
-                                expression: None,
-                            },
-                            6:1-6:7,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 6:2-6:6,
+                            value: "body",
+                            attributes: [],
+                            expression: None,
+                            range: 6:1-6:7,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n  ",
-                            },
-                            6:7-7:3,
-                        ),
+                        Text {
+                            value: "\n  ",
+                            range: 6:7-7:3,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 7:4-7:7,
-                                value: "div",
-                                attributes: [
-                                    Attribute {
-                                        name: "class",
-                                        value: "container",
-                                        range: 7:8-7:25,
-                                        value_range: 7:15-7:24,
-                                    },
-                                ],
-                                expression: None,
-                            },
-                            7:3-7:26,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 7:4-7:7,
+                            value: "div",
+                            attributes: [
+                                Attribute {
+                                    name: "class",
+                                    value: "container",
+                                    range: 7:8-7:25,
+                                    value_range: 7:15-7:24,
+                                },
+                            ],
+                            expression: None,
+                            range: 7:3-7:26,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n    Hello, world!\n  ",
-                            },
-                            7:26-9:3,
-                        ),
+                        Text {
+                            value: "\n    Hello, world!\n  ",
+                            range: 7:26-9:3,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "div",
-                                name_range: 9:5-9:8,
-                            },
-                            9:3-9:9,
-                        ),
+                        ClosingTag {
+                            value: "div",
+                            name_range: 9:5-9:8,
+                            range: 9:3-9:9,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            9:9-10:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 9:9-10:1,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "body",
-                                name_range: 10:3-10:7,
-                            },
-                            10:1-10:8,
-                        ),
+                        ClosingTag {
+                            value: "body",
+                            name_range: 10:3-10:7,
+                            range: 10:1-10:8,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            10:8-11:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 10:8-11:1,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "html",
-                                name_range: 11:3-11:7,
-                            },
-                            11:1-11:8,
-                        ),
+                        ClosingTag {
+                            value: "html",
+                            name_range: 11:3-11:7,
+                            range: 11:1-11:8,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            11:8-12:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 11:8-12:1,
+                        },
                     ),
                 ]"#]],
         );
@@ -2181,276 +1996,244 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:5,
-                                value: "svg",
-                                attributes: [
-                                    Attribute {
-                                        name: "xmlns",
-                                        value: "http://www.w3.org/2000/svg",
-                                        range: 1:6-1:40,
-                                        value_range: 1:13-1:39,
-                                    },
-                                    Attribute {
-                                        name: "width",
-                                        value: "24",
-                                        range: 1:41-1:51,
-                                        value_range: 1:48-1:50,
-                                    },
-                                    Attribute {
-                                        name: "height",
-                                        value: "24",
-                                        range: 1:52-1:63,
-                                        value_range: 1:60-1:62,
-                                    },
-                                    Attribute {
-                                        name: "viewBox",
-                                        value: "0 0 24 24",
-                                        range: 1:64-1:83,
-                                        value_range: 1:73-1:82,
-                                    },
-                                    Attribute {
-                                        name: "fill",
-                                        value: "none",
-                                        range: 1:84-1:95,
-                                        value_range: 1:90-1:94,
-                                    },
-                                    Attribute {
-                                        name: "stroke",
-                                        value: "currentColor",
-                                        range: 1:96-1:117,
-                                        value_range: 1:104-1:116,
-                                    },
-                                    Attribute {
-                                        name: "stroke-width",
-                                        value: "2",
-                                        range: 1:118-1:134,
-                                        value_range: 1:132-1:133,
-                                    },
-                                    Attribute {
-                                        name: "stroke-linecap",
-                                        value: "round",
-                                        range: 1:135-1:157,
-                                        value_range: 1:151-1:156,
-                                    },
-                                    Attribute {
-                                        name: "stroke-linejoin",
-                                        value: "round",
-                                        range: 1:158-1:181,
-                                        value_range: 1:175-1:180,
-                                    },
-                                ],
-                                expression: None,
-                            },
-                            1:1-1:182,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:5,
+                            value: "svg",
+                            attributes: [
+                                Attribute {
+                                    name: "xmlns",
+                                    value: "http://www.w3.org/2000/svg",
+                                    range: 1:6-1:40,
+                                    value_range: 1:13-1:39,
+                                },
+                                Attribute {
+                                    name: "width",
+                                    value: "24",
+                                    range: 1:41-1:51,
+                                    value_range: 1:48-1:50,
+                                },
+                                Attribute {
+                                    name: "height",
+                                    value: "24",
+                                    range: 1:52-1:63,
+                                    value_range: 1:60-1:62,
+                                },
+                                Attribute {
+                                    name: "viewBox",
+                                    value: "0 0 24 24",
+                                    range: 1:64-1:83,
+                                    value_range: 1:73-1:82,
+                                },
+                                Attribute {
+                                    name: "fill",
+                                    value: "none",
+                                    range: 1:84-1:95,
+                                    value_range: 1:90-1:94,
+                                },
+                                Attribute {
+                                    name: "stroke",
+                                    value: "currentColor",
+                                    range: 1:96-1:117,
+                                    value_range: 1:104-1:116,
+                                },
+                                Attribute {
+                                    name: "stroke-width",
+                                    value: "2",
+                                    range: 1:118-1:134,
+                                    value_range: 1:132-1:133,
+                                },
+                                Attribute {
+                                    name: "stroke-linecap",
+                                    value: "round",
+                                    range: 1:135-1:157,
+                                    value_range: 1:151-1:156,
+                                },
+                                Attribute {
+                                    name: "stroke-linejoin",
+                                    value: "round",
+                                    range: 1:158-1:181,
+                                    value_range: 1:175-1:180,
+                                },
+                            ],
+                            expression: None,
+                            range: 1:1-1:182,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            1:182-2:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 1:182-2:1,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 2:2-2:6,
-                                value: "line",
-                                attributes: [
-                                    Attribute {
-                                        name: "x1",
-                                        value: "16.5",
-                                        range: 2:7-2:16,
-                                        value_range: 2:11-2:15,
-                                    },
-                                    Attribute {
-                                        name: "y1",
-                                        value: "9.4",
-                                        range: 2:17-2:25,
-                                        value_range: 2:21-2:24,
-                                    },
-                                    Attribute {
-                                        name: "x2",
-                                        value: "7.5",
-                                        range: 2:26-2:34,
-                                        value_range: 2:30-2:33,
-                                    },
-                                    Attribute {
-                                        name: "y2",
-                                        value: "4.21",
-                                        range: 2:35-2:44,
-                                        value_range: 2:39-2:43,
-                                    },
-                                ],
-                                expression: None,
-                            },
-                            2:1-2:45,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 2:2-2:6,
+                            value: "line",
+                            attributes: [
+                                Attribute {
+                                    name: "x1",
+                                    value: "16.5",
+                                    range: 2:7-2:16,
+                                    value_range: 2:11-2:15,
+                                },
+                                Attribute {
+                                    name: "y1",
+                                    value: "9.4",
+                                    range: 2:17-2:25,
+                                    value_range: 2:21-2:24,
+                                },
+                                Attribute {
+                                    name: "x2",
+                                    value: "7.5",
+                                    range: 2:26-2:34,
+                                    value_range: 2:30-2:33,
+                                },
+                                Attribute {
+                                    name: "y2",
+                                    value: "4.21",
+                                    range: 2:35-2:44,
+                                    value_range: 2:39-2:43,
+                                },
+                            ],
+                            expression: None,
+                            range: 2:1-2:45,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "line",
-                                name_range: 2:47-2:51,
-                            },
-                            2:45-2:52,
-                        ),
+                        ClosingTag {
+                            value: "line",
+                            name_range: 2:47-2:51,
+                            range: 2:45-2:52,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            2:52-3:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 2:52-3:1,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 3:2-3:6,
-                                value: "path",
-                                attributes: [
-                                    Attribute {
-                                        name: "d",
-                                        value: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z",
-                                        range: 3:7-3:132,
-                                        value_range: 3:10-3:131,
-                                    },
-                                ],
-                                expression: None,
-                            },
-                            3:1-3:133,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 3:2-3:6,
+                            value: "path",
+                            attributes: [
+                                Attribute {
+                                    name: "d",
+                                    value: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z",
+                                    range: 3:7-3:132,
+                                    value_range: 3:10-3:131,
+                                },
+                            ],
+                            expression: None,
+                            range: 3:1-3:133,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "path",
-                                name_range: 3:135-3:139,
-                            },
-                            3:133-3:140,
-                        ),
+                        ClosingTag {
+                            value: "path",
+                            name_range: 3:135-3:139,
+                            range: 3:133-3:140,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            3:140-4:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 3:140-4:1,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 4:2-4:10,
-                                value: "polyline",
-                                attributes: [
-                                    Attribute {
-                                        name: "points",
-                                        value: "3.27 6.96 12 12.01 20.73 6.96",
-                                        range: 4:11-4:49,
-                                        value_range: 4:19-4:48,
-                                    },
-                                ],
-                                expression: None,
-                            },
-                            4:1-4:50,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 4:2-4:10,
+                            value: "polyline",
+                            attributes: [
+                                Attribute {
+                                    name: "points",
+                                    value: "3.27 6.96 12 12.01 20.73 6.96",
+                                    range: 4:11-4:49,
+                                    value_range: 4:19-4:48,
+                                },
+                            ],
+                            expression: None,
+                            range: 4:1-4:50,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "polyline",
-                                name_range: 4:52-4:60,
-                            },
-                            4:50-4:61,
-                        ),
+                        ClosingTag {
+                            value: "polyline",
+                            name_range: 4:52-4:60,
+                            range: 4:50-4:61,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            4:61-5:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 4:61-5:1,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 5:2-5:6,
-                                value: "line",
-                                attributes: [
-                                    Attribute {
-                                        name: "x1",
-                                        value: "12",
-                                        range: 5:7-5:14,
-                                        value_range: 5:11-5:13,
-                                    },
-                                    Attribute {
-                                        name: "y1",
-                                        value: "22.08",
-                                        range: 5:15-5:25,
-                                        value_range: 5:19-5:24,
-                                    },
-                                    Attribute {
-                                        name: "x2",
-                                        value: "12",
-                                        range: 5:26-5:33,
-                                        value_range: 5:30-5:32,
-                                    },
-                                    Attribute {
-                                        name: "y2",
-                                        value: "12",
-                                        range: 5:34-5:41,
-                                        value_range: 5:38-5:40,
-                                    },
-                                ],
-                                expression: None,
-                            },
-                            5:1-5:42,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 5:2-5:6,
+                            value: "line",
+                            attributes: [
+                                Attribute {
+                                    name: "x1",
+                                    value: "12",
+                                    range: 5:7-5:14,
+                                    value_range: 5:11-5:13,
+                                },
+                                Attribute {
+                                    name: "y1",
+                                    value: "22.08",
+                                    range: 5:15-5:25,
+                                    value_range: 5:19-5:24,
+                                },
+                                Attribute {
+                                    name: "x2",
+                                    value: "12",
+                                    range: 5:26-5:33,
+                                    value_range: 5:30-5:32,
+                                },
+                                Attribute {
+                                    name: "y2",
+                                    value: "12",
+                                    range: 5:34-5:41,
+                                    value_range: 5:38-5:40,
+                                },
+                            ],
+                            expression: None,
+                            range: 5:1-5:42,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "line",
-                                name_range: 5:44-5:48,
-                            },
-                            5:42-5:49,
-                        ),
+                        ClosingTag {
+                            value: "line",
+                            name_range: 5:44-5:48,
+                            range: 5:42-5:49,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            5:49-6:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 5:49-6:1,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "svg",
-                                name_range: 6:3-6:6,
-                            },
-                            6:1-6:7,
-                        ),
+                        ClosingTag {
+                            value: "svg",
+                            name_range: 6:3-6:6,
+                            range: 6:1-6:7,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            6:7-7:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 6:7-7:1,
+                        },
                     ),
                 ]"#]],
         );
@@ -2471,230 +2254,196 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:5,
-                                value: "svg",
-                                attributes: [
-                                    Attribute {
-                                        name: "xmlns",
-                                        value: "http://www.w3.org/2000/svg",
-                                        range: 1:6-1:40,
-                                        value_range: 1:13-1:39,
-                                    },
-                                    Attribute {
-                                        name: "width",
-                                        value: "128",
-                                        range: 1:41-1:52,
-                                        value_range: 1:48-1:51,
-                                    },
-                                    Attribute {
-                                        name: "height",
-                                        value: "128",
-                                        range: 1:53-1:65,
-                                        value_range: 1:61-1:64,
-                                    },
-                                    Attribute {
-                                        name: "version",
-                                        value: "1.1",
-                                        range: 1:66-1:79,
-                                        value_range: 1:75-1:78,
-                                    },
-                                    Attribute {
-                                        name: "viewBox",
-                                        value: "0 0 128 128",
-                                        range: 1:80-1:101,
-                                        value_range: 1:89-1:100,
-                                    },
-                                    Attribute {
-                                        name: "class",
-                                        value: "size-12",
-                                        range: 1:102-1:117,
-                                        value_range: 1:109-1:116,
-                                    },
-                                ],
-                                expression: None,
-                            },
-                            1:1-1:118,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:5,
+                            value: "svg",
+                            attributes: [
+                                Attribute {
+                                    name: "xmlns",
+                                    value: "http://www.w3.org/2000/svg",
+                                    range: 1:6-1:40,
+                                    value_range: 1:13-1:39,
+                                },
+                                Attribute {
+                                    name: "width",
+                                    value: "128",
+                                    range: 1:41-1:52,
+                                    value_range: 1:48-1:51,
+                                },
+                                Attribute {
+                                    name: "height",
+                                    value: "128",
+                                    range: 1:53-1:65,
+                                    value_range: 1:61-1:64,
+                                },
+                                Attribute {
+                                    name: "version",
+                                    value: "1.1",
+                                    range: 1:66-1:79,
+                                    value_range: 1:75-1:78,
+                                },
+                                Attribute {
+                                    name: "viewBox",
+                                    value: "0 0 128 128",
+                                    range: 1:80-1:101,
+                                    value_range: 1:89-1:100,
+                                },
+                                Attribute {
+                                    name: "class",
+                                    value: "size-12",
+                                    range: 1:102-1:117,
+                                    value_range: 1:109-1:116,
+                                },
+                            ],
+                            expression: None,
+                            range: 1:1-1:118,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n\t",
-                            },
-                            1:118-2:2,
-                        ),
+                        Text {
+                            value: "\n\t",
+                            range: 1:118-2:2,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 2:3-2:4,
-                                value: "g",
-                                attributes: [
-                                    Attribute {
-                                        name: "style",
-                                        value: "fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;",
-                                        range: 2:5-2:112,
-                                        value_range: 2:12-2:111,
-                                    },
-                                ],
-                                expression: None,
-                            },
-                            2:2-2:113,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 2:3-2:4,
+                            value: "g",
+                            attributes: [
+                                Attribute {
+                                    name: "style",
+                                    value: "fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;",
+                                    range: 2:5-2:112,
+                                    value_range: 2:12-2:111,
+                                },
+                            ],
+                            expression: None,
+                            range: 2:2-2:113,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n\t\t",
-                            },
-                            2:113-3:3,
-                        ),
+                        Text {
+                            value: "\n\t\t",
+                            range: 2:113-3:3,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 3:4-3:8,
-                                value: "path",
-                                attributes: [
-                                    Attribute {
-                                        name: "d",
-                                        value: "M20.04 38 64 22l43.96 16L64 54Z",
-                                        range: 3:9-3:44,
-                                        value_range: 3:12-3:43,
-                                    },
-                                ],
-                                expression: None,
-                            },
-                            3:3-3:45,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 3:4-3:8,
+                            value: "path",
+                            attributes: [
+                                Attribute {
+                                    name: "d",
+                                    value: "M20.04 38 64 22l43.96 16L64 54Z",
+                                    range: 3:9-3:44,
+                                    value_range: 3:12-3:43,
+                                },
+                            ],
+                            expression: None,
+                            range: 3:3-3:45,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "path",
-                                name_range: 3:47-3:51,
-                            },
-                            3:45-3:52,
-                        ),
+                        ClosingTag {
+                            value: "path",
+                            name_range: 3:47-3:51,
+                            range: 3:45-3:52,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n\t\t",
-                            },
-                            3:52-4:3,
-                        ),
+                        Text {
+                            value: "\n\t\t",
+                            range: 3:52-4:3,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 4:4-4:8,
-                                value: "path",
-                                attributes: [
-                                    Attribute {
-                                        name: "d",
-                                        value: "M17.54 47.09v48l35.099 12.775",
-                                        range: 4:9-4:42,
-                                        value_range: 4:12-4:41,
-                                    },
-                                ],
-                                expression: None,
-                            },
-                            4:3-4:43,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 4:4-4:8,
+                            value: "path",
+                            attributes: [
+                                Attribute {
+                                    name: "d",
+                                    value: "M17.54 47.09v48l35.099 12.775",
+                                    range: 4:9-4:42,
+                                    value_range: 4:12-4:41,
+                                },
+                            ],
+                            expression: None,
+                            range: 4:3-4:43,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "path",
-                                name_range: 4:45-4:49,
-                            },
-                            4:43-4:50,
-                        ),
+                        ClosingTag {
+                            value: "path",
+                            name_range: 4:45-4:49,
+                            range: 4:43-4:50,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n\t\t",
-                            },
-                            4:50-5:3,
-                        ),
+                        Text {
+                            value: "\n\t\t",
+                            range: 4:50-5:3,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 5:4-5:8,
-                                value: "path",
-                                attributes: [
-                                    Attribute {
-                                        name: "d",
-                                        value: "M64 112V64l46.46-16.91v48L77.988 106.91",
-                                        range: 5:9-5:52,
-                                        value_range: 5:12-5:51,
-                                    },
-                                ],
-                                expression: None,
-                            },
-                            5:3-5:53,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 5:4-5:8,
+                            value: "path",
+                            attributes: [
+                                Attribute {
+                                    name: "d",
+                                    value: "M64 112V64l46.46-16.91v48L77.988 106.91",
+                                    range: 5:9-5:52,
+                                    value_range: 5:12-5:51,
+                                },
+                            ],
+                            expression: None,
+                            range: 5:3-5:53,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "path",
-                                name_range: 5:55-5:59,
-                            },
-                            5:53-5:60,
-                        ),
+                        ClosingTag {
+                            value: "path",
+                            name_range: 5:55-5:59,
+                            range: 5:53-5:60,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n\t",
-                            },
-                            5:60-6:2,
-                        ),
+                        Text {
+                            value: "\n\t",
+                            range: 5:60-6:2,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "g",
-                                name_range: 6:4-6:5,
-                            },
-                            6:2-6:6,
-                        ),
+                        ClosingTag {
+                            value: "g",
+                            name_range: 6:4-6:5,
+                            range: 6:2-6:6,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            6:6-7:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 6:6-7:1,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "svg",
-                                name_range: 7:3-7:6,
-                            },
-                            7:1-7:7,
-                        ),
+                        ClosingTag {
+                            value: "svg",
+                            name_range: 7:3-7:6,
+                            range: 7:1-7:7,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            7:7-8:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 7:7-8:1,
+                        },
                     ),
                 ]"#]],
         );
@@ -2714,162 +2463,134 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:11,
-                                value: "main-comp",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:1-1:12,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:11,
+                            value: "main-comp",
+                            attributes: [],
+                            expression: None,
+                            range: 1:1-1:12,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n\t",
-                            },
-                            1:12-2:2,
-                        ),
+                        Text {
+                            value: "\n\t",
+                            range: 1:12-2:2,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 2:3-2:7,
-                                value: "form",
-                                attributes: [
-                                    Attribute {
-                                        name: "id",
-                                        value: "form",
-                                        range: 2:8-2:17,
-                                        value_range: 2:12-2:16,
-                                    },
-                                ],
-                                expression: None,
-                            },
-                            2:2-2:18,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 2:3-2:7,
+                            value: "form",
+                            attributes: [
+                                Attribute {
+                                    name: "id",
+                                    value: "form",
+                                    range: 2:8-2:17,
+                                    value_range: 2:12-2:16,
+                                },
+                            ],
+                            expression: None,
+                            range: 2:2-2:18,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n\t\t",
-                            },
-                            2:18-3:3,
-                        ),
+                        Text {
+                            value: "\n\t\t",
+                            range: 2:18-3:3,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 3:4-3:9,
-                                value: "input",
-                                attributes: [
-                                    Attribute {
-                                        name: "type",
-                                        value: "text",
-                                        range: 3:10-3:21,
-                                        value_range: 3:16-3:20,
-                                    },
-                                    Attribute {
-                                        name: "required",
-                                        value: "",
-                                        range: 3:22-3:30,
-                                        value_range: 1:1-1:1,
-                                    },
-                                ],
-                                expression: None,
-                            },
-                            3:3-3:31,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 3:4-3:9,
+                            value: "input",
+                            attributes: [
+                                Attribute {
+                                    name: "type",
+                                    value: "text",
+                                    range: 3:10-3:21,
+                                    value_range: 3:16-3:20,
+                                },
+                                Attribute {
+                                    name: "required",
+                                    value: "",
+                                    range: 3:22-3:30,
+                                    value_range: 1:1-1:1,
+                                },
+                            ],
+                            expression: None,
+                            range: 3:3-3:31,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n\t\t",
-                            },
-                            3:31-4:3,
-                        ),
+                        Text {
+                            value: "\n\t\t",
+                            range: 3:31-4:3,
+                        },
                     ),
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 4:4-4:10,
-                                value: "button",
-                                attributes: [
-                                    Attribute {
-                                        name: "type",
-                                        value: "submit",
-                                        range: 4:11-4:24,
-                                        value_range: 4:17-4:23,
-                                    },
-                                ],
-                                expression: None,
-                            },
-                            4:3-4:25,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 4:4-4:10,
+                            value: "button",
+                            attributes: [
+                                Attribute {
+                                    name: "type",
+                                    value: "submit",
+                                    range: 4:11-4:24,
+                                    value_range: 4:17-4:23,
+                                },
+                            ],
+                            expression: None,
+                            range: 4:3-4:25,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "Send",
-                            },
-                            4:25-4:29,
-                        ),
+                        Text {
+                            value: "Send",
+                            range: 4:25-4:29,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "button",
-                                name_range: 4:31-4:37,
-                            },
-                            4:29-4:38,
-                        ),
+                        ClosingTag {
+                            value: "button",
+                            name_range: 4:31-4:37,
+                            range: 4:29-4:38,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n\t",
-                            },
-                            4:38-5:2,
-                        ),
+                        Text {
+                            value: "\n\t",
+                            range: 4:38-5:2,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "form",
-                                name_range: 5:4-5:8,
-                            },
-                            5:2-5:9,
-                        ),
+                        ClosingTag {
+                            value: "form",
+                            name_range: 5:4-5:8,
+                            range: 5:2-5:9,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            5:9-6:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 5:9-6:1,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "main-comp",
-                                name_range: 6:3-6:12,
-                            },
-                            6:1-6:13,
-                        ),
+                        ClosingTag {
+                            value: "main-comp",
+                            name_range: 6:3-6:12,
+                            range: 6:1-6:13,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "\n",
-                            },
-                            6:13-7:1,
-                        ),
+                        Text {
+                            value: "\n",
+                            range: 6:13-7:1,
+                        },
                     ),
                 ]"#]],
         );
@@ -2882,21 +2603,19 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:4,
-                                value: "if",
-                                attributes: [],
-                                expression: Some(
-                                    (
-                                        "foo",
-                                        1:6-1:9,
-                                    ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:4,
+                            value: "if",
+                            attributes: [],
+                            expression: Some(
+                                (
+                                    "foo",
+                                    1:6-1:9,
                                 ),
-                            },
-                            1:1-1:11,
-                        ),
+                            ),
+                            range: 1:1-1:11,
+                        },
                     ),
                 ]"#]],
         );
@@ -2909,28 +2628,26 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:5,
-                                value: "div",
-                                attributes: [
-                                    Attribute {
-                                        name: "class",
-                                        value: "test",
-                                        range: 1:6-1:18,
-                                        value_range: 1:13-1:17,
-                                    },
-                                ],
-                                expression: Some(
-                                    (
-                                        "bar",
-                                        1:20-1:23,
-                                    ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:5,
+                            value: "div",
+                            attributes: [
+                                Attribute {
+                                    name: "class",
+                                    value: "test",
+                                    range: 1:6-1:18,
+                                    value_range: 1:13-1:17,
+                                },
+                            ],
+                            expression: Some(
+                                (
+                                    "bar",
+                                    1:20-1:23,
                                 ),
-                            },
-                            1:1-1:25,
-                        ),
+                            ),
+                            range: 1:1-1:25,
+                        },
                     ),
                 ]"#]],
         );
@@ -2943,21 +2660,19 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:4,
-                                value: "if",
-                                attributes: [],
-                                expression: Some(
-                                    (
-                                        "user.name == 'John'",
-                                        1:6-1:25,
-                                    ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:4,
+                            value: "if",
+                            attributes: [],
+                            expression: Some(
+                                (
+                                    "user.name == 'John'",
+                                    1:6-1:25,
                                 ),
-                            },
-                            1:1-1:27,
-                        ),
+                            ),
+                            range: 1:1-1:27,
+                        },
                     ),
                 ]"#]],
         );
@@ -2970,21 +2685,19 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:11,
-                                value: "component",
-                                attributes: [],
-                                expression: Some(
-                                    (
-                                        "obj.prop.subprop",
-                                        1:13-1:29,
-                                    ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:11,
+                            value: "component",
+                            attributes: [],
+                            expression: Some(
+                                (
+                                    "obj.prop.subprop",
+                                    1:13-1:29,
                                 ),
-                            },
-                            1:1-1:31,
-                        ),
+                            ),
+                            range: 1:1-1:31,
+                        },
                     ),
                 ]"#]],
         );
@@ -2997,28 +2710,26 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:8,
-                                value: "button",
-                                attributes: [
-                                    Attribute {
-                                        name: "disabled",
-                                        value: "",
-                                        range: 1:9-1:17,
-                                        value_range: 1:1-1:1,
-                                    },
-                                ],
-                                expression: Some(
-                                    (
-                                        "enabled == 'yes'",
-                                        1:19-1:35,
-                                    ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:8,
+                            value: "button",
+                            attributes: [
+                                Attribute {
+                                    name: "disabled",
+                                    value: "",
+                                    range: 1:9-1:17,
+                                    value_range: 1:1-1:1,
+                                },
+                            ],
+                            expression: Some(
+                                (
+                                    "enabled == 'yes'",
+                                    1:19-1:35,
                                 ),
-                            },
-                            1:1-1:37,
-                        ),
+                            ),
+                            range: 1:1-1:37,
+                        },
                     ),
                 ]"#]],
         );
@@ -3031,21 +2742,19 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:7,
-                                value: "input",
-                                attributes: [],
-                                expression: Some(
-                                    (
-                                        "variable_name_123",
-                                        1:9-1:26,
-                                    ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:7,
+                            value: "input",
+                            attributes: [],
+                            expression: Some(
+                                (
+                                    "variable_name_123",
+                                    1:9-1:26,
                                 ),
-                            },
-                            1:1-1:28,
-                        ),
+                            ),
+                            range: 1:1-1:28,
+                        },
                     ),
                 ]"#]],
         );
@@ -3058,28 +2767,26 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:5,
-                                value: "div",
-                                attributes: [
-                                    Attribute {
-                                        name: "class",
-                                        value: "test",
-                                        range: 1:6-1:18,
-                                        value_range: 1:13-1:17,
-                                    },
-                                ],
-                                expression: Some(
-                                    (
-                                        "  user.name  ",
-                                        1:20-1:33,
-                                    ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:5,
+                            value: "div",
+                            attributes: [
+                                Attribute {
+                                    name: "class",
+                                    value: "test",
+                                    range: 1:6-1:18,
+                                    value_range: 1:13-1:17,
+                                },
+                            ],
+                            expression: Some(
+                                (
+                                    "  user.name  ",
+                                    1:20-1:33,
                                 ),
-                            },
-                            1:1-1:35,
-                        ),
+                            ),
+                            range: 1:1-1:35,
+                        },
                     ),
                 ]"#]],
         );
@@ -3092,21 +2799,19 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:6,
-                                value: "span",
-                                attributes: [],
-                                expression: Some(
-                                    (
-                                        "'hello world'",
-                                        1:8-1:21,
-                                    ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:6,
+                            value: "span",
+                            attributes: [],
+                            expression: Some(
+                                (
+                                    "'hello world'",
+                                    1:8-1:21,
                                 ),
-                            },
-                            1:1-1:23,
-                        ),
+                            ),
+                            range: 1:1-1:23,
+                        },
                     ),
                 ]"#]],
         );
@@ -3119,21 +2824,19 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:6,
-                                value: "form",
-                                attributes: [],
-                                expression: Some(
-                                    (
-                                        "(user.role == 'admin')",
-                                        1:8-1:30,
-                                    ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:6,
+                            value: "form",
+                            attributes: [],
+                            expression: Some(
+                                (
+                                    "(user.role == 'admin')",
+                                    1:8-1:30,
                                 ),
-                            },
-                            1:1-1:32,
-                        ),
+                            ),
+                            range: 1:1-1:32,
+                        },
                     ),
                 ]"#]],
         );
@@ -3146,21 +2849,19 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:9,
-                                value: "section",
-                                attributes: [],
-                                expression: Some(
-                                    (
-                                        "a == b == c",
-                                        1:11-1:22,
-                                    ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:9,
+                            value: "section",
+                            attributes: [],
+                            expression: Some(
+                                (
+                                    "a == b == c",
+                                    1:11-1:22,
                                 ),
-                            },
-                            1:1-1:24,
-                        ),
+                            ),
+                            range: 1:1-1:24,
+                        },
                     ),
                 ]"#]],
         );
@@ -3173,21 +2874,19 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:5,
-                                value: "for",
-                                attributes: [],
-                                expression: Some(
-                                    (
-                                        "user in users",
-                                        1:7-1:20,
-                                    ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:5,
+                            value: "for",
+                            attributes: [],
+                            expression: Some(
+                                (
+                                    "user in users",
+                                    1:7-1:20,
                                 ),
-                            },
-                            1:1-1:22,
-                        ),
+                            ),
+                            range: 1:1-1:22,
+                        },
                     ),
                 ]"#]],
         );
@@ -3200,21 +2899,19 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:5,
-                                value: "for",
-                                attributes: [],
-                                expression: Some(
-                                    (
-                                        "item in user.items",
-                                        1:7-1:25,
-                                    ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:5,
+                            value: "for",
+                            attributes: [],
+                            expression: Some(
+                                (
+                                    "item in user.items",
+                                    1:7-1:25,
                                 ),
-                            },
-                            1:1-1:27,
-                        ),
+                            ),
+                            range: 1:1-1:27,
+                        },
                     ),
                 ]"#]],
         );
@@ -3227,21 +2924,19 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:5,
-                                value: "div",
-                                attributes: [],
-                                expression: Some(
-                                    (
-                                        "foo in bars",
-                                        1:7-1:18,
-                                    ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:5,
+                            value: "div",
+                            attributes: [],
+                            expression: Some(
+                                (
+                                    "foo in bars",
+                                    1:7-1:18,
                                 ),
-                            },
-                            1:1-1:20,
-                        ),
+                            ),
+                            range: 1:1-1:20,
+                        },
                     ),
                 ]"#]],
         );
@@ -3254,50 +2949,40 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:4,
-                                value: "h1",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:1-1:5,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:4,
+                            value: "h1",
+                            attributes: [],
+                            expression: None,
+                            range: 1:1-1:5,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "Hello ",
-                            },
-                            1:5-1:11,
-                        ),
+                        Text {
+                            value: "Hello ",
+                            range: 1:5-1:11,
+                        },
                     ),
                     Ok(
-                        (
-                            Expression {
-                                value: "name",
-                                range: 1:12-1:16,
-                            },
-                            1:11-1:17,
-                        ),
+                        Expression {
+                            value: "name",
+                            expression_range: 1:12-1:16,
+                            range: 1:11-1:17,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "!",
-                            },
-                            1:17-1:18,
-                        ),
+                        Text {
+                            value: "!",
+                            range: 1:17-1:18,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "h1",
-                                name_range: 1:20-1:22,
-                            },
-                            1:18-1:23,
-                        ),
+                        ClosingTag {
+                            value: "h1",
+                            name_range: 1:20-1:22,
+                            range: 1:18-1:23,
+                        },
                     ),
                 ]"#]],
         );
@@ -3310,67 +2995,53 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:3,
-                                value: "p",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:1-1:4,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:3,
+                            value: "p",
+                            attributes: [],
+                            expression: None,
+                            range: 1:1-1:4,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "User ",
-                            },
-                            1:4-1:9,
-                        ),
+                        Text {
+                            value: "User ",
+                            range: 1:4-1:9,
+                        },
                     ),
                     Ok(
-                        (
-                            Expression {
-                                value: "user.name",
-                                range: 1:10-1:19,
-                            },
-                            1:9-1:20,
-                        ),
+                        Expression {
+                            value: "user.name",
+                            expression_range: 1:10-1:19,
+                            range: 1:9-1:20,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: " has ",
-                            },
-                            1:20-1:25,
-                        ),
+                        Text {
+                            value: " has ",
+                            range: 1:20-1:25,
+                        },
                     ),
                     Ok(
-                        (
-                            Expression {
-                                value: "user.count",
-                                range: 1:26-1:36,
-                            },
-                            1:25-1:37,
-                        ),
+                        Expression {
+                            value: "user.count",
+                            expression_range: 1:26-1:36,
+                            range: 1:25-1:37,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: " items",
-                            },
-                            1:37-1:43,
-                        ),
+                        Text {
+                            value: " items",
+                            range: 1:37-1:43,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "p",
-                                name_range: 1:45-1:46,
-                            },
-                            1:43-1:47,
-                        ),
+                        ClosingTag {
+                            value: "p",
+                            name_range: 1:45-1:46,
+                            range: 1:43-1:47,
+                        },
                     ),
                 ]"#]],
         );
@@ -3383,42 +3054,34 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:6,
-                                value: "span",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:1-1:7,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:6,
+                            value: "span",
+                            attributes: [],
+                            expression: None,
+                            range: 1:1-1:7,
+                        },
                     ),
                     Ok(
-                        (
-                            Expression {
-                                value: "greeting",
-                                range: 1:8-1:16,
-                            },
-                            1:7-1:17,
-                        ),
+                        Expression {
+                            value: "greeting",
+                            expression_range: 1:8-1:16,
+                            range: 1:7-1:17,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: " world!",
-                            },
-                            1:17-1:24,
-                        ),
+                        Text {
+                            value: " world!",
+                            range: 1:17-1:24,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "span",
-                                name_range: 1:26-1:30,
-                            },
-                            1:24-1:31,
-                        ),
+                        ClosingTag {
+                            value: "span",
+                            name_range: 1:26-1:30,
+                            range: 1:24-1:31,
+                        },
                     ),
                 ]"#]],
         );
@@ -3431,42 +3094,34 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:5,
-                                value: "div",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:1-1:6,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:5,
+                            value: "div",
+                            attributes: [],
+                            expression: None,
+                            range: 1:1-1:6,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "Price: ",
-                            },
-                            1:6-1:13,
-                        ),
+                        Text {
+                            value: "Price: ",
+                            range: 1:6-1:13,
+                        },
                     ),
                     Ok(
-                        (
-                            Expression {
-                                value: "price",
-                                range: 1:14-1:19,
-                            },
-                            1:13-1:20,
-                        ),
+                        Expression {
+                            value: "price",
+                            expression_range: 1:14-1:19,
+                            range: 1:13-1:20,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "div",
-                                name_range: 1:22-1:25,
-                            },
-                            1:20-1:26,
-                        ),
+                        ClosingTag {
+                            value: "div",
+                            name_range: 1:22-1:25,
+                            range: 1:20-1:26,
+                        },
                     ),
                 ]"#]],
         );
@@ -3479,34 +3134,28 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:4,
-                                value: "h2",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:1-1:5,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:4,
+                            value: "h2",
+                            attributes: [],
+                            expression: None,
+                            range: 1:1-1:5,
+                        },
                     ),
                     Ok(
-                        (
-                            Expression {
-                                value: "title",
-                                range: 1:6-1:11,
-                            },
-                            1:5-1:12,
-                        ),
+                        Expression {
+                            value: "title",
+                            expression_range: 1:6-1:11,
+                            range: 1:5-1:12,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "h2",
-                                name_range: 1:14-1:16,
-                            },
-                            1:12-1:17,
-                        ),
+                        ClosingTag {
+                            value: "h2",
+                            name_range: 1:14-1:16,
+                            range: 1:12-1:17,
+                        },
                     ),
                 ]"#]],
         );
@@ -3519,42 +3168,34 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:3,
-                                value: "p",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:1-1:4,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:3,
+                            value: "p",
+                            attributes: [],
+                            expression: None,
+                            range: 1:1-1:4,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "Status: ",
-                            },
-                            1:4-1:12,
-                        ),
+                        Text {
+                            value: "Status: ",
+                            range: 1:4-1:12,
+                        },
                     ),
                     Ok(
-                        (
-                            Expression {
-                                value: "user.profile.status == 'active'",
-                                range: 1:13-1:44,
-                            },
-                            1:12-1:45,
-                        ),
+                        Expression {
+                            value: "user.profile.status == 'active'",
+                            expression_range: 1:13-1:44,
+                            range: 1:12-1:45,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "p",
-                                name_range: 1:47-1:48,
-                            },
-                            1:45-1:49,
-                        ),
+                        ClosingTag {
+                            value: "p",
+                            name_range: 1:47-1:48,
+                            range: 1:45-1:49,
+                        },
                     ),
                 ]"#]],
         );
@@ -3567,42 +3208,34 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:6,
-                                value: "span",
-                                attributes: [],
-                                expression: None,
-                            },
-                            1:1-1:7,
-                        ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:6,
+                            value: "span",
+                            attributes: [],
+                            expression: None,
+                            range: 1:1-1:7,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "Item: ",
-                            },
-                            1:7-1:13,
-                        ),
+                        Text {
+                            value: "Item: ",
+                            range: 1:7-1:13,
+                        },
                     ),
                     Ok(
-                        (
-                            Expression {
-                                value: "item.title",
-                                range: 1:14-1:24,
-                            },
-                            1:13-1:25,
-                        ),
+                        Expression {
+                            value: "item.title",
+                            expression_range: 1:14-1:24,
+                            range: 1:13-1:25,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "span",
-                                name_range: 1:27-1:31,
-                            },
-                            1:25-1:32,
-                        ),
+                        ClosingTag {
+                            value: "span",
+                            name_range: 1:27-1:31,
+                            range: 1:25-1:32,
+                        },
                     ),
                 ]"#]],
         );
@@ -3615,47 +3248,39 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StartTag {
-                                self_closing: false,
-                                name_range: 1:2-1:5,
-                                value: "div",
-                                attributes: [],
-                                expression: Some(
-                                    (
-                                        "className",
-                                        1:7-1:16,
-                                    ),
+                        OpeningTag {
+                            self_closing: false,
+                            name_range: 1:2-1:5,
+                            value: "div",
+                            attributes: [],
+                            expression: Some(
+                                (
+                                    "className",
+                                    1:7-1:16,
                                 ),
-                            },
-                            1:1-1:18,
-                        ),
+                            ),
+                            range: 1:1-1:18,
+                        },
                     ),
                     Ok(
-                        (
-                            Text {
-                                value: "Content: ",
-                            },
-                            1:18-1:27,
-                        ),
+                        Text {
+                            value: "Content: ",
+                            range: 1:18-1:27,
+                        },
                     ),
                     Ok(
-                        (
-                            Expression {
-                                value: "content",
-                                range: 1:28-1:35,
-                            },
-                            1:27-1:36,
-                        ),
+                        Expression {
+                            value: "content",
+                            expression_range: 1:28-1:35,
+                            range: 1:27-1:36,
+                        },
                     ),
                     Ok(
-                        (
-                            EndTag {
-                                value: "div",
-                                name_range: 1:38-1:41,
-                            },
-                            1:36-1:42,
-                        ),
+                        ClosingTag {
+                            value: "div",
+                            name_range: 1:38-1:41,
+                            range: 1:36-1:42,
+                        },
                     ),
                 ]"#]],
         );

@@ -1,9 +1,9 @@
 use crate::common::RangeError;
 use crate::dop::{self, DopTokenizer};
 use crate::hop::ast::{ComponentDefinitionNode, DopExprAttribute, HopNode, ImportNode, RenderNode};
+use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
-use crate::hop::token_tree::{TokenTree, build_tree};
 use std::collections::HashSet;
 
 use super::ast::TopLevelHopNode;
@@ -15,7 +15,6 @@ pub struct HopAST {
     pub import_nodes: Vec<ImportNode>,
     pub render_nodes: Vec<RenderNode>,
 }
-
 
 pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> HopAST {
     let trees = build_tree(tokenizer, errors);
@@ -54,15 +53,14 @@ fn is_valid_component_name(name: &str) -> bool {
     name.contains('-')
 }
 
-
 fn construct_top_level_node(
     tree: &TokenTree,
     errors: &mut Vec<RangeError>,
 ) -> Option<TopLevelHopNode> {
-    let t = &tree.token;
+    let t = &tree.opening_token;
 
     match t {
-        Token::StartTag {
+        Token::OpeningTag {
             value,
             attributes,
             expression,
@@ -75,7 +73,7 @@ fn construct_top_level_node(
                         errors.push(RangeError::missing_required_attribute(
                             value,
                             "component",
-                            tree.opening_tag_range,
+                            tree.opening_token.range(),
                         ));
                         None
                     });
@@ -83,7 +81,7 @@ fn construct_top_level_node(
                         errors.push(RangeError::missing_required_attribute(
                             value,
                             "from",
-                            tree.opening_tag_range,
+                            tree.opening_token.range(),
                         ));
                         None
                     });
@@ -93,7 +91,7 @@ fn construct_top_level_node(
                             Some(TopLevelHopNode::Import(ImportNode {
                                 component_attr,
                                 from_attr,
-                                range: tree.opening_tag_range,
+                                range: tree.opening_token.range(),
                             }))
                         }
                         _ => None,
@@ -110,7 +108,7 @@ fn construct_top_level_node(
                         errors.push(RangeError::missing_required_attribute(
                             value,
                             "file",
-                            tree.opening_tag_range,
+                            tree.opening_token.range(),
                         ));
                         None
                     });
@@ -118,7 +116,7 @@ fn construct_top_level_node(
                     file_attr.map(|file_attr| {
                         TopLevelHopNode::Render(RenderNode {
                             file_attr,
-                            range: tree.opening_tag_range,
+                            range: tree.opening_token.range(),
                             children,
                         })
                     })
@@ -128,7 +126,7 @@ fn construct_top_level_node(
                     if !is_valid_component_name(name) {
                         errors.push(RangeError::invalid_component_name(
                             name,
-                            tree.opening_tag_range,
+                            tree.opening_token.range(),
                         ));
                         return None;
                     }
@@ -138,7 +136,7 @@ fn construct_top_level_node(
                     let mut preview_children = None;
 
                     for child in &tree.children {
-                        if let Token::StartTag { value, .. } = &child.token {
+                        if let Token::OpeningTag { value, .. } = &child.opening_token {
                             if value == "hop-x-preview" {
                                 preview_children = Some(
                                     child
@@ -203,11 +201,17 @@ fn construct_top_level_node(
                         ComponentDefinitionNode {
                             name: name.to_string(),
                             opening_name_range: *name_range,
-                            closing_name_range: tree.closing_tag_name_range,
+                            closing_name_range: tree.closing_token.as_ref().and_then(|tag| {
+                                if let Token::ClosingTag { name_range, .. } = tag {
+                                    Some(*name_range)
+                                } else {
+                                    None
+                                }
+                            }),
                             params: params_as_attrs,
                             as_attr,
                             attributes: attributes.clone(),
-                            range: tree.opening_tag_range,
+                            range: tree.opening_token.range(),
                             children,
                             preview: preview_children,
                             entrypoint,
@@ -228,20 +232,24 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
         .map(|child| construct_node(child, errors))
         .collect();
 
-    let t = &tree.token;
+    let t = &tree.opening_token;
 
     match t {
-        Token::Doctype => HopNode::Doctype {
+        Token::Doctype { range } => HopNode::Doctype {
             value: "".to_string(),
-            range: tree.opening_tag_range,
+            range: *range,
         },
-        Token::Text { value } => HopNode::Text {
+        Token::Text { value, range } => HopNode::Text {
             value: value.clone(),
-            range: tree.opening_tag_range,
+            range: *range,
         },
-        Token::Expression { value, range } => {
+        Token::Expression {
+            value,
+            expression_range,
+            range,
+        } => {
             // Expression tokens represent {expression} in text content
-            let mut tokenizer = match DopTokenizer::new(value, range.start) {
+            let mut tokenizer = match DopTokenizer::new(value, expression_range.start) {
                 Ok(tokenizer) => tokenizer,
                 Err(err) => {
                     errors.push(err);
@@ -259,13 +267,13 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                 Err(err) => {
                     errors.push(err);
                     HopNode::Error {
-                        range: tree.opening_tag_range,
+                        range: tree.opening_token.range(),
                         children: vec![],
                     }
                 }
             }
         }
-        Token::StartTag {
+        Token::OpeningTag {
             value,
             expression,
             attributes,
@@ -294,7 +302,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                             Err(err) => {
                                 errors.push(err);
                                 HopNode::Error {
-                                    range: tree.opening_tag_range,
+                                    range: tree.opening_token.range(),
                                     children,
                                 }
                             }
@@ -303,10 +311,10 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                     None => {
                         errors.push(RangeError::new(
                             "Missing expression in <if> tag".to_string(),
-                            tree.opening_tag_range,
+                            tree.opening_token.range(),
                         ));
                         HopNode::Error {
-                            range: tree.opening_tag_range,
+                            range: tree.opening_token.range(),
                             children,
                         }
                     }
@@ -327,13 +335,13 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                             Ok((var_name, array_expr)) => HopNode::For {
                                 var_name,
                                 array_expr,
-                                range: tree.opening_tag_range,
+                                range: tree.opening_token.range(),
                                 children,
                             },
                             Err(error) => {
                                 errors.push(error);
                                 HopNode::Error {
-                                    range: tree.opening_tag_range,
+                                    range: tree.opening_token.range(),
                                     children,
                                 }
                             }
@@ -342,10 +350,10 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                     None => {
                         errors.push(RangeError::new(
                             "Missing loop generator expression in <for> tag".to_string(),
-                            tree.opening_tag_range,
+                            tree.opening_token.range(),
                         ));
                         HopNode::Error {
-                            range: tree.opening_tag_range,
+                            range: tree.opening_token.range(),
                             children,
                         }
                     }
@@ -355,7 +363,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                         errors.push(RangeError::missing_required_attribute(
                             value,
                             "cmd",
-                            tree.opening_tag_range,
+                            tree.opening_token.range(),
                         ));
                         None
                     });
@@ -363,11 +371,11 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                     match cmd_attr {
                         Some(cmd_attr) => HopNode::XExec {
                             cmd_attr,
-                            range: tree.opening_tag_range,
+                            range: tree.opening_token.range(),
                             children,
                         },
                         None => HopNode::Error {
-                            range: tree.opening_tag_range,
+                            range: tree.opening_token.range(),
                             children,
                         },
                     }
@@ -376,7 +384,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                     let has_trim = attributes.iter().any(|attr| attr.name == "trim");
                     HopNode::XRaw {
                         trim: has_trim,
-                        range: tree.opening_tag_range,
+                        range: tree.opening_token.range(),
                         children,
                     }
                 }
@@ -385,7 +393,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                         errors.push(RangeError::missing_required_attribute(
                             value,
                             "file",
-                            tree.opening_tag_range,
+                            tree.opening_token.range(),
                         ));
                         None
                     });
@@ -394,7 +402,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                         errors.push(RangeError::missing_required_attribute(
                             value,
                             "as",
-                            tree.opening_tag_range,
+                            tree.opening_token.range(),
                         ));
                         None
                     });
@@ -403,11 +411,11 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                         (Some(file_attr), Some(as_attr)) => HopNode::XLoadJson {
                             file_attr,
                             as_attr,
-                            range: tree.opening_tag_range,
+                            range: tree.opening_token.range(),
                             children,
                         },
                         _ => HopNode::Error {
-                            range: tree.opening_tag_range,
+                            range: tree.opening_token.range(),
                             children,
                         },
                     }
@@ -416,7 +424,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                     let slot_name = &tag_name[5..]; // Remove "slot-" prefix
                     HopNode::SlotDefinition {
                         name: slot_name.to_string(),
-                        range: tree.opening_tag_range,
+                        range: tree.opening_token.range(),
                         children,
                     }
                 }
@@ -424,7 +432,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                     let slot_name = &tag_name[5..]; // Remove "with-" prefix
                     HopNode::SlotReference {
                         name: slot_name.to_string(),
-                        range: tree.opening_tag_range,
+                        range: tree.opening_token.range(),
                         children,
                     }
                 }
@@ -456,10 +464,16 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                     HopNode::ComponentReference {
                         component: tag_name.to_string(),
                         opening_name_range: *name_range,
-                        closing_name_range: tree.closing_tag_name_range,
+                        closing_name_range: tree.closing_token.as_ref().and_then(|tag| {
+                            if let Token::ClosingTag { name_range, .. } = tag {
+                                Some(*name_range)
+                            } else {
+                                None
+                            }
+                        }),
                         args: params_attrs,
                         attributes: attributes.clone(),
-                        range: tree.opening_tag_range,
+                        range: tree.opening_token.range(),
                         children,
                     }
                 }
@@ -496,7 +510,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                     HopNode::NativeHTML {
                         tag_name: value.clone(),
                         attributes: attributes.clone(),
-                        range: tree.opening_tag_range,
+                        range: tree.opening_token.range(),
                         children,
                         set_attributes,
                     }
