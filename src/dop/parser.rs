@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::common::{Range, RangeError};
+use crate::common::{Range, RangeError, Ranged};
 use crate::dop::DopType;
 use crate::dop::tokenizer::{DopToken, DopTokenizer};
 use crate::dop::typechecker::RangeDopType;
@@ -62,9 +62,9 @@ pub enum DopExpr {
     },
 }
 
-impl DopExpr {
+impl Ranged for DopExpr {
     /// Returns the range of this expression in the source code
-    pub fn range(&self) -> Range {
+    fn range(&self) -> Range {
         match self {
             DopExpr::Variable { range, .. } => *range,
             DopExpr::PropertyAccess { range, .. } => *range,
@@ -533,7 +533,7 @@ mod tests {
                     .without_location()
                     .without_line_numbers();
 
-                annotator.annotate(input, &[e]).to_string()
+                annotator.add_annotations(input, &[e]).to_string()
             }
         };
 
@@ -553,7 +553,7 @@ mod tests {
                     .without_location()
                     .without_line_numbers();
 
-                annotator.annotate(input, &[e]).to_string()
+                annotator.add_annotations(input, &[e]).to_string()
             }
         };
 
@@ -573,7 +573,7 @@ mod tests {
                     .without_location()
                     .without_line_numbers();
 
-                annotator.annotate(input, &[e]).to_string()
+                annotator.add_annotations(input, &[e]).to_string()
             }
         };
 

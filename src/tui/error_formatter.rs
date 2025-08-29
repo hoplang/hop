@@ -79,7 +79,7 @@ impl ErrorFormatter {
                 annotator = annotator.with_location().with_filename(filename);
             }
 
-            let output = annotator.annotate(&module_info.source_code, &module_info.errors);
+            let output = annotator.add_annotations(&module_info.source_code, &module_info.errors);
 
             formatted_errors.push_str(&output);
         }

@@ -1,5 +1,5 @@
 use super::parser::{BinaryOp, DopExpr, UnaryOp};
-use crate::common::{Range, RangeError};
+use crate::common::{Range, RangeError, Ranged};
 use crate::hop::environment::Environment;
 use crate::hop::typechecker::TypeAnnotation;
 use std::collections::BTreeMap;
@@ -237,7 +237,7 @@ mod tests {
                     .without_location()
                     .without_line_numbers();
 
-                annotator.annotate(expr_str, &[e]).to_string()
+                annotator.add_annotations(expr_str, &[e]).to_string()
             }
         };
 

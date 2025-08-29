@@ -1,9 +1,8 @@
-use crate::common::Range;
+use crate::common::{Range, Ranged};
 use unicode_width::UnicodeWidthStr;
 
 /// Trait for any annotation that can be displayed on source code
-pub trait Annotation {
-    fn range(&self) -> Range;
+pub trait Annotation: Ranged {
     fn message(&self) -> String;
 }
 
@@ -13,11 +12,13 @@ pub struct SimpleAnnotation {
     pub message: String,
 }
 
-impl Annotation for SimpleAnnotation {
+impl Ranged for SimpleAnnotation {
     fn range(&self) -> Range {
         self.range
     }
+}
 
+impl Annotation for SimpleAnnotation {
     fn message(&self) -> String {
         self.message.clone()
     }
@@ -92,7 +93,7 @@ impl SourceAnnotator {
         self
     }
 
-    pub fn annotate<A: Annotation>(&self, source: &str, annotations: &[A]) -> String {
+    pub fn add_annotations<A: Annotation>(&self, source: &str, annotations: &[A]) -> String {
         let mut output = String::new();
         let lines: Vec<&str> = source.lines().collect();
 
@@ -103,14 +104,12 @@ impl SourceAnnotator {
 
             let range = annotation.range();
 
-            // Add label and message
             if let Some(ref label) = self.label {
                 output.push_str(&format!("{}: {}\n", label, annotation.message()));
             } else {
                 output.push_str(&format!("{}\n", annotation.message()));
             }
 
-            // Add location info
             if self.show_location {
                 if let Some(ref filename) = self.filename {
                     output.push_str(&format!(
@@ -125,7 +124,37 @@ impl SourceAnnotator {
                 }
             }
 
-            // Add source context
+            self.add_source_context(&mut output, &lines, range);
+        }
+
+        output
+    }
+
+    pub fn add_ranges<R: Ranged>(&self, source: &str, ranges: &[R]) -> String {
+        let mut output = String::new();
+        let lines: Vec<&str> = source.lines().collect();
+
+        for (i, ranged) in ranges.iter().enumerate() {
+            if i > 0 {
+                output.push('\n');
+            }
+
+            let range = ranged.range();
+
+            if self.show_location {
+                if let Some(ref filename) = self.filename {
+                    output.push_str(&format!(
+                        "  --> {} (line {}, col {})\n",
+                        filename, range.start.line, range.start.column
+                    ));
+                } else {
+                    output.push_str(&format!(
+                        "  --> (line {}, col {})\n",
+                        range.start.line, range.start.column
+                    ));
+                }
+            }
+
             self.add_source_context(&mut output, &lines, range);
         }
 
@@ -251,7 +280,7 @@ mod tests {
         annotations: Vec<SimpleAnnotation>,
         expect: Expect,
     ) {
-        let actual = annotator.annotate(source, &annotations);
+        let actual = annotator.add_annotations(source, &annotations);
         expect.assert_eq(&actual);
     }
 
@@ -477,5 +506,42 @@ mod tests {
                   |      ^^^^
             "#]],
         );
+    }
+
+    #[test]
+    fn test_annotate_ranges_only() {
+        let ranges = vec![
+            Range::new(Position::new(1, 6), Position::new(1, 9)),
+            Range::new(Position::new(3, 1), Position::new(3, 5)),
+        ];
+        let source = "line one\nline two\nline three";
+
+        let annotator = SourceAnnotator::new();
+        let actual = annotator.add_ranges(source, &ranges);
+        expect![[r#"
+            1 | line one
+              |      ^^^
+
+            3 | line three
+              | ^^^^
+        "#]]
+        .assert_eq(&actual);
+    }
+
+    #[test]
+    fn test_annotate_ranges_with_location() {
+        let ranges = vec![Range::new(Position::new(2, 6), Position::new(2, 9))];
+        let source = "line one\nline two";
+
+        let annotator = SourceAnnotator::new()
+            .with_location()
+            .with_filename("test.hop");
+        let actual = annotator.add_ranges(source, &ranges);
+        expect![[r#"
+              --> test.hop (line 2, col 6)
+            2 | line two
+              |      ^^^
+        "#]]
+        .assert_eq(&actual);
     }
 }

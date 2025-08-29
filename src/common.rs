@@ -61,6 +61,24 @@ impl fmt::Debug for Range {
     }
 }
 
+/// Trait for types that have a Range
+pub trait Ranged {
+    /// Returns the range of this item
+    fn range(&self) -> Range;
+    
+    /// Returns true if the position lies within this item's range
+    /// (start inclusive, end exclusive)
+    fn contains_position(&self, position: Position) -> bool {
+        self.range().contains_position(position)
+    }
+}
+
+impl Ranged for Range {
+    fn range(&self) -> Range {
+        *self
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct RangeError {
     pub message: String,
@@ -178,11 +196,13 @@ impl RangeError {
     }
 }
 
-impl Annotation for RangeError {
+impl Ranged for RangeError {
     fn range(&self) -> Range {
         self.range
     }
+}
 
+impl Annotation for RangeError {
     fn message(&self) -> String {
         self.message.clone()
     }

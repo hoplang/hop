@@ -1,4 +1,4 @@
-use crate::common::{Position, Range};
+use crate::common::{Position, Range, Ranged};
 use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -255,26 +255,8 @@ impl HopNode {
         DepthFirstIterator::new(self)
     }
 
-    pub fn range(&self) -> Range {
-        match self {
-            HopNode::Doctype { range, .. } => *range,
-            HopNode::Text { range, .. } => *range,
-            HopNode::TextExpression { range, .. } => *range,
-            HopNode::ComponentReference { range, .. } => *range,
-            HopNode::SlotDefinition { range, .. } => *range,
-            HopNode::SlotReference { range, .. } => *range,
-            HopNode::If { range, .. } => *range,
-            HopNode::For { range, .. } => *range,
-            HopNode::NativeHTML { range, .. } => *range,
-            HopNode::Error { range, .. } => *range,
-            HopNode::XExec { range, .. } => *range,
-            HopNode::XRaw { range, .. } => *range,
-            HopNode::XLoadJson { range, .. } => *range,
-        }
-    }
-
     pub fn find_node_at_position(&self, position: Position) -> Option<&HopNode> {
-        if !self.range().contains_position(position) {
+        if !self.contains_position(position) {
             return None;
         }
         for child in self.children() {
@@ -321,6 +303,26 @@ impl HopNode {
         self.opening_name_range()
             .into_iter()
             .chain(self.closing_name_range())
+    }
+}
+
+impl Ranged for HopNode {
+    fn range(&self) -> Range {
+        match self {
+            HopNode::Doctype { range, .. } => *range,
+            HopNode::Text { range, .. } => *range,
+            HopNode::TextExpression { range, .. } => *range,
+            HopNode::ComponentReference { range, .. } => *range,
+            HopNode::SlotDefinition { range, .. } => *range,
+            HopNode::SlotReference { range, .. } => *range,
+            HopNode::If { range, .. } => *range,
+            HopNode::For { range, .. } => *range,
+            HopNode::NativeHTML { range, .. } => *range,
+            HopNode::Error { range, .. } => *range,
+            HopNode::XExec { range, .. } => *range,
+            HopNode::XRaw { range, .. } => *range,
+            HopNode::XLoadJson { range, .. } => *range,
+        }
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::common::{Range, RangeError};
+use crate::common::{Range, RangeError, Ranged};
 use crate::dop::{DopType, infer_type_from_json_file, is_subtype, typecheck_expr};
 use crate::hop::ast::HopAST;
 use crate::hop::ast::{ComponentDefinitionNode, HopNode, ImportNode, RenderNode};
@@ -12,12 +12,24 @@ pub struct TypeAnnotation {
     pub name: String,
 }
 
+impl Ranged for TypeAnnotation {
+    fn range(&self) -> Range {
+        self.range
+    }
+}
+
 /// A definition link contains information of where a symbol is defined.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DefinitionLink {
-    pub module: String,
-    pub range: Range,
+    pub definition_module: String,
+    pub definition_range: Range,
     pub reference_range: Range,
+}
+
+impl Ranged for DefinitionLink {
+    fn range(&self) -> Range {
+        self.reference_range
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -216,14 +228,14 @@ fn typecheck_node(
                 // Add definition link for go-to-definition
                 component_definition_links.push(DefinitionLink {
                     reference_range: *opening_name_range,
-                    module: comp_info.definition_module.clone(),
-                    range: comp_info.definition_range,
+                    definition_module: comp_info.definition_module.clone(),
+                    definition_range: comp_info.definition_range,
                 });
                 if let Some(range) = closing_name_range {
                     component_definition_links.push(DefinitionLink {
                         reference_range: *range,
-                        module: comp_info.definition_module.clone(),
-                        range: comp_info.definition_range,
+                        definition_module: comp_info.definition_module.clone(),
+                        definition_range: comp_info.definition_range,
                     });
                 }
 

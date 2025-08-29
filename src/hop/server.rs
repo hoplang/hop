@@ -1,4 +1,4 @@
-use crate::common::{Position, Range, RangeError};
+use crate::common::{Position, Range, RangeError, Ranged};
 use crate::hop::ast::HopAST;
 use crate::hop::parser::parse;
 use crate::hop::tokenizer::Tokenizer;
@@ -17,10 +17,13 @@ pub struct HoverInfo {
     pub range: Range,
 }
 
-impl Annotation for HoverInfo {
+impl Ranged for HoverInfo {
     fn range(&self) -> Range {
         self.range
     }
+}
+
+impl Annotation for HoverInfo {
     fn message(&self) -> String {
         self.type_str.clone()
     }
@@ -32,10 +35,13 @@ pub struct DefinitionLocation {
     pub range: Range,
 }
 
-impl Annotation for DefinitionLocation {
+impl Ranged for DefinitionLocation {
     fn range(&self) -> Range {
         self.range
     }
+}
+
+impl Annotation for DefinitionLocation {
     fn message(&self) -> String {
         "Definition".to_string()
     }
@@ -47,10 +53,13 @@ pub struct Diagnostic {
     pub range: Range,
 }
 
-impl Annotation for Diagnostic {
+impl Ranged for Diagnostic {
     fn range(&self) -> Range {
         self.range
     }
+}
+
+impl Annotation for Diagnostic {
     fn message(&self) -> String {
         self.message.clone()
     }
@@ -62,10 +71,13 @@ pub struct RenameLocation {
     pub range: Range,
 }
 
-impl Annotation for RenameLocation {
+impl Ranged for RenameLocation {
     fn range(&self) -> Range {
         self.range
     }
+}
+
+impl Annotation for RenameLocation {
     fn message(&self) -> String {
         "Rename".to_string()
     }
@@ -102,10 +114,13 @@ pub struct RenameableSymbol {
     pub range: Range,
 }
 
-impl Annotation for RenameableSymbol {
+impl Ranged for RenameableSymbol {
     fn range(&self) -> Range {
         self.range
     }
+}
+
+impl Annotation for RenameableSymbol {
     fn message(&self) -> String {
         format!("Renameable symbol: {}", self.current_name)
     }
@@ -214,7 +229,7 @@ impl Server {
         self.type_annotations
             .get(module_name)?
             .iter()
-            .find(|a| a.range.contains_position(position))
+            .find(|a| a.contains_position(position))
             .map(|annotation| HoverInfo {
                 type_str: format!("`{}`: `{}`", annotation.name, annotation.typ),
                 range: annotation.range,
@@ -229,10 +244,10 @@ impl Server {
         self.definition_links
             .get(module_name)?
             .iter()
-            .find(|link| link.reference_range.contains_position(position))
+            .find(|link| link.contains_position(position))
             .map(|link| DefinitionLocation {
-                module: link.module.clone(),
-                range: link.range,
+                module: link.definition_module.clone(),
+                range: link.definition_range,
             })
     }
 
@@ -478,7 +493,7 @@ mod tests {
                     SourceAnnotator::new()
                         .with_filename(&file.name)
                         .with_location()
-                        .annotate(&file.content, &module_locs),
+                        .add_annotations(&file.content, &module_locs),
                 );
             }
         }
@@ -511,7 +526,7 @@ mod tests {
         let output = SourceAnnotator::new()
             .with_filename(&file.name)
             .with_location()
-            .annotate(&file.content, &[loc]);
+            .add_annotations(&file.content, &[loc]);
 
         expected.assert_eq(&output);
     }
@@ -532,7 +547,7 @@ mod tests {
         let output = SourceAnnotator::new()
             .with_filename(&file.name)
             .with_location()
-            .annotate(&file.content, &diagnostics);
+            .add_annotations(&file.content, &diagnostics);
 
         expected.assert_eq(&output);
     }
@@ -561,7 +576,7 @@ mod tests {
         let output = SourceAnnotator::new()
             .with_filename(&file.name)
             .with_location()
-            .annotate(&file.content, &[symbol]);
+            .add_annotations(&file.content, &[symbol]);
 
         expected.assert_eq(&output);
     }
@@ -591,7 +606,7 @@ mod tests {
         let output = SourceAnnotator::new()
             .with_filename(&file.name)
             .with_location()
-            .annotate(&file.content, &[hover_info]);
+            .add_annotations(&file.content, &[hover_info]);
 
         expected.assert_eq(&output);
     }
