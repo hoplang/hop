@@ -1,4 +1,4 @@
-use crate::{dop::tokenizer::DopToken, tui::source_annotator::Annotation};
+use crate::{dop::tokenizer::DopToken, tui::source_annotator::Annotated};
 use std::fmt;
 
 /// Represents a position in source code
@@ -65,7 +65,7 @@ impl fmt::Debug for Range {
 pub trait Ranged {
     /// Returns the range of this item
     fn range(&self) -> Range;
-    
+
     /// Returns true if the position lies within this item's range
     /// (start inclusive, end exclusive)
     fn contains_position(&self, position: Position) -> bool {
@@ -202,7 +202,7 @@ impl Ranged for RangeError {
     }
 }
 
-impl Annotation for RangeError {
+impl Annotated for RangeError {
     fn message(&self) -> String {
         self.message.clone()
     }

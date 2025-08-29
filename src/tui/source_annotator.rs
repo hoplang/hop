@@ -2,7 +2,7 @@ use crate::common::{Range, Ranged};
 use unicode_width::UnicodeWidthStr;
 
 /// Trait for any annotation that can be displayed on source code
-pub trait Annotation: Ranged {
+pub trait Annotated: Ranged {
     fn message(&self) -> String;
 }
 
@@ -18,7 +18,7 @@ impl Ranged for SimpleAnnotation {
     }
 }
 
-impl Annotation for SimpleAnnotation {
+impl Annotated for SimpleAnnotation {
     fn message(&self) -> String {
         self.message.clone()
     }
@@ -93,7 +93,7 @@ impl SourceAnnotator {
         self
     }
 
-    pub fn add_annotations<A: Annotation>(&self, source: &str, annotations: &[A]) -> String {
+    pub fn add_annotations<A: Annotated>(&self, source: &str, annotations: &[A]) -> String {
         let mut output = String::new();
         let lines: Vec<&str> = source.lines().collect();
 

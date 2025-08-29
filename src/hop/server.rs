@@ -6,7 +6,7 @@ use crate::hop::toposorter::TopoSorter;
 use crate::hop::typechecker::{
     ComponentTypeInformation, DefinitionLink, TypeAnnotation, typecheck,
 };
-use crate::tui::source_annotator::Annotation;
+use crate::tui::source_annotator::Annotated;
 use std::collections::HashMap;
 
 use super::ast::HopNode;
@@ -23,7 +23,7 @@ impl Ranged for HoverInfo {
     }
 }
 
-impl Annotation for HoverInfo {
+impl Annotated for HoverInfo {
     fn message(&self) -> String {
         self.type_str.clone()
     }
@@ -41,7 +41,7 @@ impl Ranged for DefinitionLocation {
     }
 }
 
-impl Annotation for DefinitionLocation {
+impl Annotated for DefinitionLocation {
     fn message(&self) -> String {
         "Definition".to_string()
     }
@@ -59,7 +59,7 @@ impl Ranged for Diagnostic {
     }
 }
 
-impl Annotation for Diagnostic {
+impl Annotated for Diagnostic {
     fn message(&self) -> String {
         self.message.clone()
     }
@@ -77,7 +77,7 @@ impl Ranged for RenameLocation {
     }
 }
 
-impl Annotation for RenameLocation {
+impl Annotated for RenameLocation {
     fn message(&self) -> String {
         "Rename".to_string()
     }
@@ -120,7 +120,7 @@ impl Ranged for RenameableSymbol {
     }
 }
 
-impl Annotation for RenameableSymbol {
+impl Annotated for RenameableSymbol {
     fn message(&self) -> String {
         format!("Renameable symbol: {}", self.current_name)
     }
