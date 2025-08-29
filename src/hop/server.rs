@@ -182,6 +182,18 @@ impl Server {
         }
     }
 
+    pub fn get_parse_errors(&self) -> &HashMap<String, Vec<RangeError>> {
+        &self.parse_errors
+    }
+
+    pub fn get_type_errors(&self) -> &HashMap<String, Vec<RangeError>> {
+        &self.type_errors
+    }
+
+    pub fn get_source_code(&self) -> &HashMap<String, String> {
+        &self.source_code
+    }
+
     pub fn has_module(&self, module_name: &str) -> bool {
         self.asts.contains_key(module_name)
     }
@@ -479,20 +491,6 @@ impl Server {
 
         diagnostics
     }
-
-    pub fn get_parse_errors(&self) -> &HashMap<String, Vec<RangeError>> {
-        &self.parse_errors
-    }
-
-    pub fn get_type_errors(&self) -> &HashMap<String, Vec<RangeError>> {
-        &self.type_errors
-    }
-
-    pub fn get_source_code(&self) -> &HashMap<String, String> {
-        &self.source_code
-    }
-
-    // Execution methods from Program
 
     pub fn get_scripts(&self) -> String {
         let mut script_collector = ScriptCollector::new();
