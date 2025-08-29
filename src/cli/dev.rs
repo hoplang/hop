@@ -250,6 +250,7 @@ pub async fn execute(
     script_file: Option<&str>,
 ) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher)> {
     use axum::routing::get;
+    use tower_http::services::ServeDir;
 
     let modules = files::load_all_hop_modules(root)?;
     let initial_program = create_program(modules, HopMode::Dev);
@@ -269,18 +270,15 @@ pub async fn execute(
         .route("/_hop/event_source", get(handle_event_source));
 
     if let Some(script_filename) = script_file {
-        let script_path = format!("/{}", script_filename);
-        router = router.route(&script_path, get(handle_script));
+        router = router.route(&format!("/{}", script_filename), get(handle_script));
     }
 
     if let Some(static_dir) = static_dir {
-        use axum::routing::get;
         if !static_dir.is_dir() {
             anyhow::bail!("servedir '{}' is not a directory", static_dir.display());
         }
         router = router.fallback_service(
-            tower_http::services::ServeDir::new(static_dir)
-                .fallback(get(handle_request).with_state(app_state.clone())),
+            ServeDir::new(static_dir).fallback(get(handle_request).with_state(app_state.clone())),
         );
     } else {
         router = router.fallback(handle_request);
