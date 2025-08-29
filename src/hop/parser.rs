@@ -1,8 +1,9 @@
-use crate::common::{Range, RangeError, is_void_element};
+use crate::common::RangeError;
 use crate::dop::{self, DopTokenizer};
 use crate::hop::ast::{ComponentDefinitionNode, DopExprAttribute, HopNode, ImportNode, RenderNode};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
+use crate::hop::token_tree::{TokenTree, build_tree};
 use std::collections::HashSet;
 
 use super::ast::TopLevelHopNode;
@@ -15,46 +16,16 @@ pub struct HopAST {
     pub render_nodes: Vec<RenderNode>,
 }
 
-#[derive(Debug, Clone)]
-struct TokenTree {
-    token: Token,
-    children: Vec<TokenTree>,
-    opening_tag_range: Range,
-    closing_tag_name_range: Option<Range>,
-}
-
-impl TokenTree {
-    fn new(token: Token, range: Range) -> Self {
-        TokenTree {
-            token,
-            children: Vec::new(),
-            opening_tag_range: range,
-            closing_tag_name_range: None,
-        }
-    }
-
-    fn append_node(&mut self, token: Token, range: Range) {
-        self.children.push(TokenTree::new(token, range));
-    }
-
-    fn append_tree(&mut self, tree: TokenTree) {
-        self.children.push(tree);
-    }
-
-    fn set_closing_tag_name_range(&mut self, range: Range) {
-        self.closing_tag_name_range = Some(range);
-    }
-}
 
 pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> HopAST {
-    let tree = build_tree(tokenizer, errors);
+    let trees = build_tree(tokenizer, errors);
 
     let mut components = Vec::new();
     let mut imports = Vec::new();
     let mut renders = Vec::new();
 
-    for child in &tree.children {
-        if let Some(toplevel_node) = construct_top_level_node(child, errors) {
+    for tree in &trees {
+        if let Some(toplevel_node) = construct_top_level_node(tree, errors) {
             match toplevel_node {
                 TopLevelHopNode::Import(import_data) => imports.push(import_data),
                 TopLevelHopNode::ComponentDefinition(component_data) => {
@@ -83,93 +54,6 @@ fn is_valid_component_name(name: &str) -> bool {
     name.contains('-')
 }
 
-fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> TokenTree {
-    struct StackElement {
-        tree: TokenTree,
-        tag_name: String,
-    }
-
-    let mut stack: Vec<StackElement> = Vec::new();
-
-    let root_token = Token::StartTag {
-        self_closing: false,
-        value: "root".to_string(),
-        attributes: Vec::new(),
-        name_range: Range::default(),
-        expression: None,
-    };
-    stack.push(StackElement {
-        tree: TokenTree::new(root_token, Range::default()),
-        tag_name: "root".to_string(),
-    });
-
-    for t in tokenizer {
-        match t {
-            Err(err) => errors.push(err),
-            Ok((token, range)) => {
-                match token {
-                    Token::Comment => {
-                        // skip comments
-                        continue;
-                    }
-                    Token::Doctype | Token::Text { .. } | Token::Expression { .. } => {
-                        stack.last_mut().unwrap().tree.append_node(token, range);
-                    }
-                    Token::StartTag {
-                        ref value,
-                        self_closing,
-                        ..
-                    } => {
-                        if is_void_element(value) || self_closing {
-                            stack.last_mut().unwrap().tree.append_node(token, range);
-                        } else {
-                            stack.push(StackElement {
-                                tree: TokenTree::new(token.clone(), range),
-                                tag_name: value.clone(),
-                            });
-                        }
-                    }
-                    Token::EndTag {
-                        ref value,
-                        name_range,
-                        ..
-                    } => {
-                        if is_void_element(value) {
-                            errors.push(RangeError::closed_void_tag(value, range));
-                        } else if !stack.iter().any(|el| el.tag_name == *value) {
-                            errors.push(RangeError::unmatched_closing_tag(value, range));
-                        } else {
-                            while stack.last().unwrap().tag_name != *value {
-                                let unclosed = stack.pop().unwrap();
-                                errors.push(RangeError::unclosed_tag(
-                                    &unclosed.tag_name,
-                                    unclosed.tree.opening_tag_range,
-                                ));
-                                stack.last_mut().unwrap().tree.append_tree(unclosed.tree);
-                            }
-                            let mut completed = stack.pop().unwrap();
-                            completed.tree.set_closing_tag_name_range(name_range);
-                            stack.last_mut().unwrap().tree.append_tree(completed.tree);
-                        }
-                    }
-                    Token::Eof => {
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    while stack.len() > 1 {
-        let unclosed = stack.pop().unwrap();
-        errors.push(RangeError::unclosed_tag(
-            &unclosed.tag_name,
-            unclosed.tree.opening_tag_range,
-        ));
-    }
-
-    stack.pop().unwrap().tree
-}
 
 fn construct_top_level_node(
     tree: &TokenTree,
@@ -956,6 +840,50 @@ mod tests {
         );
     }
 
+    // When slot-default is defined, it must be the only slot, otherwise the parser outputs an error.
+    #[test]
+    fn test_slot_default_must_be_only_slot() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <mixed-comp>
+                    <slot-default>Default slot</slot-default>
+                    <slot-other>Other slot</slot-other>
+                </mixed-comp>
+            "#},
+            expect![[r#"
+                error: When using slot-default, it must be the only slot in the component
+                3 |     <slot-default>Default slot</slot-default>
+                4 |     <slot-other>Other slot</slot-other>
+                  |     ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    // When a slot is defined twice in a component, the parser outputs an error.
+    #[test]
+    fn test_slot_defined_twice() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp>
+                    <slot-content>
+                        First definition
+                    </slot-content>
+                    <slot-content>
+                        Second definition
+                    </slot-content>
+                </main-comp>
+            "#},
+            expect![[r#"
+                error: Slot 'content' is already defined
+                5 |     </slot-content>
+                6 |     <slot-content>
+                  |     ^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
     #[test]
     fn test_parser_nested_loops_complex_types() {
         check(
@@ -1255,50 +1183,6 @@ mod tests {
                 slot-content
                 render
                 	with-data
-            "#]],
-        );
-    }
-
-    // When slot-default is defined, it must be the only slot, otherwise the parser outputs an error.
-    #[test]
-    fn test_slot_default_must_be_only_slot() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                <mixed-comp>
-                    <slot-default>Default slot</slot-default>
-                    <slot-other>Other slot</slot-other>
-                </mixed-comp>
-            "#},
-            expect![[r#"
-                error: When using slot-default, it must be the only slot in the component
-                3 |     <slot-default>Default slot</slot-default>
-                4 |     <slot-other>Other slot</slot-other>
-                  |     ^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    // When a slot is defined twice in a component, the parser outputs an error.
-    #[test]
-    fn test_slot_defined_twice() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                <main-comp>
-                    <slot-content>
-                        First definition
-                    </slot-content>
-                    <slot-content>
-                        Second definition
-                    </slot-content>
-                </main-comp>
-            "#},
-            expect![[r#"
-                error: Slot 'content' is already defined
-                5 |     </slot-content>
-                6 |     <slot-content>
-                  |     ^^^^^^^^^^^^^^
             "#]],
         );
     }
