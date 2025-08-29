@@ -1,8 +1,8 @@
 use crate::common::{Position, Range, RangeError};
 use crate::dop::{DopType, infer_type_from_json_file, is_subtype, typecheck_expr};
+use crate::hop::ast::HopAST;
 use crate::hop::ast::{ComponentDefinitionNode, HopNode, ImportNode, RenderNode};
 use crate::hop::environment::Environment;
-use crate::hop::ast::HopAST;
 use std::collections::{BTreeMap, HashMap};
 
 #[derive(Debug, Clone, PartialEq)]

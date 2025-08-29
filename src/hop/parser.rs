@@ -1,6 +1,9 @@
 use crate::common::RangeError;
 use crate::dop::{self, DopTokenizer};
-use crate::hop::ast::{ComponentDefinitionNode, DopExprAttribute, HopAST, HopNode, ImportNode, RenderNode, TopLevelHopNode};
+use crate::hop::ast::{
+    ComponentDefinitionNode, DopExprAttribute, HopAST, HopNode, ImportNode, RenderNode,
+    TopLevelHopNode,
+};
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;

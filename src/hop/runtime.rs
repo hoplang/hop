@@ -1,9 +1,9 @@
 use crate::common::{escape_html, is_void_element};
 use crate::dop;
 use crate::dop::{evaluate_expr, load_json_file};
+use crate::hop::ast::HopAST;
 use crate::hop::ast::{ComponentDefinitionNode, HopNode, RenderNode};
 use crate::hop::environment::Environment;
-use crate::hop::ast::HopAST;
 use anyhow::Result;
 use std::collections::HashMap;
 use std::io::Write;

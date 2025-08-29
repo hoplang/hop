@@ -1,4 +1,4 @@
-use crate::common::Range;
+use crate::common::{Position, Range};
 use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -7,6 +7,61 @@ pub struct HopAST {
     pub component_nodes: Vec<ComponentDefinitionNode>,
     pub import_nodes: Vec<ImportNode>,
     pub render_nodes: Vec<RenderNode>,
+}
+
+impl HopAST {
+    /// Finds the deepest AST node that contains the given position.
+    ///
+    /// This method searches through all nodes in the AST (render nodes, component definitions,
+    /// and their children) to find the most specific node that contains the given position.
+    /// It returns the deepest matching node rather than the first one found, making it useful
+    /// for language server features like hover information or go-to-definition.
+    ///
+    /// # Arguments
+    ///
+    /// * `position` - The position to search for, typically representing a cursor position
+    ///
+    /// # Returns
+    ///
+    /// Returns `Some(&HopNode)` if a node contains the position, `None` otherwise.
+    /// The returned node is the deepest (most specific) node that contains the position.
+    ///
+    /// # Example
+    ///
+    /// <div><span>text</span></div>
+    ///        ^
+    /// returns Some(&NativeHTML { tag_name: "span", .. })
+    ///
+    pub fn find_node_at_position(&self, position: Position) -> Option<&HopNode> {
+        // Search through all render nodes first
+        for render_node in &self.render_nodes {
+            for child in &render_node.children {
+                if let Some(node) = child.find_node_at_position(position) {
+                    return Some(node);
+                }
+            }
+        }
+
+        // Then search through component definitions
+        for component in &self.component_nodes {
+            for child in &component.children {
+                if let Some(node) = child.find_node_at_position(position) {
+                    return Some(node);
+                }
+            }
+
+            // Also check preview nodes if they exist
+            if let Some(preview_nodes) = &component.preview {
+                for child in preview_nodes {
+                    if let Some(node) = child.find_node_at_position(position) {
+                        return Some(node);
+                    }
+                }
+            }
+        }
+
+        None
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -174,6 +229,23 @@ impl HopNode {
             HopNode::XLoadJson { range, .. } => *range,
         }
     }
+
+    pub fn find_node_at_position(&self, position: Position) -> Option<&HopNode> {
+        // Check if the position is within this node's range
+        if !self.range().contains_position(position) {
+            return None;
+        }
+
+        // Search children first (deepest match wins)
+        for child in self.children() {
+            if let Some(node) = child.find_node_at_position(position) {
+                return Some(node);
+            }
+        }
+
+        // If no child contains the position, return this node
+        Some(self)
+    }
 }
 
 pub struct DepthFirstIterator<'a> {
@@ -205,6 +277,666 @@ impl<'a> Iterator for DepthFirstIterator<'a> {
 mod tests {
     use super::*;
     use crate::common::Range;
+    use crate::hop::parser::parse;
+    use crate::hop::tokenizer::Tokenizer;
+    use crate::test_utils::position_marker::extract_position;
+    use expect_test::{Expect, expect};
+    use indoc::indoc;
+
+    fn check_find_node_at_position(input: &str, expected: Expect) {
+        let (source, position) = extract_position(input).expect("Position marker not found");
+        let mut errors = Vec::new();
+        let ast = parse("test".to_string(), Tokenizer::new(&source), &mut errors);
+
+        assert!(errors.is_empty(), "Parse errors: {:?}", errors);
+
+        let found_node = ast.find_node_at_position(position);
+
+        expected.assert_debug_eq(&found_node);
+    }
+
+    #[test]
+    fn test_find_node_at_position_text_content() {
+        check_find_node_at_position(
+            indoc! {"
+                <main-comp>
+                    <div>Hello World</div>
+                             ^
+                </main-comp>
+            "},
+            expect![[r#"
+                Some(
+                    Text {
+                        value: "Hello World",
+                        range: 2:10-2:21,
+                    },
+                )
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_find_node_at_position_tag_name() {
+        check_find_node_at_position(
+            indoc! {"
+                <main-comp>
+                    <div>Content</div>
+                     ^
+                </main-comp>
+            "},
+            expect![[r#"
+                Some(
+                    NativeHTML {
+                        tag_name: "div",
+                        attributes: [],
+                        range: 2:5-2:23,
+                        children: [
+                            Text {
+                                value: "Content",
+                                range: 2:10-2:17,
+                            },
+                        ],
+                        set_attributes: [],
+                    },
+                )
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_find_node_at_position_component_reference() {
+        check_find_node_at_position(
+            indoc! {"
+                <main-comp>
+                    <foo-bar>Content</foo-bar>
+                        ^
+                </main-comp>
+            "},
+            expect![[r#"
+                Some(
+                    ComponentReference {
+                        component: "foo-bar",
+                        opening_name_range: 2:6-2:13,
+                        closing_name_range: Some(
+                            2:23-2:30,
+                        ),
+                        args: [],
+                        attributes: [],
+                        range: 2:5-2:31,
+                        children: [
+                            Text {
+                                value: "Content",
+                                range: 2:14-2:21,
+                            },
+                        ],
+                    },
+                )
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_find_node_at_position_if_tag() {
+        check_find_node_at_position(
+            indoc! {"
+                <main-comp>
+                    <if {true}>
+                        ^
+                        <div/>
+                    </if>
+                </main-comp>
+            "},
+            expect![[r#"
+                Some(
+                    If {
+                        condition: BooleanLiteral {
+                            value: true,
+                            range: 2:10-2:14,
+                        },
+                        range: 2:5-4:10,
+                        children: [
+                            Text {
+                                value: "\n        ",
+                                range: 2:16-3:9,
+                            },
+                            NativeHTML {
+                                tag_name: "div",
+                                attributes: [],
+                                range: 3:9-3:15,
+                                children: [],
+                                set_attributes: [],
+                            },
+                            Text {
+                                value: "\n    ",
+                                range: 3:15-4:5,
+                            },
+                        ],
+                    },
+                )
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_find_node_at_position_nested_content() {
+        check_find_node_at_position(
+            indoc! {"
+                <main-comp>
+                    <div>
+                        <span>Nested text</span>
+                                    ^
+                    </div>
+                </main-comp>
+            "},
+            expect![[r#"
+                Some(
+                    Text {
+                        value: "Nested text",
+                        range: 3:15-3:26,
+                    },
+                )
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_find_node_at_position_slot_definition() {
+        check_find_node_at_position(
+            indoc! {"
+                <main-comp>
+                    <slot-content>
+                          ^
+                        Default content
+                    </slot-content>
+                </main-comp>
+            "},
+            expect![[r#"
+                Some(
+                    SlotDefinition {
+                        name: "content",
+                        range: 2:5-4:20,
+                        children: [
+                            Text {
+                                value: "\n        Default content\n    ",
+                                range: 2:19-4:5,
+                            },
+                        ],
+                    },
+                )
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_find_node_at_position_slot_reference() {
+        check_find_node_at_position(
+            indoc! {"
+                <main-comp>
+                    <foo-comp>
+                        <with-data>
+                              ^
+                            Custom content
+                        </with-data>
+                    </foo-comp>
+                </main-comp>
+            "},
+            expect![[r#"
+                Some(
+                    SlotReference {
+                        name: "data",
+                        range: 3:9-5:21,
+                        children: [
+                            Text {
+                                value: "\n            Custom content\n        ",
+                                range: 3:20-5:9,
+                            },
+                        ],
+                    },
+                )
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_find_node_at_position_outside_content() {
+        check_find_node_at_position(
+            indoc! {"
+                <main-comp>
+                    <div>Content</div>
+                </main-comp>
+                ^
+            "},
+            expect![[r#"
+                None
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_find_node_at_position_doctype() {
+        check_find_node_at_position(
+            indoc! {"
+                <main-comp>
+                    <!DOCTYPE html>
+                     ^
+                    <div>Content</div>
+                </main-comp>
+            "},
+            expect![[r#"
+                Some(
+                    Doctype {
+                        value: "",
+                        range: 2:5-2:20,
+                    },
+                )
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_find_node_at_position_deeply_nested() {
+        check_find_node_at_position(
+            indoc! {"
+                <main-comp>
+                    <div>
+                        <if {condition}>
+                            <for {item in items}>
+                                <span>{item}</span>
+                                        ^
+                            </for>
+                        </if>
+                    </div>
+                </main-comp>
+            "},
+            expect![[r#"
+                Some(
+                    TextExpression {
+                        expression: Variable {
+                            name: "item",
+                            range: 5:24-5:28,
+                        },
+                        range: 5:23-5:29,
+                    },
+                )
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_find_node_at_position_void_tag() {
+        check_find_node_at_position(
+            indoc! {"
+                <main-comp>
+                    <p>Some text <br> more text</p>
+                                  ^
+                </main-comp>
+            "},
+            expect![[r#"
+                Some(
+                    NativeHTML {
+                        tag_name: "br",
+                        attributes: [],
+                        range: 2:18-2:22,
+                        children: [],
+                        set_attributes: [],
+                    },
+                )
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_find_node_at_position_multiple_nodes_same_line() {
+        check_find_node_at_position(
+            indoc! {"
+                <main-comp>
+                    <div><span>Hello</span> <strong>World</strong></div>
+                           ^
+                </main-comp>
+            "},
+            expect![[r#"
+                Some(
+                    NativeHTML {
+                        tag_name: "span",
+                        attributes: [],
+                        range: 2:10-2:28,
+                        children: [
+                            Text {
+                                value: "Hello",
+                                range: 2:16-2:21,
+                            },
+                        ],
+                        set_attributes: [],
+                    },
+                )
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_find_node_at_position_multiple_nodes_same_line_second_element() {
+        check_find_node_at_position(
+            indoc! {"
+                <main-comp>
+                    <div><span>Hello</span> <strong>World</strong></div>
+                                               ^
+                </main-comp>
+            "},
+            expect![[r#"
+                Some(
+                    NativeHTML {
+                        tag_name: "strong",
+                        attributes: [],
+                        range: 2:29-2:51,
+                        children: [
+                            Text {
+                                value: "World",
+                                range: 2:37-2:42,
+                            },
+                        ],
+                        set_attributes: [],
+                    },
+                )
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_find_node_at_position_multiple_nodes_same_line_text_between() {
+        check_find_node_at_position(
+            indoc! {"
+                <main-comp>
+                    <div><span>Hello</span> and <strong>World</strong></div>
+                                            ^
+                </main-comp>
+            "},
+            expect![[r#"
+                Some(
+                    Text {
+                        value: " and ",
+                        range: 2:28-2:33,
+                    },
+                )
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_find_node_at_position_very_deep_nesting() {
+        check_find_node_at_position(
+            indoc! {"
+                <main-comp>
+                    <div>
+                        <section>
+                            <article>
+                                <if {condition}>
+                                    <for {item in items}>
+                                        <header>
+                                            <h1>
+                                                <span>
+                                                    <em>Deep {item.name} text</em>
+                                                             ^
+                                                </span>
+                                            </h1>
+                                        </header>
+                                    </for>
+                                </if>
+                            </article>
+                        </section>
+                    </div>
+                </main-comp>
+            "},
+            expect![[r#"
+                Some(
+                    TextExpression {
+                        expression: PropertyAccess {
+                            object: Variable {
+                                name: "item",
+                                range: 10:47-10:51,
+                            },
+                            property: "name",
+                            property_range: 10:52-10:56,
+                            range: 10:47-10:56,
+                        },
+                        range: 10:46-10:57,
+                    },
+                )
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_find_node_at_position_deep_nesting_parent_element() {
+        check_find_node_at_position(
+            indoc! {"
+                <main-comp>
+                    <div>
+                        <section>
+                            <h1>
+                                <em>Deep text</em>
+                                <span>
+                                     ^
+                                    <div></div>
+                                    <em>Deep text</em>
+                                </span>
+                            </h1>
+                        </section>
+                    </div>
+                </main-comp>
+            "},
+            expect![[r#"
+                Some(
+                    NativeHTML {
+                        tag_name: "span",
+                        attributes: [],
+                        range: 6:17-9:24,
+                        children: [
+                            Text {
+                                value: "\n                    ",
+                                range: 6:23-7:21,
+                            },
+                            NativeHTML {
+                                tag_name: "div",
+                                attributes: [],
+                                range: 7:21-7:32,
+                                children: [],
+                                set_attributes: [],
+                            },
+                            Text {
+                                value: "\n                    ",
+                                range: 7:32-8:21,
+                            },
+                            NativeHTML {
+                                tag_name: "em",
+                                attributes: [],
+                                range: 8:21-8:39,
+                                children: [
+                                    Text {
+                                        value: "Deep text",
+                                        range: 8:25-8:34,
+                                    },
+                                ],
+                                set_attributes: [],
+                            },
+                            Text {
+                                value: "\n                ",
+                                range: 8:39-9:17,
+                            },
+                        ],
+                        set_attributes: [],
+                    },
+                )
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_find_node_at_position_inline_elements_with_expressions() {
+        check_find_node_at_position(
+            indoc! {"
+                <main-comp>
+                    <p>Hello <em>{user.name}</em>, welcome to <strong>{site.title}</strong>!</p>
+                                                                  ^
+                </main-comp>
+            "},
+            expect![[r#"
+                Some(
+                    NativeHTML {
+                        tag_name: "strong",
+                        attributes: [],
+                        range: 2:47-2:76,
+                        children: [
+                            TextExpression {
+                                expression: PropertyAccess {
+                                    object: Variable {
+                                        name: "site",
+                                        range: 2:56-2:60,
+                                    },
+                                    property: "title",
+                                    property_range: 2:61-2:66,
+                                    range: 2:56-2:66,
+                                },
+                                range: 2:55-2:67,
+                            },
+                        ],
+                        set_attributes: [],
+                    },
+                )
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_find_node_at_position_component_with_inline_content() {
+        check_find_node_at_position(
+            indoc! {"
+                <main-comp>
+                    <div><user-card {data: user}><span>Content</span></user-card> more text</div>
+                                                        ^
+                </main-comp>
+            "},
+            expect![[r#"
+                Some(
+                    Text {
+                        value: "Content",
+                        range: 2:40-2:47,
+                    },
+                )
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_find_node_at_position_nested_control_structures() {
+        check_find_node_at_position(
+            indoc! {"
+                <main-comp>
+                    <if {users}>
+                        <for {user in users}>
+                            <if {user.active}>
+                                <for {role in user.roles}>
+                                    <span>{role}</span>
+                                       ^
+                                </for>
+                            </if>
+                        </for>
+                    </if>
+                </main-comp>
+            "},
+            expect![[r#"
+                Some(
+                    NativeHTML {
+                        tag_name: "span",
+                        attributes: [],
+                        range: 6:21-6:40,
+                        children: [
+                            TextExpression {
+                                expression: Variable {
+                                    name: "role",
+                                    range: 6:28-6:32,
+                                },
+                                range: 6:27-6:33,
+                            },
+                        ],
+                        set_attributes: [],
+                    },
+                )
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_find_node_at_position_self_closing_with_attributes() {
+        check_find_node_at_position(
+            indoc! {r#"
+                <main-comp>
+                    <div>
+                        <input type="text" placeholder="Enter name" required />
+                               ^
+                        <br/>
+                    </div>
+                </main-comp>
+            "#},
+            expect![[r#"
+                Some(
+                    NativeHTML {
+                        tag_name: "input",
+                        attributes: [
+                            Attribute {
+                                name: "type",
+                                value: "text",
+                                range: 3:16-3:27,
+                                value_range: 3:22-3:26,
+                            },
+                            Attribute {
+                                name: "placeholder",
+                                value: "Enter name",
+                                range: 3:28-3:52,
+                                value_range: 3:41-3:51,
+                            },
+                            Attribute {
+                                name: "required",
+                                value: "",
+                                range: 3:53-3:61,
+                                value_range: 1:1-1:1,
+                            },
+                        ],
+                        range: 3:9-3:64,
+                        children: [],
+                        set_attributes: [],
+                    },
+                )
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_find_node_at_position_between_closing_and_opening_tags() {
+        check_find_node_at_position(
+            indoc! {"
+                <main-comp>
+                    <div>First</div> <div>Second</div>
+                                     ^
+                </main-comp>
+            "},
+            expect![[r#"
+                Some(
+                    NativeHTML {
+                        tag_name: "div",
+                        attributes: [],
+                        range: 2:22-2:39,
+                        children: [
+                            Text {
+                                value: "Second",
+                                range: 2:27-2:33,
+                            },
+                        ],
+                        set_attributes: [],
+                    },
+                )
+            "#]],
+        );
+    }
 
     #[test]
     fn test_depth_first_iterator() {
