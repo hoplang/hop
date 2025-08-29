@@ -119,21 +119,12 @@ impl Program {
         env
     }
 
-    pub fn execute_simple(
-        &self,
-        module_name: &str,
-        component_name: &str,
-        args: Vec<serde_json::Value>,
-    ) -> Result<String> {
-        self.evaluate_component(module_name, component_name, args, &None, None)
-    }
-
     pub fn evaluate_component(
         &self,
         module_name: &str,
         component_name: &str,
         args: Vec<serde_json::Value>,
-        slot_content: &Option<String>,
+        slot_content: Option<&str>,
         additional_classes: Option<&str>,
     ) -> Result<String> {
         let component_map = self
@@ -212,7 +203,7 @@ impl Program {
     pub fn evaluate_node(
         &self,
         node: &HopNode,
-        slot_content: &Option<String>,
+        slot_content: Option<&str>,
         env: &mut Environment<serde_json::Value>,
         current_module: &str,
     ) -> anyhow::Result<String> {
@@ -324,14 +315,14 @@ impl Program {
                     &target_module,
                     component_name,
                     arg_values,
-                    &slot_html,
+                    slot_html.as_deref(),
                     additional_classes,
                 )
             }
 
             HopNode::SlotDefinition { .. } => {
                 // Use the supplied slot content if available, otherwise return empty
-                Ok(slot_content.as_ref().cloned().unwrap_or_default())
+                Ok(slot_content.unwrap_or_default().to_string())
             }
 
             HopNode::NativeHTML {
@@ -530,7 +521,7 @@ impl Program {
             }
             _ => {
                 // For all other node types, use the existing evaluation logic (no slots in entrypoints)
-                self.evaluate_node(node, &None, env, current_module)
+                self.evaluate_node(node, None, env, current_module)
             }
         }
     }
@@ -700,7 +691,7 @@ mod tests {
         }
 
         let actual_output = program
-            .execute_simple("main", "main-comp", args)
+            .evaluate_component("main", "main-comp", args, None, None)
             .expect("Execution failed");
 
         // Normalize output by removing lines that contain only whitespace

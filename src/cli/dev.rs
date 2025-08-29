@@ -54,10 +54,12 @@ fn inject_hot_reload_script(html: &str) -> String {
 fn create_error_page(error: &anyhow::Error) -> String {
     let program = get_ui_program();
 
-    match program.execute_simple(
+    match program.evaluate_component(
         "hop/error_pages",
         "generic-error",
         vec![serde_json::json!(format!("{:#}", error).to_string())],
+        None,
+        None,
     ) {
         Ok(html) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
@@ -67,10 +69,12 @@ fn create_error_page(error: &anyhow::Error) -> String {
 fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
     let program = get_ui_program();
 
-    match program.execute_simple(
+    match program.evaluate_component(
         "hop/error_pages",
         "not-found-error",
         vec![serde_json::json!(path), serde_json::json!(available_routes)],
+        None,
+        None
     ) {
         Ok(html) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
