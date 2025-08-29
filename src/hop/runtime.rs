@@ -37,19 +37,8 @@ pub struct Program {
 
 impl Program {
     pub fn new(asts: Vec<HopAST>, scripts: String, hop_mode: HopMode) -> Self {
-        let mut ast_map = HashMap::new();
-        let mut render_nodes = Vec::new();
-
-        for ast in asts {
-            render_nodes.extend(ast.get_render_nodes().iter().cloned());
-
-            let module_name = ast.name.clone();
-
-            ast_map.insert(module_name.clone(), ast);
-        }
-
         Program {
-            ast_map,
+            ast_map: asts.into_iter().map(|v| (v.name.clone(), v)).collect(),
             scripts,
             hop_mode,
         }
