@@ -137,7 +137,7 @@ impl Server {
     }
 
     fn typecheck_module(&mut self, module_name: &str) {
-        let module = match self.asts.get(module_name) {
+        let ast = match self.asts.get(module_name) {
             Some(module) => module,
             None => return,
         };
@@ -157,7 +157,7 @@ impl Server {
         component_definition_links.clear();
 
         let component_type_info = typecheck(
-            module,
+            ast,
             &self.component_type_information,
             type_errors,
             type_annotations,
@@ -252,8 +252,8 @@ impl Server {
         }
 
         // Check if we're on a component definition
-        if let Some(module) = self.asts.get(module_name) {
-            for component_node in module.get_component_nodes() {
+        if let Some(ast) = self.asts.get(module_name) {
+            for component_node in ast.get_component_nodes() {
                 let is_on_definition = component_node
                     .opening_name_range
                     .contains_position(position)
@@ -283,7 +283,7 @@ impl Server {
     ) -> Option<RenameableSymbol> {
         use crate::hop::ast::HopNode;
 
-        let module = self.asts.get(module_name)?;
+        let ast = self.asts.get(module_name)?;
 
         // Check if we're on a component reference using find_node_at_position
         if let Some(HopNode::ComponentReference {
@@ -291,7 +291,7 @@ impl Server {
             opening_name_range,
             closing_name_range,
             ..
-        }) = module.find_node_at_position(position)
+        }) = ast.find_node_at_position(position)
         {
             // Check if position is on opening tag name
             if opening_name_range.contains_position(position) {
@@ -312,7 +312,7 @@ impl Server {
         }
 
         // Check if we're on a component definition
-        for component_node in module.get_component_nodes() {
+        for component_node in ast.get_component_nodes() {
             if component_node
                 .opening_name_range
                 .contains_position(position)
@@ -346,8 +346,8 @@ impl Server {
     ) -> Vec<RenameLocation> {
         let mut locations = Vec::new();
 
-        if let Some(module) = self.asts.get(definition_module) {
-            if let Some(component_node) = module
+        if let Some(ast) = self.asts.get(definition_module) {
+            if let Some(component_node) = ast
                 .get_component_nodes()
                 .iter()
                 .find(|node| node.name == component_name)

@@ -125,7 +125,7 @@ pub fn typecheck(
 
         for child in children {
             typecheck_node(
-                &child,
+                child,
                 &current_module_type_information,
                 &mut env,
                 type_annotations,
