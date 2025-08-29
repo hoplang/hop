@@ -1,5 +1,6 @@
 use crate::common::{Position, Range, RangeError};
-use crate::hop::parser::{HopAST, parse};
+use crate::hop::ast::HopAST;
+use crate::hop::parser::parse;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
 use crate::hop::typechecker::{

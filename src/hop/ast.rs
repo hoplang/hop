@@ -2,6 +2,14 @@ use crate::common::Range;
 use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct HopAST {
+    pub name: String,
+    pub component_nodes: Vec<ComponentDefinitionNode>,
+    pub import_nodes: Vec<ImportNode>,
+    pub render_nodes: Vec<RenderNode>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Attribute {
     pub name: String,
     pub value: String,
@@ -147,6 +155,24 @@ impl HopNode {
 
     pub fn iter_depth_first(&self) -> DepthFirstIterator {
         DepthFirstIterator::new(self)
+    }
+
+    pub fn range(&self) -> Range {
+        match self {
+            HopNode::Doctype { range, .. } => *range,
+            HopNode::Text { range, .. } => *range,
+            HopNode::TextExpression { range, .. } => *range,
+            HopNode::ComponentReference { range, .. } => *range,
+            HopNode::SlotDefinition { range, .. } => *range,
+            HopNode::SlotReference { range, .. } => *range,
+            HopNode::If { range, .. } => *range,
+            HopNode::For { range, .. } => *range,
+            HopNode::NativeHTML { range, .. } => *range,
+            HopNode::Error { range, .. } => *range,
+            HopNode::XExec { range, .. } => *range,
+            HopNode::XRaw { range, .. } => *range,
+            HopNode::XLoadJson { range, .. } => *range,
+        }
     }
 }
 

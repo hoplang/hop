@@ -1,20 +1,10 @@
 use crate::common::RangeError;
 use crate::dop::{self, DopTokenizer};
-use crate::hop::ast::{ComponentDefinitionNode, DopExprAttribute, HopNode, ImportNode, RenderNode};
+use crate::hop::ast::{ComponentDefinitionNode, DopExprAttribute, HopAST, HopNode, ImportNode, RenderNode, TopLevelHopNode};
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
 use std::collections::HashSet;
-
-use super::ast::TopLevelHopNode;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct HopAST {
-    pub name: String,
-    pub component_nodes: Vec<ComponentDefinitionNode>,
-    pub import_nodes: Vec<ImportNode>,
-    pub render_nodes: Vec<RenderNode>,
-}
 
 pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> HopAST {
     let trees = build_tree(tokenizer, errors);
