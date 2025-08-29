@@ -9,6 +9,8 @@ use crate::hop::typechecker::{
 use crate::tui::source_annotator::Annotation;
 use std::collections::HashMap;
 
+use super::ast::HopNode;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct HoverInfo {
     pub type_str: String,
@@ -251,6 +253,42 @@ impl Server {
             }
         }
 
+        // Check if we're on a native HTML element
+        if let Some(ast) = self.asts.get(module_name) {
+            if let Some(node) = ast.find_node_at_position(position) {
+                if let Some(HopNode::NativeHTML { .. }) = Some(node) {
+                    let is_on_tag_name = node
+                        .opening_name_range()
+                        .is_some_and(|range| range.contains_position(position))
+                        || node
+                            .closing_name_range()
+                            .is_some_and(|range| range.contains_position(position));
+
+                    if is_on_tag_name {
+                        let mut locations = Vec::new();
+
+                        // Add the opening tag name
+                        if let Some(opening_range) = node.opening_name_range() {
+                            locations.push(RenameLocation {
+                                module: module_name.to_string(),
+                                range: opening_range,
+                            });
+                        }
+
+                        // Add the closing tag name if it exists
+                        if let Some(closing_range) = node.closing_name_range() {
+                            locations.push(RenameLocation {
+                                module: module_name.to_string(),
+                                range: closing_range,
+                            });
+                        }
+
+                        return Some(locations);
+                    }
+                }
+            }
+        }
+
         // Check if we're on a component definition
         if let Some(ast) = self.asts.get(module_name) {
             for component_node in ast.get_component_nodes() {
@@ -281,32 +319,25 @@ impl Server {
         module_name: &str,
         position: Position,
     ) -> Option<RenameableSymbol> {
-        use crate::hop::ast::HopNode;
-
         let ast = self.asts.get(module_name)?;
 
-        // Check if we're on a component reference using find_node_at_position
-        if let Some(HopNode::ComponentReference {
-            component,
-            opening_name_range,
-            closing_name_range,
-            ..
-        }) = ast.find_node_at_position(position)
-        {
-            // Check if position is on opening tag name
-            if opening_name_range.contains_position(position) {
-                return Some(RenameableSymbol {
-                    current_name: component.clone(),
-                    range: *opening_name_range,
-                });
-            }
-            // Check if position is on closing tag name
-            if let Some(closing_range) = closing_name_range {
-                if closing_range.contains_position(position) {
-                    return Some(RenameableSymbol {
-                        current_name: component.clone(),
-                        range: *closing_range,
-                    });
+        if let Some(node) = ast.find_node_at_position(position) {
+            if let Some(tag_name) = node.tag_name() {
+                if let Some(opening_range) = node.opening_name_range() {
+                    if opening_range.contains_position(position) {
+                        return Some(RenameableSymbol {
+                            current_name: tag_name.to_string(),
+                            range: opening_range,
+                        });
+                    }
+                }
+                if let Some(closing_range) = node.closing_name_range() {
+                    if closing_range.contains_position(position) {
+                        return Some(RenameableSymbol {
+                            current_name: tag_name.to_string(),
+                            range: closing_range,
+                        });
+                    }
                 }
             }
         }
@@ -789,6 +820,96 @@ mod tests {
                   --> main.hop (line 1, col 13)
                 1 | <main-comp {user: {name: string}}>
                   |             ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_get_rename_locations_from_native_html_opening_tag() {
+        check_rename_locations(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp>
+                    <div>
+                     ^
+                        <span>Content</span>
+                    </div>
+                </main-comp>
+            "#},
+            expect![[r#"
+                Rename
+                  --> main.hop (line 2, col 6)
+                2 |     <div>
+                  |      ^^^
+
+                Rename
+                  --> main.hop (line 4, col 7)
+                4 |     </div>
+                  |       ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_get_rename_locations_from_native_html_closing_tag() {
+        check_rename_locations(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp>
+                    <div>
+                        <span>Content</span>
+                    </div>
+                       ^
+                </main-comp>
+            "#},
+            expect![[r#"
+                Rename
+                  --> main.hop (line 2, col 6)
+                2 |     <div>
+                  |      ^^^
+
+                Rename
+                  --> main.hop (line 4, col 7)
+                4 |     </div>
+                  |       ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_get_rename_locations_from_self_closing_html_tag() {
+        check_rename_locations(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp>
+                    <br />
+                     ^
+                </main-comp>
+            "#},
+            expect![[r#"
+                Rename
+                  --> main.hop (line 2, col 6)
+                2 |     <br />
+                  |      ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_get_renameable_symbol_native_html() {
+        check_renameable_symbol(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp>
+                    <div>Content</div>
+                     ^
+                </main-comp>
+            "#},
+            expect![[r#"
+                Renameable symbol: div
+                  --> main.hop (line 2, col 6)
+                2 |     <div>Content</div>
+                  |      ^^^
             "#]],
         );
     }

@@ -1,13 +1,13 @@
 use crate::common::RangeError;
 use crate::dop::{self, DopTokenizer};
 use crate::hop::ast::{
-    ComponentDefinitionNode, DopExprAttribute, HopAST, HopNode, ImportNode, RenderNode,
+    ComponentDefinitionLocation, ComponentDefinitionNode, DopExprAttribute, HopAST, HopNode, ImportNode, RenderNode,
     TopLevelHopNode,
 };
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> HopAST {
     let trees = build_tree(tokenizer, errors);
@@ -15,13 +15,26 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<RangeEr
     let mut components = Vec::new();
     let mut imports = Vec::new();
     let mut renders = Vec::new();
+    
+    // Track component definitions and imports as we go
+    let mut defined_components = HashSet::new();
+    let mut imported_components = HashMap::new();
 
     for tree in &trees {
-        if let Some(toplevel_node) = construct_top_level_node(tree, errors) {
+        if let Some(toplevel_node) = construct_top_level_node(tree, errors, &defined_components, &imported_components) {
             match toplevel_node {
-                TopLevelHopNode::Import(import_data) => imports.push(import_data),
+                TopLevelHopNode::Import(import_data) => {
+                    // Add to imported components map
+                    imported_components.insert(
+                        import_data.component_attr.value.clone(),
+                        import_data.from_attr.value.clone(),
+                    );
+                    imports.push(import_data);
+                }
                 TopLevelHopNode::ComponentDefinition(component_data) => {
-                    components.push(component_data)
+                    // Add to component definitions set
+                    defined_components.insert(component_data.name.clone());
+                    components.push(component_data);
                 }
                 TopLevelHopNode::Render(render_data) => renders.push(render_data),
             }
@@ -44,6 +57,8 @@ fn is_valid_component_name(name: &str) -> bool {
 fn construct_top_level_node(
     tree: &TokenTree,
     errors: &mut Vec<RangeError>,
+    defined_components: &HashSet<String>,
+    imported_components: &HashMap<String, String>,
 ) -> Option<TopLevelHopNode> {
     let t = &tree.opening_token;
 
@@ -89,7 +104,7 @@ fn construct_top_level_node(
                     let children: Vec<HopNode> = tree
                         .children
                         .iter()
-                        .map(|child| construct_node(child, errors))
+                        .map(|child| construct_node(child, errors, defined_components, imported_components))
                         .collect();
 
                     let file_attr = t.find_attribute("file").or_else(|| {
@@ -130,13 +145,13 @@ fn construct_top_level_node(
                                     child
                                         .children
                                         .iter()
-                                        .map(|c| construct_node(c, errors))
+                                        .map(|c| construct_node(c, errors, defined_components, imported_components))
                                         .collect(),
                                 );
                                 continue; // Don't add to main children
                             }
                         }
-                        main_children.push(construct_node(child, errors));
+                        main_children.push(construct_node(child, errors, defined_components, imported_components));
                     }
 
                     let children = main_children;
@@ -213,11 +228,16 @@ fn construct_top_level_node(
     }
 }
 
-fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
+fn construct_node(
+    tree: &TokenTree, 
+    errors: &mut Vec<RangeError>,
+    defined_components: &HashSet<String>,
+    imported_components: &HashMap<String, String>,
+) -> HopNode {
     let children: Vec<HopNode> = tree
         .children
         .iter()
-        .map(|child| construct_node(child, errors))
+        .map(|child| construct_node(child, errors, defined_components, imported_components))
         .collect();
 
     let t = &tree.opening_token;
@@ -449,6 +469,15 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                         None => Vec::new(),
                     };
 
+                    // Determine definition location
+                    let definition_location = if defined_components.contains(tag_name) {
+                        ComponentDefinitionLocation::SameModule
+                    } else if let Some(module_name) = imported_components.get(tag_name) {
+                        ComponentDefinitionLocation::OtherModule(module_name.clone())
+                    } else {
+                        ComponentDefinitionLocation::Unresolved
+                    };
+
                     HopNode::ComponentReference {
                         component: tag_name.to_string(),
                         opening_name_range: *name_range,
@@ -459,6 +488,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                                 None
                             }
                         }),
+                        definition_location,
                         args: params_attrs,
                         attributes: attributes.clone(),
                         range: tree.range(),
@@ -497,6 +527,14 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
 
                     HopNode::NativeHTML {
                         tag_name: value.clone(),
+                        opening_name_range: *name_range,
+                        closing_name_range: tree.closing_token.as_ref().and_then(|tag| {
+                            if let Token::ClosingTag { name_range, .. } = tag {
+                                Some(*name_range)
+                            } else {
+                                None
+                            }
+                        }),
                         attributes: attributes.clone(),
                         range: tree.range(),
                         children,

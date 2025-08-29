@@ -132,6 +132,16 @@ pub enum TopLevelHopNode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum ComponentDefinitionLocation {
+    /// Could not determine where the component is defined
+    Unresolved,
+    /// Component is defined in the same module
+    SameModule,
+    /// Component is defined in another module (import statement)
+    OtherModule(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum HopNode {
     Doctype {
         value: String,
@@ -149,6 +159,7 @@ pub enum HopNode {
         component: String,
         opening_name_range: Range,
         closing_name_range: Option<Range>,
+        definition_location: ComponentDefinitionLocation,
         args: Vec<DopArgument>,
         attributes: Vec<Attribute>,
         range: Range,
@@ -177,6 +188,8 @@ pub enum HopNode {
     },
     NativeHTML {
         tag_name: String,
+        opening_name_range: Range,
+        closing_name_range: Option<Range>,
         attributes: Vec<Attribute>,
         range: Range,
         children: Vec<HopNode>,
@@ -247,20 +260,47 @@ impl HopNode {
     }
 
     pub fn find_node_at_position(&self, position: Position) -> Option<&HopNode> {
-        // Check if the position is within this node's range
         if !self.range().contains_position(position) {
             return None;
         }
-
-        // Search children first (deepest match wins)
         for child in self.children() {
             if let Some(node) = child.find_node_at_position(position) {
                 return Some(node);
             }
         }
-
-        // If no child contains the position, return this node
         Some(self)
+    }
+
+    pub fn opening_name_range(&self) -> Option<Range> {
+        match self {
+            HopNode::ComponentReference {
+                opening_name_range, ..
+            } => Some(*opening_name_range),
+            HopNode::NativeHTML {
+                opening_name_range, ..
+            } => Some(*opening_name_range),
+            _ => None,
+        }
+    }
+
+    pub fn closing_name_range(&self) -> Option<Range> {
+        match self {
+            HopNode::ComponentReference {
+                closing_name_range, ..
+            } => *closing_name_range,
+            HopNode::NativeHTML {
+                closing_name_range, ..
+            } => *closing_name_range,
+            _ => None,
+        }
+    }
+
+    pub fn tag_name(&self) -> Option<&str> {
+        match self {
+            HopNode::ComponentReference { component, .. } => Some(component),
+            HopNode::NativeHTML { tag_name, .. } => Some(tag_name),
+            _ => None,
+        }
     }
 }
 
@@ -344,6 +384,10 @@ mod tests {
                 Some(
                     NativeHTML {
                         tag_name: "div",
+                        opening_name_range: 2:6-2:9,
+                        closing_name_range: Some(
+                            2:19-2:22,
+                        ),
                         attributes: [],
                         range: 2:5-2:23,
                         children: [
@@ -376,6 +420,7 @@ mod tests {
                         closing_name_range: Some(
                             2:23-2:30,
                         ),
+                        definition_location: Unresolved,
                         args: [],
                         attributes: [],
                         range: 2:5-2:31,
@@ -417,6 +462,8 @@ mod tests {
                             },
                             NativeHTML {
                                 tag_name: "div",
+                                opening_name_range: 3:10-3:13,
+                                closing_name_range: None,
                                 attributes: [],
                                 range: 3:9-3:15,
                                 children: [],
@@ -591,6 +638,8 @@ mod tests {
                 Some(
                     NativeHTML {
                         tag_name: "br",
+                        opening_name_range: 2:19-2:21,
+                        closing_name_range: None,
                         attributes: [],
                         range: 2:18-2:22,
                         children: [],
@@ -614,6 +663,10 @@ mod tests {
                 Some(
                     NativeHTML {
                         tag_name: "span",
+                        opening_name_range: 2:11-2:15,
+                        closing_name_range: Some(
+                            2:23-2:27,
+                        ),
                         attributes: [],
                         range: 2:10-2:28,
                         children: [
@@ -642,6 +695,10 @@ mod tests {
                 Some(
                     NativeHTML {
                         tag_name: "strong",
+                        opening_name_range: 2:30-2:36,
+                        closing_name_range: Some(
+                            2:44-2:50,
+                        ),
                         attributes: [],
                         range: 2:29-2:51,
                         children: [
@@ -744,6 +801,10 @@ mod tests {
                 Some(
                     NativeHTML {
                         tag_name: "span",
+                        opening_name_range: 6:18-6:22,
+                        closing_name_range: Some(
+                            9:19-9:23,
+                        ),
                         attributes: [],
                         range: 6:17-9:24,
                         children: [
@@ -753,6 +814,10 @@ mod tests {
                             },
                             NativeHTML {
                                 tag_name: "div",
+                                opening_name_range: 7:22-7:25,
+                                closing_name_range: Some(
+                                    7:28-7:31,
+                                ),
                                 attributes: [],
                                 range: 7:21-7:32,
                                 children: [],
@@ -764,6 +829,10 @@ mod tests {
                             },
                             NativeHTML {
                                 tag_name: "em",
+                                opening_name_range: 8:22-8:24,
+                                closing_name_range: Some(
+                                    8:36-8:38,
+                                ),
                                 attributes: [],
                                 range: 8:21-8:39,
                                 children: [
@@ -799,6 +868,10 @@ mod tests {
                 Some(
                     NativeHTML {
                         tag_name: "strong",
+                        opening_name_range: 2:48-2:54,
+                        closing_name_range: Some(
+                            2:69-2:75,
+                        ),
                         attributes: [],
                         range: 2:47-2:76,
                         children: [
@@ -863,6 +936,10 @@ mod tests {
                 Some(
                     NativeHTML {
                         tag_name: "span",
+                        opening_name_range: 6:22-6:26,
+                        closing_name_range: Some(
+                            6:35-6:39,
+                        ),
                         attributes: [],
                         range: 6:21-6:40,
                         children: [
@@ -897,6 +974,8 @@ mod tests {
                 Some(
                     NativeHTML {
                         tag_name: "input",
+                        opening_name_range: 3:10-3:15,
+                        closing_name_range: None,
                         attributes: [
                             Attribute {
                                 name: "type",
@@ -939,6 +1018,10 @@ mod tests {
                 Some(
                     NativeHTML {
                         tag_name: "div",
+                        opening_name_range: 2:23-2:26,
+                        closing_name_range: Some(
+                            2:35-2:38,
+                        ),
                         attributes: [],
                         range: 2:22-2:39,
                         children: [
@@ -964,6 +1047,8 @@ mod tests {
 
         let span_node = HopNode::NativeHTML {
             tag_name: "span".to_string(),
+            opening_name_range: Range::default(),
+            closing_name_range: Some(Range::default()),
             attributes: vec![],
             range: Range::default(),
             children: vec![text_node],
@@ -972,6 +1057,8 @@ mod tests {
 
         let p_node = HopNode::NativeHTML {
             tag_name: "p".to_string(),
+            opening_name_range: Range::default(),
+            closing_name_range: Some(Range::default()),
             attributes: vec![],
             range: Range::default(),
             children: vec![],
@@ -980,6 +1067,8 @@ mod tests {
 
         let div_node = HopNode::NativeHTML {
             tag_name: "div".to_string(),
+            opening_name_range: Range::default(),
+            closing_name_range: Some(Range::default()),
             attributes: vec![],
             range: Range::default(),
             children: vec![p_node, span_node],
