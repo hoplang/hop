@@ -1,4 +1,4 @@
-use crate::common::{Position, Range, RangeError};
+use crate::common::{Range, RangeError};
 use crate::dop::{DopType, infer_type_from_json_file, is_subtype, typecheck_expr};
 use crate::hop::ast::HopAST;
 use crate::hop::ast::{ComponentDefinitionNode, HopNode, ImportNode, RenderNode};
@@ -12,33 +12,22 @@ pub struct TypeAnnotation {
     pub name: String,
 }
 
+/// A definition link contains information of where a symbol is defined.
 #[derive(Debug, Clone, PartialEq)]
-pub struct ComponentDefinitionLink {
-    pub reference_opening_name_range: Range,
-    pub reference_closing_name_range: Option<Range>,
-    pub definition_module: String,
-    pub definition_component_name: String,
-    pub definition_opening_name_range: Range,
-    definition_closing_name_range: Option<Range>,
-}
-
-impl ComponentDefinitionLink {
-    pub fn reference_name_contains_position(&self, position: Position) -> bool {
-        self.reference_opening_name_range
-            .contains_position(position)
-            || self
-                .reference_closing_name_range
-                .is_some_and(|range| range.contains_position(position))
-    }
+pub struct DefinitionLink {
+    pub module: String,
+    pub range: Range,
+    pub reference_range: Range,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentTypeInformation {
+    // Track where the component is defined to be able to create DefinitionLinks
+    // for ComponentReferences.
     definition_module: String,
+    definition_range: Range,
     parameter_types: BTreeMap<String, DopType>,
     slots: Vec<String>,
-    definition_opening_name_range: Range,
-    definition_closing_name_range: Option<Range>,
 }
 
 pub fn typecheck(
@@ -46,7 +35,7 @@ pub fn typecheck(
     import_type_information: &HashMap<String, HashMap<String, ComponentTypeInformation>>,
     errors: &mut Vec<RangeError>,
     type_annotations: &mut Vec<TypeAnnotation>,
-    component_definition_links: &mut Vec<ComponentDefinitionLink>,
+    definition_links: &mut Vec<DefinitionLink>,
 ) -> HashMap<String, ComponentTypeInformation> {
     let mut current_module_type_information = HashMap::new();
 
@@ -113,7 +102,7 @@ pub fn typecheck(
                 &current_module_type_information,
                 &mut env,
                 type_annotations,
-                component_definition_links,
+                definition_links,
                 errors,
             );
         }
@@ -134,8 +123,7 @@ pub fn typecheck(
                 parameter_types,
                 slots: slots.clone(),
                 definition_module: module.name.clone(),
-                definition_opening_name_range: *opening_name_range,
-                definition_closing_name_range: *closing_name_range,
+                definition_range: *opening_name_range,
             },
         );
 
@@ -149,7 +137,7 @@ pub fn typecheck(
                     &current_module_type_information,
                     &mut env,
                     type_annotations,
-                    component_definition_links,
+                    definition_links,
                     errors,
                 );
             }
@@ -167,7 +155,7 @@ pub fn typecheck(
                 &current_module_type_information,
                 &mut env,
                 type_annotations,
-                component_definition_links,
+                definition_links,
                 errors,
             );
         }
@@ -181,7 +169,7 @@ fn typecheck_node(
     component_info: &HashMap<String, ComponentTypeInformation>,
     env: &mut Environment<DopType>,
     annotations: &mut Vec<TypeAnnotation>,
-    component_definition_links: &mut Vec<ComponentDefinitionLink>,
+    component_definition_links: &mut Vec<DefinitionLink>,
     errors: &mut Vec<RangeError>,
 ) {
     match node {
@@ -218,7 +206,7 @@ fn typecheck_node(
         }
         HopNode::ComponentReference {
             component,
-            args: params,
+            args,
             children,
             opening_name_range,
             closing_name_range,
@@ -227,18 +215,22 @@ fn typecheck_node(
         } => {
             if let Some(comp_info) = component_info.get(component) {
                 // Add definition link for go-to-definition
-                component_definition_links.push(ComponentDefinitionLink {
-                    reference_opening_name_range: *opening_name_range,
-                    reference_closing_name_range: *closing_name_range,
-                    definition_module: comp_info.definition_module.clone(),
-                    definition_component_name: component.clone(),
-                    definition_opening_name_range: comp_info.definition_opening_name_range,
-                    definition_closing_name_range: comp_info.definition_closing_name_range,
+                component_definition_links.push(DefinitionLink {
+                    reference_range: *opening_name_range,
+                    module: comp_info.definition_module.clone(),
+                    range: comp_info.definition_range,
                 });
+                if let Some(range) = closing_name_range {
+                    component_definition_links.push(DefinitionLink {
+                        reference_range: *range,
+                        module: comp_info.definition_module.clone(),
+                        range: comp_info.definition_range,
+                    });
+                }
 
                 // Validate named arguments against parameter types
                 let provided_args: std::collections::HashSet<_> =
-                    params.iter().map(|arg| &arg.var_name.value).collect();
+                    args.iter().map(|arg| &arg.var_name.value).collect();
                 let expected_params: std::collections::HashSet<_> =
                     comp_info.parameter_types.keys().collect();
 
@@ -259,7 +251,7 @@ fn typecheck_node(
                 }
 
                 // Check each provided argument against its corresponding parameter type
-                for arg in params {
+                for arg in args {
                     if let Some(expected_type) = comp_info.parameter_types.get(&arg.var_name.value)
                     {
                         let expr_type =

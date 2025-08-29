@@ -4,7 +4,7 @@ use crate::hop::parser::parse;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
 use crate::hop::typechecker::{
-    ComponentDefinitionLink, ComponentTypeInformation, TypeAnnotation, typecheck,
+    ComponentTypeInformation, DefinitionLink, TypeAnnotation, typecheck,
 };
 use crate::tui::source_annotator::Annotation;
 use std::collections::HashMap;
@@ -115,7 +115,7 @@ pub struct Server {
     asts: HashMap<String, HopAST>,
     component_type_information: HashMap<String, HashMap<String, ComponentTypeInformation>>,
     type_annotations: HashMap<String, Vec<TypeAnnotation>>,
-    component_definition_links: HashMap<String, Vec<ComponentDefinitionLink>>,
+    definition_links: HashMap<String, Vec<DefinitionLink>>,
     parse_errors: HashMap<String, Vec<RangeError>>,
     type_errors: HashMap<String, Vec<RangeError>>,
     topo_sorter: TopoSorter,
@@ -127,7 +127,7 @@ impl Server {
             asts: HashMap::new(),
             component_type_information: HashMap::new(),
             type_annotations: HashMap::new(),
-            component_definition_links: HashMap::new(),
+            definition_links: HashMap::new(),
             parse_errors: HashMap::new(),
             type_errors: HashMap::new(),
             topo_sorter: TopoSorter::new(),
@@ -149,21 +149,21 @@ impl Server {
             .type_annotations
             .entry(module_name.to_string())
             .or_default();
-        let component_definition_links = self
-            .component_definition_links
+        let definition_links = self
+            .definition_links
             .entry(module_name.to_string())
             .or_default();
 
         type_errors.clear();
         type_annotations.clear();
-        component_definition_links.clear();
+        definition_links.clear();
 
         let component_type_info = typecheck(
             ast,
             &self.component_type_information,
             type_errors,
             type_annotations,
-            component_definition_links,
+            definition_links,
         );
         self.component_type_information
             .insert(module_name.to_string(), component_type_info);
@@ -226,13 +226,13 @@ impl Server {
         module_name: &str,
         position: Position,
     ) -> Option<DefinitionLocation> {
-        self.component_definition_links
+        self.definition_links
             .get(module_name)?
             .iter()
-            .find(|link| link.reference_name_contains_position(position))
+            .find(|link| link.reference_range.contains_position(position))
             .map(|link| DefinitionLocation {
-                module: link.definition_module.clone(),
-                range: link.definition_opening_name_range,
+                module: link.module.clone(),
+                range: link.range,
             })
     }
 
@@ -611,6 +611,34 @@ mod tests {
                 <main-comp>
                   <hello-world />
                    ^
+                </main-comp>
+            "#},
+            expect![[r#"
+                Definition
+                  --> hop/components.hop (line 1, col 2)
+                1 | <hello-world>
+                  |  ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_get_definition_from_component_reference_closing() {
+        check_definition_location(
+            indoc! {r#"
+                -- hop/components.hop --
+                <hello-world>
+                  <h1>Hello World</h1>
+                </hello-world>
+
+                -- main.hop --
+                <import component="hello-world" from="hop/components" />
+
+                <main-comp>
+                  <hello-world>
+
+                  </hello-world>
+                     ^
                 </main-comp>
             "#},
             expect![[r#"
