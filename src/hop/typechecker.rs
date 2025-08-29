@@ -38,7 +38,9 @@ pub struct ComponentTypeInformation {
     // for ComponentReferences.
     definition_module: String,
     definition_range: Range,
+    // Track the parameter types for the component.
     parameter_types: BTreeMap<String, DopType>,
+    // Track the slot names of the component.
     slots: Vec<String>,
 }
 
