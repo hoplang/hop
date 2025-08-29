@@ -44,9 +44,11 @@ pub struct ComponentTypeInformation {
     has_slot: bool,
 }
 
+pub type ModuleTypeInformation = HashMap<String, ComponentTypeInformation>;
+
 pub fn typecheck(
     module: &HopAST,
-    import_type_information: &HashMap<String, HashMap<String, ComponentTypeInformation>>,
+    import_type_information: &HashMap<String, ModuleTypeInformation>,
     errors: &mut Vec<RangeError>,
     type_annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,

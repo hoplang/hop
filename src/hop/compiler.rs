@@ -13,7 +13,6 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Res
     let mut type_results: HashMap<String, HashMap<String, ComponentTypeInformation>> =
         HashMap::new();
     let mut module_sorter = TopoSorter::new();
-    let mut script_collector = ScriptCollector::new();
 
     // Parse all modules
     let mut error_formatter = ErrorFormatter::new();
@@ -71,12 +70,11 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Res
         type_results.insert(module_name.clone(), type_info);
 
         // Process scripts from this module
-        script_collector.process_module(&module_name, module.get_component_definition_nodes());
     }
 
     if error_formatter.has_errors() {
         anyhow::bail!(error_formatter.format_all_errors());
     }
 
-    Ok(Program::new(modules, script_collector.build(), hop_mode))
+    Ok(Program::new(modules, hop_mode))
 }

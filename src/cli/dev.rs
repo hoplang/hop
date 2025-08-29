@@ -74,7 +74,7 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
         "not-found-error",
         vec![serde_json::json!(path), serde_json::json!(available_routes)],
         None,
-        None
+        None,
     ) {
         Ok(html) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),

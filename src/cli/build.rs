@@ -89,7 +89,7 @@ pub fn execute(
     if let Some(script_file_name) = script_file {
         let combined_script = program.get_scripts();
         let script_path = output_dir.join(script_file_name);
-        fs::write(&script_path, combined_script)
+        fs::write(&script_path, &combined_script)
             .with_context(|| format!("Failed to write script file {}", script_path.display()))?;
         file_outputs.push((
             format!("{}", script_path.to_string_lossy()),

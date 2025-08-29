@@ -9,6 +9,8 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::process::{Command, Stdio};
 
+use super::script_collector::ScriptCollector;
+
 /// HopMode influences the runtime value of the global variable HOP_MODE which
 /// will be set to 'build' when running `hop build` and 'dev' when running
 /// `hop dev`.
@@ -30,29 +32,31 @@ impl HopMode {
 /// Program represents a compiled hop program that can execute components and entrypoints
 #[derive(Clone)]
 pub struct Program {
-    ast_map: HashMap<String, HopAST>,
-    scripts: String,
+    asts: HashMap<String, HopAST>,
     hop_mode: HopMode,
 }
 
 impl Program {
-    pub fn new(asts: Vec<HopAST>, scripts: String, hop_mode: HopMode) -> Self {
+    pub fn new(asts: Vec<HopAST>, hop_mode: HopMode) -> Self {
         Program {
-            ast_map: asts.into_iter().map(|v| (v.name.clone(), v)).collect(),
-            scripts,
+            asts: asts.into_iter().map(|v| (v.name.clone(), v)).collect(),
             hop_mode,
         }
     }
 
-    pub fn get_scripts(&self) -> &str {
-        &self.scripts
+    pub fn get_scripts(&self) -> String {
+        let mut script_collector = ScriptCollector::new();
+        for ast in self.asts.values() {
+            script_collector.process_module(ast);
+        }
+        script_collector.build()
     }
 
     /// Get all file_attr values from render nodes across all modules
     /// I.e. files specified in <render file="index.html">
     pub fn get_render_file_paths(&self) -> Vec<String> {
         let mut result = Vec::new();
-        for ast in self.ast_map.values() {
+        for ast in self.asts.values() {
             for node in ast.get_render_nodes() {
                 result.push(node.file_attr.value.clone())
             }
@@ -63,7 +67,7 @@ impl Program {
     /// Render the content for a specific file path
     pub fn render_file(&self, file_path: &str) -> Result<String> {
         // Find the render node with the matching file_attr.value
-        for ast in self.ast_map.values() {
+        for ast in self.asts.values() {
             for node in ast.get_render_nodes() {
                 if node.file_attr.value == file_path {
                     let mut env = Self::init_environment(self.hop_mode);
@@ -101,7 +105,7 @@ impl Program {
         additional_classes: Option<&str>,
     ) -> Result<String> {
         let ast = self
-            .ast_map
+            .asts
             .get(module_name)
             .ok_or_else(|| anyhow::anyhow!("Module '{}' not found", module_name))?;
 
@@ -254,7 +258,7 @@ impl Program {
                     .expect("Could not find definition module for component reference");
 
                 let target_component = self
-                    .ast_map
+                    .asts
                     .get(target_module)
                     .and_then(|ast| ast.get_component_definition(component_name))
                     .expect("Could not find target component for component reference");
@@ -653,7 +657,7 @@ mod tests {
             }
         }
 
-        let program = Program::new(modules, String::new(), HopMode::Build);
+        let program = Program::new(modules, HopMode::Build);
 
         let data: serde_json::Value =
             serde_json::from_str(data_json).expect("Failed to parse JSON data");

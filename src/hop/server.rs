@@ -3,13 +3,12 @@ use crate::hop::ast::HopAST;
 use crate::hop::parser::parse;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
-use crate::hop::typechecker::{
-    ComponentTypeInformation, DefinitionLink, TypeAnnotation, typecheck,
-};
+use crate::hop::typechecker::{DefinitionLink, TypeAnnotation, typecheck};
 use crate::tui::source_annotator::Annotated;
 use std::collections::HashMap;
 
 use super::ast::HopNode;
+use super::typechecker::ModuleTypeInformation;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct HoverInfo {
@@ -128,7 +127,7 @@ impl Annotated for RenameableSymbol {
 
 pub struct Server {
     asts: HashMap<String, HopAST>,
-    component_type_information: HashMap<String, HashMap<String, ComponentTypeInformation>>,
+    type_information: HashMap<String, ModuleTypeInformation>,
     type_annotations: HashMap<String, Vec<TypeAnnotation>>,
     definition_links: HashMap<String, Vec<DefinitionLink>>,
     parse_errors: HashMap<String, Vec<RangeError>>,
@@ -140,7 +139,7 @@ impl Server {
     pub fn new() -> Self {
         Server {
             asts: HashMap::new(),
-            component_type_information: HashMap::new(),
+            type_information: HashMap::new(),
             type_annotations: HashMap::new(),
             definition_links: HashMap::new(),
             parse_errors: HashMap::new(),
@@ -175,12 +174,12 @@ impl Server {
 
         let component_type_info = typecheck(
             ast,
-            &self.component_type_information,
+            &self.type_information,
             type_errors,
             type_annotations,
             definition_links,
         );
-        self.component_type_information
+        self.type_information
             .insert(module_name.to_string(), component_type_info);
     }
 
@@ -201,13 +200,13 @@ impl Server {
         self.parse_module(module_name.as_str(), source_code);
 
         self.topo_sorter.add_node(module_name.clone());
-        self.topo_sorter.clear_dependencies(&module_name);
 
         let ast = match self.asts.get(&module_name) {
             Some(module) => module,
-            None => return vec![],
+            None => unreachable!(),
         };
 
+        self.topo_sorter.clear_dependencies(&module_name);
         for import_node in ast.get_import_nodes() {
             self.topo_sorter
                 .add_dependency(&module_name, &import_node.from_attr.value);
@@ -376,8 +375,8 @@ impl Server {
             }
         }
 
-        // Find all import statements that import this component
         for (module_name, ast) in &self.asts {
+            // Find all import statements that import this component
             locations.extend(
                 ast.get_import_nodes()
                     .iter()
@@ -390,17 +389,22 @@ impl Server {
                     }),
             );
 
+            // Find all component references that references this component
             locations.extend(
                 ast.iter_all_nodes()
                     .filter(|node| {
-                        matches!(
-                            node,
-                            HopNode::ComponentReference {
-                                component,
-                                definition_module: Some(defined_in),
-                                ..
-                            } if defined_in == definition_module && component == component_name
-                        )
+                        if let HopNode::ComponentReference {
+                            component,
+                            definition_module: reference_definition_module,
+                            ..
+                        } = node
+                        {
+                            return reference_definition_module
+                                .as_ref()
+                                .is_some_and(|d| d == definition_module)
+                                && component == component_name;
+                        }
+                        false
                     })
                     .flat_map(|node| node.name_ranges())
                     .map(|range| RenameLocation {
