@@ -49,7 +49,6 @@ pub fn typecheck(
     component_definition_links: &mut Vec<ComponentDefinitionLink>,
 ) -> HashMap<String, ComponentTypeInformation> {
     let mut current_module_type_information = HashMap::new();
-    let mut imported_components: HashMap<String, Range> = HashMap::new();
 
     for ImportNode {
         from_attr,
@@ -63,16 +62,7 @@ pub fn typecheck(
 
         if let Some(module_type_info) = import_type_information.get(from_module) {
             if let Some(comp_info) = module_type_info.get(component_name) {
-                if current_module_type_information.contains_key(component_name) {
-                    errors.push(RangeError::component_is_already_defined(
-                        component_name,
-                        *range,
-                    ));
-                } else {
-                    current_module_type_information
-                        .insert(component_name.clone(), comp_info.clone());
-                    imported_components.insert(component_name.clone(), *range);
-                }
+                current_module_type_information.insert(component_name.clone(), comp_info.clone());
             } else {
                 errors.push(RangeError::undeclared_component(
                     from_module,
@@ -97,17 +87,11 @@ pub fn typecheck(
         children,
         preview,
         slots,
-        range,
         opening_name_range,
         closing_name_range,
         ..
     } in module.get_component_nodes()
     {
-        if current_module_type_information.contains_key(name) {
-            errors.push(RangeError::component_is_already_defined(name, *range));
-            continue;
-        }
-
         let mut parameter_types = BTreeMap::new();
 
         for param in params {
@@ -670,84 +654,6 @@ mod tests {
                 1 | <main-comp>
                 2 |     <h1>Hello, <main-comp></main-comp>!</h1>
                   |                ^^^^^^^^^^^^^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    // When a component is defined twice, the typechecker outputs an error.
-    #[test]
-    fn test_component_defined_twice() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                <foo-comp>
-                </foo-comp>
-
-                <foo-comp>
-                </foo-comp>
-            "#},
-            expect![[r#"
-                error: Component foo-comp is already defined
-                  --> main.hop (line 4, col 1)
-                3 | 
-                4 | <foo-comp>
-                  | ^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    // When a component is defined with the same name as an imported component, the typechecker outputs an error.
-    #[test]
-    fn test_component_name_conflicts_with_import() {
-        check(
-            indoc! {r#"
-                -- other.hop --
-                <foo-comp>
-                </foo-comp>
-
-                -- main.hop --
-                <import component="foo-comp" from="other">
-
-                <foo-comp>
-                </foo-comp>
-
-                <bar-comp>
-                	<foo-comp/>
-                </bar-comp>
-            "#},
-            expect![[r#"
-                error: Component foo-comp is already defined
-                  --> main.hop (line 3, col 1)
-                2 | 
-                3 | <foo-comp>
-                  | ^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    // When a component is imported twice, the typechecker outputs an error.
-    #[test]
-    fn test_component_imported_twice() {
-        check(
-            indoc! {r#"
-                -- other.hop --
-                <foo-comp>
-                </foo-comp>
-
-                -- main.hop --
-                <import component="foo-comp" from="other">
-                <import component="foo-comp" from="other">
-
-                <main-comp>
-                	<foo-comp></foo-comp>
-                </main-comp>
-            "#},
-            expect![[r#"
-                error: Component foo-comp is already defined
-                  --> main.hop (line 2, col 1)
-                1 | <import component="foo-comp" from="other">
-                2 | <import component="foo-comp" from="other">
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }

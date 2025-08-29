@@ -1,8 +1,8 @@
 use crate::common::RangeError;
 use crate::dop::{self, DopTokenizer};
 use crate::hop::ast::{
-    ComponentDefinitionLocation, ComponentDefinitionNode, DopExprAttribute, HopAST, HopNode, ImportNode, RenderNode,
-    TopLevelHopNode,
+    ComponentDefinitionLocation, ComponentDefinitionNode, DopExprAttribute, HopAST, HopNode,
+    ImportNode, RenderNode, TopLevelHopNode,
 };
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::Token;
@@ -15,25 +15,43 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<RangeEr
     let mut components = Vec::new();
     let mut imports = Vec::new();
     let mut renders = Vec::new();
-    
+
     // Track component definitions and imports as we go
     let mut defined_components = HashSet::new();
     let mut imported_components = HashMap::new();
 
     for tree in &trees {
-        if let Some(toplevel_node) = construct_top_level_node(tree, errors, &defined_components, &imported_components) {
+        if let Some(toplevel_node) =
+            construct_top_level_node(tree, errors, &defined_components, &imported_components)
+        {
             match toplevel_node {
                 TopLevelHopNode::Import(import_data) => {
-                    // Add to imported components map
-                    imported_components.insert(
-                        import_data.component_attr.value.clone(),
-                        import_data.from_attr.value.clone(),
-                    );
+                    if imported_components.contains_key(&import_data.component_attr.value) {
+                        errors.push(RangeError::component_is_already_defined(
+                            &import_data.component_attr.value,
+                            import_data.component_attr.value_range,
+                        ));
+                    } else {
+                        imported_components.insert(
+                            import_data.component_attr.value.clone(),
+                            import_data.from_attr.value.clone(),
+                        );
+                    }
                     imports.push(import_data);
                 }
                 TopLevelHopNode::ComponentDefinition(component_data) => {
-                    // Add to component definitions set
-                    defined_components.insert(component_data.name.clone());
+                    // Check if component is already defined or imported
+                    if defined_components.contains(&component_data.name)
+                        || imported_components.contains_key(&component_data.name)
+                    {
+                        errors.push(RangeError::component_is_already_defined(
+                            &component_data.name,
+                            component_data.opening_name_range,
+                        ));
+                    } else {
+                        // Add to component definitions set
+                        defined_components.insert(component_data.name.clone());
+                    }
                     components.push(component_data);
                 }
                 TopLevelHopNode::Render(render_data) => renders.push(render_data),
@@ -104,7 +122,9 @@ fn construct_top_level_node(
                     let children: Vec<HopNode> = tree
                         .children
                         .iter()
-                        .map(|child| construct_node(child, errors, defined_components, imported_components))
+                        .map(|child| {
+                            construct_node(child, errors, defined_components, imported_components)
+                        })
                         .collect();
 
                     let file_attr = t.find_attribute("file").or_else(|| {
@@ -145,13 +165,25 @@ fn construct_top_level_node(
                                     child
                                         .children
                                         .iter()
-                                        .map(|c| construct_node(c, errors, defined_components, imported_components))
+                                        .map(|c| {
+                                            construct_node(
+                                                c,
+                                                errors,
+                                                defined_components,
+                                                imported_components,
+                                            )
+                                        })
                                         .collect(),
                                 );
                                 continue; // Don't add to main children
                             }
                         }
-                        main_children.push(construct_node(child, errors, defined_components, imported_components));
+                        main_children.push(construct_node(
+                            child,
+                            errors,
+                            defined_components,
+                            imported_components,
+                        ));
                     }
 
                     let children = main_children;
@@ -229,7 +261,7 @@ fn construct_top_level_node(
 }
 
 fn construct_node(
-    tree: &TokenTree, 
+    tree: &TokenTree,
     errors: &mut Vec<RangeError>,
     defined_components: &HashSet<String>,
     imported_components: &HashMap<String, String>,
@@ -1244,6 +1276,71 @@ mod tests {
                 slot-default
                 render
                 	with-default
+            "#]],
+        );
+    }
+
+    // When a component is imported twice, the typechecker outputs an error.
+    #[test]
+    fn test_parser_component_imported_twice() {
+        check(
+            indoc! {r#"
+                <import component="foo-comp" from="other">
+                <import component="foo-comp" from="other">
+
+                <main-comp>
+                	<foo-comp></foo-comp>
+                </main-comp>
+            "#},
+            expect![[r#"
+                error: Component foo-comp is already defined
+                1 | <import component="foo-comp" from="other">
+                2 | <import component="foo-comp" from="other">
+                  |                    ^^^^^^^^
+            "#]],
+        );
+    }
+
+    // When a component is defined twice, the parser outputs an error.
+    #[test]
+    fn test_parser_duplicate_component_definition() {
+        check(
+            indoc! {r#"
+                <foo-comp>
+                </foo-comp>
+
+                <foo-comp>
+                </foo-comp>
+            "#},
+            expect![[r#"
+                error: Component foo-comp is already defined
+                3 | 
+                4 | <foo-comp>
+                  |  ^^^^^^^^
+            "#]],
+        );
+    }
+
+    // When a component is defined with the same name as an imported component, the parser
+    // outputs an error.
+    #[test]
+    fn test_component_name_conflicts_with_import() {
+        check(
+            indoc! {r#"
+                <import component="foo-comp" from="other">
+
+                <foo-comp>
+                </foo-comp>
+
+                <bar-comp>
+                	<foo-comp/>
+                </bar-comp>
+            "#},
+            expect![[r#"
+                error: Component foo-comp is already defined
+                2 | 
+                3 | <foo-comp>
+                  |  ^^^^^^^^
             "#]],
         );
     }
