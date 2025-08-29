@@ -606,7 +606,7 @@ mod tests {
             efmt.add_errors("test".to_string(), input.to_string(), errors);
             efmt.format_all_errors()
         } else {
-            for component in module.component_nodes {
+            for component in module.get_component_nodes() {
                 if component.name == "main-comp" {
                     return expected.assert_eq(&format_component_definition(&component));
                 }

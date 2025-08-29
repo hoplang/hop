@@ -281,49 +281,53 @@ impl Server {
         module_name: &str,
         position: Position,
     ) -> Option<RenameableSymbol> {
-        let component_definition_links = self.component_definition_links.get(module_name)?;
+        use crate::hop::ast::HopNode;
 
-        // Check if we're on a component reference
-        for link in component_definition_links {
-            if link
-                .reference_opening_name_range
-                .contains_position(position)
-            {
+        let module = self.asts.get(module_name)?;
+
+        // Check if we're on a component reference using find_node_at_position
+        if let Some(HopNode::ComponentReference {
+            component,
+            opening_name_range,
+            closing_name_range,
+            ..
+        }) = module.find_node_at_position(position)
+        {
+            // Check if position is on opening tag name
+            if opening_name_range.contains_position(position) {
                 return Some(RenameableSymbol {
-                    current_name: link.definition_component_name.clone(),
-                    range: link.reference_opening_name_range,
+                    current_name: component.clone(),
+                    range: *opening_name_range,
                 });
             }
-            if link
-                .reference_closing_name_range
-                .is_some_and(|r| r.contains_position(position))
-            {
-                return Some(RenameableSymbol {
-                    current_name: link.definition_component_name.clone(),
-                    range: link.reference_closing_name_range.unwrap(),
-                });
+            // Check if position is on closing tag name
+            if let Some(closing_range) = closing_name_range {
+                if closing_range.contains_position(position) {
+                    return Some(RenameableSymbol {
+                        current_name: component.clone(),
+                        range: *closing_range,
+                    });
+                }
             }
         }
 
         // Check if we're on a component definition
-        if let Some(module) = self.asts.get(module_name) {
-            for component_node in module.get_component_nodes() {
-                if component_node
-                    .opening_name_range
-                    .contains_position(position)
-                {
+        for component_node in module.get_component_nodes() {
+            if component_node
+                .opening_name_range
+                .contains_position(position)
+            {
+                return Some(RenameableSymbol {
+                    current_name: component_node.name.clone(),
+                    range: component_node.opening_name_range,
+                });
+            }
+            if let Some(closing_range) = component_node.closing_name_range {
+                if closing_range.contains_position(position) {
                     return Some(RenameableSymbol {
                         current_name: component_node.name.clone(),
-                        range: component_node.opening_name_range,
+                        range: closing_range,
                     });
-                }
-                if let Some(closing_range) = component_node.closing_name_range {
-                    if closing_range.contains_position(position) {
-                        return Some(RenameableSymbol {
-                            current_name: component_node.name.clone(),
-                            range: closing_range,
-                        });
-                    }
                 }
             }
         }

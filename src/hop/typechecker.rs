@@ -585,7 +585,7 @@ mod tests {
             } else {
                 module_type_results.insert(module.name.clone(), type_result.clone());
 
-                for c in module.component_nodes {
+                for c in module.get_component_nodes() {
                     let component_info =
                         type_result.get(&c.name).expect("Component info not found");
                     let param_types_str = component_info
