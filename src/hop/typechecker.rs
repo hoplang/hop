@@ -77,7 +77,6 @@ pub fn typecheck(
         preview,
         slots,
         opening_name_range,
-        closing_name_range,
         ..
     } in module.get_component_definition_nodes()
     {
