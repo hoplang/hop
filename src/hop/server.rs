@@ -125,6 +125,7 @@ impl Annotated for RenameableSymbol {
     }
 }
 
+#[derive(Default)]
 pub struct Server {
     asts: HashMap<String, HopAST>,
     type_information: HashMap<String, ModuleTypeInformation>,
@@ -136,18 +137,6 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new() -> Self {
-        Server {
-            asts: HashMap::new(),
-            type_information: HashMap::new(),
-            type_annotations: HashMap::new(),
-            definition_links: HashMap::new(),
-            parse_errors: HashMap::new(),
-            type_errors: HashMap::new(),
-            topo_sorter: TopoSorter::new(),
-        }
-    }
-
     pub fn has_module(&self, module_name: &str) -> bool {
         self.asts.contains_key(module_name)
     }
@@ -455,7 +444,7 @@ mod tests {
     use simple_txtar::Archive;
 
     fn server_from_archive(archive: &Archive) -> Server {
-        let mut server = Server::new();
+        let mut server = Server::default();
         for file in archive.iter() {
             let module_name = file.name.replace(".hop", "");
             server.update_module(module_name, &file.content);

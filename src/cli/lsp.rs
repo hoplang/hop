@@ -16,7 +16,7 @@ impl HopLanguageServer {
     pub fn new(client: Client) -> Self {
         Self {
             client,
-            server: RwLock::new(Server::new()),
+            server: RwLock::new(Server::default()),
         }
     }
 
