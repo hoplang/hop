@@ -1,6 +1,5 @@
 use crate::hop::parser::parse;
 use crate::hop::runtime::{HopMode, Program};
-use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
 use crate::hop::typechecker::{ComponentTypeInformation, typecheck};
