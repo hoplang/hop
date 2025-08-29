@@ -26,7 +26,7 @@ impl HopAST {
     }
 
     /// Returns a reference to all component definition nodes in the AST.
-    pub fn get_component_nodes(&self) -> &[ComponentDefinitionNode] {
+    pub fn get_component_definition_nodes(&self) -> &[ComponentDefinitionNode] {
         &self.component_nodes
     }
 
@@ -142,16 +142,6 @@ pub enum TopLevelHopNode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ComponentDefinitionLocation {
-    /// Could not determine where the component is defined
-    Unresolved,
-    /// Component is defined in the same module
-    SameModule,
-    /// Component is defined in another module (import statement)
-    OtherModule(String),
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub enum HopNode {
     Doctype {
         value: String,
@@ -169,7 +159,7 @@ pub enum HopNode {
         component: String,
         opening_name_range: Range,
         closing_name_range: Option<Range>,
-        definition_location: ComponentDefinitionLocation,
+        definition_location: Option<String>,
         args: Vec<DopArgument>,
         attributes: Vec<Attribute>,
         range: Range,
@@ -436,7 +426,7 @@ mod tests {
                         closing_name_range: Some(
                             2:23-2:30,
                         ),
-                        definition_location: Unresolved,
+                        definition_location: None,
                         args: [],
                         attributes: [],
                         range: 2:5-2:31,

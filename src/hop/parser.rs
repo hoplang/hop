@@ -1,8 +1,8 @@
 use crate::common::RangeError;
 use crate::dop::{self, DopTokenizer};
 use crate::hop::ast::{
-    ComponentDefinitionLocation, ComponentDefinitionNode, DopExprAttribute, HopAST, HopNode,
-    ImportNode, RenderNode, TopLevelHopNode,
+    ComponentDefinitionNode, DopExprAttribute, HopAST, HopNode, ImportNode, RenderNode,
+    TopLevelHopNode,
 };
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::Token;
@@ -21,9 +21,13 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<RangeEr
     let mut imported_components = HashMap::new();
 
     for tree in &trees {
-        if let Some(toplevel_node) =
-            construct_top_level_node(tree, errors, &defined_components, &imported_components)
-        {
+        if let Some(toplevel_node) = construct_top_level_node(
+            tree,
+            errors,
+            &module_name,
+            &defined_components,
+            &imported_components,
+        ) {
             match toplevel_node {
                 TopLevelHopNode::Import(import_data) => {
                     if imported_components.contains_key(&import_data.component_attr.value) {
@@ -75,6 +79,7 @@ fn is_valid_component_name(name: &str) -> bool {
 fn construct_top_level_node(
     tree: &TokenTree,
     errors: &mut Vec<RangeError>,
+    module_name: &str,
     defined_components: &HashSet<String>,
     imported_components: &HashMap<String, String>,
 ) -> Option<TopLevelHopNode> {
@@ -123,7 +128,13 @@ fn construct_top_level_node(
                         .children
                         .iter()
                         .map(|child| {
-                            construct_node(child, errors, defined_components, imported_components)
+                            construct_node(
+                                child,
+                                errors,
+                                module_name,
+                                defined_components,
+                                imported_components,
+                            )
                         })
                         .collect();
 
@@ -169,6 +180,7 @@ fn construct_top_level_node(
                                             construct_node(
                                                 c,
                                                 errors,
+                                                module_name,
                                                 defined_components,
                                                 imported_components,
                                             )
@@ -181,6 +193,7 @@ fn construct_top_level_node(
                         main_children.push(construct_node(
                             child,
                             errors,
+                            module_name,
                             defined_components,
                             imported_components,
                         ));
@@ -263,13 +276,22 @@ fn construct_top_level_node(
 fn construct_node(
     tree: &TokenTree,
     errors: &mut Vec<RangeError>,
+    module_name: &str,
     defined_components: &HashSet<String>,
     imported_components: &HashMap<String, String>,
 ) -> HopNode {
     let children: Vec<HopNode> = tree
         .children
         .iter()
-        .map(|child| construct_node(child, errors, defined_components, imported_components))
+        .map(|child| {
+            construct_node(
+                child,
+                errors,
+                module_name,
+                defined_components,
+                imported_components,
+            )
+        })
         .collect();
 
     let t = &tree.opening_token;
@@ -501,13 +523,10 @@ fn construct_node(
                         None => Vec::new(),
                     };
 
-                    // Determine definition location
                     let definition_location = if defined_components.contains(tag_name) {
-                        ComponentDefinitionLocation::SameModule
-                    } else if let Some(module_name) = imported_components.get(tag_name) {
-                        ComponentDefinitionLocation::OtherModule(module_name.clone())
+                        Some(module_name.to_string())
                     } else {
-                        ComponentDefinitionLocation::Unresolved
+                        imported_components.get(tag_name).cloned()
                     };
 
                     HopNode::ComponentReference {
@@ -676,7 +695,7 @@ mod tests {
             efmt.add_errors("test".to_string(), input.to_string(), errors);
             efmt.format_all_errors()
         } else {
-            for component in module.get_component_nodes() {
+            for component in module.get_component_definition_nodes() {
                 if component.name == "main-comp" {
                     return expected.assert_eq(&format_component_definition(component));
                 }

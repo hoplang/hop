@@ -90,7 +90,7 @@ pub fn typecheck(
         opening_name_range,
         closing_name_range,
         ..
-    } in module.get_component_nodes()
+    } in module.get_component_definition_nodes()
     {
         let mut parameter_types = BTreeMap::new();
 
@@ -569,7 +569,7 @@ mod tests {
             } else {
                 module_type_results.insert(module.name.clone(), type_result.clone());
 
-                for c in module.get_component_nodes() {
+                for c in module.get_component_definition_nodes() {
                     let component_info =
                         type_result.get(&c.name).expect("Component info not found");
                     let param_types_str = component_info

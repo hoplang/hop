@@ -45,7 +45,7 @@ impl Program {
 
         for module in modules {
             let component_map: HashMap<_, _> = module
-                .get_component_nodes()
+                .get_component_definition_nodes()
                 .iter()
                 .map(|comp| (comp.name.clone(), comp.clone()))
                 .collect();

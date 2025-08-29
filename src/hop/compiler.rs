@@ -71,7 +71,7 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Res
         type_results.insert(module_name.clone(), type_info);
 
         // Process scripts from this module
-        script_collector.process_module(&module_name, module.get_component_nodes());
+        script_collector.process_module(&module_name, module.get_component_definition_nodes());
     }
 
     if error_formatter.has_errors() {

@@ -9,7 +9,7 @@ use crate::hop::typechecker::{
 use crate::tui::source_annotator::Annotation;
 use std::collections::HashMap;
 
-use super::ast::{ComponentDefinitionLocation, HopNode};
+use super::ast::HopNode;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct HoverInfo {
@@ -242,7 +242,7 @@ impl Server {
         position: Position,
     ) -> Option<Vec<RenameLocation>> {
         let ast = self.asts.get(module_name)?;
-        for component_node in ast.get_component_nodes() {
+        for component_node in ast.get_component_definition_nodes() {
             let is_on_tag_name = component_node
                 .opening_name_range
                 .contains_position(position)
@@ -270,15 +270,9 @@ impl Server {
                 component,
                 definition_location,
                 ..
-            } => match definition_location {
-                ComponentDefinitionLocation::SameModule => {
-                    Some(self.collect_component_rename_locations(component, module_name))
-                }
-                ComponentDefinitionLocation::OtherModule(target_module) => {
-                    Some(self.collect_component_rename_locations(component, target_module))
-                }
-                ComponentDefinitionLocation::Unresolved => None,
-            },
+            } => definition_location.as_ref().map(|target_module| {
+                self.collect_component_rename_locations(component, target_module)
+            }),
             n @ HopNode::NativeHTML { .. } => Some(
                 n.name_ranges()
                     .map(|range| RenameLocation {
@@ -302,7 +296,7 @@ impl Server {
         let ast = self.asts.get(module_name)?;
 
         // Check if we're on a component definition
-        for component_node in ast.get_component_nodes() {
+        for component_node in ast.get_component_definition_nodes() {
             if component_node
                 .opening_name_range
                 .contains_position(position)
@@ -347,7 +341,7 @@ impl Server {
 
         if let Some(ast) = self.asts.get(definition_module) {
             if let Some(component_node) = ast
-                .get_component_nodes()
+                .get_component_definition_nodes()
                 .iter()
                 .find(|node| node.name == component_name)
             {
@@ -367,33 +361,10 @@ impl Server {
             }
         }
 
-        for (module_name, component_definition_links) in &self.component_definition_links {
-            for link in component_definition_links {
-                if link.definition_component_name == component_name
-                    && link.definition_module == definition_module
-                {
-                    // Add the reference's opening tag name
-                    locations.push(RenameLocation {
-                        module: module_name.clone(),
-                        range: link.reference_opening_name_range,
-                    });
-
-                    // Add the reference's closing tag name if it exists
-                    if let Some(range) = link.reference_closing_name_range {
-                        locations.push(RenameLocation {
-                            module: module_name.clone(),
-                            range,
-                        });
-                    }
-                }
-            }
-        }
-
         // Find all import statements that import this component
-        for (module_name, module) in &self.asts {
+        for (module_name, ast) in &self.asts {
             locations.extend(
-                module
-                    .get_import_nodes()
+                ast.get_import_nodes()
                     .iter()
                     .filter(|n| {
                         n.imports_component(component_name) && n.imports_from(definition_module)
@@ -403,6 +374,48 @@ impl Server {
                         range: n.component_attr.value_range,
                     }),
             );
+            for component_definition in ast.get_component_definition_nodes() {
+                for child in &component_definition.children {
+                    for node in child.iter_depth_first() {
+                        if let HopNode::ComponentReference {
+                            component,
+                            definition_location: Some(defined_in),
+                            ..
+                        } = node
+                        {
+                            if defined_in == definition_module && component == component_name {
+                                for range in node.name_ranges() {
+                                    locations.push(RenameLocation {
+                                        module: module_name.clone(),
+                                        range,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            for render_node in ast.get_render_nodes() {
+                for child in &render_node.children {
+                    for node in child.iter_depth_first() {
+                        if let HopNode::ComponentReference {
+                            component,
+                            definition_location: Some(defined_in),
+                            ..
+                        } = node
+                        {
+                            if defined_in == definition_module && component == component_name {
+                                for range in node.name_ranges() {
+                                    locations.push(RenameLocation {
+                                        module: module_name.clone(),
+                                        range,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         locations
@@ -668,6 +681,39 @@ mod tests {
                 Rename
                   --> main.hop (line 4, col 4)
                 4 |   <hello-world />
+                  |    ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_get_rename_locations_from_component_reference_same_component() {
+        check_rename_locations(
+            indoc! {r#"
+                -- main.hop --
+                <hello-world>
+                  <h1>Hello World</h1>
+                </hello-world>
+
+                <main-comp>
+                  <hello-world />
+                   ^
+                </main-comp>
+            "#},
+            expect![[r#"
+                Rename
+                  --> main.hop (line 1, col 2)
+                1 | <hello-world>
+                  |  ^^^^^^^^^^^
+
+                Rename
+                  --> main.hop (line 3, col 3)
+                3 | </hello-world>
+                  |   ^^^^^^^^^^^
+
+                Rename
+                  --> main.hop (line 6, col 4)
+                6 |   <hello-world />
                   |    ^^^^^^^^^^^
             "#]],
         );
