@@ -7,6 +7,12 @@ use crate::hop::compiler::compile;
 use crate::hop::program::{HopMode, Program};
 use axum::extract::State;
 
+#[derive(Clone)]
+struct AppState {
+    program: Arc<RwLock<Program>>,
+    reload_channel: tokio::sync::broadcast::Sender<()>,
+}
+
 const ERROR_TEMPLATES: &str = include_str!("../../hop/error_pages.hop");
 const UI_TEMPLATES: &str = include_str!("../../hop/ui.hop");
 const ICONS_TEMPLATES: &str = include_str!("../../hop/icons.hop");
@@ -79,12 +85,27 @@ async fn handle_hmr() -> axum::response::Response<axum::body::Body> {
         .unwrap()
 }
 
+async fn handle_event_source(
+    State(state): State<AppState>,
+) -> axum::response::sse::Sse<
+    impl tokio_stream::Stream<Item = Result<axum::response::sse::Event, axum::Error>>,
+> {
+    use axum::response::sse::{Event, Sse};
+    use tokio_stream::StreamExt;
+    use tokio_stream::wrappers::BroadcastStream;
+
+    Sse::new(
+        BroadcastStream::new(state.reload_channel.subscribe())
+            .map(|_| Ok::<Event, axum::Error>(Event::default().data("reload"))),
+    )
+}
+
 async fn handle_script(
-    State(program): State<Arc<RwLock<Program>>>,
+    State(state): State<AppState>,
 ) -> axum::response::Response<axum::body::Body> {
     use axum::body::Body;
 
-    let program = program.read().unwrap();
+    let program = state.program.read().unwrap();
     axum::response::Response::builder()
         .header("Content-Type", "application/javascript")
         .body(Body::from(program.get_scripts().to_string()))
@@ -92,14 +113,14 @@ async fn handle_script(
 }
 
 async fn handle_request(
-    State(program): State<Arc<RwLock<Program>>>,
+    State(state): State<AppState>,
     req: axum::extract::Request,
 ) -> Result<axum::response::Html<String>, (axum::http::StatusCode, axum::response::Html<String>)> {
     use axum::http::StatusCode;
     use axum::response::Html;
 
     // Get the program from shared state
-    let program = program.read().unwrap();
+    let program = state.program.read().unwrap();
 
     let path = req.uri().path();
 
@@ -172,18 +193,11 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
 
 fn create_file_watcher(
     root: &ProjectRoot,
-    shared_program: Arc<RwLock<Program>>,
-) -> anyhow::Result<(
-    notify::RecommendedWatcher,
-    tokio::sync::broadcast::Sender<()>,
-)> {
+    state: AppState,
+) -> anyhow::Result<notify::RecommendedWatcher> {
     use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 
-    let (channel, _) = tokio::sync::broadcast::channel::<()>(100);
-
-    let sender = channel.clone();
     let local_root = root.clone();
-    let program_clone = shared_program.clone();
 
     // TODO: We should ignore folders such as .git, .direnv
 
@@ -201,13 +215,13 @@ fn create_file_watcher(
                         // Reload all modules from scratch
                         if let Ok(modules) = files::load_all_hop_modules(&local_root) {
                             let new_program = create_program(modules, HopMode::Dev);
-                            if let Ok(mut program) = program_clone.write() {
+                            if let Ok(mut program) = state.program.write() {
                                 *program = new_program;
                             }
                         }
                     }
 
-                    let _ = sender.send(());
+                    let _ = state.reload_channel.send(());
                 }
             }
         },
@@ -216,7 +230,7 @@ fn create_file_watcher(
 
     watcher.watch(root.get_path(), RecursiveMode::Recursive)?;
 
-    Ok((watcher, channel))
+    Ok(watcher)
 }
 
 /// Create a router that responds to requests for the output files specified in the build.hop file.
@@ -235,41 +249,30 @@ pub async fn execute(
     static_dir: Option<&Path>,
     script_file: Option<&str>,
 ) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher)> {
-    use axum::response::sse::{Event, Sse};
     use axum::routing::get;
-    use tokio_stream::StreamExt;
-    use tokio_stream::wrappers::BroadcastStream;
 
-    // Initialize the shared Program instance
     let modules = files::load_all_hop_modules(root)?;
     let initial_program = create_program(modules, HopMode::Dev);
-    let shared_program = Arc::new(RwLock::new(initial_program));
 
-    // Set up file watcher for hot reloading
+    let (reload_channel, _) = tokio::sync::broadcast::channel::<()>(100);
+
+    let app_state = AppState {
+        program: Arc::new(RwLock::new(initial_program)),
+        reload_channel,
+    };
+
+    let watcher = create_file_watcher(root, app_state.clone())?;
+
     let mut router = axum::Router::new()
         .route("/_hop/idiomorph.js", get(handle_idiomorph))
-        .route("/_hop/hmr.js", get(handle_hmr));
+        .route("/_hop/hmr.js", get(handle_hmr))
+        .route("/_hop/event_source", get(handle_event_source));
 
-    // Add SSE endpoint for hot reload events
-    let (watcher, channel) = create_file_watcher(root, shared_program.clone())?;
-    let channel_clone = channel.clone();
-    router = router.route(
-        "/_hop/event_source",
-        get(async move || {
-            Sse::new(
-                BroadcastStream::new(channel_clone.subscribe())
-                    .map(|_| Ok::<Event, axum::Error>(Event::default().data("reload"))),
-            )
-        }),
-    );
-
-    // Add script serving endpoint if script_file is specified
     if let Some(script_filename) = script_file {
         let script_path = format!("/{}", script_filename);
         router = router.route(&script_path, get(handle_script));
     }
 
-    // Set up static file serving if specified
     if let Some(static_dir) = static_dir {
         use axum::routing::get;
         if !static_dir.is_dir() {
@@ -277,14 +280,13 @@ pub async fn execute(
         }
         router = router.fallback_service(
             tower_http::services::ServeDir::new(static_dir)
-                .fallback(get(handle_request).with_state(shared_program.clone())),
+                .fallback(get(handle_request).with_state(app_state.clone())),
         );
     } else {
         router = router.fallback(handle_request);
     }
 
-    // Add shared state to router
-    Ok((router.with_state(shared_program), watcher))
+    Ok((router.with_state(app_state), watcher))
 }
 
 #[cfg(test)]
