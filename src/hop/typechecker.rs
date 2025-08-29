@@ -649,7 +649,7 @@ mod tests {
                   --> main.hop (line 2, col 13)
                 1 | <main-comp>
                 2 |     <h1>Hello, <render-name></render-name>!</h1>
-                  |                ^^^^^^^^^^^^^
+                  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -669,7 +669,7 @@ mod tests {
                   --> main.hop (line 2, col 13)
                 1 | <main-comp>
                 2 |     <h1>Hello, <main-comp></main-comp>!</h1>
-                  |                ^^^^^^^^^^^
+                  |                ^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -837,13 +837,13 @@ mod tests {
                   --> main.hop (line 2, col 13)
                 1 | <main-comp>
                 2 |     <h1>Hello, <render-name></render-name>!</h1>
-                  |                ^^^^^^^^^^^^^
+                  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
                 error: Component other-comp is not defined
                   --> main.hop (line 3, col 13)
                 2 |     <h1>Hello, <render-name></render-name>!</h1>
                 3 |     <h1>Hello, <other-comp></other-comp>!</h1>
-                  |                ^^^^^^^^^^^^
+                  |                ^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }

@@ -91,7 +91,7 @@ fn construct_top_level_node(
                             Some(TopLevelHopNode::Import(ImportNode {
                                 component_attr,
                                 from_attr,
-                                range: tree.opening_token.range(),
+                                range: tree.range(),
                             }))
                         }
                         _ => None,
@@ -116,7 +116,7 @@ fn construct_top_level_node(
                     file_attr.map(|file_attr| {
                         TopLevelHopNode::Render(RenderNode {
                             file_attr,
-                            range: tree.opening_token.range(),
+                            range: tree.range(),
                             children,
                         })
                     })
@@ -211,7 +211,7 @@ fn construct_top_level_node(
                             params: params_as_attrs,
                             as_attr,
                             attributes: attributes.clone(),
-                            range: tree.opening_token.range(),
+                            range: tree.range(),
                             children,
                             preview: preview_children,
                             entrypoint,
@@ -267,7 +267,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                 Err(err) => {
                     errors.push(err);
                     HopNode::Error {
-                        range: tree.opening_token.range(),
+                        range: tree.range(),
                         children: vec![],
                     }
                 }
@@ -296,13 +296,13 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                         match dop::parse_expr(&mut tokenizer) {
                             Ok(condition) => HopNode::If {
                                 condition,
-                                range: *expr_range,
+                                range: tree.range(),
                                 children,
                             },
                             Err(err) => {
                                 errors.push(err);
                                 HopNode::Error {
-                                    range: tree.opening_token.range(),
+                                    range: tree.range(),
                                     children,
                                 }
                             }
@@ -314,7 +314,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                             tree.opening_token.range(),
                         ));
                         HopNode::Error {
-                            range: tree.opening_token.range(),
+                            range: tree.range(),
                             children,
                         }
                     }
@@ -335,13 +335,13 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                             Ok((var_name, array_expr)) => HopNode::For {
                                 var_name,
                                 array_expr,
-                                range: tree.opening_token.range(),
+                                range: tree.range(),
                                 children,
                             },
                             Err(error) => {
                                 errors.push(error);
                                 HopNode::Error {
-                                    range: tree.opening_token.range(),
+                                    range: tree.range(),
                                     children,
                                 }
                             }
@@ -353,7 +353,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                             tree.opening_token.range(),
                         ));
                         HopNode::Error {
-                            range: tree.opening_token.range(),
+                            range: tree.range(),
                             children,
                         }
                     }
@@ -371,11 +371,11 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                     match cmd_attr {
                         Some(cmd_attr) => HopNode::XExec {
                             cmd_attr,
-                            range: tree.opening_token.range(),
+                            range: tree.range(),
                             children,
                         },
                         None => HopNode::Error {
-                            range: tree.opening_token.range(),
+                            range: tree.range(),
                             children,
                         },
                     }
@@ -384,7 +384,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                     let has_trim = attributes.iter().any(|attr| attr.name == "trim");
                     HopNode::XRaw {
                         trim: has_trim,
-                        range: tree.opening_token.range(),
+                        range: tree.range(),
                         children,
                     }
                 }
@@ -411,11 +411,11 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                         (Some(file_attr), Some(as_attr)) => HopNode::XLoadJson {
                             file_attr,
                             as_attr,
-                            range: tree.opening_token.range(),
+                            range: tree.range(),
                             children,
                         },
                         _ => HopNode::Error {
-                            range: tree.opening_token.range(),
+                            range: tree.range(),
                             children,
                         },
                     }
@@ -424,7 +424,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                     let slot_name = &tag_name[5..]; // Remove "slot-" prefix
                     HopNode::SlotDefinition {
                         name: slot_name.to_string(),
-                        range: tree.opening_token.range(),
+                        range: tree.range(),
                         children,
                     }
                 }
@@ -432,7 +432,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                     let slot_name = &tag_name[5..]; // Remove "with-" prefix
                     HopNode::SlotReference {
                         name: slot_name.to_string(),
-                        range: tree.opening_token.range(),
+                        range: tree.range(),
                         children,
                     }
                 }
@@ -473,7 +473,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                         }),
                         args: params_attrs,
                         attributes: attributes.clone(),
-                        range: tree.opening_token.range(),
+                        range: tree.range(),
                         children,
                     }
                 }
@@ -510,7 +510,7 @@ fn construct_node(tree: &TokenTree, errors: &mut Vec<RangeError>) -> HopNode {
                     HopNode::NativeHTML {
                         tag_name: value.clone(),
                         attributes: attributes.clone(),
-                        range: tree.opening_token.range(),
+                        range: tree.range(),
                         children,
                         set_attributes,
                     }
@@ -869,7 +869,7 @@ mod tests {
                 error: When using slot-default, it must be the only slot in the component
                 3 |     <slot-default>Default slot</slot-default>
                 4 |     <slot-other>Other slot</slot-other>
-                  |     ^^^^^^^^^^^^
+                  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }

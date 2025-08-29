@@ -29,6 +29,16 @@ impl TokenTree {
     pub fn set_closing_token(&mut self, closing_token: Token) {
         self.closing_token = Some(closing_token);
     }
+
+    pub fn range(&self) -> Range {
+        match &self.closing_token {
+            Some(closing_token) => Range {
+                start: self.opening_token.range().start,
+                end: closing_token.range().end,
+            },
+            None => self.opening_token.range(),
+        }
+    }
 }
 
 pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> Vec<TokenTree> {
