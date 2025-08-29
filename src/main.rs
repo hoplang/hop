@@ -153,7 +153,7 @@ async fn main() -> anyhow::Result<()> {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
-            let (router, _watcher) = cli::dev::execute(
+            let (router, _watcher, _program) = cli::dev::execute(
                 &root,
                 staticdir.as_deref().map(Path::new),
                 scriptfile.as_deref(),
