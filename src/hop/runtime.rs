@@ -32,18 +32,11 @@ impl HopMode {
 /// Program represents a compiled hop program that can execute components and entrypoints
 #[derive(Clone)]
 pub struct Program {
-    asts: HashMap<String, HopAST>,
-    hop_mode: HopMode,
+    pub asts: HashMap<String, HopAST>,
+    pub hop_mode: HopMode,
 }
 
 impl Program {
-    pub fn new(asts: Vec<HopAST>, hop_mode: HopMode) -> Self {
-        Program {
-            asts: asts.into_iter().map(|v| (v.name.clone(), v)).collect(),
-            hop_mode,
-        }
-    }
-
     pub fn get_scripts(&self) -> String {
         let mut script_collector = ScriptCollector::new();
         for ast in self.asts.values() {
@@ -622,7 +615,7 @@ mod tests {
     fn check(archive_str: &str, data_json: &str, expected: Expect) {
         let archive = Archive::from(archive_str);
 
-        let mut modules = Vec::new();
+        let mut modules = HashMap::new();
         let mut type_results: HashMap<String, HashMap<String, ComponentTypeInformation>> =
             HashMap::new();
         for file in archive.iter() {
@@ -630,7 +623,7 @@ mod tests {
                 let module_name = file.name.trim_end_matches(".hop").to_string();
                 let source_code = file.content.trim().to_string();
                 let mut errors = Vec::new();
-                let module = parse(
+                let ast = parse(
                     module_name.clone(),
                     Tokenizer::new(&source_code),
                     &mut errors,
@@ -642,7 +635,7 @@ mod tests {
                 let mut type_annotations = Vec::new();
                 let mut component_definition_links = Vec::new();
                 let type_info = typecheck(
-                    &module,
+                    &ast,
                     &type_results,
                     &mut errors,
                     &mut type_annotations,
@@ -652,12 +645,15 @@ mod tests {
                     panic!("Type errors in {}: {:?}", module_name, errors);
                 }
 
-                modules.push(module);
+                modules.insert(module_name.clone(), ast);
                 type_results.insert(module_name.clone(), type_info);
             }
         }
 
-        let program = Program::new(modules, HopMode::Build);
+        let program = Program {
+            asts: modules,
+            hop_mode: HopMode::Build,
+        };
 
         let data: serde_json::Value =
             serde_json::from_str(data_json).expect("Failed to parse JSON data");
