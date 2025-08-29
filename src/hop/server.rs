@@ -242,85 +242,53 @@ impl Server {
         position: Position,
     ) -> Option<Vec<RenameLocation>> {
         let ast = self.asts.get(module_name)?;
-        match ast.find_node_at_position(position) {
-            Some(HopNode::ComponentReference {
-                component,
-                opening_name_range,
-                closing_name_range,
-                definition_location,
-                ..
-            }) => {
-                let is_on_tag_name = opening_name_range.contains_position(position)
-                    || closing_name_range.is_some_and(|range| range.contains_position(position));
-
-                if is_on_tag_name {
-                    match definition_location {
-                        ComponentDefinitionLocation::SameModule => {
-                            return Some(
-                                self.collect_component_rename_locations(component, module_name),
-                            );
-                        }
-                        ComponentDefinitionLocation::OtherModule(target_module) => {
-                            return Some(
-                                self.collect_component_rename_locations(component, target_module),
-                            );
-                        }
-                        ComponentDefinitionLocation::Unresolved => {
-                            // Component definition not found, return empty locations
-                            return Some(Vec::new());
-                        }
-                    }
-                }
-            }
-            Some(HopNode::NativeHTML {
-                opening_name_range,
-                closing_name_range,
-                ..
-            }) => {
-                let is_on_tag_name = opening_name_range.contains_position(position)
-                    || closing_name_range.is_some_and(|range| range.contains_position(position));
-
-                if is_on_tag_name {
-                    let mut locations = Vec::new();
-
-                    // Add the opening tag name
-                    locations.push(RenameLocation {
-                        module: module_name.to_string(),
-                        range: *opening_name_range,
-                    });
-
-                    // Add the closing tag name if it exists
-                    if let Some(closing_range) = closing_name_range {
-                        locations.push(RenameLocation {
-                            module: module_name.to_string(),
-                            range: *closing_range,
-                        });
-                    }
-
-                    return Some(locations);
-                }
-            }
-            _ => (),
-        }
-
-        // Check if we're on a component definition
         for component_node in ast.get_component_nodes() {
-            let is_on_definition = component_node
+            let is_on_tag_name = component_node
                 .opening_name_range
                 .contains_position(position)
                 || component_node
                     .closing_name_range
                     .is_some_and(|range| range.contains_position(position));
 
-            if is_on_definition {
-                // We're on a definition, collect all rename locations
+            if is_on_tag_name {
                 return Some(
                     self.collect_component_rename_locations(&component_node.name, module_name),
                 );
             }
         }
 
-        None
+        let node = ast.find_node_at_position(position)?;
+
+        let is_on_tag_name = node.name_ranges().any(|r| r.contains_position(position));
+
+        if !is_on_tag_name {
+            return None;
+        }
+
+        match node {
+            HopNode::ComponentReference {
+                component,
+                definition_location,
+                ..
+            } => match definition_location {
+                ComponentDefinitionLocation::SameModule => {
+                    Some(self.collect_component_rename_locations(component, module_name))
+                }
+                ComponentDefinitionLocation::OtherModule(target_module) => {
+                    Some(self.collect_component_rename_locations(component, target_module))
+                }
+                ComponentDefinitionLocation::Unresolved => None,
+            },
+            n @ HopNode::NativeHTML { .. } => Some(
+                n.name_ranges()
+                    .map(|range| RenameLocation {
+                        module: module_name.to_string(),
+                        range,
+                    })
+                    .collect(),
+            ),
+            _ => None,
+        }
     }
 
     /// Returns information about a renameable symbol at the given position.
@@ -332,27 +300,6 @@ impl Server {
         position: Position,
     ) -> Option<RenameableSymbol> {
         let ast = self.asts.get(module_name)?;
-
-        if let Some(node) = ast.find_node_at_position(position) {
-            if let Some(tag_name) = node.tag_name() {
-                if let Some(range) = node.opening_name_range() {
-                    if range.contains_position(position) {
-                        return Some(RenameableSymbol {
-                            current_name: tag_name.to_string(),
-                            range,
-                        });
-                    }
-                }
-                if let Some(range) = node.closing_name_range() {
-                    if range.contains_position(position) {
-                        return Some(RenameableSymbol {
-                            current_name: tag_name.to_string(),
-                            range,
-                        });
-                    }
-                }
-            }
-        }
 
         // Check if we're on a component definition
         for component_node in ast.get_component_nodes() {
@@ -375,7 +322,16 @@ impl Server {
             }
         }
 
-        None
+        let node = ast.find_node_at_position(position)?;
+
+        let tag_name = node.tag_name()?;
+
+        node.name_ranges()
+            .find(|r| r.contains_position(position))
+            .map(|range| RenameableSymbol {
+                current_name: tag_name.to_string(),
+                range,
+            })
     }
 
     /// Collects all locations where a component should be renamed, including:
@@ -435,16 +391,18 @@ impl Server {
 
         // Find all import statements that import this component
         for (module_name, module) in &self.asts {
-            for import in module.get_import_nodes() {
-                if import.component_attr.value == component_name
-                    && import.from_attr.value == definition_module
-                {
-                    locations.push(RenameLocation {
+            locations.extend(
+                module
+                    .get_import_nodes()
+                    .iter()
+                    .filter(|n| {
+                        n.imports_component(component_name) && n.imports_from(definition_module)
+                    })
+                    .map(|n| RenameLocation {
                         module: module_name.clone(),
-                        range: import.component_attr.value_range,
-                    });
-                }
-            }
+                        range: n.component_attr.value_range,
+                    }),
+            );
         }
 
         locations
@@ -455,26 +413,22 @@ impl Server {
 
         let mut found_parse_errors = false;
 
-        if let Some(parse_errors) = self.parse_errors.get(module_name) {
-            for error in parse_errors {
-                diagnostics.push(Diagnostic {
-                    message: error.message.clone(),
-                    range: error.range,
-                });
-                found_parse_errors = true;
-            }
+        for error in self.parse_errors.get(module_name).into_iter().flatten() {
+            diagnostics.push(Diagnostic {
+                message: error.message.clone(),
+                range: error.range,
+            });
+            found_parse_errors = true;
         }
 
         // If there's parse errors for the file we do not emit the type errors since they may be
         // non-sensical if parsing fails.
         if !found_parse_errors {
-            if let Some(typecheck_errors) = self.type_errors.get(module_name) {
-                for error in typecheck_errors {
-                    diagnostics.push(Diagnostic {
-                        message: error.message.clone(),
-                        range: error.range,
-                    });
-                }
+            for error in self.type_errors.get(module_name).into_iter().flatten() {
+                diagnostics.push(Diagnostic {
+                    message: error.message.clone(),
+                    range: error.range,
+                });
             }
         }
 

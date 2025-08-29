@@ -102,6 +102,16 @@ pub struct ImportNode {
     pub range: Range,
 }
 
+impl ImportNode {
+    pub fn imports_component(&self, component_name: &str) -> bool {
+        self.component_attr.value == component_name
+    }
+
+    pub fn imports_from(&self, from_path: &str) -> bool {
+        self.from_attr.value == from_path
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct RenderNode {
     pub file_attr: Attribute,
@@ -301,6 +311,12 @@ impl HopNode {
             HopNode::NativeHTML { tag_name, .. } => Some(tag_name),
             _ => None,
         }
+    }
+
+    pub fn name_ranges(&self) -> impl Iterator<Item = Range> {
+        self.opening_name_range()
+            .into_iter()
+            .chain(self.closing_name_range().into_iter())
     }
 }
 
