@@ -126,8 +126,7 @@ impl Program {
         component_name: &str,
         params: std::collections::BTreeMap<String, serde_json::Value>,
     ) -> Result<String> {
-        let empty_slots = HashMap::new();
-        self.evaluate_component(module_name, component_name, params, &empty_slots, None)
+        self.evaluate_component(module_name, component_name, params, &None, None)
     }
 
 
@@ -136,7 +135,7 @@ impl Program {
         module_name: &str,
         component_name: &str,
         args: std::collections::BTreeMap<String, serde_json::Value>,
-        slot_content: &HashMap<String, String>,
+        slot_content: &Option<String>,
         additional_classes: Option<&str>,
     ) -> Result<String> {
         let component_map = self
@@ -219,7 +218,7 @@ impl Program {
     pub fn evaluate_node(
         &self,
         node: &HopNode,
-        slot_content: &HashMap<String, String>,
+        slot_content: &Option<String>,
         env: &mut Environment<serde_json::Value>,
         current_module: &str,
     ) -> anyhow::Result<String> {
@@ -308,12 +307,8 @@ impl Program {
                 // Check if target component has a default slot
                 let has_default_slot = target_component.has_slot;
 
-                // Collect slot content
-                let mut new_slot_content: HashMap<String, String> = HashMap::new();
-                
-                // If component has default slot and there are children,
-                // pass all children as default slot content
-                if has_default_slot && !children.is_empty() {
+                // Collect slot content if component has a slot and there are children
+                let slot_html = if has_default_slot && !children.is_empty() {
                     let mut default_html = String::new();
                     for child in children {
                         default_html.push_str(&self.evaluate_node(
@@ -323,8 +318,10 @@ impl Program {
                             current_module,
                         )?);
                     }
-                    new_slot_content.insert("default".to_string(), default_html);
-                }
+                    Some(default_html)
+                } else {
+                    None
+                };
 
                 // Extract class attribute from component reference
                 let additional_classes = attributes
@@ -336,20 +333,14 @@ impl Program {
                     &target_module,
                     component_name,
                     arg_values,
-                    &new_slot_content,
+                    &slot_html,
                     additional_classes,
                 )
             }
 
             HopNode::SlotDefinition { .. } => {
-                // Check if we have content for the default slot
-                if let Some(supplied_html) = slot_content.get("default") {
-                    // Use the pre-evaluated supplied content
-                    Ok(supplied_html.clone())
-                } else {
-                    // No content was provided for the slot, return empty
-                    Ok(String::new())
-                }
+                // Use the supplied slot content if available, otherwise return empty
+                Ok(slot_content.as_ref().cloned().unwrap_or_default())
             }
 
             HopNode::NativeHTML {
@@ -548,8 +539,7 @@ impl Program {
             }
             _ => {
                 // For all other node types, use the existing evaluation logic (no slots in entrypoints)
-                let empty_slots: HashMap<String, String> = HashMap::new();
-                self.evaluate_node(node, &empty_slots, env, current_module)
+                self.evaluate_node(node, &None, env, current_module)
             }
         }
     }
