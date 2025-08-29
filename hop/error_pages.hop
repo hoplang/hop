@@ -12,17 +12,6 @@
 			<slot-default/>
 		</with-body>
 	</heading-box>
-	<hop-x-preview>
-		<error-generic-error>
-			<pre><hop-x-raw trim>
-				Compilation failed: error: Unclosed &lt;hop-x-preview&gt;
-				  --&gt; hop/error_pages.hop (line 32, col 2)
-				 31 |     &lt;/heading-box&gt;
-				 32 |     &lt;hop-x-preview&gt;
-					|     ^^^^^^^^^^^^^^^
-			</hop-x-raw></pre>
-		</error-generic-error>
-	</hop-x-preview>
 </error-generic-error>
 
 <error-not-found-error class="flex flex-col gap-4">
@@ -42,15 +31,6 @@
 			</p>
 		</with-body>
 	</heading-box>
-	<hop-x-preview>
-		<error-not-found-error>
-			<with-requested-path>/foo-bar</with-requested-path>
-			<with-available-routes>
-				<li><a href="#foo">/foo</a></li>
-				<li><a href="#bar">/bar</a></li>
-			</with-available-routes>
-		</error-not-found-error>
-	</hop-x-preview>
 </error-not-found-error>
 
 <generic-error entrypoint {error: {message: string}}>

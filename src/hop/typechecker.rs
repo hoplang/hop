@@ -88,7 +88,6 @@ pub fn typecheck(
         name,
         params,
         children,
-        preview,
         slots,
         opening_name_range,
         ..
@@ -138,25 +137,6 @@ pub fn typecheck(
             },
         );
 
-        if let Some(preview_nodes) = preview {
-            for param in params {
-                env.push(param.var_name.value.clone(), param.type_annotation.clone());
-            }
-            for child in preview_nodes {
-                typecheck_node(
-                    child,
-                    &current_module_type_information,
-                    &mut env,
-                    type_annotations,
-                    definition_links,
-                    errors,
-                );
-            }
-            // Pop parameters
-            for _ in params {
-                env.pop();
-            }
-        }
     }
 
     for RenderNode { children, .. } in module.get_render_nodes() {

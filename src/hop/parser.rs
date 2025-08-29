@@ -165,41 +165,19 @@ fn construct_top_level_node(
                         return None;
                     }
 
-                    // Separate preview content from main children
-                    let mut main_children = Vec::new();
-                    let mut preview_children = None;
-
-                    for child in &tree.children {
-                        if let Token::OpeningTag { value, .. } = &child.opening_token {
-                            if value == "hop-x-preview" {
-                                preview_children = Some(
-                                    child
-                                        .children
-                                        .iter()
-                                        .map(|c| {
-                                            construct_node(
-                                                c,
-                                                errors,
-                                                module_name,
-                                                defined_components,
-                                                imported_components,
-                                            )
-                                        })
-                                        .collect(),
-                                );
-                                continue; // Don't add to main children
-                            }
-                        }
-                        main_children.push(construct_node(
-                            child,
-                            errors,
-                            module_name,
-                            defined_components,
-                            imported_components,
-                        ));
-                    }
-
-                    let children = main_children;
+                    let children: Vec<_> = tree
+                        .children
+                        .iter()
+                        .map(|child| {
+                            construct_node(
+                                child,
+                                errors,
+                                module_name,
+                                defined_components,
+                                imported_components,
+                            )
+                        })
+                        .collect();
 
                     let as_attr = t.find_attribute("as");
                     let entrypoint = t.find_attribute("entrypoint").is_some();
@@ -261,7 +239,6 @@ fn construct_top_level_node(
                             attributes: attributes.clone(),
                             range: tree.range(),
                             children,
-                            preview: preview_children,
                             entrypoint,
                             slots: slots.into_iter().collect(),
                         },

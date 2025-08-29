@@ -2,14 +2,12 @@ use crate::filesystem::files::ProjectRoot;
 use std::path::Path;
 use std::sync::OnceLock;
 
-use crate::common::escape_html;
 use crate::filesystem::files;
 use crate::hop;
 use crate::hop::compiler::compile;
 use crate::hop::runtime::HopMode;
 
 const ERROR_TEMPLATES: &str = include_str!("../../hop/error_pages.hop");
-const INSPECT_TEMPLATES: &str = include_str!("../../hop/inspector.hop");
 const UI_TEMPLATES: &str = include_str!("../../hop/ui.hop");
 const ICONS_TEMPLATES: &str = include_str!("../../hop/icons.hop");
 
@@ -19,12 +17,11 @@ fn get_ui_program() -> &'static hop::runtime::Program {
     CACHED_UI_PROGRAM.get_or_init(|| {
         let modules = vec![
             ("hop/error_pages".to_string(), ERROR_TEMPLATES.to_string()),
-            ("hop/inspector".to_string(), INSPECT_TEMPLATES.to_string()),
             ("hop/ui".to_string(), UI_TEMPLATES.to_string()),
             ("hop/icons".to_string(), ICONS_TEMPLATES.to_string()),
         ];
 
-        compile(modules, HopMode::Dev).expect("Failed to compile inspect program templates")
+        compile(modules, HopMode::Dev).expect("Failed to compile UI templates")
     })
 }
 
@@ -83,130 +80,6 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
     }
 }
 
-fn create_inspect_page(program: &hop::runtime::Program) -> String {
-    let inspect_program = get_ui_program();
-
-    let component_maps = program.get_component_maps();
-
-    let mut modules_data = Vec::new();
-
-    let mut sorted_modules: Vec<_> = component_maps.iter().collect();
-    sorted_modules.sort_by_key(|(name, _)| *name);
-
-    for (module_name, components) in sorted_modules {
-        let mut components_data = Vec::new();
-
-        // Sort components for consistent output
-        let mut sorted_components: Vec<_> = components.iter().collect();
-        sorted_components.sort_by_key(|(name, _)| *name);
-
-        for (component_name, component_def) in sorted_components {
-            let has_preview = component_def.preview.is_some();
-            let encoded_module = module_name.replace("/", "%2F");
-            let encoded_component = component_name.replace("/", "%2F");
-
-            let slots_text = if component_def.slots.is_empty() {
-                None
-            } else {
-                Some(component_def.slots.join(", "))
-            };
-
-            components_data.push(serde_json::json!({
-                "name": component_name,
-                "has_preview": has_preview,
-                "link": format!("/_inspect/{encoded_module}/{encoded_component}"),
-                "preview_url": format!("/_preview/{encoded_module}/{encoded_component}"),
-                "is_entrypoint": component_def.entrypoint,
-                "slots": component_def.slots,
-                "slots_text": slots_text
-            }));
-        }
-
-        modules_data.push(serde_json::json!({
-            "name": module_name,
-            "components": components_data
-        }));
-    }
-
-    let inspect_data = serde_json::json!({
-        "modules": modules_data
-    });
-
-    let combined_script = inspect_program.get_scripts();
-
-    let mut params = std::collections::BTreeMap::new();
-    params.insert("data".to_string(), inspect_data);
-    match inspect_program.execute_simple("hop/inspector", "inspect-page", params) {
-        Ok(html) => {
-            let hot_reload_script = r#"<script type="module" src="/_hop/inspector.js"></script>"#;
-
-            html.replace(
-                "</body>",
-                format!(
-                    "{}<script>{}</script></body>",
-                    hot_reload_script, combined_script
-                )
-                .as_str(),
-            )
-        }
-        Err(e) => format!("Error rendering inspect template: {}", e),
-    }
-}
-
-fn create_component_preview(
-    program: &hop::runtime::Program,
-    module_name: &str,
-    component_name: &str,
-) -> Result<String, String> {
-    let component_maps = program.get_component_maps();
-    let component_map = component_maps
-        .get(module_name)
-        .ok_or_else(|| format!("Module '{}' not found", module_name))?;
-    let component_def = component_map.get(component_name).ok_or_else(|| {
-        format!(
-            "Component '{}' not found in module '{}'",
-            component_name, module_name
-        )
-    })?;
-    if component_def.preview.is_none() {
-        return Err("Component does not have preview content defined".to_string());
-    }
-
-    // Render the component using preview content if available
-    match program.execute_preview(module_name, component_name) {
-        Ok(rendered_content) => {
-            let combined_script = program.get_scripts();
-
-            // Create a simple HTML document with proper structure
-            let html = format!(
-                r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{}/{} Preview</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
-    <style>
-      body {{ font-family: "JetBrains Mono"; }}
-    </style>
-</head>
-<body>
-{}
-<script>{}</script>
-</body>
-</html>"#,
-                escape_html(module_name),
-                escape_html(component_name),
-                rendered_content,
-                combined_script
-            );
-
-            Ok(html)
-        }
-        Err(e) => Err(format!("Failed to render component: {}", e)),
-    }
-}
 
 fn create_file_watcher(
     root: &ProjectRoot,
@@ -255,7 +128,6 @@ pub async fn execute(
     script_file: Option<&str>,
 ) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher)> {
     use axum::body::Body;
-    use axum::extract::Path;
     use axum::extract::Request;
     use axum::http::StatusCode;
     use axum::response::Html;
@@ -279,60 +151,6 @@ pub async fn execute(
         }),
     );
 
-    // Add inspect endpoint for listing modules and components
-    let inspect_root = root.clone();
-    router = router.route(
-        "/_inspect",
-        get(async move || {
-            match files::load_all_hop_modules(&inspect_root)
-                .and_then(|modules| compile(modules, HopMode::Dev))
-            {
-                Ok(program) => {
-                    let html = create_inspect_page(&program);
-                    Ok(Html(html))
-                }
-                Err(e) => Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Html(create_error_page(&e)),
-                )),
-            }
-        }),
-    );
-
-    // Add simple preview endpoint for rendering components without inspect UI
-    let preview_root = root.clone();
-    router = router.route(
-        "/_preview/{module}/{component}",
-        get(
-            async move |Path((module_name, component_name)): Path<(String, String)>| {
-                // decode the parameters
-                let decoded_module = module_name.replace("%2F", "/");
-                let decoded_component = component_name.replace("%2F", "/");
-
-                match files::load_all_hop_modules(&preview_root)
-                    .and_then(|modules| compile(modules, HopMode::Dev))
-                {
-                    Ok(program) => {
-                        match create_component_preview(
-                            &program,
-                            &decoded_module,
-                            &decoded_component,
-                        ) {
-                            Ok(html) => Ok(Html(html)),
-                            Err(e) => Err((
-                                StatusCode::NOT_FOUND,
-                                Html(create_error_page(&anyhow::anyhow!(e))),
-                            )),
-                        }
-                    }
-                    Err(e) => Err((
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Html(create_error_page(&e)),
-                    )),
-                }
-            },
-        ),
-    );
 
     // Add idiomorph.js serving endpoint
     router = router.route(
@@ -356,16 +174,6 @@ pub async fn execute(
         }),
     );
 
-    // Add inspector script serving endpoint
-    router = router.route(
-        "/_hop/inspector.js",
-        get(async move || {
-            axum::response::Response::builder()
-                .header("Content-Type", "application/javascript")
-                .body(Body::from(include_str!("_hop/inspector.js")))
-                .unwrap()
-        }),
-    );
 
     // Add script serving endpoint if script_file is specified
     if let Some(script_filename) = script_file {
@@ -692,64 +500,62 @@ mod tests {
             http::StatusCode::NOT_FOUND,
             &expect![[r#"
 
-            	<!DOCTYPE html>
-            	<html>
-            	<head>
-            		<title>404 Not Found</title>
-            		<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-            		<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
-                    <style>
-                      body { font-family: "JetBrains Mono"; }
-                    </style>
-            	</head>
-            	<body>
-            		<div data-hop-id="hop/ui/page-container" class="max-w-6xl px-4 my-12 mx-auto">
+                	<!DOCTYPE html>
+                	<html>
+                	<head>
+                		<title>404 Not Found</title>
+                		<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+                		<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+                        <style>
+                          body { font-family: "JetBrains Mono"; }
+                        </style>
+                	</head>
+                	<body>
+                		<div data-hop-id="hop/ui/page-container" class="max-w-6xl px-4 my-12 mx-auto">
 	
-            			<div data-hop-id="hop/error_pages/error-not-found-error" class="flex flex-col gap-4">
-            	<div data-hop-id="hop/ui/heading-box" class="border border-2 shadow-[4px_4px_rgba(0,0,0,0.1)]">
-            	<div class="p-3 py-2 flex justify-between border-b-2">
-            		<div>
-            			<span class="font-medium uppercase">
-            			  Error
-            			</span>
-            			Route not found
-            		</div>
-            	</div>
-            	<div class="p-5 gap-5 flex flex-col" data-id="body">
+                			<div data-hop-id="hop/error_pages/error-not-found-error" class="flex flex-col gap-4">
+                	<div data-hop-id="hop/ui/heading-box" class="border border-2 shadow-[4px_4px_rgba(0,0,0,0.1)]">
+                	<div class="p-3 py-2 flex justify-between border-b-2">
+                		<div>
+                			<span class="font-medium uppercase">
+                			  Error
+                			</span>
+                			Route not found
+                		</div>
+                	</div>
+                	<div class="p-5 gap-5 flex flex-col" data-id="body">
 		
-            			<div>
-            			The requested route <span data-hop-id="hop/error_pages/code-text">
-            	<code class="italic">/nonexistent</code>
-            </span> was not found in the build file.
-            			</div>
-            			Available routes:<br>
-            			<ul class="ml-6" style="list-style-type: square;">
+                			<div>
+                			The requested route <span data-hop-id="hop/error_pages/code-text">
+                	<code class="italic">/nonexistent</code>
+                </span> was not found in the build file.
+                			</div>
+                			Available routes:<br>
+                			<ul class="ml-6" style="list-style-type: square;">
 				
 					
-            					  <li><a href="/">/</a></li>
+                					  <li><a href="/">/</a></li>
 					
-            					  <li><a href="/about">/about</a></li>
+                					  <li><a href="/about">/about</a></li>
 					
-            					  <li><a href="/foo/bar">/foo/bar</a></li>
+                					  <li><a href="/foo/bar">/foo/bar</a></li>
 					
 				
-            			</ul>
-            			<p>
-            				To add this route, update your <span data-hop-id="hop/error_pages/code-text">
-            	<code class="italic">build.hop</code>
-            </span> file with an entry for this path.
-            			</p>
+                			</ul>
+                			<p>
+                				To add this route, update your <span data-hop-id="hop/error_pages/code-text">
+                	<code class="italic">build.hop</code>
+                </span> file with an entry for this path.
+                			</p>
 		
-            	</div>
-	
-            </div>
-	
-            </div>
+                	</div>
+                </div>
+                </div>
 		
-            </div>
-            	<script type="module" src="/_hop/hmr.js"></script></body>
-            	</html>
-        "#]],
+                </div>
+                	<script type="module" src="/_hop/hmr.js"></script></body>
+                	</html>
+            "#]],
         );
     }
 

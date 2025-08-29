@@ -80,14 +80,6 @@ impl HopAST {
                 }
             }
 
-            // Also check preview nodes if they exist
-            if let Some(preview_nodes) = &component.preview {
-                for child in preview_nodes {
-                    if let Some(node) = child.find_node_at_position(position) {
-                        return Some(node);
-                    }
-                }
-            }
         }
 
         None
@@ -143,7 +135,6 @@ pub struct ComponentDefinitionNode {
     pub attributes: Vec<Attribute>,
     pub range: Range,
     pub children: Vec<HopNode>,
-    pub preview: Option<Vec<HopNode>>,
     pub entrypoint: bool,
     pub slots: Vec<String>,
 }

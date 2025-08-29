@@ -80,9 +80,6 @@ impl Program {
         &self.scripts
     }
 
-    pub fn get_component_maps(&self) -> &HashMap<String, HashMap<String, ComponentDefinitionNode>> {
-        &self.component_maps
-    }
 
     /// Get all file_attr values from render nodes across all modules
     /// I.e. files specified in <render file="index.html">
@@ -133,32 +130,6 @@ impl Program {
         self.evaluate_component(module_name, component_name, params, &empty_slots, None)
     }
 
-    pub fn execute_preview(&self, module_name: &str, component_name: &str) -> Result<String> {
-        let component_map = self
-            .component_maps
-            .get(module_name)
-            .ok_or_else(|| anyhow::anyhow!("Module '{}' not found", module_name))?;
-
-        let component = component_map
-            .get(component_name)
-            .ok_or_else(|| anyhow::anyhow!("Component '{}' not found", component_name))?;
-
-        let preview = component
-            .preview
-            .clone()
-            .ok_or_else(|| anyhow::anyhow!("No preview for component '{}'", component_name))?;
-
-        let mut result = String::new();
-        let mut env = Self::init_environment(self.hop_mode);
-
-        // Render each node in the preview content
-        for node in preview {
-            let rendered = self.evaluate_node(&node, &HashMap::new(), &mut env, module_name)?;
-            result.push_str(&rendered);
-        }
-
-        Ok(result)
-    }
 
     pub fn evaluate_component(
         &self,
