@@ -1,5 +1,6 @@
 use crate::common::Position;
 use crate::filesystem::files::{self as files, ProjectRoot};
+use crate::hop::runtime::HopMode;
 use crate::hop::server::{DefinitionLocation, HoverInfo, RenameLocation, Server};
 use std::path::Path;
 use tokio::sync::RwLock;
@@ -16,7 +17,7 @@ impl HopLanguageServer {
     pub fn new(client: Client) -> Self {
         Self {
             client,
-            server: RwLock::new(Server::default()),
+            server: RwLock::new(Server::new(HopMode::Dev)),
         }
     }
 

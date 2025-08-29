@@ -1,12 +1,13 @@
 use crate::hop::parser::parse;
-use crate::hop::runtime::{HopMode, Program};
+use crate::hop::runtime::HopMode;
+use crate::hop::server::Server;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
 use crate::hop::typechecker::{ComponentTypeInformation, typecheck};
 use crate::tui::error_formatter::ErrorFormatter;
 use std::collections::HashMap;
 
-pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Result<Program> {
+pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Result<Server> {
     let source_code_map: HashMap<String, String> = modules.into_iter().collect();
     let mut asts = HashMap::new();
     let mut type_information: HashMap<String, HashMap<String, ComponentTypeInformation>> =
@@ -71,5 +72,11 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Res
         anyhow::bail!(error_formatter.format_all_errors());
     }
 
-    Ok(Program { asts, hop_mode })
+    // Create and populate server
+    let mut server = Server::new(hop_mode);
+    for (module_name, source_code) in source_code_map {
+        server.update_module(module_name, &source_code);
+    }
+
+    Ok(server)
 }

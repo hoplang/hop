@@ -1,11 +1,18 @@
-use crate::common::{Position, Range, RangeError, Ranged};
+use crate::common::{Position, Range, RangeError, Ranged, escape_html, is_void_element};
+use crate::dop::{self, evaluate_expr, load_json_file};
 use crate::hop::ast::HopAST;
+use crate::hop::environment::Environment;
 use crate::hop::parser::parse;
+use crate::hop::runtime::HopMode;
+use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
 use crate::hop::typechecker::{DefinitionLink, TypeAnnotation, typecheck};
 use crate::tui::source_annotator::Annotated;
+use anyhow::Result;
 use std::collections::HashMap;
+use std::io::Write;
+use std::process::{Command, Stdio};
 
 use super::ast::HopNode;
 use super::typechecker::ModuleTypeInformation;
@@ -125,7 +132,6 @@ impl Annotated for RenameableSymbol {
     }
 }
 
-#[derive(Default)]
 pub struct Server {
     asts: HashMap<String, HopAST>,
     type_information: HashMap<String, ModuleTypeInformation>,
@@ -133,10 +139,32 @@ pub struct Server {
     definition_links: HashMap<String, Vec<DefinitionLink>>,
     parse_errors: HashMap<String, Vec<RangeError>>,
     type_errors: HashMap<String, Vec<RangeError>>,
+    source_code: HashMap<String, String>,
     topo_sorter: TopoSorter,
+    hop_mode: HopMode,
+}
+
+impl Default for Server {
+    fn default() -> Self {
+        Self::new(HopMode::Dev)
+    }
 }
 
 impl Server {
+    pub fn new(hop_mode: HopMode) -> Self {
+        Self {
+            asts: HashMap::new(),
+            type_information: HashMap::new(),
+            type_annotations: HashMap::new(),
+            definition_links: HashMap::new(),
+            parse_errors: HashMap::new(),
+            type_errors: HashMap::new(),
+            source_code: HashMap::new(),
+            topo_sorter: TopoSorter::default(),
+            hop_mode,
+        }
+    }
+
     pub fn has_module(&self, module_name: &str) -> bool {
         self.asts.contains_key(module_name)
     }
@@ -183,6 +211,8 @@ impl Server {
         let module = parse(module_name.to_string(), tokenizer, parse_errors);
 
         self.asts.insert(module_name.to_string(), module);
+        self.source_code
+            .insert(module_name.to_string(), source_code.to_string());
     }
 
     pub fn update_module(&mut self, module_name: String, source_code: &str) -> Vec<String> {
@@ -431,6 +461,590 @@ impl Server {
         }
 
         diagnostics
+    }
+
+    pub fn get_parse_errors(&self, module_name: &str) -> Vec<RangeError> {
+        self.parse_errors
+            .get(module_name)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub fn get_type_errors(&self, module_name: &str) -> Vec<RangeError> {
+        self.type_errors
+            .get(module_name)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub fn get_source_code(&self, module_name: &str) -> Option<String> {
+        self.source_code.get(module_name).cloned()
+    }
+
+    // Execution methods from Program
+
+    pub fn get_scripts(&self) -> String {
+        let mut script_collector = ScriptCollector::new();
+        for ast in self.asts.values() {
+            script_collector.process_module(ast);
+        }
+        script_collector.build()
+    }
+
+    /// Get all file_attr values from render nodes across all modules
+    /// I.e. files specified in <render file="index.html">
+    pub fn get_render_file_paths(&self) -> Vec<String> {
+        let mut result = Vec::new();
+        for ast in self.asts.values() {
+            for node in ast.get_render_nodes() {
+                result.push(node.file_attr.value.clone())
+            }
+        }
+        result
+    }
+
+    /// Render the content for a specific file path
+    pub fn render_file(&self, file_path: &str) -> Result<String> {
+        // Find the render node with the matching file_attr.value
+        for ast in self.asts.values() {
+            for node in ast.get_render_nodes() {
+                if node.file_attr.value == file_path {
+                    let mut env = Self::init_environment(self.hop_mode);
+                    let mut content = String::new();
+                    for child in &node.children {
+                        let rendered = self.evaluate_node_entrypoint(child, &mut env, "build")?;
+                        content.push_str(&rendered);
+                    }
+                    return Ok(content);
+                }
+            }
+        }
+        Err(anyhow::anyhow!(
+            "File path '{}' not found in render nodes",
+            file_path
+        ))
+    }
+
+    /// Initialize an environment with global variables like HOP_MODE
+    fn init_environment(hop_mode: HopMode) -> Environment<serde_json::Value> {
+        let mut env = Environment::new();
+        env.push(
+            "HOP_MODE".to_string(),
+            serde_json::Value::String(hop_mode.as_str().to_string()),
+        );
+        env
+    }
+
+    pub fn evaluate_component(
+        &self,
+        module_name: &str,
+        component_name: &str,
+        args: Vec<serde_json::Value>,
+        slot_content: Option<&str>,
+        additional_classes: Option<&str>,
+    ) -> Result<String> {
+        let ast = self
+            .asts
+            .get(module_name)
+            .ok_or_else(|| anyhow::anyhow!("Module '{}' not found", module_name))?;
+
+        let component = ast
+            .get_component_definition(component_name)
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Component '{}' not found in module '{}'",
+                    component_name,
+                    module_name
+                )
+            })?;
+
+        let mut env = Self::init_environment(self.hop_mode);
+
+        // Set up environment with all parameters and their corresponding values
+        for (idx, param) in component.params.iter().enumerate() {
+            env.push(param.var_name.value.clone(), args[idx].clone());
+            // TODO: Check that lengths are correct and use zip
+        }
+
+        if component.entrypoint {
+            // For entrypoints, don't wrap in a div, just execute children directly
+            let mut result = String::new();
+            for child in &component.children {
+                result.push_str(&self.evaluate_node_entrypoint(child, &mut env, module_name)?);
+            }
+            Ok(result)
+        } else {
+            // For regular components, wrap in the specified element type
+            let mut element_type = "div";
+            if let Some(as_attr) = &component.as_attr {
+                element_type = &as_attr.value;
+            }
+
+            let data_hop_id = format!("{}/{}", module_name, component_name);
+            let mut result = format!("<{} data-hop-id=\"{}\"", element_type, data_hop_id);
+
+            let mut added_class = false;
+
+            for attr in &component.attributes {
+                if attr.name != "name"
+                    && attr.name != "params-as"
+                    && attr.name != "as"
+                    && attr.name != "entrypoint"
+                {
+                    if attr.name == "class" {
+                        added_class = true;
+                        match additional_classes {
+                            None => result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value)),
+                            Some(cls) => result
+                                .push_str(&format!(" {}=\"{} {}\"", attr.name, attr.value, cls)),
+                        }
+                    } else {
+                        result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
+                    }
+                }
+            }
+
+            // If component doesn't have a class attribute but the reference does, add it
+            if let (Some(cls), false) = (additional_classes, added_class) {
+                result.push_str(&format!(" class=\"{}\"", cls))
+            }
+            result.push('>');
+            for child in &component.children {
+                result.push_str(&self.evaluate_node(child, slot_content, &mut env, module_name)?);
+            }
+            result.push_str(&format!("</{}>", element_type));
+
+            Ok(result)
+        }
+    }
+
+    pub fn evaluate_node(
+        &self,
+        node: &HopNode,
+        slot_content: Option<&str>,
+        env: &mut Environment<serde_json::Value>,
+        current_module: &str,
+    ) -> anyhow::Result<String> {
+        match node {
+            HopNode::If {
+                condition,
+                children,
+                ..
+            } => match dop::evaluate_expr(condition, env)?.as_bool() {
+                Some(cond) => {
+                    let mut result = String::new();
+                    if cond {
+                        for child in children {
+                            result.push_str(&self.evaluate_node(
+                                child,
+                                slot_content,
+                                env,
+                                current_module,
+                            )?);
+                        }
+                    }
+                    Ok(result)
+                }
+                None => anyhow::bail!("Could not evaluate expression to boolean"),
+            },
+
+            HopNode::For {
+                var_name,
+                array_expr,
+                children,
+                ..
+            } => {
+                let array_value = evaluate_expr(array_expr, env)?;
+
+                let array = array_value
+                    .as_array()
+                    .ok_or_else(|| anyhow::anyhow!("For loop expects an array"))?;
+
+                let mut result = String::new();
+                for item in array {
+                    env.push(var_name.value.clone(), item.clone());
+                    for child in children {
+                        result.push_str(&self.evaluate_node(
+                            child,
+                            slot_content,
+                            env,
+                            current_module,
+                        )?);
+                    }
+                    env.pop();
+                }
+
+                Ok(result)
+            }
+
+            HopNode::ComponentReference {
+                component,
+                args,
+                attributes,
+                definition_module,
+                children,
+                ..
+            } => {
+                let mut arg_values = Vec::new();
+                for arg in args {
+                    arg_values.push(evaluate_expr(&arg.expression, env)?);
+                }
+
+                let component_name = component;
+
+                let target_module = definition_module
+                    .as_ref()
+                    .expect("Could not find definition module for component reference");
+
+                let target_component = self
+                    .asts
+                    .get(target_module)
+                    .and_then(|ast| ast.get_component_definition(component_name))
+                    .expect("Could not find target component for component reference");
+
+                // Check if target component has a default slot
+                let has_default_slot = target_component.has_slot;
+
+                // Collect slot content if component has a slot and there are children
+                let slot_html = if has_default_slot && !children.is_empty() {
+                    let mut default_html = String::new();
+                    for child in children {
+                        default_html.push_str(&self.evaluate_node(
+                            child,
+                            slot_content,
+                            env,
+                            current_module,
+                        )?);
+                    }
+                    Some(default_html)
+                } else {
+                    None
+                };
+
+                // Extract class attribute from component reference
+                let additional_classes = attributes
+                    .iter()
+                    .find(|attr| attr.name == "class")
+                    .map(|attr| attr.value.as_str());
+
+                self.evaluate_component(
+                    target_module,
+                    component_name,
+                    arg_values,
+                    slot_html.as_deref(),
+                    additional_classes,
+                )
+            }
+
+            HopNode::SlotDefinition { .. } => {
+                // Use the supplied slot content if available, otherwise return empty
+                Ok(slot_content.unwrap_or_default().to_string())
+            }
+
+            HopNode::NativeHTML {
+                children,
+                tag_name,
+                attributes,
+                set_attributes,
+                ..
+            } => {
+                // Skip style nodes
+                if tag_name == "style" {
+                    return Ok(String::new());
+                }
+
+                // Skip script nodes without a src attribute
+                if tag_name == "script" && !attributes.iter().any(|e| e.name == "src") {
+                    return Ok(String::new());
+                }
+
+                let mut result = format!("<{}", tag_name);
+                for attr in attributes {
+                    if !attr.name.starts_with("set-") {
+                        result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
+                    }
+                }
+
+                // Evaluate and add set-* attributes
+                for set_attr in set_attributes {
+                    let attr_name = &set_attr.name[4..]; // Remove "set-" prefix
+                    let evaluated = evaluate_expr(&set_attr.expression, env)?;
+                    result.push_str(&format!(
+                        " {}=\"{}\"",
+                        attr_name,
+                        escape_html(evaluated.as_str().unwrap())
+                    ));
+                }
+
+                result.push('>');
+
+                if !is_void_element(tag_name) {
+                    for child in children {
+                        result.push_str(&self.evaluate_node(
+                            child,
+                            slot_content,
+                            env,
+                            current_module,
+                        )?);
+                    }
+                    result.push_str(&format!("</{}>", tag_name));
+                }
+
+                Ok(result)
+            }
+
+            HopNode::Error { .. } => Ok(String::new()),
+
+            HopNode::Text { value, .. } => Ok(value.clone()),
+
+            HopNode::TextExpression { expression, .. } => {
+                match evaluate_expr(expression, env)?.as_str() {
+                    Some(s) => Ok(escape_html(s)),
+                    None => anyhow::bail!("Could not evaluate expression to string"),
+                }
+            }
+
+            HopNode::Doctype { .. } => Ok("<!DOCTYPE html>".to_string()),
+
+            HopNode::XExec {
+                cmd_attr, children, ..
+            } => {
+                // Collect child content as stdin
+                let mut stdin_content = String::new();
+                for child in children {
+                    stdin_content.push_str(&self.evaluate_node(
+                        child,
+                        slot_content,
+                        env,
+                        current_module,
+                    )?);
+                }
+
+                // Execute the command with stdin
+                let command = &cmd_attr.value;
+                Self::execute_command(command, &stdin_content)
+            }
+
+            HopNode::XRaw { trim, children, .. } => {
+                // For hop-x-raw nodes, just render the inner content without the tags
+                let mut result = String::new();
+                for child in children {
+                    result.push_str(&self.evaluate_node(
+                        child,
+                        slot_content,
+                        env,
+                        current_module,
+                    )?);
+                }
+
+                if *trim {
+                    Ok(Self::trim_raw_string(&result))
+                } else {
+                    Ok(result)
+                }
+            }
+
+            HopNode::XLoadJson {
+                file_attr,
+                as_attr,
+                children,
+                ..
+            } => {
+                // Load JSON data from file
+                let file_path = &file_attr.value;
+                let var_name = &as_attr.value;
+
+                let json_value = match load_json_file(file_path) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        return Err(anyhow::anyhow!(
+                            "Failed to load JSON file '{}': {}",
+                            file_path,
+                            err
+                        ));
+                    }
+                };
+
+                // Push the JSON data variable into scope
+                env.push(var_name.clone(), json_value);
+
+                // Evaluate children with the JSON data in scope
+                let mut result = String::new();
+                for child in children {
+                    result.push_str(&self.evaluate_node(
+                        child,
+                        slot_content,
+                        env,
+                        current_module,
+                    )?);
+                }
+
+                // Pop the JSON variable from scope
+                env.pop();
+
+                Ok(result)
+            }
+        }
+    }
+
+    fn evaluate_node_entrypoint(
+        &self,
+        node: &HopNode,
+        env: &mut Environment<serde_json::Value>,
+        current_module: &str,
+    ) -> Result<String> {
+        match node {
+            HopNode::NativeHTML {
+                tag_name,
+                attributes,
+                children,
+                set_attributes,
+                ..
+            } => {
+                // For entrypoints, preserve script and style tags
+                let mut result = format!("<{}", tag_name);
+                for attr in attributes {
+                    if !attr.name.starts_with("set-") {
+                        result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
+                    }
+                }
+
+                // Evaluate and add set-* attributes
+                for set_attr in set_attributes {
+                    let attr_name = &set_attr.name[4..]; // Remove "set-" prefix
+                    let evaluated = evaluate_expr(&set_attr.expression, env)?;
+                    result.push_str(&format!(
+                        " {}=\"{}\"",
+                        attr_name,
+                        escape_html(evaluated.as_str().unwrap())
+                    ));
+                }
+
+                result.push('>');
+
+                if !is_void_element(tag_name) {
+                    for child in children {
+                        result.push_str(&self.evaluate_node_entrypoint(
+                            child,
+                            env,
+                            current_module,
+                        )?);
+                    }
+                    result.push_str(&format!("</{}>", tag_name));
+                }
+
+                Ok(result)
+            }
+            _ => {
+                // For all other node types, use the existing evaluation logic (no slots in entrypoints)
+                self.evaluate_node(node, None, env, current_module)
+            }
+        }
+    }
+
+    /// execute_command is used by the experimental <hop-x-exec> command
+    /// which allows an external program to be executed from the context of a
+    /// hop program.
+    fn execute_command(command: &str, stdin_content: &str) -> Result<String> {
+        // Parse the command and arguments
+        let parts: Vec<&str> = command.split_whitespace().collect();
+        if parts.is_empty() {
+            return Err(anyhow::anyhow!("Empty command"));
+        }
+
+        let cmd = parts[0];
+        let args = &parts[1..];
+
+        // Execute the command
+        let mut child = Command::new(cmd)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| anyhow::anyhow!("Failed to execute command '{}': {}", command, e))?;
+
+        // Write stdin content to the child process
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(stdin_content.as_bytes())
+                .map_err(|e| anyhow::anyhow!("Failed to write to stdin: {}", e))?;
+        }
+
+        // Wait for the command to complete and get output
+        let output = child
+            .wait_with_output()
+            .map_err(|e| anyhow::anyhow!("Failed to read command output: {}", e))?;
+
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        } else {
+            Err(anyhow::anyhow!(
+                "Command '{}' failed with exit code {}: {}",
+                command,
+                output.status.code().unwrap_or(-1),
+                String::from_utf8_lossy(&output.stderr)
+            ))
+        }
+    }
+
+    /// trim_raw_string is used by the experimental <hop-x-raw> node
+    /// and allows indentation to be trimmed.
+    fn trim_raw_string(input: &str) -> String {
+        let lines: Vec<&str> = input.lines().collect();
+        if lines.is_empty() {
+            return String::new();
+        }
+
+        // Find the first line with non-whitespace content
+        let first_content_line_index = lines.iter().position(|line| !line.trim().is_empty());
+
+        let first_content_line_index = match first_content_line_index {
+            Some(index) => index,
+            None => return String::new(), // All lines are whitespace-only
+        };
+
+        // Find the last line with non-whitespace content
+        let last_content_line_index = lines
+            .iter()
+            .rposition(|line| !line.trim().is_empty())
+            .unwrap();
+
+        // Get the lines from first content to last content
+        let content_lines = &lines[first_content_line_index..=last_content_line_index];
+
+        if content_lines.is_empty() {
+            return String::new();
+        }
+
+        // Determine the common leading whitespace from the first content line
+        let first_line = content_lines[0];
+        let leading_whitespace_count = first_line.len()
+            - first_line
+                .trim_start_matches(|c: char| c.is_whitespace())
+                .len();
+
+        // Remove the common leading whitespace from all lines
+        let mut result_lines = Vec::new();
+        for line in content_lines {
+            if line.trim().is_empty() {
+                // For whitespace-only lines, just add an empty line
+                result_lines.push("");
+            } else if line.len() >= leading_whitespace_count
+                && line
+                    .chars()
+                    .take(leading_whitespace_count)
+                    .all(|c| c.is_whitespace())
+            {
+                // Remove the common leading whitespace
+                result_lines.push(&line[leading_whitespace_count..]);
+            } else {
+                // Line has less whitespace than expected, just trim what we can
+                result_lines.push(line.trim_start_matches(|c: char| c.is_whitespace()));
+            }
+        }
+
+        result_lines.join("\n")
     }
 }
 

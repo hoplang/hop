@@ -3,18 +3,18 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use crate::filesystem::files;
-use crate::hop;
 use crate::hop::compiler::compile;
 use crate::hop::runtime::HopMode;
+use crate::hop::server::Server;
 
 const ERROR_TEMPLATES: &str = include_str!("../../hop/error_pages.hop");
 const UI_TEMPLATES: &str = include_str!("../../hop/ui.hop");
 const ICONS_TEMPLATES: &str = include_str!("../../hop/icons.hop");
 
-static CACHED_UI_PROGRAM: OnceLock<hop::runtime::Program> = OnceLock::new();
+static CACHED_UI_SERVER: OnceLock<Server> = OnceLock::new();
 
-fn get_ui_program() -> &'static hop::runtime::Program {
-    CACHED_UI_PROGRAM.get_or_init(|| {
+fn get_ui_program() -> &'static Server {
+    CACHED_UI_SERVER.get_or_init(|| {
         let modules = vec![
             ("hop/error_pages".to_string(), ERROR_TEMPLATES.to_string()),
             ("hop/ui".to_string(), UI_TEMPLATES.to_string()),
@@ -199,7 +199,7 @@ pub async fn execute(
     let local_root = root.clone();
     let request_handler = async move |req: Request| {
         // Compile the program
-        let program = match (|| -> anyhow::Result<hop::runtime::Program> {
+        let program = match (|| -> anyhow::Result<Server> {
             let modules = files::load_all_hop_modules(&local_root)?;
             compile(modules, HopMode::Dev)
         })() {
