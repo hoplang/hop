@@ -28,12 +28,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<RangeEr
         }
     }
 
-    HopAST {
-        name: module_name,
-        component_nodes: components,
-        import_nodes: imports,
-        render_nodes: renders,
-    }
+    HopAST::new(module_name, components, imports, renders)
 }
 
 fn is_valid_component_name(name: &str) -> bool {

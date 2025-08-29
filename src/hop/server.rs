@@ -191,7 +191,7 @@ impl Server {
             None => return vec![],
         };
 
-        for import_node in &ast.import_nodes {
+        for import_node in ast.get_import_nodes() {
             self.topo_sorter
                 .add_dependency(&module_name, &import_node.from_attr.value);
         }
@@ -253,7 +253,7 @@ impl Server {
 
         // Check if we're on a component definition
         if let Some(module) = self.asts.get(module_name) {
-            for component_node in &module.component_nodes {
+            for component_node in module.get_component_nodes() {
                 let is_on_definition = component_node
                     .opening_name_range
                     .contains_position(position)
@@ -307,7 +307,7 @@ impl Server {
 
         // Check if we're on a component definition
         if let Some(module) = self.asts.get(module_name) {
-            for component_node in &module.component_nodes {
+            for component_node in module.get_component_nodes() {
                 if component_node
                     .opening_name_range
                     .contains_position(position)
@@ -344,7 +344,7 @@ impl Server {
 
         if let Some(module) = self.asts.get(definition_module) {
             if let Some(component_node) = module
-                .component_nodes
+                .get_component_nodes()
                 .iter()
                 .find(|node| node.name == component_name)
             {
@@ -388,7 +388,7 @@ impl Server {
 
         // Find all import statements that import this component
         for (module_name, module) in &self.asts {
-            for import in &module.import_nodes {
+            for import in module.get_import_nodes() {
                 if import.component_attr.value == component_name
                     && import.from_attr.value == definition_module
                 {

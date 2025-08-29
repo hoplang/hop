@@ -26,7 +26,7 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Res
         }
 
         module_sorter.add_node(module_name.clone());
-        for import_node in &module.import_nodes {
+        for import_node in module.get_import_nodes() {
             module_sorter.add_dependency(module_name, &import_node.from_attr.value);
         }
 
@@ -71,7 +71,7 @@ pub fn compile(modules: Vec<(String, String)>, hop_mode: HopMode) -> anyhow::Res
         type_results.insert(module_name.clone(), type_info);
 
         // Process scripts from this module
-        script_collector.process_module(&module_name, &module.component_nodes);
+        script_collector.process_module(&module_name, module.get_component_nodes());
     }
 
     if error_formatter.has_errors() {

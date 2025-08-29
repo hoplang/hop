@@ -4,27 +4,43 @@ use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
 #[derive(Debug, Clone, PartialEq)]
 pub struct HopAST {
     pub name: String,
-    pub component_nodes: Vec<ComponentDefinitionNode>,
-    pub import_nodes: Vec<ImportNode>,
-    pub render_nodes: Vec<RenderNode>,
+    component_nodes: Vec<ComponentDefinitionNode>,
+    import_nodes: Vec<ImportNode>,
+    render_nodes: Vec<RenderNode>,
 }
 
 impl HopAST {
+    /// Creates a new HopAST with the given components.
+    pub fn new(
+        name: String,
+        component_nodes: Vec<ComponentDefinitionNode>,
+        import_nodes: Vec<ImportNode>,
+        render_nodes: Vec<RenderNode>,
+    ) -> Self {
+        Self {
+            name,
+            component_nodes,
+            import_nodes,
+            render_nodes,
+        }
+    }
+
+    /// Returns a reference to all component definition nodes in the AST.
+    pub fn get_component_nodes(&self) -> &[ComponentDefinitionNode] {
+        &self.component_nodes
+    }
+
+    /// Returns a reference to all import nodes in the AST.
+    pub fn get_import_nodes(&self) -> &[ImportNode] {
+        &self.import_nodes
+    }
+
+    /// Returns a reference to all render nodes in the AST.
+    pub fn get_render_nodes(&self) -> &[RenderNode] {
+        &self.render_nodes
+    }
+
     /// Finds the deepest AST node that contains the given position.
-    ///
-    /// This method searches through all nodes in the AST (render nodes, component definitions,
-    /// and their children) to find the most specific node that contains the given position.
-    /// It returns the deepest matching node rather than the first one found, making it useful
-    /// for language server features like hover information or go-to-definition.
-    ///
-    /// # Arguments
-    ///
-    /// * `position` - The position to search for, typically representing a cursor position
-    ///
-    /// # Returns
-    ///
-    /// Returns `Some(&HopNode)` if a node contains the position, `None` otherwise.
-    /// The returned node is the deepest (most specific) node that contains the position.
     ///
     /// # Example
     ///

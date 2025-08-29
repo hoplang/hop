@@ -56,7 +56,7 @@ pub fn typecheck(
         component_attr,
         range,
         ..
-    } in &module.import_nodes
+    } in module.get_import_nodes()
     {
         let from_module = &from_attr.value;
         let component_name = &component_attr.value;
@@ -101,7 +101,7 @@ pub fn typecheck(
         opening_name_range,
         closing_name_range,
         ..
-    } in &module.component_nodes
+    } in module.get_component_nodes()
     {
         if current_module_type_information.contains_key(name) {
             errors.push(RangeError::component_is_already_defined(name, *range));
@@ -125,7 +125,7 @@ pub fn typecheck(
 
         for child in children {
             typecheck_node(
-                child,
+                &child,
                 &current_module_type_information,
                 &mut env,
                 type_annotations,
@@ -176,10 +176,10 @@ pub fn typecheck(
         }
     }
 
-    for RenderNode { children, .. } in &module.render_nodes {
+    for RenderNode { children, .. } in module.get_render_nodes() {
         for child in children {
             typecheck_node(
-                child,
+                &child,
                 &current_module_type_information,
                 &mut env,
                 type_annotations,

@@ -45,18 +45,23 @@ impl Program {
 
         for module in modules {
             let component_map: HashMap<_, _> = module
-                .component_nodes
-                .into_iter()
-                .map(|comp| (comp.name.clone(), comp))
+                .get_component_nodes()
+                .iter()
+                .map(|comp| (comp.name.clone(), comp.clone()))
                 .collect();
 
             let import_map: HashMap<_, _> = module
-                .import_nodes
-                .into_iter()
-                .map(|import| (import.component_attr.value, import.from_attr.value))
+                .get_import_nodes()
+                .iter()
+                .map(|import| {
+                    (
+                        import.component_attr.value.clone(),
+                        import.from_attr.value.clone(),
+                    )
+                })
                 .collect();
 
-            render_nodes.extend(module.render_nodes);
+            render_nodes.extend(module.get_render_nodes().iter().cloned());
 
             component_maps.insert(module.name.clone(), component_map);
             import_maps.insert(module.name.clone(), import_map);
