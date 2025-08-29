@@ -54,12 +54,11 @@ fn inject_hot_reload_script(html: &str) -> String {
 fn create_error_page(error: &anyhow::Error) -> String {
     let program = get_ui_program();
 
-    let mut params = std::collections::BTreeMap::new();
-    params.insert(
-        "error".to_string(),
-        serde_json::json!(format!("{:#}", error).to_string()),
-    );
-    match program.execute_simple("hop/error_pages", "generic-error", params) {
+    match program.execute_simple(
+        "hop/error_pages",
+        "generic-error",
+        vec![serde_json::json!(format!("{:#}", error).to_string())],
+    ) {
         Ok(html) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
     }
@@ -68,18 +67,15 @@ fn create_error_page(error: &anyhow::Error) -> String {
 fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
     let program = get_ui_program();
 
-    let mut params = std::collections::BTreeMap::new();
-    params.insert("path".to_string(), serde_json::json!(path));
-    params.insert(
-        "available_routes".to_string(),
-        serde_json::json!(available_routes),
-    );
-    match program.execute_simple("hop/error_pages", "not-found-error", params) {
+    match program.execute_simple(
+        "hop/error_pages",
+        "not-found-error",
+        vec![serde_json::json!(path), serde_json::json!(available_routes)],
+    ) {
         Ok(html) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
     }
 }
-
 
 fn create_file_watcher(
     root: &ProjectRoot,
@@ -151,7 +147,6 @@ pub async fn execute(
         }),
     );
 
-
     // Add idiomorph.js serving endpoint
     router = router.route(
         "/_hop/idiomorph.js",
@@ -173,7 +168,6 @@ pub async fn execute(
                 .unwrap()
         }),
     );
-
 
     // Add script serving endpoint if script_file is specified
     if let Some(script_filename) = script_file {

@@ -136,7 +136,6 @@ pub fn typecheck(
                 definition_range: *opening_name_range,
             },
         );
-
     }
 
     for RenderNode { children, .. } in module.get_render_nodes() {
@@ -222,8 +221,11 @@ fn typecheck_node(
                 // Validate named arguments against parameter types
                 let provided_args: std::collections::HashSet<_> =
                     args.iter().map(|arg| &arg.var_name.value).collect();
-                let expected_params: std::collections::HashSet<_> =
-                    comp_info.parameter_types.iter().map(|p| &p.var_name.value).collect();
+                let expected_params: std::collections::HashSet<_> = comp_info
+                    .parameter_types
+                    .iter()
+                    .map(|p| &p.var_name.value)
+                    .collect();
 
                 // Check for missing required parameters
                 for param_name in expected_params.difference(&provided_args) {
@@ -243,7 +245,10 @@ fn typecheck_node(
 
                 // Check each provided argument against its corresponding parameter type
                 for arg in args {
-                    if let Some(param) = comp_info.parameter_types.iter().find(|p| p.var_name.value == arg.var_name.value)
+                    if let Some(param) = comp_info
+                        .parameter_types
+                        .iter()
+                        .find(|p| p.var_name.value == arg.var_name.value)
                     {
                         let expr_type =
                             match typecheck_expr(&arg.expression, env, annotations, errors) {
@@ -560,8 +565,7 @@ mod tests {
                         .join(", ");
                     all_output_lines.push(format!(
                         "{}::{}\n\t{{{}}}\n\t{}\n",
-                        module.name, c.name, param_types_str, 
-                        component_info.has_slot
+                        module.name, c.name, param_types_str, component_info.has_slot
                     ));
                 }
             }

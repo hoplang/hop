@@ -79,7 +79,6 @@ impl HopAST {
                     return Some(node);
                 }
             }
-
         }
 
         None

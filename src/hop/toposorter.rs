@@ -121,7 +121,6 @@ impl TopoSorter {
         path: &mut Vec<String>,
         in_path: &mut HashSet<String>,
     ) -> Result<(), CycleError> {
-
         if in_path.contains(node) {
             // Found a cycle - extract the cycle from path
             let cycle_start = path.iter().position(|x| x == node).unwrap();

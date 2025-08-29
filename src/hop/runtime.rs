@@ -80,7 +80,6 @@ impl Program {
         &self.scripts
     }
 
-
     /// Get all file_attr values from render nodes across all modules
     /// I.e. files specified in <render file="index.html">
     pub fn get_render_file_paths(&self) -> Vec<String> {
@@ -124,17 +123,16 @@ impl Program {
         &self,
         module_name: &str,
         component_name: &str,
-        params: std::collections::BTreeMap<String, serde_json::Value>,
+        args: Vec<serde_json::Value>,
     ) -> Result<String> {
-        self.evaluate_component(module_name, component_name, params, &None, None)
+        self.evaluate_component(module_name, component_name, args, &None, None)
     }
-
 
     pub fn evaluate_component(
         &self,
         module_name: &str,
         component_name: &str,
-        args: std::collections::BTreeMap<String, serde_json::Value>,
+        args: Vec<serde_json::Value>,
         slot_content: &Option<String>,
         additional_classes: Option<&str>,
     ) -> Result<String> {
@@ -154,13 +152,9 @@ impl Program {
         let mut env = Self::init_environment(self.hop_mode);
 
         // Set up environment with all parameters and their corresponding values
-        for param in &component.params {
-            let param_name = &param.var_name.value;
-            let value = args
-                .get(param_name)
-                .cloned()
-                .unwrap_or_else(|| panic!("Missing parameter {param_name}"));
-            env.push(param.var_name.value.clone(), value);
+        for (idx, param) in component.params.iter().enumerate() {
+            env.push(param.var_name.value.clone(), args[idx].clone());
+            // TODO: Check that lengths are correct and use zip
         }
 
         if component.entrypoint {
@@ -281,12 +275,9 @@ impl Program {
                 children,
                 ..
             } => {
-                let mut arg_values = std::collections::BTreeMap::new();
+                let mut arg_values = Vec::new();
                 for arg in args {
-                    arg_values.insert(
-                        arg.var_name.value.clone(),
-                        evaluate_expr(&arg.expression, env)?,
-                    );
+                    arg_values.push(evaluate_expr(&arg.expression, env)?);
                 }
 
                 let component_name = component;
@@ -703,15 +694,13 @@ mod tests {
         let data: serde_json::Value =
             serde_json::from_str(data_json).expect("Failed to parse JSON data");
 
-        let mut params = std::collections::BTreeMap::new();
-        if let serde_json::Value::Object(obj) = data {
-            for (key, value) in obj {
-                params.insert(key, value);
-            }
+        let mut args = Vec::new();
+        for v in data.as_array().expect("Expected array") {
+            args.push(v.clone());
         }
 
         let actual_output = program
-            .execute_simple("main", "main-comp", params)
+            .execute_simple("main", "main-comp", args)
             .expect("Execution failed");
 
         // Normalize output by removing lines that contain only whitespace
@@ -734,7 +723,7 @@ mod tests {
                     <div>hello</div>
                 </main-comp>
             "#},
-            "{}",
+            "[]",
             expect![[r#"
                 <div data-hop-id="main/main-comp" class="p-2">
                     <div>hello</div>
@@ -753,7 +742,7 @@ mod tests {
                     <div>{p}</div>
                 </main-comp>
             "#},
-            r#"{"p": "<script>alert(1);</script>"}"#,
+            r#"["<script>alert(1);</script>"]"#,
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                     <div>&lt;script&gt;alert(1);&lt;/script&gt;</div>
@@ -781,12 +770,12 @@ mod tests {
                   </if>
                 </main-comp>
             "#},
-            r#"{
-              "user": {"name": "alice"},
-              "admin": {"name": "alice"},
-              "status": "active",
-              "expected_status": "active"
-            }"#,
+            r#"[
+              {"name": "alice"},
+              {"name": "alice"},
+              "active",
+              "active"
+            ]"#,
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                     <div>Is Admin</div>
@@ -809,11 +798,11 @@ mod tests {
                     </for>
                 </main-comp>
             "#},
-            r#"{"items": [
+            r#"[[
             	{"show": true, "data": "foo"},
             	{"show": false, "data": "bar"},
             	{"show": true, "data": "baz"}
-            ]}"#,
+            ]]"#,
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                             <div>foo</div>
@@ -842,7 +831,7 @@ mod tests {
                   </for>
                 </main-comp>
             "#},
-            r#"{"items": [
+            r#"[[
               {
                 "name": "Alice",
                 "type": "admin"
@@ -855,7 +844,7 @@ mod tests {
                 "name": "Carol",
                 "type": "admin"
               }
-            ]}"#,
+            ]]"#,
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                     <div>
@@ -890,7 +879,7 @@ mod tests {
                   <button-comp></button-comp>
                 </main-comp>
             "#},
-            "{}",
+            "[]",
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                   <button data-hop-id="test/button-comp">
@@ -910,7 +899,7 @@ mod tests {
                 	<div>{p}</div>
                 </main-comp>
             "#},
-            r#"{"p": "foo bar"}"#,
+            r#"["foo bar"]"#,
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                 	<div>foo bar</div>
@@ -930,13 +919,13 @@ mod tests {
                   </for>
                 </main-comp>
             "#},
-            r#"{
-              "users": [
+            r#"[
+              [
                 {"name": "Alice"},
                 {"name": "Bob"},
                 {"name": "Charlie"}
               ]
-            }"#,
+            ]"#,
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                     <div>Alice</div>
@@ -957,7 +946,7 @@ mod tests {
                   <div>Mode: {HOP_MODE}</div>
                 </main-comp>
             "#},
-            "{}",
+            "[]",
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                   <div>Mode: build</div>
@@ -981,7 +970,7 @@ mod tests {
                   </if>
                 </main-comp>
             "#},
-            "{}",
+            "[]",
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                     <div>Build mode active</div>
@@ -1014,7 +1003,7 @@ mod tests {
                     </bar-comp>
                 </main-comp>
             "#},
-            "{}",
+            "[]",
             expect![[r#"
                     <div data-hop-id="main/bar-comp">
                     <div data-hop-id="main/foo-comp">
@@ -1040,7 +1029,7 @@ mod tests {
                   <a set-href="profile_url" set-title="name">Click here</a>
                 </main-comp>
             "#},
-            r#"{"profile_url": "https://example.com/user/123", "name": "John Doe"}"#,
+            r#"["https://example.com/user/123", "John Doe"]"#,
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                   <a href="https://example.com/user/123" title="John Doe">Click here</a>
@@ -1067,10 +1056,10 @@ mod tests {
                     </main-card>
                 </main-comp>
             "#},
-            r#"{
-                "title": "Hello World",
-                "message": "This text comes from outside params"
-            }"#,
+            r#"[
+                "Hello World",
+                "This text comes from outside params"
+            ]"#,
             expect![[r#"
                     <div data-hop-id="main/main-card">
                     <div class="card">
@@ -1096,7 +1085,7 @@ mod tests {
                 	<my-button>Custom Button</my-button>
                 </main-comp>
             "#},
-            "{}",
+            "[]",
             expect![[r#"
                 	<div data-hop-id="main/my-button">
                 	Click me!
@@ -1129,7 +1118,7 @@ mod tests {
                     </main-layout>
                 </main-comp>
             "#},
-            "{}",
+            "[]",
             expect![[r#"
                     <div data-hop-id="main/main-layout">
                     <div class="page">
@@ -1183,9 +1172,9 @@ mod tests {
                     </page-layout>
                 </main-comp>
             "#},
-            r#"{
-                "page_title": "Welcome Page"
-            }"#,
+            r#"[
+                "Welcome Page"
+            ]"#,
             expect![[r#"
                     <div data-hop-id="main/page-layout">
                     <div class="page">
@@ -1244,17 +1233,17 @@ mod tests {
                     </main-card>
                 </main-comp>
             "#},
-            r#"{
-                "title": "User Management",
-                "active_count": "3",
-                "users": [
+            r#"[
+                "User Management",
+                "3",
+                [
                     {"name": "Alice", "active": true, "admin": true},
                     {"name": "Bob", "active": false, "admin": false},
                     {"name": "Charlie", "active": true, "admin": false},
                     {"name": "Diana", "active": true, "admin": true},
                     {"name": "Eve", "active": false, "admin": false}
                 ]
-            }"#,
+            ]"#,
             expect![[r#"
                     <div data-hop-id="main/main-card">
                     <div class="card">
@@ -1296,7 +1285,7 @@ mod tests {
                     </wrapper-comp>
                 </main-comp>
             "#},
-            "{}",
+            "[]",
             expect![[r#"
                     <div data-hop-id="main/wrapper-comp">
                     <div>
@@ -1324,10 +1313,10 @@ mod tests {
                   </if>
                 </main-comp>
             "#},
-            r#"{
-              "role": "admin",
-              "status": "active"
-            }"#,
+            r#"[
+              "admin",
+              "active"
+            ]"#,
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                     <div>Admin Access</div>
@@ -1346,7 +1335,7 @@ mod tests {
                     <hop-x-raw>foo bar</hop-x-raw>
                 </main-comp>
             "#},
-            "{}",
+            "[]",
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                     foo bar
@@ -1367,7 +1356,7 @@ mod tests {
                 	</hop-x-raw>
                 </main-comp>
             "#},
-            "{}",
+            "[]",
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                 		<div>some html</div>
@@ -1386,7 +1375,7 @@ mod tests {
                 	<hop-x-raw trim>  trimmed  </hop-x-raw>
                 </main-comp>
             "#},
-            "{}",
+            "[]",
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                 	trimmed  
@@ -1404,7 +1393,7 @@ mod tests {
                 	<hop-x-raw>  not trimmed  </hop-x-raw>
                 </main-comp>
             "#},
-            "{}",
+            "[]",
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                 	  not trimmed  
@@ -1427,10 +1416,10 @@ mod tests {
                   </if>
                 </main-comp>
             "#},
-            r#"{"user": {
+            r#"[{
               "isActive": true,
               "role": "admin"
-            }}"#,
+            }]"#,
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                     <div>Welcome active user!</div>
@@ -1454,10 +1443,10 @@ mod tests {
                   </if>
                 </main-comp>
             "#},
-            r#"{"config": {
+            r#"[{
               "enabled": true,
               "debug": false
-            }}"#,
+            }]"#,
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                     <div>Feature is enabled</div>
@@ -1477,9 +1466,9 @@ mod tests {
                   </if>
                 </main-comp>
             "#},
-            r#"{
-              "visible": false
-            }"#,
+            r#"[
+              false
+            ]"#,
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                 </div>
@@ -1500,7 +1489,7 @@ mod tests {
                 	<my-button class="px-4 py-2 rounded"/>
                 </main-comp>
             "#},
-            "{}",
+            "[]",
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                 	<div data-hop-id="main/my-button" class="bg-red-500 px-4 py-2 rounded">Click me</div>
@@ -1522,7 +1511,7 @@ mod tests {
                 	<my-button class="px-4 py-2 rounded"/>
                 </main-comp>
             "#},
-            "{}",
+            "[]",
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                 	<div data-hop-id="main/my-button" class="px-4 py-2 rounded">Click me</div>
@@ -1544,7 +1533,7 @@ mod tests {
                 	<my-button/>
                 </main-comp>
             "#},
-            "{}",
+            "[]",
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                 	<div data-hop-id="main/my-button" class="px-4 py-2">Click me</div>

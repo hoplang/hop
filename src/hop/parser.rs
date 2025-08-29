@@ -450,11 +450,9 @@ fn construct_node(
                         },
                     }
                 }
-                "slot-default" => {
-                    HopNode::SlotDefinition {
-                        range: tree.range(),
-                    }
-                }
+                "slot-default" => HopNode::SlotDefinition {
+                    range: tree.range(),
+                },
                 tag_name if is_valid_component_name(tag_name) => {
                     // This is a component render (contains dash)
                     let params_attrs = match &expression {
@@ -1172,7 +1170,6 @@ mod tests {
             "#]],
         );
     }
-
 
     #[test]
     fn test_parser_slots_default() {
