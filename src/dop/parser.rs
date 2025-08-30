@@ -627,6 +627,18 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_parameters_duplicate_keys_in_object_type() {
+        check_parse_parameters(
+            "user: {name: string, name: number}",
+            expect![[r#"
+                error: Duplicate property 'name'
+                user: {name: string, name: number}
+                                     ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn test_parse_expr_error_trailing_tokens() {
         check_parse_expr(
             "x y",
