@@ -15,7 +15,7 @@ impl ScriptCollector {
     pub fn process_module(&mut self, ast: &HopAST) {
         let mut module_script = String::new();
 
-        for component in ast.get_component_definition_nodes() {
+        for component in ast.get_component_definitions() {
             for child in &component.children {
                 for node in child.iter_depth_first() {
                     if let HopNode::NativeHTML {

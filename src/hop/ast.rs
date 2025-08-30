@@ -2,94 +2,6 @@ use crate::common::{Position, Range, Ranged};
 use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct HopAST {
-    pub name: String,
-    component_nodes: Vec<ComponentDefinitionNode>,
-    import_nodes: Vec<ImportNode>,
-    render_nodes: Vec<RenderNode>,
-}
-
-impl HopAST {
-    /// Creates a new HopAST with the given components.
-    pub fn new(
-        name: String,
-        component_nodes: Vec<ComponentDefinitionNode>,
-        import_nodes: Vec<ImportNode>,
-        render_nodes: Vec<RenderNode>,
-    ) -> Self {
-        Self {
-            name,
-            component_nodes,
-            import_nodes,
-            render_nodes,
-        }
-    }
-
-    pub fn get_component_definition(&self, name: &str) -> Option<&ComponentDefinitionNode> {
-        self.component_nodes.iter().find(|&n| n.name == name)
-    }
-
-    /// Returns a reference to all component definition nodes in the AST.
-    pub fn get_component_definition_nodes(&self) -> &[ComponentDefinitionNode] {
-        &self.component_nodes
-    }
-
-    /// Returns a reference to all import nodes in the AST.
-    pub fn get_import_nodes(&self) -> &[ImportNode] {
-        &self.import_nodes
-    }
-
-    /// Returns a reference to all render nodes in the AST.
-    pub fn get_render_nodes(&self) -> &[RenderNode] {
-        &self.render_nodes
-    }
-
-    /// Returns an iterator over all nodes in the AST, depth-first.
-    /// This includes all nodes from both render nodes and component definitions.
-    pub fn iter_all_nodes(&self) -> impl Iterator<Item = &HopNode> {
-        self.render_nodes
-            .iter()
-            .flat_map(|def| &def.children)
-            .chain(
-                self.component_nodes
-                    .iter()
-                    .flat_map(|render| &render.children),
-            )
-            .flat_map(|child| child.iter_depth_first())
-    }
-
-    /// Finds the deepest AST node that contains the given position.
-    ///
-    /// # Example
-    ///
-    /// <div><span>text</span></div>
-    ///        ^
-    /// returns Some(&NativeHTML { tag_name: "span", .. })
-    ///
-    pub fn find_node_at_position(&self, position: Position) -> Option<&HopNode> {
-        // Search through all render nodes first
-        for render_node in &self.render_nodes {
-            for child in &render_node.children {
-                if let Some(node) = child.find_node_at_position(position) {
-                    return Some(node);
-                }
-            }
-        }
-
-        // Then search through component definitions
-        for component in &self.component_nodes {
-            for child in &component.children {
-                if let Some(node) = child.find_node_at_position(position) {
-                    return Some(node);
-                }
-            }
-        }
-
-        None
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct Attribute {
     pub name: String,
     pub value: String,
@@ -105,13 +17,104 @@ pub struct DopExprAttribute {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ImportNode {
+pub struct HopAST {
+    pub name: String,
+    imports: Vec<Import>,
+    component_definitions: Vec<ComponentDefinition>,
+    renders: Vec<Render>,
+}
+
+impl HopAST {
+    /// Creates a new HopAST with the given components.
+    pub fn new(
+        name: String,
+        component_nodes: Vec<ComponentDefinition>,
+        imports: Vec<Import>,
+        renders: Vec<Render>,
+    ) -> Self {
+        Self {
+            name,
+            component_definitions: component_nodes,
+            imports,
+            renders,
+        }
+    }
+
+    pub fn get_component_definition(&self, name: &str) -> Option<&ComponentDefinition> {
+        self.component_definitions.iter().find(|&n| n.name == name)
+    }
+
+    /// Returns a reference to all component definition nodes in the AST.
+    pub fn get_component_definitions(&self) -> &[ComponentDefinition] {
+        &self.component_definitions
+    }
+
+    /// Returns a reference to all import nodes in the AST.
+    pub fn get_imports(&self) -> &[Import] {
+        &self.imports
+    }
+
+    /// Returns a reference to all render nodes in the AST.
+    pub fn get_renders(&self) -> &[Render] {
+        &self.renders
+    }
+
+    /// Returns an iterator over all nodes in the AST, depth-first.
+    /// This includes all nodes from both render nodes and component definitions.
+    pub fn iter_all_nodes(&self) -> impl Iterator<Item = &HopNode> {
+        self.renders
+            .iter()
+            .flat_map(|def| &def.children)
+            .chain(
+                self.component_definitions
+                    .iter()
+                    .flat_map(|render| &render.children),
+            )
+            .flat_map(|child| child.iter_depth_first())
+    }
+
+    /// Finds the deepest AST node that contains the given position.
+    ///
+    /// # Example
+    ///
+    /// <div><span>text</span></div>
+    ///        ^
+    /// returns Some(&NativeHTML { tag_name: "span", .. })
+    ///
+    pub fn find_node_at_position(&self, position: Position) -> Option<&HopNode> {
+        for n in &self.renders {
+            if n.contains(position) {
+                for child in &n.children {
+                    if let Some(node) = child.find_node_at_position(position) {
+                        return Some(node);
+                    }
+                }
+                return None;
+            }
+        }
+        for n in &self.component_definitions {
+            if n.contains(position) {
+                for child in &n.children {
+                    if let Some(node) = child.find_node_at_position(position) {
+                        return Some(node);
+                    }
+                }
+                return None;
+            }
+        }
+
+        None
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Import {
     pub component_attr: Attribute,
     pub from_attr: Attribute,
     pub range: Range,
 }
 
-impl ImportNode {
+impl Import {
     pub fn imports_component(&self, component_name: &str) -> bool {
         self.component_attr.value == component_name
     }
@@ -122,14 +125,20 @@ impl ImportNode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct RenderNode {
+pub struct Render {
     pub file_attr: Attribute,
     pub range: Range,
     pub children: Vec<HopNode>,
 }
 
+impl Ranged for Render {
+    fn range(&self) -> Range {
+        self.range
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
-pub struct ComponentDefinitionNode {
+pub struct ComponentDefinition {
     pub name: String,
     pub opening_name_range: Range,
     pub closing_name_range: Option<Range>,
@@ -140,6 +149,12 @@ pub struct ComponentDefinitionNode {
     pub children: Vec<HopNode>,
     pub entrypoint: bool,
     pub has_slot: bool,
+}
+
+impl Ranged for ComponentDefinition {
+    fn range(&self) -> Range {
+        self.range
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -228,7 +243,7 @@ impl HopNode {
     }
 
     pub fn find_node_at_position(&self, position: Position) -> Option<&HopNode> {
-        if !self.contains_position(position) {
+        if !self.contains(position) {
             return None;
         }
         for child in self.children() {

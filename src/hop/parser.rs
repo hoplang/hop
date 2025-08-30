@@ -1,8 +1,6 @@
 use crate::common::ParseError;
 use crate::dop::{self, DopTokenizer};
-use crate::hop::ast::{
-    ComponentDefinitionNode, DopExprAttribute, HopAST, HopNode, ImportNode, RenderNode,
-};
+use crate::hop::ast::{ComponentDefinition, DopExprAttribute, HopAST, HopNode, Import, Render};
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
@@ -10,9 +8,9 @@ use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq)]
 enum TopLevel {
-    Import(ImportNode),
-    Component(ComponentDefinitionNode),
-    Render(RenderNode),
+    Import(Import),
+    Component(ComponentDefinition),
+    Render(Render),
 }
 
 pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> HopAST {
@@ -122,13 +120,11 @@ fn construct_top_level_node(
                     });
 
                     match (component_attr, from_attr) {
-                        (Some(component_attr), Some(from_attr)) => {
-                            Some(TopLevel::Import(ImportNode {
-                                component_attr,
-                                from_attr,
-                                range: tree.range(),
-                            }))
-                        }
+                        (Some(component_attr), Some(from_attr)) => Some(TopLevel::Import(Import {
+                            component_attr,
+                            from_attr,
+                            range: tree.range(),
+                        })),
                         _ => None,
                     }
                 }
@@ -157,7 +153,7 @@ fn construct_top_level_node(
                     });
 
                     file_attr.map(|file_attr| {
-                        TopLevel::Render(RenderNode {
+                        TopLevel::Render(Render {
                             file_attr,
                             range: tree.range(),
                             children,
@@ -226,7 +222,7 @@ fn construct_top_level_node(
                         }
                     }
 
-                    Some(TopLevel::Component(ComponentDefinitionNode {
+                    Some(TopLevel::Component(ComponentDefinition {
                         name: name.to_string(),
                         opening_name_range: *name_range,
                         closing_name_range: tree.closing_token.as_ref().and_then(|tag| {
@@ -540,7 +536,7 @@ mod tests {
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
-    pub fn format_component_definition(d: &ComponentDefinitionNode) -> String {
+    pub fn format_component_definition(d: &ComponentDefinition) -> String {
         let mut lines = Vec::new();
         for child in &d.children {
             let s = format_tree(child, 0);
@@ -620,7 +616,7 @@ mod tests {
                 .with_lines_before(1)
                 .annotate(None, input, &errors)
         } else {
-            for component in module.get_component_definition_nodes() {
+            for component in module.get_component_definitions() {
                 if component.name == "main-comp" {
                     return expected.assert_eq(&format_component_definition(component));
                 }

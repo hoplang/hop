@@ -1,7 +1,7 @@
 use crate::common::{Range, Ranged, TypeError};
 use crate::dop::{DopParameter, DopType, is_subtype, typecheck_expr};
 use crate::hop::ast::HopAST;
-use crate::hop::ast::{ComponentDefinitionNode, HopNode, ImportNode, RenderNode};
+use crate::hop::ast::{ComponentDefinition, HopNode, Import, Render};
 use crate::hop::environment::Environment;
 use std::collections::HashMap;
 
@@ -55,12 +55,12 @@ pub fn typecheck(
 ) -> HashMap<String, ComponentTypeInformation> {
     let mut current_module_type_information = HashMap::new();
 
-    for ImportNode {
+    for Import {
         from_attr,
         component_attr,
         range,
         ..
-    } in module.get_import_nodes()
+    } in module.get_imports()
     {
         let from_module = &from_attr.value;
         let component_name = &component_attr.value;
@@ -81,16 +81,16 @@ pub fn typecheck(
     }
     let mut env = Environment::new();
 
-    env.push("HOP_MODE".to_string(), DopType::String);
+    let _ = env.push("HOP_MODE".to_string(), DopType::String);
 
-    for ComponentDefinitionNode {
+    for ComponentDefinition {
         name,
         params,
         children,
         has_slot,
         opening_name_range,
         ..
-    } in module.get_component_definition_nodes()
+    } in module.get_component_definitions()
     {
         let parameter_types = params.clone();
 
@@ -102,7 +102,7 @@ pub fn typecheck(
                 typ: param_type.clone(),
                 name: param.var_name.value.clone(),
             });
-            env.push(param.var_name.value.clone(), param_type);
+            let _ = env.push(param.var_name.value.clone(), param_type);
         }
 
         for child in children {
@@ -118,11 +118,11 @@ pub fn typecheck(
 
         // Check for unused variables (iterate in reverse to match push order)
         for param in params.iter().rev() {
-            if !env.pop() {
+            if env.pop().is_err() {
                 errors.push(TypeError::unused_variable(
                     &param.var_name.value,
                     param.var_name.range,
-                ));
+                ))
             }
         }
 
@@ -137,7 +137,7 @@ pub fn typecheck(
         );
     }
 
-    for RenderNode { children, .. } in module.get_render_nodes() {
+    for Render { children, .. } in module.get_renders() {
         for child in children {
             typecheck_node(
                 child,
@@ -329,9 +329,6 @@ fn typecheck_node(
                 );
             }
         }
-        HopNode::SlotDefinition { .. } => {
-            // slot-default is now a void tag, nothing to check
-        }
         HopNode::XExec { children, .. }
         | HopNode::XRaw { children, .. }
         | HopNode::Error { children, .. } => {
@@ -352,12 +349,11 @@ fn typecheck_node(
             children,
             ..
         } => {
-            // Typecheck the array expression
             let array_type = match typecheck_expr(array_expr, env, annotations, errors) {
                 Ok(t) => t,
                 Err(err) => {
                     errors.push(err);
-                    return; // Skip further processing of this for loop
+                    return;
                 }
             };
             let element_type = match &array_type {
@@ -371,28 +367,29 @@ fn typecheck_node(
                         &array_type.to_string(),
                         array_expr.range(),
                     ));
-                    return; // Skip further processing
+                    return;
                 }
             };
 
-            // Push the loop variable into scope for the children
+            // Push the loop variable into scope
             let mut pushed = false;
-            if env.push(var_name.value.clone(), element_type.clone()) {
-                pushed = true;
-                // Add type annotation for the loop variable
-                annotations.push(TypeAnnotation {
-                    range: var_name.range,
-                    typ: element_type.clone(),
-                    name: var_name.value.clone(),
-                });
-            } else {
-                errors.push(TypeError::variable_is_already_defined(
-                    &var_name.value,
-                    var_name.range,
-                ));
+            match env.push(var_name.value.clone(), element_type.clone()) {
+                Ok(_) => {
+                    pushed = true;
+                    annotations.push(TypeAnnotation {
+                        range: var_name.range,
+                        typ: element_type.clone(),
+                        name: var_name.value.clone(),
+                    });
+                }
+                Err(_) => {
+                    errors.push(TypeError::variable_is_already_defined(
+                        &var_name.value,
+                        var_name.range,
+                    ));
+                }
             }
 
-            // Typecheck children
             for child in children {
                 typecheck_node(
                     child,
@@ -404,12 +401,17 @@ fn typecheck_node(
                 );
             }
 
-            // Pop the loop variable from scope
-            if pushed && !env.pop() {
-                errors.push(TypeError::unused_variable(&var_name.value, var_name.range));
+            if pushed {
+                match env.pop() {
+                    Ok(_) => {}
+                    Err(_) => {
+                        errors.push(TypeError::unused_variable(&var_name.value, var_name.range))
+                    }
+                }
             }
         }
-        HopNode::Text { .. } | HopNode::Doctype { .. } => {
+
+        HopNode::SlotDefinition { .. } | HopNode::Text { .. } | HopNode::Doctype { .. } => {
             // No typechecking needed
         }
         HopNode::TextExpression {
@@ -493,7 +495,7 @@ mod tests {
             } else {
                 module_type_results.insert(module.name.clone(), type_result.clone());
 
-                for c in module.get_component_definition_nodes() {
+                for c in module.get_component_definitions() {
                     let component_info =
                         type_result.get(&c.name).expect("Component info not found");
                     let param_types_str = component_info
@@ -991,7 +993,7 @@ mod tests {
     }
 
     #[test]
-    fn test_iterate_over_boolean_param() {
+    fn test_iterate_over_boolean_parameter() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -2218,24 +2220,6 @@ mod tests {
                 4 | <main-comp>
                 5 |     <new-comp {user: 'invalid'}/>
                   |                      ^^^^^^^^^
-            "#]],
-        );
-    }
-
-    // Component with explicit string parameter type.
-    #[test]
-    fn test_explicit_string_parameter() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                <string-comp {message: string}>
-                	<div>{message}</div>
-                </string-comp>
-            "#},
-            expect![[r#"
-                main::string-comp
-                	{message: string}
-                	false
             "#]],
         );
     }

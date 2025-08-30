@@ -24,9 +24,9 @@ impl<V> Environment<V> {
 
     // Bind the key to the given value
     // Returns true if successful, false if the variable already exists (shadowing not allowed)
-    pub fn push(&mut self, key: String, value: V) -> bool {
+    pub fn push(&mut self, key: String, value: V) -> Result<(), ()> {
         if self.entries.contains_key(&key) {
-            return false;
+            return Err(());
         }
         self.entries.insert(
             key.clone(),
@@ -36,18 +36,21 @@ impl<V> Environment<V> {
             },
         );
         self.operations.push(key);
-        true
+        Ok(())
     }
 
     // Undo the latest push operation and return whether the variable was accessed
-    pub fn pop(&mut self) -> bool {
+    pub fn pop(&mut self) -> Result<(), ()> {
         if let Some(key) = self.operations.pop() {
             self.entries
                 .remove(&key)
-                .map(|entry| entry.accessed)
-                .unwrap_or(false)
+                .map(|entry| match entry.accessed {
+                    true => Ok(()),
+                    false => Err(()),
+                })
+                .unwrap_or(Err(()))
         } else {
-            false
+            Err(())
         }
     }
 

@@ -41,7 +41,7 @@ impl Range {
 
     // returns true if the position lies in the range
     // where start is inclusive and end is exclusive
-    pub fn contains_position(&self, position: Position) -> bool {
+    pub fn contains(&self, position: Position) -> bool {
         (position.line > self.start.line
             || (position.line == self.start.line && position.column >= self.start.column))
             && (position.line < self.end.line
@@ -68,8 +68,8 @@ pub trait Ranged {
 
     /// Returns true if the position lies within this item's range
     /// (start inclusive, end exclusive)
-    fn contains_position(&self, position: Position) -> bool {
-        self.range().contains_position(position)
+    fn contains(&self, position: Position) -> bool {
+        self.range().contains(position)
     }
 }
 
@@ -217,7 +217,6 @@ impl TypeError {
             range,
         )
     }
-
 }
 
 impl Ranged for TypeError {

@@ -185,7 +185,7 @@ impl Program {
 
         for (module_name, ast) in &program.asts {
             program.topo_sorter.add_node(module_name.clone());
-            for import_node in ast.get_import_nodes() {
+            for import_node in ast.get_imports() {
                 program
                     .topo_sorter
                     .add_dependency(module_name, &import_node.from_attr.value);
@@ -232,7 +232,7 @@ impl Program {
                 .asts
                 .get(module_name)
                 .expect("Failed to retrieve AST in handle_cycle_error");
-            for import_node in ast.get_import_nodes() {
+            for import_node in ast.get_imports() {
                 if cycle_error.cycle.contains(&import_node.from_attr.value) {
                     type_errors.push(TypeError::circular_import(
                         module_name,
@@ -302,7 +302,7 @@ impl Program {
         };
 
         self.topo_sorter.clear_dependencies(&module_name);
-        for import_node in ast.get_import_nodes() {
+        for import_node in ast.get_imports() {
             self.topo_sorter
                 .add_dependency(&module_name, &import_node.from_attr.value);
         }
@@ -327,7 +327,7 @@ impl Program {
         self.type_annotations
             .get(module_name)?
             .iter()
-            .find(|a| a.contains_position(position))
+            .find(|a| a.contains(position))
             .map(|annotation| HoverInfo {
                 type_str: format!("`{}`: `{}`", annotation.name, annotation.typ),
                 range: annotation.range,
@@ -342,7 +342,7 @@ impl Program {
         self.definition_links
             .get(module_name)?
             .iter()
-            .find(|link| link.contains_position(position))
+            .find(|link| link.contains(position))
             .map(|link| DefinitionLocation {
                 module: link.definition_module.clone(),
                 range: link.definition_range,
@@ -355,13 +355,11 @@ impl Program {
         position: Position,
     ) -> Option<Vec<RenameLocation>> {
         let ast = self.asts.get(module_name)?;
-        for component_node in ast.get_component_definition_nodes() {
-            let is_on_tag_name = component_node
-                .opening_name_range
-                .contains_position(position)
+        for component_node in ast.get_component_definitions() {
+            let is_on_tag_name = component_node.opening_name_range.contains(position)
                 || component_node
                     .closing_name_range
-                    .is_some_and(|range| range.contains_position(position));
+                    .is_some_and(|range| range.contains(position));
 
             if is_on_tag_name {
                 return Some(
@@ -372,7 +370,7 @@ impl Program {
 
         let node = ast.find_node_at_position(position)?;
 
-        let is_on_tag_name = node.name_ranges().any(|r| r.contains_position(position));
+        let is_on_tag_name = node.name_ranges().any(|r| r.contains(position));
 
         if !is_on_tag_name {
             return None;
@@ -409,18 +407,15 @@ impl Program {
         let ast = self.asts.get(module_name)?;
 
         // Check if we're on a component definition
-        for component_node in ast.get_component_definition_nodes() {
-            if component_node
-                .opening_name_range
-                .contains_position(position)
-            {
+        for component_node in ast.get_component_definitions() {
+            if component_node.opening_name_range.contains(position) {
                 return Some(RenameableSymbol {
                     current_name: component_node.name.clone(),
                     range: component_node.opening_name_range,
                 });
             }
             if let Some(closing_range) = component_node.closing_name_range {
-                if closing_range.contains_position(position) {
+                if closing_range.contains(position) {
                     return Some(RenameableSymbol {
                         current_name: component_node.name.clone(),
                         range: closing_range,
@@ -434,7 +429,7 @@ impl Program {
         let tag_name = node.tag_name()?;
 
         node.name_ranges()
-            .find(|r| r.contains_position(position))
+            .find(|r| r.contains(position))
             .map(|range| RenameableSymbol {
                 current_name: tag_name.to_string(),
                 range,
@@ -454,7 +449,7 @@ impl Program {
 
         if let Some(ast) = self.asts.get(definition_module) {
             if let Some(component_node) = ast
-                .get_component_definition_nodes()
+                .get_component_definitions()
                 .iter()
                 .find(|node| node.name == component_name)
             {
@@ -477,7 +472,7 @@ impl Program {
         for (module_name, ast) in &self.asts {
             // Find all import statements that import this component
             locations.extend(
-                ast.get_import_nodes()
+                ast.get_imports()
                     .iter()
                     .filter(|n| {
                         n.imports_component(component_name) && n.imports_from(definition_module)
@@ -556,7 +551,7 @@ impl Program {
     pub fn get_render_file_paths(&self) -> Vec<String> {
         let mut result = Vec::new();
         for ast in self.asts.values() {
-            for node in ast.get_render_nodes() {
+            for node in ast.get_renders() {
                 result.push(node.file_attr.value.clone())
             }
         }
@@ -567,7 +562,7 @@ impl Program {
     pub fn render_file(&self, file_path: &str) -> Result<String> {
         // Find the render node with the matching file_attr.value
         for ast in self.asts.values() {
-            for node in ast.get_render_nodes() {
+            for node in ast.get_renders() {
                 if node.file_attr.value == file_path {
                     let mut env = Self::init_environment(self.hop_mode);
                     let mut content = String::new();
@@ -903,7 +898,6 @@ impl Program {
                     Ok(result)
                 }
             }
-
         }
     }
 
