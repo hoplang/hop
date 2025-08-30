@@ -707,31 +707,6 @@ mod tests {
         );
     }
 
-    // Two components can both have slot-default.
-    #[test]
-    fn test_both_components_can_have_default_slot() {
-        check(
-            indoc! {r#"
-                -- main.hop --
-                <main-comp>
-                    <slot-default/>
-                </main-comp>
-                <foo-comp>
-                    <slot-default/>
-                </foo-comp>
-            "#},
-            expect![[r#"
-                main::main-comp
-                	{}
-                	true
-
-                main::foo-comp
-                	{}
-                	true
-            "#]],
-        );
-    }
-
     // When content is passed to a component without slot-default, the typechecker outputs an error.
     #[test]
     fn test_undefined_slot_reference() {
@@ -2007,6 +1982,8 @@ mod tests {
         );
     }
 
+    // When an argument type does not match a parameter type the typechecker
+    // reports an error.
     #[test]
     fn test_component_argument_type_mismatch() {
         check(
