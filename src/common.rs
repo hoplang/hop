@@ -135,6 +135,92 @@ impl TypeError {
             range,
         )
     }
+
+    pub fn expected_boolean_condition(found: &str, range: Range) -> Self {
+        Self::new(format!("Expected boolean condition, got {}", found), range)
+    }
+
+    pub fn missing_required_parameter(param: &str, range: Range) -> Self {
+        Self::new(format!("Missing required parameter '{}'", param), range)
+    }
+
+    pub fn unexpected_argument(arg: &str, range: Range) -> Self {
+        Self::new(format!("Unexpected argument '{}'", arg), range)
+    }
+
+    pub fn argument_is_incompatible(
+        expected: &str,
+        found: &str,
+        arg_name: &str,
+        range: Range,
+    ) -> Self {
+        Self::new(
+            format!(
+                "Argument '{}' of type {} is incompatible with expected type {}",
+                arg_name, found, expected
+            ),
+            range,
+        )
+    }
+
+    pub fn expected_string_attribute(found: &str, range: Range) -> Self {
+        Self::new(format!("Expected string attribute, got {}", found), range)
+    }
+
+    pub fn cannot_iterate_empty_array(range: Range) -> Self {
+        Self::new(
+            "Cannot iterate over an empty array with unknown element type".to_string(),
+            range,
+        )
+    }
+
+    pub fn cannot_iterate_over(typ: &str, range: Range) -> Self {
+        Self::new(format!("Can not iterate over {}", typ), range)
+    }
+
+    pub fn expected_string_expression(found: &str, range: Range) -> Self {
+        Self::new(
+            format!("Expected string for text expression, got {}", found),
+            range,
+        )
+    }
+
+    pub fn undefined_variable(name: &str, range: Range) -> Self {
+        Self::new(format!("Undefined variable: {}", name), range)
+    }
+
+    pub fn property_not_found_in_object(property: &str, range: Range) -> Self {
+        Self::new(format!("Property {} not found in object", property), range)
+    }
+
+    pub fn cannot_use_as_object(typ: &str, range: Range) -> Self {
+        Self::new(format!("{} can not be used as an object", typ), range)
+    }
+
+    pub fn cannot_compare_types(left: &str, right: &str, range: Range) -> Self {
+        Self::new(format!("Can not compare {} to {}", left, right), range)
+    }
+
+    pub fn negation_requires_boolean(range: Range) -> Self {
+        Self::new(
+            "Negation operator can only be applied to boolean values".to_string(),
+            range,
+        )
+    }
+
+    pub fn array_type_mismatch(expected: &str, found: &str, range: Range) -> Self {
+        Self::new(
+            format!(
+                "Array elements must all have the same type, found {} and {}",
+                expected, found
+            ),
+            range,
+        )
+    }
+
+    pub fn load_json_error(error: &str, range: Range) -> Self {
+        Self::new(error.to_string(), range)
+    }
 }
 
 impl Ranged for TypeError {

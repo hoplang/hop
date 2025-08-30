@@ -176,8 +176,8 @@ fn typecheck_node(
                 }
             };
             if !is_subtype(&condition_type, &DopType::Bool) {
-                errors.push(TypeError::new(
-                    format!("Expected boolean condition, got {}", condition_type),
+                errors.push(TypeError::expected_boolean_condition(
+                    &condition_type.to_string(),
                     *range,
                 ));
             }
@@ -228,18 +228,12 @@ fn typecheck_node(
 
                 // Check for missing required parameters
                 for param_name in expected_params.difference(&provided_args) {
-                    errors.push(TypeError::new(
-                        format!("Missing required parameter '{}'", param_name),
-                        *range,
-                    ));
+                    errors.push(TypeError::missing_required_parameter(param_name, *range));
                 }
 
                 // Check for unexpected arguments
                 for arg_name in provided_args.difference(&expected_params) {
-                    errors.push(TypeError::new(
-                        format!("Unexpected argument '{}'", arg_name),
-                        *range,
-                    ));
+                    errors.push(TypeError::unexpected_argument(arg_name, *range));
                 }
 
                 // Check each provided argument against its corresponding parameter type
@@ -249,7 +243,7 @@ fn typecheck_node(
                         .iter()
                         .find(|p| p.var_name.value == arg.var_name.value)
                     {
-                        let expr_type =
+                        let evaluated_arg_type =
                             match typecheck_expr(&arg.expression, env, annotations, errors) {
                                 Ok(t) => t,
                                 Err(err) => {
@@ -258,18 +252,17 @@ fn typecheck_node(
                                 }
                             };
 
-                        if !is_subtype(&expr_type, &param.type_annotation) {
-                            errors.push(TypeError::new(
-                                format!(
-                                    "Argument '{}' of type {} is incompatible with expected type {}",
-                                    arg.var_name.value, expr_type, param.type_annotation,
-                                ),
+                        if !is_subtype(&evaluated_arg_type, &param.type_annotation) {
+                            errors.push(TypeError::argument_is_incompatible(
+                                &param.type_annotation.to_string(),
+                                &evaluated_arg_type.to_string(),
+                                &arg.var_name.value,
                                 arg.expression.range(),
                             ));
                         } else {
                             annotations.push(TypeAnnotation {
                                 range: arg.expression.range(),
-                                typ: expr_type,
+                                typ: evaluated_arg_type,
                                 name: format!("component parameter '{}'", arg.var_name.value),
                             });
                         }
@@ -311,8 +304,8 @@ fn typecheck_node(
                 };
 
                 if !is_subtype(&expr_type, &DopType::String) {
-                    errors.push(TypeError::new(
-                        format!("Expected string attribute, got {}", expr_type),
+                    errors.push(TypeError::expected_string_attribute(
+                        &expr_type.to_string(),
                         set_attr.range,
                     ));
                     continue;
@@ -367,7 +360,7 @@ fn typecheck_node(
             let json_type = match infer_type_from_json_file(file_path) {
                 Ok(typ) => typ,
                 Err(err) => {
-                    errors.push(TypeError::new(err, file_attr.range));
+                    errors.push(TypeError::load_json_error(&err, file_attr.range));
                     return; // Skip further processing
                 }
             };
@@ -423,15 +416,12 @@ fn typecheck_node(
             let element_type = match &array_type {
                 DopType::Array(Some(inner)) => *inner.clone(),
                 DopType::Array(None) => {
-                    errors.push(TypeError::new(
-                        "Cannot iterate over an empty array with unknown element type".to_string(),
-                        array_expr.range(),
-                    ));
+                    errors.push(TypeError::cannot_iterate_empty_array(array_expr.range()));
                     return;
                 }
                 _ => {
-                    errors.push(TypeError::new(
-                        format!("Can not iterate over {}", array_type),
+                    errors.push(TypeError::cannot_iterate_over(
+                        &array_type.to_string(),
                         array_expr.range(),
                     ));
                     return; // Skip further processing
@@ -487,8 +477,8 @@ fn typecheck_node(
                 }
             };
             if !is_subtype(&expr_type, &DopType::String) {
-                errors.push(TypeError::new(
-                    format!("Expected string for text expression, got {}", expr_type),
+                errors.push(TypeError::expected_string_expression(
+                    &expr_type.to_string(),
                     *range,
                 ));
             }
