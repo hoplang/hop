@@ -2598,4 +2598,120 @@ mod tests {
             "#]],
         );
     }
+
+    // Using a condition that is not a boolean should produce an error
+    #[test]
+    fn test_if_condition_must_be_boolean() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-component>
+                    <if {'str'}>
+                      is str?
+                    </if>
+                </main-component>
+            "#},
+            expect![[r#"
+                error: Expected boolean condition, got string
+                  --> main.hop (line 2, col 5)
+                1 | <main-component>
+                2 |     <if {'str'}>
+                  |     ^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    // Passing an argument that is not in the parameter list should produce an error
+    #[test]
+    fn test_unexpected_argument_error() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp {a: string}>
+                  {a}
+                </main-comp>
+                <foo-comp>
+                    <main-comp {a: '', b: 1}/>
+                </foo-comp>
+            "#},
+            expect![[r#"
+                error: Unexpected argument 'b'
+                  --> main.hop (line 5, col 24)
+                4 | <foo-comp>
+                5 |     <main-comp {a: '', b: 1}/>
+                  |                        ^
+            "#]],
+        );
+    }
+
+    // Type errors in argument list should be reported
+    #[test]
+    fn test_type_errors_in_argument_list() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp {a: string, b: string}>
+                  {a} {b}
+                </main-comp>
+                <foo-comp>
+                    <main-comp {a: 1 == '', b: 1 == ''}/>
+                </foo-comp>
+            "#},
+            expect![[r#"
+                error: Can not compare number to string
+                  --> main.hop (line 5, col 20)
+                4 | <foo-comp>
+                5 |     <main-comp {a: 1 == '', b: 1 == ''}/>
+                  |                    ^^^^^^^
+
+                error: Can not compare number to string
+                  --> main.hop (line 5, col 32)
+                4 | <foo-comp>
+                5 |     <main-comp {a: 1 == '', b: 1 == ''}/>
+                  |                                ^^^^^^^
+            "#]],
+        );
+    }
+
+    // Trying to iterate over an empty array should produce an error
+    #[test]
+    fn test_iterate_over_empty_array_error() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-component>
+                    <for {x in []}>
+                      ?
+                    </for>
+                </main-component>
+            "#},
+            expect![[r#"
+                error: Cannot iterate over an empty array with unknown element type
+                  --> main.hop (line 2, col 16)
+                1 | <main-component>
+                2 |     <for {x in []}>
+                  |                ^^
+            "#]],
+        );
+    }
+
+    // Trying to render a non-string should produce an error
+    #[test]
+    fn test_render_non_string_error() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-component>
+                    {false}
+                </main-component>
+            "#},
+            expect![[r#"
+                error: Expected string for text expression, got boolean
+                  --> main.hop (line 2, col 5)
+                1 | <main-component>
+                2 |     {false}
+                  |     ^^^^^^^
+            "#]],
+        );
+    }
 }
