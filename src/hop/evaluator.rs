@@ -31,25 +31,25 @@ pub fn render_file(
     hop_mode: HopMode,
     file_path: &str,
 ) -> Result<String> {
-    // Find the render node with the matching file_attr.value
-    for ast in asts.values() {
-        for node in ast.get_renders() {
-            if node.file_attr.value == file_path {
-                let mut env = init_environment(hop_mode);
-                let mut content = String::new();
-                for child in &node.children {
-                    let rendered =
-                        evaluate_node_entrypoint(asts, hop_mode, child, &mut env, "build")?;
-                    content.push_str(&rendered);
-                }
-                return Ok(content);
+    let render = asts
+        .values()
+        .flat_map(|ast| ast.get_renders())
+        .find(|r| r.file_attr.value == file_path);
+    match render {
+        Some(node) => {
+            let mut env = init_environment(hop_mode);
+            let mut content = String::new();
+            for child in &node.children {
+                let rendered = evaluate_node_entrypoint(asts, hop_mode, child, &mut env, "build")?;
+                content.push_str(&rendered);
             }
+            Ok(content)
         }
+        None => Err(anyhow::anyhow!(
+            "File path '{}' not found in render nodes",
+            file_path
+        )),
     }
-    Err(anyhow::anyhow!(
-        "File path '{}' not found in render nodes",
-        file_path
-    ))
 }
 
 pub fn evaluate_component(
@@ -78,13 +78,10 @@ pub fn evaluate_component(
     let mut env = init_environment(hop_mode);
 
     // Set up environment with all parameters and their corresponding values
-    match &component.params {
-        None => {}
-        Some((params, _)) => {
-            for param in params.iter() {
-                if let Some(value) = args.get(&param.var_name.value) {
-                    let _ = env.push(param.var_name.value.clone(), value.clone());
-                }
+    if let Some((params, _)) = &component.params {
+        for param in params.iter() {
+            if let Some(value) = args.get(&param.var_name.value) {
+                let _ = env.push(param.var_name.value.clone(), value.clone());
             }
         }
     }
