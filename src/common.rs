@@ -188,6 +188,22 @@ impl RangeError {
     pub fn duplicate_property(name: &str, range: Range) -> Self {
         Self::new(format!("Duplicate property '{name}'"), range)
     }
+
+    pub fn circular_import(importer: &str, imported: &str, cycle: &[String], range: Range) -> Self {
+        let cycle_display = if let Some(first) = cycle.first() {
+            format!("{} → {}", cycle.join(" → "), first)
+        } else {
+            cycle.join(" → ")
+        };
+        
+        Self::new(
+            format!(
+                "Circular import detected: {} imports {} which creates a dependency cycle: {}",
+                importer, imported, cycle_display
+            ),
+            range,
+        )
+    }
 }
 
 impl Ranged for RangeError {
