@@ -752,6 +752,10 @@ mod tests {
         expected.assert_eq(&output);
     }
 
+    ///////////////////////////////////////////////////////////////////////////
+    /// DEFINITION LOCATION                                                 ///
+    ///////////////////////////////////////////////////////////////////////////
+
     #[test]
     fn test_get_definition_from_component_reference() {
         check_definition_location(
@@ -792,7 +796,6 @@ mod tests {
 
                 <main-comp>
                   <hello-world>
-
                   </hello-world>
                      ^
                 </main-comp>
@@ -805,6 +808,10 @@ mod tests {
             "#]],
         );
     }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// RENAME LOCATIONS                                                    ///
+    ///////////////////////////////////////////////////////////////////////////
 
     #[test]
     fn test_get_rename_locations_from_component_reference() {
@@ -945,6 +952,7 @@ mod tests {
                   <hello-world />
                 </main-comp>
             "#},
+            // The result here should not contain rename locations in main.hop.
             expect![[r#"
                 Rename
                   --> components.hop (line 5, col 2)
@@ -955,44 +963,6 @@ mod tests {
                   --> components.hop (line 7, col 3)
                 7 | </main-comp>
                   |   ^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_get_renameable_symbol() {
-        check_renameable_symbol(
-            indoc! {r#"
-                -- main.hop --
-                <hello-world>
-                 ^
-                  <h1>Hello World</h1>
-                </hello-world>
-            "#},
-            expect![[r#"
-                Renameable symbol: hello-world
-                  --> main.hop (line 1, col 2)
-                1 | <hello-world>
-                  |  ^^^^^^^^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_get_hover_info() {
-        check_hover_info(
-            indoc! {r#"
-                -- main.hop --
-                <main-comp {user: {name: string}}>
-                              ^
-                  <h1>Hello {user.name}</h1>
-                </main-comp>
-            "#},
-            expect![[r#"
-                `user`: `{name: string}`
-                  --> main.hop (line 1, col 13)
-                1 | <main-comp {user: {name: string}}>
-                  |             ^^^^
             "#]],
         );
     }
@@ -1068,6 +1038,29 @@ mod tests {
         );
     }
 
+    ///////////////////////////////////////////////////////////////////////////
+    /// RENAMEABLE SYMBOL                                                   ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn test_get_renameable_symbol() {
+        check_renameable_symbol(
+            indoc! {r#"
+                -- main.hop --
+                <hello-world>
+                 ^
+                  <h1>Hello World</h1>
+                </hello-world>
+            "#},
+            expect![[r#"
+                Renameable symbol: hello-world
+                  --> main.hop (line 1, col 2)
+                1 | <hello-world>
+                  |  ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
     #[test]
     fn test_get_renameable_symbol_native_html() {
         check_renameable_symbol(
@@ -1086,6 +1079,33 @@ mod tests {
             "#]],
         );
     }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// HOVER INFO                                                          ///
+    ///////////////////////////////////////////////////////////////////////////
+
+    #[test]
+    fn test_get_hover_info_parameter() {
+        check_hover_info(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp {user: {name: string}}>
+                              ^
+                  <h1>Hello {user.name}</h1>
+                </main-comp>
+            "#},
+            expect![[r#"
+                `user`: `{name: string}`
+                  --> main.hop (line 1, col 13)
+                1 | <main-comp {user: {name: string}}>
+                  |             ^^^^
+            "#]],
+        );
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// ERROR DIAGNOSTICS                                                   ///
+    ///////////////////////////////////////////////////////////////////////////
 
     #[test]
     fn test_get_error_diagnostics_parse_errors() {
@@ -1112,6 +1132,10 @@ mod tests {
         );
     }
 
+    ///////////////////////////////////////////////////////////////////////////
+    /// RENAME LOCATIONS                                                    ///
+    ///////////////////////////////////////////////////////////////////////////
+
     // Even when there's parse errors we should be able to rename.
     #[test]
     fn test_rename_with_parse_errors() {
@@ -1121,7 +1145,7 @@ mod tests {
                 <main-comp>
                   ^
                   <div>
-                  <span>unclosed span
+                  <span>
                 </main-comp>
             "#},
             expect![[r#"
@@ -1137,6 +1161,10 @@ mod tests {
             "#]],
         );
     }
+
+    ///////////////////////////////////////////////////////////////////////////
+    /// TYPE ERRORS                                                         ///
+    ///////////////////////////////////////////////////////////////////////////
 
     #[test]
     fn test_cycle_error_reporting() {

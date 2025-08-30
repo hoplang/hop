@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 /// CycleError represents a cycle in the graph.
-/// Each node in the cycle occurs exactly once in the `cycle` vector.
+/// Each node in the cycle occurs exactly once in the cycle vector.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CycleError {
     pub cycle: Vec<String>,
@@ -13,7 +13,7 @@ impl CycleError {
     }
 }
 
-/// The TopoSorter module is responsible for performing topological sorting of directed graphs.
+/// The TopoSorter performs topological sorting of directed graphs.
 #[derive(Debug, Clone)]
 pub struct TopoSorter {
     nodes: HashSet<String>,

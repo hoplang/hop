@@ -25,16 +25,15 @@ pub struct HopAST {
 }
 
 impl HopAST {
-    /// Creates a new HopAST with the given components.
     pub fn new(
         name: String,
-        component_nodes: Vec<ComponentDefinition>,
+        component_definitions: Vec<ComponentDefinition>,
         imports: Vec<Import>,
         renders: Vec<Render>,
     ) -> Self {
         Self {
             name,
-            component_definitions: component_nodes,
+            component_definitions,
             imports,
             renders,
         }

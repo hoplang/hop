@@ -2,6 +2,11 @@ use crate::common::{ParseError, Range, is_void_element};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
 
+/// A TokenTree represents a tree of tokens.
+///
+/// In a token tree the opening tags have been matched to their
+/// corresponding closing tag and the nodes in between have been
+/// collected as children.
 #[derive(Debug, Clone)]
 pub struct TokenTree {
     pub opening_token: Token,
@@ -41,6 +46,10 @@ impl TokenTree {
     }
 }
 
+/// Build a TokenTree from a tokenizer.
+///
+/// We do our best here to construct as much of the tree as possible even
+/// when we encounter errors.
 pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<TokenTree> {
     struct StackElement {
         tree: TokenTree,

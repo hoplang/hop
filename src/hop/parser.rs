@@ -35,11 +35,8 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
             match toplevel_node {
                 TopLevel::Import(import_data) => {
                     if imported_components.contains_key(&import_data.component_attr.value) {
-                        errors.push(ParseError::new(
-                            format!(
-                                "Component {} is already defined",
-                                &import_data.component_attr.value
-                            ),
+                        errors.push(ParseError::component_is_already_defined(
+                            &import_data.component_attr.value,
                             import_data.component_attr.value_range,
                         ));
                     } else {
@@ -51,16 +48,14 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                     imports.push(import_data);
                 }
                 TopLevel::Component(component_data) => {
-                    // Check if component is already defined or imported
                     if defined_components.contains(&component_data.name)
                         || imported_components.contains_key(&component_data.name)
                     {
-                        errors.push(ParseError::new(
-                            format!("Component {} is already defined", &component_data.name),
+                        errors.push(ParseError::component_is_already_defined(
+                            &component_data.name,
                             component_data.opening_name_range,
                         ));
                     } else {
-                        // Add to component definitions set
                         defined_components.insert(component_data.name.clone());
                     }
                     components.push(component_data);

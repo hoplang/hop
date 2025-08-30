@@ -1,17 +1,18 @@
 use std::collections::HashMap;
 
-// Environment entry that holds both value and access status
-#[derive(Debug, Clone)]
-struct EnvironmentEntry<T> {
-    value: T,
-    accessed: bool,
-}
-
-// Environment class for managing variable scope
+/// The Environment models variable scope.
 #[derive(Debug, Clone)]
 pub struct Environment<T> {
     entries: HashMap<String, EnvironmentEntry<T>>,
     operations: Vec<String>,
+}
+
+/// Environment entry that holds both value and a boolean indicating
+/// whether the variable has been accessed.
+#[derive(Debug, Clone)]
+struct EnvironmentEntry<T> {
+    value: T,
+    accessed: bool,
 }
 
 impl<V> Environment<V> {
@@ -22,8 +23,9 @@ impl<V> Environment<V> {
         }
     }
 
-    // Bind the key to the given value
-    // Returns true if successful, false if the variable already exists (shadowing not allowed)
+    /// Bind the key to the given value in the environment.
+    ///
+    /// Returns an error if the variable is already defined.
     pub fn push(&mut self, key: String, value: V) -> Result<(), ()> {
         if self.entries.contains_key(&key) {
             return Err(());
@@ -39,7 +41,9 @@ impl<V> Environment<V> {
         Ok(())
     }
 
-    // Undo the latest push operation and return whether the variable was accessed
+    /// Undo the latest push operation.
+    ///
+    /// Returns an error if the variable was never accessed.
     pub fn pop(&mut self) -> Result<(), ()> {
         if let Some(key) = self.operations.pop() {
             self.entries
@@ -54,7 +58,7 @@ impl<V> Environment<V> {
         }
     }
 
-    // Look up a key in the environment
+    /// Access the value behind a key in the environment.
     pub fn lookup(&mut self, key: &str) -> Option<&V> {
         if let Some(entry) = self.entries.get_mut(key) {
             entry.accessed = true;

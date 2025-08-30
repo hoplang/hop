@@ -306,6 +306,10 @@ impl ParseError {
         )
     }
 
+    pub fn component_is_already_defined(name: &str, range: Range) -> Self {
+        Self::new(format!("Component {name} is already defined"), range)
+    }
+
     pub fn expected_token(token: &DopToken, range: Range) -> Self {
         Self::new(format!("Expected token '{token}'"), range)
     }
