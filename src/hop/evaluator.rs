@@ -52,6 +52,7 @@ pub fn render_file(
     }
 }
 
+// Evaluate a component definition of a specific name in a specific module.
 pub fn evaluate_component(
     asts: &HashMap<String, HopAST>,
     hop_mode: HopMode,
@@ -162,6 +163,7 @@ fn init_environment(hop_mode: HopMode) -> Environment<serde_json::Value> {
     env
 }
 
+// Evaluate a sub-node such as an <if>, <for> or <div>.
 fn evaluate_node(
     asts: &HashMap<String, HopAST>,
     hop_mode: HopMode,
