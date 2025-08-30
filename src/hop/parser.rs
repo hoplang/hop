@@ -6,13 +6,6 @@ use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
 use std::collections::{HashMap, HashSet};
 
-#[derive(Debug, Clone, PartialEq)]
-enum TopLevel {
-    Import(Import),
-    Component(ComponentDefinition),
-    Render(Render),
-}
-
 pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> HopAST {
     let trees = build_tree(tokenizer, errors);
 
@@ -25,7 +18,6 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
     let mut imported_components = HashMap::new();
 
     for tree in &trees {
-        // Inline construct_top_level_node
         let t = &tree.opening_token;
 
         let children: Vec<HopNode> = tree
@@ -42,7 +34,13 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
             })
             .collect();
 
-        let toplevel_node = match t {
+        match t {
+            Token::Text { .. } => {}
+            Token::ClosingTag { .. } => {}
+            Token::Expression { .. } => {}
+            Token::Eof { .. } => {}
+            Token::Comment { .. } => {}
+            Token::Doctype { .. } => {}
             Token::OpeningTag {
                 value,
                 attributes,
@@ -68,13 +66,21 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         None
                     });
 
-                    match (component_attr, from_attr) {
-                        (Some(component_attr), Some(from_attr)) => Some(TopLevel::Import(Import {
+                    if let (Some(component_attr), Some(from_attr)) = (component_attr, from_attr) {
+                        if imported_components.contains_key(&component_attr.value) {
+                            errors.push(ParseError::component_is_already_defined(
+                                &component_attr.value,
+                                component_attr.value_range,
+                            ));
+                        } else {
+                            imported_components
+                                .insert(component_attr.value.clone(), from_attr.value.clone());
+                        }
+                        imports.push(Import {
                             component_attr,
                             from_attr,
                             range: tree.range(),
-                        })),
-                        _ => None,
+                        });
                     }
                 }
                 "render" => {
@@ -87,13 +93,13 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         None
                     });
 
-                    file_attr.map(|file_attr| {
-                        TopLevel::Render(Render {
+                    if let Some(file_attr) = file_attr {
+                        renders.push(Render {
                             file_attr,
                             range: tree.range(),
                             children,
-                        })
-                    })
+                        });
+                    }
                 }
                 name => {
                     if !is_valid_component_name(name) {
@@ -101,7 +107,6 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                             name,
                             tree.opening_token.range(),
                         ));
-                        None
                     } else {
                         let params = expression.as_ref().and_then(|(expr_string, range)| {
                             let mut tokenizer = match DopTokenizer::new(expr_string, range.start) {
@@ -132,7 +137,16 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                             }
                         }
 
-                        Some(TopLevel::Component(ComponentDefinition {
+                        if defined_components.contains(name)
+                            || imported_components.contains_key(name)
+                        {
+                            errors
+                                .push(ParseError::component_is_already_defined(name, *name_range));
+                        } else {
+                            defined_components.insert(name.to_string());
+                        }
+
+                        components.push(ComponentDefinition {
                             name: name.to_string(),
                             opening_name_range: *name_range,
                             closing_name_range: tree.closing_token.as_ref().and_then(|tag| {
@@ -149,44 +163,10 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                             children,
                             entrypoint: t.find_attribute("entrypoint").is_some(),
                             has_slot,
-                        }))
+                        });
                     }
                 }
             },
-            _ => None,
-        };
-
-        if let Some(toplevel_node) = toplevel_node {
-            match toplevel_node {
-                TopLevel::Import(import_data) => {
-                    if imported_components.contains_key(&import_data.component_attr.value) {
-                        errors.push(ParseError::component_is_already_defined(
-                            &import_data.component_attr.value,
-                            import_data.component_attr.value_range,
-                        ));
-                    } else {
-                        imported_components.insert(
-                            import_data.component_attr.value.clone(),
-                            import_data.from_attr.value.clone(),
-                        );
-                    }
-                    imports.push(import_data);
-                }
-                TopLevel::Component(component_data) => {
-                    if defined_components.contains(&component_data.name)
-                        || imported_components.contains_key(&component_data.name)
-                    {
-                        errors.push(ParseError::component_is_already_defined(
-                            &component_data.name,
-                            component_data.opening_name_range,
-                        ));
-                    } else {
-                        defined_components.insert(component_data.name.clone());
-                    }
-                    components.push(component_data);
-                }
-                TopLevel::Render(render_data) => renders.push(render_data),
-            }
         }
     }
 
