@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::common::{Range, ParseError, Ranged};
+use crate::common::{ParseError, Range, Ranged};
 use crate::dop::DopType;
 use crate::dop::tokenizer::{DopToken, DopTokenizer};
 use crate::dop::typechecker::RangeDopType;
@@ -164,8 +164,18 @@ pub fn parse_parameters(tokenizer: &mut DopTokenizer) -> Result<Vec<DopParameter
                 if let (DopToken::Eof, _) = tokenizer.peek() {
                     break;
                 }
-                // TODO: Check for duplicates
-                params.push(parse_parameter(tokenizer)?);
+                let param = parse_parameter(tokenizer)?;
+                // Check for duplicates
+                if params
+                    .iter()
+                    .any(|other| other.var_name.value == param.var_name.value)
+                {
+                    return Err(ParseError::duplicate_parameter(
+                        &param.var_name.value,
+                        param.var_name.range,
+                    ));
+                }
+                params.push(param);
             }
             _ => {
                 tokenizer.expect_eof()?;
@@ -536,7 +546,7 @@ mod tests {
         expected.assert_eq(&actual);
     }
 
-    fn check_parse_parameters_with_types(input: &str, expected: Expect) {
+    fn check_parse_parameters(input: &str, expected: Expect) {
         let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1))
             .expect("Failed to create tokenizer");
 
@@ -552,7 +562,7 @@ mod tests {
         expected.assert_eq(&actual);
     }
 
-    fn check_parse_named_arguments(input: &str, expected: Expect) {
+    fn check_parse_arguments(input: &str, expected: Expect) {
         let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1))
             .expect("Failed to create tokenizer");
 
@@ -569,8 +579,32 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_parameters_with_types_trailing_brace() {
-        check_parse_parameters_with_types(
+    fn test_parse_parameters_duplicate_parameters_with_different_type_error() {
+        check_parse_parameters(
+            "foo: string, foo: number",
+            expect![[r#"
+                error: Duplicate parameter 'foo'
+                foo: string, foo: number
+                             ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_parameters_duplicate_parameters_with_same_type_error() {
+        check_parse_parameters(
+            "foo: string, foo: string",
+            expect![[r#"
+                error: Duplicate parameter 'foo'
+                foo: string, foo: string
+                             ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_parameters_extra_closing_brace() {
+        check_parse_parameters(
             "params: {i: {j: {k: {l: boolean}}}}}",
             expect![[r#"
                 error: Unexpected token '}'
@@ -581,8 +615,8 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_parameters_with_types_missing_brace() {
-        check_parse_parameters_with_types(
+    fn test_parse_parameters_missing_closing_brace() {
+        check_parse_parameters(
             "params: {i: {j: {k: {l: boolean}}}",
             expect![[r#"
                 error: Missing closing '}'
@@ -1496,8 +1530,8 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_named_arguments_single() {
-        check_parse_named_arguments(
+    fn test_parse_arguments_single() {
+        check_parse_arguments(
             "name: 'John'",
             expect![[r#"
                 [
@@ -1517,8 +1551,8 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_named_arguments_multiple() {
-        check_parse_named_arguments(
+    fn test_parse_arguments_multiple() {
+        check_parse_arguments(
             "name: 'John', age: 25, active: true",
             expect![[r#"
                 [
@@ -1559,7 +1593,7 @@ mod tests {
 
     #[test]
     fn test_parse_named_arguments_complex_expressions() {
-        check_parse_named_arguments(
+        check_parse_arguments(
             "user: user.name, enabled: !user.disabled",
             expect![[r#"
                 [
@@ -1605,7 +1639,7 @@ mod tests {
 
     #[test]
     fn test_parse_named_arguments_trailing_comma() {
-        check_parse_named_arguments(
+        check_parse_arguments(
             "name: 'John', age: 25,",
             expect![[r#"
                 [
@@ -1635,8 +1669,8 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_named_arguments_duplicate_error() {
-        check_parse_named_arguments(
+    fn test_parse_arguments_duplicate_argument_error() {
+        check_parse_arguments(
             "name: 'John', name: 'Jane'",
             expect![[r#"
                 error: Duplicate argument 'name'
@@ -1648,7 +1682,7 @@ mod tests {
 
     #[test]
     fn test_parse_named_arguments_missing_colon_error() {
-        check_parse_named_arguments(
+        check_parse_arguments(
             "name 'John'",
             expect![[r#"
                 error: Expected token ':'
@@ -1660,7 +1694,7 @@ mod tests {
 
     #[test]
     fn test_parse_named_arguments_missing_value_error() {
-        check_parse_named_arguments(
+        check_parse_arguments(
             "name:",
             expect![[r#"
                 error: Unexpected end of expression
@@ -1672,7 +1706,7 @@ mod tests {
 
     #[test]
     fn test_parse_named_arguments_invalid_start_error() {
-        check_parse_named_arguments(
+        check_parse_arguments(
             "123: 'value'",
             expect![[r#"
                 error: Expected variable name
@@ -1684,7 +1718,7 @@ mod tests {
 
     #[test]
     fn test_parse_named_arguments_unexpected_token_error() {
-        check_parse_named_arguments(
+        check_parse_arguments(
             "name: 'John' age: 25",
             expect![[r#"
                 error: Unexpected token 'age'

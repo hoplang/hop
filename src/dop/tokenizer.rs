@@ -1,4 +1,4 @@
-use crate::common::{Position, Range, ParseError};
+use crate::common::{ParseError, Position, Range};
 use std::{fmt, mem, str::FromStr};
 
 use super::parser::DopVarName;

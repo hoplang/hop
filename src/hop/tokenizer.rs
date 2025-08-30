@@ -1,6 +1,6 @@
 use std::mem;
 
-use crate::common::{Position, Range, ParseError};
+use crate::common::{ParseError, Position, Range};
 use crate::hop::ast::Attribute;
 
 #[derive(Debug, Clone, PartialEq)]

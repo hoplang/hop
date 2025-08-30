@@ -1,4 +1,4 @@
-use crate::common::{Range, ParseError, is_void_element};
+use crate::common::{ParseError, Range, is_void_element};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
 

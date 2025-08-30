@@ -301,6 +301,10 @@ impl ParseError {
         Self::new(format!("Duplicate argument '{name}'"), range)
     }
 
+    pub fn duplicate_parameter(name: &str, range: Range) -> Self {
+        Self::new(format!("Duplicate parameter '{name}'"), range)
+    }
+
     pub fn duplicate_property(name: &str, range: Range) -> Self {
         Self::new(format!("Duplicate property '{name}'"), range)
     }
