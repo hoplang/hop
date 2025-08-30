@@ -486,19 +486,18 @@ impl Program {
             // Find all component references that references this component
             locations.extend(
                 ast.iter_all_nodes()
-                    .filter(|node| {
-                        if let HopNode::ComponentReference {
+                    .filter(|node| match node {
+                        HopNode::ComponentReference {
                             component,
                             definition_module: reference_definition_module,
                             ..
-                        } = node
-                        {
-                            return reference_definition_module
+                        } => {
+                            reference_definition_module
                                 .as_ref()
                                 .is_some_and(|d| d == definition_module)
-                                && component == component_name;
+                                && component == component_name
                         }
-                        false
+                        _ => false,
                     })
                     .flat_map(|node| node.name_ranges())
                     .map(|range| RenameLocation {
