@@ -72,9 +72,8 @@ pub fn execute(
             let annotator = SourceAnnotator::new()
                 .with_label("error")
                 .with_lines_before(1)
-                .with_location()
-                .with_filename(filename);
-            let formatted_errors = annotator.annotate(code, errors);
+                .with_location();
+            let formatted_errors = annotator.annotate(Some(&filename), code, errors);
             error_output_parts.push(formatted_errors);
         }
     }
@@ -88,9 +87,8 @@ pub fn execute(
             let annotator = SourceAnnotator::new()
                 .with_label("error")
                 .with_lines_before(1)
-                .with_location()
-                .with_filename(filename);
-            let formatted_errors = annotator.annotate(code, errors);
+                .with_location();
+            let formatted_errors = annotator.annotate(Some(&filename), code, errors);
             error_output_parts.push(formatted_errors);
         }
     }

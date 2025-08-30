@@ -551,9 +551,8 @@ mod tests {
                 let annotator = SourceAnnotator::new()
                     .with_label("error")
                     .with_lines_before(1)
-                    .with_location()
-                    .with_filename(file.name.clone());
-                let formatted_errors = annotator.add_annotations(file.content.trim(), &errors);
+                    .with_location();
+                let formatted_errors = annotator.annotate(Some(&file.name), file.content.trim(), &errors);
                 error_output_parts.push(formatted_errors);
             } else {
                 module_type_results.insert(module.name.clone(), type_result.clone());

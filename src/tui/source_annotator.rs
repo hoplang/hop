@@ -36,7 +36,6 @@ pub struct SourceAnnotator {
     pub underline_char: char,
     pub tab_width: usize,
     pub label: Option<String>,
-    pub filename: Option<String>,
 }
 
 impl SourceAnnotator {
@@ -49,7 +48,6 @@ impl SourceAnnotator {
             underline_char: '^',
             tab_width: 4,
             label: None,
-            filename: None,
         }
     }
 
@@ -68,10 +66,6 @@ impl SourceAnnotator {
         self
     }
 
-    pub fn with_filename(mut self, filename: impl Into<String>) -> Self {
-        self.filename = Some(filename.into());
-        self
-    }
 
     pub fn with_location(mut self) -> Self {
         self.show_location = true;
@@ -88,7 +82,7 @@ impl SourceAnnotator {
         self
     }
 
-    pub fn annotate<A: Annotated>(&self, source: &str, annotations: &[A]) -> String {
+    pub fn annotate<A: Annotated>(&self, filename: Option<&str>, source: &str, annotations: &[A]) -> String {
         let mut output = String::new();
         let lines: Vec<&str> = source.lines().collect();
 
@@ -106,7 +100,7 @@ impl SourceAnnotator {
             }
 
             if self.show_location {
-                if let Some(ref filename) = self.filename {
+                if let Some(filename) = filename {
                     output.push_str(&format!(
                         "  --> {} (line {}, col {})\n",
                         filename, range.start.line, range.start.column
@@ -244,7 +238,7 @@ mod tests {
         annotations: Vec<SimpleAnnotation>,
         expect: Expect,
     ) {
-        let actual = annotator.annotate(source, &annotations);
+        let actual = annotator.annotate(None, source, &annotations);
         expect.assert_eq(&actual);
     }
 
@@ -296,19 +290,15 @@ mod tests {
         }];
         let source = "first line\nsecond line";
 
-        check(
-            SourceAnnotator::new()
-                .with_location()
-                .with_filename("main.rs"),
-            source,
-            annotations,
-            expect![[r#"
-                Type error
-                  --> main.rs (line 2, col 8)
-                2 | second line
-                  |        ^^^^
-            "#]],
-        );
+        let actual = SourceAnnotator::new()
+            .with_location()
+            .annotate(Some("main.rs"), source, &annotations);
+        expect![[r#"
+            Type error
+              --> main.rs (line 2, col 8)
+            2 | second line
+              |        ^^^^
+        "#]].assert_eq(&actual);
     }
 
     #[test]

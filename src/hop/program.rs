@@ -1194,9 +1194,8 @@ mod tests {
             if !module_locs.is_empty() {
                 output.push(
                     SourceAnnotator::new()
-                        .with_filename(&file.name)
                         .with_location()
-                        .annotate(&file.content, &module_locs),
+                        .annotate(Some(&file.name), &file.content, &module_locs),
                 );
             }
         }
@@ -1227,9 +1226,8 @@ mod tests {
             .expect("File not found in archive");
 
         let output = SourceAnnotator::new()
-            .with_filename(&file.name)
             .with_location()
-            .annotate(&file.content, &[loc]);
+            .annotate(Some(&file.name), &file.content, &[loc]);
 
         expected.assert_eq(&output);
     }
@@ -1248,9 +1246,8 @@ mod tests {
             .expect("File not found in archive");
 
         let output = SourceAnnotator::new()
-            .with_filename(&file.name)
             .with_location()
-            .annotate(&file.content, &diagnostics);
+            .annotate(Some(&file.name), &file.content, &diagnostics);
 
         expected.assert_eq(&output);
     }
@@ -1278,9 +1275,8 @@ mod tests {
                 .expect("File not found in archive");
 
             let annotated = SourceAnnotator::new()
-                .with_filename(&file.name)
                 .with_location()
-                .annotate(&file.content, errors);
+                .annotate(Some(&file.name), &file.content, errors);
 
             output.push(annotated);
         }
@@ -1310,9 +1306,8 @@ mod tests {
             .expect("Could not find file in archive");
 
         let output = SourceAnnotator::new()
-            .with_filename(&file.name)
             .with_location()
-            .annotate(&file.content, &[symbol]);
+            .annotate(Some(&file.name), &file.content, &[symbol]);
 
         expected.assert_eq(&output);
     }
@@ -1340,9 +1335,8 @@ mod tests {
             .expect("Could not find file in archive");
 
         let output = SourceAnnotator::new()
-            .with_filename(&file.name)
             .with_location()
-            .annotate(&file.content, &[hover_info]);
+            .annotate(Some(&file.name), &file.content, &[hover_info]);
 
         expected.assert_eq(&output);
     }

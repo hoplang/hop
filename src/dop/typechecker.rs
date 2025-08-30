@@ -236,7 +236,7 @@ mod tests {
                     .without_location()
                     .without_line_numbers();
 
-                annotator.annotate(expr_str, &[e]).to_string()
+                annotator.annotate(None, expr_str, &[e]).to_string()
             }
         };
 
