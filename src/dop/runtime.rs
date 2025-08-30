@@ -132,12 +132,22 @@ mod tests {
     #[test]
     fn test_property_access() {
         check(
-            json!({"user": {"name": "alice", "age": 30}}),
+            json!({
+                "user": {
+                    "name": "alice",
+                    "age": 30,
+                }
+            }),
             "user.name",
             expect![["\"alice\""]],
         );
         check(
-            json!({"user": {"name": "alice", "age": 30}}),
+            json!({
+                "user": {
+                    "name": "alice",
+                    "age": 30,
+                }
+            }),
             "user.age",
             expect![["30"]],
         );
@@ -146,7 +156,17 @@ mod tests {
     #[test]
     fn test_deep_property_access() {
         check(
-            json!({"app": {"user": {"profile": {"settings": {"theme": "dark"}}}}}),
+            json!({
+                "app": {
+                    "user": {
+                        "profile": {
+                            "settings": {
+                                "theme": "dark",
+                            }
+                        }
+                    }
+                }
+            }),
             "app.user.profile.settings.theme",
             expect![["\"dark\""]],
         );
@@ -155,12 +175,26 @@ mod tests {
     #[test]
     fn test_equality_comparison() {
         check(
-            json!({"user": {"name": "alice"}, "admin": {"name": "alice"}}),
+            json!({
+                "user": {
+                    "name": "alice",
+                },
+                "admin": {
+                    "name": "alice",
+                }
+            }),
             "user.name == admin.name",
             expect![["true"]],
         );
         check(
-            json!({"user": {"name": "alice"}, "admin": {"name": "bob"}}),
+            json!({
+                "user": {
+                    "name": "alice"
+                },
+                "admin": {
+                    "name": "bob",
+                }
+            }),
             "user.name == admin.name",
             expect![["false"]],
         );
@@ -169,17 +203,29 @@ mod tests {
     #[test]
     fn test_equality_with_literals() {
         check(
-            json!({"status": "active"}),
+            json!({
+                "status": "active",
+            }),
             "status == 'active'",
             expect![["true"]],
         );
-        check(json!({"count": 5}), "count == 5", expect![["true"]]);
+        check(
+            json!({
+                "count": 5
+            }),
+            "count == 5",
+            expect![["true"]],
+        );
     }
 
     #[test]
     fn test_complex_equality() {
         check(
-            json!({"a": 1, "b": 2, "c": 1}),
+            json!({
+                "a": 1,
+                "b": 2,
+                "c": 1
+            }),
             "a == b == false",
             expect![["true"]],
         );
@@ -202,10 +248,22 @@ mod tests {
             "[42, 'hello', true]",
             expect![["[42,\"hello\",true]"]],
         );
-        check(json!({"x": 10, "y": 20}), "[x, y]", expect![["[10,20]"]]);
+        check(
+            json!({
+                "x": 10,
+                "y": 20,
+            }),
+            "[x, y]",
+            expect![["[10,20]"]],
+        );
         check(json!({}), "[[1, 2], [3, 4]]", expect![["[[1,2],[3,4]]"]]);
         check(
-            json!({"user": {"name": "alice", "age": 30}}),
+            json!({
+                "user": {
+                    "name": "alice",
+                    "age": 30,
+                }
+            }),
             "[user.name, user.age]",
             expect![["[\"alice\",30]"]],
         );
@@ -225,7 +283,12 @@ mod tests {
             expect![["{\"a\":\"foo\",\"b\":1,\"c\":true}"]],
         );
         check(
-            json!({"user": {"name": "alice", "disabled": false}}),
+            json!({
+                "user": {
+                    "name": "alice",
+                    "disabled": false,
+                }
+            }),
             "{user: user.name, active: !user.disabled}",
             expect![["{\"active\":true,\"user\":\"alice\"}"]],
         );

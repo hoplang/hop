@@ -132,7 +132,7 @@ mod tests {
     use crate::hop::tokenizer::Tokenizer;
     use expect_test::{Expect, expect};
 
-    fn check_tree(input: &str, expected: Expect) {
+    fn check(input: &str, expected: Expect) {
         let mut errors = Vec::new();
         let trees = build_tree(Tokenizer::new(input), &mut errors);
         if !errors.is_empty() {
@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn test_simple_tag() {
-        check_tree(
+        check(
             "<div>Hello</div>",
             expect![[r#"
                 [
@@ -183,7 +183,7 @@ mod tests {
 
     #[test]
     fn test_void_element() {
-        check_tree(
+        check(
             "<div><br><hr/></div>",
             expect![[r#"
                 [
@@ -236,7 +236,7 @@ mod tests {
 
     #[test]
     fn test_nested_tags() {
-        check_tree(
+        check(
             "<div><p>Hello</p><span>World</span></div>",
             expect![[r#"
                 [
