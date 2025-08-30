@@ -168,13 +168,14 @@ async fn handle_request(
 fn create_error_page(error: &anyhow::Error) -> String {
     let program = get_ui_program();
 
-    match program.evaluate_component(
-        "hop/error_pages",
-        "generic-error",
-        vec![serde_json::json!(format!("{:#}", error).to_string())],
-        None,
-        None,
-    ) {
+    let mut args = std::collections::HashMap::new();
+    args.insert(
+        "error".to_string(),
+        serde_json::json!({
+            "message": format!("{:#}", error).to_string()
+        }),
+    );
+    match program.evaluate_component("hop/error_pages", "generic-error", args, None, None) {
         Ok(html) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
     }
@@ -183,13 +184,13 @@ fn create_error_page(error: &anyhow::Error) -> String {
 fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
     let program = get_ui_program();
 
-    match program.evaluate_component(
-        "hop/error_pages",
-        "not-found-error",
-        vec![serde_json::json!(path), serde_json::json!(available_routes)],
-        None,
-        None,
-    ) {
+    let mut args = std::collections::HashMap::new();
+    args.insert("path".to_string(), serde_json::json!(path));
+    args.insert(
+        "available_routes".to_string(),
+        serde_json::json!(available_routes),
+    );
+    match program.evaluate_component("hop/error_pages", "not-found-error", args, None, None) {
         Ok(html) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
     }
