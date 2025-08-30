@@ -80,145 +80,6 @@ impl Ranged for Range {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct RangeError {
-    pub message: String,
-    pub range: Range,
-}
-
-impl RangeError {
-    pub fn new(message: String, range: Range) -> Self {
-        RangeError { message, range }
-    }
-
-    // Parser error functions
-    pub fn unmatched_closing_tag(tag: &str, range: Range) -> Self {
-        Self::new(format!("Unmatched </{tag}>"), range)
-    }
-
-    pub fn unclosed_tag(tag: &str, range: Range) -> Self {
-        Self::new(format!("Unclosed <{tag}>"), range)
-    }
-
-    pub fn closed_void_tag(tag: &str, range: Range) -> Self {
-        Self::new(
-            format!("<{tag}> should not be closed using a closing tag"),
-            range,
-        )
-    }
-
-    pub fn missing_required_attribute(tag: &str, attr: &str, range: Range) -> Self {
-        Self::new(
-            format!("<{tag}> is missing required attribute {attr}"),
-            range,
-        )
-    }
-
-    pub fn invalid_variable_name(name: &str, range: Range) -> Self {
-        Self::new(
-            format!("Invalid variable name '{name}'. Variable names must match [a-z][a-z0-9_]*"),
-            range,
-        )
-    }
-    pub fn invalid_component_name(name: &str, range: Range) -> Self {
-        Self::new(
-            format!(
-                "Invalid component name '{name}'. Component names must contain a dash and not start or end with one"
-            ),
-            range,
-        )
-    }
-
-    // Typechecker error functions
-    pub fn undefined_component(component: &str, range: Range) -> Self {
-        Self::new(format!("Component {component} is not defined"), range)
-    }
-    pub fn undeclared_component(module: &str, component: &str, range: Range) -> Self {
-        Self::new(
-            format!("Module {module} does not declare a component named {component}"),
-            range,
-        )
-    }
-    pub fn import_from_undefined_module(module: &str, range: Range) -> Self {
-        Self::new(format!("Module {module} is not defined"), range)
-    }
-
-    pub fn component_is_already_defined(component: &str, range: Range) -> Self {
-        Self::new(format!("Component {component} is already defined"), range)
-    }
-
-    pub fn unused_variable(var: &str, range: Range) -> Self {
-        Self::new(format!("Unused variable {var}"), range)
-    }
-
-    pub fn variable_is_already_defined(var: &str, range: Range) -> Self {
-        Self::new(format!("Variable {var} is already defined"), range)
-    }
-
-    pub fn undefined_slot(component: &str, range: Range) -> Self {
-        Self::new(
-            format!("Component {component} does not have a slot-default"),
-            range,
-        )
-    }
-
-    pub fn slot_already_defined(range: Range) -> Self {
-        Self::new("slot-default is already defined".to_string(), range)
-    }
-
-    pub fn expected_token(token: &DopToken, range: Range) -> Self {
-        Self::new(format!("Expected token '{token}'"), range)
-    }
-
-    pub fn unexpected_token(token: &DopToken, range: Range) -> Self {
-        Self::new(format!("Unexpected token '{token}'"), range)
-    }
-
-    pub fn expected_variable_name(range: Range) -> Self {
-        Self::new("Expected variable name".to_string(), range)
-    }
-
-    pub fn expected_property_name(range: Range) -> Self {
-        Self::new("Expected property name".to_string(), range)
-    }
-
-    pub fn duplicate_argument(name: &str, range: Range) -> Self {
-        Self::new(format!("Duplicate argument '{name}'"), range)
-    }
-
-    pub fn duplicate_property(name: &str, range: Range) -> Self {
-        Self::new(format!("Duplicate property '{name}'"), range)
-    }
-
-    pub fn circular_import(importer: &str, imported: &str, cycle: &[String], range: Range) -> Self {
-        let cycle_display = if let Some(first) = cycle.first() {
-            format!("{} → {}", cycle.join(" → "), first)
-        } else {
-            cycle.join(" → ")
-        };
-
-        Self::new(
-            format!(
-                "Circular import detected: {} imports {} which creates a dependency cycle: {}",
-                importer, imported, cycle_display
-            ),
-            range,
-        )
-    }
-}
-
-impl Ranged for RangeError {
-    fn range(&self) -> Range {
-        self.range
-    }
-}
-
-impl Annotated for RangeError {
-    fn message(&self) -> String {
-        self.message.clone()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct TypeError {
     pub message: String,
     pub range: Range,
@@ -283,6 +144,93 @@ impl Ranged for TypeError {
 }
 
 impl Annotated for TypeError {
+    fn message(&self) -> String {
+        self.message.clone()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParseError {
+    pub message: String,
+    pub range: Range,
+}
+
+impl ParseError {
+    pub fn new(message: String, range: Range) -> Self {
+        ParseError { message, range }
+    }
+
+    // Parser error functions
+    pub fn unmatched_closing_tag(tag: &str, range: Range) -> Self {
+        Self::new(format!("Unmatched </{tag}>"), range)
+    }
+
+    pub fn unclosed_tag(tag: &str, range: Range) -> Self {
+        Self::new(format!("Unclosed <{tag}>"), range)
+    }
+
+    pub fn closed_void_tag(tag: &str, range: Range) -> Self {
+        Self::new(
+            format!("<{tag}> should not be closed using a closing tag"),
+            range,
+        )
+    }
+
+    pub fn missing_required_attribute(tag: &str, attr: &str, range: Range) -> Self {
+        Self::new(
+            format!("<{tag}> is missing required attribute {attr}"),
+            range,
+        )
+    }
+
+    pub fn invalid_variable_name(name: &str, range: Range) -> Self {
+        Self::new(
+            format!("Invalid variable name '{name}'. Variable names must match [a-z][a-z0-9_]*"),
+            range,
+        )
+    }
+
+    pub fn invalid_component_name(name: &str, range: Range) -> Self {
+        Self::new(
+            format!(
+                "Invalid component name '{name}'. Component names must contain a dash and not start or end with one"
+            ),
+            range,
+        )
+    }
+
+    pub fn expected_token(token: &DopToken, range: Range) -> Self {
+        Self::new(format!("Expected token '{token}'"), range)
+    }
+
+    pub fn unexpected_token(token: &DopToken, range: Range) -> Self {
+        Self::new(format!("Unexpected token '{token}'"), range)
+    }
+
+    pub fn expected_variable_name(range: Range) -> Self {
+        Self::new("Expected variable name".to_string(), range)
+    }
+
+    pub fn expected_property_name(range: Range) -> Self {
+        Self::new("Expected property name".to_string(), range)
+    }
+
+    pub fn duplicate_argument(name: &str, range: Range) -> Self {
+        Self::new(format!("Duplicate argument '{name}'"), range)
+    }
+
+    pub fn duplicate_property(name: &str, range: Range) -> Self {
+        Self::new(format!("Duplicate property '{name}'"), range)
+    }
+}
+
+impl Ranged for ParseError {
+    fn range(&self) -> Range {
+        self.range
+    }
+}
+
+impl Annotated for ParseError {
     fn message(&self) -> String {
         self.message.clone()
     }

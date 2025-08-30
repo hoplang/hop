@@ -1,4 +1,4 @@
-use crate::common::{Range, RangeError, is_void_element};
+use crate::common::{Range, ParseError, is_void_element};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
 
@@ -41,7 +41,7 @@ impl TokenTree {
     }
 }
 
-pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> Vec<TokenTree> {
+pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<TokenTree> {
     struct StackElement {
         tree: TokenTree,
         tag_name: String,
@@ -90,13 +90,13 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> Vec<Tok
                     }
                     Token::ClosingTag { ref value, .. } => {
                         if is_void_element(value) {
-                            errors.push(RangeError::closed_void_tag(value, token.range()));
+                            errors.push(ParseError::closed_void_tag(value, token.range()));
                         } else if !stack.iter().any(|el| el.tag_name == *value) {
-                            errors.push(RangeError::unmatched_closing_tag(value, token.range()));
+                            errors.push(ParseError::unmatched_closing_tag(value, token.range()));
                         } else {
                             while stack.last().unwrap().tag_name != *value {
                                 let unclosed = stack.pop().unwrap();
-                                errors.push(RangeError::unclosed_tag(
+                                errors.push(ParseError::unclosed_tag(
                                     &unclosed.tag_name,
                                     unclosed.tree.opening_token.range(),
                                 ));
@@ -117,7 +117,7 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> Vec<Tok
 
     while stack.len() > 1 {
         let unclosed = stack.pop().unwrap();
-        errors.push(RangeError::unclosed_tag(
+        errors.push(ParseError::unclosed_tag(
             &unclosed.tag_name,
             unclosed.tree.opening_token.range(),
         ));

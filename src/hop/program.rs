@@ -1,4 +1,4 @@
-use crate::common::{Position, Range, RangeError, Ranged, TypeError, escape_html, is_void_element};
+use crate::common::{Position, Range, ParseError, Ranged, TypeError, escape_html, is_void_element};
 use crate::dop::{self, evaluate_expr, load_json_file};
 use crate::hop::ast::HopAST;
 use crate::hop::environment::Environment;
@@ -154,7 +154,7 @@ pub struct Program {
     type_checker_state: HashMap<String, TypeCheckerState>,
     type_annotations: HashMap<String, Vec<TypeAnnotation>>,
     definition_links: HashMap<String, Vec<DefinitionLink>>,
-    parse_errors: HashMap<String, Vec<RangeError>>,
+    parse_errors: HashMap<String, Vec<ParseError>>,
     type_errors: HashMap<String, Vec<TypeError>>,
     source_code: HashMap<String, String>,
     topo_sorter: TopoSorter,
@@ -207,7 +207,7 @@ impl Program {
         program
     }
 
-    pub fn get_parse_errors(&self) -> &HashMap<String, Vec<RangeError>> {
+    pub fn get_parse_errors(&self) -> &HashMap<String, Vec<ParseError>> {
         &self.parse_errors
     }
 

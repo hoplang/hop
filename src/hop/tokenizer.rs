@@ -1,6 +1,6 @@
 use std::mem;
 
-use crate::common::{Position, Range, RangeError};
+use crate::common::{Position, Range, ParseError};
 use crate::hop::ast::Attribute;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -174,7 +174,7 @@ impl Tokenizer {
         }
     }
 
-    fn advance(&mut self) -> Result<Token, RangeError> {
+    fn advance(&mut self) -> Result<Token, ParseError> {
         let mut token_value = String::new();
         let token_start = self.cursor.get_position();
         let mut token_attributes = Vec::new();
@@ -237,7 +237,7 @@ impl Tokenizer {
                         let start_pos = self.cursor.get_position();
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
-                        return Err(RangeError::new(
+                        return Err(ParseError::new(
                             "Invalid character after '<'".to_string(),
                             Range::new(start_pos, self.cursor.get_position()),
                         ));
@@ -289,7 +289,7 @@ impl Tokenizer {
                         let start_pos = self.cursor.get_position();
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
-                        return Err(RangeError::new(
+                        return Err(ParseError::new(
                             "Invalid character after '<'".to_string(),
                             Range::new(start_pos, self.cursor.get_position()),
                         ));
@@ -306,7 +306,7 @@ impl Tokenizer {
                         let start_pos = self.cursor.get_position();
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
-                        return Err(RangeError::new(
+                        return Err(ParseError::new(
                             "Invalid character after '</'".to_string(),
                             Range::new(start_pos, self.cursor.get_position()),
                         ));
@@ -334,7 +334,7 @@ impl Tokenizer {
                         let start_pos = self.cursor.get_position();
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
-                        return Err(RangeError::new(
+                        return Err(ParseError::new(
                             "Invalid character in end tag name".to_string(),
                             Range::new(start_pos, self.cursor.get_position()),
                         ));
@@ -357,7 +357,7 @@ impl Tokenizer {
                         let start_pos = self.cursor.get_position();
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
-                        return Err(RangeError::new(
+                        return Err(ParseError::new(
                             "Invalid character after end tag name".to_string(),
                             Range::new(start_pos, self.cursor.get_position()),
                         ));
@@ -409,7 +409,7 @@ impl Tokenizer {
                         let start_pos = self.cursor.get_position();
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
-                        return Err(RangeError::new(
+                        return Err(ParseError::new(
                             "Invalid character before attribute name".to_string(),
                             Range::new(start_pos, self.cursor.get_position()),
                         ));
@@ -490,7 +490,7 @@ impl Tokenizer {
                         let start_pos = self.cursor.get_position();
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
-                        return Err(RangeError::new(
+                        return Err(ParseError::new(
                             "Invalid character in attribute name".to_string(),
                             Range::new(start_pos, self.cursor.get_position()),
                         ));
@@ -510,7 +510,7 @@ impl Tokenizer {
                         let start_pos = self.cursor.get_position();
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
-                        return Err(RangeError::new(
+                        return Err(ParseError::new(
                             "Expected quoted attribute name".to_string(),
                             Range::new(start_pos, self.cursor.get_position()),
                         ));
@@ -579,7 +579,7 @@ impl Tokenizer {
                         let start_pos = self.cursor.get_position();
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
-                        return Err(RangeError::new(
+                        return Err(ParseError::new(
                             "Expected '>' after '/'".to_string(),
                             Range::new(start_pos, self.cursor.get_position()),
                         ));
@@ -597,7 +597,7 @@ impl Tokenizer {
                         let start_pos = self.cursor.get_position();
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
-                        return Err(RangeError::new(
+                        return Err(ParseError::new(
                             "Invalid markup declaration".to_string(),
                             Range::new(start_pos, self.cursor.get_position()),
                         ));
@@ -626,7 +626,7 @@ impl Tokenizer {
                         let start_pos = self.cursor.get_position();
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
-                        return Err(RangeError::new(
+                        return Err(ParseError::new(
                             "Expected whitespace after DOCTYPE".to_string(),
                             Range::new(start_pos, self.cursor.get_position()),
                         ));
@@ -646,7 +646,7 @@ impl Tokenizer {
                         let start_pos = self.cursor.get_position();
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
-                        return Err(RangeError::new(
+                        return Err(ParseError::new(
                             "Expected DOCTYPE name".to_string(),
                             Range::new(start_pos, self.cursor.get_position()),
                         ));
@@ -672,7 +672,7 @@ impl Tokenizer {
                             let start_pos = self.cursor.get_position();
                             self.cursor.advance();
                             self.state = TokenizerState::Text;
-                            return Err(RangeError::new(
+                            return Err(ParseError::new(
                                 "Invalid DOCTYPE name".to_string(),
                                 Range::new(start_pos, self.cursor.get_position()),
                             ));
@@ -680,7 +680,7 @@ impl Tokenizer {
                     } else {
                         self.cursor.advance();
                         self.state = TokenizerState::Text;
-                        return Err(RangeError::new(
+                        return Err(ParseError::new(
                             "Invalid character in DOCTYPE name".to_string(),
                             Range::new(self.cursor.get_position(), self.cursor.get_position()),
                         ));
@@ -781,7 +781,7 @@ impl Tokenizer {
 }
 
 impl Iterator for Tokenizer {
-    type Item = Result<Token, RangeError>;
+    type Item = Result<Token, ParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.advance() {

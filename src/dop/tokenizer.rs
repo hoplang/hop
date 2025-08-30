@@ -1,4 +1,4 @@
-use crate::common::{Position, Range, RangeError};
+use crate::common::{Position, Range, ParseError};
 use std::{fmt, mem, str::FromStr};
 
 use super::parser::DopVarName;
@@ -117,7 +117,7 @@ pub struct DopTokenizer {
 }
 
 impl DopTokenizer {
-    pub fn new(input: &str, start_pos: Position) -> Result<Self, RangeError> {
+    pub fn new(input: &str, start_pos: Position) -> Result<Self, ParseError> {
         let mut tokenizer = DopTokenizer {
             cursor: Cursor::new(input, start_pos),
             current_token: (DopToken::Eof, Range::new(start_pos, start_pos)), // temporary value
@@ -130,37 +130,37 @@ impl DopTokenizer {
         &self.current_token
     }
 
-    pub fn expect_token(&mut self, expected: DopToken) -> Result<(DopToken, Range), RangeError> {
+    pub fn expect_token(&mut self, expected: DopToken) -> Result<(DopToken, Range), ParseError> {
         let (actual, range) = self.advance()?;
         if actual != expected {
-            Err(RangeError::expected_token(&expected, range))
+            Err(ParseError::expected_token(&expected, range))
         } else {
             Ok((actual, range))
         }
     }
 
-    pub fn expect_variable_name(&mut self) -> Result<DopVarName, RangeError> {
+    pub fn expect_variable_name(&mut self) -> Result<DopVarName, ParseError> {
         match self.advance()? {
             (DopToken::Identifier(name), range) => DopVarName::new(name, range),
-            (_, range) => Err(RangeError::expected_variable_name(range)),
+            (_, range) => Err(ParseError::expected_variable_name(range)),
         }
     }
 
-    pub fn expect_eof(&self) -> Result<(), RangeError> {
+    pub fn expect_eof(&self) -> Result<(), ParseError> {
         match self.peek() {
             (DopToken::Eof, _) => Ok(()),
-            (token, range) => Err(RangeError::unexpected_token(token, *range)),
+            (token, range) => Err(ParseError::unexpected_token(token, *range)),
         }
     }
 
-    pub fn expect_property_name(&mut self) -> Result<(String, Range), RangeError> {
+    pub fn expect_property_name(&mut self) -> Result<(String, Range), ParseError> {
         match self.advance()? {
             (DopToken::Identifier(name), range) => Ok((name, range)),
-            (_, range) => Err(RangeError::expected_property_name(range)),
+            (_, range) => Err(ParseError::expected_property_name(range)),
         }
     }
 
-    pub fn advance(&mut self) -> Result<(DopToken, Range), RangeError> {
+    pub fn advance(&mut self) -> Result<(DopToken, Range), ParseError> {
         while self.cursor.peek().is_whitespace() {
             self.cursor.advance();
         }
@@ -212,7 +212,7 @@ impl DopTokenizer {
                     DopToken::Equal
                 } else {
                     let error_pos = self.cursor.get_position();
-                    return Err(RangeError::new(
+                    return Err(ParseError::new(
                         "Expected '==' but found single '='".to_string(),
                         Range::new(start_pos, error_pos),
                     ));
@@ -229,7 +229,7 @@ impl DopTokenizer {
                     result.push(self.cursor.advance());
                 }
                 if self.cursor.peek() != '\'' {
-                    return Err(RangeError::new(
+                    return Err(ParseError::new(
                         "Unterminated string literal".to_string(),
                         Range::new(start_pos, self.cursor.get_position()),
                     ));
@@ -268,7 +268,7 @@ impl DopTokenizer {
                     number_string.push(self.cursor.advance()); // consume '.'
                     if !matches!(self.cursor.peek(), '0'..='9') {
                         let error_pos = self.cursor.get_position();
-                        return Err(RangeError::new(
+                        return Err(ParseError::new(
                             "Expected digit after decimal point".to_string(),
                             Range::new(start_pos, error_pos),
                         ));
@@ -280,7 +280,7 @@ impl DopTokenizer {
 
                 let number_value = serde_json::Number::from_str(&number_string).map_err(|_| {
                     let error_pos = self.cursor.get_position();
-                    RangeError::new(
+                    ParseError::new(
                         format!("Invalid number format: {}", number_string),
                         Range::new(start_pos, error_pos),
                     )
@@ -290,7 +290,7 @@ impl DopTokenizer {
             }
             ch => {
                 let error_pos = self.cursor.get_position();
-                return Err(RangeError::new(
+                return Err(ParseError::new(
                     format!("Unexpected character: '{}'", ch),
                     Range::new(start_pos, error_pos),
                 ));
@@ -306,7 +306,7 @@ impl DopTokenizer {
 }
 
 impl Iterator for DopTokenizer {
-    type Item = Result<(DopToken, Range), RangeError>;
+    type Item = Result<(DopToken, Range), ParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.advance() {

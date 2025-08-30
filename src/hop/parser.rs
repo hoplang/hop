@@ -1,4 +1,4 @@
-use crate::common::RangeError;
+use crate::common::ParseError;
 use crate::dop::{self, DopTokenizer};
 use crate::hop::ast::{
     ComponentDefinitionNode, DopExprAttribute, HopAST, HopNode, ImportNode, RenderNode,
@@ -9,7 +9,7 @@ use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
 use std::collections::{HashMap, HashSet};
 
-pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<RangeError>) -> HopAST {
+pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> HopAST {
     let trees = build_tree(tokenizer, errors);
 
     let mut components = Vec::new();
@@ -31,8 +31,8 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<RangeEr
             match toplevel_node {
                 TopLevelHopNode::Import(import_data) => {
                     if imported_components.contains_key(&import_data.component_attr.value) {
-                        errors.push(RangeError::component_is_already_defined(
-                            &import_data.component_attr.value,
+                        errors.push(ParseError::new(
+                            format!("Component {} is already defined", &import_data.component_attr.value),
                             import_data.component_attr.value_range,
                         ));
                     } else {
@@ -48,8 +48,8 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<RangeEr
                     if defined_components.contains(&component_data.name)
                         || imported_components.contains_key(&component_data.name)
                     {
-                        errors.push(RangeError::component_is_already_defined(
-                            &component_data.name,
+                        errors.push(ParseError::new(
+                            format!("Component {} is already defined", &component_data.name),
                             component_data.opening_name_range,
                         ));
                     } else {
@@ -78,7 +78,7 @@ fn is_valid_component_name(name: &str) -> bool {
 
 fn construct_top_level_node(
     tree: &TokenTree,
-    errors: &mut Vec<RangeError>,
+    errors: &mut Vec<ParseError>,
     module_name: &str,
     defined_components: &HashSet<String>,
     imported_components: &HashMap<String, String>,
@@ -96,7 +96,7 @@ fn construct_top_level_node(
             match value.as_str() {
                 "import" => {
                     let component_attr = t.find_attribute("component").or_else(|| {
-                        errors.push(RangeError::missing_required_attribute(
+                        errors.push(ParseError::missing_required_attribute(
                             value,
                             "component",
                             tree.opening_token.range(),
@@ -104,7 +104,7 @@ fn construct_top_level_node(
                         None
                     });
                     let from_attr = t.find_attribute("from").or_else(|| {
-                        errors.push(RangeError::missing_required_attribute(
+                        errors.push(ParseError::missing_required_attribute(
                             value,
                             "from",
                             tree.opening_token.range(),
@@ -139,7 +139,7 @@ fn construct_top_level_node(
                         .collect();
 
                     let file_attr = t.find_attribute("file").or_else(|| {
-                        errors.push(RangeError::missing_required_attribute(
+                        errors.push(ParseError::missing_required_attribute(
                             value,
                             "file",
                             tree.opening_token.range(),
@@ -158,7 +158,7 @@ fn construct_top_level_node(
                 name => {
                     // Handle as component definition
                     if !is_valid_component_name(name) {
-                        errors.push(RangeError::invalid_component_name(
+                        errors.push(ParseError::invalid_component_name(
                             name,
                             tree.opening_token.range(),
                         ));
@@ -206,7 +206,10 @@ fn construct_top_level_node(
                         for node in child.iter_depth_first() {
                             if let HopNode::SlotDefinition { range, .. } = node {
                                 if has_default_slot {
-                                    errors.push(RangeError::slot_already_defined(*range));
+                                    errors.push(ParseError::new(
+                                        "slot-default is already defined".to_string(),
+                                        *range,
+                                    ));
                                 } else {
                                     has_default_slot = true;
                                 }
@@ -243,7 +246,7 @@ fn construct_top_level_node(
 
 fn construct_node(
     tree: &TokenTree,
-    errors: &mut Vec<RangeError>,
+    errors: &mut Vec<ParseError>,
     module_name: &str,
     defined_components: &HashSet<String>,
     imported_components: &HashMap<String, String>,
@@ -339,7 +342,7 @@ fn construct_node(
                         }
                     }
                     None => {
-                        errors.push(RangeError::new(
+                        errors.push(ParseError::new(
                             "Missing expression in <if> tag".to_string(),
                             tree.opening_token.range(),
                         ));
@@ -378,7 +381,7 @@ fn construct_node(
                         }
                     }
                     None => {
-                        errors.push(RangeError::new(
+                        errors.push(ParseError::new(
                             "Missing loop generator expression in <for> tag".to_string(),
                             tree.opening_token.range(),
                         ));
@@ -390,7 +393,7 @@ fn construct_node(
                 },
                 "hop-x-exec" => {
                     let cmd_attr = t.find_attribute("cmd").or_else(|| {
-                        errors.push(RangeError::missing_required_attribute(
+                        errors.push(ParseError::missing_required_attribute(
                             value,
                             "cmd",
                             tree.opening_token.range(),
@@ -420,7 +423,7 @@ fn construct_node(
                 }
                 "hop-x-load-json" => {
                     let file_attr = t.find_attribute("file").or_else(|| {
-                        errors.push(RangeError::missing_required_attribute(
+                        errors.push(ParseError::missing_required_attribute(
                             value,
                             "file",
                             tree.opening_token.range(),
@@ -429,7 +432,7 @@ fn construct_node(
                     });
 
                     let as_attr = t.find_attribute("as").or_else(|| {
-                        errors.push(RangeError::missing_required_attribute(
+                        errors.push(ParseError::missing_required_attribute(
                             value,
                             "as",
                             tree.opening_token.range(),
