@@ -8,14 +8,31 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-/// Initialize an environment with global variables like HOP_MODE
-fn init_environment(hop_mode: HopMode) -> Environment<serde_json::Value> {
-    let mut env = Environment::new();
-    let _ = env.push(
-        "HOP_MODE".to_string(),
-        serde_json::Value::String(hop_mode.as_str().to_string()),
-    );
-    env
+/// Render the content for a specific file path
+pub fn render_file(
+    asts: &HashMap<String, HopAST>,
+    hop_mode: HopMode,
+    file_path: &str,
+) -> Result<String> {
+    // Find the render node with the matching file_attr.value
+    for ast in asts.values() {
+        for node in ast.get_renders() {
+            if node.file_attr.value == file_path {
+                let mut env = init_environment(hop_mode);
+                let mut content = String::new();
+                for child in &node.children {
+                    let rendered =
+                        evaluate_node_entrypoint(asts, hop_mode, child, &mut env, "build")?;
+                    content.push_str(&rendered);
+                }
+                return Ok(content);
+            }
+        }
+    }
+    Err(anyhow::anyhow!(
+        "File path '{}' not found in render nodes",
+        file_path
+    ))
 }
 
 pub fn evaluate_component(
@@ -59,7 +76,13 @@ pub fn evaluate_component(
         // For entrypoints, don't wrap in a div, just execute children directly
         let mut result = String::new();
         for child in &component.children {
-            result.push_str(&evaluate_node_entrypoint(asts, hop_mode, child, &mut env, module_name)?);
+            result.push_str(&evaluate_node_entrypoint(
+                asts,
+                hop_mode,
+                child,
+                &mut env,
+                module_name,
+            )?);
         }
         Ok(result)
     } else {
@@ -84,8 +107,9 @@ pub fn evaluate_component(
                     added_class = true;
                     match additional_classes {
                         None => result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value)),
-                        Some(cls) => result
-                            .push_str(&format!(" {}=\"{} {}\"", attr.name, attr.value, cls)),
+                        Some(cls) => {
+                            result.push_str(&format!(" {}=\"{} {}\"", attr.name, attr.value, cls))
+                        }
                     }
                 } else {
                     result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
@@ -99,7 +123,14 @@ pub fn evaluate_component(
         }
         result.push('>');
         for child in &component.children {
-            result.push_str(&evaluate_node(asts, hop_mode, child, slot_content, &mut env, module_name)?);
+            result.push_str(&evaluate_node(
+                asts,
+                hop_mode,
+                child,
+                slot_content,
+                &mut env,
+                module_name,
+            )?);
         }
         result.push_str(&format!("</{}>", element_type));
 
@@ -107,7 +138,17 @@ pub fn evaluate_component(
     }
 }
 
-pub fn evaluate_node(
+/// Initialize an environment with global variables like HOP_MODE
+fn init_environment(hop_mode: HopMode) -> Environment<serde_json::Value> {
+    let mut env = Environment::new();
+    let _ = env.push(
+        "HOP_MODE".to_string(),
+        serde_json::Value::String(hop_mode.as_str().to_string()),
+    );
+    env
+}
+
+fn evaluate_node(
     asts: &HashMap<String, HopAST>,
     hop_mode: HopMode,
     node: &HopNode,
@@ -412,44 +453,6 @@ fn evaluate_node_entrypoint(
     }
 }
 
-/// Get all file_attr values from render nodes across all modules
-/// I.e. files specified in <render file="index.html">
-pub fn get_render_file_paths(asts: &HashMap<String, HopAST>) -> Vec<String> {
-    let mut result = Vec::new();
-    for ast in asts.values() {
-        for node in ast.get_renders() {
-            result.push(node.file_attr.value.clone())
-        }
-    }
-    result
-}
-
-/// Render the content for a specific file path
-pub fn render_file(
-    asts: &HashMap<String, HopAST>,
-    hop_mode: HopMode,
-    file_path: &str,
-) -> Result<String> {
-    // Find the render node with the matching file_attr.value
-    for ast in asts.values() {
-        for node in ast.get_renders() {
-            if node.file_attr.value == file_path {
-                let mut env = init_environment(hop_mode);
-                let mut content = String::new();
-                for child in &node.children {
-                    let rendered = evaluate_node_entrypoint(asts, hop_mode, child, &mut env, "build")?;
-                    content.push_str(&rendered);
-                }
-                return Ok(content);
-            }
-        }
-    }
-    Err(anyhow::anyhow!(
-        "File path '{}' not found in render nodes",
-        file_path
-    ))
-}
-
 /// execute_command is used by the experimental <hop-x-exec> command
 /// which allows an external program to be executed from the context of a
 /// hop program.
@@ -561,8 +564,8 @@ mod tests {
     use crate::hop::ast::HopAST;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
-    use crate::hop::typechecker::typecheck;
     use crate::hop::toposorter::TopoSorter;
+    use crate::hop::typechecker::typecheck;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use simple_txtar::Archive;
@@ -571,17 +574,17 @@ mod tests {
     fn asts_from_archive(archive: &Archive) -> HashMap<String, HopAST> {
         let mut asts = HashMap::new();
         let _parse_errors = HashMap::<String, Vec<String>>::new();
-        
+
         for file in archive.iter() {
             let module_name = file.name.replace(".hop", "");
             let mut errors = Vec::new();
             let tokenizer = Tokenizer::new(&file.content);
             let ast = parse(module_name.clone(), tokenizer, &mut errors);
-            
+
             if !errors.is_empty() {
                 panic!("Parse errors in {}: {:?}", module_name, errors);
             }
-            
+
             asts.insert(module_name, ast);
         }
 
@@ -589,7 +592,7 @@ mod tests {
         let mut topo_sorter = TopoSorter::default();
         let mut type_checker_state = HashMap::new();
         let _all_type_errors = HashMap::<String, Vec<String>>::new();
-        
+
         // Add nodes and dependencies to topo sorter
         for (module_name, ast) in &asts {
             topo_sorter.add_node(module_name.clone());
@@ -613,11 +616,11 @@ mod tests {
                 &mut type_annotations,
                 &mut definition_links,
             );
-            
+
             if !type_errors.is_empty() {
                 panic!("Type errors in {}: {:?}", module_name, type_errors);
             }
-            
+
             type_checker_state.insert(module_name.clone(), component_type_info);
         }
 
@@ -637,15 +640,9 @@ mod tests {
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
 
-        let actual_output = evaluate_component(
-            &asts,
-            HopMode::Dev,
-            "main",
-            "main-comp",
-            args,
-            None,
-            None,
-        ).expect("Execution failed");
+        let actual_output =
+            evaluate_component(&asts, HopMode::Dev, "main", "main-comp", args, None, None)
+                .expect("Execution failed");
 
         // Normalize output by removing lines that contain only whitespace
         let normalized_output = actual_output

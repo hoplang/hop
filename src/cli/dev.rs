@@ -175,7 +175,7 @@ fn create_error_page(error: &anyhow::Error) -> String {
             "message": format!("{:#}", error).to_string()
         }),
     );
-    match program.evaluate_component("hop/error_pages", "generic-error", args, None, None) {
+    match program.evaluate_component("hop/error_pages", "generic-error", args) {
         Ok(html) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
     }
@@ -190,7 +190,7 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
         "available_routes".to_string(),
         serde_json::json!(available_routes),
     );
-    match program.evaluate_component("hop/error_pages", "not-found-error", args, None, None) {
+    match program.evaluate_component("hop/error_pages", "not-found-error", args) {
         Ok(html) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
     }

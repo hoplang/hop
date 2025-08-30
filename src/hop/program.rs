@@ -545,7 +545,13 @@ impl Program {
     /// Get all file_attr values from render nodes across all modules
     /// I.e. files specified in <render file="index.html">
     pub fn get_render_file_paths(&self) -> Vec<String> {
-        evaluator::get_render_file_paths(&self.asts)
+        let mut result = Vec::new();
+        for ast in self.asts.values() {
+            for node in ast.get_renders() {
+                result.push(node.file_attr.value.clone())
+            }
+        }
+        result
     }
 
     /// Render the content for a specific file path
@@ -558,8 +564,6 @@ impl Program {
         module_name: &str,
         component_name: &str,
         args: HashMap<String, serde_json::Value>,
-        slot_content: Option<&str>,
-        additional_classes: Option<&str>,
     ) -> Result<String> {
         evaluator::evaluate_component(
             &self.asts,
@@ -567,11 +571,10 @@ impl Program {
             module_name,
             component_name,
             args,
-            slot_content,
-            additional_classes,
+            None,
+            None,
         )
     }
-
 }
 
 #[cfg(test)]
