@@ -58,7 +58,6 @@ pub fn typecheck(
     for Import {
         from_attr,
         component_attr,
-        range,
         ..
     } in module.get_imports()
     {
@@ -72,11 +71,14 @@ pub fn typecheck(
                 errors.push(TypeError::undeclared_component(
                     from_module,
                     component_name,
-                    *range,
+                    component_attr.value_range,
                 ));
             }
         } else {
-            errors.push(TypeError::import_from_undefined_module(from_module, *range));
+            errors.push(TypeError::import_from_undefined_module(
+                from_module,
+                from_attr.value_range,
+            ));
         }
     }
     let mut env = Environment::new();
@@ -598,9 +600,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Module other is not defined
-                  --> main.hop (line 1, col 1)
+                  --> main.hop (line 1, col 36)
                 1 | <import component="foo-comp" from="other">
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                  |                                    ^^^^^
             "#]],
         );
     }
@@ -619,9 +621,9 @@ mod tests {
             "#},
             expect![[r#"
                 error: Module other does not declare a component named foo-comp
-                  --> main.hop (line 1, col 1)
+                  --> main.hop (line 1, col 20)
                 1 | <import component="foo-comp" from="other">
-                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                  |                    ^^^^^^^^
             "#]],
         );
     }
