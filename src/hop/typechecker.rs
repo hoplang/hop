@@ -509,7 +509,7 @@ mod tests {
     use super::*;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
-    use crate::tui::error_formatter::ErrorFormatter;
+    use crate::tui::source_annotator::SourceAnnotator;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use simple_txtar::Archive;
@@ -518,7 +518,7 @@ mod tests {
 
     fn check(archive_str: &str, expected: Expect) {
         let archive = Archive::from(archive_str);
-        let mut error_formatter = ErrorFormatter::new();
+        let mut error_output_parts = Vec::new();
         let mut all_output_lines = Vec::new();
         let mut module_type_results: HashMap<String, HashMap<String, ComponentTypeInformation>> =
             HashMap::new();
@@ -548,11 +548,14 @@ mod tests {
             );
 
             if !errors.is_empty() {
-                error_formatter.add_errors(
-                    module_name.to_string(),
-                    file.content.trim().to_string(),
-                    errors,
-                );
+                let annotator = SourceAnnotator::new()
+                    .with_label("error")
+                    .with_underline('^')
+                    .with_lines_before(1)
+                    .with_location()
+                    .with_filename(file.name.clone());
+                let formatted_errors = annotator.add_annotations(file.content.trim(), &errors);
+                error_output_parts.push(formatted_errors);
             } else {
                 module_type_results.insert(module.name.clone(), type_result.clone());
 
@@ -573,8 +576,8 @@ mod tests {
             }
         }
 
-        let actual = if error_formatter.has_errors() {
-            error_formatter.format_all_errors()
+        let actual = if !error_output_parts.is_empty() {
+            error_output_parts.join("\n")
         } else {
             all_output_lines.join("\n")
         };
