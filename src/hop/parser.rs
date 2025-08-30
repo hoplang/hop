@@ -87,6 +87,20 @@ fn construct_top_level_node(
 ) -> Option<TopLevel> {
     let t = &tree.opening_token;
 
+    let children: Vec<HopNode> = tree
+        .children
+        .iter()
+        .map(|child| {
+            construct_node(
+                child,
+                errors,
+                module_name,
+                defined_components,
+                imported_components,
+            )
+        })
+        .collect();
+
     match t {
         Token::OpeningTag {
             value,
@@ -124,20 +138,6 @@ fn construct_top_level_node(
                     }
                 }
                 "render" => {
-                    let children: Vec<HopNode> = tree
-                        .children
-                        .iter()
-                        .map(|child| {
-                            construct_node(
-                                child,
-                                errors,
-                                module_name,
-                                defined_components,
-                                imported_components,
-                            )
-                        })
-                        .collect();
-
                     let file_attr = t.find_attribute("file").or_else(|| {
                         errors.push(ParseError::missing_required_attribute(
                             value,
@@ -165,22 +165,6 @@ fn construct_top_level_node(
                         return None;
                     }
 
-                    let children: Vec<_> = tree
-                        .children
-                        .iter()
-                        .map(|child| {
-                            construct_node(
-                                child,
-                                errors,
-                                module_name,
-                                defined_components,
-                                imported_components,
-                            )
-                        })
-                        .collect();
-
-                    let as_attr = t.find_attribute("as");
-                    let entrypoint = t.find_attribute("entrypoint").is_some();
                     let params = expression.as_ref().and_then(|(expr_string, range)| {
                         let mut tokenizer = match DopTokenizer::new(expr_string, range.start) {
                             Ok(tokenizer) => tokenizer,
@@ -225,11 +209,11 @@ fn construct_top_level_node(
                             }
                         }),
                         params,
-                        as_attr,
+                        as_attr: t.find_attribute("as"),
                         attributes: attributes.clone(),
                         range: tree.range(),
                         children,
-                        entrypoint,
+                        entrypoint: t.find_attribute("entrypoint").is_some(),
                         has_slot: has_default_slot,
                     }))
                 }
