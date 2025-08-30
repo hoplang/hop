@@ -143,13 +143,6 @@ pub struct ComponentDefinitionNode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum TopLevelHopNode {
-    Import(ImportNode),
-    ComponentDefinition(ComponentDefinitionNode),
-    Render(RenderNode),
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub enum HopNode {
     Doctype {
         value: String,

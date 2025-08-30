@@ -2,12 +2,18 @@ use crate::common::ParseError;
 use crate::dop::{self, DopTokenizer};
 use crate::hop::ast::{
     ComponentDefinitionNode, DopExprAttribute, HopAST, HopNode, ImportNode, RenderNode,
-    TopLevelHopNode,
 };
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
 use std::collections::{HashMap, HashSet};
+
+#[derive(Debug, Clone, PartialEq)]
+enum TopLevel {
+    Import(ImportNode),
+    Component(ComponentDefinitionNode),
+    Render(RenderNode),
+}
 
 pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> HopAST {
     let trees = build_tree(tokenizer, errors);
@@ -29,10 +35,13 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
             &imported_components,
         ) {
             match toplevel_node {
-                TopLevelHopNode::Import(import_data) => {
+                TopLevel::Import(import_data) => {
                     if imported_components.contains_key(&import_data.component_attr.value) {
                         errors.push(ParseError::new(
-                            format!("Component {} is already defined", &import_data.component_attr.value),
+                            format!(
+                                "Component {} is already defined",
+                                &import_data.component_attr.value
+                            ),
                             import_data.component_attr.value_range,
                         ));
                     } else {
@@ -43,7 +52,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                     }
                     imports.push(import_data);
                 }
-                TopLevelHopNode::ComponentDefinition(component_data) => {
+                TopLevel::Component(component_data) => {
                     // Check if component is already defined or imported
                     if defined_components.contains(&component_data.name)
                         || imported_components.contains_key(&component_data.name)
@@ -58,7 +67,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                     }
                     components.push(component_data);
                 }
-                TopLevelHopNode::Render(render_data) => renders.push(render_data),
+                TopLevel::Render(render_data) => renders.push(render_data),
             }
         }
     }
@@ -82,7 +91,7 @@ fn construct_top_level_node(
     module_name: &str,
     defined_components: &HashSet<String>,
     imported_components: &HashMap<String, String>,
-) -> Option<TopLevelHopNode> {
+) -> Option<TopLevel> {
     let t = &tree.opening_token;
 
     match t {
@@ -114,7 +123,7 @@ fn construct_top_level_node(
 
                     match (component_attr, from_attr) {
                         (Some(component_attr), Some(from_attr)) => {
-                            Some(TopLevelHopNode::Import(ImportNode {
+                            Some(TopLevel::Import(ImportNode {
                                 component_attr,
                                 from_attr,
                                 range: tree.range(),
@@ -148,7 +157,7 @@ fn construct_top_level_node(
                     });
 
                     file_attr.map(|file_attr| {
-                        TopLevelHopNode::Render(RenderNode {
+                        TopLevel::Render(RenderNode {
                             file_attr,
                             range: tree.range(),
                             children,
@@ -217,26 +226,24 @@ fn construct_top_level_node(
                         }
                     }
 
-                    Some(TopLevelHopNode::ComponentDefinition(
-                        ComponentDefinitionNode {
-                            name: name.to_string(),
-                            opening_name_range: *name_range,
-                            closing_name_range: tree.closing_token.as_ref().and_then(|tag| {
-                                if let Token::ClosingTag { name_range, .. } = tag {
-                                    Some(*name_range)
-                                } else {
-                                    None
-                                }
-                            }),
-                            params: params_as_attrs,
-                            as_attr,
-                            attributes: attributes.clone(),
-                            range: tree.range(),
-                            children,
-                            entrypoint,
-                            has_slot: has_default_slot,
-                        },
-                    ))
+                    Some(TopLevel::Component(ComponentDefinitionNode {
+                        name: name.to_string(),
+                        opening_name_range: *name_range,
+                        closing_name_range: tree.closing_token.as_ref().and_then(|tag| {
+                            if let Token::ClosingTag { name_range, .. } = tag {
+                                Some(*name_range)
+                            } else {
+                                None
+                            }
+                        }),
+                        params: params_as_attrs,
+                        as_attr,
+                        attributes: attributes.clone(),
+                        range: tree.range(),
+                        children,
+                        entrypoint,
+                        has_slot: has_default_slot,
+                    }))
                 }
             }
         }
