@@ -942,6 +942,33 @@ mod tests {
         );
     }
 
+    // The arguments may be passed in any order
+    #[test]
+    fn test_component_handles_arguments_in_any_order() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp {a: boolean, b: string}>
+                  <if {a}>
+                    <div>{b}</div>
+                  </if>
+                </main-comp>
+                <foo-comp>
+                  <main-comp {b: 'foo', a: true}/>
+                </foo-comp>
+            "#},
+            expect![[r#"
+                main::main-comp
+                	{a: boolean, b: string}
+                	false
+
+                main::foo-comp
+                	{}
+                	false
+            "#]],
+        );
+    }
+
     #[test]
     fn test_iterate_over_boolean_property() {
         check(
