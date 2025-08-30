@@ -1084,4 +1084,25 @@ mod tests {
             "#]],
         );
     }
+
+    /// Test set-id attribute functionality
+    #[test]
+    fn test_set_id_attribute() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp {id: string}>
+                    <div set-id="id">my div</div>
+                </main-comp>
+            "#},
+            json!({
+                "id": "my-unique-id"
+            }),
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                    <div id="my-unique-id">my div</div>
+                </div>
+            "#]],
+        );
+    }
 }
