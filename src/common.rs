@@ -263,7 +263,10 @@ impl ParseError {
         ParseError { message, range }
     }
 
-    // Parser error functions
+    pub fn slot_is_already_defined(range: Range) -> Self {
+        Self::new("slot-default is already defined".to_string(), range)
+    }
+
     pub fn unmatched_closing_tag(tag: &str, range: Range) -> Self {
         Self::new(format!("Unmatched </{tag}>"), range)
     }

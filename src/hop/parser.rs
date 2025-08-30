@@ -108,117 +108,110 @@ fn construct_top_level_node(
             expression,
             name_range,
             ..
-        } => {
-            match value.as_str() {
-                "import" => {
-                    let component_attr = t.find_attribute("component").or_else(|| {
-                        errors.push(ParseError::missing_required_attribute(
-                            value,
-                            "component",
-                            tree.opening_token.range(),
-                        ));
-                        None
-                    });
-                    let from_attr = t.find_attribute("from").or_else(|| {
-                        errors.push(ParseError::missing_required_attribute(
-                            value,
-                            "from",
-                            tree.opening_token.range(),
-                        ));
-                        None
-                    });
+        } => match value.as_str() {
+            "import" => {
+                let component_attr = t.find_attribute("component").or_else(|| {
+                    errors.push(ParseError::missing_required_attribute(
+                        value,
+                        "component",
+                        tree.opening_token.range(),
+                    ));
+                    None
+                });
+                let from_attr = t.find_attribute("from").or_else(|| {
+                    errors.push(ParseError::missing_required_attribute(
+                        value,
+                        "from",
+                        tree.opening_token.range(),
+                    ));
+                    None
+                });
 
-                    match (component_attr, from_attr) {
-                        (Some(component_attr), Some(from_attr)) => Some(TopLevel::Import(Import {
-                            component_attr,
-                            from_attr,
-                            range: tree.range(),
-                        })),
-                        _ => None,
-                    }
-                }
-                "render" => {
-                    let file_attr = t.find_attribute("file").or_else(|| {
-                        errors.push(ParseError::missing_required_attribute(
-                            value,
-                            "file",
-                            tree.opening_token.range(),
-                        ));
-                        None
-                    });
-
-                    file_attr.map(|file_attr| {
-                        TopLevel::Render(Render {
-                            file_attr,
-                            range: tree.range(),
-                            children,
-                        })
-                    })
-                }
-                name => {
-                    // Handle as component definition
-                    if !is_valid_component_name(name) {
-                        errors.push(ParseError::invalid_component_name(
-                            name,
-                            tree.opening_token.range(),
-                        ));
-                        return None;
-                    }
-
-                    let params = expression.as_ref().and_then(|(expr_string, range)| {
-                        let mut tokenizer = match DopTokenizer::new(expr_string, range.start) {
-                            Ok(tokenizer) => tokenizer,
-                            Err(err) => {
-                                errors.push(err);
-                                return None;
-                            }
-                        };
-                        match dop::parse_parameters(&mut tokenizer) {
-                            Ok(params) => Some((params, *range)),
-                            Err(error) => {
-                                errors.push(error);
-                                None
-                            }
-                        }
-                    });
-
-                    let mut has_default_slot = false;
-                    for child in &children {
-                        for node in child.iter_depth_first() {
-                            if let HopNode::SlotDefinition { range, .. } = node {
-                                if has_default_slot {
-                                    errors.push(ParseError::new(
-                                        "slot-default is already defined".to_string(),
-                                        *range,
-                                    ));
-                                } else {
-                                    has_default_slot = true;
-                                }
-                            }
-                        }
-                    }
-
-                    Some(TopLevel::Component(ComponentDefinition {
-                        name: name.to_string(),
-                        opening_name_range: *name_range,
-                        closing_name_range: tree.closing_token.as_ref().and_then(|tag| {
-                            if let Token::ClosingTag { name_range, .. } = tag {
-                                Some(*name_range)
-                            } else {
-                                None
-                            }
-                        }),
-                        params,
-                        as_attr: t.find_attribute("as"),
-                        attributes: attributes.clone(),
+                match (component_attr, from_attr) {
+                    (Some(component_attr), Some(from_attr)) => Some(TopLevel::Import(Import {
+                        component_attr,
+                        from_attr,
                         range: tree.range(),
-                        children,
-                        entrypoint: t.find_attribute("entrypoint").is_some(),
-                        has_slot: has_default_slot,
-                    }))
+                    })),
+                    _ => None,
                 }
             }
-        }
+            "render" => {
+                let file_attr = t.find_attribute("file").or_else(|| {
+                    errors.push(ParseError::missing_required_attribute(
+                        value,
+                        "file",
+                        tree.opening_token.range(),
+                    ));
+                    None
+                });
+
+                file_attr.map(|file_attr| {
+                    TopLevel::Render(Render {
+                        file_attr,
+                        range: tree.range(),
+                        children,
+                    })
+                })
+            }
+            name => {
+                if !is_valid_component_name(name) {
+                    errors.push(ParseError::invalid_component_name(
+                        name,
+                        tree.opening_token.range(),
+                    ));
+                    return None;
+                }
+
+                let params = expression.as_ref().and_then(|(expr_string, range)| {
+                    let mut tokenizer = match DopTokenizer::new(expr_string, range.start) {
+                        Ok(tokenizer) => tokenizer,
+                        Err(err) => {
+                            errors.push(err);
+                            return None;
+                        }
+                    };
+                    match dop::parse_parameters(&mut tokenizer) {
+                        Ok(params) => Some((params, *range)),
+                        Err(error) => {
+                            errors.push(error);
+                            None
+                        }
+                    }
+                });
+
+                let mut has_slot = false;
+                for child in &children {
+                    for node in child.iter_depth_first() {
+                        if let HopNode::SlotDefinition { range, .. } = node {
+                            if has_slot {
+                                errors.push(ParseError::slot_is_already_defined(*range));
+                            }
+                            has_slot = true;
+                        }
+                    }
+                }
+
+                Some(TopLevel::Component(ComponentDefinition {
+                    name: name.to_string(),
+                    opening_name_range: *name_range,
+                    closing_name_range: tree.closing_token.as_ref().and_then(|tag| {
+                        if let Token::ClosingTag { name_range, .. } = tag {
+                            Some(*name_range)
+                        } else {
+                            None
+                        }
+                    }),
+                    params,
+                    as_attr: t.find_attribute("as"),
+                    attributes: attributes.clone(),
+                    range: tree.range(),
+                    children,
+                    entrypoint: t.find_attribute("entrypoint").is_some(),
+                    has_slot,
+                }))
+            }
+        },
         _ => None,
     }
 }
