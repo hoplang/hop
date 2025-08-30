@@ -581,6 +581,7 @@ mod tests {
     use crate::hop::typechecker::typecheck;
     use expect_test::{Expect, expect};
     use indoc::indoc;
+    use serde_json::json;
     use simple_txtar::Archive;
     use std::collections::HashMap;
 
@@ -628,11 +629,8 @@ mod tests {
         asts
     }
 
-    fn check(archive_str: &str, data_json: &str, expected: Expect) {
+    fn check(archive_str: &str, data: serde_json::Value, expected: Expect) {
         let asts = asts_from_archive(&Archive::from(archive_str));
-
-        let data: serde_json::Value =
-            serde_json::from_str(data_json).expect("Failed to parse JSON data");
 
         let args: HashMap<String, serde_json::Value> = data
             .as_object()
@@ -665,7 +663,7 @@ mod tests {
                     <div>hello</div>
                 </main-comp>
             "#},
-            "{}",
+            json!({}),
             expect![[r#"
                 <div data-hop-id="main/main-comp" class="p-2">
                     <div>hello</div>
@@ -684,7 +682,9 @@ mod tests {
                     <div>{p}</div>
                 </main-comp>
             "#},
-            r#"{"p": "<script>alert(1);</script>"}"#,
+            json!({
+                "p": "<script>alert(1);</script>"
+            }),
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                     <div>&lt;script&gt;alert(1);&lt;/script&gt;</div>
@@ -712,12 +712,12 @@ mod tests {
                   </if>
                 </main-comp>
             "#},
-            r#"{
+            json!({
               "user": {"name": "alice"},
               "admin": {"name": "alice"},
               "status": "active",
-              "expected_status": "active"
-            }"#,
+              "expected_status": "active",
+            }),
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                     <div>Is Admin</div>
@@ -732,7 +732,9 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {items: array[{show: boolean, data: string}]}>
+                <main-comp {
+                    items: array[{show: boolean, data: string}]
+                }>
                     <for {item in items}>
                         <if {item.show}>
                             <div>{item.data}</div>
@@ -740,13 +742,13 @@ mod tests {
                     </for>
                 </main-comp>
             "#},
-            r#"{
+            json!({
                 "items": [
                     {"show": true, "data": "foo"},
                     {"show": false, "data": "bar"},
                     {"show": true, "data": "baz"}
                 ]
-            }"#,
+            }),
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                             <div>foo</div>
@@ -761,7 +763,9 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {items: array[{name: string, type: string}]}>
+                <main-comp {
+                    items: array[{name: string, type: string}]
+                }>
                   <for {item in items}>
                     <div>
                       <span>{item.name}</span>
@@ -775,22 +779,13 @@ mod tests {
                   </for>
                 </main-comp>
             "#},
-            r#"{
+            json!({
               "items": [
-                {
-                  "name": "Alice",
-                  "type": "admin"
-                },
-                {
-                  "name": "Bob", 
-                  "type": "user"
-                },
-                {
-                  "name": "Carol",
-                  "type": "admin"
-                }
+                {"name": "Alice", "type": "admin"},
+                {"name": "Bob", "type": "user"},
+                {"name": "Carol", "type": "admin"},
               ]
-            }"#,
+            }),
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                     <div>
@@ -825,7 +820,7 @@ mod tests {
                   <button-comp></button-comp>
                 </main-comp>
             "#},
-            "{}",
+            json!({}),
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                   <button data-hop-id="test/button-comp">
@@ -845,7 +840,9 @@ mod tests {
                 	<div>{p}</div>
                 </main-comp>
             "#},
-            r#"{"p": "foo bar"}"#,
+            json!({
+                "p": "foo bar",
+            }),
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                 	<div>foo bar</div>
@@ -865,13 +862,13 @@ mod tests {
                   </for>
                 </main-comp>
             "#},
-            r#"{
+            json!({
               "users": [
                 {"name": "Alice"},
                 {"name": "Bob"},
-                {"name": "Charlie"}
+                {"name": "Charlie"},
               ]
-            }"#,
+            }),
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                     <div>Alice</div>
@@ -892,7 +889,7 @@ mod tests {
                   <div>Mode: {HOP_MODE}</div>
                 </main-comp>
             "#},
-            "{}",
+            json!({}),
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                   <div>Mode: dev</div>
@@ -916,7 +913,7 @@ mod tests {
                   </if>
                 </main-comp>
             "#},
-            "{}",
+            json!({}),
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                     <div>Dev mode active</div>
@@ -949,7 +946,7 @@ mod tests {
                     </bar-comp>
                 </main-comp>
             "#},
-            "{}",
+            json!({}),
             expect![[r#"
                     <div data-hop-id="main/bar-comp">
                     <div data-hop-id="main/foo-comp">
@@ -975,7 +972,10 @@ mod tests {
                   <a set-href="profile_url" set-title="name">Click here</a>
                 </main-comp>
             "#},
-            r#"{"profile_url": "https://example.com/user/123", "name": "John Doe"}"#,
+            json!({
+                "profile_url": "https://example.com/user/123",
+                "name": "John Doe",
+            }),
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                   <a href="https://example.com/user/123" title="John Doe">Click here</a>
@@ -1002,10 +1002,10 @@ mod tests {
                     </main-card>
                 </main-comp>
             "#},
-            r#"{
+            json!({
                 "title": "Hello World",
                 "message": "This text comes from outside params"
-            }"#,
+            }),
             expect![[r#"
                     <div data-hop-id="main/main-card">
                     <div class="card">
@@ -1031,7 +1031,7 @@ mod tests {
                 	<my-button>Custom Button</my-button>
                 </main-comp>
             "#},
-            "{}",
+            json!({}),
             expect![[r#"
                 	<div data-hop-id="main/my-button">
                 	Click me!
@@ -1064,7 +1064,7 @@ mod tests {
                     </main-layout>
                 </main-comp>
             "#},
-            "{}",
+            json!({}),
             expect![[r#"
                     <div data-hop-id="main/main-layout">
                     <div class="page">
@@ -1118,7 +1118,9 @@ mod tests {
                     </page-layout>
                 </main-comp>
             "#},
-            r#"{"page_title": "Welcome Page"}"#,
+            json!({
+                "page_title": "Welcome Page",
+            }),
             expect![[r#"
                     <div data-hop-id="main/page-layout">
                     <div class="page">
@@ -1157,7 +1159,11 @@ mod tests {
                 <main-comp entrypoint {
                     title: string,
                     active_count: string,
-                    users: array[{name: string, active: boolean, admin: boolean}],
+                    users: array[{
+                        name: string,
+                        active: boolean,
+                        admin: boolean,
+                    }],
                 }>
                     <main-card>
                         <h1>{title}</h1>
@@ -1177,7 +1183,7 @@ mod tests {
                     </main-card>
                 </main-comp>
             "#},
-            r#"{
+            json!({
                 "title": "User Management",
                 "active_count": "3",
                 "users": [
@@ -1187,7 +1193,7 @@ mod tests {
                     {"name": "Diana", "active": true, "admin": true},
                     {"name": "Eve", "active": false, "admin": false}
                 ]
-            }"#,
+            }),
             expect![[r#"
                     <div data-hop-id="main/main-card">
                     <div class="card">
@@ -1229,7 +1235,7 @@ mod tests {
                     </wrapper-comp>
                 </main-comp>
             "#},
-            "{}",
+            json!({}),
             expect![[r#"
                     <div data-hop-id="main/wrapper-comp">
                     <div>
@@ -1245,7 +1251,10 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {role: string, status: string}>
+                <main-comp {
+                    role: string,
+                    status: string,
+                }>
                   <if {role == 'admin'}>
                     <div>Admin Access</div>
                   </if>
@@ -1257,10 +1266,10 @@ mod tests {
                   </if>
                 </main-comp>
             "#},
-            r#"{
+            json!({
               "role": "admin",
               "status": "active"
-            }"#,
+            }),
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                     <div>Admin Access</div>
@@ -1279,7 +1288,7 @@ mod tests {
                     <hop-x-raw>foo bar</hop-x-raw>
                 </main-comp>
             "#},
-            "{}",
+            json!({}),
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                     foo bar
@@ -1300,7 +1309,7 @@ mod tests {
                 	</hop-x-raw>
                 </main-comp>
             "#},
-            "{}",
+            json!({}),
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                 		<div>some html</div>
@@ -1319,7 +1328,7 @@ mod tests {
                 	<hop-x-raw trim>  trimmed  </hop-x-raw>
                 </main-comp>
             "#},
-            "{}",
+            json!({}),
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                 	trimmed  
@@ -1337,7 +1346,7 @@ mod tests {
                 	<hop-x-raw>  not trimmed  </hop-x-raw>
                 </main-comp>
             "#},
-            "{}",
+            json!({}),
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                 	  not trimmed  
@@ -1360,12 +1369,12 @@ mod tests {
                   </if>
                 </main-comp>
             "#},
-            r#"{
+            json!({
               "user": {
                 "isActive": true,
-                "role": "admin"
+                "role": "admin",
               }
-            }"#,
+            }),
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                     <div>Welcome active user!</div>
@@ -1389,12 +1398,12 @@ mod tests {
                   </if>
                 </main-comp>
             "#},
-            r#"{
+            json!({
               "config": {
                 "enabled": true,
-                "debug": false
+                "debug": false,
               }
-            }"#,
+            }),
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                     <div>Feature is enabled</div>
@@ -1414,7 +1423,9 @@ mod tests {
                   </if>
                 </main-comp>
             "#},
-            r#"{"visible": false}"#,
+            json!({
+                "visible": false,
+            }),
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                 </div>
@@ -1435,7 +1446,7 @@ mod tests {
                 	<my-button class="px-4 py-2 rounded"/>
                 </main-comp>
             "#},
-            "{}",
+            json!({}),
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                 	<div data-hop-id="main/my-button" class="bg-red-500 px-4 py-2 rounded">Click me</div>
@@ -1457,7 +1468,7 @@ mod tests {
                 	<my-button class="px-4 py-2 rounded"/>
                 </main-comp>
             "#},
-            "{}",
+            json!({}),
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                 	<div data-hop-id="main/my-button" class="px-4 py-2 rounded">Click me</div>
@@ -1479,7 +1490,7 @@ mod tests {
                 	<my-button/>
                 </main-comp>
             "#},
-            "{}",
+            json!({}),
             expect![[r#"
                 <div data-hop-id="main/main-comp">
                 	<div data-hop-id="main/my-button" class="px-4 py-2">Click me</div>
