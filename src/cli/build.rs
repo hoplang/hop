@@ -74,7 +74,7 @@ pub fn execute(
                 .with_lines_before(1)
                 .with_location()
                 .with_filename(filename);
-            let formatted_errors = annotator.add_annotations(code, errors);
+            let formatted_errors = annotator.annotate(code, errors);
             error_output_parts.push(formatted_errors);
         }
     }
@@ -90,7 +90,7 @@ pub fn execute(
                 .with_lines_before(1)
                 .with_location()
                 .with_filename(filename);
-            let formatted_errors = annotator.add_annotations(code, errors);
+            let formatted_errors = annotator.annotate(code, errors);
             error_output_parts.push(formatted_errors);
         }
     }

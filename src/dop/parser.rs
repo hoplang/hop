@@ -532,7 +532,7 @@ mod tests {
                     .without_location()
                     .without_line_numbers();
 
-                annotator.add_annotations(input, &[e]).to_string()
+                annotator.annotate(input, &[e]).to_string()
             }
         };
 
@@ -551,7 +551,7 @@ mod tests {
                     .without_location()
                     .without_line_numbers();
 
-                annotator.add_annotations(input, &[e]).to_string()
+                annotator.annotate(input, &[e]).to_string()
             }
         };
 
@@ -570,7 +570,7 @@ mod tests {
                     .without_location()
                     .without_line_numbers();
 
-                annotator.add_annotations(input, &[e]).to_string()
+                annotator.annotate(input, &[e]).to_string()
             }
         };
 

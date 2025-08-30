@@ -640,7 +640,7 @@ mod tests {
             let annotator = SourceAnnotator::new()
                 .with_label("error")
                 .with_lines_before(1);
-            annotator.add_annotations(input, &errors)
+            annotator.annotate(input, &errors)
         } else {
             for component in module.get_component_definition_nodes() {
                 if component.name == "main-comp" {

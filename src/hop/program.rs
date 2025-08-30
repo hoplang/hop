@@ -1196,7 +1196,7 @@ mod tests {
                     SourceAnnotator::new()
                         .with_filename(&file.name)
                         .with_location()
-                        .add_annotations(&file.content, &module_locs),
+                        .annotate(&file.content, &module_locs),
                 );
             }
         }
@@ -1229,7 +1229,7 @@ mod tests {
         let output = SourceAnnotator::new()
             .with_filename(&file.name)
             .with_location()
-            .add_annotations(&file.content, &[loc]);
+            .annotate(&file.content, &[loc]);
 
         expected.assert_eq(&output);
     }
@@ -1250,7 +1250,7 @@ mod tests {
         let output = SourceAnnotator::new()
             .with_filename(&file.name)
             .with_location()
-            .add_annotations(&file.content, &diagnostics);
+            .annotate(&file.content, &diagnostics);
 
         expected.assert_eq(&output);
     }
@@ -1280,7 +1280,7 @@ mod tests {
             let annotated = SourceAnnotator::new()
                 .with_filename(&file.name)
                 .with_location()
-                .add_annotations(&file.content, errors);
+                .annotate(&file.content, errors);
 
             output.push(annotated);
         }
@@ -1312,7 +1312,7 @@ mod tests {
         let output = SourceAnnotator::new()
             .with_filename(&file.name)
             .with_location()
-            .add_annotations(&file.content, &[symbol]);
+            .annotate(&file.content, &[symbol]);
 
         expected.assert_eq(&output);
     }
@@ -1342,7 +1342,7 @@ mod tests {
         let output = SourceAnnotator::new()
             .with_filename(&file.name)
             .with_location()
-            .add_annotations(&file.content, &[hover_info]);
+            .annotate(&file.content, &[hover_info]);
 
         expected.assert_eq(&output);
     }

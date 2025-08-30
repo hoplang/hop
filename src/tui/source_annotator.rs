@@ -88,7 +88,7 @@ impl SourceAnnotator {
         self
     }
 
-    pub fn add_annotations<A: Annotated>(&self, source: &str, annotations: &[A]) -> String {
+    pub fn annotate<A: Annotated>(&self, source: &str, annotations: &[A]) -> String {
         let mut output = String::new();
         let lines: Vec<&str> = source.lines().collect();
 
@@ -244,7 +244,7 @@ mod tests {
         annotations: Vec<SimpleAnnotation>,
         expect: Expect,
     ) {
-        let actual = annotator.add_annotations(source, &annotations);
+        let actual = annotator.annotate(source, &annotations);
         expect.assert_eq(&actual);
     }
 
