@@ -391,38 +391,50 @@ fn construct_node(
                         }
                     }
                 },
-                "hop-x-exec" => {
-                    let cmd_attr = t.find_attribute("cmd").or_else(|| {
-                        errors.push(ParseError::missing_required_attribute(
-                            value,
-                            "cmd",
-                            tree.opening_token.range(),
-                        ));
-                        None
-                    });
-
-                    match cmd_attr {
-                        Some(cmd_attr) => HopNode::XExec {
-                            cmd_attr,
-                            range: tree.range(),
-                            children,
-                        },
-                        None => HopNode::Error {
-                            range: tree.range(),
-                            children,
-                        },
-                    }
-                }
-                "hop-x-raw" => {
-                    let has_trim = attributes.iter().any(|attr| attr.name == "trim");
-                    HopNode::XRaw {
-                        trim: has_trim,
-                        range: tree.range(),
-                        children,
-                    }
-                }
                 "slot-default" => HopNode::SlotDefinition {
                     range: tree.range(),
+                },
+                tag_name if tag_name.starts_with("hop-") => match tag_name {
+                    "hop-x-exec" => {
+                        let cmd_attr = t.find_attribute("cmd").or_else(|| {
+                            errors.push(ParseError::missing_required_attribute(
+                                value,
+                                "cmd",
+                                tree.opening_token.range(),
+                            ));
+                            None
+                        });
+
+                        match cmd_attr {
+                            Some(cmd_attr) => HopNode::XExec {
+                                cmd_attr,
+                                range: tree.range(),
+                                children,
+                            },
+                            None => HopNode::Error {
+                                range: tree.range(),
+                                children,
+                            },
+                        }
+                    }
+                    "hop-x-raw" => {
+                        let has_trim = attributes.iter().any(|attr| attr.name == "trim");
+                        HopNode::XRaw {
+                            trim: has_trim,
+                            range: tree.range(),
+                            children,
+                        }
+                    }
+                    _ => {
+                        errors.push(ParseError::unrecognized_hop_tag(
+                            value,
+                            tree.opening_token.range(),
+                        ));
+                        HopNode::Error {
+                            range: tree.range(),
+                            children: vec![],
+                        }
+                    }
                 },
                 tag_name if is_valid_component_name(tag_name) => {
                     // This is a component render (contains dash)
@@ -718,6 +730,24 @@ mod tests {
                 error: Invalid component name 'div'. Component names must contain a dash and not start or end with one
                 1 | <div>
                   | ^^^^^
+            "#]],
+        );
+    }
+
+    // An unrecognized hop tag should produce an error.
+    #[test]
+    fn test_parser_unrecognized_hop_tag() {
+        check(
+            indoc! {"
+                <main-comp>
+                    <hop-whatever>Content</hop-whatever>
+                </main-comp>
+            "},
+            expect![[r#"
+                error: Unrecognized hop tag: <hop-whatever>
+                1 | <main-comp>
+                2 |     <hop-whatever>Content</hop-whatever>
+                  |     ^^^^^^^^^^^^^^
             "#]],
         );
     }

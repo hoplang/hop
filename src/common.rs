@@ -279,6 +279,10 @@ impl ParseError {
         )
     }
 
+    pub fn unrecognized_hop_tag(tag: &str, range: Range) -> Self {
+        Self::new(format!("Unrecognized hop tag: <{tag}>"), range)
+    }
+
     pub fn missing_required_attribute(tag: &str, attr: &str, range: Range) -> Self {
         Self::new(
             format!("<{tag}> is missing required attribute {attr}"),
