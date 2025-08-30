@@ -1,4 +1,4 @@
-use crate::common::{Position, Range, RangeError, Ranged, escape_html, is_void_element};
+use crate::common::{Position, Range, RangeError, Ranged, TypeError, escape_html, is_void_element};
 use crate::dop::{self, evaluate_expr, load_json_file};
 use crate::hop::ast::HopAST;
 use crate::hop::environment::Environment;
@@ -155,7 +155,7 @@ pub struct Program {
     type_annotations: HashMap<String, Vec<TypeAnnotation>>,
     definition_links: HashMap<String, Vec<DefinitionLink>>,
     parse_errors: HashMap<String, Vec<RangeError>>,
-    type_errors: HashMap<String, Vec<RangeError>>,
+    type_errors: HashMap<String, Vec<TypeError>>,
     source_code: HashMap<String, String>,
     topo_sorter: TopoSorter,
     hop_mode: HopMode,
@@ -211,7 +211,7 @@ impl Program {
         &self.parse_errors
     }
 
-    pub fn get_type_errors(&self) -> &HashMap<String, Vec<RangeError>> {
+    pub fn get_type_errors(&self) -> &HashMap<String, Vec<TypeError>> {
         &self.type_errors
     }
 
@@ -234,7 +234,7 @@ impl Program {
                 .expect("Failed to retrieve AST in handle_cycle_error");
             for import_node in ast.get_import_nodes() {
                 if cycle_error.cycle.contains(&import_node.from_attr.value) {
-                    type_errors.push(RangeError::circular_import(
+                    type_errors.push(TypeError::circular_import(
                         module_name,
                         &import_node.from_attr.value,
                         &cycle_error.cycle,

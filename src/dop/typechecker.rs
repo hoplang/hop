@@ -1,5 +1,5 @@
 use super::parser::{BinaryOp, DopExpr, UnaryOp};
-use crate::common::{Range, RangeError, Ranged};
+use crate::common::{Range, Ranged, TypeError};
 use crate::hop::environment::Environment;
 use crate::hop::typechecker::TypeAnnotation;
 use std::collections::BTreeMap;
@@ -78,8 +78,8 @@ pub fn typecheck_expr(
     expr: &DopExpr,
     env: &mut Environment<DopType>,
     annotations: &mut Vec<TypeAnnotation>,
-    errors: &mut Vec<RangeError>,
-) -> Result<DopType, RangeError> {
+    errors: &mut Vec<TypeError>,
+) -> Result<DopType, TypeError> {
     match expr {
         DopExpr::Variable { name, .. } => {
             if let Some(var_type) = env.lookup(name) {
@@ -90,7 +90,7 @@ pub fn typecheck_expr(
                 });
                 Ok(var_type.clone())
             } else {
-                Err(RangeError::new(
+                Err(TypeError::new(
                     format!("Undefined variable: {}", name),
                     expr.range(),
                 ))
@@ -112,13 +112,13 @@ pub fn typecheck_expr(
                     if let Some(prop_type) = props.get(property) {
                         Ok(prop_type.clone())
                     } else {
-                        Err(RangeError::new(
+                        Err(TypeError::new(
                             format!("Property {} not found in object", property),
                             *property_range,
                         ))
                     }
                 }
-                _ => Err(RangeError::new(
+                _ => Err(TypeError::new(
                     format!("{} can not be used as an object", base_type),
                     base_expr.range(),
                 )),
@@ -135,7 +135,7 @@ pub fn typecheck_expr(
 
             // Both operands should have the same type for equality comparison
             if left_type != right_type {
-                return Err(RangeError::new(
+                return Err(TypeError::new(
                     format!("Can not compare {} to {}", left_type, right_type),
                     expr.range(),
                 ));
@@ -153,7 +153,7 @@ pub fn typecheck_expr(
 
             // Negation only works on boolean expressions
             if !is_subtype(&expr_type, &DopType::Bool) {
-                return Err(RangeError::new(
+                return Err(TypeError::new(
                     "Negation operator can only be applied to boolean values".to_string(),
                     expr.range(),
                 ));
@@ -174,7 +174,7 @@ pub fn typecheck_expr(
                 for element in elements.iter().skip(1) {
                     let element_type = typecheck_expr(element, env, annotations, errors)?;
                     if element_type != first_type {
-                        return Err(RangeError::new(
+                        return Err(TypeError::new(
                             format!(
                                 "Array elements must all have the same type, found {} and {}",
                                 first_type, element_type

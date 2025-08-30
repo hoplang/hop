@@ -1,4 +1,4 @@
-use crate::common::{Range, RangeError, Ranged};
+use crate::common::{Range, Ranged, TypeError};
 use crate::dop::{DopParameter, DopType, infer_type_from_json_file, is_subtype, typecheck_expr};
 use crate::hop::ast::HopAST;
 use crate::hop::ast::{ComponentDefinitionNode, HopNode, ImportNode, RenderNode};
@@ -49,7 +49,7 @@ pub type TypeCheckerState = HashMap<String, ComponentTypeInformation>;
 pub fn typecheck(
     module: &HopAST,
     import_type_information: &HashMap<String, TypeCheckerState>,
-    errors: &mut Vec<RangeError>,
+    errors: &mut Vec<TypeError>,
     type_annotations: &mut Vec<TypeAnnotation>,
     definition_links: &mut Vec<DefinitionLink>,
 ) -> HashMap<String, ComponentTypeInformation> {
@@ -69,17 +69,14 @@ pub fn typecheck(
             if let Some(comp_info) = module_type_info.get(component_name) {
                 current_module_type_information.insert(component_name.clone(), comp_info.clone());
             } else {
-                errors.push(RangeError::undeclared_component(
+                errors.push(TypeError::undeclared_component(
                     from_module,
                     component_name,
                     *range,
                 ));
             }
         } else {
-            errors.push(RangeError::import_from_undefined_module(
-                from_module,
-                *range,
-            ));
+            errors.push(TypeError::import_from_undefined_module(from_module, *range));
         }
     }
     let mut env = Environment::new();
@@ -122,7 +119,7 @@ pub fn typecheck(
         // Check for unused variables (iterate in reverse to match push order)
         for param in params.iter().rev() {
             if !env.pop() {
-                errors.push(RangeError::unused_variable(
+                errors.push(TypeError::unused_variable(
                     &param.var_name.value,
                     param.var_name.range,
                 ));
@@ -162,7 +159,7 @@ fn typecheck_node(
     env: &mut Environment<DopType>,
     annotations: &mut Vec<TypeAnnotation>,
     component_definition_links: &mut Vec<DefinitionLink>,
-    errors: &mut Vec<RangeError>,
+    errors: &mut Vec<TypeError>,
 ) {
     match node {
         HopNode::If {
@@ -179,7 +176,7 @@ fn typecheck_node(
                 }
             };
             if !is_subtype(&condition_type, &DopType::Bool) {
-                errors.push(RangeError::new(
+                errors.push(TypeError::new(
                     format!("Expected boolean condition, got {}", condition_type),
                     *range,
                 ));
@@ -231,7 +228,7 @@ fn typecheck_node(
 
                 // Check for missing required parameters
                 for param_name in expected_params.difference(&provided_args) {
-                    errors.push(RangeError::new(
+                    errors.push(TypeError::new(
                         format!("Missing required parameter '{}'", param_name),
                         *range,
                     ));
@@ -239,7 +236,7 @@ fn typecheck_node(
 
                 // Check for unexpected arguments
                 for arg_name in provided_args.difference(&expected_params) {
-                    errors.push(RangeError::new(
+                    errors.push(TypeError::new(
                         format!("Unexpected argument '{}'", arg_name),
                         *range,
                     ));
@@ -262,7 +259,7 @@ fn typecheck_node(
                             };
 
                         if !is_subtype(&expr_type, &param.type_annotation) {
-                            errors.push(RangeError::new(
+                            errors.push(TypeError::new(
                                 format!(
                                     "Argument '{}' of type {} is incompatible with expected type {}",
                                     arg.var_name.value, expr_type, param.type_annotation,
@@ -281,10 +278,10 @@ fn typecheck_node(
 
                 // Validate that content is only passed to components with slot-default
                 if !children.is_empty() && !comp_info.has_slot {
-                    errors.push(RangeError::undefined_slot(component, *range));
+                    errors.push(TypeError::undefined_slot(component, *range));
                 }
             } else {
-                errors.push(RangeError::undefined_component(component, *range));
+                errors.push(TypeError::undefined_component(component, *range));
             }
 
             for child in children {
@@ -314,7 +311,7 @@ fn typecheck_node(
                 };
 
                 if !is_subtype(&expr_type, &DopType::String) {
-                    errors.push(RangeError::new(
+                    errors.push(TypeError::new(
                         format!("Expected string attribute, got {}", expr_type),
                         set_attr.range,
                     ));
@@ -370,7 +367,7 @@ fn typecheck_node(
             let json_type = match infer_type_from_json_file(file_path) {
                 Ok(typ) => typ,
                 Err(err) => {
-                    errors.push(RangeError::new(err, file_attr.range));
+                    errors.push(TypeError::new(err, file_attr.range));
                     return; // Skip further processing
                 }
             };
@@ -386,7 +383,7 @@ fn typecheck_node(
                     name: var_name.clone(),
                 });
             } else {
-                errors.push(RangeError::variable_is_already_defined(
+                errors.push(TypeError::variable_is_already_defined(
                     var_name,
                     as_attr.range,
                 ));
@@ -406,7 +403,7 @@ fn typecheck_node(
 
             // Pop the JSON variable from scope
             if pushed && !env.pop() {
-                errors.push(RangeError::unused_variable(var_name, *range));
+                errors.push(TypeError::unused_variable(var_name, *range));
             }
         }
         HopNode::For {
@@ -426,14 +423,14 @@ fn typecheck_node(
             let element_type = match &array_type {
                 DopType::Array(Some(inner)) => *inner.clone(),
                 DopType::Array(None) => {
-                    errors.push(RangeError::new(
+                    errors.push(TypeError::new(
                         "Cannot iterate over an empty array with unknown element type".to_string(),
                         array_expr.range(),
                     ));
                     return;
                 }
                 _ => {
-                    errors.push(RangeError::new(
+                    errors.push(TypeError::new(
                         format!("Can not iterate over {}", array_type),
                         array_expr.range(),
                     ));
@@ -452,7 +449,7 @@ fn typecheck_node(
                     name: var_name.value.clone(),
                 });
             } else {
-                errors.push(RangeError::variable_is_already_defined(
+                errors.push(TypeError::variable_is_already_defined(
                     &var_name.value,
                     var_name.range,
                 ));
@@ -472,7 +469,7 @@ fn typecheck_node(
 
             // Pop the loop variable from scope
             if pushed && !env.pop() {
-                errors.push(RangeError::unused_variable(&var_name.value, var_name.range));
+                errors.push(TypeError::unused_variable(&var_name.value, var_name.range));
             }
         }
         HopNode::Text { .. } | HopNode::Doctype { .. } => {
@@ -490,7 +487,7 @@ fn typecheck_node(
                 }
             };
             if !is_subtype(&expr_type, &DopType::String) {
-                errors.push(RangeError::new(
+                errors.push(TypeError::new(
                     format!("Expected string for text expression, got {}", expr_type),
                     *range,
                 ));
@@ -532,28 +529,29 @@ mod tests {
             if !file.name.ends_with(".hop") {
                 panic!("Got invalid file name")
             }
-            let mut errors = Vec::new();
+            let mut parse_errors = Vec::new();
             let tokenizer = Tokenizer::new(file.content.trim());
             let module_name = file.name.trim_end_matches(".hop");
-            let module = parse(module_name.to_string(), tokenizer, &mut errors);
+            let module = parse(module_name.to_string(), tokenizer, &mut parse_errors);
 
-            if !errors.is_empty() {
-                panic!("Got parse errors: {:#?}", errors);
+            if !parse_errors.is_empty() {
+                panic!("Got parse errors: {:#?}", parse_errors);
             }
 
             let mut type_annotations = Vec::new();
             let mut component_definition_links = Vec::new();
+            let mut type_errors = Vec::new();
             let type_result = typecheck(
                 &module,
                 &module_type_results,
-                &mut errors,
+                &mut type_errors,
                 &mut type_annotations,
                 &mut component_definition_links,
             );
 
-            if !errors.is_empty() {
+            if !type_errors.is_empty() {
                 let formatted_errors =
-                    annotator.annotate(Some(&file.name), file.content.trim(), &errors);
+                    annotator.annotate(Some(&file.name), file.content.trim(), &type_errors);
                 error_output_parts.push(formatted_errors);
             } else {
                 module_type_results.insert(module.name.clone(), type_result.clone());
