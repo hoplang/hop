@@ -218,9 +218,6 @@ impl TypeError {
         )
     }
 
-    pub fn load_json_error(error: &str, range: Range) -> Self {
-        Self::new(error.to_string(), range)
-    }
 }
 
 impl Ranged for TypeError {

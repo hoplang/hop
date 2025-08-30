@@ -428,38 +428,6 @@ fn construct_node(
                         children,
                     }
                 }
-                "hop-x-load-json" => {
-                    let file_attr = t.find_attribute("file").or_else(|| {
-                        errors.push(ParseError::missing_required_attribute(
-                            value,
-                            "file",
-                            tree.opening_token.range(),
-                        ));
-                        None
-                    });
-
-                    let as_attr = t.find_attribute("as").or_else(|| {
-                        errors.push(ParseError::missing_required_attribute(
-                            value,
-                            "as",
-                            tree.opening_token.range(),
-                        ));
-                        None
-                    });
-
-                    match (file_attr, as_attr) {
-                        (Some(file_attr), Some(as_attr)) => HopNode::XLoadJson {
-                            file_attr,
-                            as_attr,
-                            range: tree.range(),
-                            children,
-                        },
-                        _ => HopNode::Error {
-                            range: tree.range(),
-                            children,
-                        },
-                    }
-                }
                 "slot-default" => HopNode::SlotDefinition {
                     range: tree.range(),
                 },

@@ -1,5 +1,5 @@
 use crate::common::{ParseError, Position, Range, Ranged, TypeError, escape_html, is_void_element};
-use crate::dop::{self, evaluate_expr, load_json_file};
+use crate::dop::{self, evaluate_expr};
 use crate::hop::ast::HopAST;
 use crate::hop::environment::Environment;
 use crate::hop::parser::parse;
@@ -904,46 +904,6 @@ impl Program {
                 }
             }
 
-            HopNode::XLoadJson {
-                file_attr,
-                as_attr,
-                children,
-                ..
-            } => {
-                // Load JSON data from file
-                let file_path = &file_attr.value;
-                let var_name = &as_attr.value;
-
-                let json_value = match load_json_file(file_path) {
-                    Ok(value) => value,
-                    Err(err) => {
-                        return Err(anyhow::anyhow!(
-                            "Failed to load JSON file '{}': {}",
-                            file_path,
-                            err
-                        ));
-                    }
-                };
-
-                // Push the JSON data variable into scope
-                env.push(var_name.clone(), json_value);
-
-                // Evaluate children with the JSON data in scope
-                let mut result = String::new();
-                for child in children {
-                    result.push_str(&self.evaluate_node(
-                        child,
-                        slot_content,
-                        env,
-                        current_module,
-                    )?);
-                }
-
-                // Pop the JSON variable from scope
-                env.pop();
-
-                Ok(result)
-            }
         }
     }
 

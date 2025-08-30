@@ -1,5 +1,5 @@
 use crate::common::{Range, Ranged, TypeError};
-use crate::dop::{DopParameter, DopType, infer_type_from_json_file, is_subtype, typecheck_expr};
+use crate::dop::{DopParameter, DopType, is_subtype, typecheck_expr};
 use crate::hop::ast::HopAST;
 use crate::hop::ast::{ComponentDefinitionNode, HopNode, ImportNode, RenderNode};
 use crate::hop::environment::Environment;
@@ -344,59 +344,6 @@ fn typecheck_node(
                     component_definition_links,
                     errors,
                 );
-            }
-        }
-        HopNode::XLoadJson {
-            file_attr,
-            as_attr,
-            children,
-            range,
-            ..
-        } => {
-            // Infer the type from the JSON file
-            let var_name = &as_attr.value;
-            let file_path = &file_attr.value;
-
-            let json_type = match infer_type_from_json_file(file_path) {
-                Ok(typ) => typ,
-                Err(err) => {
-                    errors.push(TypeError::load_json_error(&err, file_attr.range));
-                    return; // Skip further processing
-                }
-            };
-
-            // Push the JSON data variable into scope
-            let mut pushed = false;
-            if env.push(var_name.clone(), json_type.clone()) {
-                pushed = true;
-                // Add type annotation for the JSON variable
-                annotations.push(TypeAnnotation {
-                    range: as_attr.range,
-                    typ: json_type,
-                    name: var_name.clone(),
-                });
-            } else {
-                errors.push(TypeError::variable_is_already_defined(
-                    var_name,
-                    as_attr.range,
-                ));
-            }
-
-            // Typecheck children
-            for child in children {
-                typecheck_node(
-                    child,
-                    component_info,
-                    env,
-                    annotations,
-                    component_definition_links,
-                    errors,
-                );
-            }
-
-            // Pop the JSON variable from scope
-            if pushed && !env.pop() {
-                errors.push(TypeError::unused_variable(var_name, *range));
             }
         }
         HopNode::For {

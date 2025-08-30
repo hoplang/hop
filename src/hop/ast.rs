@@ -203,12 +203,6 @@ pub enum HopNode {
         range: Range,
         children: Vec<HopNode>,
     },
-    XLoadJson {
-        file_attr: Attribute,
-        as_attr: Attribute,
-        range: Range,
-        children: Vec<HopNode>,
-    },
 }
 
 impl HopNode {
@@ -222,7 +216,6 @@ impl HopNode {
             HopNode::Error { children, .. } => children,
             HopNode::XExec { children, .. } => children,
             HopNode::XRaw { children, .. } => children,
-            HopNode::XLoadJson { children, .. } => children,
             // Leaf nodes with no children
             HopNode::Doctype { .. } => &[],
             HopNode::Text { .. } => &[],
@@ -299,7 +292,6 @@ impl Ranged for HopNode {
             HopNode::Error { range, .. } => *range,
             HopNode::XExec { range, .. } => *range,
             HopNode::XRaw { range, .. } => *range,
-            HopNode::XLoadJson { range, .. } => *range,
         }
     }
 }
