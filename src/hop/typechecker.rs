@@ -39,7 +39,7 @@ pub struct ComponentTypeInformation {
     definition_module: String,
     definition_range: Range,
     // Track the parameter types for the component.
-    parameter_types: Vec<DopParameter>,
+    parameter_types: Option<(Vec<DopParameter>, Range)>,
     // Track whether the component has a slot-default.
     has_slot: bool,
 }
@@ -94,17 +94,15 @@ pub fn typecheck(
         ..
     } in module.get_component_definitions()
     {
-        let parameter_types = params.clone();
-
-        for param in params {
-            let param_type = param.type_annotation.clone();
-
-            type_annotations.push(TypeAnnotation {
-                range: param.var_name.range,
-                typ: param_type.clone(),
-                name: param.var_name.value.clone(),
-            });
-            let _ = env.push(param.var_name.value.clone(), param_type);
+        if let Some((params, _)) = params {
+            for param in params {
+                type_annotations.push(TypeAnnotation {
+                    range: param.var_name.range,
+                    typ: param.type_annotation.clone(),
+                    name: param.var_name.value.clone(),
+                });
+                let _ = env.push(param.var_name.value.clone(), param.type_annotation.clone());
+            }
         }
 
         for child in children {
@@ -119,19 +117,21 @@ pub fn typecheck(
         }
 
         // Check for unused variables (iterate in reverse to match push order)
-        for param in params.iter().rev() {
-            if env.pop().is_err() {
-                errors.push(TypeError::unused_variable(
-                    &param.var_name.value,
-                    param.var_name.range,
-                ))
+        if let Some((params, _)) = params {
+            for param in params.iter().rev() {
+                if env.pop().is_err() {
+                    errors.push(TypeError::unused_variable(
+                        &param.var_name.value,
+                        param.var_name.range,
+                    ))
+                }
             }
         }
 
         current_module_type_information.insert(
             name.clone(),
             ComponentTypeInformation {
-                parameter_types,
+                parameter_types: params.clone(),
                 has_slot: *has_slot,
                 definition_module: module.name.clone(),
                 definition_range: *opening_name_range,
@@ -219,54 +219,74 @@ fn typecheck_node(
                     });
                 }
 
-                // Validate named arguments against parameter types
-                let provided_args: std::collections::HashSet<_> =
-                    args.iter().map(|arg| &arg.var_name.value).collect();
-                let expected_params: std::collections::HashSet<_> = comp_info
-                    .parameter_types
-                    .iter()
-                    .map(|p| &p.var_name.value)
-                    .collect();
+                match (&comp_info.parameter_types, args) {
+                    (None, Some((_, args_range))) => {
+                        errors.push(TypeError::unexpected_arguments(*args_range));
+                    }
+                    (Some((params, _)), None) => {
+                        errors.push(TypeError::missing_arguments(params, *opening_name_range));
+                    }
+                    (_, None) => {}
+                    (Some((params, _)), Some((args, args_range))) => {
+                        let provided_args: std::collections::HashSet<_> =
+                            args.iter().map(|arg| &arg.var_name.value).collect();
+                        let expected_params: std::collections::HashSet<_> =
+                            params.iter().map(|p| &p.var_name.value).collect();
 
-                // Check for missing required parameters
-                for param_name in expected_params.difference(&provided_args) {
-                    errors.push(TypeError::missing_required_parameter(param_name, *range));
-                }
+                        // Check for missing required parameters
+                        for param in params {
+                            if !provided_args.contains(&param.var_name.value) {
+                                errors.push(TypeError::missing_required_parameter(
+                                    &param.var_name.value,
+                                    *args_range,
+                                ));
+                            }
+                        }
 
-                // Check for unexpected arguments
-                for arg_name in provided_args.difference(&expected_params) {
-                    errors.push(TypeError::unexpected_argument(arg_name, *range));
-                }
+                        // Check for unexpected arguments
+                        for arg in args {
+                            if !expected_params.contains(&arg.var_name.value) {
+                                errors.push(TypeError::unexpected_argument(
+                                    &arg.var_name.value,
+                                    arg.var_name.range,
+                                ));
+                            }
+                        }
 
-                // Check each provided argument against its corresponding parameter type
-                for arg in args {
-                    if let Some(param) = comp_info
-                        .parameter_types
-                        .iter()
-                        .find(|p| p.var_name.value == arg.var_name.value)
-                    {
-                        let evaluated_arg_type =
-                            match typecheck_expr(&arg.expression, env, annotations, errors) {
-                                Ok(t) => t,
-                                Err(err) => {
-                                    errors.push(err);
-                                    continue; // Skip to next argument
+                        // Check each provided argument against its corresponding parameter type
+                        for arg in args {
+                            if let Some(param) = params
+                                .iter()
+                                .find(|p| p.var_name.value == arg.var_name.value)
+                            {
+                                let evaluated_arg_type =
+                                    match typecheck_expr(&arg.expression, env, annotations, errors)
+                                    {
+                                        Ok(t) => t,
+                                        Err(err) => {
+                                            errors.push(err);
+                                            continue; // Skip to next argument
+                                        }
+                                    };
+
+                                if !is_subtype(&evaluated_arg_type, &param.type_annotation) {
+                                    errors.push(TypeError::argument_is_incompatible(
+                                        &param.type_annotation.to_string(),
+                                        &evaluated_arg_type.to_string(),
+                                        &arg.var_name.value,
+                                        arg.expression.range(),
+                                    ));
+                                } else {
+                                    annotations.push(TypeAnnotation {
+                                        range: arg.expression.range(),
+                                        typ: evaluated_arg_type,
+                                        name: format!(
+                                            "component parameter '{}'",
+                                            arg.var_name.value
+                                        ),
+                                    });
                                 }
-                            };
-
-                        if !is_subtype(&evaluated_arg_type, &param.type_annotation) {
-                            errors.push(TypeError::argument_is_incompatible(
-                                &param.type_annotation.to_string(),
-                                &evaluated_arg_type.to_string(),
-                                &arg.var_name.value,
-                                arg.expression.range(),
-                            ));
-                        } else {
-                            annotations.push(TypeAnnotation {
-                                range: arg.expression.range(),
-                                typ: evaluated_arg_type,
-                                name: format!("component parameter '{}'", arg.var_name.value),
-                            });
+                            }
                         }
                     }
                 }
@@ -502,10 +522,17 @@ mod tests {
                         type_result.get(&c.name).expect("Component info not found");
                     let param_types_str = component_info
                         .parameter_types
-                        .iter()
-                        .map(|p| format!("{}: {}", p.var_name.value, p.type_annotation))
-                        .collect::<Vec<_>>()
-                        .join(", ");
+                        .as_ref()
+                        .map(|(params, _)| {
+                            params
+                                .iter()
+                                .map(|p| {
+                                    format!("{}: {}", p.var_name.value.clone(), p.type_annotation)
+                                })
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        })
+                        .unwrap_or("".to_string());
                     all_output_lines.push(format!(
                         "{}::{}\n\t{{{}}}\n\t{}\n",
                         module.name, c.name, param_types_str, component_info.has_slot
@@ -942,7 +969,7 @@ mod tests {
         );
     }
 
-    // The arguments may be passed in any order
+    // Arguments may be passed in any order to a component.
     #[test]
     fn test_component_handles_arguments_in_any_order() {
         check(
@@ -965,6 +992,80 @@ mod tests {
                 main::foo-comp
                 	{}
                 	false
+            "#]],
+        );
+    }
+
+    // When a parameter is missing the typechecker reports an error.
+    #[test]
+    fn test_component_missing_required_parameter_error() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp {a: boolean, b: string}>
+                  <if {a}>
+                    <div>{b}</div>
+                  </if>
+                </main-comp>
+                <foo-comp>
+                  <main-comp {b: 'foo'}/>
+                </foo-comp>
+            "#},
+            expect![[r#"
+                error: Missing required parameter 'a'
+                  --> main.hop (line 7, col 15)
+                6 | <foo-comp>
+                7 |   <main-comp {b: 'foo'}/>
+                  |               ^^^^^^^^
+            "#]],
+        );
+    }
+
+    // When the whole parameter expression is missing the typechecker reports an error.
+    #[test]
+    fn test_component_does_not_specify_required_parameters_error() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp {a: boolean, b: string}>
+                  <if {a}>
+                    <div>{b}</div>
+                  </if>
+                </main-comp>
+                <foo-comp>
+                  <main-comp />
+                </foo-comp>
+            "#},
+            expect![[r#"
+                error: Component requires arguments: a, b
+                  --> main.hop (line 7, col 4)
+                6 | <foo-comp>
+                7 |   <main-comp />
+                  |    ^^^^^^^^^
+            "#]],
+        );
+    }
+
+    // When arguments are specified but the component does not expect any the typechecker reports
+    // an error.
+    #[test]
+    fn test_component_has_no_parameters_but_arguments_were_supplied_error() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp>
+                  hello world
+                </main-comp>
+                <foo-comp>
+                  <main-comp {a: 'foo'} />
+                </foo-comp>
+            "#},
+            expect![[r#"
+                error: Component does not accept arguments
+                  --> main.hop (line 5, col 15)
+                4 | <foo-comp>
+                5 |   <main-comp {a: 'foo'} />
+                  |               ^^^^^^^^
             "#]],
         );
     }

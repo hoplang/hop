@@ -142,7 +142,7 @@ pub struct ComponentDefinition {
     pub name: String,
     pub opening_name_range: Range,
     pub closing_name_range: Option<Range>,
-    pub params: Vec<DopParameter>,
+    pub params: Option<(Vec<DopParameter>, Range)>,
     pub as_attr: Option<Attribute>,
     pub attributes: Vec<Attribute>,
     pub range: Range,
@@ -176,7 +176,7 @@ pub enum HopNode {
         definition_module: Option<String>,
         opening_name_range: Range,
         closing_name_range: Option<Range>,
-        args: Vec<DopArgument>,
+        args: Option<(Vec<DopArgument>, Range)>,
         attributes: Vec<Attribute>,
         range: Range,
         children: Vec<HopNode>,
@@ -428,7 +428,7 @@ mod tests {
                         closing_name_range: Some(
                             2:23-2:30,
                         ),
-                        args: [],
+                        args: None,
                         attributes: [],
                         range: 2:5-2:31,
                         children: [

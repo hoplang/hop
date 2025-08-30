@@ -186,25 +186,22 @@ fn construct_top_level_node(
 
                     let as_attr = t.find_attribute("as");
                     let entrypoint = t.find_attribute("entrypoint").is_some();
-                    let params_as_attrs = expression
-                        .as_ref()
-                        .map(|(expr_string, range)| {
-                            let mut tokenizer = match DopTokenizer::new(expr_string, range.start) {
-                                Ok(tokenizer) => tokenizer,
-                                Err(err) => {
-                                    errors.push(err);
-                                    return Vec::new();
-                                }
-                            };
-                            match dop::parse_parameters(&mut tokenizer) {
-                                Ok(params) => params,
-                                Err(error) => {
-                                    errors.push(error);
-                                    Vec::new()
-                                }
+                    let params = expression.as_ref().and_then(|(expr_string, range)| {
+                        let mut tokenizer = match DopTokenizer::new(expr_string, range.start) {
+                            Ok(tokenizer) => tokenizer,
+                            Err(err) => {
+                                errors.push(err);
+                                return None;
                             }
-                        })
-                        .unwrap_or_else(Vec::new);
+                        };
+                        match dop::parse_parameters(&mut tokenizer) {
+                            Ok(params) => Some((params, *range)),
+                            Err(error) => {
+                                errors.push(error);
+                                None
+                            }
+                        }
+                    });
 
                     let mut has_default_slot = false;
                     for child in &children {
@@ -232,7 +229,7 @@ fn construct_top_level_node(
                                 None
                             }
                         }),
-                        params: params_as_attrs,
+                        params,
                         as_attr,
                         attributes: attributes.clone(),
                         range: tree.range(),
@@ -429,7 +426,7 @@ fn construct_node(
                 },
                 tag_name if is_valid_component_name(tag_name) => {
                     // This is a component render (contains dash)
-                    let params_attrs = match &expression {
+                    let args = match &expression {
                         Some((expr_string, range)) => {
                             let mut tokenizer = match DopTokenizer::new(expr_string, range.start) {
                                 Ok(tokenizer) => tokenizer,
@@ -442,14 +439,17 @@ fn construct_node(
                                 }
                             };
                             match dop::parse_arguments(&mut tokenizer) {
-                                Ok(named_args) => named_args,
+                                Ok(named_args) => Some((named_args, *range)),
                                 Err(err) => {
                                     errors.push(err);
-                                    Vec::new()
+                                    return HopNode::Error {
+                                        range: *range,
+                                        children: vec![],
+                                    };
                                 }
                             }
                         }
-                        None => Vec::new(),
+                        None => None,
                     };
 
                     let definition_location = if defined_components.contains(tag_name) {
@@ -469,7 +469,7 @@ fn construct_node(
                             }
                         }),
                         definition_module: definition_location,
-                        args: params_attrs,
+                        args,
                         attributes: attributes.clone(),
                         range: tree.range(),
                         children,

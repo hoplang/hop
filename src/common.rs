@@ -1,4 +1,7 @@
-use crate::{dop::tokenizer::DopToken, tui::source_annotator::Annotated};
+use crate::{
+    dop::{DopParameter, tokenizer::DopToken},
+    tui::source_annotator::Annotated,
+};
 use std::fmt;
 
 /// Represents a position in source code
@@ -142,6 +145,24 @@ impl TypeError {
 
     pub fn missing_required_parameter(param: &str, range: Range) -> Self {
         Self::new(format!("Missing required parameter '{}'", param), range)
+    }
+
+    pub fn missing_arguments(params: &[DopParameter], range: Range) -> Self {
+        Self::new(
+            format!(
+                "Component requires arguments: {}",
+                params
+                    .iter()
+                    .map(|p| p.var_name.value.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            range,
+        )
+    }
+
+    pub fn unexpected_arguments(range: Range) -> Self {
+        Self::new("Component does not accept arguments".to_string(), range)
     }
 
     pub fn unexpected_argument(arg: &str, range: Range) -> Self {

@@ -616,9 +616,14 @@ impl Program {
         let mut env = Self::init_environment(self.hop_mode);
 
         // Set up environment with all parameters and their corresponding values
-        for (idx, param) in component.params.iter().enumerate() {
-            let _ = env.push(param.var_name.value.clone(), args[idx].clone());
-            // TODO: Check that lengths are correct and use zip
+        match &component.params {
+            None => {}
+            Some((params, _)) => {
+                for (idx, param) in params.iter().enumerate() {
+                    let _ = env.push(param.var_name.value.clone(), args[idx].clone());
+                    // TODO: Check that lengths are correct and use zip
+                }
+            }
         }
 
         if component.entrypoint {
@@ -742,11 +747,6 @@ impl Program {
                 children,
                 ..
             } => {
-                let mut arg_values = Vec::new();
-                for arg in args {
-                    arg_values.push(evaluate_expr(&arg.expression, env)?);
-                }
-
                 let component_name = component;
 
                 let target_module = definition_module
@@ -759,11 +759,18 @@ impl Program {
                     .and_then(|ast| ast.get_component_definition(component_name))
                     .expect("Could not find target component for component reference");
 
-                // Check if target component has a default slot
-                let has_default_slot = target_component.has_slot;
+                let mut arg_values = Vec::new();
+                match args {
+                    None => {}
+                    Some((args, _)) => {
+                        for arg in args {
+                            arg_values.push(evaluate_expr(&arg.expression, env)?);
+                        }
+                    }
+                }
 
                 // Collect slot content if component has a slot and there are children
-                let slot_html = if has_default_slot && !children.is_empty() {
+                let slot_html = if target_component.has_slot && !children.is_empty() {
                     let mut default_html = String::new();
                     for child in children {
                         default_html.push_str(&self.evaluate_node(
