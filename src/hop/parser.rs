@@ -558,7 +558,7 @@ fn construct_node(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::error_formatter::ErrorFormatter;
+    use crate::tui::source_annotator::SourceAnnotator;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
@@ -637,9 +637,11 @@ mod tests {
         let module = parse("test".to_string(), Tokenizer::new(input), &mut errors);
 
         let actual = if !errors.is_empty() {
-            let mut efmt = ErrorFormatter::new().without_location_info();
-            efmt.add_errors("test".to_string(), input.to_string(), errors);
-            efmt.format_all_errors()
+            let annotator = SourceAnnotator::new()
+                .with_label("error")
+                .with_underline('^')
+                .with_lines_before(1);
+            annotator.add_annotations(input, &errors)
         } else {
             for component in module.get_component_definition_nodes() {
                 if component.name == "main-comp" {
