@@ -1455,4 +1455,43 @@ mod tests {
             "#]],
         );
     }
+
+    // Test <import> tag without required attributes produces error.
+    #[test]
+    fn test_parser_import_missing_attributes() {
+        check(
+            indoc! {r#"
+                <import>
+                <main-comp>
+                    <div>Content</div>
+                </main-comp>
+            "#},
+            expect![[r#"
+                error: <import> is missing required attribute component
+                1 | <import>
+                  | ^^^^^^^^
+
+                error: <import> is missing required attribute from
+                1 | <import>
+                  | ^^^^^^^^
+            "#]],
+        );
+    }
+
+    // Test <render> tag without required file attribute produces error.
+    #[test]
+    fn test_parser_render_missing_file_attribute() {
+        check(
+            indoc! {r#"
+                <render>
+                    <div>Content</div>
+                </render>
+            "#},
+            expect![[r#"
+                error: <render> is missing required attribute file
+                1 | <render>
+                  | ^^^^^^^^
+            "#]],
+        );
+    }
 }
