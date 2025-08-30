@@ -550,7 +550,6 @@ mod tests {
             if !errors.is_empty() {
                 let annotator = SourceAnnotator::new()
                     .with_label("error")
-                    .with_underline('^')
                     .with_lines_before(1)
                     .with_location()
                     .with_filename(file.name.clone());

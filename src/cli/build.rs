@@ -58,7 +58,7 @@ pub fn execute(
 
     timer.start_phase("compiling");
     let program = Program::from_modules(modules, HopMode::Build);
-    
+
     // Check for any compilation errors
     let source_code = program.get_source_code();
     let mut error_output_parts = Vec::new();
@@ -71,7 +71,6 @@ pub fn execute(
             let filename = format!("{}.hop", module_name);
             let annotator = SourceAnnotator::new()
                 .with_label("error")
-                .with_underline('^')
                 .with_lines_before(1)
                 .with_location()
                 .with_filename(filename);
@@ -88,7 +87,6 @@ pub fn execute(
             let filename = format!("{}.hop", module_name);
             let annotator = SourceAnnotator::new()
                 .with_label("error")
-                .with_underline('^')
                 .with_lines_before(1)
                 .with_location()
                 .with_filename(filename);
@@ -98,7 +96,10 @@ pub fn execute(
     }
 
     if !error_output_parts.is_empty() {
-        return Err(anyhow::anyhow!("Compilation failed:\n{}", error_output_parts.join("\n")));
+        return Err(anyhow::anyhow!(
+            "Compilation failed:\n{}",
+            error_output_parts.join("\n")
+        ));
     }
 
     timer.start_phase("rendering");

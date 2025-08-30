@@ -136,7 +136,9 @@ pub fn module_name_to_path(module_name: &str, root: &ProjectRoot) -> PathBuf {
 }
 
 /// Load all hop modules from a base directory, returning a HashMap of module_name -> content
-pub fn load_all_hop_modules(base_dir: &ProjectRoot) -> anyhow::Result<std::collections::HashMap<String, String>> {
+pub fn load_all_hop_modules(
+    base_dir: &ProjectRoot,
+) -> anyhow::Result<std::collections::HashMap<String, String>> {
     let all_hop_files = find_hop_files(base_dir)?;
     let mut modules = std::collections::HashMap::new();
 

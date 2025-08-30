@@ -529,7 +529,6 @@ mod tests {
             Err(e) => {
                 let annotator = SourceAnnotator::new()
                     .with_label("error")
-                    .with_underline('^')
                     .without_location()
                     .without_line_numbers();
 
@@ -549,7 +548,6 @@ mod tests {
             Err(e) => {
                 let annotator = SourceAnnotator::new()
                     .with_label("error")
-                    .with_underline('^')
                     .without_location()
                     .without_line_numbers();
 
@@ -569,7 +567,6 @@ mod tests {
             Err(e) => {
                 let annotator = SourceAnnotator::new()
                     .with_label("error")
-                    .with_underline('^')
                     .without_location()
                     .without_line_numbers();
 

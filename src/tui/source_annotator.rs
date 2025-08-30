@@ -53,11 +53,6 @@ impl SourceAnnotator {
         }
     }
 
-    pub fn with_underline(mut self, ch: char) -> Self {
-        self.underline_char = ch;
-        self
-    }
-
     pub fn with_label(mut self, label: impl Into<String>) -> Self {
         self.label = Some(label.into());
         self
@@ -289,26 +284,6 @@ mod tests {
                 error: Missing semicolon
                 1 | code
                   | ^^^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_with_custom_underline() {
-        let annotations = vec![SimpleAnnotation {
-            range: Range::new(Position::new(1, 1), Position::new(1, 5)),
-            message: "Warning".to_string(),
-        }];
-        let source = "code";
-
-        check(
-            SourceAnnotator::new().with_underline('~'),
-            source,
-            annotations,
-            expect![[r#"
-                Warning
-                1 | code
-                  | ~~~~
             "#]],
         );
     }

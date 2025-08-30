@@ -26,19 +26,24 @@ fn get_ui_program() -> &'static Program {
         modules.insert("hop/icons".to_string(), ICONS_TEMPLATES.to_string());
 
         let program = Program::from_modules(modules, HopMode::Dev);
-        
+
         // Check for any errors in the UI templates
-        let has_parse_errors = program.get_parse_errors().values().any(|errors| !errors.is_empty());
-        let has_type_errors = program.get_type_errors().values().any(|errors| !errors.is_empty());
-        
+        let has_parse_errors = program
+            .get_parse_errors()
+            .values()
+            .any(|errors| !errors.is_empty());
+        let has_type_errors = program
+            .get_type_errors()
+            .values()
+            .any(|errors| !errors.is_empty());
+
         if has_parse_errors || has_type_errors {
             panic!("Failed to compile UI templates");
         }
-        
+
         program
     })
 }
-
 
 fn inject_hot_reload_script(html: &str) -> String {
     const HOT_RELOAD_SCRIPT: &str = r#"<script type="module" src="/_hop/hmr.js"></script>"#;

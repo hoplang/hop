@@ -639,7 +639,6 @@ mod tests {
         let actual = if !errors.is_empty() {
             let annotator = SourceAnnotator::new()
                 .with_label("error")
-                .with_underline('^')
                 .with_lines_before(1);
             annotator.add_annotations(input, &errors)
         } else {
