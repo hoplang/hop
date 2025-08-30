@@ -93,7 +93,7 @@ mod tests {
         let mut env = Environment::new();
         if let serde_json::Value::Object(map) = env_json {
             for (key, value) in map {
-                env.push(key, value);
+                env.push(key, value).expect("Environment name collision");
             }
         }
 

@@ -583,7 +583,7 @@ impl Program {
     /// Initialize an environment with global variables like HOP_MODE
     fn init_environment(hop_mode: HopMode) -> Environment<serde_json::Value> {
         let mut env = Environment::new();
-        env.push(
+        let _ = env.push(
             "HOP_MODE".to_string(),
             serde_json::Value::String(hop_mode.as_str().to_string()),
         );
@@ -617,7 +617,7 @@ impl Program {
 
         // Set up environment with all parameters and their corresponding values
         for (idx, param) in component.params.iter().enumerate() {
-            env.push(param.var_name.value.clone(), args[idx].clone());
+            let _ = env.push(param.var_name.value.clone(), args[idx].clone());
             // TODO: Check that lengths are correct and use zip
         }
 
@@ -717,7 +717,9 @@ impl Program {
 
                 let mut result = String::new();
                 for item in array {
-                    env.push(var_name.value.clone(), item.clone());
+                    if env.push(var_name.value.clone(), item.clone()).is_err() {
+                        panic!("Unexpected variable name collision in for loop")
+                    }
                     for child in children {
                         result.push_str(&self.evaluate_node(
                             child,
@@ -726,7 +728,7 @@ impl Program {
                             current_module,
                         )?);
                     }
-                    env.pop();
+                    _ = env.pop();
                 }
 
                 Ok(result)
