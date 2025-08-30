@@ -1,9 +1,10 @@
 use crate::filesystem::files::ProjectRoot;
+use crate::hop::evaluator::HopMode;
 use std::path::Path;
 use std::sync::{Arc, OnceLock, RwLock};
 
 use crate::filesystem::files;
-use crate::hop::program::{HopMode, Program};
+use crate::hop::program::Program;
 use axum::extract::State;
 
 #[derive(Clone)]
@@ -25,7 +26,7 @@ fn get_ui_program() -> &'static Program {
         modules.insert("hop/ui".to_string(), UI_TEMPLATES.to_string());
         modules.insert("hop/icons".to_string(), ICONS_TEMPLATES.to_string());
 
-        let program = Program::from_modules(modules, HopMode::Dev);
+        let program = Program::from_modules(modules);
 
         // Check for any errors in the UI templates
         let has_parse_errors = program
@@ -140,7 +141,7 @@ async fn handle_request(
     }
 
     // Try to render the requested file
-    match program.render_file(&file_path) {
+    match program.render_file(&file_path, HopMode::Dev) {
         Ok(content) => Ok(Html(inject_hot_reload_script(&content))),
         Err(_) => {
             let available_paths: Vec<String> = program
@@ -175,7 +176,7 @@ fn create_error_page(error: &anyhow::Error) -> String {
             "message": format!("{:#}", error).to_string()
         }),
     );
-    match program.evaluate_component("hop/error_pages", "generic-error", args) {
+    match program.evaluate_component("hop/error_pages", "generic-error", args, HopMode::Dev) {
         Ok(html) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
     }
@@ -190,7 +191,7 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
         "available_routes".to_string(),
         serde_json::json!(available_routes),
     );
-    match program.evaluate_component("hop/error_pages", "not-found-error", args) {
+    match program.evaluate_component("hop/error_pages", "not-found-error", args, HopMode::Dev) {
         Ok(html) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
     }
@@ -219,7 +220,7 @@ fn create_file_watcher(
                     if is_hop_file {
                         // Reload all modules from scratch
                         if let Ok(modules) = files::load_all_hop_modules(&local_root) {
-                            let new_program = Program::from_modules(modules, HopMode::Dev);
+                            let new_program = Program::from_modules(modules);
                             if let Ok(mut program) = state.program.write() {
                                 *program = new_program;
                             }
@@ -262,7 +263,7 @@ pub async fn execute(
     let (reload_channel, _) = tokio::sync::broadcast::channel::<()>(100);
 
     let app_state = AppState {
-        program: Arc::new(RwLock::new(Program::from_modules(modules, HopMode::Dev))),
+        program: Arc::new(RwLock::new(Program::from_modules(modules))),
         reload_channel,
     };
 

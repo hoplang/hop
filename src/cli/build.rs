@@ -1,5 +1,5 @@
 use crate::filesystem::files::ProjectRoot;
-use crate::hop::program::HopMode;
+use crate::hop::evaluator::HopMode;
 use anyhow::Context;
 use rayon::prelude::*;
 use std::fs;
@@ -57,7 +57,7 @@ pub fn execute(
     let modules = files::load_all_hop_modules(root)?;
 
     timer.start_phase("compiling");
-    let program = Program::from_modules(modules, HopMode::Build);
+    let program = Program::from_modules(modules);
 
     // Check for any compilation errors
     let source_code = program.get_source_code();
@@ -104,7 +104,7 @@ pub fn execute(
         .into_par_iter()
         .map(|file_path| {
             let content = program
-                .render_file(&file_path)
+                .render_file(&file_path, HopMode::Build)
                 .map_err(|e| anyhow::anyhow!("Failed to render file '{}': {}", file_path, e))?;
             Ok::<_, anyhow::Error>((file_path, content))
         })

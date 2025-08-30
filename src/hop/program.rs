@@ -11,25 +11,8 @@ use anyhow::Result;
 use std::collections::HashMap;
 
 use super::ast::HopNode;
+use super::evaluator::HopMode;
 use super::typechecker::TypeCheckerState;
-
-/// HopMode influences the runtime value of the global variable HOP_MODE which
-/// will be set to 'build' when running `hop build` and 'dev' when running
-/// `hop dev`.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum HopMode {
-    Build,
-    Dev,
-}
-
-impl HopMode {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            HopMode::Build => "build",
-            HopMode::Dev => "dev",
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct HoverInfo {
@@ -146,6 +129,7 @@ impl Annotated for RenameableSymbol {
     }
 }
 
+#[derive(Default)]
 pub struct Program {
     asts: HashMap<String, HopAST>,
     type_checker_state: HashMap<String, TypeCheckerState>,
@@ -155,26 +139,15 @@ pub struct Program {
     type_errors: HashMap<String, Vec<TypeError>>,
     source_code: HashMap<String, String>,
     topo_sorter: TopoSorter,
-    hop_mode: HopMode,
 }
 
 impl Program {
-    pub fn new(hop_mode: HopMode) -> Self {
-        Self {
-            asts: HashMap::new(),
-            type_checker_state: HashMap::new(),
-            type_annotations: HashMap::new(),
-            definition_links: HashMap::new(),
-            parse_errors: HashMap::new(),
-            type_errors: HashMap::new(),
-            source_code: HashMap::new(),
-            topo_sorter: TopoSorter::default(),
-            hop_mode,
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    pub fn from_modules(modules: HashMap<String, String>, hop_mode: HopMode) -> Self {
-        let mut program = Self::new(hop_mode);
+    pub fn from_modules(modules: HashMap<String, String>) -> Self {
+        let mut program = Self::new();
 
         for (module_name, source_code) in &modules {
             program.parse_module(module_name, source_code);
@@ -555,8 +528,8 @@ impl Program {
     }
 
     /// Render the content for a specific file path
-    pub fn render_file(&self, file_path: &str) -> Result<String> {
-        evaluator::render_file(&self.asts, self.hop_mode, file_path)
+    pub fn render_file(&self, file_path: &str, hop_mode: HopMode) -> Result<String> {
+        evaluator::render_file(&self.asts, hop_mode, file_path)
     }
 
     pub fn evaluate_component(
@@ -564,10 +537,11 @@ impl Program {
         module_name: &str,
         component_name: &str,
         args: HashMap<String, serde_json::Value>,
+        hop_mode: HopMode,
     ) -> Result<String> {
         evaluator::evaluate_component(
             &self.asts,
-            self.hop_mode,
+            hop_mode,
             module_name,
             component_name,
             args,
@@ -592,7 +566,7 @@ mod tests {
             let module_name = file.name.replace(".hop", "");
             map.insert(module_name, file.content.clone());
         }
-        Program::from_modules(map, HopMode::Dev)
+        Program::from_modules(map)
     }
 
     fn check_rename_locations(input: &str, expected: Expect) {

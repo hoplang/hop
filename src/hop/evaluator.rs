@@ -2,11 +2,28 @@ use crate::common::{escape_html, is_void_element};
 use crate::dop::{self, evaluate_expr};
 use crate::hop::ast::{HopAST, HopNode};
 use crate::hop::environment::Environment;
-use crate::hop::program::HopMode;
 use anyhow::Result;
 use std::collections::HashMap;
 use std::io::Write;
 use std::process::{Command, Stdio};
+
+/// HopMode influences the runtime value of the global variable HOP_MODE which
+/// will be set to 'build' when running `hop build` and 'dev' when running
+/// `hop dev`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum HopMode {
+    Build,
+    Dev,
+}
+
+impl HopMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            HopMode::Build => "build",
+            HopMode::Dev => "dev",
+        }
+    }
+}
 
 /// Render the content for a specific file path
 pub fn render_file(

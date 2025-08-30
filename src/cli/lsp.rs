@@ -1,6 +1,6 @@
 use crate::common::Position;
 use crate::filesystem::files::{self as files, ProjectRoot};
-use crate::hop::program::{DefinitionLocation, HopMode, HoverInfo, Program, RenameLocation};
+use crate::hop::program::{DefinitionLocation, HoverInfo, Program, RenameLocation};
 use std::path::Path;
 use tokio::sync::RwLock;
 use tower_lsp::jsonrpc::Result;
@@ -16,7 +16,7 @@ impl HopLanguageServer {
     pub fn new(client: Client) -> Self {
         Self {
             client,
-            program: RwLock::new(Program::new(HopMode::Dev)),
+            program: RwLock::new(Program::new()),
         }
     }
 
