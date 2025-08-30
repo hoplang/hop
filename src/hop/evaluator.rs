@@ -578,7 +578,6 @@ mod tests {
     use crate::hop::ast::HopAST;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
-    use crate::hop::toposorter::TopoSorter;
     use crate::hop::typechecker::typecheck;
     use expect_test::{Expect, expect};
     use indoc::indoc;
@@ -587,7 +586,6 @@ mod tests {
 
     fn asts_from_archive(archive: &Archive) -> HashMap<String, HopAST> {
         let mut asts = HashMap::new();
-        let _parse_errors = HashMap::<String, Vec<String>>::new();
 
         for file in archive.iter() {
             let module_name = file.name.replace(".hop", "");
@@ -602,23 +600,12 @@ mod tests {
             asts.insert(module_name, ast);
         }
 
-        // Type check all modules
-        let mut topo_sorter = TopoSorter::default();
+        // Type check all modules in sequence (inputs are already topologically sorted)
         let mut type_checker_state = HashMap::new();
-        let _all_type_errors = HashMap::<String, Vec<String>>::new();
 
-        // Add nodes and dependencies to topo sorter
-        for (module_name, ast) in &asts {
-            topo_sorter.add_node(module_name.clone());
-            for import_node in ast.get_imports() {
-                topo_sorter.add_dependency(module_name, &import_node.from_attr.value);
-            }
-        }
-
-        // Sort and type check
-        let sorted_modules = topo_sorter.sort().expect("Cycle error in test modules");
-        for module_name in &sorted_modules {
-            let ast = asts.get(module_name).unwrap();
+        for file in archive.iter() {
+            let module_name = file.name.replace(".hop", "");
+            let ast = asts.get(&module_name).unwrap();
             let mut type_errors = Vec::new();
             let mut type_annotations = Vec::new();
             let mut definition_links = Vec::new();
