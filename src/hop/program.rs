@@ -1,11 +1,11 @@
-use crate::common::{Position, Range, ParseError, Ranged, TypeError, escape_html, is_void_element};
+use crate::common::{ParseError, Position, Range, Ranged, TypeError, escape_html, is_void_element};
 use crate::dop::{self, evaluate_expr, load_json_file};
 use crate::hop::ast::HopAST;
 use crate::hop::environment::Environment;
 use crate::hop::parser::parse;
 use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
-use crate::hop::toposorter::TopoSorter;
+use crate::hop::toposorter::{CycleError, TopoSorter};
 use crate::hop::typechecker::{DefinitionLink, TypeAnnotation, typecheck};
 use crate::tui::source_annotator::Annotated;
 use anyhow::Result;
@@ -224,7 +224,7 @@ impl Program {
     }
 
     /// Handles cycle errors by adding type errors for all modules in the cycle
-    fn handle_cycle_error(&mut self, cycle_error: &crate::hop::toposorter::CycleError) {
+    fn handle_cycle_error(&mut self, cycle_error: &CycleError) {
         for module_name in &cycle_error.cycle {
             let type_errors = self.type_errors.entry(module_name.clone()).or_default();
             type_errors.clear();
