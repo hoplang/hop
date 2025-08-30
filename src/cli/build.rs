@@ -62,6 +62,10 @@ pub fn execute(
     // Check for any compilation errors
     let source_code = program.get_source_code();
     let mut error_output_parts = Vec::new();
+    let annotator = SourceAnnotator::new()
+        .with_label("error")
+        .with_lines_before(1)
+        .with_location();
 
     // Check for parse errors
     let parse_errors = program.get_parse_errors();
@@ -69,10 +73,6 @@ pub fn execute(
         if !errors.is_empty() {
             let code = source_code.get(module_name).unwrap();
             let filename = format!("{}.hop", module_name);
-            let annotator = SourceAnnotator::new()
-                .with_label("error")
-                .with_lines_before(1)
-                .with_location();
             let formatted_errors = annotator.annotate(Some(&filename), code, errors);
             error_output_parts.push(formatted_errors);
         }
@@ -84,10 +84,6 @@ pub fn execute(
         if !errors.is_empty() {
             let code = source_code.get(module_name).unwrap();
             let filename = format!("{}.hop", module_name);
-            let annotator = SourceAnnotator::new()
-                .with_label("error")
-                .with_lines_before(1)
-                .with_location();
             let formatted_errors = annotator.annotate(Some(&filename), code, errors);
             error_output_parts.push(formatted_errors);
         }

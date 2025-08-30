@@ -66,7 +66,6 @@ impl SourceAnnotator {
         self
     }
 
-
     pub fn with_location(mut self) -> Self {
         self.show_location = true;
         self
@@ -82,7 +81,12 @@ impl SourceAnnotator {
         self
     }
 
-    pub fn annotate<A: Annotated>(&self, filename: Option<&str>, source: &str, annotations: &[A]) -> String {
+    pub fn annotate<A: Annotated>(
+        &self,
+        filename: Option<&str>,
+        source: &str,
+        annotations: &[A],
+    ) -> String {
         let mut output = String::new();
         let lines: Vec<&str> = source.lines().collect();
 
@@ -290,15 +294,17 @@ mod tests {
         }];
         let source = "first line\nsecond line";
 
-        let actual = SourceAnnotator::new()
-            .with_location()
-            .annotate(Some("main.rs"), source, &annotations);
+        let actual =
+            SourceAnnotator::new()
+                .with_location()
+                .annotate(Some("main.rs"), source, &annotations);
         expect![[r#"
             Type error
               --> main.rs (line 2, col 8)
             2 | second line
               |        ^^^^
-        "#]].assert_eq(&actual);
+        "#]]
+        .assert_eq(&actual);
     }
 
     #[test]

@@ -526,14 +526,11 @@ mod tests {
 
         let actual = match parse_expr(&mut tokenizer) {
             Ok(result) => format!("{:#?}\n", result),
-            Err(e) => {
-                let annotator = SourceAnnotator::new()
-                    .with_label("error")
-                    .without_location()
-                    .without_line_numbers();
-
-                annotator.annotate(None, input, &[e]).to_string()
-            }
+            Err(e) => SourceAnnotator::new()
+                .with_label("error")
+                .without_location()
+                .without_line_numbers()
+                .annotate(None, input, &[e]),
         };
 
         expected.assert_eq(&actual);
@@ -545,14 +542,11 @@ mod tests {
 
         let actual = match parse_parameters(&mut tokenizer) {
             Ok(result) => format!("{:#?}\n", result),
-            Err(e) => {
-                let annotator = SourceAnnotator::new()
-                    .with_label("error")
-                    .without_location()
-                    .without_line_numbers();
-
-                annotator.annotate(None, input, &[e]).to_string()
-            }
+            Err(e) => SourceAnnotator::new()
+                .with_label("error")
+                .without_location()
+                .without_line_numbers()
+                .annotate(None, input, &[e]),
         };
 
         expected.assert_eq(&actual);
@@ -564,14 +558,11 @@ mod tests {
 
         let actual = match parse_arguments(&mut tokenizer) {
             Ok(result) => format!("{:#?}\n", result),
-            Err(e) => {
-                let annotator = SourceAnnotator::new()
-                    .with_label("error")
-                    .without_location()
-                    .without_line_numbers();
-
-                annotator.annotate(None, input, &[e]).to_string()
-            }
+            Err(e) => SourceAnnotator::new()
+                .with_label("error")
+                .without_location()
+                .without_line_numbers()
+                .annotate(None, input, &[e]),
         };
 
         expected.assert_eq(&actual);

@@ -230,14 +230,11 @@ mod tests {
 
         let actual = match typecheck_expr(&expr, &mut env, &mut annotations, &mut errors) {
             Ok(typ) => typ.to_string(),
-            Err(e) => {
-                let annotator = SourceAnnotator::new()
-                    .with_label("error")
-                    .without_location()
-                    .without_line_numbers();
-
-                annotator.annotate(None, expr_str, &[e]).to_string()
-            }
+            Err(e) => SourceAnnotator::new()
+                .with_label("error")
+                .without_location()
+                .without_line_numbers()
+                .annotate(None, expr_str, &[e]),
         };
 
         expected.assert_eq(&actual);

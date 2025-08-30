@@ -522,6 +522,10 @@ mod tests {
         let mut all_output_lines = Vec::new();
         let mut module_type_results: HashMap<String, HashMap<String, ComponentTypeInformation>> =
             HashMap::new();
+        let annotator = SourceAnnotator::new()
+            .with_label("error")
+            .with_lines_before(1)
+            .with_location();
 
         // Process all .hop files in the archive
         for file in archive.iter() {
@@ -548,11 +552,8 @@ mod tests {
             );
 
             if !errors.is_empty() {
-                let annotator = SourceAnnotator::new()
-                    .with_label("error")
-                    .with_lines_before(1)
-                    .with_location();
-                let formatted_errors = annotator.annotate(Some(&file.name), file.content.trim(), &errors);
+                let formatted_errors =
+                    annotator.annotate(Some(&file.name), file.content.trim(), &errors);
                 error_output_parts.push(formatted_errors);
             } else {
                 module_type_results.insert(module.name.clone(), type_result.clone());

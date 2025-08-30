@@ -1181,6 +1181,7 @@ mod tests {
         locs.sort();
 
         let mut output = Vec::new();
+        let annotator = SourceAnnotator::new().with_location();
 
         for file in archive.iter() {
             let module_name = file.name.replace(".hop", "");
@@ -1192,11 +1193,7 @@ mod tests {
                 .collect();
 
             if !module_locs.is_empty() {
-                output.push(
-                    SourceAnnotator::new()
-                        .with_location()
-                        .annotate(Some(&file.name), &file.content, &module_locs),
-                );
+                output.push(annotator.annotate(Some(&file.name), &file.content, &module_locs));
             }
         }
 
@@ -1225,9 +1222,11 @@ mod tests {
             .find(|f| f.name.replace(".hop", "") == loc.module)
             .expect("File not found in archive");
 
-        let output = SourceAnnotator::new()
-            .with_location()
-            .annotate(Some(&file.name), &file.content, &[loc]);
+        let output = SourceAnnotator::new().with_location().annotate(
+            Some(&file.name),
+            &file.content,
+            &[loc],
+        );
 
         expected.assert_eq(&output);
     }
@@ -1245,9 +1244,11 @@ mod tests {
             .find(|f| f.name.replace(".hop", "") == module)
             .expect("File not found in archive");
 
-        let output = SourceAnnotator::new()
-            .with_location()
-            .annotate(Some(&file.name), &file.content, &diagnostics);
+        let output = SourceAnnotator::new().with_location().annotate(
+            Some(&file.name),
+            &file.content,
+            &diagnostics,
+        );
 
         expected.assert_eq(&output);
     }
@@ -1257,6 +1258,7 @@ mod tests {
         let program = server_from_archive(&archive);
 
         let mut output = Vec::new();
+        let annotator = SourceAnnotator::new().with_location();
 
         // Get all modules that have type errors
         let type_errors = program.get_type_errors();
@@ -1274,9 +1276,7 @@ mod tests {
                 .find(|f| f.name.replace(".hop", "") == *module_name)
                 .expect("File not found in archive");
 
-            let annotated = SourceAnnotator::new()
-                .with_location()
-                .annotate(Some(&file.name), &file.content, errors);
+            let annotated = annotator.annotate(Some(&file.name), &file.content, errors);
 
             output.push(annotated);
         }
@@ -1305,9 +1305,11 @@ mod tests {
             .find(|f| f.name.replace(".hop", "") == module)
             .expect("Could not find file in archive");
 
-        let output = SourceAnnotator::new()
-            .with_location()
-            .annotate(Some(&file.name), &file.content, &[symbol]);
+        let output = SourceAnnotator::new().with_location().annotate(
+            Some(&file.name),
+            &file.content,
+            &[symbol],
+        );
 
         expected.assert_eq(&output);
     }
@@ -1334,9 +1336,11 @@ mod tests {
             .find(|f| f.name.replace(".hop", "") == module)
             .expect("Could not find file in archive");
 
-        let output = SourceAnnotator::new()
-            .with_location()
-            .annotate(Some(&file.name), &file.content, &[hover_info]);
+        let output = SourceAnnotator::new().with_location().annotate(
+            Some(&file.name),
+            &file.content,
+            &[hover_info],
+        );
 
         expected.assert_eq(&output);
     }

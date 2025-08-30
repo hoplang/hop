@@ -637,10 +637,10 @@ mod tests {
         let module = parse("test".to_string(), Tokenizer::new(input), &mut errors);
 
         let actual = if !errors.is_empty() {
-            let annotator = SourceAnnotator::new()
+            SourceAnnotator::new()
                 .with_label("error")
-                .with_lines_before(1);
-            annotator.annotate(None, input, &errors)
+                .with_lines_before(1)
+                .annotate(None, input, &errors)
         } else {
             for component in module.get_component_definition_nodes() {
                 if component.name == "main-comp" {
