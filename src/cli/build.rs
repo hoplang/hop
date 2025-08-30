@@ -68,24 +68,26 @@ pub fn execute(
         .with_location();
 
     // Check for parse errors
-    let parse_errors = program.get_parse_errors();
-    for (module_name, errors) in parse_errors {
+    for (module_name, errors) in program.get_parse_errors() {
         if !errors.is_empty() {
-            let code = source_code.get(module_name).unwrap();
             let filename = format!("{}.hop", module_name);
-            let formatted_errors = annotator.annotate(Some(&filename), code, errors);
-            error_output_parts.push(formatted_errors);
+            error_output_parts.push(annotator.annotate(
+                Some(&filename),
+                source_code.get(module_name).unwrap(),
+                errors,
+            ));
         }
     }
 
     // Check for type errors
-    let type_errors = program.get_type_errors();
-    for (module_name, errors) in type_errors {
+    for (module_name, errors) in program.get_type_errors() {
         if !errors.is_empty() {
-            let code = source_code.get(module_name).unwrap();
             let filename = format!("{}.hop", module_name);
-            let formatted_errors = annotator.annotate(Some(&filename), code, errors);
-            error_output_parts.push(formatted_errors);
+            error_output_parts.push(annotator.annotate(
+                Some(&filename),
+                source_code.get(module_name).unwrap(),
+                errors,
+            ));
         }
     }
 
