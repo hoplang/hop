@@ -59,7 +59,7 @@ impl HopAST {
         &self.renders
     }
 
-    /// Returns an iterator over all nodes in the AST, depth-first.
+    /// Returns an iterator over all nodes in the AST, iterating depth-first.
     /// This includes all nodes from both render nodes and component definitions.
     pub fn iter_all_nodes(&self) -> impl Iterator<Item = &HopNode> {
         self.renders
@@ -75,10 +75,15 @@ impl HopAST {
 
     /// Finds the deepest AST node that contains the given position.
     ///
+    /// Upper bound on time complexity is max(depth of tree, number of top level nodes).
+    ///
     /// # Example
     ///
-    /// <div><span>text</span></div>
-    ///        ^
+    /// <div>
+    ///     <span>text</span>
+    ///                  ^
+    /// </div>
+    ///
     /// returns Some(&NativeHTML { tag_name: "span", .. })
     ///
     pub fn find_node_at_position(&self, position: Position) -> Option<&HopNode> {
@@ -159,14 +164,15 @@ impl Ranged for ComponentDefinition {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HopNode {
-    Doctype {
-        value: String,
-        range: Range,
-    },
+    /// A Text node represents text in the document, e.g. the 'hello world' between
+    /// the divs in <div>hello world</div>.
     Text {
         value: String,
         range: Range,
     },
+
+    /// A TextExpression represents an expression that occurs in a text position,
+    /// e.g. the '{world}' in <div>hello {world}</div>.
     TextExpression {
         expression: DopExpr,
         range: Range,
@@ -184,6 +190,9 @@ pub enum HopNode {
     SlotDefinition {
         range: Range,
     },
+
+    /// An If node contains content that is only evaluated when its condition
+    /// expression evaluates to true.
     If {
         condition: DopExpr,
         range: Range,
@@ -195,6 +204,14 @@ pub enum HopNode {
         range: Range,
         children: Vec<HopNode>,
     },
+
+    /// A Doctype node represents a doctype, e.g. a <!DOCTYPE html>
+    Doctype {
+        value: String,
+        range: Range,
+    },
+
+    /// A NativeHTML node represents a plain HTML node, e.g. a <div>...</div>.
     NativeHTML {
         tag_name: String,
         opening_name_range: Range,
@@ -204,34 +221,45 @@ pub enum HopNode {
         children: Vec<HopNode>,
         set_attributes: Vec<DopExprAttribute>,
     },
-    Error {
-        range: Range,
-        children: Vec<HopNode>,
-    },
     XExec {
         cmd_attr: Attribute,
         range: Range,
         children: Vec<HopNode>,
     },
+
+    /// An XRaw node contains content that should be treated as a string and the contents
+    /// are not parsed, typechecked nor evaluated.
+    ///
+    /// The children vec should always contain a single Text node.
     XRaw {
         trim: bool,
+        range: Range,
+        children: Vec<HopNode>,
+    },
+
+    /// An Error node represents a node that could not be constructed (because
+    /// it is missing a required attribute or similar).
+    ///
+    /// We use Error nodes to be able to construct the child nodes of the node that could not be
+    /// constructed. This is useful for e.g. go-to-definition in the language server.
+    Error {
         range: Range,
         children: Vec<HopNode>,
     },
 }
 
 impl HopNode {
+    /// Get the direct children of a node.
     pub fn children(&self) -> &[HopNode] {
         match self {
             HopNode::ComponentReference { children, .. } => children,
-            HopNode::SlotDefinition { .. } => &[],
             HopNode::If { children, .. } => children,
             HopNode::For { children, .. } => children,
             HopNode::NativeHTML { children, .. } => children,
             HopNode::Error { children, .. } => children,
             HopNode::XExec { children, .. } => children,
             HopNode::XRaw { children, .. } => children,
-            // Leaf nodes with no children
+            HopNode::SlotDefinition { .. } => &[],
             HopNode::Doctype { .. } => &[],
             HopNode::Text { .. } => &[],
             HopNode::TextExpression { .. } => &[],
@@ -254,7 +282,12 @@ impl HopNode {
         Some(self)
     }
 
-    pub fn opening_name_range(&self) -> Option<Range> {
+    /// Get the name range for the opening tag of a node.
+    ///
+    /// Example:
+    /// <div>hello world</div>
+    ///  ^^^
+    pub fn opening_tag_name_range(&self) -> Option<Range> {
         match self {
             HopNode::ComponentReference {
                 opening_name_range, ..
@@ -266,7 +299,12 @@ impl HopNode {
         }
     }
 
-    pub fn closing_name_range(&self) -> Option<Range> {
+    /// Get the name range for the closing tag of a node.
+    ///
+    /// Example:
+    /// <div>hello world</div>
+    ///                   ^^^
+    pub fn closing_tag_name_range(&self) -> Option<Range> {
         match self {
             HopNode::ComponentReference {
                 closing_name_range, ..
@@ -278,6 +316,7 @@ impl HopNode {
         }
     }
 
+    /// Get the tag_name for a node. E.g. "div" for <div>...</div>.
     pub fn tag_name(&self) -> Option<&str> {
         match self {
             HopNode::ComponentReference { component, .. } => Some(component),
@@ -286,10 +325,15 @@ impl HopNode {
         }
     }
 
-    pub fn name_ranges(&self) -> impl Iterator<Item = Range> {
-        self.opening_name_range()
+    /// Get the name ranges for the tags of a node.
+    ///
+    /// Example:
+    /// <div>hello world</div>
+    ///  ^^^              ^^^
+    pub fn tag_name_ranges(&self) -> impl Iterator<Item = Range> {
+        self.opening_tag_name_range()
             .into_iter()
-            .chain(self.closing_name_range())
+            .chain(self.closing_tag_name_range())
     }
 }
 

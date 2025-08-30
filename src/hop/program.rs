@@ -340,7 +340,7 @@ impl Program {
 
         let node = ast.find_node_at_position(position)?;
 
-        let is_on_tag_name = node.name_ranges().any(|r| r.contains(position));
+        let is_on_tag_name = node.tag_name_ranges().any(|r| r.contains(position));
 
         if !is_on_tag_name {
             return None;
@@ -355,7 +355,7 @@ impl Program {
                 self.collect_component_rename_locations(component, target_module)
             }),
             n @ HopNode::NativeHTML { .. } => Some(
-                n.name_ranges()
+                n.tag_name_ranges()
                     .map(|range| RenameLocation {
                         module: module_name.to_string(),
                         range,
@@ -398,7 +398,7 @@ impl Program {
 
         let tag_name = node.tag_name()?;
 
-        node.name_ranges()
+        node.tag_name_ranges()
             .find(|r| r.contains(position))
             .map(|range| RenameableSymbol {
                 current_name: tag_name.to_string(),
@@ -469,7 +469,7 @@ impl Program {
                         }
                         _ => false,
                     })
-                    .flat_map(|node| node.name_ranges())
+                    .flat_map(|node| node.tag_name_ranges())
                     .map(|range| RenameLocation {
                         module: module_name.clone(),
                         range,
