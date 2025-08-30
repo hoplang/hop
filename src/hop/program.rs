@@ -14,7 +14,7 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 use super::ast::HopNode;
-use super::typechecker::ModuleTypeInformation;
+use super::typechecker::TypeCheckerState;
 
 /// HopMode influences the runtime value of the global variable HOP_MODE which
 /// will be set to 'build' when running `hop build` and 'dev' when running
@@ -151,7 +151,7 @@ impl Annotated for RenameableSymbol {
 
 pub struct Program {
     asts: HashMap<String, HopAST>,
-    type_information: HashMap<String, ModuleTypeInformation>,
+    type_checker_state: HashMap<String, TypeCheckerState>,
     type_annotations: HashMap<String, Vec<TypeAnnotation>>,
     definition_links: HashMap<String, Vec<DefinitionLink>>,
     parse_errors: HashMap<String, Vec<RangeError>>,
@@ -161,50 +161,11 @@ pub struct Program {
     hop_mode: HopMode,
 }
 
-impl Default for Program {
-    fn default() -> Self {
-        Self::new(HopMode::Dev)
-    }
-}
-
 impl Program {
-    /// Handles cycle errors by adding type errors for all modules in the cycle
-    fn handle_cycle_error(&mut self, cycle_error: &crate::hop::toposorter::CycleError) {
-        // Create display string for the cycle, showing the complete loop
-        let cycle_display = if let Some(first) = cycle_error.cycle.first() {
-            format!("{} → {}", cycle_error.cycle.join(" → "), first)
-        } else {
-            cycle_error.cycle.join(" → ")
-        };
-
-        // For each module in the cycle, report errors at specific import locations
-        for module_name in &cycle_error.cycle {
-            // Clear existing type errors and add cycle-specific errors
-            let type_errors = self.type_errors.entry(module_name.clone()).or_default();
-            type_errors.clear();
-            
-            // Find import nodes that create cycles
-            if let Some(ast) = self.asts.get(module_name) {
-                for import_node in ast.get_import_nodes() {
-                    if cycle_error.cycle.contains(&import_node.from_attr.value) {
-                        let error = RangeError {
-                            message: format!(
-                                "Circular import detected: {} imports {} which creates a dependency cycle: {}",
-                                module_name, import_node.from_attr.value, cycle_display
-                            ),
-                            range: import_node.from_attr.value_range,
-                        };
-                        type_errors.push(error);
-                    }
-                }
-            }
-        }
-    }
-
     pub fn new(hop_mode: HopMode) -> Self {
         Self {
             asts: HashMap::new(),
-            type_information: HashMap::new(),
+            type_checker_state: HashMap::new(),
             type_annotations: HashMap::new(),
             definition_links: HashMap::new(),
             parse_errors: HashMap::new(),
@@ -262,6 +223,39 @@ impl Program {
         self.asts.contains_key(module_name)
     }
 
+    /// Handles cycle errors by adding type errors for all modules in the cycle
+    fn handle_cycle_error(&mut self, cycle_error: &crate::hop::toposorter::CycleError) {
+        // Create display string for the cycle, showing the complete loop
+        let cycle_display = if let Some(first) = cycle_error.cycle.first() {
+            format!("{} → {}", cycle_error.cycle.join(" → "), first)
+        } else {
+            cycle_error.cycle.join(" → ")
+        };
+
+        // For each module in the cycle, report errors at specific import locations
+        for module_name in &cycle_error.cycle {
+            // Clear existing type errors and add cycle-specific errors
+            let type_errors = self.type_errors.entry(module_name.clone()).or_default();
+            type_errors.clear();
+
+            // Find import nodes that create cycles
+            if let Some(ast) = self.asts.get(module_name) {
+                for import_node in ast.get_import_nodes() {
+                    if cycle_error.cycle.contains(&import_node.from_attr.value) {
+                        let error = RangeError {
+                            message: format!(
+                                "Circular import detected: {} imports {} which creates a dependency cycle: {}",
+                                module_name, import_node.from_attr.value, cycle_display
+                            ),
+                            range: import_node.from_attr.value_range,
+                        };
+                        type_errors.push(error);
+                    }
+                }
+            }
+        }
+    }
+
     fn typecheck_module(&mut self, module_name: &str) {
         let ast = match self.asts.get(module_name) {
             Some(module) => module,
@@ -284,12 +278,12 @@ impl Program {
 
         let component_type_info = typecheck(
             ast,
-            &self.type_information,
+            &self.type_checker_state,
             type_errors,
             type_annotations,
             definition_links,
         );
-        self.type_information
+        self.type_checker_state
             .insert(module_name.to_string(), component_type_info);
     }
 
