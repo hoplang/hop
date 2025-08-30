@@ -1,5 +1,4 @@
 pub mod ast;
-pub mod compiler;
 pub mod environment;
 pub mod parser;
 pub mod program;

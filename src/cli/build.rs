@@ -6,7 +6,8 @@ use std::fs;
 use std::path::Path;
 
 use crate::filesystem::files;
-use crate::hop::compiler::compile;
+use crate::hop::program::Program;
+use crate::tui::source_annotator::SourceAnnotator;
 use crate::tui::timing;
 
 fn copy_dir_recursive(
@@ -56,8 +57,49 @@ pub fn execute(
     let modules = files::load_all_hop_modules(root)?;
 
     timer.start_phase("compiling");
-    let program = compile(modules, HopMode::Build)
-        .map_err(|e| anyhow::anyhow!("Compilation failed: {}", e))?;
+    let program = Program::from_modules(modules, HopMode::Build);
+    
+    // Check for any compilation errors
+    let source_code = program.get_source_code();
+    let mut error_output_parts = Vec::new();
+
+    // Check for parse errors
+    let parse_errors = program.get_parse_errors();
+    for (module_name, errors) in parse_errors {
+        if !errors.is_empty() {
+            let code = source_code.get(module_name).unwrap();
+            let filename = format!("{}.hop", module_name);
+            let annotator = SourceAnnotator::new()
+                .with_label("error")
+                .with_underline('^')
+                .with_lines_before(1)
+                .with_location()
+                .with_filename(filename);
+            let formatted_errors = annotator.add_annotations(code, errors);
+            error_output_parts.push(formatted_errors);
+        }
+    }
+
+    // Check for type errors
+    let type_errors = program.get_type_errors();
+    for (module_name, errors) in type_errors {
+        if !errors.is_empty() {
+            let code = source_code.get(module_name).unwrap();
+            let filename = format!("{}.hop", module_name);
+            let annotator = SourceAnnotator::new()
+                .with_label("error")
+                .with_underline('^')
+                .with_lines_before(1)
+                .with_location()
+                .with_filename(filename);
+            let formatted_errors = annotator.add_annotations(code, errors);
+            error_output_parts.push(formatted_errors);
+        }
+    }
+
+    if !error_output_parts.is_empty() {
+        return Err(anyhow::anyhow!("Compilation failed:\n{}", error_output_parts.join("\n")));
+    }
 
     timer.start_phase("rendering");
     let rendered_files = program
