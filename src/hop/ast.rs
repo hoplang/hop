@@ -406,7 +406,48 @@ mod tests {
 
         let found_node = ast.find_node_at_position(position);
 
-        expected.assert_debug_eq(&found_node);
+        // Create annotations for start and end positions of the found node
+        let output = if let Some(node) = found_node {
+            let range = node.range();
+            
+            // Create two single-character annotations
+            // Start annotation: marks the first character of the node
+            let start_annotation = crate::tui::source_annotator::SimpleAnnotation {
+                range: Range::new(
+                    range.start,
+                    Position::new(range.start.line, range.start.column + 1)
+                ),
+                message: "start".to_string(),
+            };
+            
+            // End annotation: marks the last character of the node (end is exclusive)
+            // We need to handle the case where end.column might be 1 (empty node)
+            let end_col = if range.end.column > 1 { 
+                range.end.column - 1 
+            } else { 
+                range.end.column 
+            };
+            let end_annotation = crate::tui::source_annotator::SimpleAnnotation {
+                range: Range::new(
+                    Position::new(range.end.line, end_col),
+                    Position::new(range.end.line, end_col + 1)
+                ),
+                message: "end".to_string(),
+            };
+            
+            let annotator = crate::tui::source_annotator::SourceAnnotator::new()
+                .without_location();
+            
+            annotator.annotate::<crate::tui::source_annotator::SimpleAnnotation>(
+                None,
+                &source,
+                &[start_annotation, end_annotation],
+            )
+        } else {
+            "No node found at position".to_string()
+        };
+        
+        expected.assert_eq(&output);
     }
 
     #[test]
@@ -419,12 +460,13 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                Some(
-                    Text {
-                        value: "Hello World",
-                        range: 2:10-2:21,
-                    },
-                )
+                start
+                2 |     <div>Hello World</div>
+                  |          ^
+
+                end
+                2 |     <div>Hello World</div>
+                  |                    ^
             "#]],
         );
     }
@@ -439,24 +481,13 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                Some(
-                    Html {
-                        tag_name: "div",
-                        opening_name_range: 2:6-2:9,
-                        closing_name_range: Some(
-                            2:19-2:22,
-                        ),
-                        attributes: {},
-                        range: 2:5-2:23,
-                        children: [
-                            Text {
-                                value: "Content",
-                                range: 2:10-2:17,
-                            },
-                        ],
-                        set_attributes: [],
-                    },
-                )
+                start
+                2 |     <div>Content</div>
+                  |     ^
+
+                end
+                2 |     <div>Content</div>
+                  |                      ^
             "#]],
         );
     }
@@ -471,25 +502,13 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                Some(
-                    ComponentReference {
-                        component: "foo-bar",
-                        definition_module: None,
-                        opening_name_range: 2:6-2:13,
-                        closing_name_range: Some(
-                            2:23-2:30,
-                        ),
-                        args: None,
-                        attributes: {},
-                        range: 2:5-2:31,
-                        children: [
-                            Text {
-                                value: "Content",
-                                range: 2:14-2:21,
-                            },
-                        ],
-                    },
-                )
+                start
+                2 |     <foo-bar>Content</foo-bar>
+                  |     ^
+
+                end
+                2 |     <foo-bar>Content</foo-bar>
+                  |                              ^
             "#]],
         );
     }
@@ -506,34 +525,13 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                Some(
-                    If {
-                        condition: BooleanLiteral {
-                            value: true,
-                            range: 2:10-2:14,
-                        },
-                        range: 2:5-4:10,
-                        children: [
-                            Text {
-                                value: "\n        ",
-                                range: 2:16-3:9,
-                            },
-                            Html {
-                                tag_name: "div",
-                                opening_name_range: 3:10-3:13,
-                                closing_name_range: None,
-                                attributes: {},
-                                range: 3:9-3:15,
-                                children: [],
-                                set_attributes: [],
-                            },
-                            Text {
-                                value: "\n    ",
-                                range: 3:15-4:5,
-                            },
-                        ],
-                    },
-                )
+                start
+                2 |     <if {true}>
+                  |     ^
+
+                end
+                4 |     </if>
+                  |         ^
             "#]],
         );
     }
@@ -550,12 +548,13 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                Some(
-                    Text {
-                        value: "Nested text",
-                        range: 3:15-3:26,
-                    },
-                )
+                start
+                3 |         <span>Nested text</span>
+                  |               ^
+
+                end
+                3 |         <span>Nested text</span>
+                  |                         ^
             "#]],
         );
     }
@@ -570,11 +569,13 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                Some(
-                    SlotDefinition {
-                        range: 2:5-2:20,
-                    },
-                )
+                start
+                2 |     <slot-default/>
+                  |     ^
+
+                end
+                2 |     <slot-default/>
+                  |                   ^
             "#]],
         );
     }
@@ -588,9 +589,7 @@ mod tests {
                 </main-comp>
                 ^
             "},
-            expect![[r#"
-                None
-            "#]],
+            expect!["No node found at position"],
         );
     }
 
@@ -605,12 +604,13 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                Some(
-                    Doctype {
-                        value: "",
-                        range: 2:5-2:20,
-                    },
-                )
+                start
+                2 |     <!DOCTYPE html>
+                  |     ^
+
+                end
+                2 |     <!DOCTYPE html>
+                  |                   ^
             "#]],
         );
     }
@@ -631,15 +631,13 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                Some(
-                    TextExpression {
-                        expression: Variable {
-                            name: "item",
-                            range: 5:24-5:28,
-                        },
-                        range: 5:23-5:29,
-                    },
-                )
+                start
+                5 |                 <span>{item}</span>
+                  |                       ^
+
+                end
+                5 |                 <span>{item}</span>
+                  |                            ^
             "#]],
         );
     }
@@ -654,17 +652,13 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                Some(
-                    Html {
-                        tag_name: "br",
-                        opening_name_range: 2:19-2:21,
-                        closing_name_range: None,
-                        attributes: {},
-                        range: 2:18-2:22,
-                        children: [],
-                        set_attributes: [],
-                    },
-                )
+                start
+                2 |     <p>Some text <br> more text</p>
+                  |                  ^
+
+                end
+                2 |     <p>Some text <br> more text</p>
+                  |                     ^
             "#]],
         );
     }
@@ -679,24 +673,13 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                Some(
-                    Html {
-                        tag_name: "span",
-                        opening_name_range: 2:11-2:15,
-                        closing_name_range: Some(
-                            2:23-2:27,
-                        ),
-                        attributes: {},
-                        range: 2:10-2:28,
-                        children: [
-                            Text {
-                                value: "Hello",
-                                range: 2:16-2:21,
-                            },
-                        ],
-                        set_attributes: [],
-                    },
-                )
+                start
+                2 |     <div><span>Hello</span> <strong>World</strong></div>
+                  |          ^
+
+                end
+                2 |     <div><span>Hello</span> <strong>World</strong></div>
+                  |                           ^
             "#]],
         );
     }
@@ -711,24 +694,13 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                Some(
-                    Html {
-                        tag_name: "strong",
-                        opening_name_range: 2:30-2:36,
-                        closing_name_range: Some(
-                            2:44-2:50,
-                        ),
-                        attributes: {},
-                        range: 2:29-2:51,
-                        children: [
-                            Text {
-                                value: "World",
-                                range: 2:37-2:42,
-                            },
-                        ],
-                        set_attributes: [],
-                    },
-                )
+                start
+                2 |     <div><span>Hello</span> <strong>World</strong></div>
+                  |                             ^
+
+                end
+                2 |     <div><span>Hello</span> <strong>World</strong></div>
+                  |                                                  ^
             "#]],
         );
     }
@@ -743,12 +715,13 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                Some(
-                    Text {
-                        value: " and ",
-                        range: 2:28-2:33,
-                    },
-                )
+                start
+                2 |     <div><span>Hello</span> and <strong>World</strong></div>
+                  |                            ^
+
+                end
+                2 |     <div><span>Hello</span> and <strong>World</strong></div>
+                  |                                ^
             "#]],
         );
     }
@@ -779,20 +752,13 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                Some(
-                    TextExpression {
-                        expression: PropertyAccess {
-                            object: Variable {
-                                name: "item",
-                                range: 10:47-10:51,
-                            },
-                            property: "name",
-                            property_range: 10:52-10:56,
-                            range: 10:47-10:56,
-                        },
-                        range: 10:46-10:57,
-                    },
-                )
+                start
+                10 |                                     <em>Deep {item.name} text</em>
+                   |                                              ^
+
+                end
+                10 |                                     <em>Deep {item.name} text</em>
+                   |                                                        ^
             "#]],
         );
     }
@@ -817,59 +783,13 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                Some(
-                    Html {
-                        tag_name: "span",
-                        opening_name_range: 6:18-6:22,
-                        closing_name_range: Some(
-                            9:19-9:23,
-                        ),
-                        attributes: {},
-                        range: 6:17-9:24,
-                        children: [
-                            Text {
-                                value: "\n                    ",
-                                range: 6:23-7:21,
-                            },
-                            Html {
-                                tag_name: "div",
-                                opening_name_range: 7:22-7:25,
-                                closing_name_range: Some(
-                                    7:28-7:31,
-                                ),
-                                attributes: {},
-                                range: 7:21-7:32,
-                                children: [],
-                                set_attributes: [],
-                            },
-                            Text {
-                                value: "\n                    ",
-                                range: 7:32-8:21,
-                            },
-                            Html {
-                                tag_name: "em",
-                                opening_name_range: 8:22-8:24,
-                                closing_name_range: Some(
-                                    8:36-8:38,
-                                ),
-                                attributes: {},
-                                range: 8:21-8:39,
-                                children: [
-                                    Text {
-                                        value: "Deep text",
-                                        range: 8:25-8:34,
-                                    },
-                                ],
-                                set_attributes: [],
-                            },
-                            Text {
-                                value: "\n                ",
-                                range: 8:39-9:17,
-                            },
-                        ],
-                        set_attributes: [],
-                    },
-                )
+                start
+                 6 |                 <span>
+                   |                 ^
+
+                end
+                 9 |                 </span>
+                   |                       ^
             "#]],
         );
     }
@@ -884,32 +804,13 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                Some(
-                    Html {
-                        tag_name: "strong",
-                        opening_name_range: 2:48-2:54,
-                        closing_name_range: Some(
-                            2:69-2:75,
-                        ),
-                        attributes: {},
-                        range: 2:47-2:76,
-                        children: [
-                            TextExpression {
-                                expression: PropertyAccess {
-                                    object: Variable {
-                                        name: "site",
-                                        range: 2:56-2:60,
-                                    },
-                                    property: "title",
-                                    property_range: 2:61-2:66,
-                                    range: 2:56-2:66,
-                                },
-                                range: 2:55-2:67,
-                            },
-                        ],
-                        set_attributes: [],
-                    },
-                )
+                start
+                2 |     <p>Hello <em>{user.name}</em>, welcome to <strong>{site.title}</strong>!</p>
+                  |                                               ^
+
+                end
+                2 |     <p>Hello <em>{user.name}</em>, welcome to <strong>{site.title}</strong>!</p>
+                  |                                                                           ^
             "#]],
         );
     }
@@ -924,12 +825,13 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                Some(
-                    Text {
-                        value: "Content",
-                        range: 2:40-2:47,
-                    },
-                )
+                start
+                2 |     <div><user-card {data: user}><span>Content</span></user-card> more text</div>
+                  |                                        ^
+
+                end
+                2 |     <div><user-card {data: user}><span>Content</span></user-card> more text</div>
+                  |                                              ^
             "#]],
         );
     }
@@ -952,27 +854,13 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                Some(
-                    Html {
-                        tag_name: "span",
-                        opening_name_range: 6:22-6:26,
-                        closing_name_range: Some(
-                            6:35-6:39,
-                        ),
-                        attributes: {},
-                        range: 6:21-6:40,
-                        children: [
-                            TextExpression {
-                                expression: Variable {
-                                    name: "role",
-                                    range: 6:28-6:32,
-                                },
-                                range: 6:27-6:33,
-                            },
-                        ],
-                        set_attributes: [],
-                    },
-                )
+                start
+                 6 |                     <span>{role}</span>
+                   |                     ^
+
+                end
+                 6 |                     <span>{role}</span>
+                   |                                       ^
             "#]],
         );
     }
@@ -990,36 +878,13 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                Some(
-                    Html {
-                        tag_name: "input",
-                        opening_name_range: 3:10-3:15,
-                        closing_name_range: None,
-                        attributes: {
-                            "placeholder": Attribute {
-                                name: "placeholder",
-                                value: "Enter name",
-                                range: 3:28-3:52,
-                                value_range: 3:41-3:51,
-                            },
-                            "required": Attribute {
-                                name: "required",
-                                value: "",
-                                range: 3:53-3:61,
-                                value_range: 1:1-1:1,
-                            },
-                            "type": Attribute {
-                                name: "type",
-                                value: "text",
-                                range: 3:16-3:27,
-                                value_range: 3:22-3:26,
-                            },
-                        },
-                        range: 3:9-3:64,
-                        children: [],
-                        set_attributes: [],
-                    },
-                )
+                start
+                3 |         <input type="text" placeholder="Enter name" required />
+                  |         ^
+
+                end
+                3 |         <input type="text" placeholder="Enter name" required />
+                  |                                                               ^
             "#]],
         );
     }
@@ -1034,24 +899,13 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                Some(
-                    Html {
-                        tag_name: "div",
-                        opening_name_range: 2:23-2:26,
-                        closing_name_range: Some(
-                            2:35-2:38,
-                        ),
-                        attributes: {},
-                        range: 2:22-2:39,
-                        children: [
-                            Text {
-                                value: "Second",
-                                range: 2:27-2:33,
-                            },
-                        ],
-                        set_attributes: [],
-                    },
-                )
+                start
+                2 |     <div>First</div> <div>Second</div>
+                  |                      ^
+
+                end
+                2 |     <div>First</div> <div>Second</div>
+                  |                                      ^
             "#]],
         );
     }
