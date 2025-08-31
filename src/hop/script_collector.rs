@@ -18,7 +18,7 @@ impl ScriptCollector {
         for component in ast.get_component_definitions() {
             for child in &component.children {
                 for node in child.iter_depth_first() {
-                    if let HopNode::NativeHTML {
+                    if let HopNode::HTML {
                         tag_name, children, ..
                     } = node
                     {

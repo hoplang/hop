@@ -354,7 +354,7 @@ impl Program {
             } => definition_location.as_ref().map(|target_module| {
                 self.collect_component_rename_locations(component, target_module)
             }),
-            n @ HopNode::NativeHTML { .. } => Some(
+            n @ HopNode::HTML { .. } => Some(
                 n.tag_name_ranges()
                     .map(|range| RenameLocation {
                         module: module_name.to_string(),

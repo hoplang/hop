@@ -310,7 +310,7 @@ fn typecheck_node(
                 );
             }
         }
-        HopNode::NativeHTML {
+        HopNode::HTML {
             set_attributes,
             children,
             ..

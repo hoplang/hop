@@ -212,8 +212,8 @@ pub enum HopNode {
         range: Range,
     },
 
-    /// A NativeHTML node represents a plain HTML node, e.g. a <div>...</div>.
-    NativeHTML {
+    /// An HTML node represents a plain HTML node, e.g. a <div>...</div>.
+    HTML {
         tag_name: String,
         opening_name_range: Range,
         closing_name_range: Option<Range>,
@@ -256,7 +256,7 @@ impl HopNode {
             HopNode::ComponentReference { children, .. } => children,
             HopNode::If { children, .. } => children,
             HopNode::For { children, .. } => children,
-            HopNode::NativeHTML { children, .. } => children,
+            HopNode::HTML { children, .. } => children,
             HopNode::Error { children, .. } => children,
             HopNode::XExec { children, .. } => children,
             HopNode::XRaw { children, .. } => children,
@@ -293,7 +293,7 @@ impl HopNode {
             HopNode::ComponentReference {
                 opening_name_range, ..
             } => Some(*opening_name_range),
-            HopNode::NativeHTML {
+            HopNode::HTML {
                 opening_name_range, ..
             } => Some(*opening_name_range),
             _ => None,
@@ -310,7 +310,7 @@ impl HopNode {
             HopNode::ComponentReference {
                 closing_name_range, ..
             } => *closing_name_range,
-            HopNode::NativeHTML {
+            HopNode::HTML {
                 closing_name_range, ..
             } => *closing_name_range,
             _ => None,
@@ -321,7 +321,7 @@ impl HopNode {
     pub fn tag_name(&self) -> Option<&str> {
         match self {
             HopNode::ComponentReference { component, .. } => Some(component),
-            HopNode::NativeHTML { tag_name, .. } => Some(tag_name),
+            HopNode::HTML { tag_name, .. } => Some(tag_name),
             _ => None,
         }
     }
@@ -348,7 +348,7 @@ impl Ranged for HopNode {
             HopNode::SlotDefinition { range, .. } => *range,
             HopNode::If { range, .. } => *range,
             HopNode::For { range, .. } => *range,
-            HopNode::NativeHTML { range, .. } => *range,
+            HopNode::HTML { range, .. } => *range,
             HopNode::Error { range, .. } => *range,
             HopNode::XExec { range, .. } => *range,
             HopNode::XRaw { range, .. } => *range,
@@ -434,7 +434,7 @@ mod tests {
             "},
             expect![[r#"
                 Some(
-                    NativeHTML {
+                    HTML {
                         tag_name: "div",
                         opening_name_range: 2:6-2:9,
                         closing_name_range: Some(
@@ -512,7 +512,7 @@ mod tests {
                                 value: "\n        ",
                                 range: 2:16-3:9,
                             },
-                            NativeHTML {
+                            HTML {
                                 tag_name: "div",
                                 opening_name_range: 3:10-3:13,
                                 closing_name_range: None,
@@ -649,7 +649,7 @@ mod tests {
             "},
             expect![[r#"
                 Some(
-                    NativeHTML {
+                    HTML {
                         tag_name: "br",
                         opening_name_range: 2:19-2:21,
                         closing_name_range: None,
@@ -674,7 +674,7 @@ mod tests {
             "},
             expect![[r#"
                 Some(
-                    NativeHTML {
+                    HTML {
                         tag_name: "span",
                         opening_name_range: 2:11-2:15,
                         closing_name_range: Some(
@@ -706,7 +706,7 @@ mod tests {
             "},
             expect![[r#"
                 Some(
-                    NativeHTML {
+                    HTML {
                         tag_name: "strong",
                         opening_name_range: 2:30-2:36,
                         closing_name_range: Some(
@@ -812,7 +812,7 @@ mod tests {
             "},
             expect![[r#"
                 Some(
-                    NativeHTML {
+                    HTML {
                         tag_name: "span",
                         opening_name_range: 6:18-6:22,
                         closing_name_range: Some(
@@ -825,7 +825,7 @@ mod tests {
                                 value: "\n                    ",
                                 range: 6:23-7:21,
                             },
-                            NativeHTML {
+                            HTML {
                                 tag_name: "div",
                                 opening_name_range: 7:22-7:25,
                                 closing_name_range: Some(
@@ -840,7 +840,7 @@ mod tests {
                                 value: "\n                    ",
                                 range: 7:32-8:21,
                             },
-                            NativeHTML {
+                            HTML {
                                 tag_name: "em",
                                 opening_name_range: 8:22-8:24,
                                 closing_name_range: Some(
@@ -879,7 +879,7 @@ mod tests {
             "},
             expect![[r#"
                 Some(
-                    NativeHTML {
+                    HTML {
                         tag_name: "strong",
                         opening_name_range: 2:48-2:54,
                         closing_name_range: Some(
@@ -947,7 +947,7 @@ mod tests {
             "},
             expect![[r#"
                 Some(
-                    NativeHTML {
+                    HTML {
                         tag_name: "span",
                         opening_name_range: 6:22-6:26,
                         closing_name_range: Some(
@@ -985,7 +985,7 @@ mod tests {
             "#},
             expect![[r#"
                 Some(
-                    NativeHTML {
+                    HTML {
                         tag_name: "input",
                         opening_name_range: 3:10-3:15,
                         closing_name_range: None,
@@ -1029,7 +1029,7 @@ mod tests {
             "},
             expect![[r#"
                 Some(
-                    NativeHTML {
+                    HTML {
                         tag_name: "div",
                         opening_name_range: 2:23-2:26,
                         closing_name_range: Some(
@@ -1058,7 +1058,7 @@ mod tests {
             range: Range::default(),
         };
 
-        let span_node = HopNode::NativeHTML {
+        let span_node = HopNode::HTML {
             tag_name: "span".to_string(),
             opening_name_range: Range::default(),
             closing_name_range: Some(Range::default()),
@@ -1068,7 +1068,7 @@ mod tests {
             set_attributes: vec![],
         };
 
-        let p_node = HopNode::NativeHTML {
+        let p_node = HopNode::HTML {
             tag_name: "p".to_string(),
             opening_name_range: Range::default(),
             closing_name_range: Some(Range::default()),
@@ -1078,7 +1078,7 @@ mod tests {
             set_attributes: vec![],
         };
 
-        let div_node = HopNode::NativeHTML {
+        let div_node = HopNode::HTML {
             tag_name: "div".to_string(),
             opening_name_range: Range::default(),
             closing_name_range: Some(Range::default()),
@@ -1094,9 +1094,9 @@ mod tests {
         assert_eq!(nodes.len(), 4);
 
         // Check the order
-        assert!(matches!(nodes[0], HopNode::NativeHTML { tag_name, .. } if tag_name == "div"));
-        assert!(matches!(nodes[1], HopNode::NativeHTML { tag_name, .. } if tag_name == "p"));
-        assert!(matches!(nodes[2], HopNode::NativeHTML { tag_name, .. } if tag_name == "span"));
+        assert!(matches!(nodes[0], HopNode::HTML { tag_name, .. } if tag_name == "div"));
+        assert!(matches!(nodes[1], HopNode::HTML { tag_name, .. } if tag_name == "p"));
+        assert!(matches!(nodes[2], HopNode::HTML { tag_name, .. } if tag_name == "span"));
         assert!(matches!(nodes[3], HopNode::Text { value, .. } if value == "hello"));
     }
 }

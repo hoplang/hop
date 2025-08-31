@@ -13,7 +13,6 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
     let mut imports = Vec::new();
     let mut renders = Vec::new();
 
-    // Track component definitions and imports as we go
     let mut defined_components = HashSet::new();
     let mut imported_components = HashMap::new();
 
@@ -119,9 +118,10 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         )),
                     }
                 }
+                // Treat as ComponentDefinition
                 name => {
                     if !is_valid_component_name(name) {
-                        errors.push(ParseError::invalid_component_name(name, range));
+                        errors.push(ParseError::invalid_component_name(name, name_range));
                     } else {
                         let params = expression.as_ref().and_then(|(expr_string, range)| {
                             let mut tokenizer = match DopTokenizer::new(expr_string, range.start) {
@@ -391,7 +391,10 @@ fn construct_node(
                         }
                     }
                 },
-                tag_name if is_valid_component_name(tag_name) => {
+                tag_name if tag_name.contains('-') => {
+                    if !is_valid_component_name(tag_name) {
+                        errors.push(ParseError::invalid_component_name(tag_name, name_range));
+                    }
                     let args = match &expression {
                         Some((expr_string, range)) => {
                             let mut tokenizer = match DopTokenizer::new(expr_string, range.start) {
@@ -435,7 +438,7 @@ fn construct_node(
                         children,
                     }
                 }
-                // Treat as HTML node
+                // Treat as HTML
                 _ => {
                     let mut set_attributes = Vec::new();
                     for attr in attributes.values() {
@@ -461,7 +464,7 @@ fn construct_node(
                         }
                     }
 
-                    HopNode::NativeHTML {
+                    HopNode::HTML {
                         tag_name: value.clone(),
                         opening_name_range: name_range,
                         closing_name_range: tree.closing_tag_name_range,
@@ -492,7 +495,7 @@ mod tests {
             HopNode::ComponentReference { .. } => "component_reference",
             HopNode::If { .. } => "if",
             HopNode::For { .. } => "for",
-            HopNode::NativeHTML { tag_name, .. } => tag_name,
+            HopNode::HTML { tag_name, .. } => tag_name,
             HopNode::SlotDefinition { .. } => "slot-definition",
             HopNode::XExec { .. } => "hop-x-exec",
             HopNode::XRaw { .. } => "hop-x-raw",
@@ -558,13 +561,28 @@ mod tests {
             indoc! {"
                 <main-comp>
                     <div>
+                    <p>
                 </main-comp>
+
+                <foo-comp>
             "},
+            // TODO: It would make more sense if these were reported in the opposite
+            // order.
             expect![[r#"
+                error: Unclosed <p>
+                2 |     <div>
+                3 |     <p>
+                  |     ^^^
+
                 error: Unclosed <div>
                 1 | <main-comp>
                 2 |     <div>
                   |     ^^^^^
+
+                error: Unclosed <foo-comp>
+                5 | 
+                6 | <foo-comp>
+                  | ^^^^^^^^^^
             "#]],
         );
     }
@@ -576,6 +594,8 @@ mod tests {
             indoc! {"
                 <main-comp>
                     <hr></hr>
+                    <br></br>
+                    <input></input>
                 </main-comp>
             "},
             expect![[r#"
@@ -583,6 +603,16 @@ mod tests {
                 1 | <main-comp>
                 2 |     <hr></hr>
                   |         ^^^^^
+
+                error: <br> should not be closed using a closing tag
+                2 |     <hr></hr>
+                3 |     <br></br>
+                  |         ^^^^^
+
+                error: <input> should not be closed using a closing tag
+                3 |     <br></br>
+                4 |     <input></input>
+                  |            ^^^^^^^^
             "#]],
         );
     }
@@ -593,13 +623,69 @@ mod tests {
         check(
             indoc! {r#"
                 <import component="foo" from="bar"></import>
-                <main-comp>
-                </main-comp>
             "#},
             expect![[r#"
                 error: <import> should not be closed using a closing tag
                 1 | <import component="foo" from="bar"></import>
                   |                                    ^^^^^^^^^
+            "#]],
+        );
+    }
+
+    // Void tags are allowed to be self-closing.
+    #[test]
+    fn test_parser_void_tag_may_be_self_closing() {
+        check(
+            indoc! {r#"
+                <import component="foo" from="bar">
+                <main-comp>
+                    <hr/>
+                    <br/>
+                    <input/>
+                </main-comp>
+                <foo-comp/>
+            "#},
+            expect![[r#"
+                hr                                                3:5-3:10
+                br                                                4:5-4:10
+                input                                             5:5-5:13
+            "#]],
+        );
+    }
+
+    // When a component reference has an invalid tag name, the parser outputs an error.
+    #[test]
+    fn test_parser_invalid_tag_name_in_component_reference() {
+        check(
+            indoc! {"
+                <main-comp>
+                    <foo-></foo->
+                    <foo-bar-></foo-bar->
+                    <X-BAR-></X-BAR->
+                </main-comp>
+
+                <foo-></foo->
+            "},
+            expect![[r#"
+                error: Invalid component name 'foo-'. Component names must contain a dash and not start or end with one
+                1 | <main-comp>
+                2 |     <foo-></foo->
+                  |      ^^^^
+
+                error: Invalid component name 'foo-bar-'. Component names must contain a dash and not start or end with one
+                2 |     <foo-></foo->
+                3 |     <foo-bar-></foo-bar->
+                  |      ^^^^^^^^
+
+                error: Invalid component name 'X-BAR-'. Component names must contain a dash and not start or end with one
+                3 |     <foo-bar-></foo-bar->
+                4 |     <X-BAR-></X-BAR->
+                  |      ^^^^^^
+
+                error: Invalid component name 'foo-'. Component names must contain a dash and not start or end with one
+                6 | 
+                7 | <foo-></foo->
+                  |  ^^^^
             "#]],
         );
     }
@@ -611,6 +697,8 @@ mod tests {
             indoc! {"
                 <main-comp>
                     </div>
+                    </p>
+                </main-comp>
                 </main-comp>
             "},
             expect![[r#"
@@ -618,6 +706,16 @@ mod tests {
                 1 | <main-comp>
                 2 |     </div>
                   |     ^^^^^^
+
+                error: Unmatched </p>
+                2 |     </div>
+                3 |     </p>
+                  |     ^^^^
+
+                error: Unmatched </main-comp>
+                4 | </main-comp>
+                5 | </main-comp>
+                  | ^^^^^^^^^^^^
             "#]],
         );
     }
@@ -629,11 +727,17 @@ mod tests {
             indoc! {"
                 <div>
                 </div>
+                <p></p>
             "},
             expect![[r#"
                 error: Invalid component name 'div'. Component names must contain a dash and not start or end with one
                 1 | <div>
-                  | ^^^^^
+                  |  ^^^
+
+                error: Invalid component name 'p'. Component names must contain a dash and not start or end with one
+                2 | </div>
+                3 | <p></p>
+                  |  ^
             "#]],
         );
     }
@@ -778,6 +882,7 @@ mod tests {
                     <div>{data}</div>
                 </main-comp>
             "},
+            // TODO: Improve error message
             expect![[r#"
                 error: Expected type name
                 1 | <main-comp {data: array[}>
@@ -864,7 +969,9 @@ mod tests {
             indoc! {r#"
                 <main-comp entrypoint>
                     <script>
-                        console.log("test");
+                        // note that the <div> inside here is note
+                        // parsed as html
+                        console.log("<div>test</div>");
                     </script>
                     <style>
                         body { color: red; }
@@ -872,8 +979,8 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                script                                            2:5-4:14
-                style                                             5:5-7:13
+                script                                            2:5-6:14
+                style                                             7:5-9:13
             "#]],
         );
     }
@@ -1100,7 +1207,7 @@ mod tests {
         );
     }
 
-    // When a component is imported twice, the typechecker outputs an error.
+    // When a component is imported twice, the parser outputs an error.
     #[test]
     fn test_parser_component_imported_twice() {
         check(
@@ -1131,11 +1238,19 @@ mod tests {
 
                 <foo-comp>
                 </foo-comp>
+
+                <foo-comp>
+                </foo-comp>
             "#},
             expect![[r#"
                 error: Component foo-comp is already defined
                 3 | 
                 4 | <foo-comp>
+                  |  ^^^^^^^^
+
+                error: Component foo-comp is already defined
+                6 | 
+                7 | <foo-comp>
                   |  ^^^^^^^^
             "#]],
         );
@@ -1223,7 +1338,7 @@ mod tests {
         check(
             indoc! {"
                 <main-comp>
-                    <if {isVisible}>
+                    <if {is_visible}>
                         <div>This is visible</div>
                     </if>
                 </main-comp>
@@ -1382,6 +1497,7 @@ mod tests {
                     <div>Content</div>
                 </main-comp>
             "#},
+            // TODO: Make this a single error message
             expect![[r#"
                 error: <import> is missing required attribute component
                 1 | <import>

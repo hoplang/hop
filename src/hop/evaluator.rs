@@ -163,7 +163,6 @@ fn init_environment(hop_mode: HopMode) -> Environment<serde_json::Value> {
     env
 }
 
-// Evaluate a sub-node such as an <if>, <for> or <div>.
 fn evaluate_node(
     asts: &HashMap<String, HopAST>,
     hop_mode: HopMode,
@@ -297,7 +296,7 @@ fn evaluate_node(
             Ok(slot_content.unwrap_or_default().to_string())
         }
 
-        HopNode::NativeHTML {
+        HopNode::HTML {
             children,
             tag_name,
             attributes,
@@ -416,7 +415,7 @@ fn evaluate_node_entrypoint(
     current_module: &str,
 ) -> Result<String> {
     match node {
-        HopNode::NativeHTML {
+        HopNode::HTML {
             tag_name,
             attributes,
             children,
