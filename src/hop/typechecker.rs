@@ -312,7 +312,7 @@ fn typecheck_node(
                 );
             }
         }
-        HopNode::HTML {
+        HopNode::Html {
             set_attributes,
             children,
             ..

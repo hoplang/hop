@@ -311,7 +311,7 @@ fn evaluate_node(
             Ok(())
         }
 
-        HopNode::HTML {
+        HopNode::Html {
             children,
             tag_name,
             attributes,
@@ -462,7 +462,7 @@ fn evaluate_node_entrypoint(
     output: &mut String,
 ) -> Result<()> {
     match node {
-        HopNode::HTML {
+        HopNode::Html {
             tag_name,
             attributes,
             children,

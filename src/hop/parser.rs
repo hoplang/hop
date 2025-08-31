@@ -485,7 +485,7 @@ fn construct_node(
                         }
                     }
 
-                    HopNode::HTML {
+                    HopNode::Html {
                         tag_name: value.clone(),
                         opening_name_range: name_range,
                         closing_name_range: tree.closing_tag_name_range,
@@ -516,7 +516,7 @@ mod tests {
             HopNode::ComponentReference { .. } => "component_reference",
             HopNode::If { .. } => "if",
             HopNode::For { .. } => "for",
-            HopNode::HTML { tag_name, .. } => tag_name,
+            HopNode::Html { tag_name, .. } => tag_name,
             HopNode::SlotDefinition { .. } => "slot-definition",
             HopNode::XExec { .. } => "hop-x-exec",
             HopNode::XRaw { .. } => "hop-x-raw",

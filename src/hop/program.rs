@@ -189,10 +189,6 @@ impl Program {
         &self.source_code
     }
 
-    pub fn has_module(&self, module_name: &str) -> bool {
-        self.asts.contains_key(module_name)
-    }
-
     /// Handles import cycle errors by adding type errors for all modules in the cycle.
     fn handle_import_cycle_error(&mut self, cycle_error: &CycleError) {
         for module_name in &cycle_error.cycle {
@@ -354,7 +350,7 @@ impl Program {
             } => definition_location.as_ref().map(|target_module| {
                 self.collect_component_rename_locations(component, target_module)
             }),
-            n @ HopNode::HTML { .. } => Some(
+            n @ HopNode::Html { .. } => Some(
                 n.tag_name_ranges()
                     .map(|range| RenameLocation {
                         module: module_name.to_string(),
