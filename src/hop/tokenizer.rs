@@ -40,13 +40,6 @@ pub enum Token {
 }
 
 impl Token {
-    pub fn find_attribute(&self, value: &str) -> Option<Attribute> {
-        match self {
-            Token::OpeningTag { attributes, .. } => attributes.get(value).cloned(),
-            _ => None,
-        }
-    }
-
     pub fn range(&self) -> Range {
         match self {
             Token::Doctype { range } => *range,

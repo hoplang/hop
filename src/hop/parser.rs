@@ -49,7 +49,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                 ..
             } => match value.as_str() {
                 "import" => {
-                    let component_attr = t.find_attribute("component").or_else(|| {
+                    let component_attr = attributes.get("component").cloned().or_else(|| {
                         errors.push(ParseError::missing_required_attribute(
                             value,
                             "component",
@@ -57,7 +57,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         ));
                         None
                     });
-                    let from_attr = t.find_attribute("from").or_else(|| {
+                    let from_attr = attributes.get("from").cloned().or_else(|| {
                         errors.push(ParseError::missing_required_attribute(
                             value,
                             "from",
@@ -84,7 +84,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                     }
                 }
                 "render" => {
-                    let file_attr = t.find_attribute("file").or_else(|| {
+                    let file_attr = attributes.get("file").cloned().or_else(|| {
                         errors.push(ParseError::missing_required_attribute(
                             value,
                             "file",
@@ -157,11 +157,11 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                                 }
                             }),
                             params,
-                            as_attr: t.find_attribute("as"),
+                            as_attr: attributes.get("as").cloned(),
                             attributes: attributes.clone(),
                             range: tree.range(),
                             children,
-                            entrypoint: t.find_attribute("entrypoint").is_some(),
+                            entrypoint: attributes.contains_key("entrypoint"),
                             has_slot,
                         });
                     }
@@ -335,7 +335,7 @@ fn construct_node(
                 },
                 tag_name if tag_name.starts_with("hop-") => match tag_name {
                     "hop-x-exec" => {
-                        let cmd_attr = t.find_attribute("cmd").or_else(|| {
+                        let cmd_attr = attributes.get("cmd").cloned().or_else(|| {
                             errors.push(ParseError::missing_required_attribute(
                                 value,
                                 "cmd",
