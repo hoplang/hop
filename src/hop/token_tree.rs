@@ -166,7 +166,7 @@ mod tests {
             expect![[r#"
                 [
                     TokenTree {
-                        opening_token: OpeningTag {
+                        token: OpeningTag {
                             self_closing: false,
                             name_range: 1:2-1:5,
                             value: "div",
@@ -174,16 +174,16 @@ mod tests {
                             expression: None,
                             range: 1:1-1:6,
                         },
-                        closing_token_name_range: Some(
+                        closing_tag_name_range: Some(
                             1:13-1:16,
                         ),
                         children: [
                             TokenTree {
-                                opening_token: Text {
+                                token: Text {
                                     value: "Hello",
                                     range: 1:6-1:11,
                                 },
-                                closing_token_name_range: None,
+                                closing_tag_name_range: None,
                                 children: [],
                                 range: 1:6-1:11,
                             },
@@ -201,7 +201,7 @@ mod tests {
             expect![[r#"
                 [
                     TokenTree {
-                        opening_token: OpeningTag {
+                        token: OpeningTag {
                             self_closing: false,
                             name_range: 1:2-1:5,
                             value: "div",
@@ -209,12 +209,12 @@ mod tests {
                             expression: None,
                             range: 1:1-1:6,
                         },
-                        closing_token_name_range: Some(
+                        closing_tag_name_range: Some(
                             1:17-1:20,
                         ),
                         children: [
                             TokenTree {
-                                opening_token: OpeningTag {
+                                token: OpeningTag {
                                     self_closing: false,
                                     name_range: 1:7-1:9,
                                     value: "br",
@@ -222,12 +222,12 @@ mod tests {
                                     expression: None,
                                     range: 1:6-1:10,
                                 },
-                                closing_token_name_range: None,
+                                closing_tag_name_range: None,
                                 children: [],
                                 range: 1:6-1:10,
                             },
                             TokenTree {
-                                opening_token: OpeningTag {
+                                token: OpeningTag {
                                     self_closing: true,
                                     name_range: 1:11-1:13,
                                     value: "hr",
@@ -235,7 +235,7 @@ mod tests {
                                     expression: None,
                                     range: 1:10-1:15,
                                 },
-                                closing_token_name_range: None,
+                                closing_tag_name_range: None,
                                 children: [],
                                 range: 1:10-1:15,
                             },
@@ -253,7 +253,7 @@ mod tests {
             expect![[r#"
                 [
                     TokenTree {
-                        opening_token: OpeningTag {
+                        token: OpeningTag {
                             self_closing: false,
                             name_range: 1:2-1:5,
                             value: "div",
@@ -261,12 +261,12 @@ mod tests {
                             expression: None,
                             range: 1:1-1:6,
                         },
-                        closing_token_name_range: Some(
+                        closing_tag_name_range: Some(
                             1:38-1:41,
                         ),
                         children: [
                             TokenTree {
-                                opening_token: OpeningTag {
+                                token: OpeningTag {
                                     self_closing: false,
                                     name_range: 1:7-1:8,
                                     value: "p",
@@ -274,16 +274,16 @@ mod tests {
                                     expression: None,
                                     range: 1:6-1:9,
                                 },
-                                closing_token_name_range: Some(
+                                closing_tag_name_range: Some(
                                     1:16-1:17,
                                 ),
                                 children: [
                                     TokenTree {
-                                        opening_token: Text {
+                                        token: Text {
                                             value: "Hello",
                                             range: 1:9-1:14,
                                         },
-                                        closing_token_name_range: None,
+                                        closing_tag_name_range: None,
                                         children: [],
                                         range: 1:9-1:14,
                                     },
@@ -291,7 +291,7 @@ mod tests {
                                 range: 1:6-1:18,
                             },
                             TokenTree {
-                                opening_token: OpeningTag {
+                                token: OpeningTag {
                                     self_closing: false,
                                     name_range: 1:19-1:23,
                                     value: "span",
@@ -299,16 +299,16 @@ mod tests {
                                     expression: None,
                                     range: 1:18-1:24,
                                 },
-                                closing_token_name_range: Some(
+                                closing_tag_name_range: Some(
                                     1:31-1:35,
                                 ),
                                 children: [
                                     TokenTree {
-                                        opening_token: Text {
+                                        token: Text {
                                             value: "World",
                                             range: 1:24-1:29,
                                         },
-                                        closing_token_name_range: None,
+                                        closing_tag_name_range: None,
                                         children: [],
                                         range: 1:24-1:29,
                                     },

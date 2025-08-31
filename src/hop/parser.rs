@@ -259,6 +259,7 @@ fn construct_node(
         } => {
             match value.as_str() {
                 "if" => match expression {
+                    // TODO: Check for unrecognized attributes
                     Some((expr_string, expr_range)) => {
                         let mut tokenizer = match DopTokenizer::new(&expr_string, expr_range.start)
                         {
@@ -298,6 +299,7 @@ fn construct_node(
                     }
                 },
                 "for" => match expression {
+                    // TODO: Check for unrecognized attributes
                     Some((expr_string, expr_range)) => {
                         let mut tokenizer = match DopTokenizer::new(&expr_string, expr_range.start)
                         {
@@ -340,14 +342,16 @@ fn construct_node(
                 "slot-default" => HopNode::SlotDefinition { range: tree.range },
                 tag_name if tag_name.starts_with("hop-") => match tag_name {
                     "hop-x-exec" => {
-                        let cmd_attr = attributes.get("cmd").cloned().or_else(|| {
-                            errors.push(ParseError::missing_required_attribute(
-                                &value,
-                                "cmd",
-                                opening_tag_range,
-                            ));
-                            None
-                        });
+                        let mut cmd_attr = None;
+
+                        for (key, attr) in attributes {
+                            match key.as_str() {
+                                "cmd" => cmd_attr = Some(attr),
+                                _ => {
+                                    // TODO: Check for unrecognized attributes
+                                }
+                            }
+                        }
 
                         match cmd_attr {
                             Some(cmd_attr) => HopNode::XExec {
@@ -355,20 +359,24 @@ fn construct_node(
                                 range: tree.range,
                                 children,
                             },
-                            None => HopNode::Error {
-                                range: tree.range,
-                                children,
-                            },
+                            None => {
+                                errors.push(ParseError::missing_required_attribute(
+                                    &value,
+                                    "cmd",
+                                    opening_tag_range,
+                                ));
+                                HopNode::Error {
+                                    range: tree.range,
+                                    children,
+                                }
+                            }
                         }
                     }
-                    "hop-x-raw" => {
-                        let has_trim = attributes.contains_key("trim");
-                        HopNode::XRaw {
-                            trim: has_trim,
-                            range: tree.range,
-                            children,
-                        }
-                    }
+                    "hop-x-raw" => HopNode::XRaw {
+                        trim: attributes.contains_key("trim"),
+                        range: tree.range,
+                        children,
+                    },
                     _ => {
                         errors.push(ParseError::unrecognized_hop_tag(&value, opening_tag_range));
                         HopNode::Error {
@@ -378,7 +386,6 @@ fn construct_node(
                     }
                 },
                 tag_name if is_valid_component_name(tag_name) => {
-                    // This is a component render (contains dash)
                     let args = match &expression {
                         Some((expr_string, range)) => {
                             let mut tokenizer = match DopTokenizer::new(expr_string, range.start) {
@@ -417,11 +424,12 @@ fn construct_node(
                         closing_name_range: tree.closing_tag_name_range,
                         definition_module: definition_location,
                         args,
-                        attributes: attributes.clone(),
+                        attributes,
                         range: tree.range,
                         children,
                     }
                 }
+                // Treat as HTML node
                 _ => {
                     let mut set_attributes = Vec::new();
                     for attr in attributes.values() {
