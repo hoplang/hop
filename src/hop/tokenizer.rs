@@ -15,6 +15,9 @@ pub enum Token {
     Eof {
         range: Range,
     },
+
+    /// An Expression token represents an expression in the text position
+    /// E.g. <div>hello {expression}<div>
     Expression {
         value: String,
         expression_range: Range,

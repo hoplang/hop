@@ -11,8 +11,16 @@ use crate::hop::tokenizer::Tokenizer;
 /// collected as children.
 #[derive(Debug, Clone)]
 pub struct TokenTree {
-    pub opening_token: Token,
-    pub closing_token: Option<Token>,
+    pub token: Token,
+
+    /// The closing_token_name_range is the range of the name for the closing
+    /// tag.
+    ///
+    /// E.g.
+    /// <div></div>
+    ///        ^^^
+    /// This information is needed by the parser.
+    pub closing_tag_name_range: Option<Range>,
     pub children: Vec<TokenTree>,
     pub range: Range,
 }
@@ -21,8 +29,8 @@ impl TokenTree {
     pub fn new(opening_token: Token) -> Self {
         TokenTree {
             range: opening_token.range(),
-            opening_token,
-            closing_token: None,
+            token: opening_token,
+            closing_tag_name_range: None,
             children: Vec::new(),
         }
     }
@@ -35,9 +43,12 @@ impl TokenTree {
         self.children.push(tree);
     }
 
-    pub fn set_closing_token(&mut self, closing_token: Token) {
+    pub fn set_closing_tag(&mut self, closing_token: Token) {
         self.range.end = closing_token.range().end;
-        self.closing_token = Some(closing_token);
+        self.closing_tag_name_range = match closing_token {
+            Token::ClosingTag { name_range, .. } => Some(name_range),
+            _ => panic!("Called set_closing_tag with a token that was not a ClosingTag"),
+        }
     }
 }
 
@@ -102,12 +113,12 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
                                 let unclosed = stack.pop().unwrap();
                                 errors.push(ParseError::unclosed_tag(
                                     &unclosed.tag_name,
-                                    unclosed.tree.opening_token.range(),
+                                    unclosed.tree.token.range(),
                                 ));
                                 stack.last_mut().unwrap().tree.append_tree(unclosed.tree);
                             }
                             let mut completed = stack.pop().unwrap();
-                            completed.tree.set_closing_token(token);
+                            completed.tree.set_closing_tag(token);
                             stack.last_mut().unwrap().tree.append_tree(completed.tree);
                         }
                     }
@@ -123,7 +134,7 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
         let unclosed = stack.pop().unwrap();
         errors.push(ParseError::unclosed_tag(
             &unclosed.tag_name,
-            unclosed.tree.opening_token.range(),
+            unclosed.tree.token.range(),
         ));
     }
 
@@ -163,12 +174,8 @@ mod tests {
                             expression: None,
                             range: 1:1-1:6,
                         },
-                        closing_token: Some(
-                            ClosingTag {
-                                value: "div",
-                                name_range: 1:13-1:16,
-                                range: 1:11-1:17,
-                            },
+                        closing_token_name_range: Some(
+                            1:13-1:16,
                         ),
                         children: [
                             TokenTree {
@@ -176,10 +183,12 @@ mod tests {
                                     value: "Hello",
                                     range: 1:6-1:11,
                                 },
-                                closing_token: None,
+                                closing_token_name_range: None,
                                 children: [],
+                                range: 1:6-1:11,
                             },
                         ],
+                        range: 1:1-1:17,
                     },
                 ]"#]],
         );
@@ -200,12 +209,8 @@ mod tests {
                             expression: None,
                             range: 1:1-1:6,
                         },
-                        closing_token: Some(
-                            ClosingTag {
-                                value: "div",
-                                name_range: 1:17-1:20,
-                                range: 1:15-1:21,
-                            },
+                        closing_token_name_range: Some(
+                            1:17-1:20,
                         ),
                         children: [
                             TokenTree {
@@ -217,8 +222,9 @@ mod tests {
                                     expression: None,
                                     range: 1:6-1:10,
                                 },
-                                closing_token: None,
+                                closing_token_name_range: None,
                                 children: [],
+                                range: 1:6-1:10,
                             },
                             TokenTree {
                                 opening_token: OpeningTag {
@@ -229,10 +235,12 @@ mod tests {
                                     expression: None,
                                     range: 1:10-1:15,
                                 },
-                                closing_token: None,
+                                closing_token_name_range: None,
                                 children: [],
+                                range: 1:10-1:15,
                             },
                         ],
+                        range: 1:1-1:21,
                     },
                 ]"#]],
         );
@@ -253,12 +261,8 @@ mod tests {
                             expression: None,
                             range: 1:1-1:6,
                         },
-                        closing_token: Some(
-                            ClosingTag {
-                                value: "div",
-                                name_range: 1:38-1:41,
-                                range: 1:36-1:42,
-                            },
+                        closing_token_name_range: Some(
+                            1:38-1:41,
                         ),
                         children: [
                             TokenTree {
@@ -270,12 +274,8 @@ mod tests {
                                     expression: None,
                                     range: 1:6-1:9,
                                 },
-                                closing_token: Some(
-                                    ClosingTag {
-                                        value: "p",
-                                        name_range: 1:16-1:17,
-                                        range: 1:14-1:18,
-                                    },
+                                closing_token_name_range: Some(
+                                    1:16-1:17,
                                 ),
                                 children: [
                                     TokenTree {
@@ -283,10 +283,12 @@ mod tests {
                                             value: "Hello",
                                             range: 1:9-1:14,
                                         },
-                                        closing_token: None,
+                                        closing_token_name_range: None,
                                         children: [],
+                                        range: 1:9-1:14,
                                     },
                                 ],
+                                range: 1:6-1:18,
                             },
                             TokenTree {
                                 opening_token: OpeningTag {
@@ -297,12 +299,8 @@ mod tests {
                                     expression: None,
                                     range: 1:18-1:24,
                                 },
-                                closing_token: Some(
-                                    ClosingTag {
-                                        value: "span",
-                                        name_range: 1:31-1:35,
-                                        range: 1:29-1:36,
-                                    },
+                                closing_token_name_range: Some(
+                                    1:31-1:35,
                                 ),
                                 children: [
                                     TokenTree {
@@ -310,12 +308,15 @@ mod tests {
                                             value: "World",
                                             range: 1:24-1:29,
                                         },
-                                        closing_token: None,
+                                        closing_token_name_range: None,
                                         children: [],
+                                        range: 1:24-1:29,
                                     },
                                 ],
+                                range: 1:18-1:36,
                             },
                         ],
+                        range: 1:1-1:42,
                     },
                 ]"#]],
         );

@@ -32,7 +32,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
             })
             .collect();
 
-        match tree.opening_token {
+        match tree.token {
             Token::Text { .. } => {}
             Token::ClosingTag { .. } => {}
             Token::Expression { .. } => {}
@@ -61,35 +61,37 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         }
                     }
 
-                    if component_attr.is_none() {
-                        errors.push(ParseError::missing_required_attribute(
-                            &value,
-                            "component",
-                            range,
-                        ));
-                    }
-
-                    if from_attr.is_none() {
-                        errors.push(ParseError::missing_required_attribute(
-                            &value, "from", range,
-                        ));
-                    }
-
-                    if let (Some(component_attr), Some(from_attr)) = (component_attr, from_attr) {
-                        if imported_components.contains_key(&component_attr.value) {
-                            errors.push(ParseError::component_is_already_defined(
-                                &component_attr.value,
-                                component_attr.value_range,
-                            ));
-                        } else {
-                            imported_components
-                                .insert(component_attr.value.clone(), from_attr.value.clone());
+                    match (component_attr, from_attr) {
+                        (Some(component_attr), Some(from_attr)) => {
+                            if imported_components.contains_key(&component_attr.value) {
+                                errors.push(ParseError::component_is_already_defined(
+                                    &component_attr.value,
+                                    component_attr.value_range,
+                                ));
+                            } else {
+                                imported_components
+                                    .insert(component_attr.value.clone(), from_attr.value.clone());
+                            }
+                            imports.push(Import {
+                                component_attr,
+                                from_attr,
+                                range: tree.range,
+                            });
                         }
-                        imports.push(Import {
-                            component_attr,
-                            from_attr,
-                            range: tree.range,
-                        });
+                        (component, from) => {
+                            if component.is_none() {
+                                errors.push(ParseError::missing_required_attribute(
+                                    &value,
+                                    "component",
+                                    range,
+                                ));
+                            }
+                            if from.is_none() {
+                                errors.push(ParseError::missing_required_attribute(
+                                    &value, "from", range,
+                                ));
+                            }
+                        }
                     }
                 }
                 "render" => {
@@ -104,18 +106,17 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         }
                     }
 
-                    if file_attr.is_none() {
-                        errors.push(ParseError::missing_required_attribute(
+                    match file_attr {
+                        Some(file_attr) => {
+                            renders.push(Render {
+                                file_attr,
+                                range: tree.range,
+                                children,
+                            });
+                        }
+                        None => errors.push(ParseError::missing_required_attribute(
                             &value, "file", range,
-                        ));
-                    }
-
-                    if let Some(file_attr) = file_attr {
-                        renders.push(Render {
-                            file_attr,
-                            range: tree.range,
-                            children,
-                        });
+                        )),
                     }
                 }
                 name => {
@@ -139,6 +140,9 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                             }
                         });
 
+                        // TODO: Here we iterate over the whole subtree to check
+                        // if it contains a slot. There should be a better way
+                        // to do this.
                         let mut has_slot = false;
                         for child in &children {
                             for node in child.iter_depth_first() {
@@ -162,19 +166,13 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         components.push(ComponentDefinition {
                             name: name.to_string(),
                             opening_name_range: name_range,
-                            closing_name_range: tree.closing_token.as_ref().and_then(|tag| {
-                                if let Token::ClosingTag { name_range, .. } = tag {
-                                    Some(*name_range)
-                                } else {
-                                    None
-                                }
-                            }),
+                            closing_name_range: tree.closing_tag_name_range,
                             params,
+                            entrypoint: attributes.contains_key("entrypoint"),
                             as_attr: attributes.get("as").cloned(),
-                            attributes: attributes.clone(),
+                            attributes,
                             range: tree.range,
                             children,
-                            entrypoint: attributes.contains_key("entrypoint"),
                             has_slot,
                         });
                     }
@@ -217,23 +215,19 @@ fn construct_node(
         })
         .collect();
 
-    let t = tree.opening_token;
+    let t = tree.token;
 
     match t {
         Token::Doctype { range } => HopNode::Doctype {
             value: "".to_string(),
             range,
         },
-        Token::Text { value, range } => HopNode::Text {
-            value: value.clone(),
-            range,
-        },
+        Token::Text { value, range } => HopNode::Text { value, range },
         Token::Expression {
             value,
             expression_range,
             range,
         } => {
-            // Expression tokens represent {expression} in text content
             let mut tokenizer = match DopTokenizer::new(&value, expression_range.start) {
                 Ok(tokenizer) => tokenizer,
                 Err(err) => {
@@ -245,10 +239,7 @@ fn construct_node(
                 }
             };
             match dop::parse_expr(&mut tokenizer) {
-                Ok(expr) => HopNode::TextExpression {
-                    expression: expr,
-                    range,
-                },
+                Ok(expression) => HopNode::TextExpression { expression, range },
                 Err(err) => {
                     errors.push(err);
                     HopNode::Error {
@@ -263,18 +254,19 @@ fn construct_node(
             expression,
             attributes,
             name_range,
-            range,
+            range: opening_tag_range,
             ..
         } => {
             match value.as_str() {
-                "if" => match &expression {
+                "if" => match expression {
                     Some((expr_string, expr_range)) => {
-                        let mut tokenizer = match DopTokenizer::new(expr_string, expr_range.start) {
+                        let mut tokenizer = match DopTokenizer::new(&expr_string, expr_range.start)
+                        {
                             Ok(tokenizer) => tokenizer,
                             Err(err) => {
                                 errors.push(err);
                                 return HopNode::Error {
-                                    range: *expr_range,
+                                    range: expr_range,
                                     children: vec![],
                                 };
                             }
@@ -297,7 +289,7 @@ fn construct_node(
                     None => {
                         errors.push(ParseError::new(
                             "Missing expression in <if> tag".to_string(),
-                            range,
+                            opening_tag_range,
                         ));
                         HopNode::Error {
                             range: tree.range,
@@ -337,7 +329,7 @@ fn construct_node(
                     None => {
                         errors.push(ParseError::new(
                             "Missing loop generator expression in <for> tag".to_string(),
-                            range,
+                            opening_tag_range,
                         ));
                         HopNode::Error {
                             range: tree.range,
@@ -349,8 +341,11 @@ fn construct_node(
                 tag_name if tag_name.starts_with("hop-") => match tag_name {
                     "hop-x-exec" => {
                         let cmd_attr = attributes.get("cmd").cloned().or_else(|| {
-                            errors
-                                .push(ParseError::missing_required_attribute(&value, "cmd", range));
+                            errors.push(ParseError::missing_required_attribute(
+                                &value,
+                                "cmd",
+                                opening_tag_range,
+                            ));
                             None
                         });
 
@@ -375,7 +370,7 @@ fn construct_node(
                         }
                     }
                     _ => {
-                        errors.push(ParseError::unrecognized_hop_tag(&value, range));
+                        errors.push(ParseError::unrecognized_hop_tag(&value, opening_tag_range));
                         HopNode::Error {
                             range: tree.range,
                             children: vec![],
@@ -419,13 +414,7 @@ fn construct_node(
                     HopNode::ComponentReference {
                         component: tag_name.to_string(),
                         opening_name_range: name_range,
-                        closing_name_range: tree.closing_token.as_ref().and_then(|tag| {
-                            if let Token::ClosingTag { name_range, .. } = tag {
-                                Some(*name_range)
-                            } else {
-                                None
-                            }
-                        }),
+                        closing_name_range: tree.closing_tag_name_range,
                         definition_module: definition_location,
                         args,
                         attributes: attributes.clone(),
@@ -466,13 +455,7 @@ fn construct_node(
                     HopNode::NativeHTML {
                         tag_name: value.clone(),
                         opening_name_range: name_range,
-                        closing_name_range: tree.closing_token.as_ref().and_then(|tag| {
-                            if let Token::ClosingTag { name_range, .. } = tag {
-                                Some(*name_range)
-                            } else {
-                                None
-                            }
-                        }),
+                        closing_name_range: tree.closing_tag_name_range,
                         attributes: attributes.clone(),
                         range: tree.range,
                         children,
