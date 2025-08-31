@@ -1,6 +1,6 @@
 use crate::common::{Range, Ranged, TypeError};
 use crate::dop::{DopParameter, DopType, is_subtype, typecheck_expr};
-use crate::hop::ast::HopAST;
+use crate::hop::ast::HopAst;
 use crate::hop::ast::{ComponentDefinition, HopNode, Import, Render};
 use crate::hop::environment::Environment;
 use std::collections::HashMap;
@@ -47,7 +47,7 @@ pub struct ComponentTypeInformation {
 pub type TypeCheckerState = HashMap<String, ComponentTypeInformation>;
 
 pub fn typecheck(
-    module: &HopAST,
+    module: &HopAst,
     import_type_information: &HashMap<String, TypeCheckerState>,
     errors: &mut Vec<TypeError>,
     type_annotations: &mut Vec<TypeAnnotation>,

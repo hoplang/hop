@@ -1,6 +1,6 @@
 use crate::common::{escape_html, is_void_element};
 use crate::dop::{self, evaluate_expr};
-use crate::hop::ast::{HopAST, HopNode};
+use crate::hop::ast::{HopAst, HopNode};
 use crate::hop::environment::Environment;
 use anyhow::Result;
 use std::collections::HashMap;
@@ -27,7 +27,7 @@ impl HopMode {
 
 /// Render the content for a specific file path
 pub fn render_file(
-    asts: &HashMap<String, HopAST>,
+    asts: &HashMap<String, HopAst>,
     hop_mode: HopMode,
     file_path: &str,
     output: &mut String,
@@ -53,7 +53,7 @@ pub fn render_file(
 
 // Evaluate a component definition of a specific name in a specific module.
 pub fn evaluate_component(
-    asts: &HashMap<String, HopAST>,
+    asts: &HashMap<String, HopAst>,
     hop_mode: HopMode,
     module_name: &str,
     component_name: &str,
@@ -175,7 +175,7 @@ fn init_environment(hop_mode: HopMode) -> Environment<serde_json::Value> {
 }
 
 fn evaluate_node(
-    asts: &HashMap<String, HopAST>,
+    asts: &HashMap<String, HopAst>,
     hop_mode: HopMode,
     node: &HopNode,
     slot_content: Option<&str>,
@@ -454,7 +454,7 @@ fn evaluate_node(
 }
 
 fn evaluate_node_entrypoint(
-    asts: &HashMap<String, HopAST>,
+    asts: &HashMap<String, HopAst>,
     hop_mode: HopMode,
     node: &HopNode,
     env: &mut Environment<serde_json::Value>,
@@ -621,7 +621,7 @@ fn trim_raw_string(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hop::ast::HopAST;
+    use crate::hop::ast::HopAst;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
     use crate::hop::typechecker::typecheck;
@@ -631,7 +631,7 @@ mod tests {
     use simple_txtar::Archive;
     use std::collections::HashMap;
 
-    fn asts_from_archive(archive: &Archive) -> HashMap<String, HopAST> {
+    fn asts_from_archive(archive: &Archive) -> HashMap<String, HopAst> {
         let mut asts = HashMap::new();
 
         for file in archive.iter() {

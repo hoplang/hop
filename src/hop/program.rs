@@ -1,5 +1,5 @@
 use crate::common::{ParseError, Position, Range, Ranged, TypeError};
-use crate::hop::ast::HopAST;
+use crate::hop::ast::HopAst;
 use crate::hop::evaluator;
 use crate::hop::parser::parse;
 use crate::hop::script_collector::ScriptCollector;
@@ -134,7 +134,7 @@ pub struct Program {
     topo_sorter: TopoSorter,
     source_code: HashMap<String, String>,
     parse_errors: HashMap<String, Vec<ParseError>>,
-    asts: HashMap<String, HopAST>,
+    asts: HashMap<String, HopAst>,
     type_checker_state: HashMap<String, TypeCheckerState>,
     type_errors: HashMap<String, Vec<TypeError>>,
     type_annotations: HashMap<String, Vec<TypeAnnotation>>,

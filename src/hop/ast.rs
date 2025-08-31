@@ -19,14 +19,14 @@ pub struct DopExprAttribute {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct HopAST {
+pub struct HopAst {
     pub name: String,
     imports: Vec<Import>,
     component_definitions: Vec<ComponentDefinition>,
     renders: Vec<Render>,
 }
 
-impl HopAST {
+impl HopAst {
     pub fn new(
         name: String,
         component_definitions: Vec<ComponentDefinition>,

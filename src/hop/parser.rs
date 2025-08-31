@@ -1,12 +1,12 @@
 use crate::common::ParseError;
 use crate::dop::{self, DopTokenizer};
-use crate::hop::ast::{ComponentDefinition, DopExprAttribute, HopAST, HopNode, Import, Render};
+use crate::hop::ast::{ComponentDefinition, DopExprAttribute, HopAst, HopNode, Import, Render};
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> HopAST {
+pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> HopAst {
     let trees = build_tree(tokenizer, errors);
 
     let mut components = Vec::new();
@@ -202,7 +202,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
         }
     }
 
-    HopAST::new(module_name, components, imports, renders)
+    HopAst::new(module_name, components, imports, renders)
 }
 
 fn is_valid_component_name(name: &str) -> bool {

@@ -1,4 +1,4 @@
-use crate::hop::ast::HopAST;
+use crate::hop::ast::HopAst;
 use crate::hop::ast::HopNode;
 
 pub struct ScriptCollector {
@@ -12,7 +12,7 @@ impl ScriptCollector {
         }
     }
 
-    pub fn process_module(&mut self, ast: &HopAST) {
+    pub fn process_module(&mut self, ast: &HopAst) {
         let mut module_script = String::new();
 
         for component in ast.get_component_definitions() {
