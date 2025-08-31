@@ -222,24 +222,30 @@ fn construct_node(
             value: "".to_string(),
             range,
         },
-        Token::Text { value, range } => HopNode::Text { value, range },
+        Token::Text { value, .. } => HopNode::Text {
+            value,
+            range: tree.range,
+        },
         Token::Expression {
             value,
             expression_range,
-            range,
+            ..
         } => {
             let mut tokenizer = match DopTokenizer::new(&value, expression_range.start) {
                 Ok(tokenizer) => tokenizer,
                 Err(err) => {
                     errors.push(err);
                     return HopNode::Error {
-                        range,
+                        range: tree.range,
                         children: vec![],
                     };
                 }
             };
             match dop::parse_expr(&mut tokenizer) {
-                Ok(expression) => HopNode::TextExpression { expression, range },
+                Ok(expression) => HopNode::TextExpression {
+                    expression,
+                    range: tree.range,
+                },
                 Err(err) => {
                     errors.push(err);
                     HopNode::Error {
@@ -267,7 +273,7 @@ fn construct_node(
                             Err(err) => {
                                 errors.push(err);
                                 return HopNode::Error {
-                                    range: expr_range,
+                                    range: tree.range,
                                     children: vec![],
                                 };
                             }
@@ -307,7 +313,7 @@ fn construct_node(
                             Err(err) => {
                                 errors.push(err);
                                 return HopNode::Error {
-                                    range: expr_range,
+                                    range: tree.range,
                                     children: vec![],
                                 };
                             }
@@ -393,7 +399,7 @@ fn construct_node(
                                 Err(err) => {
                                     errors.push(err);
                                     return HopNode::Error {
-                                        range: *range,
+                                        range: tree.range,
                                         children: vec![],
                                     };
                                 }
@@ -403,7 +409,7 @@ fn construct_node(
                                 Err(err) => {
                                     errors.push(err);
                                     return HopNode::Error {
-                                        range: *range,
+                                        range: tree.range,
                                         children: vec![],
                                     };
                                 }
@@ -434,29 +440,24 @@ fn construct_node(
                     let mut set_attributes = Vec::new();
                     for attr in attributes.values() {
                         if attr.name.starts_with("set-") {
-                            if let Some(expr_attr) = {
-                                let mut tokenizer =
-                                    match DopTokenizer::new(&attr.value, attr.range.start) {
-                                        Ok(tokenizer) => tokenizer,
-                                        Err(err) => {
-                                            errors.push(err);
-                                            continue;
-                                        }
-                                    };
-                                match dop::parse_expr(&mut tokenizer) {
-                                    Ok(expression) => Some(DopExprAttribute {
-                                        name: attr.name.to_string(),
-                                        expression,
-                                        range: attr.range,
-                                    }),
+                            let mut tokenizer =
+                                match DopTokenizer::new(&attr.value, attr.range.start) {
+                                    Ok(tokenizer) => tokenizer,
                                     Err(err) => {
                                         errors.push(err);
-                                        None
+                                        continue;
                                     }
+                                };
+                            match dop::parse_expr(&mut tokenizer) {
+                                Ok(expression) => set_attributes.push(DopExprAttribute {
+                                    name: attr.name.to_string(),
+                                    expression,
+                                    range: attr.range,
+                                }),
+                                Err(err) => {
+                                    errors.push(err);
                                 }
-                            } {
-                                set_attributes.push(expr_attr);
-                            }
+                            };
                         }
                     }
 
@@ -481,78 +482,44 @@ fn construct_node(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::source_annotator::SourceAnnotator;
+    use crate::{common::Ranged, tui::source_annotator::SourceAnnotator};
     use expect_test::{Expect, expect};
     use indoc::indoc;
+
+    fn node_name(node: &HopNode) -> &str {
+        match node {
+            HopNode::Doctype { .. } => "doctype",
+            HopNode::ComponentReference { .. } => "component_reference",
+            HopNode::If { .. } => "if",
+            HopNode::For { .. } => "for",
+            HopNode::NativeHTML { tag_name, .. } => tag_name,
+            HopNode::SlotDefinition { .. } => "slot-definition",
+            HopNode::XExec { .. } => "hop-x-exec",
+            HopNode::XRaw { .. } => "hop-x-raw",
+            HopNode::Text { .. } => "text",
+            HopNode::TextExpression { .. } => "text_expression",
+            HopNode::Error { .. } => "error",
+        }
+    }
+
+    fn write_node(node: &HopNode, depth: usize, lines: &mut Vec<String>) {
+        if matches!(node, HopNode::Text { .. }) {
+            return;
+        }
+        let left = format!("{}{}", "    ".repeat(depth).as_str(), node_name(node));
+        let right = format!("{}", node.range());
+        lines.push(format!("{:<50}{}", left, right));
+        for child in node.children() {
+            write_node(child, depth + 1, lines);
+        }
+    }
 
     pub fn format_component_definition(d: &ComponentDefinition) -> String {
         let mut lines = Vec::new();
         for child in &d.children {
-            let s = format_tree(child, 0);
-            if !s.is_empty() {
-                lines.push(s);
-            }
+            write_node(child, 0, &mut lines);
         }
         lines.join("\n") + "\n"
-    }
-
-    pub fn format_tree(root: &HopNode, depth: usize) -> String {
-        let mut lines = Vec::new();
-
-        fn format_node(node: &HopNode, depth: usize, lines: &mut Vec<String>) {
-            let indent = "\t".repeat(depth);
-
-            match node {
-                HopNode::Doctype { .. } => {
-                    lines.push(format!("{}doctype", indent));
-                }
-                HopNode::ComponentReference { children, .. } => {
-                    lines.push(format!("{}render", indent));
-                    for child in children {
-                        format_node(child, depth + 1, lines);
-                    }
-                }
-                HopNode::If { children, .. } => {
-                    lines.push(format!("{}if", indent));
-                    for child in children {
-                        format_node(child, depth + 1, lines);
-                    }
-                }
-                HopNode::For { children, .. } => {
-                    lines.push(format!("{}for", indent));
-                    for child in children {
-                        format_node(child, depth + 1, lines);
-                    }
-                }
-                HopNode::NativeHTML {
-                    tag_name, children, ..
-                } => {
-                    lines.push(format!("{}{}", indent, tag_name));
-                    for child in children {
-                        format_node(child, depth + 1, lines);
-                    }
-                }
-                HopNode::SlotDefinition { .. } => {
-                    lines.push(format!("{}slot-default", indent));
-                }
-                HopNode::XExec { children, .. } => {
-                    lines.push(format!("{}hop-x-exec", indent));
-                    for child in children {
-                        format_node(child, depth + 1, lines);
-                    }
-                }
-                HopNode::XRaw { children, .. } => {
-                    lines.push(format!("{}hop-x-raw", indent));
-                    for child in children {
-                        format_node(child, depth + 1, lines);
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        format_node(root, depth, &mut lines);
-        lines.join("\n")
     }
 
     fn check(input: &str, expected: Expect) {
@@ -857,12 +824,14 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                div
-                	for
-                		div
-                			h2
-                			for
-                				p
+                div                                               2:5-11:11
+                    for                                           3:9-10:15
+                        div                                       4:13-9:19
+                            h2                                    5:17-5:41
+                                text_expression                   5:21-5:36
+                            for                                   6:17-8:23
+                                p                                 7:21-7:34
+                                    text_expression               7:24-7:30
             "#]],
         );
     }
@@ -881,10 +850,10 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                doctype
-                html
-                	body
-                		div
+                doctype                                           2:5-2:20
+                html                                              3:5-7:12
+                    body                                          4:9-6:16
+                        div                                       5:13-5:35
             "#]],
         );
     }
@@ -903,8 +872,8 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                script
-                style
+                script                                            2:5-4:14
+                style                                             5:5-7:13
             "#]],
         );
     }
@@ -919,8 +888,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                h1
-                p
+                h1                                                2:5-2:25
+                p                                                 3:5-3:26
+                    text_expression                               3:8-3:22
             "#]],
         );
     }
@@ -942,12 +912,12 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                if
-                	div
-                if
-                	div
-                if
-                	div
+                if                                                2:5-4:10
+                    div                                           3:9-3:29
+                if                                                5:5-7:10
+                    div                                           6:9-6:36
+                if                                                8:5-10:10
+                    div                                           9:9-9:36
             "#]],
         );
     }
@@ -963,8 +933,8 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                if
-                	div
+                if                                                2:5-4:10
+                    div                                           3:9-3:25
             "#]],
         );
     }
@@ -989,12 +959,12 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                for
-                	for
-                		if
-                for
-                	for
-                		for
+                for                                               2:5-7:11
+                    for                                           3:9-6:15
+                        if                                        4:13-5:18
+                for                                               8:5-13:11
+                    for                                           9:9-12:15
+                        for                                       10:13-11:19
             "#]],
         );
     }
@@ -1011,8 +981,8 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                if
-                	for
+                if                                                2:2-5:7
+                    for                                           3:3-4:9
             "#]],
         );
     }
@@ -1028,8 +998,8 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                for
-                	div
+                for                                               2:5-4:11
+                    div                                           3:9-3:20
             "#]],
         );
     }
@@ -1044,8 +1014,8 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                render
-                render
+                component_reference                               2:5-2:26
+                component_reference                               3:5-3:26
             "#]],
         );
     }
@@ -1060,8 +1030,8 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                render
-                render
+                component_reference                               2:5-2:26
+                component_reference                               3:5-3:31
             "#]],
         );
     }
@@ -1077,8 +1047,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                for
-                	div
+                for                                               2:5-4:11
+                    div                                           3:9-3:23
+                        text_expression                           3:14-3:17
             "#]],
         );
     }
@@ -1094,7 +1065,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                script
+                script                                            2:5-4:14
             "#]],
         );
     }
@@ -1108,7 +1079,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                a
+                a                                                 2:5-2:59
             "#]],
         );
     }
@@ -1123,8 +1094,8 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                slot-default
-                render
+                slot-definition                                   2:5-2:20
+                component_reference                               3:5-3:45
             "#]],
         );
     }
@@ -1214,15 +1185,15 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                div
-                	svg
-                		g
-                			path
-                			path
-                			path
-                	ul
-                		li
-                			a
+                div                                               2:5-13:11
+                    svg                                           3:9-9:15
+                        g                                         4:13-8:17
+                            path                                  5:17-5:66
+                            path                                  6:17-6:64
+                            path                                  7:17-7:74
+                    ul                                            10:9-12:14
+                        li                                        11:13-11:42
+                            a                                     11:17-11:37
             "#]],
         );
     }
@@ -1239,9 +1210,9 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                form
-                	input
-                	button
+                form                                              2:5-5:12
+                    input                                         3:9-3:37
+                    button                                        4:9-4:44
             "#]],
         );
     }
@@ -1258,8 +1229,8 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                if
-                	div
+                if                                                2:5-4:10
+                    div                                           3:9-3:35
             "#]],
         );
     }
@@ -1277,9 +1248,9 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                if
-                	div
-                	button
+                if                                                2:5-5:10
+                    div                                           3:9-3:31
+                    button                                        4:9-4:34
             "#]],
         );
     }
@@ -1296,8 +1267,8 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                for
-                	div
+                for                                               2:5-4:11
+                    div                                           3:9-3:32
             "#]],
         );
     }
@@ -1315,9 +1286,11 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                for
-                	div
-                	p
+                for                                               2:5-5:11
+                    div                                           3:9-3:37
+                        text_expression                           3:20-3:31
+                    p                                             4:9-4:33
+                        text_expression                           4:18-4:29
             "#]],
         );
     }
@@ -1332,7 +1305,8 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                div
+                div                                               2:5-2:22
+                    text_expression                               2:10-2:16
             "#]],
         );
     }
@@ -1349,8 +1323,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                for
-                	div
+                for                                               2:5-4:11
+                    div                                           3:9-3:26
+                        text_expression                           3:14-3:20
             "#]],
         );
     }
@@ -1365,7 +1340,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                div
+                div                                               2:5-2:51
+                    text_expression                               2:10-2:21
+                    text_expression                               2:25-2:35
             "#]],
         );
     }
@@ -1385,10 +1362,12 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                for
-                	h1
-                	for
-                		div
+                for                                               2:5-7:11
+                    h1                                            3:9-3:33
+                        text_expression                           3:13-3:28
+                    for                                           4:9-6:15
+                        div                                       5:13-5:30
+                            text_expression                       5:18-5:24
             "#]],
         );
     }

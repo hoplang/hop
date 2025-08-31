@@ -279,9 +279,7 @@ fn evaluate_node(
             };
 
             // Extract class attribute from component reference
-            let additional_classes = attributes
-                .get("class")
-                .map(|attr| attr.value.as_str());
+            let additional_classes = attributes.get("class").map(|attr| attr.value.as_str());
 
             evaluate_component(
                 asts,
