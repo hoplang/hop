@@ -20,7 +20,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
     for tree in trees {
         let children: Vec<HopNode> = tree
             .children
-            .iter()
+            .into_iter()
             .map(|child| {
                 construct_node(
                     child,
@@ -102,6 +102,12 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                                 // TODO: Check for unrecognized attributes
                             }
                         }
+                    }
+
+                    if file_attr.is_none() {
+                        errors.push(ParseError::missing_required_attribute(
+                            &value, "file", range,
+                        ));
                     }
 
                     if let Some(file_attr) = file_attr {
@@ -191,7 +197,7 @@ fn is_valid_component_name(name: &str) -> bool {
 }
 
 fn construct_node(
-    tree: &TokenTree,
+    tree: TokenTree,
     errors: &mut Vec<ParseError>,
     module_name: &str,
     defined_components: &HashSet<String>,
@@ -199,7 +205,7 @@ fn construct_node(
 ) -> HopNode {
     let children: Vec<HopNode> = tree
         .children
-        .iter()
+        .into_iter()
         .map(|child| {
             construct_node(
                 child,
@@ -211,16 +217,16 @@ fn construct_node(
         })
         .collect();
 
-    let t = &tree.opening_token;
+    let t = tree.opening_token;
 
     match t {
         Token::Doctype { range } => HopNode::Doctype {
             value: "".to_string(),
-            range: *range,
+            range,
         },
         Token::Text { value, range } => HopNode::Text {
             value: value.clone(),
-            range: *range,
+            range,
         },
         Token::Expression {
             value,
@@ -228,12 +234,12 @@ fn construct_node(
             range,
         } => {
             // Expression tokens represent {expression} in text content
-            let mut tokenizer = match DopTokenizer::new(value, expression_range.start) {
+            let mut tokenizer = match DopTokenizer::new(&value, expression_range.start) {
                 Ok(tokenizer) => tokenizer,
                 Err(err) => {
                     errors.push(err);
                     return HopNode::Error {
-                        range: *range,
+                        range,
                         children: vec![],
                     };
                 }
@@ -241,7 +247,7 @@ fn construct_node(
             match dop::parse_expr(&mut tokenizer) {
                 Ok(expr) => HopNode::TextExpression {
                     expression: expr,
-                    range: *range,
+                    range,
                 },
                 Err(err) => {
                     errors.push(err);
@@ -257,6 +263,7 @@ fn construct_node(
             expression,
             attributes,
             name_range,
+            range,
             ..
         } => {
             match value.as_str() {
@@ -290,7 +297,7 @@ fn construct_node(
                     None => {
                         errors.push(ParseError::new(
                             "Missing expression in <if> tag".to_string(),
-                            tree.opening_token.range(),
+                            range,
                         ));
                         HopNode::Error {
                             range: tree.range,
@@ -300,12 +307,13 @@ fn construct_node(
                 },
                 "for" => match expression {
                     Some((expr_string, expr_range)) => {
-                        let mut tokenizer = match DopTokenizer::new(expr_string, expr_range.start) {
+                        let mut tokenizer = match DopTokenizer::new(&expr_string, expr_range.start)
+                        {
                             Ok(tokenizer) => tokenizer,
                             Err(err) => {
                                 errors.push(err);
                                 return HopNode::Error {
-                                    range: *expr_range,
+                                    range: expr_range,
                                     children: vec![],
                                 };
                             }
@@ -329,7 +337,7 @@ fn construct_node(
                     None => {
                         errors.push(ParseError::new(
                             "Missing loop generator expression in <for> tag".to_string(),
-                            tree.opening_token.range(),
+                            range,
                         ));
                         HopNode::Error {
                             range: tree.range,
@@ -341,11 +349,8 @@ fn construct_node(
                 tag_name if tag_name.starts_with("hop-") => match tag_name {
                     "hop-x-exec" => {
                         let cmd_attr = attributes.get("cmd").cloned().or_else(|| {
-                            errors.push(ParseError::missing_required_attribute(
-                                value,
-                                "cmd",
-                                tree.opening_token.range(),
-                            ));
+                            errors
+                                .push(ParseError::missing_required_attribute(&value, "cmd", range));
                             None
                         });
 
@@ -370,10 +375,7 @@ fn construct_node(
                         }
                     }
                     _ => {
-                        errors.push(ParseError::unrecognized_hop_tag(
-                            value,
-                            tree.opening_token.range(),
-                        ));
+                        errors.push(ParseError::unrecognized_hop_tag(&value, range));
                         HopNode::Error {
                             range: tree.range,
                             children: vec![],
@@ -416,7 +418,7 @@ fn construct_node(
 
                     HopNode::ComponentReference {
                         component: tag_name.to_string(),
-                        opening_name_range: *name_range,
+                        opening_name_range: name_range,
                         closing_name_range: tree.closing_token.as_ref().and_then(|tag| {
                             if let Token::ClosingTag { name_range, .. } = tag {
                                 Some(*name_range)
@@ -463,7 +465,7 @@ fn construct_node(
 
                     HopNode::NativeHTML {
                         tag_name: value.clone(),
-                        opening_name_range: *name_range,
+                        opening_name_range: name_range,
                         closing_name_range: tree.closing_token.as_ref().and_then(|tag| {
                             if let Token::ClosingTag { name_range, .. } = tag {
                                 Some(*name_range)
