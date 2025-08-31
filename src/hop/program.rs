@@ -528,8 +528,8 @@ impl Program {
     }
 
     /// Render the content for a specific file path
-    pub fn render_file(&self, file_path: &str, hop_mode: HopMode) -> Result<String> {
-        evaluator::render_file(&self.asts, hop_mode, file_path)
+    pub fn render_file(&self, file_path: &str, hop_mode: HopMode, output: &mut String) -> Result<()> {
+        evaluator::render_file(&self.asts, hop_mode, file_path, output)
     }
 
     pub fn evaluate_component(
@@ -538,7 +538,8 @@ impl Program {
         component_name: &str,
         args: HashMap<String, serde_json::Value>,
         hop_mode: HopMode,
-    ) -> Result<String> {
+        output: &mut String,
+    ) -> Result<()> {
         evaluator::evaluate_component(
             &self.asts,
             hop_mode,
@@ -547,6 +548,7 @@ impl Program {
             args,
             None,
             None,
+            output,
         )
     }
 }

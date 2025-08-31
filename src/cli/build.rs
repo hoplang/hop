@@ -103,8 +103,9 @@ pub fn execute(
         .get_render_file_paths()
         .into_par_iter()
         .map(|file_path| {
-            let content = program
-                .render_file(&file_path, HopMode::Build)
+            let mut content = String::new();
+            program
+                .render_file(&file_path, HopMode::Build, &mut content)
                 .map_err(|e| anyhow::anyhow!("Failed to render file '{}': {}", file_path, e))?;
             Ok::<_, anyhow::Error>((file_path, content))
         })

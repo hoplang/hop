@@ -141,8 +141,9 @@ async fn handle_request(
     }
 
     // Try to render the requested file
-    match program.render_file(&file_path, HopMode::Dev) {
-        Ok(content) => Ok(Html(inject_hot_reload_script(&content))),
+    let mut content = String::new();
+    match program.render_file(&file_path, HopMode::Dev, &mut content) {
+        Ok(()) => Ok(Html(inject_hot_reload_script(&content))),
         Err(_) => {
             let available_paths: Vec<String> = program
                 .get_render_file_paths()
@@ -176,8 +177,9 @@ fn create_error_page(error: &anyhow::Error) -> String {
             "message": format!("{:#}", error).to_string()
         }),
     );
-    match program.evaluate_component("hop/error_pages", "generic-error", args, HopMode::Dev) {
-        Ok(html) => inject_hot_reload_script(&html),
+    let mut html = String::new();
+    match program.evaluate_component("hop/error_pages", "generic-error", args, HopMode::Dev, &mut html) {
+        Ok(()) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
     }
 }
@@ -191,8 +193,9 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
         "available_routes".to_string(),
         serde_json::json!(available_routes),
     );
-    match program.evaluate_component("hop/error_pages", "not-found-error", args, HopMode::Dev) {
-        Ok(html) => inject_hot_reload_script(&html),
+    let mut html = String::new();
+    match program.evaluate_component("hop/error_pages", "not-found-error", args, HopMode::Dev, &mut html) {
+        Ok(()) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
     }
 }

@@ -34,3 +34,4 @@ indoc = "2.0"
 [lints.clippy]
 only_used_in_recursion = "allow"
 manual_is_ascii_check = "allow"
+too_many_arguments = "allow"

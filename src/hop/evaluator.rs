@@ -30,7 +30,8 @@ pub fn render_file(
     asts: &HashMap<String, HopAST>,
     hop_mode: HopMode,
     file_path: &str,
-) -> Result<String> {
+    output: &mut String,
+) -> Result<()> {
     let render = asts
         .values()
         .flat_map(|ast| ast.get_renders())
@@ -38,12 +39,10 @@ pub fn render_file(
     match render {
         Some(node) => {
             let mut env = init_environment(hop_mode);
-            let mut content = String::new();
             for child in &node.children {
-                let rendered = evaluate_node_entrypoint(asts, hop_mode, child, &mut env, "build")?;
-                content.push_str(&rendered);
+                evaluate_node_entrypoint(asts, hop_mode, child, &mut env, "build", output)?;
             }
-            Ok(content)
+            Ok(())
         }
         None => Err(anyhow::anyhow!(
             "File path '{}' not found in render nodes",
@@ -61,7 +60,8 @@ pub fn evaluate_component(
     args: HashMap<String, serde_json::Value>,
     slot_content: Option<&str>,
     additional_classes: Option<&str>,
-) -> Result<String> {
+    output: &mut String,
+) -> Result<()> {
     let ast = asts
         .get(module_name)
         .ok_or_else(|| anyhow::anyhow!("Module '{}' not found", module_name))?;
@@ -89,59 +89,78 @@ pub fn evaluate_component(
 
     if component.is_entrypoint {
         // For entrypoints, don't wrap in a div, just execute children directly
-        let mut result = String::new();
         for child in &component.children {
-            result.push_str(&evaluate_node_entrypoint(
-                asts,
-                hop_mode,
-                child,
-                &mut env,
-                module_name,
-            )?);
+            evaluate_node_entrypoint(asts, hop_mode, child, &mut env, module_name, output)?;
         }
-        Ok(result)
+        Ok(())
     } else {
         let tag_name = match &component.as_attr {
             Some(as_attr) => &as_attr.value,
             _ => "div",
         };
 
-        let data_hop_id = format!("{}/{}", module_name, component_name);
-        let mut result = format!("<{} data-hop-id=\"{}\"", tag_name, data_hop_id);
+        output.push('<');
+        output.push_str(tag_name);
+        output.push_str(" data-hop-id=\"");
+        output.push_str(module_name);
+        output.push('/');
+        output.push_str(component_name);
+        output.push('"');
 
         for attr in component.attributes.values() {
             if attr.name == "class" {
                 match additional_classes {
-                    None => result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value)),
+                    None => {
+                        output.push(' ');
+                        output.push_str(&attr.name);
+                        output.push_str("=\"");
+                        output.push_str(&attr.value);
+                        output.push('"');
+                    }
                     Some(cls) => {
-                        result.push_str(&format!(" {}=\"{} {}\"", attr.name, attr.value, cls))
+                        output.push(' ');
+                        output.push_str(&attr.name);
+                        output.push_str("=\"");
+                        output.push_str(&attr.value);
+                        output.push(' ');
+                        output.push_str(cls);
+                        output.push('"');
                     }
                 }
             } else {
-                result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
+                output.push(' ');
+                output.push_str(&attr.name);
+                output.push_str("=\"");
+                output.push_str(&attr.value);
+                output.push('"');
             }
         }
 
         // If component doesn't have a class attribute but the reference does, add it
         if !component.attributes.contains_key("class") {
             if let Some(cls) = additional_classes {
-                result.push_str(&format!(" class=\"{}\"", cls))
+                output.push_str(" class=\"");
+                output.push_str(cls);
+                output.push('"');
             }
         }
-        result.push('>');
+        output.push('>');
         for child in &component.children {
-            result.push_str(&evaluate_node(
+            evaluate_node(
                 asts,
                 hop_mode,
                 child,
                 slot_content,
                 &mut env,
                 module_name,
-            )?);
+                output,
+            )?;
         }
-        result.push_str(&format!("</{}>", tag_name));
+        output.push_str("</");
+        output.push_str(tag_name);
+        output.push('>');
 
-        Ok(result)
+        Ok(())
     }
 }
 
@@ -162,7 +181,8 @@ fn evaluate_node(
     slot_content: Option<&str>,
     env: &mut Environment<serde_json::Value>,
     current_module: &str,
-) -> anyhow::Result<String> {
+    output: &mut String,
+) -> anyhow::Result<()> {
     match node {
         HopNode::If {
             condition,
@@ -170,20 +190,20 @@ fn evaluate_node(
             ..
         } => match dop::evaluate_expr(condition, env)?.as_bool() {
             Some(cond) => {
-                let mut result = String::new();
                 if cond {
                     for child in children {
-                        result.push_str(&evaluate_node(
+                        evaluate_node(
                             asts,
                             hop_mode,
                             child,
                             slot_content,
                             env,
                             current_module,
-                        )?);
+                            output,
+                        )?;
                     }
                 }
-                Ok(result)
+                Ok(())
             }
             None => anyhow::bail!("Could not evaluate expression to boolean"),
         },
@@ -200,25 +220,23 @@ fn evaluate_node(
                 .as_array()
                 .ok_or_else(|| anyhow::anyhow!("For loop expects an array"))?;
 
-            let mut result = String::new();
             for item in array {
-                if env.push(var_name.value.clone(), item.clone()).is_err() {
-                    panic!("Unexpected variable name collision in for loop")
-                }
+                _ = env.push(var_name.value.clone(), item.clone());
                 for child in children {
-                    result.push_str(&evaluate_node(
+                    evaluate_node(
                         asts,
                         hop_mode,
                         child,
                         slot_content,
                         env,
                         current_module,
-                    )?);
+                        output,
+                    )?;
                 }
                 _ = env.pop();
             }
 
-            Ok(result)
+            Ok(())
         }
 
         HopNode::ComponentReference {
@@ -255,14 +273,15 @@ fn evaluate_node(
             let slot_html = if target_component.has_slot && !children.is_empty() {
                 let mut default_html = String::new();
                 for child in children {
-                    default_html.push_str(&evaluate_node(
+                    evaluate_node(
                         asts,
                         hop_mode,
                         child,
                         slot_content,
                         env,
                         current_module,
-                    )?);
+                        &mut default_html,
+                    )?;
                 }
                 Some(default_html)
             } else {
@@ -280,12 +299,16 @@ fn evaluate_node(
                 arg_values,
                 slot_html.as_deref(),
                 additional_classes,
+                output,
             )
         }
 
         HopNode::SlotDefinition { .. } => {
             // Use the supplied slot content if available, otherwise return empty
-            Ok(slot_content.unwrap_or_default().to_string())
+            if let Some(content) = slot_content {
+                output.push_str(content);
+            }
+            Ok(())
         }
 
         HopNode::HTML {
@@ -297,18 +320,23 @@ fn evaluate_node(
         } => {
             // Skip style nodes
             if tag_name == "style" {
-                return Ok(String::new());
+                return Ok(());
             }
 
             // Skip script nodes without a src attribute
             if tag_name == "script" && !attributes.contains_key("src") {
-                return Ok(String::new());
+                return Ok(());
             }
 
-            let mut result = format!("<{}", tag_name);
+            output.push('<');
+            output.push_str(tag_name);
             for attr in attributes.values() {
                 if !attr.name.starts_with("set-") {
-                    result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
+                    output.push(' ');
+                    output.push_str(&attr.name);
+                    output.push_str("=\"");
+                    output.push_str(&attr.value);
+                    output.push('"');
                 }
             }
 
@@ -316,44 +344,56 @@ fn evaluate_node(
             for set_attr in set_attributes {
                 let attr_name = &set_attr.name[4..]; // Remove "set-" prefix
                 let evaluated = evaluate_expr(&set_attr.expression, env)?;
-                result.push_str(&format!(
-                    " {}=\"{}\"",
-                    attr_name,
-                    escape_html(evaluated.as_str().unwrap())
-                ));
+                output.push(' ');
+                output.push_str(attr_name);
+                output.push_str("=\"");
+                output.push_str(&escape_html(evaluated.as_str().unwrap()));
+                output.push('"');
             }
 
-            result.push('>');
+            output.push('>');
 
             if !is_void_element(tag_name) {
                 for child in children {
-                    result.push_str(&evaluate_node(
+                    evaluate_node(
                         asts,
                         hop_mode,
                         child,
                         slot_content,
                         env,
                         current_module,
-                    )?);
+                        output,
+                    )?;
                 }
-                result.push_str(&format!("</{}>", tag_name));
+                output.push_str("</");
+                output.push_str(tag_name);
+                output.push('>');
             }
 
-            Ok(result)
+            Ok(())
         }
 
-        HopNode::Error { .. } => Ok(String::new()),
+        HopNode::Error { .. } => Ok(()),
 
-        HopNode::Text { value, .. } => Ok(value.clone()),
+        HopNode::Text { value, .. } => {
+            output.push_str(value);
+            Ok(())
+        }
 
         HopNode::TextExpression { expression, .. } => {
             match evaluate_expr(expression, env)?.as_str() {
-                Some(s) => Ok(escape_html(s)),
+                Some(s) => {
+                    output.push_str(&escape_html(s));
+                    Ok(())
+                }
                 None => anyhow::bail!("Could not evaluate expression to string"),
             }
         }
 
-        HopNode::Doctype { .. } => Ok("<!DOCTYPE html>".to_string()),
+        HopNode::Doctype { .. } => {
+            output.push_str("<!DOCTYPE html>");
+            Ok(())
+        }
 
         HopNode::XExec {
             cmd_attr, children, ..
@@ -361,40 +401,54 @@ fn evaluate_node(
             // Collect child content as stdin
             let mut stdin_content = String::new();
             for child in children {
-                stdin_content.push_str(&evaluate_node(
+                evaluate_node(
                     asts,
                     hop_mode,
                     child,
                     slot_content,
                     env,
                     current_module,
-                )?);
+                    &mut stdin_content,
+                )?;
             }
 
             // Execute the command with stdin
             let command = &cmd_attr.value;
-            execute_command(command, &stdin_content)
+            let result = execute_command(command, &stdin_content)?;
+            output.push_str(&result);
+            Ok(())
         }
 
         HopNode::XRaw { trim, children, .. } => {
             // For hop-x-raw nodes, just render the inner content without the tags
-            let mut result = String::new();
-            for child in children {
-                result.push_str(&evaluate_node(
-                    asts,
-                    hop_mode,
-                    child,
-                    slot_content,
-                    env,
-                    current_module,
-                )?);
-            }
-
             if *trim {
-                Ok(trim_raw_string(&result))
+                let mut temp = String::new();
+                for child in children {
+                    evaluate_node(
+                        asts,
+                        hop_mode,
+                        child,
+                        slot_content,
+                        env,
+                        current_module,
+                        &mut temp,
+                    )?;
+                }
+                output.push_str(&trim_raw_string(&temp));
             } else {
-                Ok(result)
+                for child in children {
+                    evaluate_node(
+                        asts,
+                        hop_mode,
+                        child,
+                        slot_content,
+                        env,
+                        current_module,
+                        output,
+                    )?;
+                }
             }
+            Ok(())
         }
     }
 }
@@ -405,7 +459,8 @@ fn evaluate_node_entrypoint(
     node: &HopNode,
     env: &mut Environment<serde_json::Value>,
     current_module: &str,
-) -> Result<String> {
+    output: &mut String,
+) -> Result<()> {
     match node {
         HopNode::HTML {
             tag_name,
@@ -415,10 +470,15 @@ fn evaluate_node_entrypoint(
             ..
         } => {
             // For entrypoints, preserve script and style tags
-            let mut result = format!("<{}", tag_name);
+            output.push('<');
+            output.push_str(tag_name);
             for attr in attributes.values() {
                 if !attr.name.starts_with("set-") {
-                    result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
+                    output.push(' ');
+                    output.push_str(&attr.name);
+                    output.push_str("=\"");
+                    output.push_str(&attr.value);
+                    output.push('"');
                 }
             }
 
@@ -426,33 +486,29 @@ fn evaluate_node_entrypoint(
             for set_attr in set_attributes {
                 let attr_name = &set_attr.name[4..]; // Remove "set-" prefix
                 let evaluated = evaluate_expr(&set_attr.expression, env)?;
-                result.push_str(&format!(
-                    " {}=\"{}\"",
-                    attr_name,
-                    escape_html(evaluated.as_str().unwrap())
-                ));
+                output.push(' ');
+                output.push_str(attr_name);
+                output.push_str("=\"");
+                output.push_str(&escape_html(evaluated.as_str().unwrap()));
+                output.push('"');
             }
 
-            result.push('>');
+            output.push('>');
 
             if !is_void_element(tag_name) {
                 for child in children {
-                    result.push_str(&evaluate_node_entrypoint(
-                        asts,
-                        hop_mode,
-                        child,
-                        env,
-                        current_module,
-                    )?);
+                    evaluate_node_entrypoint(asts, hop_mode, child, env, current_module, output)?;
                 }
-                result.push_str(&format!("</{}>", tag_name));
+                output.push_str("</");
+                output.push_str(tag_name);
+                output.push('>');
             }
 
-            Ok(result)
+            Ok(())
         }
         _ => {
             // For all other node types, use the existing evaluation logic (no slots in entrypoints)
-            evaluate_node(asts, hop_mode, node, None, env, current_module)
+            evaluate_node(asts, hop_mode, node, None, env, current_module, output)
         }
     }
 }
@@ -629,9 +685,18 @@ mod tests {
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect();
 
-        let actual_output =
-            evaluate_component(&asts, HopMode::Dev, "main", "main-comp", args, None, None)
-                .expect("Execution failed");
+        let mut actual_output = String::new();
+        evaluate_component(
+            &asts,
+            HopMode::Dev,
+            "main",
+            "main-comp",
+            args,
+            None,
+            None,
+            &mut actual_output,
+        )
+        .expect("Execution failed");
 
         // Normalize output by removing lines that contain only whitespace
         let normalized_output = actual_output
