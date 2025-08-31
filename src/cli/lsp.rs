@@ -64,27 +64,10 @@ impl HopLanguageServer {
         }
     }
 
-    async fn load_all_modules_from_fs(&self, root: &ProjectRoot) -> std::io::Result<()> {
-        let all_modules = files::load_all_hop_modules(root)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-        for (module_name, content) in all_modules {
-            {
-                let server = self.program.read().await;
-                if server.has_module(&module_name) {
-                    continue;
-                }
-            }
-            let mut server = self.program.write().await;
-            server.update_module(module_name, &content);
-        }
-
-        Ok(())
-    }
-
     async fn publish_diagnostics(&self, root: &ProjectRoot, uri: &Url) {
         let module_name = Self::uri_to_module_name(uri, root);
-        let server = self.program.read().await;
-        let diagnostics = server.get_error_diagnostics(&module_name);
+        let program = self.program.read().await;
+        let diagnostics = program.get_error_diagnostics(&module_name);
 
         let lsp_diagnostics: Vec<tower_lsp::lsp_types::Diagnostic> = diagnostics
             .into_iter()
@@ -138,19 +121,28 @@ impl LanguageServer for HopLanguageServer {
         })
     }
 
-    async fn initialized(&self, _: InitializedParams) {}
+    async fn initialized(&self, _: InitializedParams) {
+        if let Some(root) = self.root.get() {
+            if let Ok(all_modules) = files::load_all_hop_modules(root) {
+                {
+                    let mut server = self.program.write().await;
+                    for (module_name, content) in &all_modules {
+                        server.update_module(module_name.clone(), content);
+                    }
+                }
+                for (module_name, _) in all_modules {
+                    let uri = Self::module_name_to_uri(&module_name, root);
+                    self.publish_diagnostics(root, &uri).await;
+                }
+            }
+        }
+    }
 
     async fn did_save(&self, _: DidSaveTextDocumentParams) {}
 
     async fn did_close(&self, _: DidCloseTextDocumentParams) {}
 
-    async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        let uri = params.text_document.uri;
-        if let Some(root) = self.root.get() {
-            let _ = self.load_all_modules_from_fs(root).await;
-            self.publish_diagnostics(root, &uri).await;
-        }
-    }
+    async fn did_open(&self, _params: DidOpenTextDocumentParams) {}
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
@@ -176,8 +168,8 @@ impl LanguageServer for HopLanguageServer {
         if let Some(root) = self.root.get() {
             let module_name = Self::uri_to_module_name(&uri, root);
 
-            let server = self.program.read().await;
-            Ok(server
+            let program = self.program.read().await;
+            Ok(program
                 .get_hover_info(&module_name, Self::from_lsp_position(position))
                 .map(|h| self.convert_hover(h)))
         } else {
@@ -194,9 +186,9 @@ impl LanguageServer for HopLanguageServer {
         if let Some(root) = self.root.get() {
             let module_name = Self::uri_to_module_name(&uri, root);
 
-            let server = self.program.read().await;
+            let program = self.program.read().await;
 
-            Ok(server
+            Ok(program
                 .get_definition_location(&module_name, Self::from_lsp_position(position))
                 .map(|DefinitionLocation { module, range }| {
                     GotoDefinitionResponse::Scalar(Location {
@@ -218,10 +210,10 @@ impl LanguageServer for HopLanguageServer {
         if let Some(root) = self.root.get() {
             let module_name = Self::uri_to_module_name(&uri, root);
 
-            let server = self.program.read().await;
+            let program = self.program.read().await;
 
             if let Some(renameable_symbol) =
-                server.get_renameable_symbol(&module_name, Self::from_lsp_position(position))
+                program.get_renameable_symbol(&module_name, Self::from_lsp_position(position))
             {
                 Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
                     range: Self::to_lsp_range(renameable_symbol.range),
