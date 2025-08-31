@@ -1,6 +1,6 @@
 use crate::common::Position;
 use crate::filesystem::files::{self as files, ProjectRoot};
-use crate::hop::program::{DefinitionLocation, HoverInfo, Program, RenameLocation};
+use crate::hop::program::{DefinitionLocation, Program, RenameLocation};
 use std::path::Path;
 use tokio::sync::{OnceCell, RwLock};
 use tower_lsp::jsonrpc::Result;
@@ -26,7 +26,6 @@ impl HopLanguageServer {
         Position::new(position.line as usize + 1, position.character as usize + 1)
     }
 
-    // Convert from Rust position (1-based) to LSP position (0-based)
     fn to_lsp_position(position: Position) -> tower_lsp::lsp_types::Position {
         tower_lsp::lsp_types::Position {
             line: (position.line - 1) as u32,
@@ -34,7 +33,6 @@ impl HopLanguageServer {
         }
     }
 
-    // Convert from common Range to LSP Range
     fn to_lsp_range(range: crate::common::Range) -> tower_lsp::lsp_types::Range {
         tower_lsp::lsp_types::Range {
             start: Self::to_lsp_position(range.start),
@@ -54,13 +52,6 @@ impl HopLanguageServer {
         match Url::from_file_path(&p) {
             Ok(url) => url,
             Err(_) => panic!(),
-        }
-    }
-
-    fn convert_hover(&self, hover_info: HoverInfo) -> Hover {
-        Hover {
-            contents: HoverContents::Scalar(MarkedString::String(hover_info.type_str)),
-            range: Some(Self::to_lsp_range(hover_info.range)),
         }
     }
 
@@ -171,7 +162,10 @@ impl LanguageServer for HopLanguageServer {
             let program = self.program.read().await;
             Ok(program
                 .get_hover_info(&module_name, Self::from_lsp_position(position))
-                .map(|h| self.convert_hover(h)))
+                .map(|hover_info| Hover {
+                    contents: HoverContents::Scalar(MarkedString::String(hover_info.type_str)),
+                    range: Some(Self::to_lsp_range(hover_info.range)),
+                }))
         } else {
             Ok(None)
         }
