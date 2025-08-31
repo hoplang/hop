@@ -4,7 +4,7 @@ use crate::hop::ast::{ComponentDefinition, DopExprAttribute, HopAST, HopNode, Im
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> HopAST {
     let trees = build_tree(tokenizer, errors);
@@ -163,14 +163,35 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                             defined_components.insert(name.to_string());
                         }
 
+                        let mut is_entrypoint = false;
+                        let mut as_attr = None;
+                        let mut unhandled_attributes = BTreeMap::new();
+
+                        for (key, attr) in attributes.into_iter() {
+                            match key.as_str() {
+                                "as" => {
+                                    as_attr = Some(attr);
+                                }
+                                "entrypoint" => {
+                                    is_entrypoint = true;
+                                }
+                                _ => {
+                                    // Here we keep the unhandled attributes
+                                    // since they should be rendered in the
+                                    // resulting HTML.
+                                    unhandled_attributes.insert(key, attr);
+                                }
+                            }
+                        }
+
                         components.push(ComponentDefinition {
                             name: name.to_string(),
                             opening_name_range: name_range,
                             closing_name_range: tree.closing_tag_name_range,
                             params,
-                            entrypoint: attributes.contains_key("entrypoint"),
-                            as_attr: attributes.get("as").cloned(),
-                            attributes,
+                            is_entrypoint,
+                            as_attr,
+                            attributes: unhandled_attributes,
                             range: tree.range,
                             children,
                             has_slot,

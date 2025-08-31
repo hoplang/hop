@@ -87,7 +87,7 @@ pub fn evaluate_component(
         }
     }
 
-    if component.entrypoint {
+    if component.is_entrypoint {
         // For entrypoints, don't wrap in a div, just execute children directly
         let mut result = String::new();
         for child in &component.children {
@@ -113,22 +113,16 @@ pub fn evaluate_component(
         let mut added_class = false;
 
         for attr in component.attributes.values() {
-            if attr.name != "name"
-                && attr.name != "params-as"
-                && attr.name != "as"
-                && attr.name != "entrypoint"
-            {
-                if attr.name == "class" {
-                    added_class = true;
-                    match additional_classes {
-                        None => result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value)),
-                        Some(cls) => {
-                            result.push_str(&format!(" {}=\"{} {}\"", attr.name, attr.value, cls))
-                        }
+            if attr.name == "class" {
+                added_class = true;
+                match additional_classes {
+                    None => result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value)),
+                    Some(cls) => {
+                        result.push_str(&format!(" {}=\"{} {}\"", attr.name, attr.value, cls))
                     }
-                } else {
-                    result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
                 }
+            } else {
+                result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
             }
         }
 

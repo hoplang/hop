@@ -153,7 +153,7 @@ pub struct ComponentDefinition {
     pub attributes: BTreeMap<String, Attribute>,
     pub range: Range,
     pub children: Vec<HopNode>,
-    pub entrypoint: bool,
+    pub is_entrypoint: bool,
     pub has_slot: bool,
 }
 
