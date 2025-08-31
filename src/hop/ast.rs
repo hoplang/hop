@@ -61,7 +61,7 @@ impl HopAst {
     }
 
     /// Returns an iterator over all nodes in the AST, iterating depth-first.
-    /// This includes all nodes from both render nodes and component definitions.
+    /// This includes all child nodes from both render nodes and component definitions.
     pub fn iter_all_nodes(&self) -> impl Iterator<Item = &HopNode> {
         self.renders
             .iter()
@@ -167,17 +167,18 @@ impl Ranged for ComponentDefinition {
 pub enum HopNode {
     /// A Text node represents text in the document, e.g. the 'hello world' between
     /// the divs in <div>hello world</div>.
-    Text {
-        value: String,
-        range: Range,
-    },
+    Text { value: String, range: Range },
 
     /// A TextExpression represents an expression that occurs in a text position,
     /// e.g. the '{world}' in <div>hello {world}</div>.
-    TextExpression {
-        expression: DopExpr,
-        range: Range,
-    },
+    TextExpression { expression: DopExpr, range: Range },
+
+    /// A ComponentReference represents a reference to a component.
+    /// E.g. the <other-component/> in:
+    ///
+    /// <my-component>
+    ///   <other-component/>
+    /// </my-component>
     ComponentReference {
         component: String,
         definition_module: Option<String>,
@@ -188,9 +189,14 @@ pub enum HopNode {
         range: Range,
         children: Vec<HopNode>,
     },
-    SlotDefinition {
-        range: Range,
-    },
+
+    /// A SlotDefinition node represents the definition of a slot, e.g.
+    /// the <slot-default/> in
+    ///
+    /// <my-component>
+    ///   <slot-default/>
+    /// </my-component>
+    SlotDefinition { range: Range },
 
     /// An If node contains content that is only evaluated when its condition
     /// expression evaluates to true.
@@ -199,6 +205,9 @@ pub enum HopNode {
         range: Range,
         children: Vec<HopNode>,
     },
+
+    /// A For node contains content that is evaluated once for each item of
+    /// an array.
     For {
         var_name: DopVarName,
         array_expr: DopExpr,
@@ -207,10 +216,7 @@ pub enum HopNode {
     },
 
     /// A Doctype node represents a doctype, e.g. a <!DOCTYPE html>
-    Doctype {
-        value: String,
-        range: Range,
-    },
+    Doctype { value: String, range: Range },
 
     /// An HTML node represents a plain HTML node, e.g. a <div>...</div>.
     Html {
