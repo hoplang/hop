@@ -97,6 +97,12 @@ impl SourceAnnotator {
 
             let range = annotation.range();
 
+            if range.start.line != range.end.line {
+                panic!(
+                    "The SourceAnnotator currently does not support annotations that span multiple lines"
+                )
+            }
+
             if let Some(ref label) = self.label {
                 output.push_str(&format!("{}: {}\n", label, annotation.message()));
             } else {
@@ -141,13 +147,13 @@ impl SourceAnnotator {
         // Show lines before
         for line_num in first_line..start_line {
             if let Some(line) = lines.get(line_num - 1) {
-                self.format_line(output, line_num, line, max_line_num_width, false);
+                self.format_line(output, line_num, line, max_line_num_width);
             }
         }
 
         // Show the annotated line(s)
         if let Some(line) = lines.get(start_line - 1) {
-            self.format_line(output, start_line, line, max_line_num_width, false);
+            self.format_line(output, start_line, line, max_line_num_width);
 
             // Add the underline
             if self.show_line_numbers {
@@ -172,19 +178,12 @@ impl SourceAnnotator {
         let last_line = (start_line + self.lines_after).min(lines.len());
         for line_num in (start_line + 1)..=last_line {
             if let Some(line) = lines.get(line_num - 1) {
-                self.format_line(output, line_num, line, max_line_num_width, false);
+                self.format_line(output, line_num, line, max_line_num_width);
             }
         }
     }
 
-    fn format_line(
-        &self,
-        output: &mut String,
-        line_num: usize,
-        content: &str,
-        width: usize,
-        _highlight: bool,
-    ) {
+    fn format_line(&self, output: &mut String, line_num: usize, content: &str, width: usize) {
         if self.show_line_numbers {
             output.push_str(&format!("{:width$} | ", line_num, width = width));
         }

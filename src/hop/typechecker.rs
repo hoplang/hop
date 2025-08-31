@@ -167,7 +167,6 @@ fn typecheck_node(
         HopNode::If {
             condition,
             children,
-            range,
             ..
         } => {
             let condition_type = match typecheck_expr(condition, env, annotations, errors) {
@@ -180,7 +179,7 @@ fn typecheck_node(
             if !is_subtype(&condition_type, &DopType::Bool) {
                 errors.push(TypeError::expected_boolean_condition(
                     &condition_type.to_string(),
-                    *range,
+                    condition.range(),
                 ));
             }
 
@@ -293,10 +292,13 @@ fn typecheck_node(
 
                 // Validate that content is only passed to components with slot-default
                 if !children.is_empty() && !comp_info.has_slot {
-                    errors.push(TypeError::undefined_slot(component, *range));
+                    errors.push(TypeError::undefined_slot(component, *opening_name_range));
                 }
             } else {
-                errors.push(TypeError::undefined_component(component, *range));
+                errors.push(TypeError::undefined_component(
+                    component,
+                    *opening_name_range,
+                ));
             }
 
             for child in children {
@@ -580,15 +582,26 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 <main-comp>
-                	<h1>Hello, <render-name></render-name>!</h1>
+                	<h1>Hello,
+                        <render-bar>
+                            <div></div>
+                        </render-bar>
+                    </h1>
+                    <render-foo></render-foo>
                 </main-comp>
             "#},
             expect![[r#"
-                error: Component render-name is not defined
-                  --> main.hop (line 2, col 13)
-                1 | <main-comp>
-                2 |     <h1>Hello, <render-name></render-name>!</h1>
-                  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                error: Component render-bar is not defined
+                  --> main.hop (line 3, col 10)
+                2 |     <h1>Hello,
+                3 |         <render-bar>
+                  |          ^^^^^^^^^^
+
+                error: Component render-foo is not defined
+                  --> main.hop (line 7, col 6)
+                6 |     </h1>
+                7 |     <render-foo></render-foo>
+                  |      ^^^^^^^^^^
             "#]],
         );
     }
@@ -605,10 +618,10 @@ mod tests {
             "#},
             expect![[r#"
                 error: Component main-comp is not defined
-                  --> main.hop (line 2, col 13)
+                  --> main.hop (line 2, col 14)
                 1 | <main-comp>
                 2 |     <h1>Hello, <main-comp></main-comp>!</h1>
-                  |                ^^^^^^^^^^^^^^^^^^^^^^^
+                  |                 ^^^^^^^^^
             "#]],
         );
     }
@@ -695,16 +708,16 @@ mod tests {
             "#},
             expect![[r#"
                 error: Component render-name is not defined
-                  --> main.hop (line 2, col 13)
+                  --> main.hop (line 2, col 14)
                 1 | <main-comp>
                 2 |     <h1>Hello, <render-name></render-name>!</h1>
-                  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                  |                 ^^^^^^^^^^^
 
                 error: Component other-comp is not defined
-                  --> main.hop (line 3, col 13)
+                  --> main.hop (line 3, col 14)
                 2 |     <h1>Hello, <render-name></render-name>!</h1>
                 3 |     <h1>Hello, <other-comp></other-comp>!</h1>
-                  |                ^^^^^^^^^^^^^^^^^^^^^^^^^
+                  |                 ^^^^^^^^^^
             "#]],
         );
     }
@@ -752,10 +765,10 @@ mod tests {
             "#},
             expect![[r#"
                 error: Component main-comp does not have a slot-default
-                  --> main.hop (line 6, col 5)
+                  --> main.hop (line 6, col 6)
                 5 | <bar-comp>
                 6 |     <main-comp>
-                  |     ^^^^^^^^^^^
+                  |      ^^^^^^^^^
             "#]],
         );
     }
@@ -780,10 +793,10 @@ mod tests {
             "#},
             expect![[r#"
                 error: Component foo-comp does not have a slot-default
-                  --> main.hop (line 4, col 5)
+                  --> main.hop (line 4, col 6)
                 3 | <bar-comp>
                 4 |     <foo-comp>
-                  |     ^^^^^^^^^^
+                  |      ^^^^^^^^
             "#]],
         );
     }
@@ -2613,10 +2626,10 @@ mod tests {
             "#},
             expect![[r#"
                 error: Expected boolean condition, got string
-                  --> main.hop (line 2, col 5)
+                  --> main.hop (line 2, col 10)
                 1 | <main-component>
                 2 |     <if {'str'}>
-                  |     ^^^^^^^^^^^^
+                  |          ^^^^^
             "#]],
         );
     }
