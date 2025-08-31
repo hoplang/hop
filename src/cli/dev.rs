@@ -1,11 +1,15 @@
 use crate::filesystem::files::ProjectRoot;
 use crate::hop::evaluator::HopMode;
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, OnceLock, RwLock};
 
 use crate::filesystem::files;
 use crate::hop::program::Program;
-use axum::extract::State;
+use axum::body::Body;
+use axum::extract::{Request, State};
+use axum::http::StatusCode;
+use axum::response::{Html, Response};
 
 #[derive(Clone)]
 struct AppState {
@@ -21,7 +25,7 @@ static CACHED_UI_SERVER: OnceLock<Program> = OnceLock::new();
 
 fn get_ui_program() -> &'static Program {
     CACHED_UI_SERVER.get_or_init(|| {
-        let mut modules = std::collections::HashMap::new();
+        let mut modules = HashMap::new();
         modules.insert("hop/error_pages".to_string(), ERROR_TEMPLATES.to_string());
         modules.insert("hop/ui".to_string(), UI_TEMPLATES.to_string());
         modules.insert("hop/icons".to_string(), ICONS_TEMPLATES.to_string());
@@ -72,19 +76,15 @@ fn inject_hot_reload_script(html: &str) -> String {
     }
 }
 
-async fn handle_idiomorph() -> axum::response::Response<axum::body::Body> {
-    use axum::body::Body;
-
-    axum::response::Response::builder()
+async fn handle_idiomorph() -> Response<Body> {
+    Response::builder()
         .header("Content-Type", "application/javascript")
         .body(Body::from(include_str!("_hop/idiomorph.js")))
         .unwrap()
 }
 
-async fn handle_hmr() -> axum::response::Response<axum::body::Body> {
-    use axum::body::Body;
-
-    axum::response::Response::builder()
+async fn handle_hmr() -> Response<Body> {
+    Response::builder()
         .header("Content-Type", "application/javascript")
         .body(Body::from(include_str!("_hop/hmr.js")))
         .unwrap()
@@ -97,21 +97,16 @@ async fn handle_event_source(
 > {
     use axum::response::sse::{Event, Sse};
     use tokio_stream::StreamExt;
-    use tokio_stream::wrappers::BroadcastStream;
 
     Sse::new(
-        BroadcastStream::new(state.reload_channel.subscribe())
+        tokio_stream::wrappers::BroadcastStream::new(state.reload_channel.subscribe())
             .map(|_| Ok::<Event, axum::Error>(Event::default().data("reload"))),
     )
 }
 
-async fn handle_script(
-    State(state): State<AppState>,
-) -> axum::response::Response<axum::body::Body> {
-    use axum::body::Body;
-
+async fn handle_script(State(state): State<AppState>) -> Response<Body> {
     let program = state.program.read().unwrap();
-    axum::response::Response::builder()
+    Response::builder()
         .header("Content-Type", "application/javascript")
         .body(Body::from(program.get_scripts().to_string()))
         .unwrap()
@@ -119,11 +114,8 @@ async fn handle_script(
 
 async fn handle_request(
     State(state): State<AppState>,
-    req: axum::extract::Request,
-) -> Result<axum::response::Html<String>, (axum::http::StatusCode, axum::response::Html<String>)> {
-    use axum::http::StatusCode;
-    use axum::response::Html;
-
+    req: Request,
+) -> Result<Html<String>, (StatusCode, Html<String>)> {
     // Get the program from shared state
     let program = state.program.read().unwrap();
 
@@ -170,7 +162,7 @@ async fn handle_request(
 fn create_error_page(error: &anyhow::Error) -> String {
     let program = get_ui_program();
 
-    let mut args = std::collections::HashMap::new();
+    let mut args = HashMap::new();
     args.insert(
         "error".to_string(),
         serde_json::json!({
@@ -178,7 +170,13 @@ fn create_error_page(error: &anyhow::Error) -> String {
         }),
     );
     let mut html = String::new();
-    match program.evaluate_component("hop/error_pages", "generic-error", args, HopMode::Dev, &mut html) {
+    match program.evaluate_component(
+        "hop/error_pages",
+        "generic-error",
+        args,
+        HopMode::Dev,
+        &mut html,
+    ) {
         Ok(()) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
     }
@@ -187,14 +185,20 @@ fn create_error_page(error: &anyhow::Error) -> String {
 fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
     let program = get_ui_program();
 
-    let mut args = std::collections::HashMap::new();
+    let mut args = HashMap::new();
     args.insert("path".to_string(), serde_json::json!(path));
     args.insert(
         "available_routes".to_string(),
         serde_json::json!(available_routes),
     );
     let mut html = String::new();
-    match program.evaluate_component("hop/error_pages", "not-found-error", args, HopMode::Dev, &mut html) {
+    match program.evaluate_component(
+        "hop/error_pages",
+        "not-found-error",
+        args,
+        HopMode::Dev,
+        &mut html,
+    ) {
         Ok(()) => inject_hot_reload_script(&html),
         Err(e) => format!("Error rendering template: {}", e),
     }
@@ -204,13 +208,12 @@ fn create_file_watcher(
     root: &ProjectRoot,
     state: AppState,
 ) -> anyhow::Result<notify::RecommendedWatcher> {
-    use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
-
+    use notify::Watcher;
     let local_root = root.clone();
 
     // TODO: We should ignore folders such as .git, .direnv
 
-    let mut watcher = RecommendedWatcher::new(
+    let mut watcher = notify::RecommendedWatcher::new(
         move |res: Result<notify::Event, notify::Error>| {
             if let Ok(event) = res {
                 if event.kind.is_modify() || event.kind.is_create() || event.kind.is_remove() {
@@ -234,10 +237,10 @@ fn create_file_watcher(
                 }
             }
         },
-        Config::default(),
+        notify::Config::default(),
     )?;
 
-    watcher.watch(root.get_path(), RecursiveMode::Recursive)?;
+    watcher.watch(root.get_path(), notify::RecursiveMode::Recursive)?;
 
     Ok(watcher)
 }
