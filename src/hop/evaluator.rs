@@ -112,7 +112,7 @@ pub fn evaluate_component(
 
         let mut added_class = false;
 
-        for attr in &component.attributes {
+        for attr in component.attributes.values() {
             if attr.name != "name"
                 && attr.name != "params-as"
                 && attr.name != "as"
@@ -280,8 +280,7 @@ fn evaluate_node(
 
             // Extract class attribute from component reference
             let additional_classes = attributes
-                .iter()
-                .find(|attr| attr.name == "class")
+                .get("class")
                 .map(|attr| attr.value.as_str());
 
             evaluate_component(
@@ -313,12 +312,12 @@ fn evaluate_node(
             }
 
             // Skip script nodes without a src attribute
-            if tag_name == "script" && !attributes.iter().any(|e| e.name == "src") {
+            if tag_name == "script" && !attributes.contains_key("src") {
                 return Ok(String::new());
             }
 
             let mut result = format!("<{}", tag_name);
-            for attr in attributes {
+            for attr in attributes.values() {
                 if !attr.name.starts_with("set-") {
                     result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
                 }
@@ -428,7 +427,7 @@ fn evaluate_node_entrypoint(
         } => {
             // For entrypoints, preserve script and style tags
             let mut result = format!("<{}", tag_name);
-            for attr in attributes {
+            for attr in attributes.values() {
                 if !attr.name.starts_with("set-") {
                     result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value));
                 }

@@ -357,7 +357,7 @@ fn construct_node(
                         }
                     }
                     "hop-x-raw" => {
-                        let has_trim = attributes.iter().any(|attr| attr.name == "trim");
+                        let has_trim = attributes.contains_key("trim");
                         HopNode::XRaw {
                             trim: has_trim,
                             range: tree.range(),
@@ -428,7 +428,7 @@ fn construct_node(
                 }
                 _ => {
                     let mut set_attributes = Vec::new();
-                    for attr in attributes {
+                    for attr in attributes.values() {
                         if attr.name.starts_with("set-") {
                             if let Some(expr_attr) = {
                                 let mut tokenizer =

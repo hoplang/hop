@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::common::{ParseError, Range, is_void_element};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
@@ -61,7 +63,7 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
     let root_token = Token::OpeningTag {
         self_closing: false,
         value: "root".to_string(),
-        attributes: Vec::new(),
+        attributes: BTreeMap::new(),
         name_range: Range::default(),
         expression: None,
         range: Range::default(),
@@ -164,7 +166,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:5,
                             value: "div",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:6,
                         },
@@ -201,7 +203,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:5,
                             value: "div",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:6,
                         },
@@ -218,7 +220,7 @@ mod tests {
                                     self_closing: false,
                                     name_range: 1:7-1:9,
                                     value: "br",
-                                    attributes: [],
+                                    attributes: {},
                                     expression: None,
                                     range: 1:6-1:10,
                                 },
@@ -230,7 +232,7 @@ mod tests {
                                     self_closing: true,
                                     name_range: 1:11-1:13,
                                     value: "hr",
-                                    attributes: [],
+                                    attributes: {},
                                     expression: None,
                                     range: 1:10-1:15,
                                 },
@@ -254,7 +256,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:5,
                             value: "div",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:6,
                         },
@@ -271,7 +273,7 @@ mod tests {
                                     self_closing: false,
                                     name_range: 1:7-1:8,
                                     value: "p",
-                                    attributes: [],
+                                    attributes: {},
                                     expression: None,
                                     range: 1:6-1:9,
                                 },
@@ -298,7 +300,7 @@ mod tests {
                                     self_closing: false,
                                     name_range: 1:19-1:23,
                                     value: "span",
-                                    attributes: [],
+                                    attributes: {},
                                     expression: None,
                                     range: 1:18-1:24,
                                 },

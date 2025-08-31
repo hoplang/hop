@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::common::{Position, Range, Ranged};
 use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
 
@@ -148,7 +150,7 @@ pub struct ComponentDefinition {
     pub closing_name_range: Option<Range>,
     pub params: Option<(Vec<DopParameter>, Range)>,
     pub as_attr: Option<Attribute>,
-    pub attributes: Vec<Attribute>,
+    pub attributes: BTreeMap<String, Attribute>,
     pub range: Range,
     pub children: Vec<HopNode>,
     pub entrypoint: bool,
@@ -182,7 +184,7 @@ pub enum HopNode {
         opening_name_range: Range,
         closing_name_range: Option<Range>,
         args: Option<(Vec<DopArgument>, Range)>,
-        attributes: Vec<Attribute>,
+        attributes: BTreeMap<String, Attribute>,
         range: Range,
         children: Vec<HopNode>,
     },
@@ -215,7 +217,7 @@ pub enum HopNode {
         tag_name: String,
         opening_name_range: Range,
         closing_name_range: Option<Range>,
-        attributes: Vec<Attribute>,
+        attributes: BTreeMap<String, Attribute>,
         range: Range,
         children: Vec<HopNode>,
         set_attributes: Vec<DopExprAttribute>,
@@ -438,7 +440,7 @@ mod tests {
                         closing_name_range: Some(
                             2:19-2:22,
                         ),
-                        attributes: [],
+                        attributes: {},
                         range: 2:5-2:23,
                         children: [
                             Text {
@@ -472,7 +474,7 @@ mod tests {
                             2:23-2:30,
                         ),
                         args: None,
-                        attributes: [],
+                        attributes: {},
                         range: 2:5-2:31,
                         children: [
                             Text {
@@ -514,7 +516,7 @@ mod tests {
                                 tag_name: "div",
                                 opening_name_range: 3:10-3:13,
                                 closing_name_range: None,
-                                attributes: [],
+                                attributes: {},
                                 range: 3:9-3:15,
                                 children: [],
                                 set_attributes: [],
@@ -651,7 +653,7 @@ mod tests {
                         tag_name: "br",
                         opening_name_range: 2:19-2:21,
                         closing_name_range: None,
-                        attributes: [],
+                        attributes: {},
                         range: 2:18-2:22,
                         children: [],
                         set_attributes: [],
@@ -678,7 +680,7 @@ mod tests {
                         closing_name_range: Some(
                             2:23-2:27,
                         ),
-                        attributes: [],
+                        attributes: {},
                         range: 2:10-2:28,
                         children: [
                             Text {
@@ -710,7 +712,7 @@ mod tests {
                         closing_name_range: Some(
                             2:44-2:50,
                         ),
-                        attributes: [],
+                        attributes: {},
                         range: 2:29-2:51,
                         children: [
                             Text {
@@ -816,7 +818,7 @@ mod tests {
                         closing_name_range: Some(
                             9:19-9:23,
                         ),
-                        attributes: [],
+                        attributes: {},
                         range: 6:17-9:24,
                         children: [
                             Text {
@@ -829,7 +831,7 @@ mod tests {
                                 closing_name_range: Some(
                                     7:28-7:31,
                                 ),
-                                attributes: [],
+                                attributes: {},
                                 range: 7:21-7:32,
                                 children: [],
                                 set_attributes: [],
@@ -844,7 +846,7 @@ mod tests {
                                 closing_name_range: Some(
                                     8:36-8:38,
                                 ),
-                                attributes: [],
+                                attributes: {},
                                 range: 8:21-8:39,
                                 children: [
                                     Text {
@@ -883,7 +885,7 @@ mod tests {
                         closing_name_range: Some(
                             2:69-2:75,
                         ),
-                        attributes: [],
+                        attributes: {},
                         range: 2:47-2:76,
                         children: [
                             TextExpression {
@@ -951,7 +953,7 @@ mod tests {
                         closing_name_range: Some(
                             6:35-6:39,
                         ),
-                        attributes: [],
+                        attributes: {},
                         range: 6:21-6:40,
                         children: [
                             TextExpression {
@@ -987,26 +989,26 @@ mod tests {
                         tag_name: "input",
                         opening_name_range: 3:10-3:15,
                         closing_name_range: None,
-                        attributes: [
-                            Attribute {
-                                name: "type",
-                                value: "text",
-                                range: 3:16-3:27,
-                                value_range: 3:22-3:26,
-                            },
-                            Attribute {
+                        attributes: {
+                            "placeholder": Attribute {
                                 name: "placeholder",
                                 value: "Enter name",
                                 range: 3:28-3:52,
                                 value_range: 3:41-3:51,
                             },
-                            Attribute {
+                            "required": Attribute {
                                 name: "required",
                                 value: "",
                                 range: 3:53-3:61,
                                 value_range: 1:1-1:1,
                             },
-                        ],
+                            "type": Attribute {
+                                name: "type",
+                                value: "text",
+                                range: 3:16-3:27,
+                                value_range: 3:22-3:26,
+                            },
+                        },
                         range: 3:9-3:64,
                         children: [],
                         set_attributes: [],
@@ -1033,7 +1035,7 @@ mod tests {
                         closing_name_range: Some(
                             2:35-2:38,
                         ),
-                        attributes: [],
+                        attributes: {},
                         range: 2:22-2:39,
                         children: [
                             Text {
@@ -1060,7 +1062,7 @@ mod tests {
             tag_name: "span".to_string(),
             opening_name_range: Range::default(),
             closing_name_range: Some(Range::default()),
-            attributes: vec![],
+            attributes: BTreeMap::new(),
             range: Range::default(),
             children: vec![text_node],
             set_attributes: vec![],
@@ -1070,7 +1072,7 @@ mod tests {
             tag_name: "p".to_string(),
             opening_name_range: Range::default(),
             closing_name_range: Some(Range::default()),
-            attributes: vec![],
+            attributes: BTreeMap::new(),
             range: Range::default(),
             children: vec![],
             set_attributes: vec![],
@@ -1080,7 +1082,7 @@ mod tests {
             tag_name: "div".to_string(),
             opening_name_range: Range::default(),
             closing_name_range: Some(Range::default()),
-            attributes: vec![],
+            attributes: BTreeMap::new(),
             range: Range::default(),
             children: vec![p_node, span_node],
             set_attributes: vec![],

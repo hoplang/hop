@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::mem;
 
 use crate::common::{ParseError, Position, Range};
@@ -23,7 +24,7 @@ pub enum Token {
         self_closing: bool,
         name_range: Range,
         value: String,
-        attributes: Vec<Attribute>,
+        attributes: BTreeMap<String, Attribute>,
         expression: Option<(String, Range)>,
         range: Range,
     },
@@ -41,9 +42,7 @@ pub enum Token {
 impl Token {
     pub fn find_attribute(&self, value: &str) -> Option<Attribute> {
         match self {
-            Token::OpeningTag { attributes, .. } => {
-                attributes.iter().find(|attr| attr.name == value).cloned()
-            }
+            Token::OpeningTag { attributes, .. } => attributes.get(value).cloned(),
             _ => None,
         }
     }
@@ -177,7 +176,7 @@ impl Tokenizer {
     fn advance(&mut self) -> Result<Token, ParseError> {
         let mut token_value = String::new();
         let token_start = self.cursor.get_position();
-        let mut token_attributes = Vec::new();
+        let mut token_attributes = BTreeMap::new();
         let mut token_expression = None;
         let mut tag_name_start = self.cursor.get_position();
         let mut tag_name_end = self.cursor.get_position();
@@ -426,29 +425,57 @@ impl Tokenizer {
                         self.state = TokenizerState::BeforeAttrValue;
                     } else if ch.is_whitespace() {
                         // Push current attribute
-                        token_attributes.push(Attribute {
-                            name: mem::take(&mut attribute_name),
-                            value: mem::take(&mut attribute_value),
-                            range: Range {
-                                start: attribute_start,
-                                end: self.cursor.get_position(),
+                        let attr_name = mem::take(&mut attribute_name);
+                        if token_attributes.contains_key(&attr_name) {
+                            self.state = TokenizerState::Text;
+                            return Err(ParseError::duplicate_attribute(
+                                &attr_name,
+                                Range {
+                                    start: attribute_start,
+                                    end: self.cursor.get_position(),
+                                },
+                            ));
+                        }
+                        token_attributes.insert(
+                            attr_name.clone(),
+                            Attribute {
+                                name: attr_name,
+                                value: mem::take(&mut attribute_value),
+                                range: Range {
+                                    start: attribute_start,
+                                    end: self.cursor.get_position(),
+                                },
+                                value_range: Range::default(),
                             },
-                            value_range: Range::default(),
-                        });
+                        );
                         attribute_start = self.cursor.get_position();
                         self.cursor.advance();
                         self.state = TokenizerState::BeforeAttrName;
                     } else if ch == '>' {
                         // Push current attribute
-                        token_attributes.push(Attribute {
-                            name: mem::take(&mut attribute_name),
-                            value: mem::take(&mut attribute_value),
-                            range: Range {
-                                start: attribute_start,
-                                end: self.cursor.get_position(),
+                        let attr_name = mem::take(&mut attribute_name);
+                        if token_attributes.contains_key(&attr_name) {
+                            self.state = TokenizerState::Text;
+                            return Err(ParseError::duplicate_attribute(
+                                &attr_name,
+                                Range {
+                                    start: attribute_start,
+                                    end: self.cursor.get_position(),
+                                },
+                            ));
+                        }
+                        token_attributes.insert(
+                            attr_name.clone(),
+                            Attribute {
+                                name: attr_name,
+                                value: mem::take(&mut attribute_value),
+                                range: Range {
+                                    start: attribute_start,
+                                    end: self.cursor.get_position(),
+                                },
+                                value_range: Range::default(),
                             },
-                            value_range: Range::default(),
-                        });
+                        );
                         if is_tag_name_with_raw_content(&token_value) {
                             self.stored_tag_name = token_value.clone();
                             self.cursor.advance();
@@ -475,15 +502,29 @@ impl Tokenizer {
                         }
                     } else if ch == '/' {
                         // Push current attribute
-                        token_attributes.push(Attribute {
-                            name: mem::take(&mut attribute_name),
-                            value: mem::take(&mut attribute_value),
-                            range: Range {
-                                start: attribute_start,
-                                end: self.cursor.get_position(),
+                        let attr_name = mem::take(&mut attribute_name);
+                        if token_attributes.contains_key(&attr_name) {
+                            self.state = TokenizerState::Text;
+                            return Err(ParseError::duplicate_attribute(
+                                &attr_name,
+                                Range {
+                                    start: attribute_start,
+                                    end: self.cursor.get_position(),
+                                },
+                            ));
+                        }
+                        token_attributes.insert(
+                            attr_name.clone(),
+                            Attribute {
+                                name: attr_name,
+                                value: mem::take(&mut attribute_value),
+                                range: Range {
+                                    start: attribute_start,
+                                    end: self.cursor.get_position(),
+                                },
+                                value_range: Range::default(),
                             },
-                            value_range: Range::default(),
-                        });
+                        );
                         self.cursor.advance();
                         self.state = TokenizerState::SelfClosing;
                     } else {
@@ -522,15 +563,29 @@ impl Tokenizer {
                         let attribute_value_end = self.cursor.get_position();
                         self.cursor.advance();
                         // Push current attribute
-                        token_attributes.push(Attribute {
-                            name: mem::take(&mut attribute_name),
-                            value: mem::take(&mut attribute_value),
-                            range: Range {
-                                start: attribute_start,
-                                end: self.cursor.get_position(),
+                        let attr_name = mem::take(&mut attribute_name);
+                        if token_attributes.contains_key(&attr_name) {
+                            self.state = TokenizerState::Text;
+                            return Err(ParseError::duplicate_attribute(
+                                &attr_name,
+                                Range {
+                                    start: attribute_start,
+                                    end: self.cursor.get_position(),
+                                },
+                            ));
+                        }
+                        token_attributes.insert(
+                            attr_name.clone(),
+                            Attribute {
+                                name: attr_name,
+                                value: mem::take(&mut attribute_value),
+                                range: Range {
+                                    start: attribute_start,
+                                    end: self.cursor.get_position(),
+                                },
+                                value_range: Range::new(attribute_value_start, attribute_value_end),
                             },
-                            value_range: Range::new(attribute_value_start, attribute_value_end),
-                        });
+                        );
                         attribute_start = self.cursor.get_position();
                         self.state = TokenizerState::BeforeAttrName;
                     } else {
@@ -545,15 +600,29 @@ impl Tokenizer {
                         let attribute_value_end = self.cursor.get_position();
                         self.cursor.advance();
                         // Push current attribute
-                        token_attributes.push(Attribute {
-                            name: mem::take(&mut attribute_name),
-                            value: mem::take(&mut attribute_value),
-                            range: Range {
-                                start: attribute_start,
-                                end: self.cursor.get_position(),
+                        let attr_name = mem::take(&mut attribute_name);
+                        if token_attributes.contains_key(&attr_name) {
+                            self.state = TokenizerState::Text;
+                            return Err(ParseError::duplicate_attribute(
+                                &attr_name,
+                                Range {
+                                    start: attribute_start,
+                                    end: self.cursor.get_position(),
+                                },
+                            ));
+                        }
+                        token_attributes.insert(
+                            attr_name.clone(),
+                            Attribute {
+                                name: attr_name,
+                                value: mem::take(&mut attribute_value),
+                                range: Range {
+                                    start: attribute_start,
+                                    end: self.cursor.get_position(),
+                                },
+                                value_range: Range::new(attribute_value_start, attribute_value_end),
                             },
-                            value_range: Range::new(attribute_value_start, attribute_value_end),
-                        });
+                        );
                         attribute_start = self.cursor.get_position();
                         self.state = TokenizerState::BeforeAttrName;
                     } else {
@@ -842,26 +911,26 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:7,
                             value: "input",
-                            attributes: [
-                                Attribute {
-                                    name: "type",
-                                    value: "",
-                                    range: 1:8-1:15,
-                                    value_range: 1:14-1:14,
-                                },
-                                Attribute {
-                                    name: "value",
-                                    value: "",
-                                    range: 1:16-1:24,
-                                    value_range: 1:23-1:23,
-                                },
-                                Attribute {
+                            attributes: {
+                                "disabled": Attribute {
                                     name: "disabled",
                                     value: "",
                                     range: 1:25-1:36,
                                     value_range: 1:35-1:35,
                                 },
-                            ],
+                                "type": Attribute {
+                                    name: "type",
+                                    value: "",
+                                    range: 1:8-1:15,
+                                    value_range: 1:14-1:14,
+                                },
+                                "value": Attribute {
+                                    name: "value",
+                                    value: "",
+                                    range: 1:16-1:24,
+                                    value_range: 1:23-1:23,
+                                },
+                            },
                             expression: None,
                             range: 1:1-1:37,
                         },
@@ -881,20 +950,20 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:4,
                             value: "h1",
-                            attributes: [
-                                Attribute {
+                            attributes: {
+                                "foo": Attribute {
                                     name: "foo",
                                     value: "bar",
                                     range: 1:5-1:14,
                                     value_range: 1:10-1:13,
                                 },
-                                Attribute {
+                                "x": Attribute {
                                     name: "x",
                                     value: "y",
                                     range: 1:14-1:19,
                                     value_range: 1:17-1:18,
                                 },
-                            ],
+                            },
                             expression: None,
                             range: 1:1-1:20,
                         },
@@ -914,20 +983,20 @@ mod tests {
                             self_closing: true,
                             name_range: 1:2-1:4,
                             value: "h1",
-                            attributes: [
-                                Attribute {
-                                    name: "foo",
-                                    value: "",
-                                    range: 1:5-1:8,
-                                    value_range: 1:1-1:1,
-                                },
-                                Attribute {
+                            attributes: {
+                                "bar": Attribute {
                                     name: "bar",
                                     value: "",
                                     range: 1:9-1:12,
                                     value_range: 1:1-1:1,
                                 },
-                            ],
+                                "foo": Attribute {
+                                    name: "foo",
+                                    value: "",
+                                    range: 1:5-1:8,
+                                    value_range: 1:1-1:1,
+                                },
+                            },
                             expression: None,
                             range: 1:1-1:14,
                         },
@@ -947,14 +1016,14 @@ mod tests {
                             self_closing: true,
                             name_range: 1:2-1:4,
                             value: "h1",
-                            attributes: [
-                                Attribute {
+                            attributes: {
+                                "foo": Attribute {
                                     name: "foo",
                                     value: "",
                                     range: 1:5-1:8,
                                     value_range: 1:1-1:1,
                                 },
-                            ],
+                            },
                             expression: None,
                             range: 1:1-1:10,
                         },
@@ -977,7 +1046,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:3,
                             value: "p",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:4,
                         },
@@ -1025,7 +1094,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:10,
                             value: "textarea",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:11,
                         },
@@ -1041,7 +1110,7 @@ mod tests {
                             self_closing: false,
                             name_range: 2:3-2:6,
                             value: "div",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 2:2-2:7,
                         },
@@ -1087,7 +1156,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:7,
                             value: "title",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:8,
                         },
@@ -1097,7 +1166,7 @@ mod tests {
                             self_closing: true,
                             name_range: 1:9-1:19,
                             value: "slot-title",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:8-1:21,
                         },
@@ -1124,7 +1193,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:3,
                             value: "p",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:4,
                         },
@@ -1177,7 +1246,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:3,
                             value: "p",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:4,
                         },
@@ -1262,7 +1331,7 @@ mod tests {
                             self_closing: true,
                             name_range: 1:2-1:4,
                             value: "h1",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:6,
                         },
@@ -1282,7 +1351,7 @@ mod tests {
                             self_closing: true,
                             name_range: 1:2-1:4,
                             value: "h1",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:7,
                         },
@@ -1307,7 +1376,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:7,
                             value: "style",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:8,
                         },
@@ -1353,7 +1422,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:4,
                             value: "h1",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:5,
                         },
@@ -1376,7 +1445,7 @@ mod tests {
                             self_closing: false,
                             name_range: 2:2-2:4,
                             value: "h2",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 2:1-2:5,
                         },
@@ -1399,7 +1468,7 @@ mod tests {
                             self_closing: false,
                             name_range: 3:2-3:4,
                             value: "h3",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 3:1-3:5,
                         },
@@ -1422,7 +1491,7 @@ mod tests {
                             self_closing: false,
                             name_range: 4:2-4:4,
                             value: "h4",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 4:1-4:5,
                         },
@@ -1445,7 +1514,7 @@ mod tests {
                             self_closing: false,
                             name_range: 5:2-5:4,
                             value: "h5",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 5:1-5:5,
                         },
@@ -1468,7 +1537,7 @@ mod tests {
                             self_closing: false,
                             name_range: 6:2-6:4,
                             value: "h6",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 6:1-6:5,
                         },
@@ -1507,26 +1576,26 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:5,
                             value: "div",
-                            attributes: [
-                                Attribute {
+                            attributes: {
+                                "class": Attribute {
                                     name: "class",
                                     value: "multiline",
                                     range: 2:3-2:20,
                                     value_range: 2:10-2:19,
                                 },
-                                Attribute {
-                                    name: "id",
-                                    value: "test",
-                                    range: 3:3-3:12,
-                                    value_range: 3:7-3:11,
-                                },
-                                Attribute {
+                                "data-value": Attribute {
                                     name: "data-value",
                                     value: "something",
                                     range: 4:3-4:25,
                                     value_range: 4:15-4:24,
                                 },
-                            ],
+                                "id": Attribute {
+                                    name: "id",
+                                    value: "test",
+                                    range: 3:3-3:12,
+                                    value_range: 3:7-3:11,
+                                },
+                            },
                             expression: None,
                             range: 1:1-4:26,
                         },
@@ -1570,7 +1639,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:8,
                             value: "script",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:9,
                         },
@@ -1609,7 +1678,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:11,
                             value: "hop-x-raw",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:12,
                         },
@@ -1646,7 +1715,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:11,
                             value: "hop-x-raw",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:12,
                         },
@@ -1685,7 +1754,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:3,
                             value: "p",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:4,
                         },
@@ -1702,7 +1771,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:9-1:10,
                             value: "p",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:8-1:11,
                         },
@@ -1735,7 +1804,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:11,
                             value: "main-comp",
-                            attributes: [],
+                            attributes: {},
                             expression: Some(
                                 (
                                     "foo",
@@ -1756,7 +1825,7 @@ mod tests {
                             self_closing: false,
                             name_range: 2:3-2:9,
                             value: "script",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 2:2-2:10,
                         },
@@ -1831,7 +1900,7 @@ mod tests {
                             self_closing: false,
                             name_range: 2:2-2:6,
                             value: "html",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 2:1-2:7,
                         },
@@ -1847,7 +1916,7 @@ mod tests {
                             self_closing: false,
                             name_range: 3:2-3:6,
                             value: "head",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 3:1-3:7,
                         },
@@ -1863,7 +1932,7 @@ mod tests {
                             self_closing: false,
                             name_range: 4:4-4:9,
                             value: "title",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 4:3-4:10,
                         },
@@ -1905,7 +1974,7 @@ mod tests {
                             self_closing: false,
                             name_range: 6:2-6:6,
                             value: "body",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 6:1-6:7,
                         },
@@ -1921,14 +1990,14 @@ mod tests {
                             self_closing: false,
                             name_range: 7:4-7:7,
                             value: "div",
-                            attributes: [
-                                Attribute {
+                            attributes: {
+                                "class": Attribute {
                                     name: "class",
                                     value: "container",
                                     range: 7:8-7:25,
                                     value_range: 7:15-7:24,
                                 },
-                            ],
+                            },
                             expression: None,
                             range: 7:3-7:26,
                         },
@@ -2000,62 +2069,62 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:5,
                             value: "svg",
-                            attributes: [
-                                Attribute {
-                                    name: "xmlns",
-                                    value: "http://www.w3.org/2000/svg",
-                                    range: 1:6-1:40,
-                                    value_range: 1:13-1:39,
-                                },
-                                Attribute {
-                                    name: "width",
-                                    value: "24",
-                                    range: 1:41-1:51,
-                                    value_range: 1:48-1:50,
-                                },
-                                Attribute {
-                                    name: "height",
-                                    value: "24",
-                                    range: 1:52-1:63,
-                                    value_range: 1:60-1:62,
-                                },
-                                Attribute {
-                                    name: "viewBox",
-                                    value: "0 0 24 24",
-                                    range: 1:64-1:83,
-                                    value_range: 1:73-1:82,
-                                },
-                                Attribute {
+                            attributes: {
+                                "fill": Attribute {
                                     name: "fill",
                                     value: "none",
                                     range: 1:84-1:95,
                                     value_range: 1:90-1:94,
                                 },
-                                Attribute {
+                                "height": Attribute {
+                                    name: "height",
+                                    value: "24",
+                                    range: 1:52-1:63,
+                                    value_range: 1:60-1:62,
+                                },
+                                "stroke": Attribute {
                                     name: "stroke",
                                     value: "currentColor",
                                     range: 1:96-1:117,
                                     value_range: 1:104-1:116,
                                 },
-                                Attribute {
-                                    name: "stroke-width",
-                                    value: "2",
-                                    range: 1:118-1:134,
-                                    value_range: 1:132-1:133,
-                                },
-                                Attribute {
+                                "stroke-linecap": Attribute {
                                     name: "stroke-linecap",
                                     value: "round",
                                     range: 1:135-1:157,
                                     value_range: 1:151-1:156,
                                 },
-                                Attribute {
+                                "stroke-linejoin": Attribute {
                                     name: "stroke-linejoin",
                                     value: "round",
                                     range: 1:158-1:181,
                                     value_range: 1:175-1:180,
                                 },
-                            ],
+                                "stroke-width": Attribute {
+                                    name: "stroke-width",
+                                    value: "2",
+                                    range: 1:118-1:134,
+                                    value_range: 1:132-1:133,
+                                },
+                                "viewBox": Attribute {
+                                    name: "viewBox",
+                                    value: "0 0 24 24",
+                                    range: 1:64-1:83,
+                                    value_range: 1:73-1:82,
+                                },
+                                "width": Attribute {
+                                    name: "width",
+                                    value: "24",
+                                    range: 1:41-1:51,
+                                    value_range: 1:48-1:50,
+                                },
+                                "xmlns": Attribute {
+                                    name: "xmlns",
+                                    value: "http://www.w3.org/2000/svg",
+                                    range: 1:6-1:40,
+                                    value_range: 1:13-1:39,
+                                },
+                            },
                             expression: None,
                             range: 1:1-1:182,
                         },
@@ -2071,32 +2140,32 @@ mod tests {
                             self_closing: false,
                             name_range: 2:2-2:6,
                             value: "line",
-                            attributes: [
-                                Attribute {
+                            attributes: {
+                                "x1": Attribute {
                                     name: "x1",
                                     value: "16.5",
                                     range: 2:7-2:16,
                                     value_range: 2:11-2:15,
                                 },
-                                Attribute {
-                                    name: "y1",
-                                    value: "9.4",
-                                    range: 2:17-2:25,
-                                    value_range: 2:21-2:24,
-                                },
-                                Attribute {
+                                "x2": Attribute {
                                     name: "x2",
                                     value: "7.5",
                                     range: 2:26-2:34,
                                     value_range: 2:30-2:33,
                                 },
-                                Attribute {
+                                "y1": Attribute {
+                                    name: "y1",
+                                    value: "9.4",
+                                    range: 2:17-2:25,
+                                    value_range: 2:21-2:24,
+                                },
+                                "y2": Attribute {
                                     name: "y2",
                                     value: "4.21",
                                     range: 2:35-2:44,
                                     value_range: 2:39-2:43,
                                 },
-                            ],
+                            },
                             expression: None,
                             range: 2:1-2:45,
                         },
@@ -2119,14 +2188,14 @@ mod tests {
                             self_closing: false,
                             name_range: 3:2-3:6,
                             value: "path",
-                            attributes: [
-                                Attribute {
+                            attributes: {
+                                "d": Attribute {
                                     name: "d",
                                     value: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z",
                                     range: 3:7-3:132,
                                     value_range: 3:10-3:131,
                                 },
-                            ],
+                            },
                             expression: None,
                             range: 3:1-3:133,
                         },
@@ -2149,14 +2218,14 @@ mod tests {
                             self_closing: false,
                             name_range: 4:2-4:10,
                             value: "polyline",
-                            attributes: [
-                                Attribute {
+                            attributes: {
+                                "points": Attribute {
                                     name: "points",
                                     value: "3.27 6.96 12 12.01 20.73 6.96",
                                     range: 4:11-4:49,
                                     value_range: 4:19-4:48,
                                 },
-                            ],
+                            },
                             expression: None,
                             range: 4:1-4:50,
                         },
@@ -2179,32 +2248,32 @@ mod tests {
                             self_closing: false,
                             name_range: 5:2-5:6,
                             value: "line",
-                            attributes: [
-                                Attribute {
+                            attributes: {
+                                "x1": Attribute {
                                     name: "x1",
                                     value: "12",
                                     range: 5:7-5:14,
                                     value_range: 5:11-5:13,
                                 },
-                                Attribute {
-                                    name: "y1",
-                                    value: "22.08",
-                                    range: 5:15-5:25,
-                                    value_range: 5:19-5:24,
-                                },
-                                Attribute {
+                                "x2": Attribute {
                                     name: "x2",
                                     value: "12",
                                     range: 5:26-5:33,
                                     value_range: 5:30-5:32,
                                 },
-                                Attribute {
+                                "y1": Attribute {
+                                    name: "y1",
+                                    value: "22.08",
+                                    range: 5:15-5:25,
+                                    value_range: 5:19-5:24,
+                                },
+                                "y2": Attribute {
                                     name: "y2",
                                     value: "12",
                                     range: 5:34-5:41,
                                     value_range: 5:38-5:40,
                                 },
-                            ],
+                            },
                             expression: None,
                             range: 5:1-5:42,
                         },
@@ -2258,44 +2327,44 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:5,
                             value: "svg",
-                            attributes: [
-                                Attribute {
-                                    name: "xmlns",
-                                    value: "http://www.w3.org/2000/svg",
-                                    range: 1:6-1:40,
-                                    value_range: 1:13-1:39,
-                                },
-                                Attribute {
-                                    name: "width",
-                                    value: "128",
-                                    range: 1:41-1:52,
-                                    value_range: 1:48-1:51,
-                                },
-                                Attribute {
-                                    name: "height",
-                                    value: "128",
-                                    range: 1:53-1:65,
-                                    value_range: 1:61-1:64,
-                                },
-                                Attribute {
-                                    name: "version",
-                                    value: "1.1",
-                                    range: 1:66-1:79,
-                                    value_range: 1:75-1:78,
-                                },
-                                Attribute {
-                                    name: "viewBox",
-                                    value: "0 0 128 128",
-                                    range: 1:80-1:101,
-                                    value_range: 1:89-1:100,
-                                },
-                                Attribute {
+                            attributes: {
+                                "class": Attribute {
                                     name: "class",
                                     value: "size-12",
                                     range: 1:102-1:117,
                                     value_range: 1:109-1:116,
                                 },
-                            ],
+                                "height": Attribute {
+                                    name: "height",
+                                    value: "128",
+                                    range: 1:53-1:65,
+                                    value_range: 1:61-1:64,
+                                },
+                                "version": Attribute {
+                                    name: "version",
+                                    value: "1.1",
+                                    range: 1:66-1:79,
+                                    value_range: 1:75-1:78,
+                                },
+                                "viewBox": Attribute {
+                                    name: "viewBox",
+                                    value: "0 0 128 128",
+                                    range: 1:80-1:101,
+                                    value_range: 1:89-1:100,
+                                },
+                                "width": Attribute {
+                                    name: "width",
+                                    value: "128",
+                                    range: 1:41-1:52,
+                                    value_range: 1:48-1:51,
+                                },
+                                "xmlns": Attribute {
+                                    name: "xmlns",
+                                    value: "http://www.w3.org/2000/svg",
+                                    range: 1:6-1:40,
+                                    value_range: 1:13-1:39,
+                                },
+                            },
                             expression: None,
                             range: 1:1-1:118,
                         },
@@ -2311,14 +2380,14 @@ mod tests {
                             self_closing: false,
                             name_range: 2:3-2:4,
                             value: "g",
-                            attributes: [
-                                Attribute {
+                            attributes: {
+                                "style": Attribute {
                                     name: "style",
                                     value: "fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;",
                                     range: 2:5-2:112,
                                     value_range: 2:12-2:111,
                                 },
-                            ],
+                            },
                             expression: None,
                             range: 2:2-2:113,
                         },
@@ -2334,14 +2403,14 @@ mod tests {
                             self_closing: false,
                             name_range: 3:4-3:8,
                             value: "path",
-                            attributes: [
-                                Attribute {
+                            attributes: {
+                                "d": Attribute {
                                     name: "d",
                                     value: "M20.04 38 64 22l43.96 16L64 54Z",
                                     range: 3:9-3:44,
                                     value_range: 3:12-3:43,
                                 },
-                            ],
+                            },
                             expression: None,
                             range: 3:3-3:45,
                         },
@@ -2364,14 +2433,14 @@ mod tests {
                             self_closing: false,
                             name_range: 4:4-4:8,
                             value: "path",
-                            attributes: [
-                                Attribute {
+                            attributes: {
+                                "d": Attribute {
                                     name: "d",
                                     value: "M17.54 47.09v48l35.099 12.775",
                                     range: 4:9-4:42,
                                     value_range: 4:12-4:41,
                                 },
-                            ],
+                            },
                             expression: None,
                             range: 4:3-4:43,
                         },
@@ -2394,14 +2463,14 @@ mod tests {
                             self_closing: false,
                             name_range: 5:4-5:8,
                             value: "path",
-                            attributes: [
-                                Attribute {
+                            attributes: {
+                                "d": Attribute {
                                     name: "d",
                                     value: "M64 112V64l46.46-16.91v48L77.988 106.91",
                                     range: 5:9-5:52,
                                     value_range: 5:12-5:51,
                                 },
-                            ],
+                            },
                             expression: None,
                             range: 5:3-5:53,
                         },
@@ -2467,7 +2536,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:11,
                             value: "main-comp",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:12,
                         },
@@ -2483,14 +2552,14 @@ mod tests {
                             self_closing: false,
                             name_range: 2:3-2:7,
                             value: "form",
-                            attributes: [
-                                Attribute {
+                            attributes: {
+                                "id": Attribute {
                                     name: "id",
                                     value: "form",
                                     range: 2:8-2:17,
                                     value_range: 2:12-2:16,
                                 },
-                            ],
+                            },
                             expression: None,
                             range: 2:2-2:18,
                         },
@@ -2506,20 +2575,20 @@ mod tests {
                             self_closing: false,
                             name_range: 3:4-3:9,
                             value: "input",
-                            attributes: [
-                                Attribute {
-                                    name: "type",
-                                    value: "text",
-                                    range: 3:10-3:21,
-                                    value_range: 3:16-3:20,
-                                },
-                                Attribute {
+                            attributes: {
+                                "required": Attribute {
                                     name: "required",
                                     value: "",
                                     range: 3:22-3:30,
                                     value_range: 1:1-1:1,
                                 },
-                            ],
+                                "type": Attribute {
+                                    name: "type",
+                                    value: "text",
+                                    range: 3:10-3:21,
+                                    value_range: 3:16-3:20,
+                                },
+                            },
                             expression: None,
                             range: 3:3-3:31,
                         },
@@ -2535,14 +2604,14 @@ mod tests {
                             self_closing: false,
                             name_range: 4:4-4:10,
                             value: "button",
-                            attributes: [
-                                Attribute {
+                            attributes: {
+                                "type": Attribute {
                                     name: "type",
                                     value: "submit",
                                     range: 4:11-4:24,
                                     value_range: 4:17-4:23,
                                 },
-                            ],
+                            },
                             expression: None,
                             range: 4:3-4:25,
                         },
@@ -2607,7 +2676,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:4,
                             value: "if",
-                            attributes: [],
+                            attributes: {},
                             expression: Some(
                                 (
                                     "foo",
@@ -2632,14 +2701,14 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:5,
                             value: "div",
-                            attributes: [
-                                Attribute {
+                            attributes: {
+                                "class": Attribute {
                                     name: "class",
                                     value: "test",
                                     range: 1:6-1:18,
                                     value_range: 1:13-1:17,
                                 },
-                            ],
+                            },
                             expression: Some(
                                 (
                                     "bar",
@@ -2664,7 +2733,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:4,
                             value: "if",
-                            attributes: [],
+                            attributes: {},
                             expression: Some(
                                 (
                                     "user.name == 'John'",
@@ -2689,7 +2758,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:11,
                             value: "component",
-                            attributes: [],
+                            attributes: {},
                             expression: Some(
                                 (
                                     "obj.prop.subprop",
@@ -2714,14 +2783,14 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:8,
                             value: "button",
-                            attributes: [
-                                Attribute {
+                            attributes: {
+                                "disabled": Attribute {
                                     name: "disabled",
                                     value: "",
                                     range: 1:9-1:17,
                                     value_range: 1:1-1:1,
                                 },
-                            ],
+                            },
                             expression: Some(
                                 (
                                     "enabled == 'yes'",
@@ -2746,7 +2815,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:7,
                             value: "input",
-                            attributes: [],
+                            attributes: {},
                             expression: Some(
                                 (
                                     "variable_name_123",
@@ -2771,14 +2840,14 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:5,
                             value: "div",
-                            attributes: [
-                                Attribute {
+                            attributes: {
+                                "class": Attribute {
                                     name: "class",
                                     value: "test",
                                     range: 1:6-1:18,
                                     value_range: 1:13-1:17,
                                 },
-                            ],
+                            },
                             expression: Some(
                                 (
                                     "  user.name  ",
@@ -2803,7 +2872,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:6,
                             value: "span",
-                            attributes: [],
+                            attributes: {},
                             expression: Some(
                                 (
                                     "'hello world'",
@@ -2828,7 +2897,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:6,
                             value: "form",
-                            attributes: [],
+                            attributes: {},
                             expression: Some(
                                 (
                                     "(user.role == 'admin')",
@@ -2853,7 +2922,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:9,
                             value: "section",
-                            attributes: [],
+                            attributes: {},
                             expression: Some(
                                 (
                                     "a == b == c",
@@ -2878,7 +2947,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:5,
                             value: "for",
-                            attributes: [],
+                            attributes: {},
                             expression: Some(
                                 (
                                     "user in users",
@@ -2903,7 +2972,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:5,
                             value: "for",
-                            attributes: [],
+                            attributes: {},
                             expression: Some(
                                 (
                                     "item in user.items",
@@ -2928,7 +2997,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:5,
                             value: "div",
-                            attributes: [],
+                            attributes: {},
                             expression: Some(
                                 (
                                     "foo in bars",
@@ -2953,7 +3022,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:4,
                             value: "h1",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:5,
                         },
@@ -2999,7 +3068,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:3,
                             value: "p",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:4,
                         },
@@ -3058,7 +3127,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:6,
                             value: "span",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:7,
                         },
@@ -3098,7 +3167,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:5,
                             value: "div",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:6,
                         },
@@ -3138,7 +3207,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:4,
                             value: "h2",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:5,
                         },
@@ -3172,7 +3241,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:3,
                             value: "p",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:4,
                         },
@@ -3212,7 +3281,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:6,
                             value: "span",
-                            attributes: [],
+                            attributes: {},
                             expression: None,
                             range: 1:1-1:7,
                         },
@@ -3252,7 +3321,7 @@ mod tests {
                             self_closing: false,
                             name_range: 1:2-1:5,
                             value: "div",
-                            attributes: [],
+                            attributes: {},
                             expression: Some(
                                 (
                                     "className",
@@ -3280,6 +3349,79 @@ mod tests {
                             value: "div",
                             name_range: 1:38-1:41,
                             range: 1:36-1:42,
+                        },
+                    ),
+                ]"#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_duplicate_attribute_error() {
+        check(
+            r#"<div class="foo" class="bar"></div>"#,
+            expect![[r#"
+                [
+                    Err(
+                        ParseError {
+                            message: "Duplicate attribute 'class'",
+                            range: 1:18-1:29,
+                        },
+                    ),
+                    Ok(
+                        Text {
+                            value: ">",
+                            range: 1:29-1:30,
+                        },
+                    ),
+                    Ok(
+                        ClosingTag {
+                            value: "div",
+                            name_range: 1:32-1:35,
+                            range: 1:30-1:36,
+                        },
+                    ),
+                ]"#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_duplicate_attribute_different_quotes() {
+        check(
+            r#"<input type="text" type='number'/>"#,
+            expect![[r#"
+                [
+                    Err(
+                        ParseError {
+                            message: "Duplicate attribute 'type'",
+                            range: 1:20-1:33,
+                        },
+                    ),
+                    Ok(
+                        Text {
+                            value: "/>",
+                            range: 1:33-1:35,
+                        },
+                    ),
+                ]"#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_duplicate_attribute_no_value() {
+        check(
+            r#"<input required required />"#,
+            expect![[r#"
+                [
+                    Err(
+                        ParseError {
+                            message: "Duplicate attribute 'required'",
+                            range: 1:17-1:25,
+                        },
+                    ),
+                    Ok(
+                        Text {
+                            value: " />",
+                            range: 1:25-1:28,
                         },
                     ),
                 ]"#]],

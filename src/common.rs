@@ -340,6 +340,10 @@ impl ParseError {
     pub fn duplicate_property(name: &str, range: Range) -> Self {
         Self::new(format!("Duplicate property '{name}'"), range)
     }
+
+    pub fn duplicate_attribute(name: &str, range: Range) -> Self {
+        Self::new(format!("Duplicate attribute '{name}'"), range)
+    }
 }
 
 impl Ranged for ParseError {
