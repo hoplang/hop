@@ -18,8 +18,6 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
     let mut imported_components = HashMap::new();
 
     for tree in trees {
-        let tree_range = tree.range();
-
         let children: Vec<HopNode> = tree
             .children
             .iter()
@@ -50,20 +48,32 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                 ..
             } => match value.as_str() {
                 "import" => {
-                    let component_attr = attributes.get("component").cloned().or_else(|| {
+                    let mut component_attr = None;
+                    let mut from_attr = None;
+
+                    for (key, attr) in attributes {
+                        match key.as_str() {
+                            "component" => component_attr = Some(attr),
+                            "from" => from_attr = Some(attr),
+                            _ => {
+                                // TODO: Check for unrecognized attributes
+                            }
+                        }
+                    }
+
+                    if component_attr.is_none() {
                         errors.push(ParseError::missing_required_attribute(
                             &value,
                             "component",
                             range,
                         ));
-                        None
-                    });
-                    let from_attr = attributes.get("from").cloned().or_else(|| {
+                    }
+
+                    if from_attr.is_none() {
                         errors.push(ParseError::missing_required_attribute(
                             &value, "from", range,
                         ));
-                        None
-                    });
+                    }
 
                     if let (Some(component_attr), Some(from_attr)) = (component_attr, from_attr) {
                         if imported_components.contains_key(&component_attr.value) {
@@ -78,22 +88,26 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         imports.push(Import {
                             component_attr,
                             from_attr,
-                            range: tree_range,
+                            range: tree.range,
                         });
                     }
                 }
                 "render" => {
-                    let file_attr = attributes.get("file").cloned().or_else(|| {
-                        errors.push(ParseError::missing_required_attribute(
-                            &value, "file", range,
-                        ));
-                        None
-                    });
+                    let mut file_attr = None;
+
+                    for (key, attr) in attributes {
+                        match key.as_str() {
+                            "file" => file_attr = Some(attr),
+                            _ => {
+                                // TODO: Check for unrecognized attributes
+                            }
+                        }
+                    }
 
                     if let Some(file_attr) = file_attr {
                         renders.push(Render {
                             file_attr,
-                            range: tree_range,
+                            range: tree.range,
                             children,
                         });
                     }
@@ -152,7 +166,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                             params,
                             as_attr: attributes.get("as").cloned(),
                             attributes: attributes.clone(),
-                            range: tree_range,
+                            range: tree.range,
                             children,
                             entrypoint: attributes.contains_key("entrypoint"),
                             has_slot,
@@ -232,7 +246,7 @@ fn construct_node(
                 Err(err) => {
                     errors.push(err);
                     HopNode::Error {
-                        range: tree.range(),
+                        range: tree.range,
                         children: vec![],
                     }
                 }
@@ -261,13 +275,13 @@ fn construct_node(
                         match dop::parse_expr(&mut tokenizer) {
                             Ok(condition) => HopNode::If {
                                 condition,
-                                range: tree.range(),
+                                range: tree.range,
                                 children,
                             },
                             Err(err) => {
                                 errors.push(err);
                                 HopNode::Error {
-                                    range: tree.range(),
+                                    range: tree.range,
                                     children,
                                 }
                             }
@@ -279,7 +293,7 @@ fn construct_node(
                             tree.opening_token.range(),
                         ));
                         HopNode::Error {
-                            range: tree.range(),
+                            range: tree.range,
                             children,
                         }
                     }
@@ -300,13 +314,13 @@ fn construct_node(
                             Ok((var_name, array_expr)) => HopNode::For {
                                 var_name,
                                 array_expr,
-                                range: tree.range(),
+                                range: tree.range,
                                 children,
                             },
                             Err(error) => {
                                 errors.push(error);
                                 HopNode::Error {
-                                    range: tree.range(),
+                                    range: tree.range,
                                     children,
                                 }
                             }
@@ -318,14 +332,12 @@ fn construct_node(
                             tree.opening_token.range(),
                         ));
                         HopNode::Error {
-                            range: tree.range(),
+                            range: tree.range,
                             children,
                         }
                     }
                 },
-                "slot-default" => HopNode::SlotDefinition {
-                    range: tree.range(),
-                },
+                "slot-default" => HopNode::SlotDefinition { range: tree.range },
                 tag_name if tag_name.starts_with("hop-") => match tag_name {
                     "hop-x-exec" => {
                         let cmd_attr = attributes.get("cmd").cloned().or_else(|| {
@@ -340,11 +352,11 @@ fn construct_node(
                         match cmd_attr {
                             Some(cmd_attr) => HopNode::XExec {
                                 cmd_attr,
-                                range: tree.range(),
+                                range: tree.range,
                                 children,
                             },
                             None => HopNode::Error {
-                                range: tree.range(),
+                                range: tree.range,
                                 children,
                             },
                         }
@@ -353,7 +365,7 @@ fn construct_node(
                         let has_trim = attributes.contains_key("trim");
                         HopNode::XRaw {
                             trim: has_trim,
-                            range: tree.range(),
+                            range: tree.range,
                             children,
                         }
                     }
@@ -363,7 +375,7 @@ fn construct_node(
                             tree.opening_token.range(),
                         ));
                         HopNode::Error {
-                            range: tree.range(),
+                            range: tree.range,
                             children: vec![],
                         }
                     }
@@ -415,7 +427,7 @@ fn construct_node(
                         definition_module: definition_location,
                         args,
                         attributes: attributes.clone(),
-                        range: tree.range(),
+                        range: tree.range,
                         children,
                     }
                 }
@@ -460,7 +472,7 @@ fn construct_node(
                             }
                         }),
                         attributes: attributes.clone(),
-                        range: tree.range(),
+                        range: tree.range,
                         children,
                         set_attributes,
                     }

@@ -14,11 +14,13 @@ pub struct TokenTree {
     pub opening_token: Token,
     pub closing_token: Option<Token>,
     pub children: Vec<TokenTree>,
+    pub range: Range,
 }
 
 impl TokenTree {
     pub fn new(opening_token: Token) -> Self {
         TokenTree {
+            range: opening_token.range(),
             opening_token,
             closing_token: None,
             children: Vec::new(),
@@ -34,17 +36,8 @@ impl TokenTree {
     }
 
     pub fn set_closing_token(&mut self, closing_token: Token) {
+        self.range.end = closing_token.range().end;
         self.closing_token = Some(closing_token);
-    }
-
-    pub fn range(&self) -> Range {
-        match &self.closing_token {
-            Some(closing_token) => Range {
-                start: self.opening_token.range().start,
-                end: closing_token.range().end,
-            },
-            None => self.opening_token.range(),
-        }
     }
 }
 
