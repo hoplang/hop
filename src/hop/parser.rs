@@ -17,8 +17,8 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
     let mut defined_components = HashSet::new();
     let mut imported_components = HashMap::new();
 
-    for tree in &trees {
-        let t = &tree.opening_token;
+    for tree in trees {
+        let tree_range = tree.range();
 
         let children: Vec<HopNode> = tree
             .children
@@ -34,7 +34,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
             })
             .collect();
 
-        match t {
+        match tree.opening_token {
             Token::Text { .. } => {}
             Token::ClosingTag { .. } => {}
             Token::Expression { .. } => {}
@@ -46,22 +46,21 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                 attributes,
                 expression,
                 name_range,
+                range,
                 ..
             } => match value.as_str() {
                 "import" => {
                     let component_attr = attributes.get("component").cloned().or_else(|| {
                         errors.push(ParseError::missing_required_attribute(
-                            value,
+                            &value,
                             "component",
-                            tree.opening_token.range(),
+                            range,
                         ));
                         None
                     });
                     let from_attr = attributes.get("from").cloned().or_else(|| {
                         errors.push(ParseError::missing_required_attribute(
-                            value,
-                            "from",
-                            tree.opening_token.range(),
+                            &value, "from", range,
                         ));
                         None
                     });
@@ -79,16 +78,14 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         imports.push(Import {
                             component_attr,
                             from_attr,
-                            range: tree.range(),
+                            range: tree_range,
                         });
                     }
                 }
                 "render" => {
                     let file_attr = attributes.get("file").cloned().or_else(|| {
                         errors.push(ParseError::missing_required_attribute(
-                            value,
-                            "file",
-                            tree.opening_token.range(),
+                            &value, "file", range,
                         ));
                         None
                     });
@@ -96,17 +93,14 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                     if let Some(file_attr) = file_attr {
                         renders.push(Render {
                             file_attr,
-                            range: tree.range(),
+                            range: tree_range,
                             children,
                         });
                     }
                 }
                 name => {
                     if !is_valid_component_name(name) {
-                        errors.push(ParseError::invalid_component_name(
-                            name,
-                            tree.opening_token.range(),
-                        ));
+                        errors.push(ParseError::invalid_component_name(name, range));
                     } else {
                         let params = expression.as_ref().and_then(|(expr_string, range)| {
                             let mut tokenizer = match DopTokenizer::new(expr_string, range.start) {
@@ -140,15 +134,14 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         if defined_components.contains(name)
                             || imported_components.contains_key(name)
                         {
-                            errors
-                                .push(ParseError::component_is_already_defined(name, *name_range));
+                            errors.push(ParseError::component_is_already_defined(name, name_range));
                         } else {
                             defined_components.insert(name.to_string());
                         }
 
                         components.push(ComponentDefinition {
                             name: name.to_string(),
-                            opening_name_range: *name_range,
+                            opening_name_range: name_range,
                             closing_name_range: tree.closing_token.as_ref().and_then(|tag| {
                                 if let Token::ClosingTag { name_range, .. } = tag {
                                     Some(*name_range)
@@ -159,7 +152,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                             params,
                             as_attr: attributes.get("as").cloned(),
                             attributes: attributes.clone(),
-                            range: tree.range(),
+                            range: tree_range,
                             children,
                             entrypoint: attributes.contains_key("entrypoint"),
                             has_slot,
