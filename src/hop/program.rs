@@ -131,14 +131,14 @@ impl Annotated for RenameableSymbol {
 
 #[derive(Default)]
 pub struct Program {
+    topo_sorter: TopoSorter,
+    source_code: HashMap<String, String>,
+    parse_errors: HashMap<String, Vec<ParseError>>,
     asts: HashMap<String, HopAST>,
     type_checker_state: HashMap<String, TypeCheckerState>,
+    type_errors: HashMap<String, Vec<TypeError>>,
     type_annotations: HashMap<String, Vec<TypeAnnotation>>,
     definition_links: HashMap<String, Vec<DefinitionLink>>,
-    parse_errors: HashMap<String, Vec<ParseError>>,
-    type_errors: HashMap<String, Vec<TypeError>>,
-    source_code: HashMap<String, String>,
-    topo_sorter: TopoSorter,
 }
 
 impl Program {
@@ -165,7 +165,7 @@ impl Program {
         let sorted_modules = match program.topo_sorter.sort() {
             Ok(modules) => modules,
             Err(cycle_error) => {
-                program.handle_cycle_error(&cycle_error);
+                program.handle_import_cycle_error(&cycle_error);
                 return program;
             }
         };
@@ -193,8 +193,8 @@ impl Program {
         self.asts.contains_key(module_name)
     }
 
-    /// Handles cycle errors by adding type errors for all modules in the cycle
-    fn handle_cycle_error(&mut self, cycle_error: &CycleError) {
+    /// Handles import cycle errors by adding type errors for all modules in the cycle.
+    fn handle_import_cycle_error(&mut self, cycle_error: &CycleError) {
         for module_name in &cycle_error.cycle {
             let type_errors = self.type_errors.entry(module_name.clone()).or_default();
             type_errors.clear();
@@ -280,7 +280,7 @@ impl Program {
         let dependent_modules = match self.topo_sorter.sort_subgraph(&module_name) {
             Ok(modules) => modules,
             Err(cycle_error) => {
-                self.handle_cycle_error(&cycle_error);
+                self.handle_import_cycle_error(&cycle_error);
                 // Return just the updated module for processing
                 vec![module_name]
             }
@@ -367,6 +367,7 @@ impl Program {
     }
 
     /// Returns information about a renameable symbol at the given position.
+    ///
     /// Checks if the position is on a component name (reference or definition)
     /// and returns the symbol's current name and range if found.
     pub fn get_renameable_symbol(
@@ -528,7 +529,12 @@ impl Program {
     }
 
     /// Render the content for a specific file path
-    pub fn render_file(&self, file_path: &str, hop_mode: HopMode, output: &mut String) -> Result<()> {
+    pub fn render_file(
+        &self,
+        file_path: &str,
+        hop_mode: HopMode,
+        output: &mut String,
+    ) -> Result<()> {
         evaluator::render_file(&self.asts, hop_mode, file_path, output)
     }
 
