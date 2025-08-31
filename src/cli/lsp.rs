@@ -2,7 +2,7 @@ use crate::common::Position;
 use crate::filesystem::files::{self as files, ProjectRoot};
 use crate::hop::program::{DefinitionLocation, HoverInfo, Program, RenameLocation};
 use std::path::Path;
-use tokio::sync::RwLock;
+use tokio::sync::{OnceCell, RwLock};
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server as LspServer};
@@ -10,7 +10,7 @@ use tower_lsp::{Client, LanguageServer, LspService, Server as LspServer};
 pub struct HopLanguageServer {
     client: Client,
     program: RwLock<Program>,
-    root: RwLock<Option<ProjectRoot>>,
+    root: OnceCell<ProjectRoot>,
 }
 
 impl HopLanguageServer {
@@ -18,7 +18,7 @@ impl HopLanguageServer {
         Self {
             client,
             program: RwLock::new(Program::new()),
-            root: RwLock::new(None),
+            root: OnceCell::new(),
         }
     }
 
@@ -114,7 +114,7 @@ impl LanguageServer for HopLanguageServer {
         if let Some(root_uri) = params.root_uri {
             if let Ok(root_path) = root_uri.to_file_path() {
                 if let Ok(project_root) = ProjectRoot::find_upwards(&root_path) {
-                    *self.root.write().await = Some(project_root);
+                    let _ = self.root.set(project_root);
                 }
             }
         }
@@ -146,8 +146,7 @@ impl LanguageServer for HopLanguageServer {
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri;
-        let root_guard = self.root.read().await;
-        if let Some(root) = root_guard.as_ref() {
+        if let Some(root) = self.root.get() {
             let _ = self.load_all_modules_from_fs(root).await;
             self.publish_diagnostics(root, &uri).await;
         }
@@ -155,8 +154,7 @@ impl LanguageServer for HopLanguageServer {
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
-        let root_guard = self.root.read().await;
-        if let Some(root) = root_guard.as_ref() {
+        if let Some(root) = self.root.get() {
             let module_name = Self::uri_to_module_name(&uri, root);
             if let Some(change) = params.content_changes.into_iter().next() {
                 let changed_modules: Vec<String>;
@@ -175,8 +173,7 @@ impl LanguageServer for HopLanguageServer {
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
-        let root_guard = self.root.read().await;
-        if let Some(root) = root_guard.as_ref() {
+        if let Some(root) = self.root.get() {
             let module_name = Self::uri_to_module_name(&uri, root);
 
             let server = self.program.read().await;
@@ -194,8 +191,7 @@ impl LanguageServer for HopLanguageServer {
     ) -> Result<Option<GotoDefinitionResponse>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
-        let root_guard = self.root.read().await;
-        if let Some(root) = root_guard.as_ref() {
+        if let Some(root) = self.root.get() {
             let module_name = Self::uri_to_module_name(&uri, root);
 
             let server = self.program.read().await;
@@ -219,8 +215,7 @@ impl LanguageServer for HopLanguageServer {
     ) -> Result<Option<PrepareRenameResponse>> {
         let uri = params.text_document.uri;
         let position = params.position;
-        let root_guard = self.root.read().await;
-        if let Some(root) = root_guard.as_ref() {
+        if let Some(root) = self.root.get() {
             let module_name = Self::uri_to_module_name(&uri, root);
 
             let server = self.program.read().await;
@@ -244,8 +239,7 @@ impl LanguageServer for HopLanguageServer {
         let uri = params.text_document_position.text_document.uri;
         let position = params.text_document_position.position;
         let new_name = params.new_name;
-        let root_guard = self.root.read().await;
-        if let Some(root) = root_guard.as_ref() {
+        if let Some(root) = self.root.get() {
             let module_name = Self::uri_to_module_name(&uri, root);
 
             let server = self.program.read().await;
