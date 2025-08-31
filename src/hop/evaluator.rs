@@ -101,20 +101,16 @@ pub fn evaluate_component(
         }
         Ok(result)
     } else {
-        // For regular components, wrap in the specified element type
-        let mut element_type = "div";
-        if let Some(as_attr) = &component.as_attr {
-            element_type = &as_attr.value;
-        }
+        let tag_name = match &component.as_attr {
+            Some(as_attr) => &as_attr.value,
+            _ => "div",
+        };
 
         let data_hop_id = format!("{}/{}", module_name, component_name);
-        let mut result = format!("<{} data-hop-id=\"{}\"", element_type, data_hop_id);
-
-        let mut added_class = false;
+        let mut result = format!("<{} data-hop-id=\"{}\"", tag_name, data_hop_id);
 
         for attr in component.attributes.values() {
             if attr.name == "class" {
-                added_class = true;
                 match additional_classes {
                     None => result.push_str(&format!(" {}=\"{}\"", attr.name, attr.value)),
                     Some(cls) => {
@@ -127,8 +123,10 @@ pub fn evaluate_component(
         }
 
         // If component doesn't have a class attribute but the reference does, add it
-        if let (Some(cls), false) = (additional_classes, added_class) {
-            result.push_str(&format!(" class=\"{}\"", cls))
+        if !component.attributes.contains_key("class") {
+            if let Some(cls) = additional_classes {
+                result.push_str(&format!(" class=\"{}\"", cls))
+            }
         }
         result.push('>');
         for child in &component.children {
@@ -141,7 +139,7 @@ pub fn evaluate_component(
                 module_name,
             )?);
         }
-        result.push_str(&format!("</{}>", element_type));
+        result.push_str(&format!("</{}>", tag_name));
 
         Ok(result)
     }
