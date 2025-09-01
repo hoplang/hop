@@ -5,7 +5,7 @@ use crate::hop::parser::parse;
 use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::{CycleError, TopoSorter};
-use crate::hop::typechecker::{DefinitionLink, TypeAnnotation, typecheck};
+use crate::hop::typechecker::{TypeAnnotation, typecheck};
 use crate::tui::source_annotator::Annotated;
 use anyhow::Result;
 use std::collections::HashMap;
@@ -138,7 +138,6 @@ pub struct Program {
     type_checker_state: HashMap<String, TypeCheckerState>,
     type_errors: HashMap<String, Vec<TypeError>>,
     type_annotations: HashMap<String, Vec<TypeAnnotation>>,
-    definition_links: HashMap<String, Vec<DefinitionLink>>,
 }
 
 impl Program {
@@ -222,22 +221,12 @@ impl Program {
             .type_annotations
             .entry(module_name.to_string())
             .or_default();
-        let definition_links = self
-            .definition_links
-            .entry(module_name.to_string())
-            .or_default();
 
         type_errors.clear();
         type_annotations.clear();
-        definition_links.clear();
 
-        let component_type_info = typecheck(
-            ast,
-            &self.type_checker_state,
-            type_errors,
-            type_annotations,
-            definition_links,
-        );
+        let component_type_info =
+            typecheck(ast, &self.type_checker_state, type_errors, type_annotations);
         self.type_checker_state
             .insert(module_name.to_string(), component_type_info);
     }
@@ -305,14 +294,39 @@ impl Program {
         module_name: &str,
         position: Position,
     ) -> Option<DefinitionLocation> {
-        self.definition_links
-            .get(module_name)?
-            .iter()
-            .find(|link| link.contains(position))
-            .map(|link| DefinitionLocation {
-                module: link.definition_module.clone(),
-                range: link.definition_range,
-            })
+        let ast = self.asts.get(module_name)?;
+
+        let node = ast.find_node_at_position(position)?;
+
+        let is_on_tag_name = node.tag_name_ranges().any(|r| r.contains(position));
+
+        if !is_on_tag_name {
+            return None;
+        }
+
+        match node {
+            HopNode::ComponentReference {
+                component,
+                definition_module,
+                ..
+            } => {
+                let m = match definition_module {
+                    Some(m) => m,
+                    None => return None,
+                };
+                let module = self.asts.get(m)?;
+                let component_def = module.get_component_definition(component)?;
+                Some(DefinitionLocation {
+                    module: m.to_string(),
+                    range: component_def.opening_name_range,
+                })
+            }
+            HopNode::Html { .. } => {
+                // TODO
+                None
+            }
+            _ => None,
+        }
     }
 
     pub fn get_rename_locations(

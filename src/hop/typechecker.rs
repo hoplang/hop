@@ -18,26 +18,8 @@ impl Ranged for TypeAnnotation {
     }
 }
 
-/// A definition link contains information of where a symbol is defined.
-#[derive(Debug, Clone, PartialEq)]
-pub struct DefinitionLink {
-    pub definition_module: String,
-    pub definition_range: Range,
-    pub reference_range: Range,
-}
-
-impl Ranged for DefinitionLink {
-    fn range(&self) -> Range {
-        self.reference_range
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentTypeInformation {
-    // Track where the component is defined to be able to create DefinitionLinks
-    // for ComponentReferences.
-    definition_module: String,
-    definition_range: Range,
     // Track the parameter types for the component.
     parameter_types: Option<(BTreeMap<String, DopParameter>, Range)>,
     // Track whether the component has a slot-default.
@@ -51,7 +33,6 @@ pub fn typecheck(
     import_type_information: &HashMap<String, TypeCheckerState>,
     errors: &mut Vec<TypeError>,
     type_annotations: &mut Vec<TypeAnnotation>,
-    definition_links: &mut Vec<DefinitionLink>,
 ) -> HashMap<String, ComponentTypeInformation> {
     let mut current_module_type_information = HashMap::new();
 
@@ -90,7 +71,6 @@ pub fn typecheck(
         params,
         children,
         has_slot,
-        opening_name_range,
         ..
     } in module.get_component_definitions()
     {
@@ -111,7 +91,6 @@ pub fn typecheck(
                 &current_module_type_information,
                 &mut env,
                 type_annotations,
-                definition_links,
                 errors,
             );
         }
@@ -134,8 +113,6 @@ pub fn typecheck(
             ComponentTypeInformation {
                 parameter_types: params.clone(),
                 has_slot: *has_slot,
-                definition_module: module.name.clone(),
-                definition_range: *opening_name_range,
             },
         );
     }
@@ -147,7 +124,6 @@ pub fn typecheck(
                 &current_module_type_information,
                 &mut env,
                 type_annotations,
-                definition_links,
                 errors,
             );
         }
@@ -161,7 +137,6 @@ fn typecheck_node(
     component_info: &HashMap<String, ComponentTypeInformation>,
     env: &mut Environment<DopType>,
     annotations: &mut Vec<TypeAnnotation>,
-    component_definition_links: &mut Vec<DefinitionLink>,
     errors: &mut Vec<TypeError>,
 ) {
     match node {
@@ -171,14 +146,7 @@ fn typecheck_node(
             ..
         } => {
             for child in children {
-                typecheck_node(
-                    child,
-                    component_info,
-                    env,
-                    annotations,
-                    component_definition_links,
-                    errors,
-                );
+                typecheck_node(child, component_info, env, annotations, errors);
             }
             let condition_type = match typecheck_expr(condition, env, annotations, errors) {
                 Ok(t) => t,
@@ -244,14 +212,7 @@ fn typecheck_node(
             }
 
             for child in children {
-                typecheck_node(
-                    child,
-                    component_info,
-                    env,
-                    annotations,
-                    component_definition_links,
-                    errors,
-                );
+                typecheck_node(child, component_info, env, annotations, errors);
             }
 
             if pushed {
@@ -267,24 +228,9 @@ fn typecheck_node(
             args,
             children,
             opening_name_range,
-            closing_name_range,
             ..
         } => {
             if let Some(comp_info) = component_info.get(component) {
-                // Add definition link for go-to-definition
-                component_definition_links.push(DefinitionLink {
-                    reference_range: *opening_name_range,
-                    definition_module: comp_info.definition_module.clone(),
-                    definition_range: comp_info.definition_range,
-                });
-                if let Some(range) = closing_name_range {
-                    component_definition_links.push(DefinitionLink {
-                        reference_range: *range,
-                        definition_module: comp_info.definition_module.clone(),
-                        definition_range: comp_info.definition_range,
-                    });
-                }
-
                 match (&comp_info.parameter_types, args) {
                     (None, None) => {}
                     (None, Some((_, args_range))) => {
@@ -355,14 +301,7 @@ fn typecheck_node(
             }
 
             for child in children {
-                typecheck_node(
-                    child,
-                    component_info,
-                    env,
-                    annotations,
-                    component_definition_links,
-                    errors,
-                );
+                typecheck_node(child, component_info, env, annotations, errors);
             }
         }
 
@@ -397,14 +336,7 @@ fn typecheck_node(
             }
 
             for child in children {
-                typecheck_node(
-                    child,
-                    component_info,
-                    env,
-                    annotations,
-                    component_definition_links,
-                    errors,
-                );
+                typecheck_node(child, component_info, env, annotations, errors);
             }
         }
 
@@ -434,14 +366,7 @@ fn typecheck_node(
         | HopNode::XRaw { children, .. }
         | HopNode::Error { children, .. } => {
             for child in children {
-                typecheck_node(
-                    child,
-                    component_info,
-                    env,
-                    annotations,
-                    component_definition_links,
-                    errors,
-                );
+                typecheck_node(child, component_info, env, annotations, errors);
             }
         }
 
@@ -489,14 +414,12 @@ mod tests {
             }
 
             let mut type_annotations = Vec::new();
-            let mut component_definition_links = Vec::new();
             let mut type_errors = Vec::new();
             let type_result = typecheck(
                 &module,
                 &module_type_results,
                 &mut type_errors,
                 &mut type_annotations,
-                &mut component_definition_links,
             );
 
             if !type_errors.is_empty() {

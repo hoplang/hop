@@ -668,14 +668,12 @@ mod tests {
             let ast = asts.get(&module_name).unwrap();
             let mut type_errors = Vec::new();
             let mut type_annotations = Vec::new();
-            let mut definition_links = Vec::new();
 
             let component_type_info = typecheck(
                 ast,
                 &type_checker_state,
                 &mut type_errors,
                 &mut type_annotations,
-                &mut definition_links,
             );
 
             if !type_errors.is_empty() {
