@@ -409,35 +409,34 @@ mod tests {
         // Create annotations for start and end positions of the found node
         let output = if let Some(node) = found_node {
             let range = node.range();
-            
+
             // Create two single-character annotations
             // Start annotation: marks the first character of the node
             let start_annotation = crate::tui::source_annotator::SimpleAnnotation {
                 range: Range::new(
                     range.start,
-                    Position::new(range.start.line, range.start.column + 1)
+                    Position::new(range.start.line, range.start.column + 1),
                 ),
                 message: "start".to_string(),
             };
-            
+
             // End annotation: marks the last character of the node (end is exclusive)
             // We need to handle the case where end.column might be 1 (empty node)
-            let end_col = if range.end.column > 1 { 
-                range.end.column - 1 
-            } else { 
-                range.end.column 
+            let end_col = if range.end.column > 1 {
+                range.end.column - 1
+            } else {
+                range.end.column
             };
             let end_annotation = crate::tui::source_annotator::SimpleAnnotation {
                 range: Range::new(
                     Position::new(range.end.line, end_col),
-                    Position::new(range.end.line, end_col + 1)
+                    Position::new(range.end.line, end_col + 1),
                 ),
                 message: "end".to_string(),
             };
-            
-            let annotator = crate::tui::source_annotator::SourceAnnotator::new()
-                .without_location();
-            
+
+            let annotator = crate::tui::source_annotator::SourceAnnotator::new().without_location();
+
             annotator.annotate::<crate::tui::source_annotator::SimpleAnnotation>(
                 None,
                 &source,
@@ -446,7 +445,7 @@ mod tests {
         } else {
             "No node found at position".to_string()
         };
-        
+
         expected.assert_eq(&output);
     }
 

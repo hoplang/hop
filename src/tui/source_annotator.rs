@@ -1,5 +1,4 @@
 use crate::common::{Range, Ranged};
-use unicode_width::UnicodeWidthStr;
 
 /// Trait for any annotation that can be displayed on source code
 pub trait Annotated: Ranged {
@@ -168,7 +167,13 @@ impl SourceAnnotator {
         }
     }
 
-    fn format_underline(&self, output: &mut String, line: &str, range: Range, max_line_num_width: usize) {
+    fn format_underline(
+        &self,
+        output: &mut String,
+        line: &str,
+        range: Range,
+        max_line_num_width: usize,
+    ) {
         if self.show_line_numbers {
             output.push_str(&" ".repeat(max_line_num_width));
             output.push_str(" | ");
@@ -210,12 +215,13 @@ impl SourceAnnotator {
     }
 
     fn display_width(&self, text: &str) -> usize {
+        use unicode_width::UnicodeWidthChar;
         let mut width = 0;
         for ch in text.chars() {
             if ch == '\t' {
                 width += self.tab_width;
             } else {
-                width += UnicodeWidthStr::width(ch.to_string().as_str());
+                width += ch.width().unwrap_or(0);
             }
         }
         width
