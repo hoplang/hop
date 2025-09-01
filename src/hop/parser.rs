@@ -123,12 +123,18 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                     if !is_valid_component_name(name) {
                         errors.push(ParseError::invalid_component_name(name, name_range));
                     } else {
-                        let params = expression.as_ref().and_then(|(expr_string, range)| {
-                            let mut tokenizer = DopTokenizer::new(expr_string, range.start);
+                        let params = expression.as_ref().and_then(|(expr_string, expr_range)| {
+                            let mut tokenizer = DopTokenizer::new(expr_string, expr_range.start);
                             match dop::parse_parameters(&mut tokenizer) {
-                                Ok(params) => Some((params, *range)),
-                                Err(error) => {
-                                    errors.push(ParseError::new(error.message, error.range));
+                                Ok(params) => Some((params, *expr_range)),
+                                Err(dop::parser::ParseError::UnexpectedEof) => {
+                                    errors.push(ParseError::unexpected_end_of_expression(
+                                        *expr_range,
+                                    ));
+                                    None
+                                }
+                                Err(dop::parser::ParseError::RangeError { message, range }) => {
+                                    errors.push(ParseError::new(message, range));
                                     None
                                 }
                             }
@@ -252,8 +258,15 @@ fn construct_node(
                     expression,
                     range: tree.range,
                 },
-                Err(err) => {
-                    errors.push(ParseError::new(err.message, err.range));
+                Err(dop::parser::ParseError::UnexpectedEof) => {
+                    errors.push(ParseError::unexpected_end_of_expression(expression_range));
+                    HopNode::Error {
+                        range: tree.range,
+                        children: vec![],
+                    }
+                }
+                Err(dop::parser::ParseError::RangeError { message, range }) => {
+                    errors.push(ParseError::new(message, range));
                     HopNode::Error {
                         range: tree.range,
                         children: vec![],
@@ -280,8 +293,15 @@ fn construct_node(
                                 range: tree.range,
                                 children,
                             },
-                            Err(err) => {
-                                errors.push(ParseError::new(err.message, err.range));
+                            Err(dop::parser::ParseError::UnexpectedEof) => {
+                                errors.push(ParseError::unexpected_end_of_expression(expr_range));
+                                HopNode::Error {
+                                    range: tree.range,
+                                    children,
+                                }
+                            }
+                            Err(dop::parser::ParseError::RangeError { message, range }) => {
+                                errors.push(ParseError::new(message, range));
                                 HopNode::Error {
                                     range: tree.range,
                                     children,
@@ -311,8 +331,15 @@ fn construct_node(
                                 range: tree.range,
                                 children,
                             },
-                            Err(err) => {
-                                errors.push(ParseError::new(err.message, err.range));
+                            Err(dop::parser::ParseError::UnexpectedEof) => {
+                                errors.push(ParseError::unexpected_end_of_expression(expr_range));
+                                HopNode::Error {
+                                    range: tree.range,
+                                    children,
+                                }
+                            }
+                            Err(dop::parser::ParseError::RangeError { message, range }) => {
+                                errors.push(ParseError::new(message, range));
                                 HopNode::Error {
                                     range: tree.range,
                                     children,
@@ -382,12 +409,21 @@ fn construct_node(
                         errors.push(ParseError::invalid_component_name(tag_name, name_range));
                     }
                     let args = match &expression {
-                        Some((expr_string, range)) => {
-                            let mut tokenizer = DopTokenizer::new(expr_string, range.start);
+                        Some((expr_string, expr_range)) => {
+                            let mut tokenizer = DopTokenizer::new(expr_string, expr_range.start);
                             match dop::parse_arguments(&mut tokenizer) {
-                                Ok(named_args) => Some((named_args, *range)),
-                                Err(err) => {
-                                    errors.push(ParseError::new(err.message, err.range));
+                                Ok(named_args) => Some((named_args, *expr_range)),
+                                Err(dop::parser::ParseError::UnexpectedEof) => {
+                                    errors.push(ParseError::unexpected_end_of_expression(
+                                        *expr_range,
+                                    ));
+                                    return HopNode::Error {
+                                        range: tree.range,
+                                        children: vec![],
+                                    };
+                                }
+                                Err(dop::parser::ParseError::RangeError { message, range }) => {
+                                    errors.push(ParseError::new(message, range));
                                     return HopNode::Error {
                                         range: tree.range,
                                         children: vec![],
@@ -427,8 +463,13 @@ fn construct_node(
                                     expression,
                                     range: attr.range,
                                 }),
-                                Err(err) => {
-                                    errors.push(ParseError::new(err.message, err.range));
+                                Err(dop::parser::ParseError::UnexpectedEof) => {
+                                    errors.push(ParseError::unexpected_end_of_expression(
+                                        attr.value_range,
+                                    ));
+                                }
+                                Err(dop::parser::ParseError::RangeError { message, range }) => {
+                                    errors.push(ParseError::new(message, range));
                                 }
                             };
                         }

@@ -281,6 +281,10 @@ impl ParseError {
         Self::new(format!("Unmatched </{tag}>"), range)
     }
 
+    pub fn unexpected_end_of_expression(range: Range) -> Self {
+        Self::new(format!("Unexpected end of expression"), range)
+    }
+
     pub fn unclosed_tag(tag: &str, range: Range) -> Self {
         Self::new(format!("Unclosed <{tag}>"), range)
     }

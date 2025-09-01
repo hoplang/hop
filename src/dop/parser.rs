@@ -4,17 +4,16 @@ use crate::common::{Range, Ranged};
 use crate::dop::DopType;
 use crate::dop::tokenizer::{DopToken, DopTokenizer};
 use crate::dop::typechecker::RangeDopType;
-use crate::tui::source_annotator::Annotated;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ParseError {
-    pub message: String,
-    pub range: Range,
+pub enum ParseError {
+    UnexpectedEof,
+    RangeError { message: String, range: Range },
 }
 
 impl ParseError {
     pub fn new(message: String, range: Range) -> Self {
-        ParseError { message, range }
+        Self::RangeError { message, range }
     }
 
     pub fn invalid_variable_name(name: &str, range: Range) -> Self {
@@ -29,10 +28,6 @@ impl ParseError {
             format!("Expected token '{expected}' but got '{actual}'"),
             range,
         )
-    }
-
-    pub fn unexpected_eof(range: Range) -> Self {
-        Self::new("Unexpected end of expression".to_string(), range)
     }
 
     pub fn unexpected_token(token: &DopToken, range: Range) -> Self {
@@ -57,18 +52,6 @@ impl ParseError {
 
     pub fn duplicate_property(name: &str, range: Range) -> Self {
         Self::new(format!("Duplicate property '{name}'"), range)
-    }
-}
-
-impl Ranged for ParseError {
-    fn range(&self) -> Range {
-        self.range
-    }
-}
-
-impl Annotated for ParseError {
-    fn message(&self) -> String {
-        self.message.clone()
     }
 }
 
@@ -190,10 +173,7 @@ fn advance_if(tokenizer: &mut DopTokenizer, token: DopToken) -> Option<Range> {
 }
 
 fn expect_token(tokenizer: &mut DopTokenizer, expected: DopToken) -> Result<Range, ParseError> {
-    match tokenizer
-        .next()
-        .ok_or_else(|| ParseError::unexpected_eof(tokenizer.range()))?
-    {
+    match tokenizer.next().ok_or(ParseError::UnexpectedEof)? {
         Ok((token, range)) if token == expected => Ok(range),
         Ok((actual, range)) => Err(ParseError::expected_token_but_got(
             &expected, &actual, range,
@@ -203,10 +183,7 @@ fn expect_token(tokenizer: &mut DopTokenizer, expected: DopToken) -> Result<Rang
 }
 
 fn expect_variable_name(tokenizer: &mut DopTokenizer) -> Result<DopVarName, ParseError> {
-    match tokenizer
-        .next()
-        .ok_or_else(|| ParseError::unexpected_eof(tokenizer.range()))?
-    {
+    match tokenizer.next().ok_or(ParseError::UnexpectedEof)? {
         Ok((DopToken::Identifier(name), range)) => DopVarName::new(name, range),
         Ok((actual, range)) => Err(ParseError::expected_variable_name_but_got(&actual, range)),
         Err(e) => Err(e),
@@ -214,10 +191,7 @@ fn expect_variable_name(tokenizer: &mut DopTokenizer) -> Result<DopVarName, Pars
 }
 
 fn expect_property_name(tokenizer: &mut DopTokenizer) -> Result<(String, Range), ParseError> {
-    match tokenizer
-        .next()
-        .ok_or_else(|| ParseError::unexpected_eof(tokenizer.range()))?
-    {
+    match tokenizer.next().ok_or(ParseError::UnexpectedEof)? {
         Ok((DopToken::Identifier(name), range)) => Ok((name, range)),
         Ok((token, range)) => Err(ParseError::expected_property_name_but_got(&token, range)),
         Err(e) => Err(e),
@@ -340,10 +314,7 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<RangeDopType, ParseError> 
     use crate::dop::DopType;
     use std::collections::BTreeMap;
 
-    match tokenizer
-        .next()
-        .ok_or_else(|| ParseError::unexpected_eof(tokenizer.range()))??
-    {
+    match tokenizer.next().ok_or(ParseError::UnexpectedEof)?? {
         (DopToken::TypeString, range) => Ok(RangeDopType {
             dop_type: DopType::String,
             range,
@@ -456,19 +427,13 @@ fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
 //         | "{" ( Identifier ":" equality ("," Identifier ":" equality)* )? "}"
 //         | "(" equality ")"
 fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
-    match tokenizer
-        .next()
-        .ok_or_else(|| ParseError::unexpected_eof(tokenizer.range()))??
-    {
+    match tokenizer.next().ok_or(ParseError::UnexpectedEof)?? {
         (DopToken::Identifier(name), range) => {
             let mut expr = DopExpr::Variable { name, range };
 
             // Handle property access
             while advance_if(tokenizer, DopToken::Dot).is_some() {
-                match tokenizer
-                    .next()
-                    .ok_or_else(|| ParseError::unexpected_eof(tokenizer.range()))??
-                {
+                match tokenizer.next().ok_or(ParseError::UnexpectedEof)?? {
                     (DopToken::Identifier(prop), property_range) => {
                         let start = expr.range().start;
                         expr = DopExpr::PropertyAccess {
@@ -513,10 +478,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
             loop {
                 elements.push(parse_equality(tokenizer)?);
 
-                match tokenizer
-                    .next()
-                    .ok_or_else(|| ParseError::unexpected_eof(tokenizer.range()))??
-                {
+                match tokenizer.next().ok_or(ParseError::UnexpectedEof)?? {
                     (DopToken::Comma, _) => {
                         // Handle trailing comma
                         if let Some(right_bracket_range) =
@@ -577,10 +539,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
                 properties.insert(prop_name, parse_equality(tokenizer)?);
 
                 // Expect comma or right brace
-                match tokenizer
-                    .next()
-                    .ok_or_else(|| ParseError::unexpected_eof(tokenizer.range()))??
-                {
+                match tokenizer.next().ok_or(ParseError::UnexpectedEof)?? {
                     (DopToken::Comma, _) => {
                         // Check for trailing comma (closing brace after comma)
                         if let Some(right_brace_range) = advance_if(tokenizer, DopToken::RightBrace)
@@ -625,21 +584,38 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::source_annotator::SourceAnnotator;
+    use crate::{
+        common::Position,
+        tui::source_annotator::{SimpleAnnotation, SourceAnnotator},
+    };
     use expect_test::{Expect, expect};
+
+    fn annotate_error(input: &str, error: ParseError) -> String {
+        let annotator = SourceAnnotator::new()
+            .with_label("error")
+            .without_location()
+            .without_line_numbers();
+        match error {
+            ParseError::UnexpectedEof => annotator.annotate(
+                None,
+                input,
+                &[SimpleAnnotation {
+                    message: "Unexpected end of expression".to_string(),
+                    range: Range::new(Position::new(1, 1), Position::new(1000, 1000)),
+                }],
+            ),
+            ParseError::RangeError { message, range } => {
+                annotator.annotate(None, input, &[SimpleAnnotation { message, range }])
+            }
+        }
+    }
 
     fn check_parse_expr(input: &str, expected: Expect) {
         let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1));
-
         let actual = match parse_expr(&mut tokenizer) {
             Ok(result) => format!("{:#?}\n", result),
-            Err(e) => SourceAnnotator::new()
-                .with_label("error")
-                .without_location()
-                .without_line_numbers()
-                .annotate(None, input, &[e]),
+            Err(err) => annotate_error(input, err),
         };
-
         expected.assert_eq(&actual);
     }
 
@@ -648,11 +624,7 @@ mod tests {
 
         let actual = match parse_parameters(&mut tokenizer) {
             Ok(result) => format!("{:#?}\n", result),
-            Err(e) => SourceAnnotator::new()
-                .with_label("error")
-                .without_location()
-                .without_line_numbers()
-                .annotate(None, input, &[e]),
+            Err(err) => annotate_error(input, err),
         };
 
         expected.assert_eq(&actual);
@@ -663,11 +635,7 @@ mod tests {
 
         let actual = match parse_arguments(&mut tokenizer) {
             Ok(result) => format!("{:#?}\n", result),
-            Err(e) => SourceAnnotator::new()
-                .with_label("error")
-                .without_location()
-                .without_line_numbers()
-                .annotate(None, input, &[e]),
+            Err(err) => annotate_error(input, err),
         };
 
         expected.assert_eq(&actual);
