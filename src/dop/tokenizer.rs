@@ -25,7 +25,6 @@ pub enum DopToken {
     TypeBoolean,
     TypeVoid,
     TypeArray,
-    Eof,
 }
 
 impl fmt::Display for DopToken {
@@ -52,7 +51,6 @@ impl fmt::Display for DopToken {
             DopToken::TypeBoolean => write!(f, "boolean"),
             DopToken::TypeVoid => write!(f, "void"),
             DopToken::TypeArray => write!(f, "array"),
-            DopToken::Eof => write!(f, "EOF"),
         }
     }
 }
@@ -131,14 +129,14 @@ impl Cursor {
 
 pub struct DopTokenizer {
     cursor: Cursor,
-    current_token: Result<(DopToken, Range), ParseError>,
+    current_token: Result<Option<(DopToken, Range)>, ParseError>,
 }
 
 impl DopTokenizer {
     pub fn new(input: &str, start_pos: Position) -> Self {
         let mut tokenizer = DopTokenizer {
             cursor: Cursor::new(input, start_pos),
-            current_token: Ok((DopToken::Eof, Range::new(start_pos, start_pos))), // temporary value
+            current_token: Ok(None), // temporary value
         };
         tokenizer.current_token = tokenizer.internal_advance();
         tokenizer
@@ -148,16 +146,16 @@ impl DopTokenizer {
         self.cursor.range()
     }
 
-    pub fn peek(&self) -> &Result<(DopToken, Range), ParseError> {
+    pub fn peek(&self) -> &Result<Option<(DopToken, Range)>, ParseError> {
         &self.current_token
     }
 
-    pub fn advance(&mut self) -> Result<(DopToken, Range), ParseError> {
+    pub fn advance(&mut self) -> Result<Option<(DopToken, Range)>, ParseError> {
         let result = self.internal_advance();
         mem::replace(&mut self.current_token, result)
     }
 
-    fn internal_advance(&mut self) -> Result<(DopToken, Range), ParseError> {
+    fn internal_advance(&mut self) -> Result<Option<(DopToken, Range)>, ParseError> {
         while self.cursor.peek().is_whitespace() {
             self.cursor.advance();
         }
@@ -165,7 +163,7 @@ impl DopTokenizer {
         let start_pos = self.cursor.get_position();
 
         let token = match self.cursor.peek() {
-            '\0' => DopToken::Eof,
+            '\0' => return Ok(None),
             '.' => {
                 self.cursor.advance();
                 DopToken::Dot
@@ -295,18 +293,18 @@ impl DopTokenizer {
         };
 
         let end_pos = self.cursor.get_position();
-        Ok((token, Range::new(start_pos, end_pos)))
+        Ok(Some((token, Range::new(start_pos, end_pos))))
     }
 }
 
 impl Iterator for DopTokenizer {
-    type Item = Result<(DopToken, Range), ParseError>;
+    type Item = Result<Option<(DopToken, Range)>, ParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.advance() {
             Err(err) => Some(Err(err)),
-            Ok((DopToken::Eof, _)) => None,
-            Ok((t, range)) => Some(Ok((t, range))),
+            Ok(None) => None,
+            Ok(Some((t, range))) => Some(Ok(Some((t, range)))),
         }
     }
 }
@@ -330,33 +328,43 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            LeftParen,
-                            1:1-1:2,
+                        Some(
+                            (
+                                LeftParen,
+                                1:1-1:2,
+                            ),
                         ),
                     ),
                     Ok(
-                        (
-                            RightParen,
-                            1:3-1:4,
+                        Some(
+                            (
+                                RightParen,
+                                1:3-1:4,
+                            ),
                         ),
                     ),
                     Ok(
-                        (
-                            Dot,
-                            1:5-1:6,
+                        Some(
+                            (
+                                Dot,
+                                1:5-1:6,
+                            ),
                         ),
                     ),
                     Ok(
-                        (
-                            Not,
-                            1:7-1:8,
+                        Some(
+                            (
+                                Not,
+                                1:7-1:8,
+                            ),
                         ),
                     ),
                     Ok(
-                        (
-                            Equal,
-                            1:9-1:11,
+                        Some(
+                            (
+                                Equal,
+                                1:9-1:11,
+                            ),
                         ),
                     ),
                 ]"#]],
@@ -370,49 +378,61 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            Identifier(
-                                "foo",
+                        Some(
+                            (
+                                Identifier(
+                                    "foo",
+                                ),
+                                1:1-1:4,
                             ),
-                            1:1-1:4,
                         ),
                     ),
                     Ok(
-                        (
-                            In,
-                            1:5-1:7,
+                        Some(
+                            (
+                                In,
+                                1:5-1:7,
+                            ),
                         ),
                     ),
                     Ok(
-                        (
-                            BooleanLiteral(
-                                true,
+                        Some(
+                            (
+                                BooleanLiteral(
+                                    true,
+                                ),
+                                1:8-1:12,
                             ),
-                            1:8-1:12,
                         ),
                     ),
                     Ok(
-                        (
-                            BooleanLiteral(
-                                false,
+                        Some(
+                            (
+                                BooleanLiteral(
+                                    false,
+                                ),
+                                1:13-1:18,
                             ),
-                            1:13-1:18,
                         ),
                     ),
                     Ok(
-                        (
-                            Identifier(
-                                "_test",
+                        Some(
+                            (
+                                Identifier(
+                                    "_test",
+                                ),
+                                1:19-1:24,
                             ),
-                            1:19-1:24,
                         ),
                     ),
                     Ok(
-                        (
-                            Identifier(
-                                "var123",
+                        Some(
+                            (
+                                Identifier(
+                                    "var123",
+                                ),
+                                1:25-1:31,
                             ),
-                            1:25-1:31,
                         ),
                     ),
                 ]"#]],
@@ -426,27 +446,33 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            StringLiteral(
-                                "hello",
+                        Some(
+                            (
+                                StringLiteral(
+                                    "hello",
+                                ),
+                                1:1-1:8,
                             ),
-                            1:1-1:8,
                         ),
                     ),
                     Ok(
-                        (
-                            StringLiteral(
-                                "world with spaces",
+                        Some(
+                            (
+                                StringLiteral(
+                                    "world with spaces",
+                                ),
+                                1:9-1:28,
                             ),
-                            1:9-1:28,
                         ),
                     ),
                     Ok(
-                        (
-                            StringLiteral(
-                                "",
+                        Some(
+                            (
+                                StringLiteral(
+                                    "",
+                                ),
+                                1:29-1:31,
                             ),
-                            1:29-1:31,
                         ),
                     ),
                 ]"#]],
@@ -460,35 +486,43 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            NumberLiteral(
-                                Number(123),
+                        Some(
+                            (
+                                NumberLiteral(
+                                    Number(123),
+                                ),
+                                1:1-1:4,
                             ),
-                            1:1-1:4,
                         ),
                     ),
                     Ok(
-                        (
-                            NumberLiteral(
-                                Number(456.789),
+                        Some(
+                            (
+                                NumberLiteral(
+                                    Number(456.789),
+                                ),
+                                1:5-1:12,
                             ),
-                            1:5-1:12,
                         ),
                     ),
                     Ok(
-                        (
-                            NumberLiteral(
-                                Number(0),
+                        Some(
+                            (
+                                NumberLiteral(
+                                    Number(0),
+                                ),
+                                1:13-1:14,
                             ),
-                            1:13-1:14,
                         ),
                     ),
                     Ok(
-                        (
-                            NumberLiteral(
-                                Number(0.5),
+                        Some(
+                            (
+                                NumberLiteral(
+                                    Number(0.5),
+                                ),
+                                1:15-1:18,
                             ),
-                            1:15-1:18,
                         ),
                     ),
                 ]"#]],
@@ -502,19 +536,23 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            Identifier(
-                                "foo",
+                        Some(
+                            (
+                                Identifier(
+                                    "foo",
+                                ),
+                                1:1-1:4,
                             ),
-                            1:1-1:4,
                         ),
                     ),
                     Ok(
-                        (
-                            Identifier(
-                                "bar",
+                        Some(
+                            (
+                                Identifier(
+                                    "bar",
+                                ),
+                                2:1-2:4,
                             ),
-                            2:1-2:4,
                         ),
                     ),
                 ]"#]],
@@ -528,25 +566,31 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            Identifier(
-                                "user",
+                        Some(
+                            (
+                                Identifier(
+                                    "user",
+                                ),
+                                1:1-1:5,
                             ),
-                            1:1-1:5,
                         ),
                     ),
                     Ok(
-                        (
-                            Dot,
-                            1:5-1:6,
+                        Some(
+                            (
+                                Dot,
+                                1:5-1:6,
+                            ),
                         ),
                     ),
                     Ok(
-                        (
-                            Identifier(
-                                "name",
+                        Some(
+                            (
+                                Identifier(
+                                    "name",
+                                ),
+                                1:6-1:10,
                             ),
-                            1:6-1:10,
                         ),
                     ),
                 ]"#]],
@@ -560,19 +604,23 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            Identifier(
-                                "foo",
+                        Some(
+                            (
+                                Identifier(
+                                    "foo",
+                                ),
+                                1:3-1:6,
                             ),
-                            1:3-1:6,
                         ),
                     ),
                     Ok(
-                        (
-                            Identifier(
-                                "bar",
+                        Some(
+                            (
+                                Identifier(
+                                    "bar",
+                                ),
+                                1:9-1:12,
                             ),
-                            1:9-1:12,
                         ),
                     ),
                 ]"#]],
@@ -586,39 +634,49 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            Identifier(
-                                "user",
+                        Some(
+                            (
+                                Identifier(
+                                    "user",
+                                ),
+                                1:1-1:5,
                             ),
-                            1:1-1:5,
                         ),
                     ),
                     Ok(
-                        (
-                            Dot,
-                            1:5-1:6,
-                        ),
-                    ),
-                    Ok(
-                        (
-                            Identifier(
-                                "name",
+                        Some(
+                            (
+                                Dot,
+                                1:5-1:6,
                             ),
-                            1:6-1:10,
                         ),
                     ),
                     Ok(
-                        (
-                            Equal,
-                            1:11-1:13,
-                        ),
-                    ),
-                    Ok(
-                        (
-                            StringLiteral(
-                                "admin",
+                        Some(
+                            (
+                                Identifier(
+                                    "name",
+                                ),
+                                1:6-1:10,
                             ),
-                            1:14-1:21,
+                        ),
+                    ),
+                    Ok(
+                        Some(
+                            (
+                                Equal,
+                                1:11-1:13,
+                            ),
+                        ),
+                    ),
+                    Ok(
+                        Some(
+                            (
+                                StringLiteral(
+                                    "admin",
+                                ),
+                                1:14-1:21,
+                            ),
                         ),
                     ),
                 ]"#]],
@@ -632,43 +690,55 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            Not,
-                            1:1-1:2,
-                        ),
-                    ),
-                    Ok(
-                        (
-                            LeftParen,
-                            1:2-1:3,
-                        ),
-                    ),
-                    Ok(
-                        (
-                            Identifier(
-                                "foo",
+                        Some(
+                            (
+                                Not,
+                                1:1-1:2,
                             ),
-                            1:3-1:6,
                         ),
                     ),
                     Ok(
-                        (
-                            Equal,
-                            1:7-1:9,
-                        ),
-                    ),
-                    Ok(
-                        (
-                            BooleanLiteral(
-                                true,
+                        Some(
+                            (
+                                LeftParen,
+                                1:2-1:3,
                             ),
-                            1:10-1:14,
                         ),
                     ),
                     Ok(
-                        (
-                            RightParen,
-                            1:14-1:15,
+                        Some(
+                            (
+                                Identifier(
+                                    "foo",
+                                ),
+                                1:3-1:6,
+                            ),
+                        ),
+                    ),
+                    Ok(
+                        Some(
+                            (
+                                Equal,
+                                1:7-1:9,
+                            ),
+                        ),
+                    ),
+                    Ok(
+                        Some(
+                            (
+                                BooleanLiteral(
+                                    true,
+                                ),
+                                1:10-1:14,
+                            ),
+                        ),
+                    ),
+                    Ok(
+                        Some(
+                            (
+                                RightParen,
+                                1:14-1:15,
+                            ),
                         ),
                     ),
                 ]"#]],
@@ -682,51 +752,65 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            LeftBracket,
-                            1:1-1:2,
-                        ),
-                    ),
-                    Ok(
-                        (
-                            NumberLiteral(
-                                Number(1),
+                        Some(
+                            (
+                                LeftBracket,
+                                1:1-1:2,
                             ),
-                            1:2-1:3,
                         ),
                     ),
                     Ok(
-                        (
-                            Comma,
-                            1:3-1:4,
-                        ),
-                    ),
-                    Ok(
-                        (
-                            NumberLiteral(
-                                Number(2),
+                        Some(
+                            (
+                                NumberLiteral(
+                                    Number(1),
+                                ),
+                                1:2-1:3,
                             ),
-                            1:5-1:6,
                         ),
                     ),
                     Ok(
-                        (
-                            Comma,
-                            1:6-1:7,
-                        ),
-                    ),
-                    Ok(
-                        (
-                            NumberLiteral(
-                                Number(3),
+                        Some(
+                            (
+                                Comma,
+                                1:3-1:4,
                             ),
-                            1:8-1:9,
                         ),
                     ),
                     Ok(
-                        (
-                            RightBracket,
-                            1:9-1:10,
+                        Some(
+                            (
+                                NumberLiteral(
+                                    Number(2),
+                                ),
+                                1:5-1:6,
+                            ),
+                        ),
+                    ),
+                    Ok(
+                        Some(
+                            (
+                                Comma,
+                                1:6-1:7,
+                            ),
+                        ),
+                    ),
+                    Ok(
+                        Some(
+                            (
+                                NumberLiteral(
+                                    Number(3),
+                                ),
+                                1:8-1:9,
+                            ),
+                        ),
+                    ),
+                    Ok(
+                        Some(
+                            (
+                                RightBracket,
+                                1:9-1:10,
+                            ),
                         ),
                     ),
                 ]"#]],
@@ -740,15 +824,19 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            LeftBracket,
-                            1:1-1:2,
+                        Some(
+                            (
+                                LeftBracket,
+                                1:1-1:2,
+                            ),
                         ),
                     ),
                     Ok(
-                        (
-                            RightBracket,
-                            1:2-1:3,
+                        Some(
+                            (
+                                RightBracket,
+                                1:2-1:3,
+                            ),
                         ),
                     ),
                 ]"#]],
@@ -762,37 +850,47 @@ mod tests {
             expect![[r#"
                 [
                     Ok(
-                        (
-                            LeftBrace,
-                            1:1-1:2,
-                        ),
-                    ),
-                    Ok(
-                        (
-                            Identifier(
-                                "name",
+                        Some(
+                            (
+                                LeftBrace,
+                                1:1-1:2,
                             ),
-                            1:2-1:6,
                         ),
                     ),
                     Ok(
-                        (
-                            Colon,
-                            1:6-1:7,
-                        ),
-                    ),
-                    Ok(
-                        (
-                            StringLiteral(
-                                "John",
+                        Some(
+                            (
+                                Identifier(
+                                    "name",
+                                ),
+                                1:2-1:6,
                             ),
-                            1:8-1:14,
                         ),
                     ),
                     Ok(
-                        (
-                            RightBrace,
-                            1:14-1:15,
+                        Some(
+                            (
+                                Colon,
+                                1:6-1:7,
+                            ),
+                        ),
+                    ),
+                    Ok(
+                        Some(
+                            (
+                                StringLiteral(
+                                    "John",
+                                ),
+                                1:8-1:14,
+                            ),
+                        ),
+                    ),
+                    Ok(
+                        Some(
+                            (
+                                RightBrace,
+                                1:14-1:15,
+                            ),
                         ),
                     ),
                 ]"#]],

@@ -798,10 +798,10 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                error: Expected token 'in'
+                error: Unexpected end of expression
                 1 | <main-comp>
                 2 |     <for {foo}>
-                  |              ^
+                  |           ^^^
             "#]],
         );
     }
@@ -854,9 +854,9 @@ mod tests {
             "},
             // TODO: Improve error message
             expect![[r#"
-                error: Expected type name
+                error: Unexpected end of expression
                 1 | <main-comp {data: array[}>
-                  |                         ^
+                  |             ^^^^^^^^^^^^
             "#]],
         );
     }

@@ -55,7 +55,7 @@ impl Range {
     pub fn intersection(&self, other: &Range) -> Option<Range> {
         let start = cmp::max(self.start, other.start);
         let end = cmp::min(self.end, other.end);
-        
+
         // If start >= end, there's no intersection
         if start >= end {
             None
@@ -330,6 +330,10 @@ impl ParseError {
         Self::new(format!("Expected token '{token}'"), range)
     }
 
+    pub fn unexpected_eof(range: Range) -> Self {
+        Self::new(format!("Unexpected end of expression"), range)
+    }
+
     pub fn unexpected_token(token: &DopToken, range: Range) -> Self {
         Self::new(format!("Unexpected token '{token}'"), range)
     }
@@ -338,8 +342,8 @@ impl ParseError {
         Self::new("Expected variable name".to_string(), range)
     }
 
-    pub fn expected_property_name(range: Range) -> Self {
-        Self::new("Expected property name".to_string(), range)
+    pub fn expected_property_name(token: &DopToken, range: Range) -> Self {
+        Self::new(format!("Expected property name but got {token}"), range)
     }
 
     pub fn duplicate_argument(name: &str, range: Range) -> Self {
