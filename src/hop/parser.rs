@@ -147,7 +147,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                                     ));
                                     None
                                 }
-                                Err(dop::parser::ParseError::RangeError { message, range }) => {
+                                Err(dop::parser::ParseError::Ranged { message, range }) => {
                                     errors.push(ParseError::new(message, range));
                                     None
                                 }
@@ -279,7 +279,7 @@ fn construct_node(
                         children: vec![],
                     }
                 }
-                Err(dop::parser::ParseError::RangeError { message, range }) => {
+                Err(dop::parser::ParseError::Ranged { message, range }) => {
                     errors.push(ParseError::new(message, range));
                     HopNode::Error {
                         range: tree.range,
@@ -315,7 +315,7 @@ fn construct_node(
                                     children,
                                 }
                             }
-                            Err(dop::parser::ParseError::RangeError { message, range }) => {
+                            Err(dop::parser::ParseError::Ranged { message, range }) => {
                                 errors.push(ParseError::new(message, range));
                                 HopNode::Error {
                                     range: tree.range,
@@ -354,7 +354,7 @@ fn construct_node(
                                     children,
                                 }
                             }
-                            Err(dop::parser::ParseError::RangeError { message, range }) => {
+                            Err(dop::parser::ParseError::Ranged { message, range }) => {
                                 errors.push(ParseError::new(message, range));
                                 HopNode::Error {
                                     range: tree.range,
@@ -442,7 +442,7 @@ fn construct_node(
                                         children: vec![],
                                     };
                                 }
-                                Err(dop::parser::ParseError::RangeError { message, range }) => {
+                                Err(dop::parser::ParseError::Ranged { message, range }) => {
                                     errors.push(ParseError::new(message, range));
                                     return HopNode::Error {
                                         range: tree.range,
@@ -496,7 +496,7 @@ fn construct_node(
                                         *attr_val_range,
                                     ));
                                 }
-                                Err(dop::parser::ParseError::RangeError { message, range }) => {
+                                Err(dop::parser::ParseError::Ranged { message, range }) => {
                                     errors.push(ParseError::new(message, range));
                                 }
                             };

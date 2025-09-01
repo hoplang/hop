@@ -9,12 +9,12 @@ use crate::dop::typechecker::RangeDopType;
 #[derive(Debug, Clone, PartialEq)]
 pub enum ParseError {
     UnexpectedEof,
-    RangeError { message: String, range: Range },
+    Ranged { message: String, range: Range },
 }
 
 impl ParseError {
     pub fn new(message: String, range: Range) -> Self {
-        Self::RangeError { message, range }
+        Self::Ranged { message, range }
     }
 
     pub fn unterminated_string_literal(range: Range) -> Self {
@@ -618,7 +618,7 @@ mod tests {
                     range: Range::new(Position::default(), Position::new(1000, 1000)),
                 }],
             ),
-            ParseError::RangeError { message, range } => {
+            ParseError::Ranged { message, range } => {
                 annotator.annotate(None, input, &[SimpleAnnotation { message, range }])
             }
         }

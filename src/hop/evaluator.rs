@@ -115,7 +115,7 @@ pub fn evaluate_component(
                         output.push_str(&attr.name);
                         if let Some((val, _)) = &attr.value {
                             output.push_str("=\"");
-                            output.push_str(&val);
+                            output.push_str(val);
                             output.push('"');
                         }
                     }
@@ -124,7 +124,7 @@ pub fn evaluate_component(
                         output.push_str(&attr.name);
                         output.push_str("=\"");
                         if let Some((val, _)) = &attr.value {
-                            output.push_str(&val);
+                            output.push_str(val);
                         }
                         output.push(' ');
                         output.push_str(cls);
@@ -136,7 +136,7 @@ pub fn evaluate_component(
                 output.push_str(&attr.name);
                 if let Some((val, _)) = &attr.value {
                     output.push_str("=\"");
-                    output.push_str(&val);
+                    output.push_str(val);
                     output.push('"');
                 }
             }
