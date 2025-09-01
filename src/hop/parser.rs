@@ -202,8 +202,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                             name: name.to_string(),
                             opening_name_range: name_range,
                             closing_name_range: tree.closing_tag_name_range,
-                            params: params
-                                .map(|(f, s)| (f.values().cloned().collect::<Vec<_>>(), s)),
+                            params,
                             is_entrypoint,
                             as_attr: as_attr.map(|(v, r)| PresentAttribute { value: v, range: r }),
                             attributes: unhandled_attributes,
@@ -466,7 +465,7 @@ fn construct_node(
                         opening_name_range: name_range,
                         closing_name_range: tree.closing_tag_name_range,
                         definition_module: definition_location,
-                        args: args.map(|(f, s)| (f.values().cloned().collect::<Vec<_>>(), s)),
+                        args,
                         attributes,
                         range: tree.range,
                         children,

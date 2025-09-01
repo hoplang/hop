@@ -3,7 +3,7 @@ use crate::dop::{DopParameter, DopType, is_subtype, typecheck_expr};
 use crate::hop::ast::HopAst;
 use crate::hop::ast::{ComponentDefinition, HopNode, Import, Render};
 use crate::hop::environment::Environment;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeAnnotation {
@@ -39,7 +39,7 @@ pub struct ComponentTypeInformation {
     definition_module: String,
     definition_range: Range,
     // Track the parameter types for the component.
-    parameter_types: Option<(Vec<DopParameter>, Range)>,
+    parameter_types: Option<(BTreeMap<String, DopParameter>, Range)>,
     // Track whether the component has a slot-default.
     has_slot: bool,
 }
@@ -95,7 +95,7 @@ pub fn typecheck(
     } in module.get_component_definitions()
     {
         if let Some((params, _)) = params {
-            for param in params {
+            for param in params.values() {
                 type_annotations.push(TypeAnnotation {
                     range: param.var_name.range,
                     typ: param.type_annotation.clone(),
@@ -116,10 +116,11 @@ pub fn typecheck(
             );
         }
 
-        // Check for unused variables (iterate in reverse to match push order)
         if let Some((params, _)) = params {
-            for param in params.iter().rev() {
-                if env.pop().is_err() {
+            for _ in 0..params.len() {
+                let (key, _, accessed) = env.pop();
+                if !accessed {
+                    let param = params.get(&key).unwrap();
                     errors.push(TypeError::unused_variable(
                         &param.var_name.value,
                         param.var_name.range,
@@ -169,6 +170,16 @@ fn typecheck_node(
             children,
             ..
         } => {
+            for child in children {
+                typecheck_node(
+                    child,
+                    component_info,
+                    env,
+                    annotations,
+                    component_definition_links,
+                    errors,
+                );
+            }
             let condition_type = match typecheck_expr(condition, env, annotations, errors) {
                 Ok(t) => t,
                 Err(err) => {
@@ -176,196 +187,15 @@ fn typecheck_node(
                     return; // Skip further processing of this branch
                 }
             };
+
             if !is_subtype(&condition_type, &DopType::Bool) {
                 errors.push(TypeError::expected_boolean_condition(
                     &condition_type.to_string(),
                     condition.range(),
                 ));
             }
-
-            for child in children {
-                typecheck_node(
-                    child,
-                    component_info,
-                    env,
-                    annotations,
-                    component_definition_links,
-                    errors,
-                );
-            }
         }
-        HopNode::ComponentReference {
-            component,
-            args,
-            children,
-            opening_name_range,
-            closing_name_range,
-            ..
-        } => {
-            if let Some(comp_info) = component_info.get(component) {
-                // Add definition link for go-to-definition
-                component_definition_links.push(DefinitionLink {
-                    reference_range: *opening_name_range,
-                    definition_module: comp_info.definition_module.clone(),
-                    definition_range: comp_info.definition_range,
-                });
-                if let Some(range) = closing_name_range {
-                    component_definition_links.push(DefinitionLink {
-                        reference_range: *range,
-                        definition_module: comp_info.definition_module.clone(),
-                        definition_range: comp_info.definition_range,
-                    });
-                }
 
-                match (&comp_info.parameter_types, args) {
-                    (None, Some((_, args_range))) => {
-                        errors.push(TypeError::unexpected_arguments(*args_range));
-                    }
-                    (Some((params, _)), None) => {
-                        errors.push(TypeError::missing_arguments(params, *opening_name_range));
-                    }
-                    (_, None) => {}
-                    (Some((params, _)), Some((args, args_range))) => {
-                        let provided_args: std::collections::HashSet<_> =
-                            args.iter().map(|arg| &arg.var_name.value).collect();
-                        let expected_params: std::collections::HashSet<_> =
-                            params.iter().map(|p| &p.var_name.value).collect();
-
-                        // Check for missing required parameters
-                        for param in params {
-                            if !provided_args.contains(&param.var_name.value) {
-                                errors.push(TypeError::missing_required_parameter(
-                                    &param.var_name.value,
-                                    *args_range,
-                                ));
-                            }
-                        }
-
-                        // Check for unexpected arguments
-                        for arg in args {
-                            if !expected_params.contains(&arg.var_name.value) {
-                                errors.push(TypeError::unexpected_argument(
-                                    &arg.var_name.value,
-                                    arg.var_name.range,
-                                ));
-                            }
-                        }
-
-                        // Check each provided argument against its corresponding parameter type
-                        for arg in args {
-                            if let Some(param) = params
-                                .iter()
-                                .find(|p| p.var_name.value == arg.var_name.value)
-                            {
-                                let evaluated_arg_type =
-                                    match typecheck_expr(&arg.expression, env, annotations, errors)
-                                    {
-                                        Ok(t) => t,
-                                        Err(err) => {
-                                            errors.push(err);
-                                            continue; // Skip to next argument
-                                        }
-                                    };
-
-                                if !is_subtype(&evaluated_arg_type, &param.type_annotation) {
-                                    errors.push(TypeError::argument_is_incompatible(
-                                        &param.type_annotation.to_string(),
-                                        &evaluated_arg_type.to_string(),
-                                        &arg.var_name.value,
-                                        arg.expression.range(),
-                                    ));
-                                } else {
-                                    annotations.push(TypeAnnotation {
-                                        range: arg.expression.range(),
-                                        typ: evaluated_arg_type,
-                                        name: format!(
-                                            "component parameter '{}'",
-                                            arg.var_name.value
-                                        ),
-                                    });
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Validate that content is only passed to components with slot-default
-                if !children.is_empty() && !comp_info.has_slot {
-                    errors.push(TypeError::undefined_slot(component, *opening_name_range));
-                }
-            } else {
-                errors.push(TypeError::undefined_component(
-                    component,
-                    *opening_name_range,
-                ));
-            }
-
-            for child in children {
-                typecheck_node(
-                    child,
-                    component_info,
-                    env,
-                    annotations,
-                    component_definition_links,
-                    errors,
-                );
-            }
-        }
-        HopNode::Html {
-            set_attributes,
-            children,
-            ..
-        } => {
-            for set_attr in set_attributes {
-                let expr_type = match typecheck_expr(&set_attr.expression, env, annotations, errors)
-                {
-                    Ok(t) => t,
-                    Err(err) => {
-                        errors.push(err);
-                        continue; // Skip this attribute
-                    }
-                };
-
-                if !is_subtype(&expr_type, &DopType::String) {
-                    errors.push(TypeError::expected_string_attribute(
-                        &expr_type.to_string(),
-                        set_attr.range,
-                    ));
-                    continue;
-                }
-
-                annotations.push(TypeAnnotation {
-                    range: set_attr.range,
-                    typ: DopType::String,
-                    name: "attribute expression".to_string(),
-                });
-            }
-
-            for child in children {
-                typecheck_node(
-                    child,
-                    component_info,
-                    env,
-                    annotations,
-                    component_definition_links,
-                    errors,
-                );
-            }
-        }
-        HopNode::XExec { children, .. }
-        | HopNode::XRaw { children, .. }
-        | HopNode::Error { children, .. } => {
-            for child in children {
-                typecheck_node(
-                    child,
-                    component_info,
-                    env,
-                    annotations,
-                    component_definition_links,
-                    errors,
-                );
-            }
-        }
         HopNode::For {
             var_name,
             array_expr,
@@ -425,27 +255,165 @@ fn typecheck_node(
             }
 
             if pushed {
-                match env.pop() {
-                    Ok(_) => {}
-                    Err(_) => {
-                        errors.push(TypeError::unused_variable(&var_name.value, var_name.range))
-                    }
+                let (_, _, accessed) = env.pop();
+                if !accessed {
+                    errors.push(TypeError::unused_variable(&var_name.value, var_name.range))
                 }
             }
         }
 
-        HopNode::SlotDefinition { .. } | HopNode::Text { .. } | HopNode::Doctype { .. } => {
-            // No typechecking needed
-        }
-        HopNode::TextExpression {
-            expression, range, ..
+        HopNode::ComponentReference {
+            component,
+            args,
+            children,
+            opening_name_range,
+            closing_name_range,
+            ..
         } => {
-            // Typecheck the expression and ensure it's a string
+            if let Some(comp_info) = component_info.get(component) {
+                // Add definition link for go-to-definition
+                component_definition_links.push(DefinitionLink {
+                    reference_range: *opening_name_range,
+                    definition_module: comp_info.definition_module.clone(),
+                    definition_range: comp_info.definition_range,
+                });
+                if let Some(range) = closing_name_range {
+                    component_definition_links.push(DefinitionLink {
+                        reference_range: *range,
+                        definition_module: comp_info.definition_module.clone(),
+                        definition_range: comp_info.definition_range,
+                    });
+                }
+
+                match (&comp_info.parameter_types, args) {
+                    (None, None) => {}
+                    (None, Some((_, args_range))) => {
+                        errors.push(TypeError::unexpected_arguments(*args_range));
+                    }
+                    (Some((params, _)), None) => {
+                        errors.push(TypeError::missing_arguments(params, *opening_name_range));
+                    }
+                    (Some((params, _)), Some((args, args_range))) => {
+                        for param in params.values() {
+                            if !args.contains_key(&param.var_name.value) {
+                                errors.push(TypeError::missing_required_parameter(
+                                    &param.var_name.value,
+                                    *args_range,
+                                ));
+                            }
+                        }
+
+                        for arg in args.values() {
+                            let param = match params.get(&arg.var_name.value) {
+                                None => {
+                                    errors.push(TypeError::unexpected_argument(
+                                        &arg.var_name.value,
+                                        arg.var_name.range,
+                                    ));
+                                    continue;
+                                }
+                                Some(param) => param,
+                            };
+
+                            let evaluated_arg_type =
+                                match typecheck_expr(&arg.expression, env, annotations, errors) {
+                                    Ok(t) => t,
+                                    Err(err) => {
+                                        errors.push(err);
+                                        continue;
+                                    }
+                                };
+
+                            if !is_subtype(&evaluated_arg_type, &param.type_annotation) {
+                                errors.push(TypeError::argument_is_incompatible(
+                                    &param.type_annotation.to_string(),
+                                    &evaluated_arg_type.to_string(),
+                                    &arg.var_name.value,
+                                    arg.expression.range(),
+                                ));
+                                continue;
+                            }
+
+                            annotations.push(TypeAnnotation {
+                                range: arg.expression.range(),
+                                typ: evaluated_arg_type,
+                                name: format!("component parameter '{}'", arg.var_name.value),
+                            });
+                        }
+                    }
+                }
+
+                // Validate that content is only passed to components with slot-default
+                if !children.is_empty() && !comp_info.has_slot {
+                    errors.push(TypeError::undefined_slot(component, *opening_name_range));
+                }
+            } else {
+                errors.push(TypeError::undefined_component(
+                    component,
+                    *opening_name_range,
+                ));
+            }
+
+            for child in children {
+                typecheck_node(
+                    child,
+                    component_info,
+                    env,
+                    annotations,
+                    component_definition_links,
+                    errors,
+                );
+            }
+        }
+
+        HopNode::Html {
+            set_attributes,
+            children,
+            ..
+        } => {
+            for set_attr in set_attributes {
+                let expr_type = match typecheck_expr(&set_attr.expression, env, annotations, errors)
+                {
+                    Ok(t) => t,
+                    Err(err) => {
+                        errors.push(err);
+                        continue; // Skip this attribute
+                    }
+                };
+
+                if !is_subtype(&expr_type, &DopType::String) {
+                    errors.push(TypeError::expected_string_attribute(
+                        &expr_type.to_string(),
+                        set_attr.range,
+                    ));
+                    continue;
+                }
+
+                annotations.push(TypeAnnotation {
+                    range: set_attr.range,
+                    typ: DopType::String,
+                    name: "attribute expression".to_string(),
+                });
+            }
+
+            for child in children {
+                typecheck_node(
+                    child,
+                    component_info,
+                    env,
+                    annotations,
+                    component_definition_links,
+                    errors,
+                );
+            }
+        }
+
+        HopNode::TextExpression { expression, range } => {
             let expr_type = match typecheck_expr(expression, env, annotations, errors) {
                 Ok(t) => t,
                 Err(err) => {
                     errors.push(err);
-                    return; // Skip further processing
+                    return;
                 }
             };
             if !is_subtype(&expr_type, &DopType::String) {
@@ -453,12 +421,32 @@ fn typecheck_node(
                     &expr_type.to_string(),
                     *range,
                 ));
+                return;
             }
             annotations.push(TypeAnnotation {
                 range: *range,
                 typ: DopType::String,
                 name: "text expression".to_string(),
             });
+        }
+
+        HopNode::XExec { children, .. }
+        | HopNode::XRaw { children, .. }
+        | HopNode::Error { children, .. } => {
+            for child in children {
+                typecheck_node(
+                    child,
+                    component_info,
+                    env,
+                    annotations,
+                    component_definition_links,
+                    errors,
+                );
+            }
+        }
+
+        HopNode::SlotDefinition { .. } | HopNode::Text { .. } | HopNode::Doctype { .. } => {
+            // No typechecking needed
         }
     }
 }
@@ -527,7 +515,7 @@ mod tests {
                         .map(|(params, _)| {
                             params
                                 .iter()
-                                .map(|p| {
+                                .map(|(_, p)| {
                                     format!("{}: {}", p.var_name.value.clone(), p.type_annotation)
                                 })
                                 .collect::<Vec<_>>()

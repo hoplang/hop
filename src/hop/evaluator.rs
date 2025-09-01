@@ -80,7 +80,7 @@ pub fn evaluate_component(
 
     // Set up environment with all parameters and their corresponding values
     if let Some((params, _)) = &component.params {
-        for param in params.iter() {
+        for (_, param) in params.iter() {
             if let Some(value) = args.get(&param.var_name.value) {
                 let _ = env.push(param.var_name.value.clone(), value.clone());
             }
@@ -268,7 +268,7 @@ fn evaluate_node(
             match args {
                 None => {}
                 Some((args, _)) => {
-                    for arg in args {
+                    for arg in args.values() {
                         let value = evaluate_expr(&arg.expression, env)?;
                         arg_values.insert(arg.var_name.value.clone(), value);
                     }

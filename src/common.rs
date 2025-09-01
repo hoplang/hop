@@ -1,5 +1,5 @@
 use crate::{dop::DopParameter, tui::source_annotator::Annotated};
-use std::{cmp, fmt};
+use std::{cmp, collections::BTreeMap, fmt};
 
 /// Represents a position in source code
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -153,13 +153,13 @@ impl TypeError {
         Self::new(format!("Missing required parameter '{}'", param), range)
     }
 
-    pub fn missing_arguments(params: &[DopParameter], range: Range) -> Self {
+    pub fn missing_arguments(params: &BTreeMap<String, DopParameter>, range: Range) -> Self {
         Self::new(
             format!(
                 "Component requires arguments: {}",
                 params
                     .iter()
-                    .map(|p| p.var_name.value.clone())
+                    .map(|(_, p)| p.var_name.value.clone())
                     .collect::<Vec<_>>()
                     .join(", ")
             ),

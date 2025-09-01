@@ -44,18 +44,15 @@ impl<V> Environment<V> {
     /// Undo the latest push operation.
     ///
     /// Returns an error if the variable was never accessed.
-    pub fn pop(&mut self) -> Result<(), ()> {
-        if let Some(key) = self.operations.pop() {
-            self.entries
-                .remove(&key)
-                .map(|entry| match entry.accessed {
-                    true => Ok(()),
-                    false => Err(()),
-                })
-                .unwrap_or(Err(()))
-        } else {
-            Err(())
-        }
+    pub fn pop(&mut self) -> (String, V, bool) {
+        let key = self
+            .operations
+            .pop()
+            .expect("Tried to pop from empty environment");
+        self.entries
+            .remove(&key)
+            .map(|entry| (key, entry.value, entry.accessed))
+            .unwrap()
     }
 
     /// Access the value behind a key in the environment.

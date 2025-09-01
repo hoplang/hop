@@ -270,7 +270,6 @@ pub fn parse_parameters(
             break;
         }
         let param = parse_parameter(tokenizer)?;
-        // Check for duplicates
         if params.contains_key(&param.var_name.value) {
             return Err(ParseError::duplicate_parameter(
                 &param.var_name.value,
@@ -299,7 +298,6 @@ pub fn parse_arguments(
             break;
         }
         let arg = parse_argument(tokenizer)?;
-        // Check for duplicates
         if args.contains_key(&arg.var_name.value) {
             return Err(ParseError::duplicate_argument(
                 &arg.var_name.value,
