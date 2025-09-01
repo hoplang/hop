@@ -436,12 +436,11 @@ impl Tokenizer {
                             attr_name.clone(),
                             Attribute {
                                 name: attr_name,
-                                value: mem::take(&mut attribute_value),
+                                value: None,
                                 range: Range {
                                     start: attribute_start,
                                     end: self.cursor.get_position(),
                                 },
-                                value_range: Range::default(),
                             },
                         );
                         attribute_start = self.cursor.get_position();
@@ -464,12 +463,11 @@ impl Tokenizer {
                             attr_name.clone(),
                             Attribute {
                                 name: attr_name,
-                                value: mem::take(&mut attribute_value),
+                                value: None,
                                 range: Range {
                                     start: attribute_start,
                                     end: self.cursor.get_position(),
                                 },
-                                value_range: Range::default(),
                             },
                         );
                         if is_tag_name_with_raw_content(&token_value) {
@@ -513,12 +511,11 @@ impl Tokenizer {
                             attr_name.clone(),
                             Attribute {
                                 name: attr_name,
-                                value: mem::take(&mut attribute_value),
+                                value: None,
                                 range: Range {
                                     start: attribute_start,
                                     end: self.cursor.get_position(),
                                 },
-                                value_range: Range::default(),
                             },
                         );
                         self.cursor.advance();
@@ -574,12 +571,18 @@ impl Tokenizer {
                             attr_name.clone(),
                             Attribute {
                                 name: attr_name,
-                                value: mem::take(&mut attribute_value),
+                                value: if attribute_value_start == attribute_value_end {
+                                    None
+                                } else {
+                                    Some((
+                                        mem::take(&mut attribute_value),
+                                        Range::new(attribute_value_start, attribute_value_end),
+                                    ))
+                                },
                                 range: Range {
                                     start: attribute_start,
                                     end: self.cursor.get_position(),
                                 },
-                                value_range: Range::new(attribute_value_start, attribute_value_end),
                             },
                         );
                         attribute_start = self.cursor.get_position();
@@ -611,12 +614,18 @@ impl Tokenizer {
                             attr_name.clone(),
                             Attribute {
                                 name: attr_name,
-                                value: mem::take(&mut attribute_value),
+                                value: if attribute_value_start != attribute_value_end {
+                                    Some((
+                                        mem::take(&mut attribute_value),
+                                        Range::new(attribute_value_start, attribute_value_end),
+                                    ))
+                                } else {
+                                    None
+                                },
                                 range: Range {
                                     start: attribute_start,
                                     end: self.cursor.get_position(),
                                 },
-                                value_range: Range::new(attribute_value_start, attribute_value_end),
                             },
                         );
                         attribute_start = self.cursor.get_position();
@@ -840,7 +849,11 @@ impl Tokenizer {
 
         // No more tokens - return Eof token
         Ok(Token::Eof {
-            range: Range::new(token_start, self.cursor.get_position()),
+            range: Range::new(
+                token_start,
+                // TODO: Don't use ranges for Eof tokens
+                Position::new(token_start.line, token_start.column + 1),
+            ),
         })
     }
 }
@@ -910,21 +923,18 @@ mod tests {
                             attributes: {
                                 "disabled": Attribute {
                                     name: "disabled",
-                                    value: "",
+                                    value: None,
                                     range: 1:25-1:36,
-                                    value_range: 1:35-1:35,
                                 },
                                 "type": Attribute {
                                     name: "type",
-                                    value: "",
+                                    value: None,
                                     range: 1:8-1:15,
-                                    value_range: 1:14-1:14,
                                 },
                                 "value": Attribute {
                                     name: "value",
-                                    value: "",
+                                    value: None,
                                     range: 1:16-1:24,
-                                    value_range: 1:23-1:23,
                                 },
                             },
                             expression: None,
@@ -949,15 +959,23 @@ mod tests {
                             attributes: {
                                 "foo": Attribute {
                                     name: "foo",
-                                    value: "bar",
+                                    value: Some(
+                                        (
+                                            "bar",
+                                            1:10-1:13,
+                                        ),
+                                    ),
                                     range: 1:5-1:14,
-                                    value_range: 1:10-1:13,
                                 },
                                 "x": Attribute {
                                     name: "x",
-                                    value: "y",
+                                    value: Some(
+                                        (
+                                            "y",
+                                            1:17-1:18,
+                                        ),
+                                    ),
                                     range: 1:14-1:19,
-                                    value_range: 1:17-1:18,
                                 },
                             },
                             expression: None,
@@ -982,15 +1000,13 @@ mod tests {
                             attributes: {
                                 "bar": Attribute {
                                     name: "bar",
-                                    value: "",
+                                    value: None,
                                     range: 1:9-1:12,
-                                    value_range: 1:1-1:1,
                                 },
                                 "foo": Attribute {
                                     name: "foo",
-                                    value: "",
+                                    value: None,
                                     range: 1:5-1:8,
-                                    value_range: 1:1-1:1,
                                 },
                             },
                             expression: None,
@@ -1015,9 +1031,8 @@ mod tests {
                             attributes: {
                                 "foo": Attribute {
                                     name: "foo",
-                                    value: "",
+                                    value: None,
                                     range: 1:5-1:8,
-                                    value_range: 1:1-1:1,
                                 },
                             },
                             expression: None,
@@ -1575,21 +1590,33 @@ mod tests {
                             attributes: {
                                 "class": Attribute {
                                     name: "class",
-                                    value: "multiline",
+                                    value: Some(
+                                        (
+                                            "multiline",
+                                            2:10-2:19,
+                                        ),
+                                    ),
                                     range: 2:3-2:20,
-                                    value_range: 2:10-2:19,
                                 },
                                 "data-value": Attribute {
                                     name: "data-value",
-                                    value: "something",
+                                    value: Some(
+                                        (
+                                            "something",
+                                            4:15-4:24,
+                                        ),
+                                    ),
                                     range: 4:3-4:25,
-                                    value_range: 4:15-4:24,
                                 },
                                 "id": Attribute {
                                     name: "id",
-                                    value: "test",
+                                    value: Some(
+                                        (
+                                            "test",
+                                            3:7-3:11,
+                                        ),
+                                    ),
                                     range: 3:3-3:12,
-                                    value_range: 3:7-3:11,
                                 },
                             },
                             expression: None,
@@ -1989,9 +2016,13 @@ mod tests {
                             attributes: {
                                 "class": Attribute {
                                     name: "class",
-                                    value: "container",
+                                    value: Some(
+                                        (
+                                            "container",
+                                            7:15-7:24,
+                                        ),
+                                    ),
                                     range: 7:8-7:25,
-                                    value_range: 7:15-7:24,
                                 },
                             },
                             expression: None,
@@ -2068,57 +2099,93 @@ mod tests {
                             attributes: {
                                 "fill": Attribute {
                                     name: "fill",
-                                    value: "none",
+                                    value: Some(
+                                        (
+                                            "none",
+                                            1:90-1:94,
+                                        ),
+                                    ),
                                     range: 1:84-1:95,
-                                    value_range: 1:90-1:94,
                                 },
                                 "height": Attribute {
                                     name: "height",
-                                    value: "24",
+                                    value: Some(
+                                        (
+                                            "24",
+                                            1:60-1:62,
+                                        ),
+                                    ),
                                     range: 1:52-1:63,
-                                    value_range: 1:60-1:62,
                                 },
                                 "stroke": Attribute {
                                     name: "stroke",
-                                    value: "currentColor",
+                                    value: Some(
+                                        (
+                                            "currentColor",
+                                            1:104-1:116,
+                                        ),
+                                    ),
                                     range: 1:96-1:117,
-                                    value_range: 1:104-1:116,
                                 },
                                 "stroke-linecap": Attribute {
                                     name: "stroke-linecap",
-                                    value: "round",
+                                    value: Some(
+                                        (
+                                            "round",
+                                            1:151-1:156,
+                                        ),
+                                    ),
                                     range: 1:135-1:157,
-                                    value_range: 1:151-1:156,
                                 },
                                 "stroke-linejoin": Attribute {
                                     name: "stroke-linejoin",
-                                    value: "round",
+                                    value: Some(
+                                        (
+                                            "round",
+                                            1:175-1:180,
+                                        ),
+                                    ),
                                     range: 1:158-1:181,
-                                    value_range: 1:175-1:180,
                                 },
                                 "stroke-width": Attribute {
                                     name: "stroke-width",
-                                    value: "2",
+                                    value: Some(
+                                        (
+                                            "2",
+                                            1:132-1:133,
+                                        ),
+                                    ),
                                     range: 1:118-1:134,
-                                    value_range: 1:132-1:133,
                                 },
                                 "viewBox": Attribute {
                                     name: "viewBox",
-                                    value: "0 0 24 24",
+                                    value: Some(
+                                        (
+                                            "0 0 24 24",
+                                            1:73-1:82,
+                                        ),
+                                    ),
                                     range: 1:64-1:83,
-                                    value_range: 1:73-1:82,
                                 },
                                 "width": Attribute {
                                     name: "width",
-                                    value: "24",
+                                    value: Some(
+                                        (
+                                            "24",
+                                            1:48-1:50,
+                                        ),
+                                    ),
                                     range: 1:41-1:51,
-                                    value_range: 1:48-1:50,
                                 },
                                 "xmlns": Attribute {
                                     name: "xmlns",
-                                    value: "http://www.w3.org/2000/svg",
+                                    value: Some(
+                                        (
+                                            "http://www.w3.org/2000/svg",
+                                            1:13-1:39,
+                                        ),
+                                    ),
                                     range: 1:6-1:40,
-                                    value_range: 1:13-1:39,
                                 },
                             },
                             expression: None,
@@ -2139,27 +2206,43 @@ mod tests {
                             attributes: {
                                 "x1": Attribute {
                                     name: "x1",
-                                    value: "16.5",
+                                    value: Some(
+                                        (
+                                            "16.5",
+                                            2:11-2:15,
+                                        ),
+                                    ),
                                     range: 2:7-2:16,
-                                    value_range: 2:11-2:15,
                                 },
                                 "x2": Attribute {
                                     name: "x2",
-                                    value: "7.5",
+                                    value: Some(
+                                        (
+                                            "7.5",
+                                            2:30-2:33,
+                                        ),
+                                    ),
                                     range: 2:26-2:34,
-                                    value_range: 2:30-2:33,
                                 },
                                 "y1": Attribute {
                                     name: "y1",
-                                    value: "9.4",
+                                    value: Some(
+                                        (
+                                            "9.4",
+                                            2:21-2:24,
+                                        ),
+                                    ),
                                     range: 2:17-2:25,
-                                    value_range: 2:21-2:24,
                                 },
                                 "y2": Attribute {
                                     name: "y2",
-                                    value: "4.21",
+                                    value: Some(
+                                        (
+                                            "4.21",
+                                            2:39-2:43,
+                                        ),
+                                    ),
                                     range: 2:35-2:44,
-                                    value_range: 2:39-2:43,
                                 },
                             },
                             expression: None,
@@ -2187,9 +2270,13 @@ mod tests {
                             attributes: {
                                 "d": Attribute {
                                     name: "d",
-                                    value: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z",
+                                    value: Some(
+                                        (
+                                            "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z",
+                                            3:10-3:131,
+                                        ),
+                                    ),
                                     range: 3:7-3:132,
-                                    value_range: 3:10-3:131,
                                 },
                             },
                             expression: None,
@@ -2217,9 +2304,13 @@ mod tests {
                             attributes: {
                                 "points": Attribute {
                                     name: "points",
-                                    value: "3.27 6.96 12 12.01 20.73 6.96",
+                                    value: Some(
+                                        (
+                                            "3.27 6.96 12 12.01 20.73 6.96",
+                                            4:19-4:48,
+                                        ),
+                                    ),
                                     range: 4:11-4:49,
-                                    value_range: 4:19-4:48,
                                 },
                             },
                             expression: None,
@@ -2247,27 +2338,43 @@ mod tests {
                             attributes: {
                                 "x1": Attribute {
                                     name: "x1",
-                                    value: "12",
+                                    value: Some(
+                                        (
+                                            "12",
+                                            5:11-5:13,
+                                        ),
+                                    ),
                                     range: 5:7-5:14,
-                                    value_range: 5:11-5:13,
                                 },
                                 "x2": Attribute {
                                     name: "x2",
-                                    value: "12",
+                                    value: Some(
+                                        (
+                                            "12",
+                                            5:30-5:32,
+                                        ),
+                                    ),
                                     range: 5:26-5:33,
-                                    value_range: 5:30-5:32,
                                 },
                                 "y1": Attribute {
                                     name: "y1",
-                                    value: "22.08",
+                                    value: Some(
+                                        (
+                                            "22.08",
+                                            5:19-5:24,
+                                        ),
+                                    ),
                                     range: 5:15-5:25,
-                                    value_range: 5:19-5:24,
                                 },
                                 "y2": Attribute {
                                     name: "y2",
-                                    value: "12",
+                                    value: Some(
+                                        (
+                                            "12",
+                                            5:38-5:40,
+                                        ),
+                                    ),
                                     range: 5:34-5:41,
-                                    value_range: 5:38-5:40,
                                 },
                             },
                             expression: None,
@@ -2326,39 +2433,63 @@ mod tests {
                             attributes: {
                                 "class": Attribute {
                                     name: "class",
-                                    value: "size-12",
+                                    value: Some(
+                                        (
+                                            "size-12",
+                                            1:109-1:116,
+                                        ),
+                                    ),
                                     range: 1:102-1:117,
-                                    value_range: 1:109-1:116,
                                 },
                                 "height": Attribute {
                                     name: "height",
-                                    value: "128",
+                                    value: Some(
+                                        (
+                                            "128",
+                                            1:61-1:64,
+                                        ),
+                                    ),
                                     range: 1:53-1:65,
-                                    value_range: 1:61-1:64,
                                 },
                                 "version": Attribute {
                                     name: "version",
-                                    value: "1.1",
+                                    value: Some(
+                                        (
+                                            "1.1",
+                                            1:75-1:78,
+                                        ),
+                                    ),
                                     range: 1:66-1:79,
-                                    value_range: 1:75-1:78,
                                 },
                                 "viewBox": Attribute {
                                     name: "viewBox",
-                                    value: "0 0 128 128",
+                                    value: Some(
+                                        (
+                                            "0 0 128 128",
+                                            1:89-1:100,
+                                        ),
+                                    ),
                                     range: 1:80-1:101,
-                                    value_range: 1:89-1:100,
                                 },
                                 "width": Attribute {
                                     name: "width",
-                                    value: "128",
+                                    value: Some(
+                                        (
+                                            "128",
+                                            1:48-1:51,
+                                        ),
+                                    ),
                                     range: 1:41-1:52,
-                                    value_range: 1:48-1:51,
                                 },
                                 "xmlns": Attribute {
                                     name: "xmlns",
-                                    value: "http://www.w3.org/2000/svg",
+                                    value: Some(
+                                        (
+                                            "http://www.w3.org/2000/svg",
+                                            1:13-1:39,
+                                        ),
+                                    ),
                                     range: 1:6-1:40,
-                                    value_range: 1:13-1:39,
                                 },
                             },
                             expression: None,
@@ -2379,9 +2510,13 @@ mod tests {
                             attributes: {
                                 "style": Attribute {
                                     name: "style",
-                                    value: "fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;",
+                                    value: Some(
+                                        (
+                                            "fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;",
+                                            2:12-2:111,
+                                        ),
+                                    ),
                                     range: 2:5-2:112,
-                                    value_range: 2:12-2:111,
                                 },
                             },
                             expression: None,
@@ -2402,9 +2537,13 @@ mod tests {
                             attributes: {
                                 "d": Attribute {
                                     name: "d",
-                                    value: "M20.04 38 64 22l43.96 16L64 54Z",
+                                    value: Some(
+                                        (
+                                            "M20.04 38 64 22l43.96 16L64 54Z",
+                                            3:12-3:43,
+                                        ),
+                                    ),
                                     range: 3:9-3:44,
-                                    value_range: 3:12-3:43,
                                 },
                             },
                             expression: None,
@@ -2432,9 +2571,13 @@ mod tests {
                             attributes: {
                                 "d": Attribute {
                                     name: "d",
-                                    value: "M17.54 47.09v48l35.099 12.775",
+                                    value: Some(
+                                        (
+                                            "M17.54 47.09v48l35.099 12.775",
+                                            4:12-4:41,
+                                        ),
+                                    ),
                                     range: 4:9-4:42,
-                                    value_range: 4:12-4:41,
                                 },
                             },
                             expression: None,
@@ -2462,9 +2605,13 @@ mod tests {
                             attributes: {
                                 "d": Attribute {
                                     name: "d",
-                                    value: "M64 112V64l46.46-16.91v48L77.988 106.91",
+                                    value: Some(
+                                        (
+                                            "M64 112V64l46.46-16.91v48L77.988 106.91",
+                                            5:12-5:51,
+                                        ),
+                                    ),
                                     range: 5:9-5:52,
-                                    value_range: 5:12-5:51,
                                 },
                             },
                             expression: None,
@@ -2551,9 +2698,13 @@ mod tests {
                             attributes: {
                                 "id": Attribute {
                                     name: "id",
-                                    value: "form",
+                                    value: Some(
+                                        (
+                                            "form",
+                                            2:12-2:16,
+                                        ),
+                                    ),
                                     range: 2:8-2:17,
-                                    value_range: 2:12-2:16,
                                 },
                             },
                             expression: None,
@@ -2574,15 +2725,18 @@ mod tests {
                             attributes: {
                                 "required": Attribute {
                                     name: "required",
-                                    value: "",
+                                    value: None,
                                     range: 3:22-3:30,
-                                    value_range: 1:1-1:1,
                                 },
                                 "type": Attribute {
                                     name: "type",
-                                    value: "text",
+                                    value: Some(
+                                        (
+                                            "text",
+                                            3:16-3:20,
+                                        ),
+                                    ),
                                     range: 3:10-3:21,
-                                    value_range: 3:16-3:20,
                                 },
                             },
                             expression: None,
@@ -2603,9 +2757,13 @@ mod tests {
                             attributes: {
                                 "type": Attribute {
                                     name: "type",
-                                    value: "submit",
+                                    value: Some(
+                                        (
+                                            "submit",
+                                            4:17-4:23,
+                                        ),
+                                    ),
                                     range: 4:11-4:24,
-                                    value_range: 4:17-4:23,
                                 },
                             },
                             expression: None,
@@ -2700,9 +2858,13 @@ mod tests {
                             attributes: {
                                 "class": Attribute {
                                     name: "class",
-                                    value: "test",
+                                    value: Some(
+                                        (
+                                            "test",
+                                            1:13-1:17,
+                                        ),
+                                    ),
                                     range: 1:6-1:18,
-                                    value_range: 1:13-1:17,
                                 },
                             },
                             expression: Some(
@@ -2782,9 +2944,8 @@ mod tests {
                             attributes: {
                                 "disabled": Attribute {
                                     name: "disabled",
-                                    value: "",
+                                    value: None,
                                     range: 1:9-1:17,
-                                    value_range: 1:1-1:1,
                                 },
                             },
                             expression: Some(
@@ -2839,9 +3000,13 @@ mod tests {
                             attributes: {
                                 "class": Attribute {
                                     name: "class",
-                                    value: "test",
+                                    value: Some(
+                                        (
+                                            "test",
+                                            1:13-1:17,
+                                        ),
+                                    ),
                                     range: 1:6-1:18,
-                                    value_range: 1:13-1:17,
                                 },
                             },
                             expression: Some(

@@ -36,10 +36,7 @@ pub struct Range {
 
 impl Range {
     pub fn new(start: Position, end: Position) -> Self {
-        debug_assert!(
-            start <= end,
-            "start must be less than or equal to end in Range::new"
-        );
+        debug_assert!(start < end, "start must be less than end in Range::new");
         Range { start, end }
     }
 
@@ -282,6 +279,10 @@ impl ParseError {
 
     pub fn unexpected_end_of_expression(range: Range) -> Self {
         Self::new(format!("Unexpected end of expression"), range)
+    }
+
+    pub fn missing_attribute_value(range: Range) -> Self {
+        Self::new(format!("Missing attribute value"), range)
     }
 
     pub fn unclosed_tag(tag: &str, range: Range) -> Self {

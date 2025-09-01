@@ -71,13 +71,13 @@ pub fn typecheck(
                 errors.push(TypeError::undeclared_component(
                     from_module,
                     component_name,
-                    component_attr.value_range,
+                    component_attr.range,
                 ));
             }
         } else {
             errors.push(TypeError::import_from_undefined_module(
                 from_module,
-                from_attr.value_range,
+                from_attr.range,
             ));
         }
     }

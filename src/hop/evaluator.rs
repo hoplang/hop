@@ -113,15 +113,19 @@ pub fn evaluate_component(
                     None => {
                         output.push(' ');
                         output.push_str(&attr.name);
-                        output.push_str("=\"");
-                        output.push_str(&attr.value);
-                        output.push('"');
+                        if let Some((val, _)) = &attr.value {
+                            output.push_str("=\"");
+                            output.push_str(&val);
+                            output.push('"');
+                        }
                     }
                     Some(cls) => {
                         output.push(' ');
                         output.push_str(&attr.name);
                         output.push_str("=\"");
-                        output.push_str(&attr.value);
+                        if let Some((val, _)) = &attr.value {
+                            output.push_str(&val);
+                        }
                         output.push(' ');
                         output.push_str(cls);
                         output.push('"');
@@ -130,9 +134,11 @@ pub fn evaluate_component(
             } else {
                 output.push(' ');
                 output.push_str(&attr.name);
-                output.push_str("=\"");
-                output.push_str(&attr.value);
-                output.push('"');
+                if let Some((val, _)) = &attr.value {
+                    output.push_str("=\"");
+                    output.push_str(&val);
+                    output.push('"');
+                }
             }
         }
 
@@ -289,7 +295,10 @@ fn evaluate_node(
             };
 
             // Extract class attribute from component reference
-            let additional_classes = attributes.get("class").map(|attr| attr.value.as_str());
+            let additional_classes = attributes
+                .get("class")
+                .and_then(|attr| attr.value.clone())
+                .map(|(val, _)| val);
 
             evaluate_component(
                 asts,
@@ -298,7 +307,7 @@ fn evaluate_node(
                 component_name,
                 arg_values,
                 slot_html.as_deref(),
-                additional_classes,
+                additional_classes.as_deref(),
                 output,
             )
         }
@@ -334,9 +343,11 @@ fn evaluate_node(
                 if !attr.name.starts_with("set-") {
                     output.push(' ');
                     output.push_str(&attr.name);
-                    output.push_str("=\"");
-                    output.push_str(&attr.value);
-                    output.push('"');
+                    if let Some((val, range)) = &attr.value {
+                        output.push_str("=\"");
+                        output.push_str(val);
+                        output.push('"');
+                    }
                 }
             }
 
@@ -476,9 +487,11 @@ fn evaluate_node_entrypoint(
                 if !attr.name.starts_with("set-") {
                     output.push(' ');
                     output.push_str(&attr.name);
-                    output.push_str("=\"");
-                    output.push_str(&attr.value);
-                    output.push('"');
+                    if let Some((attr_val, _)) = &attr.value {
+                        output.push_str("=\"");
+                        output.push_str(attr_val);
+                        output.push('"');
+                    }
                 }
             }
 

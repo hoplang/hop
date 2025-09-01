@@ -509,24 +509,4 @@ mod tests {
             "#]],
         );
     }
-
-    #[test]
-    fn test_zero_length_annotation() {
-        let annotations = vec![SimpleAnnotation {
-            range: Range::new(Position::new(1, 5), Position::new(1, 5)),
-            message: "Zero-length annotation".to_string(),
-        }];
-        let source = "some code here";
-
-        check(
-            SourceAnnotator::new(),
-            source,
-            annotations,
-            expect![[r#"
-                Zero-length annotation
-                1 | some code here
-                  |     ^
-            "#]],
-        );
-    }
 }

@@ -4,11 +4,16 @@ use crate::common::{Position, Range, Ranged};
 use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Attribute {
-    pub name: String,
+pub struct PresentAttribute {
     pub value: String,
     pub range: Range,
-    pub value_range: Range,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Attribute {
+    pub name: String,
+    pub value: Option<(String, Range)>,
+    pub range: Range,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -115,8 +120,8 @@ impl HopAst {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Import {
-    pub component_attr: Attribute,
-    pub from_attr: Attribute,
+    pub component_attr: PresentAttribute,
+    pub from_attr: PresentAttribute,
     pub range: Range,
 }
 
@@ -132,7 +137,7 @@ impl Import {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Render {
-    pub file_attr: Attribute,
+    pub file_attr: PresentAttribute,
     pub range: Range,
     pub children: Vec<HopNode>,
 }
@@ -149,7 +154,7 @@ pub struct ComponentDefinition {
     pub opening_name_range: Range,
     pub closing_name_range: Option<Range>,
     pub params: Option<(Vec<DopParameter>, Range)>,
-    pub as_attr: Option<Attribute>,
+    pub as_attr: Option<PresentAttribute>,
     pub attributes: BTreeMap<String, Attribute>,
     pub range: Range,
     pub children: Vec<HopNode>,
@@ -229,7 +234,7 @@ pub enum HopNode {
         set_attributes: Vec<DopExprAttribute>,
     },
     XExec {
-        cmd_attr: Attribute,
+        cmd_attr: PresentAttribute,
         range: Range,
         children: Vec<HopNode>,
     },

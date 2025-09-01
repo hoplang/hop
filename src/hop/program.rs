@@ -204,7 +204,7 @@ impl Program {
                         module_name,
                         &import_node.from_attr.value,
                         &cycle_error.cycle,
-                        import_node.from_attr.value_range,
+                        import_node.from_attr.range,
                     ));
                 }
             }
@@ -446,7 +446,7 @@ impl Program {
                     })
                     .map(|n| RenameLocation {
                         module: module_name.clone(),
-                        range: n.component_attr.value_range,
+                        range: n.component_attr.range,
                     }),
             );
 
