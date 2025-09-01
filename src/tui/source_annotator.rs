@@ -122,14 +122,13 @@ impl SourceAnnotator {
                 }
             }
 
-            self.add_source_context(&mut output, &lines, range);
+            self.format_annotation(&mut output, &lines, range);
         }
 
         output
     }
 
-    fn add_source_context(&self, output: &mut String, lines: &[&str], range: Range) {
-        let start_line = range.start.line;
+    fn format_annotation(&self, output: &mut String, lines: &[&str], range: Range) {
         let max_line_num_width = if self.show_line_numbers {
             lines.len().to_string().len()
         } else {
@@ -137,11 +136,8 @@ impl SourceAnnotator {
         };
 
         // Calculate which lines to show before
-        let first_line = if start_line > self.lines_before {
-            start_line - self.lines_before
-        } else {
-            1
-        };
+        let start_line = range.start.line;
+        let first_line = start_line.saturating_sub(self.lines_before).max(1);
 
         // Show lines before
         for line_num in first_line..start_line {
@@ -452,6 +448,30 @@ mod tests {
                 Error without filename
                   --> (line 1, col 6)
                 1 | some code
+                  |      ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_lines_before_exceeds_start() {
+        let annotations = vec![SimpleAnnotation {
+            range: Range::new(Position::new(5, 6), Position::new(5, 10)),
+            message: "Error on line 5".to_string(),
+        }];
+        let source = "line one\nline two\nline three\nline four\nline five\nline six";
+
+        check(
+            SourceAnnotator::new().with_lines_before(1000),
+            source,
+            annotations,
+            expect![[r#"
+                Error on line 5
+                1 | line one
+                2 | line two
+                3 | line three
+                4 | line four
+                5 | line five
                   |      ^^^^
             "#]],
         );
