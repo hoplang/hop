@@ -1,18 +1,5 @@
 use std::collections::{HashMap, HashSet};
 
-/// CycleError represents a cycle in the graph.
-/// Each node in the cycle occurs exactly once in the cycle vector.
-#[derive(Debug, Clone, PartialEq)]
-pub struct CycleError {
-    pub cycle: Vec<String>,
-}
-
-impl CycleError {
-    pub fn new(cycle: Vec<String>) -> Self {
-        CycleError { cycle }
-    }
-}
-
 /// The TopoSorter performs topological sorting of directed graphs.
 #[derive(Debug, Clone)]
 pub struct TopoSorter {
@@ -33,27 +20,26 @@ impl TopoSorter {
     }
 
     /// Add a node to the graph.
-    pub fn add_node(&mut self, node: String) {
-        self.nodes.insert(node.clone());
-        if !self.dependencies.contains_key(&node) {
-            self.dependencies.insert(node.clone(), HashSet::new());
+    pub fn update_node(&mut self, node: &str, dependencies: HashSet<String>) {
+        self.nodes.insert(node.to_string());
+        let old_dependencies = self.dependencies.entry(node.to_string()).or_default();
+        // Clear
+        for dep in old_dependencies.iter() {
+            self.dependents
+                .entry(dep.to_string())
+                .or_default()
+                .remove(node);
         }
-        if !self.dependents.contains_key(&node) {
-            self.dependents.insert(node.clone(), HashSet::new());
+        old_dependencies.clear();
+        // Add
+        for dep in &dependencies {
+            old_dependencies.insert(dep.to_string());
+            self.dependents
+                .entry(dep.to_string())
+                .or_default()
+                .insert(node.to_string());
         }
-    }
-
-    /// Add a dependency (a -> b).
-    ///
-    /// This dependency implies that the node b should come before the node a when sorting.
-    /// Each node of the dependency is added to the graph if they do not already exist.
-    pub fn add_dependency(&mut self, a: &str, b: &str) {
-        self.add_node(a.to_string());
-        self.add_node(b.to_string());
-
-        self.dependencies.get_mut(a).unwrap().insert(b.to_string());
-        self.dependents.get_mut(b).unwrap().insert(a.to_string());
-
+        // Calculate cycles
         self.cycles = self
             .strongly_connected_components()
             .into_iter()
@@ -88,24 +74,6 @@ impl TopoSorter {
         }
 
         result
-    }
-
-    /// Clear all dependencies that matches (node -> _).
-    pub fn clear_dependencies(&mut self, node: &str) {
-        if let Some(dependencies) = self.dependencies.get_mut(node) {
-            for dep in dependencies.iter() {
-                if let Some(dependents) = self.dependents.get_mut(dep) {
-                    dependents.remove(node);
-                }
-            }
-            dependencies.clear();
-        }
-
-        self.cycles = self
-            .strongly_connected_components()
-            .into_iter()
-            .filter(|v| v.len() > 1)
-            .collect();
     }
 
     /// Compute strongly connected components using Tarjan's algorithm.
@@ -196,8 +164,8 @@ mod tests {
     #[test]
     fn test_scc_simple() {
         let mut toposorter = TopoSorter::new();
-        toposorter.add_dependency("a", "b");
-        toposorter.add_dependency("b", "c");
+        toposorter.update_node("a", HashSet::from(["b".to_string()]));
+        toposorter.update_node("b", HashSet::from(["c".to_string()]));
 
         let sccs = toposorter.strongly_connected_components();
         assert_eq!(sccs.len(), 3);
@@ -209,9 +177,9 @@ mod tests {
     #[test]
     fn test_scc_with_cycle() {
         let mut toposorter = TopoSorter::new();
-        toposorter.add_dependency("a", "b");
-        toposorter.add_dependency("b", "c");
-        toposorter.add_dependency("c", "a");
+        toposorter.update_node("a", HashSet::from(["b".to_string()]));
+        toposorter.update_node("b", HashSet::from(["c".to_string()]));
+        toposorter.update_node("c", HashSet::from(["a".to_string()]));
 
         let sccs = toposorter.strongly_connected_components();
         assert_eq!(sccs.len(), 1);
@@ -221,11 +189,11 @@ mod tests {
     #[test]
     fn test_scc_multiple_components() {
         let mut toposorter = TopoSorter::new();
-        toposorter.add_dependency("a", "b");
-        toposorter.add_dependency("b", "a");
-        toposorter.add_dependency("c", "d");
-        toposorter.add_dependency("d", "c");
-        toposorter.add_dependency("b", "c");
+        toposorter.update_node("a", HashSet::from(["b".to_string()]));
+        toposorter.update_node("b", HashSet::from(["a".to_string()]));
+        toposorter.update_node("c", HashSet::from(["d".to_string()]));
+        toposorter.update_node("d", HashSet::from(["c".to_string()]));
+        toposorter.update_node("b", HashSet::from(["a".to_string(), "c".to_string()]));
 
         let mut sccs = toposorter.strongly_connected_components();
         sccs.sort();
@@ -235,21 +203,11 @@ mod tests {
     }
 
     #[test]
-    fn test_scc_self_loop() {
-        let mut toposorter = TopoSorter::new();
-        toposorter.add_dependency("a", "a");
-
-        let sccs = toposorter.strongly_connected_components();
-        assert_eq!(sccs.len(), 1);
-        assert_eq!(sccs[0], vec!["a"]);
-    }
-
-    #[test]
     fn test_scc_disconnected_graph() {
         let mut toposorter = TopoSorter::new();
-        toposorter.add_node("a".to_string());
-        toposorter.add_node("b".to_string());
-        toposorter.add_node("c".to_string());
+        toposorter.update_node("a", HashSet::new());
+        toposorter.update_node("b", HashSet::new());
+        toposorter.update_node("c", HashSet::new());
 
         let mut sccs = toposorter.strongly_connected_components();
         sccs.sort();
@@ -262,20 +220,20 @@ mod tests {
     #[test]
     fn test_scc_complex_graph() {
         let mut toposorter = TopoSorter::new();
-        toposorter.add_dependency("1", "2");
-        toposorter.add_dependency("2", "3");
-        toposorter.add_dependency("3", "1");
-        toposorter.add_dependency("4", "2");
-        toposorter.add_dependency("4", "3");
-        toposorter.add_dependency("4", "5");
-        toposorter.add_dependency("5", "4");
-        toposorter.add_dependency("5", "6");
-        toposorter.add_dependency("6", "3");
-        toposorter.add_dependency("6", "7");
-        toposorter.add_dependency("7", "6");
-        toposorter.add_dependency("8", "5");
-        toposorter.add_dependency("8", "7");
-        toposorter.add_dependency("8", "8");
+        toposorter.update_node("1", HashSet::from(["2".to_string()]));
+        toposorter.update_node("2", HashSet::from(["3".to_string()]));
+        toposorter.update_node("3", HashSet::from(["1".to_string()]));
+        toposorter.update_node(
+            "4",
+            HashSet::from(["2".to_string(), "3".to_string(), "5".to_string()]),
+        );
+        toposorter.update_node("5", HashSet::from(["4".to_string(), "6".to_string()]));
+        toposorter.update_node("6", HashSet::from(["3".to_string(), "7".to_string()]));
+        toposorter.update_node("7", HashSet::from(["6".to_string()]));
+        toposorter.update_node(
+            "8",
+            HashSet::from(["5".to_string(), "7".to_string(), "8".to_string()]),
+        );
 
         let mut sccs = toposorter.strongly_connected_components();
         sccs.sort();

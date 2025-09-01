@@ -4,11 +4,11 @@ use crate::hop::evaluator;
 use crate::hop::parser::parse;
 use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
-use crate::hop::toposorter::{CycleError, TopoSorter};
+use crate::hop::toposorter::TopoSorter;
 use crate::hop::typechecker::{TypeAnnotation, typecheck};
 use crate::tui::source_annotator::Annotated;
 use anyhow::Result;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::ast::HopNode;
 use super::evaluator::HopMode;
@@ -218,18 +218,18 @@ impl Program {
     pub fn update_module(&mut self, module_name: &str, source_code: &str) -> Vec<String> {
         self.parse_module(module_name, source_code);
 
-        self.topo_sorter.add_node(module_name.to_string());
-
         let ast = match self.asts.get(module_name) {
             Some(module) => module,
             None => unreachable!(),
         };
 
-        self.topo_sorter.clear_dependencies(module_name);
-        for import_node in ast.get_imports() {
-            self.topo_sorter
-                .add_dependency(module_name, &import_node.from_attr.value);
-        }
+        let dependencies = ast
+            .get_imports()
+            .iter()
+            .map(|import_node| import_node.from_attr.value.clone())
+            .collect::<HashSet<String>>();
+
+        self.topo_sorter.update_node(module_name, dependencies);
 
         let dependent_modules = self.topo_sorter.get_dependents(module_name);
 
