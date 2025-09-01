@@ -124,7 +124,7 @@ impl SourceAnnotator {
 
     fn format_annotation(&self, output: &mut String, lines: &[&str], range: Range) {
         use crate::common::Position;
-        
+
         let max_line_num_width = if self.show_line_numbers {
             lines.len().to_string().len()
         } else {
@@ -145,15 +145,27 @@ impl SourceAnnotator {
 
             self.format_line(output, line_num, line, max_line_num_width);
 
+            if line.is_empty() {
+                continue;
+            }
+
             // Check if this line intersects with the annotation range
             // Create a range for the current line (from column 1 to end of line + 1)
             let line_range = Range::new(
                 Position::new(line_num, 1),
                 Position::new(line_num, line.len() + 1),
             );
-            
-            // If this line intersects with the annotation, add underline
-            if let Some(intersection) = range.intersection(&line_range) {
+
+            // TODO: Here we do special handling for zero-length ranges,
+            // we should remove this when ranges are no longer allowed to
+            // have length 0.
+            //
+            // Special handling for zero-length ranges (e.g., position markers)
+            if range.start == range.end && range.start.line == line_num {
+                // For zero-length ranges, we still want to show a single caret
+                self.format_underline(output, line, range, max_line_num_width);
+            } else if let Some(intersection) = range.intersection(&line_range) {
+                // If this line intersects with the annotation, add underline
                 // The intersection will always be on a single line (line_num)
                 // So we can safely pass it to format_underline
                 debug_assert_eq!(intersection.start.line, intersection.end.line);
@@ -494,6 +506,26 @@ mod tests {
                   | ^^^^^^^^^^
                 4 | line four
                   | ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_zero_length_annotation() {
+        let annotations = vec![SimpleAnnotation {
+            range: Range::new(Position::new(1, 5), Position::new(1, 5)),
+            message: "Zero-length annotation".to_string(),
+        }];
+        let source = "some code here";
+
+        check(
+            SourceAnnotator::new(),
+            source,
+            annotations,
+            expect![[r#"
+                Zero-length annotation
+                1 | some code here
+                  |     ^
             "#]],
         );
     }
