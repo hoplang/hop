@@ -343,7 +343,7 @@ fn evaluate_node(
                 if !attr.name.starts_with("set-") {
                     output.push(' ');
                     output.push_str(&attr.name);
-                    if let Some((val, range)) = &attr.value {
+                    if let Some((val, _)) = &attr.value {
                         output.push_str("=\"");
                         output.push_str(val);
                         output.push('"');

@@ -185,38 +185,34 @@ fn expect_token(
     tokenizer: &mut Peekable<DopTokenizer>,
     expected: DopToken,
 ) -> Result<Range, ParseError> {
-    match tokenizer.next().ok_or(ParseError::UnexpectedEof)? {
-        Ok((token, range)) if token == expected => Ok(range),
-        Ok((actual, range)) => Err(ParseError::expected_token_but_got(
+    match tokenizer.next().ok_or(ParseError::UnexpectedEof)?? {
+        (token, range) if token == expected => Ok(range),
+        (actual, range) => Err(ParseError::expected_token_but_got(
             &expected, &actual, range,
         )),
-        Err(e) => Err(e),
     }
 }
 
 fn expect_variable_name(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopVarName, ParseError> {
-    match tokenizer.next().ok_or(ParseError::UnexpectedEof)? {
-        Ok((DopToken::Identifier(name), range)) => DopVarName::new(name, range),
-        Ok((actual, range)) => Err(ParseError::expected_variable_name_but_got(&actual, range)),
-        Err(e) => Err(e),
+    match tokenizer.next().ok_or(ParseError::UnexpectedEof)?? {
+        (DopToken::Identifier(name), range) => DopVarName::new(name, range),
+        (actual, range) => Err(ParseError::expected_variable_name_but_got(&actual, range)),
     }
 }
 
 fn expect_property_name(
     tokenizer: &mut Peekable<DopTokenizer>,
 ) -> Result<(String, Range), ParseError> {
-    match tokenizer.next().ok_or(ParseError::UnexpectedEof)? {
-        Ok((DopToken::Identifier(name), range)) => Ok((name, range)),
-        Ok((token, range)) => Err(ParseError::expected_property_name_but_got(&token, range)),
-        Err(e) => Err(e),
+    match tokenizer.next().ok_or(ParseError::UnexpectedEof)?? {
+        (DopToken::Identifier(name), range) => Ok((name, range)),
+        (token, range) => Err(ParseError::expected_property_name_but_got(&token, range)),
     }
 }
 
 fn expect_eof(tokenizer: &mut Peekable<DopTokenizer>) -> Result<(), ParseError> {
-    match tokenizer.next() {
+    match tokenizer.next().transpose()? {
         None => Ok(()),
-        Some(Ok((token, range))) => Err(ParseError::unexpected_token(&token, range)),
-        Some(Err(e)) => Err(e),
+        Some((token, range)) => Err(ParseError::unexpected_token(&token, range)),
     }
 }
 
