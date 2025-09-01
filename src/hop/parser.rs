@@ -454,7 +454,7 @@ fn construct_node(
                         None => None,
                     };
 
-                    let definition_location = if defined_components.contains(tag_name) {
+                    let definition_module = if defined_components.contains(tag_name) {
                         Some(module_name.to_string())
                     } else {
                         imported_components.get(tag_name).cloned()
@@ -464,7 +464,7 @@ fn construct_node(
                         component: tag_name.to_string(),
                         opening_name_range: name_range,
                         closing_name_range: tree.closing_tag_name_range,
-                        definition_module: definition_location,
+                        definition_module,
                         args,
                         attributes,
                         range: tree.range,

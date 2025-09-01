@@ -21,6 +21,10 @@ impl ParseError {
         Self::new("Unterminated string literal".to_string(), range)
     }
 
+    pub fn unmatched_token(token: &DopToken, range: Range) -> Self {
+        Self::new(format!("Unmatched '{token}'"), range)
+    }
+
     pub fn expected_digit_after_decimal_point(range: Range) -> Self {
         Self::new("Expected digit after decimal point".to_string(), range)
     }
@@ -28,6 +32,21 @@ impl ParseError {
     pub fn invalid_variable_name(name: &str, range: Range) -> Self {
         Self::new(
             format!("Invalid variable name '{name}'. Variable names must match [a-z][a-z0-9_]*"),
+            range,
+        )
+    }
+
+    pub fn expected_tokens_but_got(expected: &[DopToken], actual: &DopToken, range: Range) -> Self {
+        Self::new(
+            format!(
+                "Expected {} but got '{}'",
+                expected
+                    .iter()
+                    .map(|t| format!("'{}'", t))
+                    .collect::<Vec<_>>()
+                    .join(" or "),
+                actual
+            ),
             range,
         )
     }
@@ -357,9 +376,8 @@ fn parse_type(tokenizer: &mut Peekable<DopTokenizer>) -> Result<RangeDopType, Pa
                 }
                 properties.insert(prop_name, typ.dop_type);
 
-                // Expect comma or closing brace
                 match tokenizer.next().ok_or_else(|| {
-                    ParseError::new("Unmatched '{'".to_string(), left_brace_range)
+                    ParseError::unmatched_token(&DopToken::LeftBrace, left_brace_range)
                 })?? {
                     (DopToken::Comma, _) => {
                         // Check for trailing comma (closing brace after comma)
@@ -378,9 +396,10 @@ fn parse_type(tokenizer: &mut Peekable<DopTokenizer>) -> Result<RangeDopType, Pa
                             range: Range::new(left_brace_range.start, right_brace_range.end),
                         });
                     }
-                    (token, range) => {
-                        return Err(ParseError::new(
-                            format!("Expected ',' or '}}' but got '{}'", token),
+                    (t, range) => {
+                        return Err(ParseError::expected_tokens_but_got(
+                            &[DopToken::Comma, DopToken::RightBrace],
+                            &t,
                             range,
                         ));
                     }
@@ -486,7 +505,9 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
             loop {
                 elements.push(parse_equality(tokenizer)?);
 
-                match tokenizer.next().ok_or(ParseError::UnexpectedEof)?? {
+                match tokenizer.next().ok_or_else(|| {
+                    ParseError::unmatched_token(&DopToken::LeftBracket, left_bracket_range)
+                })?? {
                     (DopToken::Comma, _) => {
                         // Handle trailing comma
                         if let Some(right_bracket_range) =
@@ -511,9 +532,10 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                             },
                         });
                     }
-                    (_, range) => {
-                        return Err(ParseError::new(
-                            "Expected ',' or ']' in array literal".to_string(),
+                    (t, range) => {
+                        return Err(ParseError::expected_tokens_but_got(
+                            &[DopToken::Comma, DopToken::RightBracket],
+                            &t,
                             range,
                         ));
                     }
@@ -547,7 +569,9 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                 properties.insert(prop_name, parse_equality(tokenizer)?);
 
                 // Expect comma or right brace
-                match tokenizer.next().ok_or(ParseError::UnexpectedEof)?? {
+                match tokenizer.next().ok_or_else(|| {
+                    ParseError::unmatched_token(&DopToken::LeftBrace, left_brace_range)
+                })?? {
                     (DopToken::Comma, _) => {
                         // Check for trailing comma (closing brace after comma)
                         if let Some(right_brace_range) = advance_if(tokenizer, DopToken::RightBrace)
@@ -571,9 +595,10 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                             },
                         });
                     }
-                    (_, range) => {
-                        return Err(ParseError::new(
-                            "Expected ',' or '}' after property value".to_string(),
+                    (t, range) => {
+                        return Err(ParseError::expected_tokens_but_got(
+                            &[DopToken::Comma, DopToken::RightBrace],
+                            &t,
                             range,
                         ));
                     }
@@ -717,6 +742,30 @@ mod tests {
                 error: Unexpected token 'y'
                 x y
                   ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_unmatched_left_bracket() {
+        check_parse_expr(
+            "[1,2",
+            expect![[r#"
+                error: Unmatched '['
+                [1,2
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_array_unexpected_token() {
+        check_parse_expr(
+            "[1,2 id",
+            expect![[r#"
+                error: Expected ',' or ']' but got 'id'
+                [1,2 id
+                     ^^
             "#]],
         );
     }
