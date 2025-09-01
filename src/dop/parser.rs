@@ -619,7 +619,7 @@ mod tests {
                 input,
                 &[SimpleAnnotation {
                     message: "Unexpected end of expression".to_string(),
-                    range: Range::new(Position::new(1, 1), Position::new(1000, 1000)),
+                    range: Range::new(Position::default(), Position::new(1000, 1000)),
                 }],
             ),
             ParseError::RangeError { message, range } => {
