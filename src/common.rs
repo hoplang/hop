@@ -36,6 +36,10 @@ pub struct Range {
 
 impl Range {
     pub fn new(start: Position, end: Position) -> Self {
+        debug_assert!(
+            start <= end,
+            "start must be less than or equal to end in Range::new"
+        );
         Range { start, end }
     }
 
