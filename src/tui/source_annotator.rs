@@ -156,22 +156,7 @@ impl SourceAnnotator {
             self.format_line(output, start_line, line, max_line_num_width);
 
             // Add the underline
-            if self.show_line_numbers {
-                output.push_str(&" ".repeat(max_line_num_width));
-                output.push_str(" | ");
-            }
-
-            let display_start = self.byte_to_display_position(line, range.start.column);
-            let display_end = if range.start.line == range.end.line {
-                self.byte_to_display_position(line, range.end.column)
-            } else {
-                self.display_width(line) + 1
-            };
-
-            output.push_str(&" ".repeat(display_start.saturating_sub(1)));
-            let underline_length = display_end.saturating_sub(display_start).max(1);
-            output.push_str(&self.underline_char.to_string().repeat(underline_length));
-            output.push('\n');
+            self.format_underline(output, line, range, max_line_num_width);
         }
 
         // Show lines after
@@ -181,6 +166,25 @@ impl SourceAnnotator {
                 self.format_line(output, line_num, line, max_line_num_width);
             }
         }
+    }
+
+    fn format_underline(&self, output: &mut String, line: &str, range: Range, max_line_num_width: usize) {
+        if self.show_line_numbers {
+            output.push_str(&" ".repeat(max_line_num_width));
+            output.push_str(" | ");
+        }
+
+        let display_start = self.byte_to_display_position(line, range.start.column);
+        let display_end = if range.start.line == range.end.line {
+            self.byte_to_display_position(line, range.end.column)
+        } else {
+            self.display_width(line) + 1
+        };
+
+        output.push_str(&" ".repeat(display_start.saturating_sub(1)));
+        let underline_length = display_end.saturating_sub(display_start).max(1);
+        output.push_str(&self.underline_char.to_string().repeat(underline_length));
+        output.push('\n');
     }
 
     fn format_line(&self, output: &mut String, line_num: usize, content: &str, width: usize) {
