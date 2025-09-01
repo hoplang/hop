@@ -200,7 +200,6 @@ fn typecheck_node(
             children,
             opening_name_range,
             closing_name_range,
-            range,
             ..
         } => {
             if let Some(comp_info) = component_info.get(component) {

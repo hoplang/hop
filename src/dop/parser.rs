@@ -621,7 +621,7 @@ mod tests {
     }
 
     fn check_parse_expr(input: &str, expected: Expect) {
-        let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1)).peekable();
+        let mut tokenizer = DopTokenizer::new(input, Position::default()).peekable();
         let actual = match parse_expr(&mut tokenizer) {
             Ok(result) => format!("{:#?}\n", result),
             Err(err) => annotate_error(input, err),
@@ -630,7 +630,7 @@ mod tests {
     }
 
     fn check_parse_parameters(input: &str, expected: Expect) {
-        let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1)).peekable();
+        let mut tokenizer = DopTokenizer::new(input, Position::default()).peekable();
 
         let actual = match parse_parameters(&mut tokenizer) {
             Ok(result) => format!("{:#?}\n", result),
@@ -641,7 +641,7 @@ mod tests {
     }
 
     fn check_parse_arguments(input: &str, expected: Expect) {
-        let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1)).peekable();
+        let mut tokenizer = DopTokenizer::new(input, Position::default()).peekable();
 
         let actual = match parse_arguments(&mut tokenizer) {
             Ok(result) => format!("{:#?}\n", result),

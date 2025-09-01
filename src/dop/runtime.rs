@@ -83,6 +83,7 @@ pub fn evaluate_expr(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::Position;
     use crate::dop::{DopTokenizer, parse_expr};
     use crate::hop::environment::Environment;
     use expect_test::{Expect, expect};
@@ -98,8 +99,7 @@ mod tests {
         }
 
         // Parse the expression
-        let mut tokenizer =
-            DopTokenizer::new(expr_str, crate::common::Position::new(1, 1)).peekable();
+        let mut tokenizer = DopTokenizer::new(expr_str, Position::default()).peekable();
 
         let expr = parse_expr(&mut tokenizer).expect("Failed to parse expression");
 

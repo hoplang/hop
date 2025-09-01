@@ -58,30 +58,23 @@ impl fmt::Display for DopToken {
 }
 
 struct Cursor<'a> {
-    chars: Peekable<Chars<'a>>,
+    chars: Chars<'a>,
     position: Position,
 }
 
 impl<'a> Cursor<'a> {
     fn new(input: &'a str, start_pos: Position) -> Self {
         Self {
-            chars: input.chars().peekable(),
+            chars: input.chars(),
             position: start_pos,
         }
-    }
-
-    fn peek(&mut self) -> Option<&char> {
-        self.chars.peek()
-    }
-
-    fn get_position(&self) -> Position {
-        Position::new(self.position.line, self.position.column)
     }
 }
 
 impl Iterator for Cursor<'_> {
-    type Item = char;
+    type Item = (char, Range);
     fn next(&mut self) -> Option<Self::Item> {
+        let was = self.position;
         match self.chars.next() {
             None => None,
             Some(ch) => {
@@ -92,20 +85,20 @@ impl Iterator for Cursor<'_> {
                 } else {
                     self.position.column += byte_len;
                 }
-                Some(ch)
+                Some((ch, Range::new(was, self.position)))
             }
         }
     }
 }
 
 pub struct DopTokenizer<'a> {
-    cursor: Cursor<'a>,
+    cursor: Peekable<Cursor<'a>>,
 }
 
 impl<'a> DopTokenizer<'a> {
     pub fn new(input: &'a str, start_pos: Position) -> Self {
         Self {
-            cursor: Cursor::new(input, start_pos),
+            cursor: Cursor::new(input, start_pos).peekable(),
         }
     }
 }
@@ -114,92 +107,74 @@ impl Iterator for DopTokenizer<'_> {
     type Item = Result<(DopToken, Range), ParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while self.cursor.peek().is_some_and(|ch| ch.is_whitespace()) {
+        while self.cursor.peek().is_some_and(|(ch, _)| ch.is_whitespace()) {
             self.cursor.next();
         }
 
-        let start_pos = self.cursor.get_position();
-
-        let token = match self.cursor.peek()? {
-            '.' => {
-                self.cursor.next();
-                DopToken::Dot
-            }
-            '(' => {
-                self.cursor.next();
-                DopToken::LeftParen
-            }
-            ')' => {
-                self.cursor.next();
-                DopToken::RightParen
-            }
-            '[' => {
-                self.cursor.next();
-                DopToken::LeftBracket
-            }
-            ']' => {
-                self.cursor.next();
-                DopToken::RightBracket
-            }
-            '{' => {
-                self.cursor.next();
-                DopToken::LeftBrace
-            }
-            '}' => {
-                self.cursor.next();
-                DopToken::RightBrace
-            }
-            ':' => {
-                self.cursor.next();
-                DopToken::Colon
-            }
-            ',' => {
-                self.cursor.next();
-                DopToken::Comma
-            }
-            '=' => {
-                self.cursor.next();
-                if self.cursor.peek().is_some_and(|ch| *ch == '=') {
-                    self.cursor.next();
-                    DopToken::Equal
+        match self.cursor.next()? {
+            ('.', range) => Some(Ok((DopToken::Dot, range))),
+            ('(', range) => Some(Ok((DopToken::LeftParen, range))),
+            (')', range) => Some(Ok((DopToken::RightParen, range))),
+            ('[', range) => Some(Ok((DopToken::LeftBracket, range))),
+            (']', range) => Some(Ok((DopToken::RightBracket, range))),
+            ('{', range) => Some(Ok((DopToken::LeftBrace, range))),
+            ('}', range) => Some(Ok((DopToken::RightBrace, range))),
+            (':', range) => Some(Ok((DopToken::Colon, range))),
+            (',', range) => Some(Ok((DopToken::Comma, range))),
+            ('!', range) => Some(Ok((DopToken::Not, range))),
+            ('=', start_range) => {
+                if let Some((_, end_range)) = self.cursor.next_if(|(ch, _)| *ch == '=') {
+                    Some(Ok((
+                        DopToken::Equal,
+                        Range::new(start_range.start, end_range.end),
+                    )))
                 } else {
-                    let error_pos = self.cursor.get_position();
-                    return Some(Err(ParseError::new(
+                    Some(Err(ParseError::new(
                         "Expected '==' but found single '='".to_string(),
-                        Range::new(start_pos, error_pos),
-                    )));
+                        start_range,
+                    )))
                 }
             }
-            '!' => {
-                self.cursor.next();
-                DopToken::Not
-            }
-            '\'' => {
+            ('\'', start_range) => {
                 let mut result = String::new();
-                self.cursor.next();
-                while self.cursor.peek().is_some_and(|ch| *ch != '\'') {
-                    result.push(self.cursor.next()?);
+                let mut end_range = start_range;
+                loop {
+                    match self.cursor.next() {
+                        Some(('\'', end_range)) => {
+                            return Some(Ok((
+                                DopToken::StringLiteral(result),
+                                Range::new(start_range.start, end_range.end),
+                            )));
+                        }
+                        Some((ch, range)) => {
+                            end_range = range;
+                            result.push(ch);
+                        }
+                        None => {
+                            return Some(Err(ParseError::new(
+                                "Unterminated string literal".to_string(),
+                                Range::new(start_range.start, end_range.end),
+                            )));
+                        }
+                    }
                 }
-                if self.cursor.peek().is_none() {
-                    return Some(Err(ParseError::new(
-                        "Unterminated string literal".to_string(),
-                        Range::new(start_pos, self.cursor.get_position()),
-                    )));
-                }
-                self.cursor.next(); // consume '
-                DopToken::StringLiteral(result)
             }
-            'A'..='Z' | 'a'..='z' | '_' => {
+            (ch, start_range) if matches!(ch, 'A'..='Z' | 'a'..='z' | '_') => {
                 let mut identifier = String::new();
 
-                while matches!(
-                    self.cursor.peek(),
-                    Some('A'..='Z' | 'a'..='z' | '0'..='9' | '_')
-                ) {
-                    identifier.push(self.cursor.next()?);
+                identifier.push(ch);
+
+                let mut end_range = start_range;
+
+                while let Some((ch, range)) = self
+                    .cursor
+                    .next_if(|(ch, _)| matches!(ch, 'A'..='Z' | 'a'..='z' | '0'..='9' | '_'))
+                {
+                    identifier.push(ch);
+                    end_range = range;
                 }
 
-                match identifier.as_str() {
+                let t = match identifier.as_str() {
                     "in" => DopToken::In,
                     "true" => DopToken::BooleanLiteral(true),
                     "false" => DopToken::BooleanLiteral(false),
@@ -210,80 +185,101 @@ impl Iterator for DopTokenizer<'_> {
                     "void" => DopToken::TypeVoid,
                     "array" => DopToken::TypeArray,
                     _ => DopToken::Identifier(identifier),
-                }
+                };
+                Some(Ok((t, Range::new(start_range.start, end_range.end))))
             }
-            '0'..='9' => {
+            (ch, start_range) if ch.is_ascii_digit() => {
                 let mut number_string = String::new();
 
-                while matches!(self.cursor.peek(), Some('0'..='9')) {
-                    number_string.push(self.cursor.next()?);
+                number_string.push(ch);
+
+                let mut end_range = start_range;
+
+                while let Some((ch, range)) = self.cursor.next_if(|(ch, _)| ch.is_ascii_digit()) {
+                    number_string.push(ch);
+                    end_range = range;
                 }
 
-                if self.cursor.peek().is_some_and(|ch| *ch == '.') {
-                    number_string.push(self.cursor.next()?); // consume '.'
-                    if !matches!(self.cursor.peek(), Some('0'..='9')) {
-                        let error_pos = self.cursor.get_position();
-                        return Some(Err(ParseError::new(
-                            "Expected digit after decimal point".to_string(),
-                            Range::new(start_pos, error_pos),
-                        )));
-                    }
-                    while matches!(self.cursor.peek(), Some('0'..='9')) {
-                        number_string.push(self.cursor.next()?);
+                if let Some((_, range)) = self.cursor.next_if(|(ch, _)| *ch == '.') {
+                    number_string.push('.');
+                    end_range = range;
+                    match self.cursor.peek() {
+                        None => {
+                            return Some(Err(ParseError::new(
+                                "Expected digit after decimal point".to_string(),
+                                Range::new(start_range.start, end_range.end),
+                            )));
+                        }
+                        Some((ch, _)) if ch.is_ascii_digit() => {
+                            while let Some((ch, range)) =
+                                self.cursor.next_if(|(ch, _)| ch.is_ascii_digit())
+                            {
+                                number_string.push(ch);
+                                end_range = range;
+                            }
+                        }
+                        Some(_) => {
+                            return Some(Err(ParseError::new(
+                                "Expected digit after decimal point".to_string(),
+                                Range::new(start_range.start, end_range.end),
+                            )));
+                        }
                     }
                 }
 
-                let number_value = match serde_json::Number::from_str(&number_string) {
-                    Ok(n) => n,
-                    Err(_) => {
-                        let error_pos = self.cursor.get_position();
-                        return Some(Err(ParseError::new(
-                            format!("Invalid number format: {}", number_string),
-                            Range::new(start_pos, error_pos),
-                        )));
-                    }
-                };
+                let range = Range::new(start_range.start, end_range.end);
+                let parse_result = serde_json::Number::from_str(&number_string);
 
-                DopToken::NumberLiteral(number_value)
+                match parse_result {
+                    Ok(n) => Some(Ok((DopToken::NumberLiteral(n), range))),
+                    Err(_) => Some(Err(ParseError::new(
+                        format!("Invalid number format: {}", number_string),
+                        range,
+                    ))),
+                }
             }
-            ch => {
-                let result = *ch;
-                self.cursor.next();
-                return Some(Err(ParseError::new(
-                    format!("Unexpected character: '{}'", result),
-                    Range::new(start_pos, self.cursor.get_position()),
-                )));
-            }
-        };
-
-        let end_pos = self.cursor.get_position();
-        Some(Ok((token, Range::new(start_pos, end_pos))))
+            (ch, range) => Some(Err(ParseError::new(
+                format!("Unexpected character: '{}'", ch),
+                range,
+            ))),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::tui::source_annotator::{SimpleAnnotation, SourceAnnotator};
+
     use super::*;
     use expect_test::{Expect, expect};
 
     fn check(input: &str, expected: Expect) {
-        let tokenizer = DopTokenizer::new(input, Position::new(1, 1));
-        let mut actual = tokenizer
-            .map(|t| match t {
+        let tokenizer = DopTokenizer::new(input, Position::default());
+        let mut annotations = Vec::new();
+        for t in tokenizer {
+            match t {
                 Ok((tok, range)) => {
-                    format!("{:<10} {}", range.to_string(), tok)
+                    annotations.push(SimpleAnnotation {
+                        message: format!("token: {}", tok),
+                        range,
+                    });
                 }
                 Err(ParseError::RangeError { message, range }) => {
-                    format!("{:<10} {}", range.to_string(), message)
+                    annotations.push(SimpleAnnotation {
+                        message: format!("error: {}", message),
+                        range,
+                    });
                 }
                 Err(_) => {
                     unreachable!()
                 }
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        actual.push('\n');
-        expected.assert_eq(&actual);
+            }
+        }
+        expected.assert_eq(&SourceAnnotator::new().without_line_numbers().annotate(
+            None,
+            input,
+            &annotations,
+        ));
     }
 
     #[test]
@@ -291,7 +287,9 @@ mod tests {
         check(
             "~",
             expect![[r#"
-                1:1-1:2    Unexpected character: '~'
+                error: Unexpected character: '~'
+                ~
+                ^
             "#]],
         );
     }
@@ -301,15 +299,61 @@ mod tests {
         check(
             "~~ = f __ ~@#!",
             expect![[r#"
-                1:1-1:2    Unexpected character: '~'
-                1:2-1:3    Unexpected character: '~'
-                1:4-1:5    Expected '==' but found single '='
-                1:6-1:7    f
-                1:8-1:10   __
-                1:11-1:12  Unexpected character: '~'
-                1:12-1:13  Unexpected character: '@'
-                1:13-1:14  Unexpected character: '#'
-                1:14-1:15  !
+                error: Unexpected character: '~'
+                ~~ = f __ ~@#!
+                ^
+
+                error: Unexpected character: '~'
+                ~~ = f __ ~@#!
+                 ^
+
+                error: Expected '==' but found single '='
+                ~~ = f __ ~@#!
+                   ^
+
+                token: f
+                ~~ = f __ ~@#!
+                     ^
+
+                token: __
+                ~~ = f __ ~@#!
+                       ^^
+
+                error: Unexpected character: '~'
+                ~~ = f __ ~@#!
+                          ^
+
+                error: Unexpected character: '@'
+                ~~ = f __ ~@#!
+                           ^
+
+                error: Unexpected character: '#'
+                ~~ = f __ ~@#!
+                            ^
+
+                token: !
+                ~~ = f __ ~@#!
+                             ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_invalid_numbers() {
+        check(
+            "1. 1000. 1.",
+            expect![[r#"
+                error: Expected digit after decimal point
+                1. 1000. 1.
+                ^^
+
+                error: Expected digit after decimal point
+                1. 1000. 1.
+                   ^^^^^
+
+                error: Expected digit after decimal point
+                1. 1000. 1.
+                         ^^
             "#]],
         );
     }
@@ -319,11 +363,25 @@ mod tests {
         check(
             "( ) . ! ==",
             expect![[r#"
-                1:1-1:2    (
-                1:3-1:4    )
-                1:5-1:6    .
-                1:7-1:8    !
-                1:9-1:11   ==
+                token: (
+                ( ) . ! ==
+                ^
+
+                token: )
+                ( ) . ! ==
+                  ^
+
+                token: .
+                ( ) . ! ==
+                    ^
+
+                token: !
+                ( ) . ! ==
+                      ^
+
+                token: ==
+                ( ) . ! ==
+                        ^^
             "#]],
         );
     }
@@ -333,12 +391,29 @@ mod tests {
         check(
             "foo in true false _test var123",
             expect![[r#"
-                1:1-1:4    foo
-                1:5-1:7    in
-                1:8-1:12   true
-                1:13-1:18  false
-                1:19-1:24  _test
-                1:25-1:31  var123
+                token: foo
+                foo in true false _test var123
+                ^^^
+
+                token: in
+                foo in true false _test var123
+                    ^^
+
+                token: true
+                foo in true false _test var123
+                       ^^^^
+
+                token: false
+                foo in true false _test var123
+                            ^^^^^
+
+                token: _test
+                foo in true false _test var123
+                                  ^^^^^
+
+                token: var123
+                foo in true false _test var123
+                                        ^^^^^^
             "#]],
         );
     }
@@ -348,9 +423,17 @@ mod tests {
         check(
             "'hello' 'world with spaces' ''",
             expect![[r#"
-                1:1-1:8    'hello'
-                1:9-1:28   'world with spaces'
-                1:29-1:31  ''
+                token: 'hello'
+                'hello' 'world with spaces' ''
+                ^^^^^^^
+
+                token: 'world with spaces'
+                'hello' 'world with spaces' ''
+                        ^^^^^^^^^^^^^^^^^^^
+
+                token: ''
+                'hello' 'world with spaces' ''
+                                            ^^
             "#]],
         );
     }
@@ -360,10 +443,21 @@ mod tests {
         check(
             "123 456.789 0 0.5",
             expect![[r#"
-                1:1-1:4    123
-                1:5-1:12   456.789
-                1:13-1:14  0
-                1:15-1:18  0.5
+                token: 123
+                123 456.789 0 0.5
+                ^^^
+
+                token: 456.789
+                123 456.789 0 0.5
+                    ^^^^^^^
+
+                token: 0
+                123 456.789 0 0.5
+                            ^
+
+                token: 0.5
+                123 456.789 0 0.5
+                              ^^^
             "#]],
         );
     }
@@ -373,8 +467,13 @@ mod tests {
         check(
             "foo\nbar",
             expect![[r#"
-                1:1-1:4    foo
-                2:1-2:4    bar
+                token: foo
+                foo
+                ^^^
+
+                token: bar
+                bar
+                ^^^
             "#]],
         );
     }
@@ -384,9 +483,17 @@ mod tests {
         check(
             "user.name",
             expect![[r#"
-                1:1-1:5    user
-                1:5-1:6    .
-                1:6-1:10   name
+                token: user
+                user.name
+                ^^^^
+
+                token: .
+                user.name
+                    ^
+
+                token: name
+                user.name
+                     ^^^^
             "#]],
         );
     }
@@ -396,8 +503,13 @@ mod tests {
         check(
             "  foo   bar  ",
             expect![[r#"
-                1:3-1:6    foo
-                1:9-1:12   bar
+                token: foo
+                  foo   bar  
+                  ^^^
+
+                token: bar
+                  foo   bar  
+                        ^^^
             "#]],
         );
     }
@@ -407,11 +519,25 @@ mod tests {
         check(
             "user.name == 'admin'",
             expect![[r#"
-                1:1-1:5    user
-                1:5-1:6    .
-                1:6-1:10   name
-                1:11-1:13  ==
-                1:14-1:21  'admin'
+                token: user
+                user.name == 'admin'
+                ^^^^
+
+                token: .
+                user.name == 'admin'
+                    ^
+
+                token: name
+                user.name == 'admin'
+                     ^^^^
+
+                token: ==
+                user.name == 'admin'
+                          ^^
+
+                token: 'admin'
+                user.name == 'admin'
+                             ^^^^^^^
             "#]],
         );
     }
@@ -421,12 +547,29 @@ mod tests {
         check(
             "!(foo == true)",
             expect![[r#"
-                1:1-1:2    !
-                1:2-1:3    (
-                1:3-1:6    foo
-                1:7-1:9    ==
-                1:10-1:14  true
-                1:14-1:15  )
+                token: !
+                !(foo == true)
+                ^
+
+                token: (
+                !(foo == true)
+                 ^
+
+                token: foo
+                !(foo == true)
+                  ^^^
+
+                token: ==
+                !(foo == true)
+                      ^^
+
+                token: true
+                !(foo == true)
+                         ^^^^
+
+                token: )
+                !(foo == true)
+                             ^
             "#]],
         );
     }
@@ -436,13 +579,69 @@ mod tests {
         check(
             "[1, 2, 3]",
             expect![[r#"
-                1:1-1:2    [
-                1:2-1:3    1
-                1:3-1:4    ,
-                1:5-1:6    2
-                1:6-1:7    ,
-                1:8-1:9    3
-                1:9-1:10   ]
+                token: [
+                [1, 2, 3]
+                ^
+
+                token: 1
+                [1, 2, 3]
+                 ^
+
+                token: ,
+                [1, 2, 3]
+                  ^
+
+                token: 2
+                [1, 2, 3]
+                    ^
+
+                token: ,
+                [1, 2, 3]
+                     ^
+
+                token: 3
+                [1, 2, 3]
+                       ^
+
+                token: ]
+                [1, 2, 3]
+                        ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_number_array() {
+        check(
+            "[1.0, 12.0, 343.0]",
+            expect![[r#"
+                token: [
+                [1.0, 12.0, 343.0]
+                ^
+
+                token: 1.0
+                [1.0, 12.0, 343.0]
+                 ^^^
+
+                token: ,
+                [1.0, 12.0, 343.0]
+                    ^
+
+                token: 12.0
+                [1.0, 12.0, 343.0]
+                      ^^^^
+
+                token: ,
+                [1.0, 12.0, 343.0]
+                          ^
+
+                token: 343.0
+                [1.0, 12.0, 343.0]
+                            ^^^^^
+
+                token: ]
+                [1.0, 12.0, 343.0]
+                                 ^
             "#]],
         );
     }
@@ -452,8 +651,13 @@ mod tests {
         check(
             "[]",
             expect![[r#"
-                1:1-1:2    [
-                1:2-1:3    ]
+                token: [
+                []
+                ^
+
+                token: ]
+                []
+                 ^
             "#]],
         );
     }
@@ -463,11 +667,25 @@ mod tests {
         check(
             "{name: 'John'}",
             expect![[r#"
-                1:1-1:2    {
-                1:2-1:6    name
-                1:6-1:7    :
-                1:8-1:14   'John'
-                1:14-1:15  }
+                token: {
+                {name: 'John'}
+                ^
+
+                token: name
+                {name: 'John'}
+                 ^^^^
+
+                token: :
+                {name: 'John'}
+                     ^
+
+                token: 'John'
+                {name: 'John'}
+                       ^^^^^^
+
+                token: }
+                {name: 'John'}
+                             ^
             "#]],
         );
     }
