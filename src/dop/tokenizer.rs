@@ -146,8 +146,8 @@ impl DopTokenizer {
         self.cursor.range()
     }
 
-    pub fn peek(&self) -> &Option<Result<(DopToken, Range), ParseError>> {
-        &self.current_token
+    pub fn peek(&self) -> Option<&Result<(DopToken, Range), ParseError>> {
+        self.current_token.as_ref()
     }
 
     fn advance(&mut self) -> Option<Result<(DopToken, Range), ParseError>> {
