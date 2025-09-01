@@ -1,5 +1,5 @@
 use crate::common::{Position, Range};
-use std::{fmt, str::FromStr};
+use std::{fmt, iter::Peekable, str::Chars, str::FromStr};
 
 use super::parser::ParseError;
 
@@ -57,37 +57,31 @@ impl fmt::Display for DopToken {
     }
 }
 
-struct Cursor {
-    input: Vec<char>,
-    /// Current position (0-indexed, in characters)
-    position: usize,
+struct Cursor<'a> {
+    chars: Peekable<Chars<'a>>,
     /// Current line number (1-indexed)
     line: usize,
     /// Current column index (1-indexed, in bytes)
     column: usize,
 }
 
-impl Cursor {
-    fn new(input: &str, start_pos: Position) -> Self {
+impl<'a> Cursor<'a> {
+    fn new(input: &'a str, start_pos: Position) -> Self {
         Self {
-            input: input.chars().collect(),
-            position: 0,
+            chars: input.chars().peekable(),
             line: start_pos.line,
             column: start_pos.column,
         }
     }
 
-    fn peek(&self) -> char {
-        if self.is_at_end() {
-            '\0'
-        } else {
-            self.input[self.position]
-        }
+    fn peek(&mut self) -> Option<&char> {
+        self.chars.peek()
     }
 
-    fn advance(&mut self) -> char {
-        let ch = self.peek();
-        if ch != '\0' {
+    fn advance(&mut self) -> Option<char> {
+        let res = self.chars.next();
+        if res.is_some() {
+            let ch = res.unwrap();
             let byte_len = ch.len_utf8();
             if ch == '\n' {
                 self.line += 1;
@@ -95,44 +89,39 @@ impl Cursor {
             } else {
                 self.column += byte_len;
             }
-            self.position += 1;
+            return Some(ch);
         }
-        ch
+        None
     }
 
     fn get_position(&self) -> Position {
         Position::new(self.line, self.column)
     }
-
-    fn is_at_end(&self) -> bool {
-        self.position >= self.input.len()
-    }
 }
 
-pub struct DopTokenizer {
-    cursor: Cursor,
+pub struct DopTokenizer<'a> {
+    cursor: Cursor<'a>,
 }
 
-impl DopTokenizer {
-    pub fn new(input: &str, start_pos: Position) -> Self {
+impl<'a> DopTokenizer<'a> {
+    pub fn new(input: &'a str, start_pos: Position) -> Self {
         Self {
             cursor: Cursor::new(input, start_pos),
         }
     }
 }
 
-impl Iterator for DopTokenizer {
+impl Iterator for DopTokenizer<'_> {
     type Item = Result<(DopToken, Range), ParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while self.cursor.peek().is_whitespace() {
+        while self.cursor.peek().is_some_and(|ch| ch.is_whitespace()) {
             self.cursor.advance();
         }
 
         let start_pos = self.cursor.get_position();
 
-        let token = match self.cursor.peek() {
-            '\0' => return None,
+        let token = match self.cursor.peek()? {
             '.' => {
                 self.cursor.advance();
                 DopToken::Dot
@@ -171,7 +160,7 @@ impl Iterator for DopTokenizer {
             }
             '=' => {
                 self.cursor.advance();
-                if self.cursor.peek() == '=' {
+                if self.cursor.peek().is_some_and(|ch| *ch == '=') {
                     self.cursor.advance();
                     DopToken::Equal
                 } else {
@@ -189,10 +178,10 @@ impl Iterator for DopTokenizer {
             '\'' => {
                 let mut result = String::new();
                 self.cursor.advance();
-                while !matches!(self.cursor.peek(), '\'' | '\0') {
-                    result.push(self.cursor.advance());
+                while self.cursor.peek().is_some_and(|ch| *ch != '\'') {
+                    result.push(self.cursor.advance()?);
                 }
-                if self.cursor.peek() != '\'' {
+                if self.cursor.peek().is_none() {
                     return Some(Err(ParseError::new(
                         "Unterminated string literal".to_string(),
                         Range::new(start_pos, self.cursor.get_position()),
@@ -204,8 +193,11 @@ impl Iterator for DopTokenizer {
             'A'..='Z' | 'a'..='z' | '_' => {
                 let mut identifier = String::new();
 
-                while matches!(self.cursor.peek(), 'A'..='Z' | 'a'..='z' | '0'..='9' | '_') {
-                    identifier.push(self.cursor.advance());
+                while matches!(
+                    self.cursor.peek(),
+                    Some('A'..='Z' | 'a'..='z' | '0'..='9' | '_')
+                ) {
+                    identifier.push(self.cursor.advance()?);
                 }
 
                 match identifier.as_str() {
@@ -224,21 +216,21 @@ impl Iterator for DopTokenizer {
             '0'..='9' => {
                 let mut number_string = String::new();
 
-                while matches!(self.cursor.peek(), '0'..='9') {
-                    number_string.push(self.cursor.advance());
+                while matches!(self.cursor.peek(), Some('0'..='9')) {
+                    number_string.push(self.cursor.advance()?);
                 }
 
-                if self.cursor.peek() == '.' {
-                    number_string.push(self.cursor.advance()); // consume '.'
-                    if !matches!(self.cursor.peek(), '0'..='9') {
+                if self.cursor.peek().is_some_and(|ch| *ch == '.') {
+                    number_string.push(self.cursor.advance()?); // consume '.'
+                    if !matches!(self.cursor.peek(), Some('0'..='9')) {
                         let error_pos = self.cursor.get_position();
                         return Some(Err(ParseError::new(
                             "Expected digit after decimal point".to_string(),
                             Range::new(start_pos, error_pos),
                         )));
                     }
-                    while matches!(self.cursor.peek(), '0'..='9') {
-                        number_string.push(self.cursor.advance());
+                    while matches!(self.cursor.peek(), Some('0'..='9')) {
+                        number_string.push(self.cursor.advance()?);
                     }
                 }
 
@@ -256,11 +248,11 @@ impl Iterator for DopTokenizer {
                 DopToken::NumberLiteral(number_value)
             }
             ch => {
+                let result = *ch;
                 self.cursor.advance();
-                let error_pos = self.cursor.get_position();
                 return Some(Err(ParseError::new(
-                    format!("Unexpected character: '{}'", ch),
-                    Range::new(start_pos, error_pos),
+                    format!("Unexpected character: '{}'", result),
+                    Range::new(start_pos, self.cursor.get_position()),
                 )));
             }
         };
