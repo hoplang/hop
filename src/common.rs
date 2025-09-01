@@ -2,7 +2,7 @@ use crate::{
     dop::{DopParameter, tokenizer::DopToken},
     tui::source_annotator::Annotated,
 };
-use std::fmt;
+use std::{cmp, fmt};
 
 /// Represents a position in source code
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -49,6 +49,19 @@ impl Range {
             || (position.line == self.start.line && position.column >= self.start.column))
             && (position.line < self.end.line
                 || (position.line == self.end.line && position.column < self.end.column))
+    }
+
+    // returns the intersection of two ranges, or None if they don't overlap
+    pub fn intersection(&self, other: &Range) -> Option<Range> {
+        let start = cmp::max(self.start, other.start);
+        let end = cmp::min(self.end, other.end);
+        
+        // If start >= end, there's no intersection
+        if start >= end {
+            None
+        } else {
+            Some(Range::new(start, end))
+        }
     }
 }
 

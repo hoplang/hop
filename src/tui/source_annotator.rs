@@ -96,12 +96,6 @@ impl SourceAnnotator {
 
             let range = annotation.range();
 
-            if range.start.line != range.end.line {
-                panic!(
-                    "The SourceAnnotator currently does not support annotations that span multiple lines"
-                )
-            }
-
             if let Some(ref label) = self.label {
                 output.push_str(&format!("{}: {}\n", label, annotation.message()));
             } else {
@@ -129,36 +123,41 @@ impl SourceAnnotator {
     }
 
     fn format_annotation(&self, output: &mut String, lines: &[&str], range: Range) {
+        use crate::common::Position;
+        
         let max_line_num_width = if self.show_line_numbers {
             lines.len().to_string().len()
         } else {
             0
         };
 
-        // Calculate which lines to show before
-        let start_line = range.start.line;
-        let first_line = start_line.saturating_sub(self.lines_before).max(1);
+        let first_line = range.start.line.saturating_sub(self.lines_before).max(1);
+        let last_line = (range.end.line + self.lines_after).min(lines.len());
 
-        // Show lines before
-        for line_num in first_line..start_line {
-            if let Some(line) = lines.get(line_num - 1) {
-                self.format_line(output, line_num, line, max_line_num_width);
+        // Use enumerated iterator over lines
+        for (i, line) in lines.iter().enumerate() {
+            let line_num = i + 1; // Convert 0-based index to 1-based line number
+
+            // Skip lines outside our display range
+            if line_num < first_line || line_num > last_line {
+                continue;
             }
-        }
 
-        // Show the annotated line(s)
-        if let Some(line) = lines.get(start_line - 1) {
-            self.format_line(output, start_line, line, max_line_num_width);
+            self.format_line(output, line_num, line, max_line_num_width);
 
-            // Add the underline
-            self.format_underline(output, line, range, max_line_num_width);
-        }
-
-        // Show lines after
-        let last_line = (start_line + self.lines_after).min(lines.len());
-        for line_num in (start_line + 1)..=last_line {
-            if let Some(line) = lines.get(line_num - 1) {
-                self.format_line(output, line_num, line, max_line_num_width);
+            // Check if this line intersects with the annotation range
+            // Create a range for the current line (from column 1 to end of line + 1)
+            let line_range = Range::new(
+                Position::new(line_num, 1),
+                Position::new(line_num, line.len() + 1),
+            );
+            
+            // If this line intersects with the annotation, add underline
+            if let Some(intersection) = range.intersection(&line_range) {
+                // The intersection will always be on a single line (line_num)
+                // So we can safely pass it to format_underline
+                debug_assert_eq!(intersection.start.line, intersection.end.line);
+                self.format_underline(output, line, intersection, max_line_num_width);
             }
         }
     }
@@ -170,17 +169,15 @@ impl SourceAnnotator {
         range: Range,
         max_line_num_width: usize,
     ) {
+        if range.start.line != range.end.line {
+            panic!("Expected range.start.line == range.end.line")
+        }
         if self.show_line_numbers {
-            output.push_str(&" ".repeat(max_line_num_width));
-            output.push_str(" | ");
+            output.push_str(&format!("{:width$} | ", "", width = max_line_num_width));
         }
 
         let display_start = self.byte_to_display_position(line, range.start.column);
-        let display_end = if range.start.line == range.end.line {
-            self.byte_to_display_position(line, range.end.column)
-        } else {
-            self.display_width(line) + 1
-        };
+        let display_end = self.byte_to_display_position(line, range.end.column);
 
         output.push_str(&" ".repeat(display_start.saturating_sub(1)));
         let underline_length = display_end.saturating_sub(display_start).max(1);
@@ -473,6 +470,30 @@ mod tests {
                 4 | line four
                 5 | line five
                   |      ^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_multi_line_annotation() {
+        let annotations = vec![SimpleAnnotation {
+            range: Range::new(Position::new(2, 6), Position::new(4, 5)),
+            message: "Multi-line error".to_string(),
+        }];
+        let source = "line one\nline two\nline three\nline four\nline five";
+
+        check(
+            SourceAnnotator::new(),
+            source,
+            annotations,
+            expect![[r#"
+                Multi-line error
+                2 | line two
+                  |      ^^^
+                3 | line three
+                  | ^^^^^^^^^^
+                4 | line four
+                  | ^^^^
             "#]],
         );
     }
