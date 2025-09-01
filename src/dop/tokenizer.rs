@@ -59,18 +59,14 @@ impl fmt::Display for DopToken {
 
 struct Cursor<'a> {
     chars: Peekable<Chars<'a>>,
-    /// Current line number (1-indexed)
-    line: usize,
-    /// Current column index (1-indexed, in bytes)
-    column: usize,
+    position: Position,
 }
 
 impl<'a> Cursor<'a> {
     fn new(input: &'a str, start_pos: Position) -> Self {
         Self {
             chars: input.chars().peekable(),
-            line: start_pos.line,
-            column: start_pos.column,
+            position: start_pos,
         }
     }
 
@@ -79,23 +75,23 @@ impl<'a> Cursor<'a> {
     }
 
     fn advance(&mut self) -> Option<char> {
-        let res = self.chars.next();
-        if res.is_some() {
-            let ch = res.unwrap();
-            let byte_len = ch.len_utf8();
-            if ch == '\n' {
-                self.line += 1;
-                self.column = 1;
-            } else {
-                self.column += byte_len;
+        match self.chars.next() {
+            None => None,
+            Some(ch) => {
+                let byte_len = ch.len_utf8();
+                if ch == '\n' {
+                    self.position.line += 1;
+                    self.position.column = 1;
+                } else {
+                    self.position.column += byte_len;
+                }
+                Some(ch)
             }
-            return Some(ch);
         }
-        None
     }
 
     fn get_position(&self) -> Position {
-        Position::new(self.line, self.column)
+        Position::new(self.position.line, self.position.column)
     }
 }
 
