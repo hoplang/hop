@@ -69,9 +69,6 @@ struct Cursor {
 
 impl Cursor {
     fn new(input: &str, start_pos: Position) -> Self {
-        if input.is_empty() {
-            panic!("Can not create a cursor for an empty string")
-        }
         Self {
             input: input.chars().collect(),
             position: 0,
