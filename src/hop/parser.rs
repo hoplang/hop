@@ -202,7 +202,8 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                             name: name.to_string(),
                             opening_name_range: name_range,
                             closing_name_range: tree.closing_tag_name_range,
-                            params,
+                            params: params
+                                .map(|(f, s)| (f.values().cloned().collect::<Vec<_>>(), s)),
                             is_entrypoint,
                             as_attr: as_attr.map(|(v, r)| PresentAttribute { value: v, range: r }),
                             attributes: unhandled_attributes,
@@ -465,7 +466,7 @@ fn construct_node(
                         opening_name_range: name_range,
                         closing_name_range: tree.closing_tag_name_range,
                         definition_module: definition_location,
-                        args,
+                        args: args.map(|(f, s)| (f.values().cloned().collect::<Vec<_>>(), s)),
                         attributes,
                         range: tree.range,
                         children,
@@ -484,7 +485,7 @@ fn construct_node(
                                 Some(val) => val,
                             };
                             let mut tokenizer =
-                                DopTokenizer::new(&attr_val, attr_val_range.start).peekable();
+                                DopTokenizer::new(attr_val, attr_val_range.start).peekable();
                             match dop::parse_expr(&mut tokenizer) {
                                 Ok(expression) => set_attributes.push(DopExprAttribute {
                                     name: attr.name.to_string(),

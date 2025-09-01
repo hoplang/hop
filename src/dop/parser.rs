@@ -259,9 +259,10 @@ fn parse_argument(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopArgument,
 // parameters = parameter ("," parameter)* Eof
 pub fn parse_parameters(
     tokenizer: &mut Peekable<DopTokenizer>,
-) -> Result<Vec<DopParameter>, ParseError> {
-    let mut params = Vec::new();
-    params.push(parse_parameter(tokenizer)?);
+) -> Result<BTreeMap<String, DopParameter>, ParseError> {
+    let mut params = BTreeMap::new();
+    let first_param = parse_parameter(tokenizer)?;
+    params.insert(first_param.var_name.value.clone(), first_param);
 
     while advance_if(tokenizer, DopToken::Comma).is_some() {
         // Handle trailing comma
@@ -270,16 +271,13 @@ pub fn parse_parameters(
         }
         let param = parse_parameter(tokenizer)?;
         // Check for duplicates
-        if params
-            .iter()
-            .any(|other| other.var_name.value == param.var_name.value)
-        {
+        if params.contains_key(&param.var_name.value) {
             return Err(ParseError::duplicate_parameter(
                 &param.var_name.value,
                 param.var_name.range,
             ));
         }
-        params.push(param);
+        params.insert(param.var_name.value.clone(), param);
     }
 
     expect_eof(tokenizer)?;
@@ -290,9 +288,10 @@ pub fn parse_parameters(
 // arguments = argument ("," argument)* Eof
 pub fn parse_arguments(
     tokenizer: &mut Peekable<DopTokenizer>,
-) -> Result<Vec<DopArgument>, ParseError> {
-    let mut args = Vec::new();
-    args.push(parse_argument(tokenizer)?);
+) -> Result<BTreeMap<String, DopArgument>, ParseError> {
+    let mut args = BTreeMap::new();
+    let first_arg = parse_argument(tokenizer)?;
+    args.insert(first_arg.var_name.value.clone(), first_arg);
 
     while advance_if(tokenizer, DopToken::Comma).is_some() {
         // Handle trailing comma
@@ -301,16 +300,13 @@ pub fn parse_arguments(
         }
         let arg = parse_argument(tokenizer)?;
         // Check for duplicates
-        if args
-            .iter()
-            .any(|other| other.var_name.value == arg.var_name.value)
-        {
+        if args.contains_key(&arg.var_name.value) {
             return Err(ParseError::duplicate_argument(
                 &arg.var_name.value,
                 arg.var_name.range,
             ));
         }
-        args.push(arg);
+        args.insert(arg.var_name.value.clone(), arg);
     }
 
     expect_eof(tokenizer)?;
@@ -1623,8 +1619,8 @@ mod tests {
         check_parse_arguments(
             "name: 'John'",
             expect![[r#"
-                [
-                    DopArgument {
+                {
+                    "name": DopArgument {
                         var_name: DopVarName {
                             value: "name",
                             range: 1:1-1:5,
@@ -1634,7 +1630,7 @@ mod tests {
                             range: 1:7-1:13,
                         },
                     },
-                ]
+                }
             "#]],
         );
     }
@@ -1644,28 +1640,8 @@ mod tests {
         check_parse_arguments(
             "name: 'John', age: 25, active: true",
             expect![[r#"
-                [
-                    DopArgument {
-                        var_name: DopVarName {
-                            value: "name",
-                            range: 1:1-1:5,
-                        },
-                        expression: StringLiteral {
-                            value: "John",
-                            range: 1:7-1:13,
-                        },
-                    },
-                    DopArgument {
-                        var_name: DopVarName {
-                            value: "age",
-                            range: 1:15-1:18,
-                        },
-                        expression: NumberLiteral {
-                            value: Number(25),
-                            range: 1:20-1:22,
-                        },
-                    },
-                    DopArgument {
+                {
+                    "active": DopArgument {
                         var_name: DopVarName {
                             value: "active",
                             range: 1:24-1:30,
@@ -1675,7 +1651,27 @@ mod tests {
                             range: 1:32-1:36,
                         },
                     },
-                ]
+                    "age": DopArgument {
+                        var_name: DopVarName {
+                            value: "age",
+                            range: 1:15-1:18,
+                        },
+                        expression: NumberLiteral {
+                            value: Number(25),
+                            range: 1:20-1:22,
+                        },
+                    },
+                    "name": DopArgument {
+                        var_name: DopVarName {
+                            value: "name",
+                            range: 1:1-1:5,
+                        },
+                        expression: StringLiteral {
+                            value: "John",
+                            range: 1:7-1:13,
+                        },
+                    },
+                }
             "#]],
         );
     }
@@ -1685,23 +1681,8 @@ mod tests {
         check_parse_arguments(
             "user: user.name, enabled: !user.disabled",
             expect![[r#"
-                [
-                    DopArgument {
-                        var_name: DopVarName {
-                            value: "user",
-                            range: 1:1-1:5,
-                        },
-                        expression: PropertyAccess {
-                            object: Variable {
-                                name: "user",
-                                range: 1:7-1:11,
-                            },
-                            property: "name",
-                            property_range: 1:12-1:16,
-                            range: 1:7-1:16,
-                        },
-                    },
-                    DopArgument {
+                {
+                    "enabled": DopArgument {
                         var_name: DopVarName {
                             value: "enabled",
                             range: 1:18-1:25,
@@ -1721,7 +1702,22 @@ mod tests {
                             range: 1:27-1:41,
                         },
                     },
-                ]
+                    "user": DopArgument {
+                        var_name: DopVarName {
+                            value: "user",
+                            range: 1:1-1:5,
+                        },
+                        expression: PropertyAccess {
+                            object: Variable {
+                                name: "user",
+                                range: 1:7-1:11,
+                            },
+                            property: "name",
+                            property_range: 1:12-1:16,
+                            range: 1:7-1:16,
+                        },
+                    },
+                }
             "#]],
         );
     }
@@ -1731,18 +1727,8 @@ mod tests {
         check_parse_arguments(
             "name: 'John', age: 25,",
             expect![[r#"
-                [
-                    DopArgument {
-                        var_name: DopVarName {
-                            value: "name",
-                            range: 1:1-1:5,
-                        },
-                        expression: StringLiteral {
-                            value: "John",
-                            range: 1:7-1:13,
-                        },
-                    },
-                    DopArgument {
+                {
+                    "age": DopArgument {
                         var_name: DopVarName {
                             value: "age",
                             range: 1:15-1:18,
@@ -1752,7 +1738,17 @@ mod tests {
                             range: 1:20-1:22,
                         },
                     },
-                ]
+                    "name": DopArgument {
+                        var_name: DopVarName {
+                            value: "name",
+                            range: 1:1-1:5,
+                        },
+                        expression: StringLiteral {
+                            value: "John",
+                            range: 1:7-1:13,
+                        },
+                    },
+                }
             "#]],
         );
     }
