@@ -255,7 +255,7 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<RangeDopType, ParseError> 
                 range: Range::new(start_range.start, end_range.end),
             })
         }
-        (DopToken::LeftBrace, start_range) => {
+        (DopToken::LeftBrace, left_brace_range) => {
             let mut properties = BTreeMap::new();
 
             // TODO: Do we really need to handle empty object types?
@@ -265,7 +265,7 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<RangeDopType, ParseError> 
                 let (_, end_range) = tokenizer.advance()?; // consume }
                 return Ok(RangeDopType {
                     dop_type: DopType::Object(properties),
-                    range: Range::new(start_range.start, end_range.end),
+                    range: Range::new(left_brace_range.start, end_range.end),
                 });
             }
 
@@ -288,7 +288,7 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<RangeDopType, ParseError> 
                             let (_, end_range) = tokenizer.advance()?; // consume }
                             return Ok(RangeDopType {
                                 dop_type: DopType::Object(properties),
-                                range: Range::new(start_range.start, end_range.end),
+                                range: Range::new(left_brace_range.start, end_range.end),
                             });
                         }
                         continue;
@@ -297,11 +297,14 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<RangeDopType, ParseError> 
                         let (_, end_range) = tokenizer.advance()?; // consume }
                         return Ok(RangeDopType {
                             dop_type: DopType::Object(properties),
-                            range: Range::new(start_range.start, end_range.end),
+                            range: Range::new(left_brace_range.start, end_range.end),
                         });
                     }
-                    (DopToken::Eof, range) => {
-                        return Err(ParseError::new("Missing closing '}'".to_string(), *range));
+                    (DopToken::Eof, _) => {
+                        return Err(ParseError::new(
+                            "Unmatched '{'".to_string(),
+                            left_brace_range,
+                        ));
                     }
                     (token, range) => {
                         return Err(ParseError::new(
@@ -516,9 +519,9 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
             tokenizer.expect_token(DopToken::RightParen)?;
             Ok(expr)
         }
-        (DopToken::Eof, range) => Err(ParseError::new(
+        (DopToken::Eof, _) => Err(ParseError::new(
             "Unexpected end of expression".to_string(),
-            range,
+            tokenizer.range(),
         )),
         (token, range) => Err(ParseError::unexpected_token(&token, range)),
     }
@@ -619,9 +622,9 @@ mod tests {
         check_parse_parameters(
             "params: {i: {j: {k: {l: boolean}}}",
             expect![[r#"
-                error: Missing closing '}'
+                error: Unmatched '{'
                 params: {i: {j: {k: {l: boolean}}}
-                                                  ^
+                        ^
             "#]],
         );
     }
@@ -765,7 +768,7 @@ mod tests {
             expect![[r#"
                 error: Unexpected end of expression
                 x ==
-                    ^
+                ^^^^
             "#]],
         );
     }
@@ -777,7 +780,7 @@ mod tests {
             expect![[r#"
                 error: Unexpected end of expression
                 !
-                 ^
+                ^
             "#]],
         );
     }
@@ -1711,7 +1714,7 @@ mod tests {
             expect![[r#"
                 error: Unexpected end of expression
                 name:
-                     ^
+                ^^^^^
             "#]],
         );
     }

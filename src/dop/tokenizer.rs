@@ -67,15 +67,31 @@ struct Cursor {
     line: usize,
     /// Current column index (1-indexed, in bytes)
     column: usize,
+
+    range: Range,
 }
 
 impl Cursor {
     fn new(input: &str, start_pos: Position) -> Self {
+        if input.is_empty() {
+            panic!("Can not create a cursor for an empty string")
+        }
+        let mut end_pos = start_pos;
+        for ch in input.chars() {
+            let byte_len = ch.len_utf8();
+            if ch == '\n' {
+                end_pos.line += 1;
+                end_pos.column = 1;
+            } else {
+                end_pos.column += byte_len;
+            }
+        }
         Self {
             input: input.chars().collect(),
             position: 0,
             line: start_pos.line,
             column: start_pos.column,
+            range: Range::new(start_pos, end_pos),
         }
     }
 
@@ -85,6 +101,10 @@ impl Cursor {
         } else {
             self.input[self.position]
         }
+    }
+
+    fn range(&self) -> Range {
+        self.range
     }
 
     fn advance(&mut self) -> char {
@@ -124,6 +144,10 @@ impl DopTokenizer {
         };
         tokenizer.advance()?;
         Ok(tokenizer)
+    }
+
+    pub fn range(&self) -> Range {
+        self.cursor.range()
     }
 
     pub fn peek(&self) -> &(DopToken, Range) {
