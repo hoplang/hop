@@ -150,7 +150,7 @@ impl DopTokenizer {
         &self.current_token
     }
 
-    pub fn advance(&mut self) -> Option<Result<(DopToken, Range), ParseError>> {
+    fn advance(&mut self) -> Option<Result<(DopToken, Range), ParseError>> {
         let result = self.internal_advance();
         mem::replace(&mut self.current_token, result)
     }

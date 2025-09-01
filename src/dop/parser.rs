@@ -115,7 +115,7 @@ pub struct DopArgument {
 fn advance_if(tokenizer: &mut DopTokenizer, token: DopToken) -> Option<Range> {
     if matches!(tokenizer.peek(), Some(Ok((t, _))) if *t == token) {
         // This is safe due to above peek
-        let (_, range) = tokenizer.advance().unwrap().unwrap();
+        let (_, range) = tokenizer.next().unwrap().unwrap();
         Some(range)
     } else {
         None
@@ -124,7 +124,7 @@ fn advance_if(tokenizer: &mut DopTokenizer, token: DopToken) -> Option<Range> {
 
 fn expect_token(tokenizer: &mut DopTokenizer, expected: DopToken) -> Result<Range, ParseError> {
     match tokenizer
-        .advance()
+        .next()
         .ok_or_else(|| ParseError::unexpected_eof(tokenizer.range()))?
     {
         Ok((token, range)) if token == expected => Ok(range),
@@ -135,7 +135,7 @@ fn expect_token(tokenizer: &mut DopTokenizer, expected: DopToken) -> Result<Rang
 
 fn expect_variable_name(tokenizer: &mut DopTokenizer) -> Result<DopVarName, ParseError> {
     match tokenizer
-        .advance()
+        .next()
         .ok_or_else(|| ParseError::unexpected_eof(tokenizer.range()))?
     {
         Ok((DopToken::Identifier(name), range)) => DopVarName::new(name, range),
@@ -146,7 +146,7 @@ fn expect_variable_name(tokenizer: &mut DopTokenizer) -> Result<DopVarName, Pars
 
 fn expect_property_name(tokenizer: &mut DopTokenizer) -> Result<(String, Range), ParseError> {
     match tokenizer
-        .advance()
+        .next()
         .ok_or_else(|| ParseError::unexpected_eof(tokenizer.range()))?
     {
         Ok((DopToken::Identifier(name), range)) => Ok((name, range)),
@@ -156,7 +156,7 @@ fn expect_property_name(tokenizer: &mut DopTokenizer) -> Result<(String, Range),
 }
 
 fn expect_eof(tokenizer: &mut DopTokenizer) -> Result<(), ParseError> {
-    match tokenizer.advance() {
+    match tokenizer.next() {
         None => Ok(()),
         Some(Ok((token, range))) => Err(ParseError::unexpected_token(&token, range)),
         Some(Err(e)) => Err(e),
@@ -272,7 +272,7 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<RangeDopType, ParseError> 
     use std::collections::BTreeMap;
 
     match tokenizer
-        .advance()
+        .next()
         .ok_or_else(|| ParseError::unexpected_eof(tokenizer.range()))??
     {
         (DopToken::TypeString, range) => Ok(RangeDopType {
@@ -310,7 +310,7 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<RangeDopType, ParseError> 
                 properties.insert(prop_name, typ.dop_type);
 
                 // Expect comma or closing brace
-                match tokenizer.advance().ok_or_else(|| {
+                match tokenizer.next().ok_or_else(|| {
                     ParseError::new("Unmatched '{'".to_string(), left_brace_range)
                 })?? {
                     (DopToken::Comma, _) => {
@@ -388,7 +388,7 @@ fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
 //         | "(" equality ")"
 fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
     match tokenizer
-        .advance()
+        .next()
         .ok_or_else(|| ParseError::unexpected_eof(tokenizer.range()))??
     {
         (DopToken::Identifier(name), range) => {
@@ -397,7 +397,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
             // Handle property access
             while advance_if(tokenizer, DopToken::Dot).is_some() {
                 match tokenizer
-                    .advance()
+                    .next()
                     .ok_or_else(|| ParseError::unexpected_eof(tokenizer.range()))??
                 {
                     (DopToken::Identifier(prop), property_range) => {
@@ -445,7 +445,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
                 elements.push(parse_equality(tokenizer)?);
 
                 match tokenizer
-                    .advance()
+                    .next()
                     .ok_or_else(|| ParseError::unexpected_eof(tokenizer.range()))??
                 {
                     (DopToken::Comma, _) => {
@@ -509,7 +509,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
 
                 // Expect comma or right brace
                 match tokenizer
-                    .advance()
+                    .next()
                     .ok_or_else(|| ParseError::unexpected_eof(tokenizer.range()))??
                 {
                     (DopToken::Comma, _) => {
