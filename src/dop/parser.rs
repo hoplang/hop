@@ -164,9 +164,9 @@ pub struct DopArgument {
 }
 
 fn advance_if(tokenizer: &mut Peekable<DopTokenizer>, token: DopToken) -> Option<Range> {
-    if matches!(tokenizer.peek(), Some(Ok((t, _))) if *t == token) {
-        // This is safe due to above peek
-        let (_, range) = tokenizer.next().unwrap().unwrap();
+    if let Some(Ok((_, range))) =
+        tokenizer.next_if(|res| res.as_ref().is_ok_and(|(t, _)| *t == token))
+    {
         Some(range)
     } else {
         None
