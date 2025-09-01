@@ -17,6 +17,14 @@ impl ParseError {
         Self::RangeError { message, range }
     }
 
+    pub fn unterminated_string_literal(range: Range) -> Self {
+        Self::new("Unterminated string literal".to_string(), range)
+    }
+
+    pub fn expected_digit_after_decimal_point(range: Range) -> Self {
+        Self::new("Expected digit after decimal point".to_string(), range)
+    }
+
     pub fn invalid_variable_name(name: &str, range: Range) -> Self {
         Self::new(
             format!("Invalid variable name '{name}'. Variable names must match [a-z][a-z0-9_]*"),

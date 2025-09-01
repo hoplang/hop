@@ -74,20 +74,16 @@ impl<'a> Cursor<'a> {
 impl Iterator for Cursor<'_> {
     type Item = (char, Range);
     fn next(&mut self) -> Option<Self::Item> {
-        let was = self.position;
-        match self.chars.next() {
-            None => None,
-            Some(ch) => {
-                let byte_len = ch.len_utf8();
-                if ch == '\n' {
-                    self.position.line += 1;
-                    self.position.column = 1;
-                } else {
-                    self.position.column += byte_len;
-                }
-                Some((ch, Range::new(was, self.position)))
+        let start = self.position;
+        self.chars.next().map(|ch| {
+            if ch == '\n' {
+                self.position.line += 1;
+                self.position.column = 1;
+            } else {
+                self.position.column += ch.len_utf8();
             }
-        }
+            (ch, Range::new(start, self.position))
+        })
     }
 }
 
@@ -111,138 +107,125 @@ impl Iterator for DopTokenizer<'_> {
             self.cursor.next();
         }
 
-        match self.cursor.next()? {
-            ('.', range) => Some(Ok((DopToken::Dot, range))),
-            ('(', range) => Some(Ok((DopToken::LeftParen, range))),
-            (')', range) => Some(Ok((DopToken::RightParen, range))),
-            ('[', range) => Some(Ok((DopToken::LeftBracket, range))),
-            (']', range) => Some(Ok((DopToken::RightBracket, range))),
-            ('{', range) => Some(Ok((DopToken::LeftBrace, range))),
-            ('}', range) => Some(Ok((DopToken::RightBrace, range))),
-            (':', range) => Some(Ok((DopToken::Colon, range))),
-            (',', range) => Some(Ok((DopToken::Comma, range))),
-            ('!', range) => Some(Ok((DopToken::Not, range))),
-            ('=', start_range) => {
-                if let Some((_, end_range)) = self.cursor.next_if(|(ch, _)| *ch == '=') {
-                    Some(Ok((
-                        DopToken::Equal,
-                        Range::new(start_range.start, end_range.end),
-                    )))
-                } else {
-                    Some(Err(ParseError::new(
+        self.cursor.next().map(|(t, start_range)| {
+            match t {
+                '.' => Ok((DopToken::Dot, start_range)),
+                '(' => Ok((DopToken::LeftParen, start_range)),
+                ')' => Ok((DopToken::RightParen, start_range)),
+                '[' => Ok((DopToken::LeftBracket, start_range)),
+                ']' => Ok((DopToken::RightBracket, start_range)),
+                '{' => Ok((DopToken::LeftBrace, start_range)),
+                '}' => Ok((DopToken::RightBrace, start_range)),
+                ':' => Ok((DopToken::Colon, start_range)),
+                ',' => Ok((DopToken::Comma, start_range)),
+                '!' => Ok((DopToken::Not, start_range)),
+                '=' => {
+                    if let Some((_, end_range)) = self.cursor.next_if(|(ch, _)| *ch == '=') {
+                        return Ok((
+                            DopToken::Equal,
+                            Range::new(start_range.start, end_range.end),
+                        ));
+                    }
+                    Err(ParseError::new(
                         "Expected '==' but found single '='".to_string(),
                         start_range,
-                    )))
+                    ))
                 }
-            }
-            ('\'', start_range) => {
-                let mut result = String::new();
-                let mut end_range = start_range;
-                loop {
+                '\'' => {
+                    let mut end_range = start_range;
+                    let mut result = String::new();
+                    while let Some((ch, range)) = self.cursor.next_if(|(ch, _)| *ch != '\'') {
+                        end_range = range;
+                        result.push(ch);
+                    }
                     match self.cursor.next() {
-                        Some(('\'', end_range)) => {
-                            return Some(Ok((
-                                DopToken::StringLiteral(result),
+                        None => Err(ParseError::unterminated_string_literal(Range::new(
+                            start_range.start,
+                            end_range.end,
+                        ))),
+                        Some(('\'', end_range)) => Ok((
+                            DopToken::StringLiteral(result),
+                            Range::new(start_range.start, end_range.end),
+                        )),
+                        _ => unreachable!(),
+                    }
+                }
+                ch @ ('A'..='Z' | 'a'..='z' | '_') => {
+                    let mut end_range = start_range;
+                    let mut identifier = String::from(ch);
+
+                    while let Some((ch, range)) = self
+                        .cursor
+                        .next_if(|(ch, _)| matches!(ch, 'A'..='Z' | 'a'..='z' | '0'..='9' | '_'))
+                    {
+                        identifier.push(ch);
+                        end_range = range;
+                    }
+
+                    let t = match identifier.as_str() {
+                        "in" => DopToken::In,
+                        "true" => DopToken::BooleanLiteral(true),
+                        "false" => DopToken::BooleanLiteral(false),
+                        // Type keywords
+                        "string" => DopToken::TypeString,
+                        "number" => DopToken::TypeNumber,
+                        "boolean" => DopToken::TypeBoolean,
+                        "void" => DopToken::TypeVoid,
+                        "array" => DopToken::TypeArray,
+                        _ => DopToken::Identifier(identifier),
+                    };
+                    Ok((t, Range::new(start_range.start, end_range.end)))
+                }
+                ch if ch.is_ascii_digit() => {
+                    let mut end_range = start_range;
+
+                    let mut number_string = String::from(ch);
+
+                    while let Some((ch, range)) = self.cursor.next_if(|(ch, _)| ch.is_ascii_digit())
+                    {
+                        number_string.push(ch);
+                        end_range = range;
+                    }
+
+                    if let Some((_, range)) = self.cursor.next_if(|(ch, _)| *ch == '.') {
+                        number_string.push('.');
+                        end_range = range;
+
+                        if !self
+                            .cursor
+                            .peek()
+                            .is_some_and(|(ch, _)| ch.is_ascii_digit())
+                        {
+                            return Err(ParseError::expected_digit_after_decimal_point(
                                 Range::new(start_range.start, end_range.end),
-                            )));
+                            ));
                         }
-                        Some((ch, range)) => {
+
+                        while let Some((ch, range)) =
+                            self.cursor.next_if(|(ch, _)| ch.is_ascii_digit())
+                        {
+                            number_string.push(ch);
                             end_range = range;
-                            result.push(ch);
-                        }
-                        None => {
-                            return Some(Err(ParseError::new(
-                                "Unterminated string literal".to_string(),
-                                Range::new(start_range.start, end_range.end),
-                            )));
                         }
                     }
-                }
-            }
-            (ch, start_range) if matches!(ch, 'A'..='Z' | 'a'..='z' | '_') => {
-                let mut identifier = String::new();
 
-                identifier.push(ch);
+                    let range = Range::new(start_range.start, end_range.end);
+                    let parse_result = serde_json::Number::from_str(&number_string);
 
-                let mut end_range = start_range;
-
-                while let Some((ch, range)) = self
-                    .cursor
-                    .next_if(|(ch, _)| matches!(ch, 'A'..='Z' | 'a'..='z' | '0'..='9' | '_'))
-                {
-                    identifier.push(ch);
-                    end_range = range;
-                }
-
-                let t = match identifier.as_str() {
-                    "in" => DopToken::In,
-                    "true" => DopToken::BooleanLiteral(true),
-                    "false" => DopToken::BooleanLiteral(false),
-                    // Type keywords
-                    "string" => DopToken::TypeString,
-                    "number" => DopToken::TypeNumber,
-                    "boolean" => DopToken::TypeBoolean,
-                    "void" => DopToken::TypeVoid,
-                    "array" => DopToken::TypeArray,
-                    _ => DopToken::Identifier(identifier),
-                };
-                Some(Ok((t, Range::new(start_range.start, end_range.end))))
-            }
-            (ch, start_range) if ch.is_ascii_digit() => {
-                let mut number_string = String::new();
-
-                number_string.push(ch);
-
-                let mut end_range = start_range;
-
-                while let Some((ch, range)) = self.cursor.next_if(|(ch, _)| ch.is_ascii_digit()) {
-                    number_string.push(ch);
-                    end_range = range;
-                }
-
-                if let Some((_, range)) = self.cursor.next_if(|(ch, _)| *ch == '.') {
-                    number_string.push('.');
-                    end_range = range;
-                    match self.cursor.peek() {
-                        None => {
-                            return Some(Err(ParseError::new(
-                                "Expected digit after decimal point".to_string(),
-                                Range::new(start_range.start, end_range.end),
-                            )));
-                        }
-                        Some((ch, _)) if ch.is_ascii_digit() => {
-                            while let Some((ch, range)) =
-                                self.cursor.next_if(|(ch, _)| ch.is_ascii_digit())
-                            {
-                                number_string.push(ch);
-                                end_range = range;
-                            }
-                        }
-                        Some(_) => {
-                            return Some(Err(ParseError::new(
-                                "Expected digit after decimal point".to_string(),
-                                Range::new(start_range.start, end_range.end),
-                            )));
-                        }
+                    match parse_result {
+                        Ok(n) => Ok((DopToken::NumberLiteral(n), range)),
+                        Err(_) => Err(ParseError::new(
+                            format!("Invalid number format: {}", number_string),
+                            range,
+                        )),
                     }
                 }
-
-                let range = Range::new(start_range.start, end_range.end);
-                let parse_result = serde_json::Number::from_str(&number_string);
-
-                match parse_result {
-                    Ok(n) => Some(Ok((DopToken::NumberLiteral(n), range))),
-                    Err(_) => Some(Err(ParseError::new(
-                        format!("Invalid number format: {}", number_string),
-                        range,
-                    ))),
-                }
+                ch => Err(ParseError::new(
+                    format!("Unexpected character: '{}'", ch),
+                    start_range,
+                )),
             }
-            (ch, range) => Some(Err(ParseError::new(
-                format!("Unexpected character: '{}'", ch),
-                range,
-            ))),
-        }
+        })
     }
 }
 
@@ -290,6 +273,22 @@ mod tests {
                 error: Unexpected character: '~'
                 ~
                 ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_eq_does_not_eat_identifier() {
+        check(
+            "=foo",
+            expect![[r#"
+                error: Expected '==' but found single '='
+                =foo
+                ^
+
+                token: foo
+                =foo
+                 ^^^
             "#]],
         );
     }

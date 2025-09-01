@@ -28,7 +28,7 @@ impl fmt::Display for Position {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Default, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub struct Range {
     pub start: Position,
     pub end: Position,
