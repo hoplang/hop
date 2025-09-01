@@ -112,10 +112,41 @@ pub struct DopArgument {
     pub expression: DopExpr,
 }
 
+// Helper functions for expecting specific tokens
+fn expect_token(tokenizer: &mut DopTokenizer, expected: DopToken) -> Result<(DopToken, Range), ParseError> {
+    let (actual, range) = tokenizer.advance()?;
+    if actual != expected {
+        Err(ParseError::expected_token(&expected, range))
+    } else {
+        Ok((actual, range))
+    }
+}
+
+fn expect_variable_name(tokenizer: &mut DopTokenizer) -> Result<DopVarName, ParseError> {
+    match tokenizer.advance()? {
+        (DopToken::Identifier(name), range) => DopVarName::new(name, range),
+        (_, range) => Err(ParseError::expected_variable_name(range)),
+    }
+}
+
+fn expect_eof(tokenizer: &DopTokenizer) -> Result<(), ParseError> {
+    match tokenizer.peek() {
+        (DopToken::Eof, _) => Ok(()),
+        (token, range) => Err(ParseError::unexpected_token(token, *range)),
+    }
+}
+
+fn expect_property_name(tokenizer: &mut DopTokenizer) -> Result<(String, Range), ParseError> {
+    match tokenizer.advance()? {
+        (DopToken::Identifier(name), range) => Ok((name, range)),
+        (_, range) => Err(ParseError::expected_property_name(range)),
+    }
+}
+
 // expr = equality Eof
 pub fn parse_expr(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
     let result = parse_equality(tokenizer)?;
-    tokenizer.expect_eof()?;
+    expect_eof(tokenizer)?;
     Ok(result)
 }
 
@@ -123,17 +154,17 @@ pub fn parse_expr(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
 pub fn parse_loop_header(
     tokenizer: &mut DopTokenizer,
 ) -> Result<(DopVarName, DopExpr), ParseError> {
-    let var_name = tokenizer.expect_variable_name()?;
-    tokenizer.expect_token(DopToken::In)?;
+    let var_name = expect_variable_name(tokenizer)?;
+    expect_token(tokenizer, DopToken::In)?;
     let array_expr = parse_equality(tokenizer)?;
-    tokenizer.expect_eof()?;
+    expect_eof(tokenizer)?;
     Ok((var_name, array_expr))
 }
 
 // parameter_with_type = Identifier ":" type
 fn parse_parameter(tokenizer: &mut DopTokenizer) -> Result<DopParameter, ParseError> {
-    let var_name = tokenizer.expect_variable_name()?;
-    tokenizer.expect_token(DopToken::Colon)?;
+    let var_name = expect_variable_name(tokenizer)?;
+    expect_token(tokenizer, DopToken::Colon)?;
     let typ = parse_type(tokenizer)?;
     Ok(DopParameter {
         var_name,
@@ -143,8 +174,8 @@ fn parse_parameter(tokenizer: &mut DopTokenizer) -> Result<DopParameter, ParseEr
 
 // named_argument = Identifier ":" expr
 fn parse_argument(tokenizer: &mut DopTokenizer) -> Result<DopArgument, ParseError> {
-    let var_name = tokenizer.expect_variable_name()?;
-    tokenizer.expect_token(DopToken::Colon)?;
+    let var_name = expect_variable_name(tokenizer)?;
+    expect_token(tokenizer, DopToken::Colon)?;
     let expression = parse_equality(tokenizer)?;
     Ok(DopArgument {
         var_name,
@@ -178,7 +209,7 @@ pub fn parse_parameters(tokenizer: &mut DopTokenizer) -> Result<Vec<DopParameter
                 params.push(param);
             }
             _ => {
-                tokenizer.expect_eof()?;
+                expect_eof(tokenizer)?;
                 break;
             }
         }
@@ -213,7 +244,7 @@ pub fn parse_arguments(tokenizer: &mut DopTokenizer) -> Result<Vec<DopArgument>,
                 args.push(arg);
             }
             _ => {
-                tokenizer.expect_eof()?;
+                expect_eof(tokenizer)?;
                 break;
             }
         }
@@ -246,9 +277,9 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<RangeDopType, ParseError> 
             range,
         }),
         (DopToken::TypeArray, start_range) => {
-            tokenizer.expect_token(DopToken::LeftBracket)?;
+            expect_token(tokenizer, DopToken::LeftBracket)?;
             let inner_type = parse_type(tokenizer)?;
-            let (_, end_range) = tokenizer.expect_token(DopToken::RightBracket)?;
+            let (_, end_range) = expect_token(tokenizer, DopToken::RightBracket)?;
 
             Ok(RangeDopType {
                 dop_type: DopType::Array(Some(Box::new(inner_type.dop_type))),
@@ -270,8 +301,8 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<RangeDopType, ParseError> 
             }
 
             loop {
-                let (prop_name, prop_name_range) = tokenizer.expect_property_name()?;
-                tokenizer.expect_token(DopToken::Colon)?;
+                let (prop_name, prop_name_range) = expect_property_name(tokenizer)?;
+                expect_token(tokenizer, DopToken::Colon)?;
                 let typ = parse_type(tokenizer)?;
                 if properties.contains_key(&prop_name) {
                     return Err(ParseError::duplicate_property(&prop_name, prop_name_range));
@@ -469,12 +500,12 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
 
             // Parse object properties
             loop {
-                let (prop_name, prop_name_range) = tokenizer.expect_property_name()?;
+                let (prop_name, prop_name_range) = expect_property_name(tokenizer)?;
                 if properties.contains_key(&prop_name) {
                     return Err(ParseError::duplicate_property(&prop_name, prop_name_range));
                 }
 
-                tokenizer.expect_token(DopToken::Colon)?;
+                expect_token(tokenizer, DopToken::Colon)?;
 
                 properties.insert(prop_name, parse_equality(tokenizer)?);
 
@@ -516,7 +547,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
         }
         (DopToken::LeftParen, _) => {
             let expr = parse_equality(tokenizer)?;
-            tokenizer.expect_token(DopToken::RightParen)?;
+            expect_token(tokenizer, DopToken::RightParen)?;
             Ok(expr)
         }
         (DopToken::Eof, _) => Err(ParseError::new(
