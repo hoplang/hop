@@ -326,8 +326,11 @@ impl ParseError {
         Self::new(format!("Component {name} is already defined"), range)
     }
 
-    pub fn expected_token(token: &DopToken, range: Range) -> Self {
-        Self::new(format!("Expected token '{token}'"), range)
+    pub fn expected_token_but_got(expected: &DopToken, actual: &DopToken, range: Range) -> Self {
+        Self::new(
+            format!("Expected token '{expected}' but got '{actual}'"),
+            range,
+        )
     }
 
     pub fn unexpected_eof(range: Range) -> Self {
@@ -338,12 +341,12 @@ impl ParseError {
         Self::new(format!("Unexpected token '{token}'"), range)
     }
 
-    pub fn expected_variable_name(range: Range) -> Self {
-        Self::new("Expected variable name".to_string(), range)
+    pub fn expected_variable_name_but_got(actual: &DopToken, range: Range) -> Self {
+        Self::new(format!("Expected variable name but got {actual}"), range)
     }
 
-    pub fn expected_property_name(token: &DopToken, range: Range) -> Self {
-        Self::new(format!("Expected property name but got {token}"), range)
+    pub fn expected_property_name_but_got(actual: &DopToken, range: Range) -> Self {
+        Self::new(format!("Expected property name but got {actual}"), range)
     }
 
     pub fn duplicate_argument(name: &str, range: Range) -> Self {

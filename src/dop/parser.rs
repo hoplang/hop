@@ -128,7 +128,9 @@ fn expect_token(tokenizer: &mut DopTokenizer, expected: DopToken) -> Result<Rang
         .ok_or_else(|| ParseError::unexpected_eof(tokenizer.range()))?
     {
         Ok((token, range)) if token == expected => Ok(range),
-        Ok((_, range)) => Err(ParseError::expected_token(&expected, range)),
+        Ok((actual, range)) => Err(ParseError::expected_token_but_got(
+            &expected, &actual, range,
+        )),
         Err(e) => Err(e),
     }
 }
@@ -139,7 +141,7 @@ fn expect_variable_name(tokenizer: &mut DopTokenizer) -> Result<DopVarName, Pars
         .ok_or_else(|| ParseError::unexpected_eof(tokenizer.range()))?
     {
         Ok((DopToken::Identifier(name), range)) => DopVarName::new(name, range),
-        Ok((_, range)) => Err(ParseError::expected_variable_name(range)),
+        Ok((actual, range)) => Err(ParseError::expected_variable_name_but_got(&actual, range)),
         Err(e) => Err(e),
     }
 }
@@ -150,7 +152,7 @@ fn expect_property_name(tokenizer: &mut DopTokenizer) -> Result<(String, Range),
         .ok_or_else(|| ParseError::unexpected_eof(tokenizer.range()))?
     {
         Ok((DopToken::Identifier(name), range)) => Ok((name, range)),
-        Ok((token, range)) => Err(ParseError::expected_property_name(&token, range)),
+        Ok((token, range)) => Err(ParseError::expected_property_name_but_got(&token, range)),
         Err(e) => Err(e),
     }
 }
@@ -1723,7 +1725,7 @@ mod tests {
         check_parse_arguments(
             "name 'John'",
             expect![[r#"
-                error: Expected token ':'
+                error: Expected token ':' but got ''John''
                 name 'John'
                      ^^^^^^
             "#]],
@@ -1747,7 +1749,7 @@ mod tests {
         check_parse_arguments(
             "123: 'value'",
             expect![[r#"
-                error: Expected variable name
+                error: Expected variable name but got 123
                 123: 'value'
                 ^^^
             "#]],
