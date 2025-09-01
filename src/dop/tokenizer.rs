@@ -129,14 +129,14 @@ impl Cursor {
 
 pub struct DopTokenizer {
     cursor: Cursor,
-    current_token: Result<Option<(DopToken, Range)>, ParseError>,
+    current_token: Option<Result<(DopToken, Range), ParseError>>,
 }
 
 impl DopTokenizer {
     pub fn new(input: &str, start_pos: Position) -> Self {
         let mut tokenizer = DopTokenizer {
             cursor: Cursor::new(input, start_pos),
-            current_token: Ok(None), // temporary value
+            current_token: None, // temporary value
         };
         tokenizer.current_token = tokenizer.internal_advance();
         tokenizer
@@ -146,16 +146,16 @@ impl DopTokenizer {
         self.cursor.range()
     }
 
-    pub fn peek(&self) -> &Result<Option<(DopToken, Range)>, ParseError> {
+    pub fn peek(&self) -> &Option<Result<(DopToken, Range), ParseError>> {
         &self.current_token
     }
 
-    pub fn advance(&mut self) -> Result<Option<(DopToken, Range)>, ParseError> {
+    pub fn advance(&mut self) -> Option<Result<(DopToken, Range), ParseError>> {
         let result = self.internal_advance();
         mem::replace(&mut self.current_token, result)
     }
 
-    fn internal_advance(&mut self) -> Result<Option<(DopToken, Range)>, ParseError> {
+    fn internal_advance(&mut self) -> Option<Result<(DopToken, Range), ParseError>> {
         while self.cursor.peek().is_whitespace() {
             self.cursor.advance();
         }
@@ -163,7 +163,7 @@ impl DopTokenizer {
         let start_pos = self.cursor.get_position();
 
         let token = match self.cursor.peek() {
-            '\0' => return Ok(None),
+            '\0' => return None,
             '.' => {
                 self.cursor.advance();
                 DopToken::Dot
@@ -207,10 +207,10 @@ impl DopTokenizer {
                     DopToken::Equal
                 } else {
                     let error_pos = self.cursor.get_position();
-                    return Err(ParseError::new(
+                    return Some(Err(ParseError::new(
                         "Expected '==' but found single '='".to_string(),
                         Range::new(start_pos, error_pos),
-                    ));
+                    )));
                 }
             }
             '!' => {
@@ -224,10 +224,10 @@ impl DopTokenizer {
                     result.push(self.cursor.advance());
                 }
                 if self.cursor.peek() != '\'' {
-                    return Err(ParseError::new(
+                    return Some(Err(ParseError::new(
                         "Unterminated string literal".to_string(),
                         Range::new(start_pos, self.cursor.get_position()),
-                    ));
+                    )));
                 }
                 self.cursor.advance(); // consume '
                 DopToken::StringLiteral(result)
@@ -263,49 +263,48 @@ impl DopTokenizer {
                     number_string.push(self.cursor.advance()); // consume '.'
                     if !matches!(self.cursor.peek(), '0'..='9') {
                         let error_pos = self.cursor.get_position();
-                        return Err(ParseError::new(
+                        return Some(Err(ParseError::new(
                             "Expected digit after decimal point".to_string(),
                             Range::new(start_pos, error_pos),
-                        ));
+                        )));
                     }
                     while matches!(self.cursor.peek(), '0'..='9') {
                         number_string.push(self.cursor.advance());
                     }
                 }
 
-                let number_value = serde_json::Number::from_str(&number_string).map_err(|_| {
-                    let error_pos = self.cursor.get_position();
-                    ParseError::new(
-                        format!("Invalid number format: {}", number_string),
-                        Range::new(start_pos, error_pos),
-                    )
-                })?;
+                let number_value = match serde_json::Number::from_str(&number_string) {
+                    Ok(n) => n,
+                    Err(_) => {
+                        let error_pos = self.cursor.get_position();
+                        return Some(Err(ParseError::new(
+                            format!("Invalid number format: {}", number_string),
+                            Range::new(start_pos, error_pos),
+                        )));
+                    }
+                };
 
                 DopToken::NumberLiteral(number_value)
             }
             ch => {
                 let error_pos = self.cursor.get_position();
-                return Err(ParseError::new(
+                return Some(Err(ParseError::new(
                     format!("Unexpected character: '{}'", ch),
                     Range::new(start_pos, error_pos),
-                ));
+                )));
             }
         };
 
         let end_pos = self.cursor.get_position();
-        Ok(Some((token, Range::new(start_pos, end_pos))))
+        Some(Ok((token, Range::new(start_pos, end_pos))))
     }
 }
 
 impl Iterator for DopTokenizer {
-    type Item = Result<Option<(DopToken, Range)>, ParseError>;
+    type Item = Result<(DopToken, Range), ParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.advance() {
-            Err(err) => Some(Err(err)),
-            Ok(None) => None,
-            Ok(Some((t, range))) => Some(Ok(Some((t, range)))),
-        }
+        self.advance()
     }
 }
 
@@ -316,7 +315,7 @@ mod tests {
 
     fn check(input: &str, expected: Expect) {
         let tokenizer = DopTokenizer::new(input, Position::new(1, 1));
-        let result: Vec<_> = tokenizer.collect();
+        let result: Vec<_> = tokenizer.map(|r| r.map(Some)).collect();
         let actual = format!("{:#?}", result);
         expected.assert_eq(&actual);
     }
