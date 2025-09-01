@@ -43,13 +43,8 @@ impl Range {
         Range { start, end }
     }
 
-    // returns true if the position lies in the range
-    // where start is inclusive and end is exclusive
     pub fn contains(&self, position: Position) -> bool {
-        (position.line > self.start.line
-            || (position.line == self.start.line && position.column >= self.start.column))
-            && (position.line < self.end.line
-                || (position.line == self.end.line && position.column < self.end.column))
+        position >= self.start && position < self.end
     }
 
     // returns the intersection of two ranges, or None if they don't overlap
