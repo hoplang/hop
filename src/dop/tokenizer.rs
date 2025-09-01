@@ -1,5 +1,5 @@
 use crate::common::{Position, Range};
-use std::{fmt, mem, str::FromStr};
+use std::{fmt, str::FromStr};
 
 use super::parser::ParseError;
 
@@ -114,29 +114,20 @@ impl Cursor {
 
 pub struct DopTokenizer {
     cursor: Cursor,
-    current_token: Option<Result<(DopToken, Range), ParseError>>,
 }
 
 impl DopTokenizer {
     pub fn new(input: &str, start_pos: Position) -> Self {
-        let mut tokenizer = DopTokenizer {
+        Self {
             cursor: Cursor::new(input, start_pos),
-            current_token: None, // temporary value
-        };
-        tokenizer.current_token = tokenizer.internal_advance();
-        tokenizer
+        }
     }
+}
 
-    pub fn peek(&self) -> Option<&Result<(DopToken, Range), ParseError>> {
-        self.current_token.as_ref()
-    }
+impl Iterator for DopTokenizer {
+    type Item = Result<(DopToken, Range), ParseError>;
 
-    fn advance(&mut self) -> Option<Result<(DopToken, Range), ParseError>> {
-        let result = self.internal_advance();
-        mem::replace(&mut self.current_token, result)
-    }
-
-    fn internal_advance(&mut self) -> Option<Result<(DopToken, Range), ParseError>> {
+    fn next(&mut self) -> Option<Self::Item> {
         while self.cursor.peek().is_whitespace() {
             self.cursor.advance();
         }
@@ -278,14 +269,6 @@ impl DopTokenizer {
 
         let end_pos = self.cursor.get_position();
         Some(Ok((token, Range::new(start_pos, end_pos))))
-    }
-}
-
-impl Iterator for DopTokenizer {
-    type Item = Result<(DopToken, Range), ParseError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.advance()
     }
 }
 

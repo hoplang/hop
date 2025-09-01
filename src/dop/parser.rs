@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::iter::Peekable;
 
 use crate::common::{Range, Ranged};
 use crate::dop::DopType;
@@ -162,7 +163,7 @@ pub struct DopArgument {
     pub expression: DopExpr,
 }
 
-fn advance_if(tokenizer: &mut DopTokenizer, token: DopToken) -> Option<Range> {
+fn advance_if(tokenizer: &mut Peekable<DopTokenizer>, token: DopToken) -> Option<Range> {
     if matches!(tokenizer.peek(), Some(Ok((t, _))) if *t == token) {
         // This is safe due to above peek
         let (_, range) = tokenizer.next().unwrap().unwrap();
@@ -172,7 +173,10 @@ fn advance_if(tokenizer: &mut DopTokenizer, token: DopToken) -> Option<Range> {
     }
 }
 
-fn expect_token(tokenizer: &mut DopTokenizer, expected: DopToken) -> Result<Range, ParseError> {
+fn expect_token(
+    tokenizer: &mut Peekable<DopTokenizer>,
+    expected: DopToken,
+) -> Result<Range, ParseError> {
     match tokenizer.next().ok_or(ParseError::UnexpectedEof)? {
         Ok((token, range)) if token == expected => Ok(range),
         Ok((actual, range)) => Err(ParseError::expected_token_but_got(
@@ -182,7 +186,7 @@ fn expect_token(tokenizer: &mut DopTokenizer, expected: DopToken) -> Result<Rang
     }
 }
 
-fn expect_variable_name(tokenizer: &mut DopTokenizer) -> Result<DopVarName, ParseError> {
+fn expect_variable_name(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopVarName, ParseError> {
     match tokenizer.next().ok_or(ParseError::UnexpectedEof)? {
         Ok((DopToken::Identifier(name), range)) => DopVarName::new(name, range),
         Ok((actual, range)) => Err(ParseError::expected_variable_name_but_got(&actual, range)),
@@ -190,7 +194,9 @@ fn expect_variable_name(tokenizer: &mut DopTokenizer) -> Result<DopVarName, Pars
     }
 }
 
-fn expect_property_name(tokenizer: &mut DopTokenizer) -> Result<(String, Range), ParseError> {
+fn expect_property_name(
+    tokenizer: &mut Peekable<DopTokenizer>,
+) -> Result<(String, Range), ParseError> {
     match tokenizer.next().ok_or(ParseError::UnexpectedEof)? {
         Ok((DopToken::Identifier(name), range)) => Ok((name, range)),
         Ok((token, range)) => Err(ParseError::expected_property_name_but_got(&token, range)),
@@ -198,7 +204,7 @@ fn expect_property_name(tokenizer: &mut DopTokenizer) -> Result<(String, Range),
     }
 }
 
-fn expect_eof(tokenizer: &mut DopTokenizer) -> Result<(), ParseError> {
+fn expect_eof(tokenizer: &mut Peekable<DopTokenizer>) -> Result<(), ParseError> {
     match tokenizer.next() {
         None => Ok(()),
         Some(Ok((token, range))) => Err(ParseError::unexpected_token(&token, range)),
@@ -207,7 +213,7 @@ fn expect_eof(tokenizer: &mut DopTokenizer) -> Result<(), ParseError> {
 }
 
 // expr = equality Eof
-pub fn parse_expr(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
+pub fn parse_expr(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, ParseError> {
     let result = parse_equality(tokenizer)?;
     expect_eof(tokenizer)?;
     Ok(result)
@@ -215,7 +221,7 @@ pub fn parse_expr(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
 
 // loop_header = Identifier "in" equality Eof
 pub fn parse_loop_header(
-    tokenizer: &mut DopTokenizer,
+    tokenizer: &mut Peekable<DopTokenizer>,
 ) -> Result<(DopVarName, DopExpr), ParseError> {
     let var_name = expect_variable_name(tokenizer)?;
     expect_token(tokenizer, DopToken::In)?;
@@ -225,7 +231,7 @@ pub fn parse_loop_header(
 }
 
 // parameter_with_type = Identifier ":" type
-fn parse_parameter(tokenizer: &mut DopTokenizer) -> Result<DopParameter, ParseError> {
+fn parse_parameter(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopParameter, ParseError> {
     let var_name = expect_variable_name(tokenizer)?;
     expect_token(tokenizer, DopToken::Colon)?;
     let typ = parse_type(tokenizer)?;
@@ -236,7 +242,7 @@ fn parse_parameter(tokenizer: &mut DopTokenizer) -> Result<DopParameter, ParseEr
 }
 
 // named_argument = Identifier ":" expr
-fn parse_argument(tokenizer: &mut DopTokenizer) -> Result<DopArgument, ParseError> {
+fn parse_argument(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopArgument, ParseError> {
     let var_name = expect_variable_name(tokenizer)?;
     expect_token(tokenizer, DopToken::Colon)?;
     let expression = parse_equality(tokenizer)?;
@@ -247,7 +253,9 @@ fn parse_argument(tokenizer: &mut DopTokenizer) -> Result<DopArgument, ParseErro
 }
 
 // parameters = parameter ("," parameter)* Eof
-pub fn parse_parameters(tokenizer: &mut DopTokenizer) -> Result<Vec<DopParameter>, ParseError> {
+pub fn parse_parameters(
+    tokenizer: &mut Peekable<DopTokenizer>,
+) -> Result<Vec<DopParameter>, ParseError> {
     let mut params = Vec::new();
     params.push(parse_parameter(tokenizer)?);
 
@@ -276,7 +284,9 @@ pub fn parse_parameters(tokenizer: &mut DopTokenizer) -> Result<Vec<DopParameter
 }
 
 // arguments = argument ("," argument)* Eof
-pub fn parse_arguments(tokenizer: &mut DopTokenizer) -> Result<Vec<DopArgument>, ParseError> {
+pub fn parse_arguments(
+    tokenizer: &mut Peekable<DopTokenizer>,
+) -> Result<Vec<DopArgument>, ParseError> {
     let mut args = Vec::new();
     args.push(parse_argument(tokenizer)?);
 
@@ -310,7 +320,7 @@ pub fn parse_arguments(tokenizer: &mut DopTokenizer) -> Result<Vec<DopArgument>,
 //      | TypeVoid
 //      | TypeArray "[" type "]"
 //      | "{" (Identifier ":" type ("," Identifier ":" type)*)? "}"
-fn parse_type(tokenizer: &mut DopTokenizer) -> Result<RangeDopType, ParseError> {
+fn parse_type(tokenizer: &mut Peekable<DopTokenizer>) -> Result<RangeDopType, ParseError> {
     use crate::dop::DopType;
     use std::collections::BTreeMap;
 
@@ -384,7 +394,7 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<RangeDopType, ParseError> 
 }
 
 // equality = unary ( "==" unary )*
-fn parse_equality(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
+fn parse_equality(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, ParseError> {
     let mut expr = parse_unary(tokenizer)?;
 
     while let Some(operator_range) = advance_if(tokenizer, DopToken::Equal) {
@@ -404,7 +414,7 @@ fn parse_equality(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
 }
 
 // unary = ( "!" )* primary
-fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
+fn parse_unary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, ParseError> {
     if let Some(operator_range) = advance_if(tokenizer, DopToken::Not) {
         let expr = parse_unary(tokenizer)?; // Right associative for multiple !
         let end = expr.range().end;
@@ -426,7 +436,7 @@ fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
 //         | "[" ( equality ("," equality)* )? "]"
 //         | "{" ( Identifier ":" equality ("," Identifier ":" equality)* )? "}"
 //         | "(" equality ")"
-fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
+fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, ParseError> {
     match tokenizer.next().ok_or(ParseError::UnexpectedEof)?? {
         (DopToken::Identifier(name), range) => {
             let mut expr = DopExpr::Variable { name, range };
@@ -611,7 +621,7 @@ mod tests {
     }
 
     fn check_parse_expr(input: &str, expected: Expect) {
-        let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1));
+        let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1)).peekable();
         let actual = match parse_expr(&mut tokenizer) {
             Ok(result) => format!("{:#?}\n", result),
             Err(err) => annotate_error(input, err),
@@ -620,7 +630,7 @@ mod tests {
     }
 
     fn check_parse_parameters(input: &str, expected: Expect) {
-        let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1));
+        let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1)).peekable();
 
         let actual = match parse_parameters(&mut tokenizer) {
             Ok(result) => format!("{:#?}\n", result),
@@ -631,7 +641,7 @@ mod tests {
     }
 
     fn check_parse_arguments(input: &str, expected: Expect) {
-        let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1));
+        let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1)).peekable();
 
         let actual = match parse_arguments(&mut tokenizer) {
             Ok(result) => format!("{:#?}\n", result),
