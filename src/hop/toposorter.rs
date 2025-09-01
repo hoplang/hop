@@ -19,6 +19,7 @@ pub struct TopoSorter {
     nodes: HashSet<String>,
     dependencies: HashMap<String, HashSet<String>>, // a -> set of nodes that a depends on
     dependents: HashMap<String, HashSet<String>>,   // a -> set of nodes that depend on a
+    pub cycles: Vec<Vec<String>>,
 }
 
 impl TopoSorter {
@@ -27,6 +28,7 @@ impl TopoSorter {
             nodes: HashSet::new(),
             dependencies: HashMap::new(),
             dependents: HashMap::new(),
+            cycles: Vec::new(),
         }
     }
 
@@ -51,53 +53,41 @@ impl TopoSorter {
 
         self.dependencies.get_mut(a).unwrap().insert(b.to_string());
         self.dependents.get_mut(b).unwrap().insert(a.to_string());
+
+        self.cycles = self
+            .strongly_connected_components()
+            .into_iter()
+            .filter(|v| v.len() > 1)
+            .collect();
     }
 
-    /// Sort the nodes of the graph and return a Result where the nodes are in topological order
-    /// or an error if the graph contains a cycle.
-    pub fn sort(&self) -> Result<Vec<String>, CycleError> {
+    pub fn get_dependents(&self, node: &str) -> Vec<String> {
+        if !self.nodes.contains(node) {
+            return Vec::new();
+        }
+
         let mut result = Vec::new();
         let mut visited = HashSet::new();
-        let mut path = Vec::new();
-        let mut in_path = HashSet::new();
-        for node in &self.nodes {
-            if !visited.contains(node) {
-                self.dfs(
-                    node,
-                    &self.dependencies,
-                    &mut result,
-                    &mut visited,
-                    &mut path,
-                    &mut in_path,
-                )?;
+        let mut stack = vec![node.to_string()];
+
+        while let Some(current) = stack.pop() {
+            if visited.contains(&current) {
+                continue;
+            }
+
+            visited.insert(current.clone());
+            result.push(current.clone());
+
+            if let Some(deps) = self.dependents.get(&current) {
+                for dep in deps {
+                    if !visited.contains(dep) {
+                        stack.push(dep.clone());
+                    }
+                }
             }
         }
 
-        Ok(result)
-    }
-
-    /// Do a topological sort of the subgraph containing all nodes that depend on the given node.
-    ///
-    /// The result includes the node `root` (which will be the first node of the array) and all
-    /// nodes that depend on `root` (directly or transitively).
-    pub fn sort_subgraph(&self, root: &str) -> Result<Vec<String>, CycleError> {
-        if !self.nodes.contains(root) {
-            return Ok(Vec::new());
-        }
-        let mut result = Vec::new();
-        let mut visited = HashSet::new();
-        let mut path = Vec::new();
-        let mut in_path = HashSet::new();
-        self.dfs(
-            root,
-            &self.dependents,
-            &mut result,
-            &mut visited,
-            &mut path,
-            &mut in_path,
-        )?;
-        result.reverse();
-        Ok(result)
+        result
     }
 
     /// Clear all dependencies that matches (node -> _).
@@ -110,44 +100,86 @@ impl TopoSorter {
             }
             dependencies.clear();
         }
+
+        self.cycles = self
+            .strongly_connected_components()
+            .into_iter()
+            .filter(|v| v.len() > 1)
+            .collect();
     }
 
-    fn dfs(
-        &self,
-        node: &str,
-        links: &HashMap<String, HashSet<String>>,
-        result: &mut Vec<String>,
-        visited: &mut HashSet<String>,
-        path: &mut Vec<String>,
-        in_path: &mut HashSet<String>,
-    ) -> Result<(), CycleError> {
-        if in_path.contains(node) {
-            // Found a cycle - extract the cycle from path
-            let cycle_start = path.iter().position(|x| x == node).unwrap();
-            let mut cycle = path[cycle_start..].to_vec();
-            cycle.sort();
-            return Err(CycleError::new(cycle));
-        }
+    /// Compute strongly connected components using Tarjan's algorithm.
+    /// Returns a vector of SCCs, where each SCC is a vector of node names.
+    /// The SCCs are returned in reverse topological order.
+    pub fn strongly_connected_components(&self) -> Vec<Vec<String>> {
+        let mut index_counter = 0;
+        let mut stack = Vec::new();
+        let mut lowlinks = HashMap::new();
+        let mut index = HashMap::new();
+        let mut on_stack = HashSet::new();
+        let mut sccs = Vec::new();
 
-        if visited.contains(node) {
-            return Ok(());
-        }
-
-        path.push(node.to_string());
-        in_path.insert(node.to_string());
-
-        if let Some(deps) = links.get(node) {
-            for dep in deps {
-                self.dfs(dep, links, result, visited, path, in_path)?;
+        for node in &self.nodes {
+            if !index.contains_key(node) {
+                self.tarjan_scc(
+                    node,
+                    &mut index_counter,
+                    &mut stack,
+                    &mut lowlinks,
+                    &mut index,
+                    &mut on_stack,
+                    &mut sccs,
+                );
             }
         }
 
-        path.pop();
-        in_path.remove(node);
-        visited.insert(node.to_string());
-        result.push(node.to_string());
+        sccs
+    }
 
-        Ok(())
+    fn tarjan_scc(
+        &self,
+        node: &str,
+        index_counter: &mut usize,
+        stack: &mut Vec<String>,
+        lowlinks: &mut HashMap<String, usize>,
+        index: &mut HashMap<String, usize>,
+        on_stack: &mut HashSet<String>,
+        sccs: &mut Vec<Vec<String>>,
+    ) {
+        index.insert(node.to_string(), *index_counter);
+        lowlinks.insert(node.to_string(), *index_counter);
+        *index_counter += 1;
+        stack.push(node.to_string());
+        on_stack.insert(node.to_string());
+
+        if let Some(deps) = self.dependencies.get(node) {
+            for dep in deps {
+                if !index.contains_key(dep) {
+                    self.tarjan_scc(dep, index_counter, stack, lowlinks, index, on_stack, sccs);
+                    let dep_lowlink = *lowlinks.get(dep).unwrap();
+                    let node_lowlink = *lowlinks.get(node).unwrap();
+                    lowlinks.insert(node.to_string(), node_lowlink.min(dep_lowlink));
+                } else if on_stack.contains(dep) {
+                    let dep_index = *index.get(dep).unwrap();
+                    let node_lowlink = *lowlinks.get(node).unwrap();
+                    lowlinks.insert(node.to_string(), node_lowlink.min(dep_index));
+                }
+            }
+        }
+
+        if lowlinks.get(node).unwrap() == index.get(node).unwrap() {
+            let mut scc = Vec::new();
+            loop {
+                let w = stack.pop().unwrap();
+                on_stack.remove(&w);
+                scc.push(w.clone());
+                if w == node {
+                    break;
+                }
+            }
+            scc.sort();
+            sccs.push(scc);
+        }
     }
 }
 
@@ -162,74 +194,94 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_basic_sorting_and_cycle_detection() {
+    fn test_scc_simple() {
         let mut toposorter = TopoSorter::new();
         toposorter.add_dependency("a", "b");
         toposorter.add_dependency("b", "c");
 
-        assert_eq!(toposorter.sort().unwrap(), vec!["c", "b", "a"]);
-
-        toposorter.add_dependency("c", "a");
-
-        let result = toposorter.sort();
-        assert!(result.is_err());
-        let cycle_error = result.unwrap_err();
-        assert_eq!(cycle_error.cycle, vec!["a", "b", "c"]);
+        let sccs = toposorter.strongly_connected_components();
+        assert_eq!(sccs.len(), 3);
+        assert_eq!(sccs[0], vec!["c"]);
+        assert_eq!(sccs[1], vec!["b"]);
+        assert_eq!(sccs[2], vec!["a"]);
     }
 
     #[test]
-    fn test_cycle_detection() {
+    fn test_scc_with_cycle() {
         let mut toposorter = TopoSorter::new();
         toposorter.add_dependency("a", "b");
         toposorter.add_dependency("b", "c");
         toposorter.add_dependency("c", "a");
 
-        let result = toposorter.sort();
-        assert!(result.is_err());
-        let cycle_error = result.unwrap_err();
-        assert_eq!(cycle_error.cycle, vec!["a", "b", "c"]);
+        let sccs = toposorter.strongly_connected_components();
+        assert_eq!(sccs.len(), 1);
+        assert_eq!(sccs[0], vec!["a", "b", "c"]);
     }
 
     #[test]
-    fn test_self_cycle() {
+    fn test_scc_multiple_components() {
+        let mut toposorter = TopoSorter::new();
+        toposorter.add_dependency("a", "b");
+        toposorter.add_dependency("b", "a");
+        toposorter.add_dependency("c", "d");
+        toposorter.add_dependency("d", "c");
+        toposorter.add_dependency("b", "c");
+
+        let mut sccs = toposorter.strongly_connected_components();
+        sccs.sort();
+        assert_eq!(sccs.len(), 2);
+        assert_eq!(sccs[0], vec!["a", "b"]);
+        assert_eq!(sccs[1], vec!["c", "d"]);
+    }
+
+    #[test]
+    fn test_scc_self_loop() {
         let mut toposorter = TopoSorter::new();
         toposorter.add_dependency("a", "a");
 
-        let result = toposorter.sort();
-        assert!(result.is_err());
-        let cycle_error = result.unwrap_err();
-        assert_eq!(cycle_error.cycle, vec!["a"]);
+        let sccs = toposorter.strongly_connected_components();
+        assert_eq!(sccs.len(), 1);
+        assert_eq!(sccs[0], vec!["a"]);
     }
 
     #[test]
-    fn test_subgraph_sorting_and_dependencies() {
+    fn test_scc_disconnected_graph() {
         let mut toposorter = TopoSorter::new();
-        toposorter.add_dependency("a", "b");
-        toposorter.add_dependency("b", "c");
-        toposorter.add_dependency("c", "d");
-        toposorter.add_dependency("d", "e");
+        toposorter.add_node("a".to_string());
+        toposorter.add_node("b".to_string());
+        toposorter.add_node("c".to_string());
 
-        assert_eq!(toposorter.sort_subgraph("b").unwrap(), vec!["b", "a"]);
-        assert_eq!(toposorter.sort_subgraph("c").unwrap(), vec!["c", "b", "a"]);
-        assert_eq!(
-            toposorter.sort_subgraph("d").unwrap(),
-            vec!["d", "c", "b", "a"]
-        );
-        assert_eq!(
-            toposorter.sort_subgraph("e").unwrap(),
-            vec!["e", "d", "c", "b", "a"]
-        );
+        let mut sccs = toposorter.strongly_connected_components();
+        sccs.sort();
+        assert_eq!(sccs.len(), 3);
+        assert_eq!(sccs[0], vec!["a"]);
+        assert_eq!(sccs[1], vec!["b"]);
+        assert_eq!(sccs[2], vec!["c"]);
+    }
 
-        assert_eq!(toposorter.sort().unwrap(), vec!["e", "d", "c", "b", "a"]);
+    #[test]
+    fn test_scc_complex_graph() {
+        let mut toposorter = TopoSorter::new();
+        toposorter.add_dependency("1", "2");
+        toposorter.add_dependency("2", "3");
+        toposorter.add_dependency("3", "1");
+        toposorter.add_dependency("4", "2");
+        toposorter.add_dependency("4", "3");
+        toposorter.add_dependency("4", "5");
+        toposorter.add_dependency("5", "4");
+        toposorter.add_dependency("5", "6");
+        toposorter.add_dependency("6", "3");
+        toposorter.add_dependency("6", "7");
+        toposorter.add_dependency("7", "6");
+        toposorter.add_dependency("8", "5");
+        toposorter.add_dependency("8", "7");
+        toposorter.add_dependency("8", "8");
 
-        toposorter.clear_dependencies("d");
-        toposorter.add_dependency("c", "e");
-        toposorter.add_dependency("e", "d");
-
-        assert_eq!(toposorter.sort().unwrap(), vec!["d", "e", "c", "b", "a"]);
-        assert_eq!(
-            toposorter.sort_subgraph("e").unwrap(),
-            vec!["e", "c", "b", "a"]
-        );
+        let mut sccs = toposorter.strongly_connected_components();
+        sccs.sort();
+        assert_eq!(sccs[0], vec!["1", "2", "3"]);
+        assert_eq!(sccs[1], vec!["4", "5"]);
+        assert_eq!(sccs[2], vec!["6", "7"]);
+        assert_eq!(sccs[3], vec!["8"]);
     }
 }

@@ -139,12 +139,7 @@ impl TypeError {
         )
     }
 
-    pub fn part_of_import_cycle(
-        importer: &str,
-        imported: &str,
-        cycle: &[String],
-        range: Range,
-    ) -> Self {
+    pub fn import_cycle(importer: &str, imported: &str, cycle: &[String], range: Range) -> Self {
         let cycle_display = if let Some(first) = cycle.first() {
             format!("{} → {}", cycle.join(" → "), first)
         } else {
@@ -153,7 +148,7 @@ impl TypeError {
 
         Self::new(
             format!(
-                "Circular import detected: {} imports {} which creates a dependency cycle: {}",
+                "Import cycle: {} imports from {} which creates a dependency cycle: {}",
                 importer, imported, cycle_display
             ),
             range,

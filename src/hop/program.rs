@@ -165,44 +165,6 @@ impl Program {
         &self.source_code
     }
 
-    /// Handles import cycle errors by adding type errors for all modules in the cycle.
-    fn handle_import_cycle_error(&mut self, cycle_error: &CycleError) {
-        for (module_name, ast) in &self.asts {
-            let module_is_part_of_cycle = cycle_error.cycle.contains(module_name);
-            // TODO: We need to handle this transitively
-            let module_imports_from_module_that_is_part_of_cycle = ast
-                .get_imports()
-                .iter()
-                .any(|i| cycle_error.cycle.contains(&i.from_attr.value));
-            if module_is_part_of_cycle {
-                let type_errors = self.type_errors.entry(module_name.clone()).or_default();
-                type_errors.clear();
-                for import_node in ast.get_imports() {
-                    if cycle_error.cycle.contains(&import_node.from_attr.value) {
-                        type_errors.push(TypeError::part_of_import_cycle(
-                            module_name,
-                            &import_node.from_attr.value,
-                            &cycle_error.cycle,
-                            import_node.from_attr.range,
-                        ));
-                    }
-                }
-            } else if module_imports_from_module_that_is_part_of_cycle {
-                let type_errors = self.type_errors.entry(module_name.clone()).or_default();
-                type_errors.clear();
-                for import_node in ast.get_imports() {
-                    if cycle_error.cycle.contains(&import_node.from_attr.value) {
-                        type_errors.push(TypeError::imports_from_cycle(
-                            module_name,
-                            &import_node.from_attr.value,
-                            import_node.from_attr.range,
-                        ));
-                    }
-                }
-            }
-        }
-    }
-
     fn typecheck_module(&mut self, module_name: &str) {
         let ast = match self.asts.get(module_name) {
             Some(module) => module,
@@ -222,6 +184,20 @@ impl Program {
             typecheck(ast, &self.type_checker_state, type_errors, type_annotations);
         self.type_checker_state
             .insert(module_name.to_string(), component_type_info);
+
+        for cycle in &self.topo_sorter.cycles {
+            if cycle.iter().any(|v| v == module_name) {
+                type_errors.clear();
+                for import_node in ast.get_imports() {
+                    type_errors.push(TypeError::import_cycle(
+                        module_name,
+                        &import_node.from_attr.value,
+                        cycle,
+                        import_node.from_attr.range,
+                    ));
+                }
+            }
+        }
     }
 
     fn parse_module(&mut self, module_name: &str, source_code: &str) {
@@ -255,13 +231,7 @@ impl Program {
                 .add_dependency(module_name, &import_node.from_attr.value);
         }
 
-        let dependent_modules = match self.topo_sorter.sort_subgraph(module_name) {
-            Ok(modules) => modules,
-            Err(cycle_error) => {
-                self.handle_import_cycle_error(&cycle_error);
-                return vec![];
-            }
-        };
+        let dependent_modules = self.topo_sorter.get_dependents(module_name);
 
         for module_name in &dependent_modules {
             self.typecheck_module(module_name)
@@ -1207,18 +1177,13 @@ mod tests {
         check_type_errors(
             &program,
             expect![[r#"
-                Circular import detected: a imports b which creates a dependency cycle: a → b → a
+                Import cycle: a imports from b which creates a dependency cycle: a → b → a
                   --> a (line 1, col 34)
                 1 | <import component="b-comp" from="b" />
                   |                                  ^
 
-                Circular import detected: b imports a which creates a dependency cycle: a → b → a
+                Import cycle: b imports from a which creates a dependency cycle: a → b → a
                   --> b (line 1, col 34)
-                1 | <import component="a-comp" from="a" />
-                  |                                  ^
-
-                Circular import detected: c imports from a which is part of a dependency cycle
-                  --> c (line 1, col 34)
                 1 | <import component="a-comp" from="a" />
                   |                                  ^
             "#]],
@@ -1265,22 +1230,22 @@ mod tests {
         check_type_errors(
             &program,
             expect![[r#"
-                Circular import detected: a imports b which creates a dependency cycle: a → b → c → d → a
+                Import cycle: a imports from b which creates a dependency cycle: a → b → c → d → a
                   --> a (line 1, col 34)
                 1 | <import component="b-comp" from="b" />
                   |                                  ^
 
-                Circular import detected: b imports c which creates a dependency cycle: a → b → c → d → a
+                Import cycle: b imports from c which creates a dependency cycle: a → b → c → d → a
                   --> b (line 1, col 34)
                 1 | <import component="c-comp" from="c" />
                   |                                  ^
 
-                Circular import detected: c imports d which creates a dependency cycle: a → b → c → d → a
+                Import cycle: c imports from d which creates a dependency cycle: a → b → c → d → a
                   --> c (line 1, col 34)
                 1 | <import component="d-comp" from="d" />
                   |                                  ^
 
-                Circular import detected: d imports a which creates a dependency cycle: a → b → c → d → a
+                Import cycle: d imports from a which creates a dependency cycle: a → b → c → d → a
                   --> d (line 1, col 34)
                 1 | <import component="a-comp" from="a" />
                   |                                  ^
@@ -1309,18 +1274,13 @@ mod tests {
         check_type_errors(
             &program,
             expect![[r#"
-                Circular import detected: a imports b which creates a dependency cycle: a → b → a
+                Import cycle: a imports from b which creates a dependency cycle: a → b → a
                   --> a (line 1, col 34)
                 1 | <import component="b-comp" from="b" />
                   |                                  ^
 
-                Circular import detected: b imports a which creates a dependency cycle: a → b → a
+                Import cycle: b imports from a which creates a dependency cycle: a → b → a
                   --> b (line 1, col 34)
-                1 | <import component="a-comp" from="a" />
-                  |                                  ^
-
-                Circular import detected: d imports from a which is part of a dependency cycle
-                  --> d (line 1, col 34)
                 1 | <import component="a-comp" from="a" />
                   |                                  ^
             "#]],
