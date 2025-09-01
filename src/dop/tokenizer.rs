@@ -1,5 +1,7 @@
-use crate::common::{ParseError, Position, Range};
+use crate::common::{Position, Range};
 use std::{fmt, mem, str::FromStr};
+
+use super::parser::ParseError;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DopToken {

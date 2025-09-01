@@ -128,7 +128,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                             match dop::parse_parameters(&mut tokenizer) {
                                 Ok(params) => Some((params, *range)),
                                 Err(error) => {
-                                    errors.push(error);
+                                    errors.push(ParseError::new(error.message, error.range));
                                     None
                                 }
                             }
@@ -253,7 +253,7 @@ fn construct_node(
                     range: tree.range,
                 },
                 Err(err) => {
-                    errors.push(err);
+                    errors.push(ParseError::new(err.message, err.range));
                     HopNode::Error {
                         range: tree.range,
                         children: vec![],
@@ -281,7 +281,7 @@ fn construct_node(
                                 children,
                             },
                             Err(err) => {
-                                errors.push(err);
+                                errors.push(ParseError::new(err.message, err.range));
                                 HopNode::Error {
                                     range: tree.range,
                                     children,
@@ -311,8 +311,8 @@ fn construct_node(
                                 range: tree.range,
                                 children,
                             },
-                            Err(error) => {
-                                errors.push(error);
+                            Err(err) => {
+                                errors.push(ParseError::new(err.message, err.range));
                                 HopNode::Error {
                                     range: tree.range,
                                     children,
@@ -387,7 +387,7 @@ fn construct_node(
                             match dop::parse_arguments(&mut tokenizer) {
                                 Ok(named_args) => Some((named_args, *range)),
                                 Err(err) => {
-                                    errors.push(err);
+                                    errors.push(ParseError::new(err.message, err.range));
                                     return HopNode::Error {
                                         range: tree.range,
                                         children: vec![],
@@ -428,7 +428,7 @@ fn construct_node(
                                     range: attr.range,
                                 }),
                                 Err(err) => {
-                                    errors.push(err);
+                                    errors.push(ParseError::new(err.message, err.range));
                                 }
                             };
                         }

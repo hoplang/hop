@@ -1,9 +1,76 @@
 use std::collections::BTreeMap;
 
-use crate::common::{ParseError, Range, Ranged};
+use crate::common::{Range, Ranged};
 use crate::dop::DopType;
 use crate::dop::tokenizer::{DopToken, DopTokenizer};
 use crate::dop::typechecker::RangeDopType;
+use crate::tui::source_annotator::Annotated;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParseError {
+    pub message: String,
+    pub range: Range,
+}
+
+impl ParseError {
+    pub fn new(message: String, range: Range) -> Self {
+        ParseError { message, range }
+    }
+
+    pub fn invalid_variable_name(name: &str, range: Range) -> Self {
+        Self::new(
+            format!("Invalid variable name '{name}'. Variable names must match [a-z][a-z0-9_]*"),
+            range,
+        )
+    }
+
+    pub fn expected_token_but_got(expected: &DopToken, actual: &DopToken, range: Range) -> Self {
+        Self::new(
+            format!("Expected token '{expected}' but got '{actual}'"),
+            range,
+        )
+    }
+
+    pub fn unexpected_eof(range: Range) -> Self {
+        Self::new("Unexpected end of expression".to_string(), range)
+    }
+
+    pub fn unexpected_token(token: &DopToken, range: Range) -> Self {
+        Self::new(format!("Unexpected token '{token}'"), range)
+    }
+
+    pub fn expected_variable_name_but_got(actual: &DopToken, range: Range) -> Self {
+        Self::new(format!("Expected variable name but got {actual}"), range)
+    }
+
+    pub fn expected_property_name_but_got(actual: &DopToken, range: Range) -> Self {
+        Self::new(format!("Expected property name but got {actual}"), range)
+    }
+
+    pub fn duplicate_argument(name: &str, range: Range) -> Self {
+        Self::new(format!("Duplicate argument '{name}'"), range)
+    }
+
+    pub fn duplicate_parameter(name: &str, range: Range) -> Self {
+        Self::new(format!("Duplicate parameter '{name}'"), range)
+    }
+
+    pub fn duplicate_property(name: &str, range: Range) -> Self {
+        Self::new(format!("Duplicate property '{name}'"), range)
+    }
+}
+
+impl Ranged for ParseError {
+    fn range(&self) -> Range {
+        self.range
+    }
+}
+
+impl Annotated for ParseError {
+    fn message(&self) -> String {
+        self.message.clone()
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {

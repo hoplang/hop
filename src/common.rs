@@ -1,7 +1,4 @@
-use crate::{
-    dop::{DopParameter, tokenizer::DopToken},
-    tui::source_annotator::Annotated,
-};
+use crate::{dop::DopParameter, tui::source_annotator::Annotated};
 use std::{cmp, fmt};
 
 /// Represents a position in source code
@@ -306,13 +303,6 @@ impl ParseError {
         )
     }
 
-    pub fn invalid_variable_name(name: &str, range: Range) -> Self {
-        Self::new(
-            format!("Invalid variable name '{name}'. Variable names must match [a-z][a-z0-9_]*"),
-            range,
-        )
-    }
-
     pub fn invalid_component_name(name: &str, range: Range) -> Self {
         Self::new(
             format!(
@@ -324,41 +314,6 @@ impl ParseError {
 
     pub fn component_is_already_defined(name: &str, range: Range) -> Self {
         Self::new(format!("Component {name} is already defined"), range)
-    }
-
-    pub fn expected_token_but_got(expected: &DopToken, actual: &DopToken, range: Range) -> Self {
-        Self::new(
-            format!("Expected token '{expected}' but got '{actual}'"),
-            range,
-        )
-    }
-
-    pub fn unexpected_eof(range: Range) -> Self {
-        Self::new(format!("Unexpected end of expression"), range)
-    }
-
-    pub fn unexpected_token(token: &DopToken, range: Range) -> Self {
-        Self::new(format!("Unexpected token '{token}'"), range)
-    }
-
-    pub fn expected_variable_name_but_got(actual: &DopToken, range: Range) -> Self {
-        Self::new(format!("Expected variable name but got {actual}"), range)
-    }
-
-    pub fn expected_property_name_but_got(actual: &DopToken, range: Range) -> Self {
-        Self::new(format!("Expected property name but got {actual}"), range)
-    }
-
-    pub fn duplicate_argument(name: &str, range: Range) -> Self {
-        Self::new(format!("Duplicate argument '{name}'"), range)
-    }
-
-    pub fn duplicate_parameter(name: &str, range: Range) -> Self {
-        Self::new(format!("Duplicate parameter '{name}'"), range)
-    }
-
-    pub fn duplicate_property(name: &str, range: Range) -> Self {
-        Self::new(format!("Duplicate property '{name}'"), range)
     }
 
     pub fn duplicate_attribute(name: &str, range: Range) -> Self {
