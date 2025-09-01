@@ -74,7 +74,14 @@ impl<'a> Cursor<'a> {
         self.chars.peek()
     }
 
-    fn advance(&mut self) -> Option<char> {
+    fn get_position(&self) -> Position {
+        Position::new(self.position.line, self.position.column)
+    }
+}
+
+impl Iterator for Cursor<'_> {
+    type Item = char;
+    fn next(&mut self) -> Option<Self::Item> {
         match self.chars.next() {
             None => None,
             Some(ch) => {
@@ -88,10 +95,6 @@ impl<'a> Cursor<'a> {
                 Some(ch)
             }
         }
-    }
-
-    fn get_position(&self) -> Position {
-        Position::new(self.position.line, self.position.column)
     }
 }
 
@@ -112,52 +115,52 @@ impl Iterator for DopTokenizer<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.cursor.peek().is_some_and(|ch| ch.is_whitespace()) {
-            self.cursor.advance();
+            self.cursor.next();
         }
 
         let start_pos = self.cursor.get_position();
 
         let token = match self.cursor.peek()? {
             '.' => {
-                self.cursor.advance();
+                self.cursor.next();
                 DopToken::Dot
             }
             '(' => {
-                self.cursor.advance();
+                self.cursor.next();
                 DopToken::LeftParen
             }
             ')' => {
-                self.cursor.advance();
+                self.cursor.next();
                 DopToken::RightParen
             }
             '[' => {
-                self.cursor.advance();
+                self.cursor.next();
                 DopToken::LeftBracket
             }
             ']' => {
-                self.cursor.advance();
+                self.cursor.next();
                 DopToken::RightBracket
             }
             '{' => {
-                self.cursor.advance();
+                self.cursor.next();
                 DopToken::LeftBrace
             }
             '}' => {
-                self.cursor.advance();
+                self.cursor.next();
                 DopToken::RightBrace
             }
             ':' => {
-                self.cursor.advance();
+                self.cursor.next();
                 DopToken::Colon
             }
             ',' => {
-                self.cursor.advance();
+                self.cursor.next();
                 DopToken::Comma
             }
             '=' => {
-                self.cursor.advance();
+                self.cursor.next();
                 if self.cursor.peek().is_some_and(|ch| *ch == '=') {
-                    self.cursor.advance();
+                    self.cursor.next();
                     DopToken::Equal
                 } else {
                     let error_pos = self.cursor.get_position();
@@ -168,14 +171,14 @@ impl Iterator for DopTokenizer<'_> {
                 }
             }
             '!' => {
-                self.cursor.advance();
+                self.cursor.next();
                 DopToken::Not
             }
             '\'' => {
                 let mut result = String::new();
-                self.cursor.advance();
+                self.cursor.next();
                 while self.cursor.peek().is_some_and(|ch| *ch != '\'') {
-                    result.push(self.cursor.advance()?);
+                    result.push(self.cursor.next()?);
                 }
                 if self.cursor.peek().is_none() {
                     return Some(Err(ParseError::new(
@@ -183,7 +186,7 @@ impl Iterator for DopTokenizer<'_> {
                         Range::new(start_pos, self.cursor.get_position()),
                     )));
                 }
-                self.cursor.advance(); // consume '
+                self.cursor.next(); // consume '
                 DopToken::StringLiteral(result)
             }
             'A'..='Z' | 'a'..='z' | '_' => {
@@ -193,7 +196,7 @@ impl Iterator for DopTokenizer<'_> {
                     self.cursor.peek(),
                     Some('A'..='Z' | 'a'..='z' | '0'..='9' | '_')
                 ) {
-                    identifier.push(self.cursor.advance()?);
+                    identifier.push(self.cursor.next()?);
                 }
 
                 match identifier.as_str() {
@@ -213,11 +216,11 @@ impl Iterator for DopTokenizer<'_> {
                 let mut number_string = String::new();
 
                 while matches!(self.cursor.peek(), Some('0'..='9')) {
-                    number_string.push(self.cursor.advance()?);
+                    number_string.push(self.cursor.next()?);
                 }
 
                 if self.cursor.peek().is_some_and(|ch| *ch == '.') {
-                    number_string.push(self.cursor.advance()?); // consume '.'
+                    number_string.push(self.cursor.next()?); // consume '.'
                     if !matches!(self.cursor.peek(), Some('0'..='9')) {
                         let error_pos = self.cursor.get_position();
                         return Some(Err(ParseError::new(
@@ -226,7 +229,7 @@ impl Iterator for DopTokenizer<'_> {
                         )));
                     }
                     while matches!(self.cursor.peek(), Some('0'..='9')) {
-                        number_string.push(self.cursor.advance()?);
+                        number_string.push(self.cursor.next()?);
                     }
                 }
 
@@ -245,7 +248,7 @@ impl Iterator for DopTokenizer<'_> {
             }
             ch => {
                 let result = *ch;
-                self.cursor.advance();
+                self.cursor.next();
                 return Some(Err(ParseError::new(
                     format!("Unexpected character: '{}'", result),
                     Range::new(start_pos, self.cursor.get_position()),
