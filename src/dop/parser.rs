@@ -113,7 +113,10 @@ pub struct DopArgument {
 }
 
 // Helper functions for expecting specific tokens
-fn expect_token(tokenizer: &mut DopTokenizer, expected: DopToken) -> Result<(DopToken, Range), ParseError> {
+fn expect_token(
+    tokenizer: &mut DopTokenizer,
+    expected: DopToken,
+) -> Result<(DopToken, Range), ParseError> {
     let (actual, range) = tokenizer.advance()?;
     if actual != expected {
         Err(ParseError::expected_token(&expected, range))
@@ -129,10 +132,10 @@ fn expect_variable_name(tokenizer: &mut DopTokenizer) -> Result<DopVarName, Pars
     }
 }
 
-fn expect_eof(tokenizer: &DopTokenizer) -> Result<(), ParseError> {
-    match tokenizer.peek() {
+fn expect_eof(tokenizer: &mut DopTokenizer) -> Result<(), ParseError> {
+    match tokenizer.advance()? {
         (DopToken::Eof, _) => Ok(()),
-        (token, range) => Err(ParseError::unexpected_token(token, *range)),
+        (token, range) => Err(ParseError::unexpected_token(&token, range)),
     }
 }
 
@@ -189,10 +192,10 @@ pub fn parse_parameters(tokenizer: &mut DopTokenizer) -> Result<Vec<DopParameter
     params.push(parse_parameter(tokenizer)?);
     loop {
         match tokenizer.peek() {
-            (DopToken::Comma, _) => {
+            Ok((DopToken::Comma, _)) => {
                 tokenizer.advance()?; // consume comma
                 // Handle trailing comma
-                if let (DopToken::Eof, _) = tokenizer.peek() {
+                if let Ok((DopToken::Eof, _)) = tokenizer.peek() {
                     break;
                 }
                 let param = parse_parameter(tokenizer)?;
@@ -224,10 +227,10 @@ pub fn parse_arguments(tokenizer: &mut DopTokenizer) -> Result<Vec<DopArgument>,
     args.push(parse_argument(tokenizer)?);
     loop {
         match tokenizer.peek() {
-            (DopToken::Comma, _) => {
+            Ok((DopToken::Comma, _)) => {
                 tokenizer.advance()?; // consume comma
                 // Handle trailing comma
-                if let (DopToken::Eof, _) = tokenizer.peek() {
+                if let Ok((DopToken::Eof, _)) = tokenizer.peek() {
                     break;
                 }
                 let arg = parse_argument(tokenizer)?;
@@ -292,7 +295,7 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<RangeDopType, ParseError> 
             // TODO: Do we really need to handle empty object types?
 
             // Handle empty object type
-            if let (DopToken::RightBrace, _) = tokenizer.peek() {
+            if let Ok((DopToken::RightBrace, _)) = tokenizer.peek() {
                 let (_, end_range) = tokenizer.advance()?; // consume }
                 return Ok(RangeDopType {
                     dop_type: DopType::Object(properties),
@@ -311,11 +314,11 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<RangeDopType, ParseError> 
 
                 // Check for comma or closing brace
                 match tokenizer.peek() {
-                    (DopToken::Comma, _) => {
+                    Ok((DopToken::Comma, _)) => {
                         tokenizer.advance()?; // consume ,
 
                         // Check for trailing comma (closing brace after comma)
-                        if let (DopToken::RightBrace, _) = tokenizer.peek() {
+                        if let Ok((DopToken::RightBrace, _)) = tokenizer.peek() {
                             let (_, end_range) = tokenizer.advance()?; // consume }
                             return Ok(RangeDopType {
                                 dop_type: DopType::Object(properties),
@@ -324,26 +327,27 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<RangeDopType, ParseError> 
                         }
                         continue;
                     }
-                    (DopToken::RightBrace, _) => {
+                    Ok((DopToken::RightBrace, _)) => {
                         let (_, end_range) = tokenizer.advance()?; // consume }
                         return Ok(RangeDopType {
                             dop_type: DopType::Object(properties),
                             range: Range::new(left_brace_range.start, end_range.end),
                         });
                     }
-                    (DopToken::Eof, _) => {
+                    Ok((DopToken::Eof, _)) => {
                         return Err(ParseError::new(
                             "Unmatched '{'".to_string(),
                             left_brace_range,
                         ));
                     }
-                    (token, range) => {
+                    Ok((token, range)) => {
                         return Err(ParseError::new(
                             format!("Expected ',' or '}}' but got '{}'", token),
                             *range,
                         ));
                     }
-                }
+                    Err(_) => tokenizer.advance()?,
+                };
             }
         }
         (_, range) => Err(ParseError::new("Expected type name".to_string(), range)),
@@ -354,7 +358,7 @@ fn parse_type(tokenizer: &mut DopTokenizer) -> Result<RangeDopType, ParseError> 
 fn parse_equality(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
     let mut expr = parse_unary(tokenizer)?;
 
-    while let (DopToken::Equal, _) = tokenizer.peek() {
+    while let Ok((DopToken::Equal, _)) = tokenizer.peek() {
         let (_, operator_range) = tokenizer.advance()?; // consume ==
         let right = parse_unary(tokenizer)?;
         let start = expr.range().start;
@@ -374,7 +378,7 @@ fn parse_equality(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
 // unary = ( "!" )* primary
 fn parse_unary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
     match tokenizer.peek() {
-        (DopToken::Not, _) => {
+        Ok((DopToken::Not, _)) => {
             let (_, operator_range) = tokenizer.advance()?; // consume !
             let expr = parse_unary(tokenizer)?; // Right associative for multiple !
             let end = expr.range().end;
@@ -402,7 +406,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
             let mut expr = DopExpr::Variable { name, range };
 
             // Handle property access
-            while let (DopToken::Dot, _) = tokenizer.peek() {
+            while let Ok((DopToken::Dot, _)) = tokenizer.peek() {
                 tokenizer.advance()?; // consume .
 
                 match tokenizer.advance()? {
@@ -436,7 +440,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
             let mut elements = Vec::new();
 
             // Handle empty array
-            if let (DopToken::RightBracket, _) = tokenizer.peek() {
+            if let Ok((DopToken::RightBracket, _)) = tokenizer.peek() {
                 let (_, end_range) = tokenizer.advance()?; // consume ]
                 return Ok(DopExpr::ArrayLiteral {
                     elements,
@@ -456,7 +460,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
                 match tokenizer.advance()? {
                     (DopToken::Comma, _) => {
                         // Handle trailing comma
-                        if let (DopToken::RightBracket, bracket_range) = tokenizer.peek() {
+                        if let Ok((DopToken::RightBracket, bracket_range)) = tokenizer.peek() {
                             end_range = *bracket_range;
                             tokenizer.advance()?; // consume ]
                             break;
@@ -489,7 +493,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
             let mut properties = BTreeMap::new();
 
             // Handle empty object
-            if let (DopToken::RightBrace, _) = tokenizer.peek() {
+            if let Ok((DopToken::RightBrace, _)) = tokenizer.peek() {
                 let (_, end_range) = tokenizer.advance()?; // consume }
                 let range = Range {
                     start: start_range.start,
@@ -511,10 +515,10 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
 
                 // Check for comma or closing brace
                 match tokenizer.peek() {
-                    (DopToken::Comma, _) => {
+                    Ok((DopToken::Comma, _)) => {
                         tokenizer.advance()?; // consume ,
                         // Check for trailing comma (closing brace after comma)
-                        if let (DopToken::RightBrace, _) = tokenizer.peek() {
+                        if let Ok((DopToken::RightBrace, _)) = tokenizer.peek() {
                             let (_, end_range) = tokenizer.advance()?; // consume }
                             return Ok(DopExpr::ObjectLiteral {
                                 properties,
@@ -526,7 +530,7 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
                         }
                         continue;
                     }
-                    (DopToken::RightBrace, _) => {
+                    Ok((DopToken::RightBrace, _)) => {
                         let (_, end_range) = tokenizer.advance()?; // consume }
                         return Ok(DopExpr::ObjectLiteral {
                             properties,
@@ -536,11 +540,14 @@ fn parse_primary(tokenizer: &mut DopTokenizer) -> Result<DopExpr, ParseError> {
                             },
                         });
                     }
-                    (_, range) => {
+                    Ok((_, range)) => {
                         return Err(ParseError::new(
                             "Expected ',' or '}' after property value".to_string(),
                             *range,
                         ));
+                    }
+                    Err(_) => {
+                        tokenizer.advance()?;
                     }
                 }
             }
@@ -565,8 +572,7 @@ mod tests {
     use expect_test::{Expect, expect};
 
     fn check_parse_expr(input: &str, expected: Expect) {
-        let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1))
-            .expect("Failed to create tokenizer");
+        let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1));
 
         let actual = match parse_expr(&mut tokenizer) {
             Ok(result) => format!("{:#?}\n", result),
@@ -581,8 +587,7 @@ mod tests {
     }
 
     fn check_parse_parameters(input: &str, expected: Expect) {
-        let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1))
-            .expect("Failed to create tokenizer");
+        let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1));
 
         let actual = match parse_parameters(&mut tokenizer) {
             Ok(result) => format!("{:#?}\n", result),
@@ -597,8 +602,7 @@ mod tests {
     }
 
     fn check_parse_arguments(input: &str, expected: Expect) {
-        let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1))
-            .expect("Failed to create tokenizer");
+        let mut tokenizer = DopTokenizer::new(input, crate::common::Position::new(1, 1));
 
         let actual = match parse_arguments(&mut tokenizer) {
             Ok(result) => format!("{:#?}\n", result),

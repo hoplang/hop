@@ -131,28 +131,33 @@ impl Cursor {
 
 pub struct DopTokenizer {
     cursor: Cursor,
-    current_token: (DopToken, Range),
+    current_token: Result<(DopToken, Range), ParseError>,
 }
 
 impl DopTokenizer {
-    pub fn new(input: &str, start_pos: Position) -> Result<Self, ParseError> {
+    pub fn new(input: &str, start_pos: Position) -> Self {
         let mut tokenizer = DopTokenizer {
             cursor: Cursor::new(input, start_pos),
-            current_token: (DopToken::Eof, Range::new(start_pos, start_pos)), // temporary value
+            current_token: Ok((DopToken::Eof, Range::new(start_pos, start_pos))), // temporary value
         };
-        tokenizer.advance()?;
-        Ok(tokenizer)
+        tokenizer.current_token = tokenizer.internal_advance();
+        tokenizer
     }
 
     pub fn range(&self) -> Range {
         self.cursor.range()
     }
 
-    pub fn peek(&self) -> &(DopToken, Range) {
+    pub fn peek(&self) -> &Result<(DopToken, Range), ParseError> {
         &self.current_token
     }
 
     pub fn advance(&mut self) -> Result<(DopToken, Range), ParseError> {
+        let result = self.internal_advance();
+        mem::replace(&mut self.current_token, result)
+    }
+
+    fn internal_advance(&mut self) -> Result<(DopToken, Range), ParseError> {
         while self.cursor.peek().is_whitespace() {
             self.cursor.advance();
         }
@@ -290,10 +295,7 @@ impl DopTokenizer {
         };
 
         let end_pos = self.cursor.get_position();
-        Ok(mem::replace(
-            &mut self.current_token,
-            (token, Range::new(start_pos, end_pos)),
-        ))
+        Ok((token, Range::new(start_pos, end_pos)))
     }
 }
 
@@ -315,8 +317,7 @@ mod tests {
     use expect_test::{Expect, expect};
 
     fn check(input: &str, expected: Expect) {
-        let tokenizer =
-            DopTokenizer::new(input, Position::new(1, 1)).expect("Failed to create tokenizer");
+        let tokenizer = DopTokenizer::new(input, Position::new(1, 1));
         let result: Vec<_> = tokenizer.collect();
         let actual = format!("{:#?}", result);
         expected.assert_eq(&actual);

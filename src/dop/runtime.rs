@@ -99,8 +99,7 @@ mod tests {
 
         // Parse the expression
         let mut tokenizer =
-            crate::dop::tokenizer::DopTokenizer::new(expr_str, crate::common::Position::new(1, 1))
-                .expect("Failed to create tokenizer");
+            crate::dop::tokenizer::DopTokenizer::new(expr_str, crate::common::Position::new(1, 1));
 
         let expr = parse_expr(&mut tokenizer).expect("Failed to parse expression");
 
