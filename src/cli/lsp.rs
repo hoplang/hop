@@ -118,7 +118,7 @@ impl LanguageServer for HopLanguageServer {
                 {
                     let mut server = self.program.write().await;
                     for (module_name, content) in &all_modules {
-                        server.update_module(module_name.clone(), content);
+                        server.update_module(module_name, content);
                     }
                 }
                 for (module_name, _) in all_modules {
@@ -143,7 +143,7 @@ impl LanguageServer for HopLanguageServer {
                 let changed_modules: Vec<String>;
                 {
                     let mut server = self.program.write().await;
-                    changed_modules = server.update_module(module_name, &change.text);
+                    changed_modules = server.update_module(&module_name, &change.text);
                 }
                 for c in changed_modules {
                     let uri = Self::module_name_to_uri(&c, root);

@@ -129,7 +129,22 @@ impl TypeError {
         )
     }
 
-    pub fn circular_import(importer: &str, imported: &str, cycle: &[String], range: Range) -> Self {
+    pub fn imports_from_cycle(importer: &str, imported: &str, range: Range) -> Self {
+        Self::new(
+            format!(
+                "Circular import detected: {} imports from {} which is part of a dependency cycle",
+                importer, imported
+            ),
+            range,
+        )
+    }
+
+    pub fn part_of_import_cycle(
+        importer: &str,
+        imported: &str,
+        cycle: &[String],
+        range: Range,
+    ) -> Self {
         let cycle_display = if let Some(first) = cycle.first() {
             format!("{} → {}", cycle.join(" → "), first)
         } else {

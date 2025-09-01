@@ -25,12 +25,11 @@ static CACHED_UI_SERVER: OnceLock<Program> = OnceLock::new();
 
 fn get_ui_program() -> &'static Program {
     CACHED_UI_SERVER.get_or_init(|| {
-        let mut modules = HashMap::new();
-        modules.insert("hop/error_pages".to_string(), ERROR_TEMPLATES.to_string());
-        modules.insert("hop/ui".to_string(), UI_TEMPLATES.to_string());
-        modules.insert("hop/icons".to_string(), ICONS_TEMPLATES.to_string());
+        let mut program = Program::new();
 
-        let program = Program::from_modules(modules);
+        program.update_module("hop/error_pages", ERROR_TEMPLATES);
+        program.update_module("hop/ui", UI_TEMPLATES);
+        program.update_module("hop/icons", ICONS_TEMPLATES);
 
         // Check for any errors in the UI templates
         let has_parse_errors = program

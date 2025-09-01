@@ -147,32 +147,9 @@ impl Program {
 
     pub fn from_modules(modules: HashMap<String, String>) -> Self {
         let mut program = Self::new();
-
         for (module_name, source_code) in &modules {
-            program.parse_module(module_name, source_code);
+            program.update_module(module_name, source_code);
         }
-
-        for (module_name, ast) in &program.asts {
-            program.topo_sorter.add_node(module_name.clone());
-            for import_node in ast.get_imports() {
-                program
-                    .topo_sorter
-                    .add_dependency(module_name, &import_node.from_attr.value);
-            }
-        }
-
-        let sorted_modules = match program.topo_sorter.sort() {
-            Ok(modules) => modules,
-            Err(cycle_error) => {
-                program.handle_import_cycle_error(&cycle_error);
-                return program;
-            }
-        };
-
-        for module_name in &sorted_modules {
-            program.typecheck_module(module_name);
-        }
-
         program
     }
 
@@ -190,21 +167,37 @@ impl Program {
 
     /// Handles import cycle errors by adding type errors for all modules in the cycle.
     fn handle_import_cycle_error(&mut self, cycle_error: &CycleError) {
-        for module_name in &cycle_error.cycle {
-            let type_errors = self.type_errors.entry(module_name.clone()).or_default();
-            type_errors.clear();
-            let ast = self
-                .asts
-                .get(module_name)
-                .expect("Failed to retrieve AST in handle_cycle_error");
-            for import_node in ast.get_imports() {
-                if cycle_error.cycle.contains(&import_node.from_attr.value) {
-                    type_errors.push(TypeError::circular_import(
-                        module_name,
-                        &import_node.from_attr.value,
-                        &cycle_error.cycle,
-                        import_node.from_attr.range,
-                    ));
+        for (module_name, ast) in &self.asts {
+            let module_is_part_of_cycle = cycle_error.cycle.contains(module_name);
+            // TODO: We need to handle this transitively
+            let module_imports_from_module_that_is_part_of_cycle = ast
+                .get_imports()
+                .iter()
+                .any(|i| cycle_error.cycle.contains(&i.from_attr.value));
+            if module_is_part_of_cycle {
+                let type_errors = self.type_errors.entry(module_name.clone()).or_default();
+                type_errors.clear();
+                for import_node in ast.get_imports() {
+                    if cycle_error.cycle.contains(&import_node.from_attr.value) {
+                        type_errors.push(TypeError::part_of_import_cycle(
+                            module_name,
+                            &import_node.from_attr.value,
+                            &cycle_error.cycle,
+                            import_node.from_attr.range,
+                        ));
+                    }
+                }
+            } else if module_imports_from_module_that_is_part_of_cycle {
+                let type_errors = self.type_errors.entry(module_name.clone()).or_default();
+                type_errors.clear();
+                for import_node in ast.get_imports() {
+                    if cycle_error.cycle.contains(&import_node.from_attr.value) {
+                        type_errors.push(TypeError::imports_from_cycle(
+                            module_name,
+                            &import_node.from_attr.value,
+                            import_node.from_attr.range,
+                        ));
+                    }
                 }
             }
         }
@@ -246,28 +239,27 @@ impl Program {
             .insert(module_name.to_string(), source_code.to_string());
     }
 
-    pub fn update_module(&mut self, module_name: String, source_code: &str) -> Vec<String> {
-        self.parse_module(module_name.as_str(), source_code);
+    pub fn update_module(&mut self, module_name: &str, source_code: &str) -> Vec<String> {
+        self.parse_module(module_name, source_code);
 
-        self.topo_sorter.add_node(module_name.clone());
+        self.topo_sorter.add_node(module_name.to_string());
 
-        let ast = match self.asts.get(&module_name) {
+        let ast = match self.asts.get(module_name) {
             Some(module) => module,
             None => unreachable!(),
         };
 
-        self.topo_sorter.clear_dependencies(&module_name);
+        self.topo_sorter.clear_dependencies(module_name);
         for import_node in ast.get_imports() {
             self.topo_sorter
-                .add_dependency(&module_name, &import_node.from_attr.value);
+                .add_dependency(module_name, &import_node.from_attr.value);
         }
 
-        let dependent_modules = match self.topo_sorter.sort_subgraph(&module_name) {
+        let dependent_modules = match self.topo_sorter.sort_subgraph(module_name) {
             Ok(modules) => modules,
             Err(cycle_error) => {
                 self.handle_import_cycle_error(&cycle_error);
-                // Return just the updated module for processing
-                vec![module_name]
+                return vec![];
             }
         };
 
@@ -578,7 +570,17 @@ mod tests {
     use indoc::indoc;
     use simple_txtar::Archive;
 
-    fn server_from_archive(archive: &Archive) -> Program {
+    fn program_from_txtar(input: &str) -> Program {
+        let archive = Archive::from(input);
+        let mut map = HashMap::new();
+        for file in archive.iter() {
+            let module_name = file.name.replace(".hop", "");
+            map.insert(module_name, file.content.clone());
+        }
+        Program::from_modules(map)
+    }
+
+    fn program_from_archive(archive: &Archive) -> Program {
         let mut map = HashMap::new();
         for file in archive.iter() {
             let module_name = file.name.replace(".hop", "");
@@ -599,7 +601,7 @@ mod tests {
         let marker = &markers[0];
         let module = marker.filename.replace(".hop", "");
 
-        let mut locs = server_from_archive(&archive)
+        let mut locs = program_from_archive(&archive)
             .get_rename_locations(&module, marker.position)
             .expect("Expected locations to be defined");
 
@@ -638,18 +640,20 @@ mod tests {
         let marker = &markers[0];
         let module = marker.filename.replace(".hop", "");
 
-        let loc = server_from_archive(&archive)
+        let program = program_from_archive(&archive);
+
+        let loc = program
             .get_definition_location(&module, marker.position)
             .expect("Expected definition location to be defined");
 
-        let file = archive
-            .iter()
-            .find(|f| f.name.replace(".hop", "") == loc.module)
-            .expect("File not found in archive");
+        let source_code = program
+            .source_code
+            .get(&loc.module)
+            .expect("Could not get source code");
 
         let output = SourceAnnotator::new().with_location().annotate(
-            Some(&file.name),
-            &file.content,
+            Some(&loc.module.clone()),
+            source_code,
             &[loc],
         );
 
@@ -657,31 +661,29 @@ mod tests {
     }
 
     fn check_error_diagnostics(input: &str, module: &str, expected: Expect) {
-        let archive = Archive::from(input);
-        let diagnostics = server_from_archive(&archive).get_error_diagnostics(module);
+        let program = program_from_txtar(input);
+
+        let diagnostics = program.get_error_diagnostics(module);
 
         if diagnostics.is_empty() {
             panic!("Expected diagnostics to be non-empty");
         }
 
-        let file = archive
-            .iter()
-            .find(|f| f.name.replace(".hop", "") == module)
-            .expect("File not found in archive");
+        let source_code = program
+            .source_code
+            .get(module)
+            .expect("Source code not found");
 
         let output = SourceAnnotator::new().with_location().annotate(
-            Some(&file.name),
-            &file.content,
+            Some(module),
+            source_code,
             &diagnostics,
         );
 
         expected.assert_eq(&output);
     }
 
-    fn check_type_errors(input: &str, expected: Expect) {
-        let archive = Archive::from(input);
-        let program = server_from_archive(&archive);
-
+    fn check_type_errors(program: &Program, expected: Expect) {
         let mut output = Vec::new();
         let annotator = SourceAnnotator::new().with_location();
 
@@ -696,12 +698,9 @@ mod tests {
         modules_with_errors.sort_by_key(|(module_name, _)| module_name.as_str());
 
         for (module_name, errors) in modules_with_errors {
-            let file = archive
-                .iter()
-                .find(|f| f.name.replace(".hop", "") == *module_name)
-                .expect("File not found in archive");
+            let source_code = program.source_code.get(module_name).unwrap();
 
-            let annotated = annotator.annotate(Some(&file.name), &file.content, errors);
+            let annotated = annotator.annotate(Some(module_name), source_code, errors);
 
             output.push(annotated);
         }
@@ -721,7 +720,7 @@ mod tests {
         let marker = &markers[0];
         let module = marker.filename.replace(".hop", "");
 
-        let symbol = server_from_archive(&archive)
+        let symbol = program_from_archive(&archive)
             .get_renameable_symbol(&module, marker.position)
             .expect("Expected symbol to be defined");
 
@@ -752,7 +751,7 @@ mod tests {
         let marker = &markers[0];
         let module = marker.filename.replace(".hop", "");
 
-        let hover_info = server_from_archive(&archive)
+        let hover_info = program_from_archive(&archive)
             .get_hover_info(&module, marker.position)
             .expect("Expected hover info to be defined");
 
@@ -793,7 +792,7 @@ mod tests {
             "#},
             expect![[r#"
                 Definition
-                  --> hop/components.hop (line 1, col 2)
+                  --> hop/components (line 1, col 2)
                 1 | <hello-world>
                   |  ^^^^^^^^^^^
             "#]],
@@ -820,7 +819,7 @@ mod tests {
             "#},
             expect![[r#"
                 Definition
-                  --> hop/components.hop (line 1, col 2)
+                  --> hop/components (line 1, col 2)
                 1 | <hello-world>
                   |  ^^^^^^^^^^^
             "#]],
@@ -1138,12 +1137,12 @@ mod tests {
             "main",
             expect![[r#"
                 Unclosed <span>
-                  --> main.hop (line 3, col 3)
+                  --> main (line 3, col 3)
                 3 |   <span>unclosed span
                   |   ^^^^^^
 
                 Unclosed <div>
-                  --> main.hop (line 2, col 3)
+                  --> main (line 2, col 3)
                 2 |   <div>
                   |   ^^^^^
             "#]],
@@ -1181,42 +1180,160 @@ mod tests {
     }
 
     ///////////////////////////////////////////////////////////////////////////
-    /// TYPE ERRORS                                                         ///
+    /// IMPORT CYCLES                                                       ///
     ///////////////////////////////////////////////////////////////////////////
 
     #[test]
     fn test_cycle_error_reporting() {
+        let mut program = program_from_txtar(indoc! {r#"
+            -- a.hop --
+            <import component="b-comp" from="b" />
+            <a-comp>
+              <b-comp />
+            </a-comp>
+
+            -- b.hop --
+            <import component="a-comp" from="a" />
+            <b-comp>
+              <a-comp />
+            </b-comp>
+
+            -- c.hop --
+            <import component="a-comp" from="a" />
+            <c-comp>
+              <a-comp />
+            </c-comp>
+        "#});
         check_type_errors(
-            indoc! {r#"
-                -- a.hop --
-                <import component="b-comp" from="b" />
-                <a-comp>
-                  <b-comp />
-                </a-comp>
-
-                -- b.hop --
-                <import component="a-comp" from="a" />
-                <b-comp>
-                  <a-comp />
-                </b-comp>
-
-                -- c.hop --
-                <import component="a-comp" from="a" />
-                <c-comp>
-                  <a-comp />
-                </c-comp>
-            "#},
+            &program,
             expect![[r#"
                 Circular import detected: a imports b which creates a dependency cycle: a → b → a
-                  --> a.hop (line 1, col 34)
+                  --> a (line 1, col 34)
                 1 | <import component="b-comp" from="b" />
                   |                                  ^
 
                 Circular import detected: b imports a which creates a dependency cycle: a → b → a
-                  --> b.hop (line 1, col 34)
+                  --> b (line 1, col 34)
+                1 | <import component="a-comp" from="a" />
+                  |                                  ^
+
+                Circular import detected: c imports from a which is part of a dependency cycle
+                  --> c (line 1, col 34)
                 1 | <import component="a-comp" from="a" />
                   |                                  ^
             "#]],
         );
+        // Resolve cycle
+        program.update_module(
+            "a",
+            indoc! {r#"
+                <a-comp>
+                </a-comp>
+            "#},
+        );
+        // Type errors should now be empty
+        check_type_errors(&program, expect![""]);
+    }
+
+    #[test]
+    fn test_cycle_error_reporting_large() {
+        let mut program = program_from_txtar(indoc! {r#"
+            -- a.hop --
+            <import component="b-comp" from="b" />
+            <a-comp>
+              <b-comp />
+            </a-comp>
+
+            -- b.hop --
+            <import component="c-comp" from="c" />
+            <b-comp>
+              <c-comp />
+            </b-comp>
+
+            -- c.hop --
+            <import component="d-comp" from="d" />
+            <c-comp>
+              <d-comp />
+            </c-comp>
+
+            -- d.hop --
+            <import component="a-comp" from="a" />
+            <d-comp>
+              <a-comp />
+            </d-comp>
+        "#});
+        check_type_errors(
+            &program,
+            expect![[r#"
+                Circular import detected: a imports b which creates a dependency cycle: a → b → c → d → a
+                  --> a (line 1, col 34)
+                1 | <import component="b-comp" from="b" />
+                  |                                  ^
+
+                Circular import detected: b imports c which creates a dependency cycle: a → b → c → d → a
+                  --> b (line 1, col 34)
+                1 | <import component="c-comp" from="c" />
+                  |                                  ^
+
+                Circular import detected: c imports d which creates a dependency cycle: a → b → c → d → a
+                  --> c (line 1, col 34)
+                1 | <import component="d-comp" from="d" />
+                  |                                  ^
+
+                Circular import detected: d imports a which creates a dependency cycle: a → b → c → d → a
+                  --> d (line 1, col 34)
+                1 | <import component="a-comp" from="a" />
+                  |                                  ^
+            "#]],
+        );
+        // Resolve cycle
+        program.update_module(
+            "c",
+            indoc! {r#"
+                <c-comp>
+                </c-comp>
+            "#},
+        );
+        // Type errors should now be empty
+        check_type_errors(&program, expect![""]);
+        // Introduce new cycle a → b → a
+        program.update_module(
+            "b",
+            indoc! {r#"
+                <import component="a-comp" from="a" />
+                <b-comp>
+                  <a-comp />
+                </b-comp>
+            "#},
+        );
+        check_type_errors(
+            &program,
+            expect![[r#"
+                Circular import detected: a imports b which creates a dependency cycle: a → b → a
+                  --> a (line 1, col 34)
+                1 | <import component="b-comp" from="b" />
+                  |                                  ^
+
+                Circular import detected: b imports a which creates a dependency cycle: a → b → a
+                  --> b (line 1, col 34)
+                1 | <import component="a-comp" from="a" />
+                  |                                  ^
+
+                Circular import detected: d imports from a which is part of a dependency cycle
+                  --> d (line 1, col 34)
+                1 | <import component="a-comp" from="a" />
+                  |                                  ^
+            "#]],
+        );
+        // Resolve cycle
+        program.update_module(
+            "b",
+            indoc! {r#"
+                <b-comp>
+                </b-comp>
+            "#},
+        );
+        // Type errors should now be empty
+        check_type_errors(&program, expect![""]);
     }
 }
