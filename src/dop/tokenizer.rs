@@ -296,43 +296,59 @@ mod tests {
     #[test]
     fn test_tokenize_unexpected_characters() {
         check(
-            "~~ = f __ ~@#!",
+            "~ ~ ~@ #",
             expect![[r#"
                 error: Unexpected character: '~'
-                ~~ = f __ ~@#!
+                ~ ~ ~@ #
                 ^
 
                 error: Unexpected character: '~'
-                ~~ = f __ ~@#!
-                 ^
-
-                error: Expected '==' but found single '='
-                ~~ = f __ ~@#!
-                   ^
-
-                token: f
-                ~~ = f __ ~@#!
-                     ^
-
-                token: __
-                ~~ = f __ ~@#!
-                       ^^
+                ~ ~ ~@ #
+                  ^
 
                 error: Unexpected character: '~'
-                ~~ = f __ ~@#!
-                          ^
+                ~ ~ ~@ #
+                    ^
 
                 error: Unexpected character: '@'
-                ~~ = f __ ~@#!
-                           ^
+                ~ ~ ~@ #
+                     ^
 
                 error: Unexpected character: '#'
-                ~~ = f __ ~@#!
-                            ^
+                ~ ~ ~@ #
+                       ^
+            "#]],
+        );
+    }
 
-                token: !
-                ~~ = f __ ~@#!
-                             ^
+    #[test]
+    fn test_tokenize_valid_numbers() {
+        check(
+            "1.0 0.0 0.0000 1000000 0.0000 0.1010",
+            expect![[r#"
+                token: 1.0
+                1.0 0.0 0.0000 1000000 0.0000 0.1010
+                ^^^
+
+                token: 0.0
+                1.0 0.0 0.0000 1000000 0.0000 0.1010
+                    ^^^
+
+                token: 0.0
+                1.0 0.0 0.0000 1000000 0.0000 0.1010
+                        ^^^^^^
+
+                token: 1000000
+                1.0 0.0 0.0000 1000000 0.0000 0.1010
+                               ^^^^^^^
+
+                token: 0.0
+                1.0 0.0 0.0000 1000000 0.0000 0.1010
+                                       ^^^^^^
+
+                token: 0.101
+                1.0 0.0 0.0000 1000000 0.0000 0.1010
+                                              ^^^^^^
             "#]],
         );
     }
@@ -340,19 +356,35 @@ mod tests {
     #[test]
     fn test_tokenize_invalid_numbers() {
         check(
-            "1. 1000. 1.",
+            "1. 1000. 1. 000 0. 0123 01010",
             expect![[r#"
                 error: Expected digit after decimal point
-                1. 1000. 1.
+                1. 1000. 1. 000 0. 0123 01010
                 ^^
 
                 error: Expected digit after decimal point
-                1. 1000. 1.
+                1. 1000. 1. 000 0. 0123 01010
                    ^^^^^
 
                 error: Expected digit after decimal point
-                1. 1000. 1.
+                1. 1000. 1. 000 0. 0123 01010
                          ^^
+
+                error: Invalid number format: 000
+                1. 1000. 1. 000 0. 0123 01010
+                            ^^^
+
+                error: Expected digit after decimal point
+                1. 1000. 1. 000 0. 0123 01010
+                                ^^
+
+                error: Invalid number format: 0123
+                1. 1000. 1. 000 0. 0123 01010
+                                   ^^^^
+
+                error: Invalid number format: 01010
+                1. 1000. 1. 000 0. 0123 01010
+                                        ^^^^^
             "#]],
         );
     }
@@ -433,30 +465,6 @@ mod tests {
                 token: ''
                 'hello' 'world with spaces' ''
                                             ^^
-            "#]],
-        );
-    }
-
-    #[test]
-    fn test_tokenize_numbers() {
-        check(
-            "123 456.789 0 0.5",
-            expect![[r#"
-                token: 123
-                123 456.789 0 0.5
-                ^^^
-
-                token: 456.789
-                123 456.789 0 0.5
-                    ^^^^^^^
-
-                token: 0
-                123 456.789 0 0.5
-                            ^
-
-                token: 0.5
-                123 456.789 0 0.5
-                              ^^^
             "#]],
         );
     }

@@ -117,6 +117,7 @@ pub enum DopExpr {
         value: serde_json::Number,
         range: Range,
     },
+    /// An array literal, e.g. [1, 2, 3]
     ArrayLiteral {
         elements: Vec<DopExpr>,
         range: Range,
