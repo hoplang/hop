@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::mem;
 
-use crate::common::{ParseError, Position, Range, Ranged, StrCursor};
+use crate::common::{ParseError, Range, Ranged, StrCursor};
 use crate::hop::ast::Attribute;
 use crate::tui::source_annotator::Annotated;
 
@@ -98,8 +98,10 @@ enum TokenizerState {
     BeforeDoctypeName,
     DoctypeName,
     RawtextData,
+    TextExpressionStart,
     TextExpressionContent,
     TagExpressionContent,
+    TagExpressionStart,
 }
 
 pub struct Tokenizer<'a> {
@@ -124,7 +126,7 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn advance(&mut self) -> Option<Result<Token, ParseError>> {
-        let (_, first_range) = self.cursor.peek()?.clone();
+        let (_, first_range) = self.cursor.peek()?;
         let mut text_range = first_range;
         let mut token_value = String::new();
         let token_start = first_range.start;
@@ -132,7 +134,7 @@ impl<'a> Tokenizer<'a> {
         let mut token_expression = None;
         let mut tag_name_range = first_range;
         let mut expression_content = String::new();
-        let mut expression_start = first_range.start;
+        let mut expression_range = first_range;
         let mut attribute_name = String::new();
         let mut attribute_value = String::new();
         let mut attribute_start = first_range.start;
@@ -162,9 +164,7 @@ impl<'a> Tokenizer<'a> {
                             }));
                         } else {
                             self.cursor.next();
-                            let (_, expr_start) = self.cursor.peek().unwrap();
-                            expression_start = expr_start.start;
-                            self.state = TokenizerState::TextExpressionContent;
+                            self.state = TokenizerState::TextExpressionStart;
                         }
                     }
                     ch => {
@@ -211,8 +211,7 @@ impl<'a> Tokenizer<'a> {
                         self.state = TokenizerState::BeforeAttrName;
                     } else if ch == '{' {
                         self.cursor.next();
-                        expression_start = ch_range.end;
-                        self.state = TokenizerState::TagExpressionContent;
+                        self.state = TokenizerState::TagExpressionStart;
                     } else if ch == '>' {
                         if is_tag_name_with_raw_content(&token_value) {
                             self.stored_tag_name = token_value.clone();
@@ -328,8 +327,7 @@ impl<'a> Tokenizer<'a> {
                         self.state = TokenizerState::AttrName;
                     } else if ch == '{' {
                         self.cursor.next();
-                        expression_start = ch_range.end;
-                        self.state = TokenizerState::TagExpressionContent;
+                        self.state = TokenizerState::TagExpressionStart;
                     } else if ch == '/' {
                         self.cursor.next();
                         self.state = TokenizerState::SelfClosing;
@@ -383,10 +381,7 @@ impl<'a> Tokenizer<'a> {
                             self.state = TokenizerState::Text;
                             return Some(Err(ParseError::duplicate_attribute(
                                 &attr_name,
-                                Range {
-                                    start: attribute_start,
-                                    end: ch_range.start,
-                                },
+                                Range::new(attribute_start, ch_range.start),
                             )));
                         }
                         token_attributes.insert(
@@ -728,12 +723,23 @@ impl<'a> Tokenizer<'a> {
                     }
                 }
 
+                TokenizerState::TextExpressionStart => {
+                    if ch == '}' {
+                        self.cursor.next();
+                        return Some(Err(ParseError::new(
+                            "Empty expression".to_string(),
+                            ch_range,
+                        )));
+                    } else {
+                        expression_range = ch_range;
+                        expression_content.push(ch);
+                        self.cursor.next();
+                        self.state = TokenizerState::TextExpressionContent;
+                    }
+                }
+
                 TokenizerState::TextExpressionContent => {
                     if ch == '}' {
-                        let expression_range = Range {
-                            start: expression_start,
-                            end: ch_range.start,
-                        };
                         self.cursor.next();
                         self.state = TokenizerState::Text;
                         return Some(Ok(Token::Expression {
@@ -742,9 +748,25 @@ impl<'a> Tokenizer<'a> {
                             range: Range::new(token_start, ch_range.end),
                         }));
                     } else {
+                        expression_range = expression_range.extend_to(ch_range);
                         expression_content.push(ch);
                         self.cursor.next();
                         self.state = TokenizerState::TextExpressionContent;
+                    }
+                }
+
+                TokenizerState::TagExpressionStart => {
+                    if ch == '}' {
+                        self.cursor.next();
+                        return Some(Err(ParseError::new(
+                            "Empty expression".to_string(),
+                            ch_range,
+                        )));
+                    } else {
+                        expression_range = ch_range;
+                        expression_content.push(ch);
+                        self.cursor.next();
+                        self.state = TokenizerState::TagExpressionContent;
                     }
                 }
 
@@ -756,17 +778,12 @@ impl<'a> Tokenizer<'a> {
                         || self.cursor.matches_str("} />")
                     {
                         // Store expression on current token and continue parsing tag
-                        token_expression = Some((
-                            mem::take(&mut expression_content),
-                            Range {
-                                start: expression_start,
-                                end: ch_range.start,
-                            },
-                        ));
-                        expression_start = ch_range.start;
+                        token_expression =
+                            Some((mem::take(&mut expression_content), expression_range));
                         self.cursor.next();
                         self.state = TokenizerState::BeforeAttrName;
                     } else {
+                        expression_range = expression_range.extend_to(ch_range);
                         expression_content.push(ch);
                         self.cursor.next();
                         self.state = TokenizerState::TagExpressionContent;
@@ -2206,6 +2223,18 @@ mod tests {
                 Text
                 1 | <input required required />
                   |                         ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_empty_expression() {
+        check(
+            r#"{}"#,
+            expect![[r#"
+                Empty expression
+                1 | {}
+                  |  ^
             "#]],
         );
     }
