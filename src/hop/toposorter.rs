@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 /// The TopoSorter performs topological sorting of directed graphs.
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct TopoSorter {
     nodes: HashSet<String>,
     dependencies: HashMap<String, HashSet<String>>, // a -> set of nodes that a depends on
@@ -10,16 +10,7 @@ pub struct TopoSorter {
 }
 
 impl TopoSorter {
-    pub fn new() -> Self {
-        TopoSorter {
-            nodes: HashSet::new(),
-            dependencies: HashMap::new(),
-            dependents: HashMap::new(),
-            cycles: Vec::new(),
-        }
-    }
-
-    /// Add a node to the graph.
+    /// Update the state of a given node in the graph.
     pub fn update_node(&mut self, node: &str, dependencies: HashSet<String>) {
         self.nodes.insert(node.to_string());
         let old_dependencies = self.dependencies.entry(node.to_string()).or_default();
@@ -47,7 +38,13 @@ impl TopoSorter {
             .collect();
     }
 
-    pub fn get_dependents(&self, node: &str) -> Vec<String> {
+    // Get all nodes that have a direct or transitive dependency on a given
+    // node including the node itself.
+    //
+    // This function performs a depth-first search and the result will
+    // be a topologically sorted list suitable for work scheduling (i.e.
+    // dependencies first) given that the dependencies are not part of a cycles.
+    pub fn get_transitive_dependents(&self, node: &str) -> Vec<String> {
         if !self.nodes.contains(node) {
             return Vec::new();
         }
@@ -151,19 +148,13 @@ impl TopoSorter {
     }
 }
 
-impl Default for TopoSorter {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_scc_simple() {
-        let mut toposorter = TopoSorter::new();
+        let mut toposorter = TopoSorter::default();
         toposorter.update_node("a", HashSet::from(["b".to_string()]));
         toposorter.update_node("b", HashSet::from(["c".to_string()]));
 
@@ -176,7 +167,7 @@ mod tests {
 
     #[test]
     fn test_scc_with_cycle() {
-        let mut toposorter = TopoSorter::new();
+        let mut toposorter = TopoSorter::default();
         toposorter.update_node("a", HashSet::from(["b".to_string()]));
         toposorter.update_node("b", HashSet::from(["c".to_string()]));
         toposorter.update_node("c", HashSet::from(["a".to_string()]));
@@ -188,7 +179,7 @@ mod tests {
 
     #[test]
     fn test_scc_multiple_components() {
-        let mut toposorter = TopoSorter::new();
+        let mut toposorter = TopoSorter::default();
         toposorter.update_node("a", HashSet::from(["b".to_string()]));
         toposorter.update_node("b", HashSet::from(["a".to_string()]));
         toposorter.update_node("c", HashSet::from(["d".to_string()]));
@@ -204,7 +195,7 @@ mod tests {
 
     #[test]
     fn test_scc_disconnected_graph() {
-        let mut toposorter = TopoSorter::new();
+        let mut toposorter = TopoSorter::default();
         toposorter.update_node("a", HashSet::new());
         toposorter.update_node("b", HashSet::new());
         toposorter.update_node("c", HashSet::new());
@@ -219,7 +210,7 @@ mod tests {
 
     #[test]
     fn test_scc_complex_graph() {
-        let mut toposorter = TopoSorter::new();
+        let mut toposorter = TopoSorter::default();
         toposorter.update_node("1", HashSet::from(["2".to_string()]));
         toposorter.update_node("2", HashSet::from(["3".to_string()]));
         toposorter.update_node("3", HashSet::from(["1".to_string()]));

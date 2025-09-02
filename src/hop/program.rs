@@ -231,7 +231,7 @@ impl Program {
 
         self.topo_sorter.update_node(module_name, dependencies);
 
-        let dependent_modules = self.topo_sorter.get_dependents(module_name);
+        let dependent_modules = self.topo_sorter.get_transitive_dependents(module_name);
 
         for module_name in &dependent_modules {
             self.typecheck_module(module_name)
