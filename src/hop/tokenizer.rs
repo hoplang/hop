@@ -97,7 +97,7 @@ impl Cursor {
     }
 
     fn peek(&self) -> Option<(char, Range)> {
-        if self.is_at_end() {
+        if self.position >= self.input.len() {
             None
         } else {
             let start = Position::new(self.line, self.column);
@@ -115,7 +115,9 @@ impl Cursor {
     }
 
     fn advance(&mut self) -> Option<(char, Range)> {
-        if !self.is_at_end() {
+        if self.position >= self.input.len() {
+            None
+        } else {
             let start = Position::new(self.line, self.column);
             let ch = self.input[self.position];
             let byte_len = ch.len_utf8();
@@ -127,8 +129,6 @@ impl Cursor {
             }
             self.position += 1;
             Some((ch, Range::new(start, Position::new(self.line, self.column))))
-        } else {
-            None
         }
     }
 
@@ -143,10 +143,6 @@ impl Cursor {
             line: self.line,
             column: self.column,
         }
-    }
-
-    fn is_at_end(&self) -> bool {
-        self.position >= self.input.len()
     }
 
     fn match_str(&self, s: &str) -> bool {
@@ -193,8 +189,8 @@ impl Tokenizer {
         let mut attribute_start = self.cursor.get_position();
         let mut attribute_value_start = self.cursor.get_position();
         let mut doctype_name_buffer = String::new();
-        while !self.cursor.is_at_end() {
-            let (ch, ch_range) = self.cursor.peek()?;
+        while self.cursor.peek().is_some() {
+            let (ch, ch_range) = self.cursor.peek().unwrap();
 
             match self.state {
                 TokenizerState::Text => {
