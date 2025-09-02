@@ -127,7 +127,7 @@ impl<'a> Tokenizer<'a> {
 
     fn advance(&mut self) -> Option<Result<Token, ParseError>> {
         let (_, first_range) = self.cursor.peek()?;
-        let mut text_range = first_range;
+        let text_range = first_range;
         let mut token_value = String::new();
         let token_start = first_range.start;
         let mut token_attributes = BTreeMap::new();
@@ -144,34 +144,26 @@ impl<'a> Tokenizer<'a> {
             let (ch, ch_range) = self.cursor.peek().unwrap();
 
             match self.state {
-                TokenizerState::Text => match ch {
-                    '<' => {
-                        if !token_value.is_empty() {
-                            return Some(Ok(Token::Text {
-                                value: token_value,
-                                range: Range::new(token_start, ch_range.start),
-                            }));
-                        } else {
-                            self.cursor.next();
-                            self.state = TokenizerState::TagStart;
-                        }
+                TokenizerState::Text => match self.cursor.next()? {
+                    ('<', _) => {
+                        self.state = TokenizerState::TagStart;
                     }
-                    '{' => {
-                        if !token_value.is_empty() {
-                            return Some(Ok(Token::Text {
-                                value: token_value,
-                                range: Range::new(token_start, ch_range.start),
-                            }));
-                        } else {
-                            self.cursor.next();
-                            self.state = TokenizerState::TextExpressionStart;
-                        }
+                    ('{', _) => {
+                        self.state = TokenizerState::TextExpressionStart;
                     }
-                    ch => {
-                        self.cursor.next();
-                        token_value.push(ch);
-                        text_range = text_range.extend_to(ch_range);
-                        self.state = TokenizerState::Text;
+                    (ch, start_range) => {
+                        let mut range = start_range;
+                        let mut text_content = String::from(ch);
+                        while let Some((ch, r)) =
+                            self.cursor.next_if(|(ch, _)| *ch != '{' && *ch != '<')
+                        {
+                            text_content.push(ch);
+                            range = range.extend_to(r);
+                        }
+                        return Some(Ok(Token::Text {
+                            value: text_content,
+                            range,
+                        }));
                     }
                 },
 
