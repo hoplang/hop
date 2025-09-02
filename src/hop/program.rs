@@ -175,7 +175,7 @@ impl Program {
         // Store the AST and source code
         self.asts.insert(module_name.to_string(), ast);
         self.source_code
-            .insert(module_name.to_string(), source_code.to_string());
+            .insert(module_name.to_string(), source_code);
 
         // Typecheck the module along with all dependent modules (grouped
         // into strongly connected components).
@@ -245,7 +245,7 @@ impl Program {
                 let component_def = module.get_component_definition(component)?;
                 Some(DefinitionLocation {
                     module: m.to_string(),
-                    range: component_def.opening_name_range,
+                    range: component_def.opening_tag_name_range,
                 })
             }
             HopNode::Html { .. } => {
@@ -262,16 +262,9 @@ impl Program {
         position: Position,
     ) -> Option<Vec<RenameLocation>> {
         let ast = self.asts.get(module_name)?;
-        for component_node in ast.get_component_definitions() {
-            let is_on_tag_name = component_node.opening_name_range.contains(position)
-                || component_node
-                    .closing_name_range
-                    .is_some_and(|range| range.contains(position));
-
-            if is_on_tag_name {
-                return Some(
-                    self.collect_component_rename_locations(&component_node.name, module_name),
-                );
+        for node in ast.get_component_definitions() {
+            if node.tag_name_ranges().any(|r| r.contains(position)) {
+                return Some(self.collect_component_rename_locations(&node.tag_name, module_name));
             }
         }
 
@@ -314,21 +307,15 @@ impl Program {
     ) -> Option<RenameableSymbol> {
         let ast = self.asts.get(module_name)?;
 
-        // Check if we're on a component definition
         for component_node in ast.get_component_definitions() {
-            if component_node.opening_name_range.contains(position) {
+            if let Some(range) = component_node
+                .tag_name_ranges()
+                .find(|r| r.contains(position))
+            {
                 return Some(RenameableSymbol {
-                    current_name: component_node.name.clone(),
-                    range: component_node.opening_name_range,
+                    current_name: component_node.tag_name.to_string(),
+                    range,
                 });
-            }
-            if let Some(closing_range) = component_node.closing_name_range {
-                if closing_range.contains(position) {
-                    return Some(RenameableSymbol {
-                        current_name: component_node.name.clone(),
-                        range: closing_range,
-                    });
-                }
             }
         }
 
@@ -359,16 +346,16 @@ impl Program {
             if let Some(component_node) = ast
                 .get_component_definitions()
                 .iter()
-                .find(|node| node.name == component_name)
+                .find(|node| node.tag_name == component_name)
             {
                 // Add the definition's opening tag name
                 locations.push(RenameLocation {
                     module: definition_module.to_string(),
-                    range: component_node.opening_name_range,
+                    range: component_node.opening_tag_name_range,
                 });
 
                 // Add the definition's closing tag name if it exists
-                if let Some(range) = component_node.closing_name_range {
+                if let Some(range) = component_node.closing_tag_name_range {
                     locations.push(RenameLocation {
                         module: definition_module.to_string(),
                         range,

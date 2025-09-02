@@ -97,7 +97,7 @@ impl TypeChecker {
             type_errors.clear();
             type_annotations.clear();
 
-            typecheck(module, &mut self.state, type_errors, type_annotations);
+            typecheck_module(module, &mut self.state, type_errors, type_annotations);
 
             if modules.len() > 1 {
                 type_errors.clear();
@@ -117,7 +117,7 @@ impl TypeChecker {
     }
 }
 
-fn typecheck(
+fn typecheck_module(
     module: &HopAst,
     state: &mut State,
     errors: &mut Vec<TypeError>,
@@ -150,7 +150,7 @@ fn typecheck(
     let _ = env.push("HOP_MODE".to_string(), DopType::String);
 
     for ComponentDefinition {
-        name,
+        tag_name: name,
         params,
         children,
         has_slot,
