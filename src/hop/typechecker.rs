@@ -84,6 +84,8 @@ pub struct TypeChecker {
 }
 
 impl TypeChecker {
+    // TODO: Return a bool here indicating whether the state for these modules
+    // were changed
     pub fn typecheck(&mut self, modules: &[&HopAst]) {
         for module in modules {
             let type_errors = self.type_errors.entry(module.name.to_string()).or_default();

@@ -162,37 +162,35 @@ impl Program {
         &self.source_code
     }
 
-    fn parse_module(&mut self, module_name: &str, source_code: &str) {
+    pub fn update_module(&mut self, module_name: &str, source_code: &str) -> Vec<String> {
+        // Parse the module
         let parse_errors = self
             .parse_errors
             .entry(module_name.to_string())
             .or_default();
         parse_errors.clear();
+        let ast = parse(
+            module_name.to_string(),
+            Tokenizer::new(source_code),
+            parse_errors,
+        );
 
-        let tokenizer = Tokenizer::new(source_code);
-        let module = parse(module_name.to_string(), tokenizer, parse_errors);
-
-        self.asts.insert(module_name.to_string(), module);
-        self.source_code
-            .insert(module_name.to_string(), source_code.to_string());
-    }
-
-    pub fn update_module(&mut self, module_name: &str, source_code: &str) -> Vec<String> {
-        self.parse_module(module_name, source_code);
-
-        let ast = match self.asts.get(module_name) {
-            Some(module) => module,
-            None => unreachable!(),
-        };
-
+        // Get all dependencies from the module
         let dependencies = ast
             .get_imports()
             .iter()
             .map(|import_node| import_node.from_attr.value.clone())
             .collect::<HashSet<String>>();
 
-        let components = self.topo_sorter.update_node(module_name, dependencies);
-        for c in &components {
+        // Store the AST and source code
+        self.asts.insert(module_name.to_string(), ast);
+        self.source_code
+            .insert(module_name.to_string(), source_code.to_string());
+
+        // Typecheck the module along with all dependent modules (grouped
+        // into strongly connected components).
+        let dependent_modules = self.topo_sorter.update_node(module_name, dependencies);
+        for c in &dependent_modules {
             let asts = c
                 .iter()
                 .filter_map(|n| self.asts.get(n))
@@ -200,7 +198,8 @@ impl Program {
             self.type_checker.typecheck(&asts);
         }
 
-        components.into_iter().flatten().collect()
+        // Return all modules that have been re-typechecked
+        dependent_modules.into_iter().flatten().collect()
     }
 
     pub fn get_hover_info(&self, module_name: &str, position: Position) -> Option<HoverInfo> {
