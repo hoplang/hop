@@ -173,12 +173,20 @@ impl TopoSorter {
 mod tests {
     use super::*;
 
+    fn set(input: &[&str]) -> HashSet<String> {
+        let mut set = HashSet::new();
+        for s in input {
+            set.insert(s.to_string());
+        }
+        set
+    }
+
     #[test]
     fn test_scc_simple() {
         let mut ts = TopoSorter::default();
         // a → b → c
-        ts.update_node("a", HashSet::from(["b".to_string()]));
-        ts.update_node("b", HashSet::from(["c".to_string()]));
+        ts.update_node("a", set(&["b"]));
+        ts.update_node("b", set(&["c"]));
 
         assert_eq!(ts.get_component("a"), vec!["a"]);
         assert_eq!(ts.get_component("b"), vec!["b"]);
@@ -194,9 +202,9 @@ mod tests {
         // a → b
         //  ↖ ↙
         //   c
-        ts.update_node("a", HashSet::from(["b".to_string()]));
-        ts.update_node("b", HashSet::from(["c".to_string()]));
-        ts.update_node("c", HashSet::from(["a".to_string()]));
+        ts.update_node("a", set(&["b"]));
+        ts.update_node("b", set(&["c"]));
+        ts.update_node("c", set(&["a"]));
 
         assert_eq!(ts.get_component("a"), vec!["a", "b", "c"]);
         assert_eq!(ts.get_component("b"), vec!["a", "b", "c"]);
@@ -212,10 +220,10 @@ mod tests {
         // a ⇄ b
         //     ↓
         // d ⇄ c
-        ts.update_node("a", HashSet::from(["b".to_string()]));
-        ts.update_node("b", HashSet::from(["a".to_string(), "c".to_string()]));
-        ts.update_node("c", HashSet::from(["d".to_string()]));
-        ts.update_node("d", HashSet::from(["c".to_string()]));
+        ts.update_node("a", set(&["b"]));
+        ts.update_node("b", set(&["a", "c"]));
+        ts.update_node("c", set(&["d"]));
+        ts.update_node("d", set(&["c"]));
 
         assert_eq!(ts.get_component("a"), vec!["a", "b"]);
         assert_eq!(ts.get_component("c"), vec!["c", "d"]);
@@ -227,9 +235,9 @@ mod tests {
     fn test_scc_disconnected_graph() {
         let mut ts = TopoSorter::default();
         // a   b   c
-        ts.update_node("a", HashSet::new());
-        ts.update_node("b", HashSet::new());
-        ts.update_node("c", HashSet::new());
+        ts.update_node("a", set(&[]));
+        ts.update_node("b", set(&[]));
+        ts.update_node("c", set(&[]));
 
         assert_eq!(ts.get_component("a"), vec!["a"]);
         assert_eq!(ts.get_component("b"), vec!["b"]);
@@ -239,20 +247,14 @@ mod tests {
     #[test]
     fn test_scc_complex_graph() {
         let mut ts = TopoSorter::default();
-        ts.update_node("1", HashSet::from(["2".to_string()]));
-        ts.update_node("2", HashSet::from(["3".to_string()]));
-        ts.update_node("3", HashSet::from(["1".to_string()]));
-        ts.update_node(
-            "4",
-            HashSet::from(["2".to_string(), "3".to_string(), "5".to_string()]),
-        );
-        ts.update_node("5", HashSet::from(["4".to_string(), "6".to_string()]));
-        ts.update_node("6", HashSet::from(["3".to_string(), "7".to_string()]));
-        ts.update_node("7", HashSet::from(["6".to_string()]));
-        ts.update_node(
-            "8",
-            HashSet::from(["5".to_string(), "7".to_string(), "8".to_string()]),
-        );
+        ts.update_node("1", set(&["2"]));
+        ts.update_node("2", set(&["3"]));
+        ts.update_node("3", set(&["1"]));
+        ts.update_node("4", set(&["2", "3", "5"]));
+        ts.update_node("5", set(&["4", "6"]));
+        ts.update_node("6", set(&["3", "7"]));
+        ts.update_node("7", set(&["6"]));
+        ts.update_node("8", set(&["5", "7", "8"]));
 
         assert_eq!(ts.get_component("1"), vec!["1", "2", "3"]);
         assert_eq!(ts.get_component("4"), vec!["4", "5"]);
