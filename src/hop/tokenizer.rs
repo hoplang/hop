@@ -176,12 +176,12 @@ impl Tokenizer {
     }
 
     fn advance(&mut self) -> Option<Result<Token, ParseError>> {
+        let (_, first_range) = self.cursor.peek()?;
         let mut token_value = String::new();
         let token_start = self.cursor.get_position();
         let mut token_attributes = BTreeMap::new();
         let mut token_expression = None;
-        let mut tag_name_start = self.cursor.get_position();
-        let mut tag_name_end = self.cursor.get_position();
+        let mut tag_name_range = first_range;
         let mut expression_content = String::new();
         let mut expression_start = self.cursor.get_position();
         let mut attribute_name = String::new();
@@ -202,8 +202,6 @@ impl Tokenizer {
                             }));
                         }
                         self.cursor.next();
-                        let (_, name_start) = self.cursor.peek().unwrap();
-                        tag_name_start = name_start.start;
                         self.state = TokenizerState::TagStart;
                     } else if ch == '{' {
                         if !token_value.is_empty() {
@@ -227,11 +225,10 @@ impl Tokenizer {
                     if ch.is_ascii_alphabetic() {
                         token_value.push(ch);
                         self.cursor.next();
-                        tag_name_end = self.cursor.get_position();
+                        tag_name_range = ch_range;
                         self.state = TokenizerState::OpeningTagName;
                     } else if ch == '/' {
                         self.cursor.next();
-                        tag_name_start = self.cursor.get_position();
                         self.state = TokenizerState::ClosingTagStart;
                     } else if ch == '!' {
                         self.cursor.next();
@@ -251,7 +248,7 @@ impl Tokenizer {
                     if ch == '-' || ch.is_ascii_alphanumeric() {
                         token_value.push(ch);
                         self.cursor.next();
-                        tag_name_end = self.cursor.get_position();
+                        tag_name_range = tag_name_range.extend_to(ch_range);
                         self.state = TokenizerState::OpeningTagName;
                     } else if ch.is_whitespace() {
                         self.cursor.next();
@@ -269,7 +266,7 @@ impl Tokenizer {
                                 value: token_value,
                                 self_closing: false,
                                 attributes: token_attributes,
-                                name_range: Range::new(tag_name_start, tag_name_end),
+                                name_range: tag_name_range,
                                 expression: token_expression,
                                 range: Range::new(token_start, self.cursor.get_position()),
                             }));
@@ -280,7 +277,7 @@ impl Tokenizer {
                                 value: token_value,
                                 self_closing: false,
                                 attributes: token_attributes,
-                                name_range: Range::new(tag_name_start, tag_name_end),
+                                name_range: tag_name_range,
                                 expression: token_expression,
                                 range: Range::new(token_start, self.cursor.get_position()),
                             }));
@@ -301,9 +298,10 @@ impl Tokenizer {
 
                 TokenizerState::ClosingTagStart => {
                     if ch.is_ascii_alphabetic() {
+                        tag_name_range = ch_range;
                         token_value.push(ch);
                         self.cursor.next();
-                        tag_name_end = self.cursor.get_position();
+                        tag_name_range = tag_name_range.extend_to(ch_range);
                         self.state = TokenizerState::ClosingTagName;
                     } else {
                         let start_pos = self.cursor.get_position();
@@ -320,14 +318,14 @@ impl Tokenizer {
                     if ch == '-' || ch.is_ascii_alphanumeric() {
                         token_value.push(ch);
                         self.cursor.next();
-                        tag_name_end = self.cursor.get_position();
+                        tag_name_range = tag_name_range.extend_to(ch_range);
                         self.state = TokenizerState::ClosingTagName;
                     } else if ch == '>' {
                         self.cursor.next();
                         self.state = TokenizerState::Text;
                         return Some(Ok(Token::ClosingTag {
                             value: token_value,
-                            name_range: Range::new(tag_name_start, tag_name_end),
+                            name_range: tag_name_range,
                             range: Range::new(token_start, self.cursor.get_position()),
                         }));
                     } else if ch.is_whitespace() {
@@ -353,7 +351,7 @@ impl Tokenizer {
                         self.state = TokenizerState::Text;
                         return Some(Ok(Token::ClosingTag {
                             value: token_value,
-                            name_range: Range::new(tag_name_start, tag_name_end),
+                            name_range: tag_name_range,
                             range: Range::new(token_start, self.cursor.get_position()),
                         }));
                     } else {
@@ -393,7 +391,7 @@ impl Tokenizer {
                                 value: token_value,
                                 attributes: token_attributes,
                                 expression: token_expression,
-                                name_range: Range::new(tag_name_start, tag_name_end),
+                                name_range: tag_name_range,
                                 range: Range::new(token_start, self.cursor.get_position()),
                             }));
                         } else {
@@ -404,7 +402,7 @@ impl Tokenizer {
                                 value: token_value,
                                 attributes: token_attributes,
                                 expression: token_expression,
-                                name_range: Range::new(tag_name_start, tag_name_end),
+                                name_range: tag_name_range,
                                 range: Range::new(token_start, self.cursor.get_position()),
                             }));
                         }
@@ -487,7 +485,7 @@ impl Tokenizer {
                                 value: token_value,
                                 attributes: token_attributes,
                                 expression: token_expression,
-                                name_range: Range::new(tag_name_start, tag_name_end),
+                                name_range: tag_name_range,
                                 range: Range::new(token_start, self.cursor.get_position()),
                             }));
                         } else {
@@ -498,7 +496,7 @@ impl Tokenizer {
                                 value: token_value,
                                 attributes: token_attributes,
                                 expression: token_expression,
-                                name_range: Range::new(tag_name_start, tag_name_end),
+                                name_range: tag_name_range,
                                 range: Range::new(token_start, self.cursor.get_position()),
                             }));
                         }
@@ -642,7 +640,7 @@ impl Tokenizer {
                             value: token_value,
                             attributes: token_attributes,
                             expression: token_expression,
-                            name_range: Range::new(tag_name_start, tag_name_end),
+                            name_range: tag_name_range,
                             range: Range::new(token_start, self.cursor.get_position()),
                         }));
                     } else {
@@ -770,14 +768,14 @@ impl Tokenizer {
                             // No accumulated content, create and return end tag token directly
                             let tag_name = self.stored_tag_name.clone();
                             self.cursor.advance_n(2); // consume </
-                            tag_name_start = self.cursor.get_position();
+                            tag_name_range.start = self.cursor.get_position();
                             self.cursor.advance_n(self.stored_tag_name.len()); // consume tag name 
-                            tag_name_end = self.cursor.get_position();
+                            tag_name_range.end = self.cursor.get_position();
                             self.cursor.advance_n(1); // consume >
                             self.state = TokenizerState::Text;
                             return Some(Ok(Token::ClosingTag {
                                 value: tag_name,
-                                name_range: Range::new(tag_name_start, tag_name_end),
+                                name_range: tag_name_range,
                                 range: Range::new(token_start, self.cursor.get_position()),
                             }));
                         }
