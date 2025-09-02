@@ -144,12 +144,6 @@ impl<'a> Cursor<'a> {
         Some((ch, Range::new(start, self.position)))
     }
 
-    fn next_n(&mut self, n: usize) {
-        for _ in 0..n {
-            self.next();
-        }
-    }
-
     fn get_position(&self) -> Position {
         self.position
     }
@@ -179,6 +173,12 @@ impl<'a> Tokenizer<'a> {
             cursor: Cursor::new(input),
             state: TokenizerState::Text,
             stored_tag_name: String::new(),
+        }
+    }
+
+    fn advance_cursor_by(&mut self, n: usize) {
+        for _ in 0..n {
+            self.cursor.next();
         }
     }
 
@@ -661,10 +661,10 @@ impl<'a> Tokenizer<'a> {
 
                 TokenizerState::MarkupDeclaration => {
                     if self.cursor.matches_str("--") {
-                        self.cursor.next_n(2);
+                        self.advance_cursor_by(2);
                         self.state = TokenizerState::Comment;
                     } else if self.cursor.matches_str("DOCTYPE") {
-                        self.cursor.next_n(7);
+                        self.advance_cursor_by(7);
                         self.state = TokenizerState::Doctype;
                     } else {
                         self.cursor.next();
@@ -678,7 +678,7 @@ impl<'a> Tokenizer<'a> {
 
                 TokenizerState::Comment => {
                     if self.cursor.matches_str("-->") {
-                        self.cursor.next_n(3);
+                        self.advance_cursor_by(3);
                         self.state = TokenizerState::Text;
                         return Some(Ok(Token::Comment {
                             range: Range::new(token_start, self.cursor.get_position()),
@@ -768,11 +768,11 @@ impl<'a> Tokenizer<'a> {
                         } else {
                             // No accumulated content, create and return end tag token directly
                             let tag_name = self.stored_tag_name.clone();
-                            self.cursor.next_n(2); // consume </
+                            self.advance_cursor_by(2); // consume </
                             tag_name_range.start = self.cursor.get_position();
-                            self.cursor.next_n(self.stored_tag_name.len()); // consume tag name 
+                            self.advance_cursor_by(self.stored_tag_name.len()); // consume tag name
                             tag_name_range.end = self.cursor.get_position();
-                            self.cursor.next_n(1); // consume >
+                            self.advance_cursor_by(1); // consume >
                             self.state = TokenizerState::Text;
                             return Some(Ok(Token::ClosingTag {
                                 value: tag_name,
