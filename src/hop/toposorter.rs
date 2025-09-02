@@ -7,6 +7,7 @@ pub struct TopoSorter {
     dependencies: HashMap<String, HashSet<String>>, // a -> set of nodes that a depends on
     dependents: HashMap<String, HashSet<String>>,   // a -> set of nodes that depend on a
     pub cycles: Vec<Vec<String>>,
+    pub sccs: Vec<Vec<String>>,
 }
 
 impl TopoSorter {
@@ -16,7 +17,7 @@ impl TopoSorter {
     /// and V and E is the number of nodes and edges in the graph after the update.
     pub fn update_node(&mut self, node: &str, dependencies: HashSet<String>) {
         self.nodes.insert(node.to_string());
-        
+
         // Remove old reverse dependencies
         if let Some(old_deps) = self.dependencies.get(node) {
             for dep in old_deps {
@@ -25,10 +26,11 @@ impl TopoSorter {
                 }
             }
         }
-        
+
         // Set new dependencies
-        self.dependencies.insert(node.to_string(), dependencies.clone());
-        
+        self.dependencies
+            .insert(node.to_string(), dependencies.clone());
+
         // Add new reverse dependencies
         for dep in &dependencies {
             self.dependents
@@ -36,24 +38,37 @@ impl TopoSorter {
                 .or_default()
                 .insert(node.to_string());
         }
-        
+
         // Calculate cycles
+        self.sccs = self.strongly_connected_components().into_iter().collect();
         self.cycles = self
-            .strongly_connected_components()
+            .sccs
+            .clone()
             .into_iter()
             .filter(|v| v.len() > 1)
             .collect();
     }
 
-    // Get all nodes that have a direct or transitive dependency on a given
-    // node including the node itself (the transitive closure).
-    //
-    // This function performs a depth-first search and the result will
-    // be a topologically sorted list suitable for work scheduling (i.e.
-    // dependencies first) given that the dependencies are not part of a cycles.
-    //
-    // Time complexity: O(V + E) where V is the number of reachable nodes
-    // and E is the number of edges in the reachable subgraph.
+    /// Get the strongly connected component for a given node.
+    /// Returns None if the node is not in the graph.
+    pub fn get_component(&self, node: &str) -> &[String] {
+        for scc in &self.sccs {
+            if scc.contains(&node.to_string()) {
+                return scc;
+            }
+        }
+        panic!()
+    }
+
+    /// Get all nodes that have a direct or transitive dependency on a given
+    /// node including the node itself (the transitive closure).
+    ///
+    /// This function performs a depth-first search and the result will
+    /// be a topologically sorted list suitable for work scheduling (i.e.
+    /// dependencies first) given that the dependencies are not part of a cycles.
+    ///
+    /// Time complexity: O(V + E) where V is the number of reachable nodes
+    /// and E is the number of edges in the reachable subgraph.
     pub fn get_transitive_dependents(&self, node: &str) -> Vec<String> {
         if !self.nodes.contains(node) {
             return Vec::new();
@@ -89,7 +104,7 @@ impl TopoSorter {
     ///
     /// Time complexity: O(V + E) where V is the number of nodes
     /// and E is the number of edges in the graph.
-    pub fn strongly_connected_components(&self) -> Vec<Vec<String>> {
+    fn strongly_connected_components(&self) -> Vec<Vec<String>> {
         let mut index_counter = 0;
         let mut stack = Vec::new();
         let mut lowlinks = HashMap::new();
@@ -171,11 +186,9 @@ mod tests {
         toposorter.update_node("a", HashSet::from(["b".to_string()]));
         toposorter.update_node("b", HashSet::from(["c".to_string()]));
 
-        let sccs = toposorter.strongly_connected_components();
-        assert_eq!(sccs.len(), 3);
-        assert_eq!(sccs[0], vec!["c"]);
-        assert_eq!(sccs[1], vec!["b"]);
-        assert_eq!(sccs[2], vec!["a"]);
+        assert_eq!(toposorter.get_component("a"), vec!["a"]);
+        assert_eq!(toposorter.get_component("b"), vec!["b"]);
+        assert_eq!(toposorter.get_component("c"), vec!["c"]);
     }
 
     #[test]
@@ -185,9 +198,9 @@ mod tests {
         toposorter.update_node("b", HashSet::from(["c".to_string()]));
         toposorter.update_node("c", HashSet::from(["a".to_string()]));
 
-        let sccs = toposorter.strongly_connected_components();
-        assert_eq!(sccs.len(), 1);
-        assert_eq!(sccs[0], vec!["a", "b", "c"]);
+        assert_eq!(toposorter.get_component("a"), vec!["a", "b", "c"]);
+        assert_eq!(toposorter.get_component("b"), vec!["a", "b", "c"]);
+        assert_eq!(toposorter.get_component("c"), vec!["a", "b", "c"]);
     }
 
     #[test]
@@ -199,11 +212,8 @@ mod tests {
         toposorter.update_node("d", HashSet::from(["c".to_string()]));
         toposorter.update_node("b", HashSet::from(["a".to_string(), "c".to_string()]));
 
-        let mut sccs = toposorter.strongly_connected_components();
-        sccs.sort();
-        assert_eq!(sccs.len(), 2);
-        assert_eq!(sccs[0], vec!["a", "b"]);
-        assert_eq!(sccs[1], vec!["c", "d"]);
+        assert_eq!(toposorter.get_component("a"), vec!["a", "b"]);
+        assert_eq!(toposorter.get_component("c"), vec!["c", "d"]);
     }
 
     #[test]
@@ -213,12 +223,9 @@ mod tests {
         toposorter.update_node("b", HashSet::new());
         toposorter.update_node("c", HashSet::new());
 
-        let mut sccs = toposorter.strongly_connected_components();
-        sccs.sort();
-        assert_eq!(sccs.len(), 3);
-        assert_eq!(sccs[0], vec!["a"]);
-        assert_eq!(sccs[1], vec!["b"]);
-        assert_eq!(sccs[2], vec!["c"]);
+        assert_eq!(toposorter.get_component("a"), vec!["a"]);
+        assert_eq!(toposorter.get_component("b"), vec!["b"]);
+        assert_eq!(toposorter.get_component("c"), vec!["c"]);
     }
 
     #[test]
@@ -239,11 +246,9 @@ mod tests {
             HashSet::from(["5".to_string(), "7".to_string(), "8".to_string()]),
         );
 
-        let mut sccs = toposorter.strongly_connected_components();
-        sccs.sort();
-        assert_eq!(sccs[0], vec!["1", "2", "3"]);
-        assert_eq!(sccs[1], vec!["4", "5"]);
-        assert_eq!(sccs[2], vec!["6", "7"]);
-        assert_eq!(sccs[3], vec!["8"]);
+        assert_eq!(toposorter.get_component("1"), vec!["1", "2", "3"]);
+        assert_eq!(toposorter.get_component("4"), vec!["4", "5"]);
+        assert_eq!(toposorter.get_component("6"), vec!["6", "7"]);
+        assert_eq!(toposorter.get_component("8"), vec!["8"]);
     }
 }
