@@ -167,23 +167,19 @@ impl<'a> Tokenizer<'a> {
                     }
                 },
 
-                TokenizerState::TagStart => match ch {
-                    '/' => {
-                        self.cursor.next();
+                TokenizerState::TagStart => match self.cursor.next()? {
+                    ('/', _) => {
                         self.state = TokenizerState::ClosingTagStart;
                     }
-                    '!' => {
-                        self.cursor.next();
+                    ('!', _) => {
                         self.state = TokenizerState::MarkupDeclaration;
                     }
-                    ch if ch.is_ascii_alphabetic() => {
-                        self.cursor.next();
+                    (ch, _) if ch.is_ascii_alphabetic() => {
                         token_value.push(ch);
                         tag_name_range = ch_range;
                         self.state = TokenizerState::OpeningTagName;
                     }
                     _ => {
-                        self.cursor.next();
                         self.state = TokenizerState::Text;
                         return Some(Err(ParseError::new(
                             "Invalid character after '<'".to_string(),
