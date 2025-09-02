@@ -3,100 +3,66 @@ use std::collections::{HashMap, HashSet};
 /// The TopoSorter performs topological sorting of directed graphs.
 #[derive(Default, Debug, Clone)]
 pub struct TopoSorter {
-    nodes: HashSet<String>,
-    dependencies: HashMap<String, HashSet<String>>, // a -> set of nodes that a depends on
-    dependents: HashMap<String, HashSet<String>>,   // a -> set of nodes that depend on a
-    sccs: Vec<Vec<String>>,
+    reverse_dependencies: HashMap<String, HashSet<String>>,
 }
 
 impl TopoSorter {
-    /// Update the state of a given node in the graph.
+    /// Update the state of a given node in the graph by adding it to the
+    /// graph if it doesn't exist and updating its dependencies.
     ///
-    /// Time complexity: O(D + V + E) where D is the number of old dependencies to clear
-    /// and V and E is the number of nodes and edges in the graph after the update.
-    pub fn update_node(&mut self, node: &str, dependencies: HashSet<String>) {
-        self.nodes.insert(node.to_string());
-
-        // Remove old reverse dependencies
-        if let Some(old_deps) = self.dependencies.get(node) {
-            for dep in old_deps {
-                if let Some(dependents) = self.dependents.get_mut(dep) {
-                    dependents.remove(node);
-                }
-            }
+    /// Returns the strongly connected components of the transitive closure
+    /// of the dependents of the given node, topologically sorted.
+    ///
+    /// Time complexity: O(V + E)
+    pub fn update_node(&mut self, node: &str, dependencies: HashSet<String>) -> Vec<Vec<String>> {
+        for reverse_deps in self.reverse_dependencies.values_mut() {
+            reverse_deps.remove(node);
         }
 
-        // Set new dependencies
-        self.dependencies
-            .insert(node.to_string(), dependencies.clone());
-
-        // Add new reverse dependencies
         for dep in &dependencies {
-            self.nodes.insert(dep.to_string());
-            self.dependents
+            self.reverse_dependencies
                 .entry(dep.to_string())
                 .or_default()
                 .insert(node.to_string());
         }
 
-        // Calculate strongly connected components
-        self.sccs = strongly_connected_components(&self.nodes, &self.dependencies)
-            .into_iter()
-            .collect();
-    }
+        let closure = dfs(node, &self.reverse_dependencies);
 
-    /// Get the strongly connected component for a given node.
-    pub fn get_component(&self, node: &str) -> &[String] {
-        for scc in &self.sccs {
-            if scc.contains(&node.to_string()) {
-                return scc;
-            }
-        }
-        panic!()
+        strongly_connected_components(&closure, &self.reverse_dependencies)
     }
+}
 
-    /// Get all nodes that have a direct or transitive dependency on a given
-    /// node including the node itself (the transitive closure).
-    ///
-    /// This function performs a depth-first search and the result will
-    /// be a topologically sorted list suitable for work scheduling (i.e.
-    /// dependencies first) given that the dependencies are not part of a cycles.
-    ///
-    /// Time complexity: O(V + E) where V is the number of reachable nodes
-    /// and E is the number of edges in the reachable subgraph.
-    pub fn get_transitive_dependents(&self, node: &str) -> Vec<String> {
-        if !self.nodes.contains(node) {
-            return Vec::new();
+/// Perform a depth-first search traversal starting from a given node.
+/// Returns nodes in the order they were visited.
+///
+/// Time complexity: O(V + E) where V is the number of reachable nodes
+/// and E is the number of edges in the reachable subgraph.
+pub fn dfs(start: &str, links: &HashMap<String, HashSet<String>>) -> HashSet<String> {
+    let mut visited = HashSet::new();
+    let mut stack = vec![start.to_string()];
+
+    while let Some(current) = stack.pop() {
+        if visited.contains(&current) {
+            continue;
         }
 
-        let mut result = Vec::new();
-        let mut visited = HashSet::new();
-        let mut stack = vec![node.to_string()];
+        visited.insert(current.clone());
 
-        while let Some(current) = stack.pop() {
-            if visited.contains(&current) {
-                continue;
-            }
-
-            visited.insert(current.clone());
-            result.push(current.clone());
-
-            if let Some(deps) = self.dependents.get(&current) {
-                for dep in deps {
-                    if !visited.contains(dep) {
-                        stack.push(dep.clone());
-                    }
+        if let Some(neighbors) = links.get(&current) {
+            for neighbor in neighbors {
+                if !visited.contains(neighbor) {
+                    stack.push(neighbor.clone());
                 }
             }
         }
-
-        result
     }
+
+    visited
 }
 
 /// Compute strongly connected components using Tarjan's algorithm.
 /// Returns a vector of SCCs, where each SCC is a vector of node names.
-/// The SCCs are returned in reverse topological order.
+/// The SCCs are returned in topological order.
 ///
 /// Time complexity: O(V + E) where V is the number of nodes
 /// and E is the number of edges in the graph.
@@ -125,6 +91,8 @@ fn strongly_connected_components(
             );
         }
     }
+
+    sccs.reverse();
 
     sccs
 }
@@ -197,66 +165,49 @@ mod tests {
     }
 
     #[test]
-    fn test_scc_simple() {
+    fn test_simple() {
         let mut ts = TopoSorter::default();
         // a → b → c
-        ts.update_node("a", set(&["b"]));
-        ts.update_node("b", set(&["c"]));
-
-        assert_eq!(ts.get_component("a"), vec!["a"]);
-        assert_eq!(ts.get_component("b"), vec!["b"]);
-        assert_eq!(ts.get_component("c"), vec!["c"]);
-        assert_eq!(ts.get_transitive_dependents("c"), vec!["c", "b", "a"]);
-        assert_eq!(ts.get_transitive_dependents("b"), vec!["b", "a"]);
-        assert_eq!(ts.get_transitive_dependents("a"), vec!["a"]);
+        assert_eq!(ts.update_node("a", set(&["b"])), vec![vec!["a"]]);
+        assert_eq!(ts.update_node("b", set(&["c"])), vec![vec!["b"], vec!["a"]]);
     }
 
     #[test]
-    fn test_scc_with_cycle() {
+    fn test_with_cycle() {
         let mut ts = TopoSorter::default();
         // a → b
         //  ↖ ↙
         //   c
-        ts.update_node("a", set(&["b"]));
-        ts.update_node("b", set(&["c"]));
-        ts.update_node("c", set(&["a"]));
-
-        assert_eq!(ts.get_component("a"), vec!["a", "b", "c"]);
-        assert_eq!(ts.get_component("b"), vec!["a", "b", "c"]);
-        assert_eq!(ts.get_component("c"), vec!["a", "b", "c"]);
-        assert_eq!(ts.get_transitive_dependents("b"), vec!["b", "a", "c"]);
-        assert_eq!(ts.get_transitive_dependents("c"), vec!["c", "b", "a"]);
-        assert_eq!(ts.get_transitive_dependents("a"), vec!["a", "c", "b"]);
+        assert_eq!(ts.update_node("a", set(&["b"])), vec![vec!["a"]]);
+        assert_eq!(ts.update_node("b", set(&["c"])), vec![vec!["b"], vec!["a"]]);
+        assert_eq!(ts.update_node("c", set(&["a"])), vec![vec!["a", "b", "c"]]);
     }
 
     #[test]
-    fn test_scc_multiple_components() {
+    fn test_multiple_components() {
         let mut ts = TopoSorter::default();
         // a ⇄ b
         //     ↓
         // d ⇄ c
-        ts.update_node("a", set(&["b"]));
-        ts.update_node("b", set(&["a", "c"]));
-        ts.update_node("c", set(&["d"]));
-        ts.update_node("d", set(&["c"]));
-
-        assert_eq!(ts.get_component("a"), vec!["a", "b"]);
-        assert_eq!(ts.get_component("c"), vec!["c", "d"]);
-        assert_eq!(ts.get_transitive_dependents("b"), vec!["b", "a"]);
-        assert_eq!(ts.get_transitive_dependents("d"), vec!["d", "c", "b", "a"]);
+        assert_eq!(ts.update_node("a", set(&["b"])), vec![vec!["a"]]);
+        assert_eq!(ts.update_node("b", set(&["a", "c"])), vec![vec!["a", "b"]]);
+        assert_eq!(
+            ts.update_node("c", set(&["d"])),
+            vec![vec!["c"], vec!["a", "b"]]
+        );
+        assert_eq!(
+            ts.update_node("d", set(&["c"])),
+            vec![vec!["c", "d"], vec!["a", "b"]]
+        );
     }
 
     #[test]
     fn test_scc_disconnected_graph() {
         let mut ts = TopoSorter::default();
         // a   b   c
-        ts.update_node("a", set(&[]));
-        ts.update_node("b", set(&[]));
-        ts.update_node("c", set(&[]));
-
-        assert_eq!(ts.get_component("a"), vec!["a"]);
-        assert_eq!(ts.get_component("b"), vec!["b"]);
-        assert_eq!(ts.get_component("c"), vec!["c"]);
+        assert_eq!(ts.update_node("a", set(&[])), vec![vec!["a"]]);
+        assert_eq!(ts.update_node("b", set(&[])), vec![vec!["b"]]);
+        assert_eq!(ts.update_node("c", set(&[])), vec![vec!["c"]]);
     }
 
     #[test]
@@ -270,10 +221,5 @@ mod tests {
         ts.update_node("6", set(&["3", "7"]));
         ts.update_node("7", set(&["6"]));
         ts.update_node("8", set(&["5", "7", "8"]));
-
-        assert_eq!(ts.get_component("1"), vec!["1", "2", "3"]);
-        assert_eq!(ts.get_component("4"), vec!["4", "5"]);
-        assert_eq!(ts.get_component("6"), vec!["6", "7"]);
-        assert_eq!(ts.get_component("8"), vec!["8"]);
     }
 }

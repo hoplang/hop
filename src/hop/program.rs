@@ -165,37 +165,37 @@ impl Program {
         &self.source_code
     }
 
-    fn typecheck_module(&mut self, module_name: &str) {
-        let ast = match self.asts.get(module_name) {
-            Some(module) => module,
-            None => return,
-        };
+    fn typecheck_modules(&mut self, modules: &[String]) {
+        for module_name in modules {
+            let ast = match self.asts.get(module_name) {
+                Some(module) => module,
+                None => return,
+            };
 
-        let type_errors = self.type_errors.entry(module_name.to_string()).or_default();
-        let type_annotations = self
-            .type_annotations
-            .entry(module_name.to_string())
-            .or_default();
+            let type_errors = self.type_errors.entry(module_name.to_string()).or_default();
+            let type_annotations = self
+                .type_annotations
+                .entry(module_name.to_string())
+                .or_default();
 
-        type_errors.clear();
-        type_annotations.clear();
-
-        let component_type_info =
-            typecheck(ast, &self.type_checker_state, type_errors, type_annotations);
-        self.type_checker_state
-            .insert(module_name.to_string(), component_type_info);
-
-        let scc = self.topo_sorter.get_component(module_name);
-
-        if scc.len() > 1 {
             type_errors.clear();
-            for import_node in ast.get_imports() {
-                type_errors.push(TypeError::import_cycle(
-                    module_name,
-                    &import_node.from_attr.value,
-                    scc,
-                    import_node.from_attr.range,
-                ));
+            type_annotations.clear();
+
+            let component_type_info =
+                typecheck(ast, &self.type_checker_state, type_errors, type_annotations);
+            self.type_checker_state
+                .insert(module_name.to_string(), component_type_info);
+
+            if modules.len() > 1 {
+                type_errors.clear();
+                for import_node in ast.get_imports() {
+                    type_errors.push(TypeError::import_cycle(
+                        module_name,
+                        &import_node.from_attr.value,
+                        modules,
+                        import_node.from_attr.range,
+                    ));
+                }
             }
         }
     }
@@ -229,15 +229,20 @@ impl Program {
             .map(|import_node| import_node.from_attr.value.clone())
             .collect::<HashSet<String>>();
 
-        self.topo_sorter.update_node(module_name, dependencies);
-
-        let dependent_modules = self.topo_sorter.get_transitive_dependents(module_name);
-
-        for module_name in &dependent_modules {
-            self.typecheck_module(module_name)
+        let components = self.topo_sorter.update_node(module_name, dependencies);
+        for c in components {
+            self.typecheck_modules(&c);
         }
 
-        dependent_modules
+        vec![]
+
+        //let dependent_modules = self.topo_sorter.get_transitive_dependents(module_name);
+        //
+        //for module_name in &dependent_modules {
+        //    self.typecheck_module(module_name)
+        //}
+        //
+        //dependent_modules
     }
 
     pub fn get_hover_info(&self, module_name: &str, position: Position) -> Option<HoverInfo> {
