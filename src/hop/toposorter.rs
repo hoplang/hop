@@ -32,6 +32,7 @@ impl TopoSorter {
 
         // Add new reverse dependencies
         for dep in &dependencies {
+            self.nodes.insert(dep.to_string());
             self.dependents
                 .entry(dep.to_string())
                 .or_default()
@@ -174,84 +175,88 @@ mod tests {
 
     #[test]
     fn test_scc_simple() {
-        let mut toposorter = TopoSorter::default();
+        let mut ts = TopoSorter::default();
         // a → b → c
-        toposorter.update_node("a", HashSet::from(["b".to_string()]));
-        toposorter.update_node("b", HashSet::from(["c".to_string()]));
+        ts.update_node("a", HashSet::from(["b".to_string()]));
+        ts.update_node("b", HashSet::from(["c".to_string()]));
 
-        assert_eq!(toposorter.get_component("a"), vec!["a"]);
-        assert_eq!(toposorter.get_component("b"), vec!["b"]);
-        assert_eq!(toposorter.get_component("c"), vec!["c"]);
+        assert_eq!(ts.get_component("a"), vec!["a"]);
+        assert_eq!(ts.get_component("b"), vec!["b"]);
+        assert_eq!(ts.get_component("c"), vec!["c"]);
+        assert_eq!(ts.get_transitive_dependents("c"), vec!["c", "b", "a"]);
+        assert_eq!(ts.get_transitive_dependents("b"), vec!["b", "a"]);
+        assert_eq!(ts.get_transitive_dependents("a"), vec!["a"]);
     }
 
     #[test]
     fn test_scc_with_cycle() {
-        let mut toposorter = TopoSorter::default();
+        let mut ts = TopoSorter::default();
         // a → b
         //  ↖ ↙
         //   c
-        toposorter.update_node("a", HashSet::from(["b".to_string()]));
-        toposorter.update_node("b", HashSet::from(["c".to_string()]));
-        toposorter.update_node("c", HashSet::from(["a".to_string()]));
+        ts.update_node("a", HashSet::from(["b".to_string()]));
+        ts.update_node("b", HashSet::from(["c".to_string()]));
+        ts.update_node("c", HashSet::from(["a".to_string()]));
 
-        assert_eq!(toposorter.get_component("a"), vec!["a", "b", "c"]);
-        assert_eq!(toposorter.get_component("b"), vec!["a", "b", "c"]);
-        assert_eq!(toposorter.get_component("c"), vec!["a", "b", "c"]);
+        assert_eq!(ts.get_component("a"), vec!["a", "b", "c"]);
+        assert_eq!(ts.get_component("b"), vec!["a", "b", "c"]);
+        assert_eq!(ts.get_component("c"), vec!["a", "b", "c"]);
+        assert_eq!(ts.get_transitive_dependents("b"), vec!["b", "a", "c"]);
+        assert_eq!(ts.get_transitive_dependents("c"), vec!["c", "b", "a"]);
+        assert_eq!(ts.get_transitive_dependents("a"), vec!["a", "c", "b"]);
     }
 
     #[test]
     fn test_scc_multiple_components() {
-        let mut toposorter = TopoSorter::default();
+        let mut ts = TopoSorter::default();
         // a ⇄ b
         //     ↓
         // d ⇄ c
-        toposorter.update_node("a", HashSet::from(["b".to_string()]));
-        toposorter.update_node("b", HashSet::from(["a".to_string(), "c".to_string()]));
-        toposorter.update_node("c", HashSet::from(["d".to_string()]));
-        toposorter.update_node("d", HashSet::from(["c".to_string()]));
+        ts.update_node("a", HashSet::from(["b".to_string()]));
+        ts.update_node("b", HashSet::from(["a".to_string(), "c".to_string()]));
+        ts.update_node("c", HashSet::from(["d".to_string()]));
+        ts.update_node("d", HashSet::from(["c".to_string()]));
 
-        assert_eq!(toposorter.get_component("a"), vec!["a", "b"]);
-        assert_eq!(toposorter.get_component("c"), vec!["c", "d"]);
-        assert_eq!(toposorter.get_transitive_dependents("b"), vec!["b", "a"]);
-        assert_eq!(
-            toposorter.get_transitive_dependents("d"),
-            vec!["d", "c", "b", "a"]
-        );
+        assert_eq!(ts.get_component("a"), vec!["a", "b"]);
+        assert_eq!(ts.get_component("c"), vec!["c", "d"]);
+        assert_eq!(ts.get_transitive_dependents("b"), vec!["b", "a"]);
+        assert_eq!(ts.get_transitive_dependents("d"), vec!["d", "c", "b", "a"]);
     }
 
     #[test]
     fn test_scc_disconnected_graph() {
-        let mut toposorter = TopoSorter::default();
-        toposorter.update_node("a", HashSet::new());
-        toposorter.update_node("b", HashSet::new());
-        toposorter.update_node("c", HashSet::new());
+        let mut ts = TopoSorter::default();
+        // a   b   c
+        ts.update_node("a", HashSet::new());
+        ts.update_node("b", HashSet::new());
+        ts.update_node("c", HashSet::new());
 
-        assert_eq!(toposorter.get_component("a"), vec!["a"]);
-        assert_eq!(toposorter.get_component("b"), vec!["b"]);
-        assert_eq!(toposorter.get_component("c"), vec!["c"]);
+        assert_eq!(ts.get_component("a"), vec!["a"]);
+        assert_eq!(ts.get_component("b"), vec!["b"]);
+        assert_eq!(ts.get_component("c"), vec!["c"]);
     }
 
     #[test]
     fn test_scc_complex_graph() {
-        let mut toposorter = TopoSorter::default();
-        toposorter.update_node("1", HashSet::from(["2".to_string()]));
-        toposorter.update_node("2", HashSet::from(["3".to_string()]));
-        toposorter.update_node("3", HashSet::from(["1".to_string()]));
-        toposorter.update_node(
+        let mut ts = TopoSorter::default();
+        ts.update_node("1", HashSet::from(["2".to_string()]));
+        ts.update_node("2", HashSet::from(["3".to_string()]));
+        ts.update_node("3", HashSet::from(["1".to_string()]));
+        ts.update_node(
             "4",
             HashSet::from(["2".to_string(), "3".to_string(), "5".to_string()]),
         );
-        toposorter.update_node("5", HashSet::from(["4".to_string(), "6".to_string()]));
-        toposorter.update_node("6", HashSet::from(["3".to_string(), "7".to_string()]));
-        toposorter.update_node("7", HashSet::from(["6".to_string()]));
-        toposorter.update_node(
+        ts.update_node("5", HashSet::from(["4".to_string(), "6".to_string()]));
+        ts.update_node("6", HashSet::from(["3".to_string(), "7".to_string()]));
+        ts.update_node("7", HashSet::from(["6".to_string()]));
+        ts.update_node(
             "8",
             HashSet::from(["5".to_string(), "7".to_string(), "8".to_string()]),
         );
 
-        assert_eq!(toposorter.get_component("1"), vec!["1", "2", "3"]);
-        assert_eq!(toposorter.get_component("4"), vec!["4", "5"]);
-        assert_eq!(toposorter.get_component("6"), vec!["6", "7"]);
-        assert_eq!(toposorter.get_component("8"), vec!["8"]);
+        assert_eq!(ts.get_component("1"), vec!["1", "2", "3"]);
+        assert_eq!(ts.get_component("4"), vec!["4", "5"]);
+        assert_eq!(ts.get_component("6"), vec!["6", "7"]);
+        assert_eq!(ts.get_component("8"), vec!["8"]);
     }
 }
