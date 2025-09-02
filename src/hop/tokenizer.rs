@@ -281,7 +281,7 @@ impl<'a> Tokenizer<'a> {
                                 attributes: token_attributes,
                                 name_range: tag_name_range,
                                 expression: token_expression,
-                                range: Range::new(token_start, self.cursor.get_position()),
+                                range: first_range.extend_to(ch_range),
                             }));
                         } else {
                             self.cursor.next();
@@ -292,7 +292,7 @@ impl<'a> Tokenizer<'a> {
                                 attributes: token_attributes,
                                 name_range: tag_name_range,
                                 expression: token_expression,
-                                range: Range::new(token_start, self.cursor.get_position()),
+                                range: first_range.extend_to(ch_range),
                             }));
                         }
                     } else if ch == '/' {
@@ -337,7 +337,7 @@ impl<'a> Tokenizer<'a> {
                         return Some(Ok(Token::ClosingTag {
                             value: token_value,
                             name_range: tag_name_range,
-                            range: Range::new(token_start, self.cursor.get_position()),
+                            range: first_range.extend_to(ch_range),
                         }));
                     } else if ch.is_whitespace() {
                         self.cursor.next();
@@ -362,7 +362,7 @@ impl<'a> Tokenizer<'a> {
                         return Some(Ok(Token::ClosingTag {
                             value: token_value,
                             name_range: tag_name_range,
-                            range: Range::new(token_start, self.cursor.get_position()),
+                            range: first_range.extend_to(ch_range),
                         }));
                     } else {
                         self.cursor.next();
@@ -401,7 +401,7 @@ impl<'a> Tokenizer<'a> {
                                 attributes: token_attributes,
                                 expression: token_expression,
                                 name_range: tag_name_range,
-                                range: Range::new(token_start, self.cursor.get_position()),
+                                range: first_range.extend_to(ch_range),
                             }));
                         } else {
                             self.cursor.next();
@@ -412,7 +412,7 @@ impl<'a> Tokenizer<'a> {
                                 attributes: token_attributes,
                                 expression: token_expression,
                                 name_range: tag_name_range,
-                                range: Range::new(token_start, self.cursor.get_position()),
+                                range: first_range.extend_to(ch_range),
                             }));
                         }
                     } else {
