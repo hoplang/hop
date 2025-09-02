@@ -80,24 +80,20 @@ enum TokenizerState {
 
 struct Cursor<'a> {
     chars: Peekable<Chars<'a>>,
-    /// Current line number (1-indexed)
-    line: usize,
-    /// Current column index (1-indexed, in bytes)
-    column: usize,
+    position: Position,
 }
 
 impl<'a> Cursor<'a> {
     fn new(input: &'a str) -> Self {
         Self {
             chars: input.chars().peekable(),
-            line: 1,
-            column: 1,
+            position: Position::default(),
         }
     }
 
     fn peek(&mut self) -> Option<(char, Range)> {
-        let start = Position::new(self.line, self.column);
-        let mut end = Position::new(self.line, self.column);
+        let start = self.position;
+        let mut end = self.position;
         let ch = self.chars.peek()?;
         let byte_len = ch.len_utf8();
         if *ch == '\n' {
@@ -110,16 +106,16 @@ impl<'a> Cursor<'a> {
     }
 
     fn next(&mut self) -> Option<(char, Range)> {
-        let start = Position::new(self.line, self.column);
+        let start = self.position;
         let ch = self.chars.next()?;
         let byte_len = ch.len_utf8();
         if ch == '\n' {
-            self.line += 1;
-            self.column = 1;
+            self.position.line += 1;
+            self.position.column = 1;
         } else {
-            self.column += byte_len;
+            self.position.column += byte_len;
         }
-        Some((ch, Range::new(start, Position::new(self.line, self.column))))
+        Some((ch, Range::new(start, self.position)))
     }
 
     fn next_n(&mut self, n: usize) {
@@ -129,10 +125,7 @@ impl<'a> Cursor<'a> {
     }
 
     fn get_position(&self) -> Position {
-        Position {
-            line: self.line,
-            column: self.column,
-        }
+        self.position
     }
 
     fn matches_str(&self, s: &str) -> bool {
