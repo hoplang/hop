@@ -150,18 +150,6 @@ impl Program {
         program
     }
 
-    pub fn get_parse_errors(&self) -> &HashMap<String, Vec<ParseError>> {
-        &self.parse_errors
-    }
-
-    pub fn get_type_errors(&self) -> &HashMap<String, Vec<TypeError>> {
-        &self.type_checker.type_errors
-    }
-
-    pub fn get_source_code(&self) -> &HashMap<String, String> {
-        &self.source_code
-    }
-
     pub fn update_module(&mut self, module_name: &str, source_code: &str) -> Vec<String> {
         // Parse the module
         let parse_errors = self
@@ -200,6 +188,18 @@ impl Program {
 
         // Return all modules that have been re-typechecked
         dependent_modules.into_iter().flatten().collect()
+    }
+
+    pub fn get_parse_errors(&self) -> &HashMap<String, Vec<ParseError>> {
+        &self.parse_errors
+    }
+
+    pub fn get_type_errors(&self) -> &HashMap<String, Vec<TypeError>> {
+        &self.type_checker.type_errors
+    }
+
+    pub fn get_source_code(&self) -> &HashMap<String, String> {
+        &self.source_code
     }
 
     pub fn get_hover_info(&self, module_name: &str, position: Position) -> Option<HoverInfo> {
