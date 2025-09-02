@@ -606,10 +606,18 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                 }
             }
         }
-        (DopToken::LeftParen, _) => {
+        (DopToken::LeftParen, left_paren_range) => {
             let expr = parse_equality(tokenizer)?;
-            expect_token(tokenizer, DopToken::RightParen)?;
-            Ok(expr)
+            match tokenizer.next().ok_or_else(|| {
+                ParseError::unmatched_token(&DopToken::LeftParen, left_paren_range)
+            })?? {
+                (DopToken::RightParen, _) => Ok(expr),
+                (t, range) => Err(ParseError::expected_token_but_got(
+                    &DopToken::RightParen,
+                    &t,
+                    range,
+                )),
+            }
         }
         (token, range) => Err(ParseError::unexpected_token(&token, range)),
     }
@@ -812,9 +820,9 @@ mod tests {
         check_parse_expr(
             "(x == y",
             expect![[r#"
-                error: Unexpected end of expression
+                error: Unmatched '('
                 (x == y
-                ^^^^^^^
+                ^
             "#]],
         );
     }
