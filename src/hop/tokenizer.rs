@@ -96,16 +96,27 @@ impl Cursor {
         }
     }
 
-    fn peek(&self) -> char {
+    fn peek(&self) -> Option<(char, Range)> {
         if self.is_at_end() {
-            '\0'
+            None
         } else {
-            self.input[self.position]
+            let start = Position::new(self.line, self.column);
+            let mut end = Position::new(self.line, self.column);
+            let ch = self.input[self.position];
+            let byte_len = ch.len_utf8();
+            if ch == '\n' {
+                end.line += 1;
+                end.column = 1;
+            } else {
+                end.column += byte_len;
+            }
+            Some((ch, Range::new(start, end)))
         }
     }
 
-    fn advance(&mut self) {
+    fn advance(&mut self) -> Option<(char, Range)> {
         if !self.is_at_end() {
+            let start = Position::new(self.line, self.column);
             let ch = self.input[self.position];
             let byte_len = ch.len_utf8();
             if ch == '\n' {
@@ -115,6 +126,9 @@ impl Cursor {
                 self.column += byte_len;
             }
             self.position += 1;
+            Some((ch, Range::new(start, Position::new(self.line, self.column))))
+        } else {
+            None
         }
     }
 
@@ -180,7 +194,7 @@ impl Tokenizer {
         let mut attribute_value_start = self.cursor.get_position();
         let mut doctype_name_buffer = String::new();
         while !self.cursor.is_at_end() {
-            let ch = self.cursor.peek();
+            let (ch, ch_range) = self.cursor.peek()?;
 
             match self.state {
                 TokenizerState::Text => {
@@ -188,21 +202,23 @@ impl Tokenizer {
                         if !token_value.is_empty() {
                             return Some(Ok(Token::Text {
                                 value: token_value,
-                                range: Range::new(token_start, self.cursor.get_position()),
+                                range: Range::new(token_start, ch_range.start),
                             }));
                         }
                         self.cursor.advance();
-                        tag_name_start = self.cursor.get_position();
+                        let (_, name_start) = self.cursor.peek().unwrap();
+                        tag_name_start = name_start.start;
                         self.state = TokenizerState::TagStart;
                     } else if ch == '{' {
                         if !token_value.is_empty() {
                             return Some(Ok(Token::Text {
                                 value: token_value,
-                                range: Range::new(token_start, self.cursor.get_position()),
+                                range: Range::new(token_start, ch_range.start),
                             }));
                         }
                         self.cursor.advance();
-                        expression_start = self.cursor.get_position();
+                        let (_, expr_start) = self.cursor.peek().unwrap();
+                        expression_start = expr_start.start;
                         self.state = TokenizerState::TextExpressionContent;
                     } else {
                         token_value.push(ch);
