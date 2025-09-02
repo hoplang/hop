@@ -234,12 +234,11 @@ impl Tokenizer {
                         self.cursor.next();
                         self.state = TokenizerState::MarkupDeclaration;
                     } else {
-                        let start_pos = self.cursor.get_position();
                         self.cursor.next();
                         self.state = TokenizerState::Text;
                         return Some(Err(ParseError::new(
                             "Invalid character after '<'".to_string(),
-                            Range::new(start_pos, self.cursor.get_position()),
+                            ch_range,
                         )));
                     }
                 }
@@ -286,12 +285,11 @@ impl Tokenizer {
                         self.cursor.next();
                         self.state = TokenizerState::SelfClosing;
                     } else {
-                        let start_pos = self.cursor.get_position();
                         self.cursor.next();
                         self.state = TokenizerState::Text;
                         return Some(Err(ParseError::new(
                             "Invalid character after '<'".to_string(),
-                            Range::new(start_pos, self.cursor.get_position()),
+                            ch_range,
                         )));
                     }
                 }
@@ -304,12 +302,11 @@ impl Tokenizer {
                         tag_name_range = tag_name_range.extend_to(ch_range);
                         self.state = TokenizerState::ClosingTagName;
                     } else {
-                        let start_pos = self.cursor.get_position();
                         self.cursor.next();
                         self.state = TokenizerState::Text;
                         return Some(Err(ParseError::new(
                             "Invalid character after '</'".to_string(),
-                            Range::new(start_pos, self.cursor.get_position()),
+                            ch_range,
                         )));
                     }
                 }
@@ -332,12 +329,11 @@ impl Tokenizer {
                         self.cursor.next();
                         self.state = TokenizerState::AfterClosingTagName;
                     } else {
-                        let start_pos = self.cursor.get_position();
                         self.cursor.next();
                         self.state = TokenizerState::Text;
                         return Some(Err(ParseError::new(
                             "Invalid character in end tag name".to_string(),
-                            Range::new(start_pos, self.cursor.get_position()),
+                            ch_range,
                         )));
                     }
                 }
@@ -355,12 +351,11 @@ impl Tokenizer {
                             range: Range::new(token_start, self.cursor.get_position()),
                         }));
                     } else {
-                        let start_pos = self.cursor.get_position();
                         self.cursor.next();
                         self.state = TokenizerState::Text;
                         return Some(Err(ParseError::new(
                             "Invalid character after end tag name".to_string(),
-                            Range::new(start_pos, self.cursor.get_position()),
+                            ch_range,
                         )));
                     }
                 }
@@ -407,12 +402,11 @@ impl Tokenizer {
                             }));
                         }
                     } else {
-                        let start_pos = self.cursor.get_position();
                         self.cursor.next();
                         self.state = TokenizerState::Text;
                         return Some(Err(ParseError::new(
                             "Invalid character before attribute name".to_string(),
-                            Range::new(start_pos, self.cursor.get_position()),
+                            ch_range,
                         )));
                     }
                 }
@@ -524,12 +518,11 @@ impl Tokenizer {
                         self.cursor.next();
                         self.state = TokenizerState::SelfClosing;
                     } else {
-                        let start_pos = self.cursor.get_position();
                         self.cursor.next();
                         self.state = TokenizerState::Text;
                         return Some(Err(ParseError::new(
                             "Invalid character in attribute name".to_string(),
-                            Range::new(start_pos, self.cursor.get_position()),
+                            ch_range,
                         )));
                     }
                 }
@@ -544,12 +537,11 @@ impl Tokenizer {
                         self.state = TokenizerState::AttrValueSingleQuote;
                         attribute_value_start = self.cursor.get_position();
                     } else {
-                        let start_pos = self.cursor.get_position();
                         self.cursor.next();
                         self.state = TokenizerState::Text;
                         return Some(Err(ParseError::new(
                             "Expected quoted attribute name".to_string(),
-                            Range::new(start_pos, self.cursor.get_position()),
+                            ch_range,
                         )));
                     }
                 }
@@ -644,12 +636,11 @@ impl Tokenizer {
                             range: Range::new(token_start, self.cursor.get_position()),
                         }));
                     } else {
-                        let start_pos = self.cursor.get_position();
                         self.cursor.next();
                         self.state = TokenizerState::Text;
                         return Some(Err(ParseError::new(
                             "Expected '>' after '/'".to_string(),
-                            Range::new(start_pos, self.cursor.get_position()),
+                            ch_range,
                         )));
                     }
                 }
@@ -662,12 +653,11 @@ impl Tokenizer {
                         self.cursor.advance_n(7);
                         self.state = TokenizerState::Doctype;
                     } else {
-                        let start_pos = self.cursor.get_position();
                         self.cursor.next();
                         self.state = TokenizerState::Text;
                         return Some(Err(ParseError::new(
                             "Invalid markup declaration".to_string(),
-                            Range::new(start_pos, self.cursor.get_position()),
+                            ch_range,
                         )));
                     }
                 }
@@ -691,12 +681,11 @@ impl Tokenizer {
                         self.cursor.next();
                         self.state = TokenizerState::BeforeDoctypeName;
                     } else {
-                        let start_pos = self.cursor.get_position();
                         self.cursor.next();
                         self.state = TokenizerState::Text;
                         return Some(Err(ParseError::new(
                             "Expected whitespace after DOCTYPE".to_string(),
-                            Range::new(start_pos, self.cursor.get_position()),
+                            ch_range,
                         )));
                     }
                 }
@@ -711,12 +700,11 @@ impl Tokenizer {
                         self.cursor.next();
                         self.state = TokenizerState::DoctypeName;
                     } else {
-                        let start_pos = self.cursor.get_position();
                         self.cursor.next();
                         self.state = TokenizerState::Text;
                         return Some(Err(ParseError::new(
                             "Expected DOCTYPE name".to_string(),
-                            Range::new(start_pos, self.cursor.get_position()),
+                            ch_range,
                         )));
                     }
                 }
@@ -737,12 +725,11 @@ impl Tokenizer {
                                 range: Range::new(token_start, self.cursor.get_position()),
                             }));
                         } else {
-                            let start_pos = self.cursor.get_position();
                             self.cursor.next();
                             self.state = TokenizerState::Text;
                             return Some(Err(ParseError::new(
                                 "Invalid DOCTYPE name".to_string(),
-                                Range::new(start_pos, self.cursor.get_position()),
+                                ch_range,
                             )));
                         }
                     } else {
