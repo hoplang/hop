@@ -40,6 +40,10 @@ impl Range {
         Range { start, end }
     }
 
+    pub fn extend_to(&self, range: Range) -> Range {
+        Range::new(self.start, range.end)
+    }
+
     pub fn contains(&self, position: Position) -> bool {
         position >= self.start && position < self.end
     }
@@ -337,7 +341,7 @@ impl Annotated for ParseError {
     }
 }
 
-// Escape HTML special characters to prevent XSS attacks
+// Escape HTML special characters to prevent XSS
 // Converts &, <, >, ", and ' to their HTML entity equivalents
 pub fn escape_html(text: &str) -> String {
     text.chars()

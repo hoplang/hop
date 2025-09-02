@@ -121,10 +121,7 @@ impl Iterator for DopTokenizer<'_> {
                 '!' => Ok((DopToken::Not, start_range)),
                 '=' => {
                     if let Some((_, end_range)) = self.cursor.next_if(|(ch, _)| *ch == '=') {
-                        return Ok((
-                            DopToken::Equal,
-                            Range::new(start_range.start, end_range.end),
-                        ));
+                        return Ok((DopToken::Equal, start_range.extend_to(end_range)));
                     }
                     Err(ParseError::new(
                         "Expected '==' but found single '='".to_string(),
@@ -139,13 +136,12 @@ impl Iterator for DopTokenizer<'_> {
                         result.push(ch);
                     }
                     match self.cursor.next() {
-                        None => Err(ParseError::unterminated_string_literal(Range::new(
-                            start_range.start,
-                            end_range.end,
-                        ))),
+                        None => Err(ParseError::unterminated_string_literal(
+                            start_range.extend_to(end_range),
+                        )),
                         Some(('\'', end_range)) => Ok((
                             DopToken::StringLiteral(result),
-                            Range::new(start_range.start, end_range.end),
+                            start_range.extend_to(end_range),
                         )),
                         _ => unreachable!(),
                     }
@@ -174,7 +170,7 @@ impl Iterator for DopTokenizer<'_> {
                         "array" => DopToken::TypeArray,
                         _ => DopToken::Identifier(identifier),
                     };
-                    Ok((t, Range::new(start_range.start, end_range.end)))
+                    Ok((t, start_range.extend_to(end_range)))
                 }
                 ch if ch.is_ascii_digit() => {
                     let mut end_range = start_range;
@@ -197,7 +193,7 @@ impl Iterator for DopTokenizer<'_> {
                             .is_some_and(|(ch, _)| ch.is_ascii_digit())
                         {
                             return Err(ParseError::expected_digit_after_decimal_point(
-                                Range::new(start_range.start, end_range.end),
+                                start_range.extend_to(end_range),
                             ));
                         }
 
@@ -209,14 +205,13 @@ impl Iterator for DopTokenizer<'_> {
                         }
                     }
 
-                    let range = Range::new(start_range.start, end_range.end);
                     let parse_result = serde_json::Number::from_str(&number_string);
 
                     match parse_result {
-                        Ok(n) => Ok((DopToken::NumberLiteral(n), range)),
+                        Ok(n) => Ok((DopToken::NumberLiteral(n), start_range.extend_to(end_range))),
                         Err(_) => Err(ParseError::new(
                             format!("Invalid number format: {}", number_string),
-                            range,
+                            start_range.extend_to(end_range),
                         )),
                     }
                 }

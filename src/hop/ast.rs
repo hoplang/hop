@@ -405,10 +405,11 @@ impl<'a> Iterator for DepthFirstIterator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::Range;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
     use crate::test_utils::position_marker::extract_position;
+    use crate::tui::source_annotator::SimpleAnnotation;
+    use crate::{common::Range, tui::source_annotator::SourceAnnotator};
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
@@ -421,42 +422,14 @@ mod tests {
 
         let found_node = ast.find_node_at_position(position);
 
-        // Create annotations for start and end positions of the found node
         let output = if let Some(node) = found_node {
-            let range = node.range();
-
-            // Create two single-character annotations
-            // Start annotation: marks the first character of the node
-            let start_annotation = crate::tui::source_annotator::SimpleAnnotation {
-                range: Range::new(
-                    range.start,
-                    Position::new(range.start.line, range.start.column + 1),
-                ),
-                message: "start".to_string(),
+            let annotation = SimpleAnnotation {
+                range: node.range(),
+                message: "range".to_string(),
             };
+            let annotator = SourceAnnotator::new().without_location();
 
-            // End annotation: marks the last character of the node (end is exclusive)
-            // We need to handle the case where end.column might be 1 (empty node)
-            let end_col = if range.end.column > 1 {
-                range.end.column - 1
-            } else {
-                range.end.column
-            };
-            let end_annotation = crate::tui::source_annotator::SimpleAnnotation {
-                range: Range::new(
-                    Position::new(range.end.line, end_col),
-                    Position::new(range.end.line, end_col + 1),
-                ),
-                message: "end".to_string(),
-            };
-
-            let annotator = crate::tui::source_annotator::SourceAnnotator::new().without_location();
-
-            annotator.annotate::<crate::tui::source_annotator::SimpleAnnotation>(
-                None,
-                &source,
-                &[start_annotation, end_annotation],
-            )
+            annotator.annotate(None, &source, &[annotation])
         } else {
             "No node found at position".to_string()
         };
@@ -474,13 +447,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                start
+                range
                 2 |     <div>Hello World</div>
-                  |          ^
-
-                end
-                2 |     <div>Hello World</div>
-                  |                    ^
+                  |          ^^^^^^^^^^^
             "#]],
         );
     }
@@ -495,13 +464,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                start
+                range
                 2 |     <div>Content</div>
-                  |     ^
-
-                end
-                2 |     <div>Content</div>
-                  |                      ^
+                  |     ^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -516,13 +481,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                start
+                range
                 2 |     <foo-bar>Content</foo-bar>
-                  |     ^
-
-                end
-                2 |     <foo-bar>Content</foo-bar>
-                  |                              ^
+                  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -539,13 +500,13 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                start
+                range
                 2 |     <if {true}>
-                  |     ^
-
-                end
+                  |     ^^^^^^^^^^^
+                3 |         <div/>
+                  | ^^^^^^^^^^^^^^
                 4 |     </if>
-                  |         ^
+                  | ^^^^^^^^^
             "#]],
         );
     }
@@ -562,13 +523,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                start
+                range
                 3 |         <span>Nested text</span>
-                  |               ^
-
-                end
-                3 |         <span>Nested text</span>
-                  |                         ^
+                  |               ^^^^^^^^^^^
             "#]],
         );
     }
@@ -583,13 +540,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                start
+                range
                 2 |     <slot-default/>
-                  |     ^
-
-                end
-                2 |     <slot-default/>
-                  |                   ^
+                  |     ^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -618,13 +571,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                start
+                range
                 2 |     <!DOCTYPE html>
-                  |     ^
-
-                end
-                2 |     <!DOCTYPE html>
-                  |                   ^
+                  |     ^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -645,13 +594,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                start
+                range
                 5 |                 <span>{item}</span>
-                  |                       ^
-
-                end
-                5 |                 <span>{item}</span>
-                  |                            ^
+                  |                       ^^^^^^
             "#]],
         );
     }
@@ -666,13 +611,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                start
+                range
                 2 |     <p>Some text <br> more text</p>
-                  |                  ^
-
-                end
-                2 |     <p>Some text <br> more text</p>
-                  |                     ^
+                  |                  ^^^^
             "#]],
         );
     }
@@ -687,13 +628,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                start
+                range
                 2 |     <div><span>Hello</span> <strong>World</strong></div>
-                  |          ^
-
-                end
-                2 |     <div><span>Hello</span> <strong>World</strong></div>
-                  |                           ^
+                  |          ^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -708,13 +645,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                start
+                range
                 2 |     <div><span>Hello</span> <strong>World</strong></div>
-                  |                             ^
-
-                end
-                2 |     <div><span>Hello</span> <strong>World</strong></div>
-                  |                                                  ^
+                  |                             ^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -729,13 +662,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                start
+                range
                 2 |     <div><span>Hello</span> and <strong>World</strong></div>
-                  |                            ^
-
-                end
-                2 |     <div><span>Hello</span> and <strong>World</strong></div>
-                  |                                ^
+                  |                            ^^^^^
             "#]],
         );
     }
@@ -766,13 +695,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                start
+                range
                 10 |                                     <em>Deep {item.name} text</em>
-                   |                                              ^
-
-                end
-                10 |                                     <em>Deep {item.name} text</em>
-                   |                                                        ^
+                   |                                              ^^^^^^^^^^^
             "#]],
         );
     }
@@ -797,13 +722,15 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                start
+                range
                  6 |                 <span>
-                   |                 ^
-
-                end
+                   |                 ^^^^^^
+                 7 |                     <div></div>
+                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                 8 |                     <em>Deep text</em>
+                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                  9 |                 </span>
-                   |                       ^
+                   | ^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -818,13 +745,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                start
+                range
                 2 |     <p>Hello <em>{user.name}</em>, welcome to <strong>{site.title}</strong>!</p>
-                  |                                               ^
-
-                end
-                2 |     <p>Hello <em>{user.name}</em>, welcome to <strong>{site.title}</strong>!</p>
-                  |                                                                           ^
+                  |                                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -839,13 +762,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                start
+                range
                 2 |     <div><user-card {data: user}><span>Content</span></user-card> more text</div>
-                  |                                        ^
-
-                end
-                2 |     <div><user-card {data: user}><span>Content</span></user-card> more text</div>
-                  |                                              ^
+                  |                                        ^^^^^^^
             "#]],
         );
     }
@@ -868,13 +787,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                start
+                range
                  6 |                     <span>{role}</span>
-                   |                     ^
-
-                end
-                 6 |                     <span>{role}</span>
-                   |                                       ^
+                   |                     ^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -892,13 +807,9 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                start
+                range
                 3 |         <input type="text" placeholder="Enter name" required />
-                  |         ^
-
-                end
-                3 |         <input type="text" placeholder="Enter name" required />
-                  |                                                               ^
+                  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -913,13 +824,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                start
+                range
                 2 |     <div>First</div> <div>Second</div>
-                  |                      ^
-
-                end
-                2 |     <div>First</div> <div>Second</div>
-                  |                                      ^
+                  |                      ^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
