@@ -193,47 +193,54 @@ impl Tokenizer {
             let (ch, ch_range) = self.cursor.peek().unwrap();
 
             match self.state {
-                TokenizerState::Text => {
-                    if ch == '<' {
+                TokenizerState::Text => match ch {
+                    '<' => {
                         if !token_value.is_empty() {
                             return Some(Ok(Token::Text {
                                 value: token_value,
                                 range: Range::new(token_start, ch_range.start),
                             }));
+                        } else {
+                            self.cursor.next();
+                            self.state = TokenizerState::TagStart;
                         }
-                        self.cursor.next();
-                        self.state = TokenizerState::TagStart;
-                    } else if ch == '{' {
+                    }
+                    '{' => {
                         if !token_value.is_empty() {
                             return Some(Ok(Token::Text {
                                 value: token_value,
                                 range: Range::new(token_start, ch_range.start),
                             }));
+                        } else {
+                            self.cursor.next();
+                            let (_, expr_start) = self.cursor.peek().unwrap();
+                            expression_start = expr_start.start;
+                            self.state = TokenizerState::TextExpressionContent;
                         }
+                    }
+                    ch => {
                         self.cursor.next();
-                        let (_, expr_start) = self.cursor.peek().unwrap();
-                        expression_start = expr_start.start;
-                        self.state = TokenizerState::TextExpressionContent;
-                    } else {
                         token_value.push(ch);
-                        self.cursor.next();
                         self.state = TokenizerState::Text;
                     }
-                }
+                },
 
-                TokenizerState::TagStart => {
-                    if ch.is_ascii_alphabetic() {
-                        token_value.push(ch);
-                        self.cursor.next();
-                        tag_name_range = ch_range;
-                        self.state = TokenizerState::OpeningTagName;
-                    } else if ch == '/' {
+                TokenizerState::TagStart => match ch {
+                    '/' => {
                         self.cursor.next();
                         self.state = TokenizerState::ClosingTagStart;
-                    } else if ch == '!' {
+                    }
+                    '!' => {
                         self.cursor.next();
                         self.state = TokenizerState::MarkupDeclaration;
-                    } else {
+                    }
+                    ch if ch.is_ascii_alphabetic() => {
+                        self.cursor.next();
+                        token_value.push(ch);
+                        tag_name_range = ch_range;
+                        self.state = TokenizerState::OpeningTagName;
+                    }
+                    _ => {
                         self.cursor.next();
                         self.state = TokenizerState::Text;
                         return Some(Err(ParseError::new(
@@ -241,7 +248,7 @@ impl Tokenizer {
                             ch_range,
                         )));
                     }
-                }
+                },
 
                 TokenizerState::OpeningTagName => {
                     if ch == '-' || ch.is_ascii_alphanumeric() {
