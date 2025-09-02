@@ -11,25 +11,32 @@ pub struct TopoSorter {
 
 impl TopoSorter {
     /// Update the state of a given node in the graph.
+    ///
+    /// Time complexity: O(D + V + E) where D is the number of old dependencies to clear
+    /// and V and E is the number of nodes and edges in the graph after the update.
     pub fn update_node(&mut self, node: &str, dependencies: HashSet<String>) {
         self.nodes.insert(node.to_string());
-        let old_dependencies = self.dependencies.entry(node.to_string()).or_default();
-        // Clear
-        for dep in old_dependencies.iter() {
-            self.dependents
-                .entry(dep.to_string())
-                .or_default()
-                .remove(node);
+        
+        // Remove old reverse dependencies
+        if let Some(old_deps) = self.dependencies.get(node) {
+            for dep in old_deps {
+                if let Some(dependents) = self.dependents.get_mut(dep) {
+                    dependents.remove(node);
+                }
+            }
         }
-        old_dependencies.clear();
-        // Add
+        
+        // Set new dependencies
+        self.dependencies.insert(node.to_string(), dependencies.clone());
+        
+        // Add new reverse dependencies
         for dep in &dependencies {
-            old_dependencies.insert(dep.to_string());
             self.dependents
                 .entry(dep.to_string())
                 .or_default()
                 .insert(node.to_string());
         }
+        
         // Calculate cycles
         self.cycles = self
             .strongly_connected_components()
@@ -39,11 +46,14 @@ impl TopoSorter {
     }
 
     // Get all nodes that have a direct or transitive dependency on a given
-    // node including the node itself.
+    // node including the node itself (the transitive closure).
     //
     // This function performs a depth-first search and the result will
     // be a topologically sorted list suitable for work scheduling (i.e.
     // dependencies first) given that the dependencies are not part of a cycles.
+    //
+    // Time complexity: O(V + E) where V is the number of reachable nodes
+    // and E is the number of edges in the reachable subgraph.
     pub fn get_transitive_dependents(&self, node: &str) -> Vec<String> {
         if !self.nodes.contains(node) {
             return Vec::new();
@@ -76,6 +86,9 @@ impl TopoSorter {
     /// Compute strongly connected components using Tarjan's algorithm.
     /// Returns a vector of SCCs, where each SCC is a vector of node names.
     /// The SCCs are returned in reverse topological order.
+    ///
+    /// Time complexity: O(V + E) where V is the number of nodes
+    /// and E is the number of edges in the graph.
     pub fn strongly_connected_components(&self) -> Vec<Vec<String>> {
         let mut index_counter = 0;
         let mut stack = Vec::new();
