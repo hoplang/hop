@@ -19,8 +19,6 @@ impl Ranged for TypeAnnotation {
     }
 }
 
-type ParameterTypes = BTreeMap<String, DopParameter>;
-
 impl Annotated for TypeAnnotation {
     fn message(&self) -> String {
         format!("{}: {}", self.name, self.typ)
@@ -30,7 +28,7 @@ impl Annotated for TypeAnnotation {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComponentTypeInformation {
     // Track the parameter types for the component.
-    parameter_types: Option<(ParameterTypes, Range)>,
+    parameter_types: Option<BTreeMap<String, DopParameter>>,
     // Track whether the component has a slot-default.
     has_slot: bool,
 }
@@ -45,7 +43,7 @@ impl State {
         &self,
         module_name: &str,
         component_name: &str,
-    ) -> Option<&(ParameterTypes, Range)> {
+    ) -> Option<&BTreeMap<String, DopParameter>> {
         self.component_type_information
             .get(module_name)?
             .get(component_name)?
@@ -121,7 +119,7 @@ fn typecheck(
     module: &HopAst,
     state: &mut State,
     errors: &mut Vec<TypeError>,
-    type_annotations: &mut Vec<TypeAnnotation>,
+    annotations: &mut Vec<TypeAnnotation>,
 ) {
     for Import {
         from_attr,
@@ -159,7 +157,7 @@ fn typecheck(
     {
         if let Some((params, _)) = params {
             for param in params.values() {
-                type_annotations.push(TypeAnnotation {
+                annotations.push(TypeAnnotation {
                     range: param.var_name.range,
                     typ: param.type_annotation.clone(),
                     name: param.var_name.value.clone(),
@@ -169,7 +167,7 @@ fn typecheck(
         }
 
         for child in children {
-            typecheck_node(child, state, &mut env, type_annotations, errors);
+            typecheck_node(child, state, &mut env, annotations, errors);
         }
 
         if let Some((params, _)) = params {
@@ -189,7 +187,7 @@ fn typecheck(
             &module.name,
             name,
             ComponentTypeInformation {
-                parameter_types: params.clone(),
+                parameter_types: params.clone().map(|(params, _)| params),
                 has_slot: *has_slot,
             },
         );
@@ -197,7 +195,7 @@ fn typecheck(
 
     for Render { children, .. } in module.get_renders() {
         for child in children {
-            typecheck_node(child, state, &mut env, type_annotations, errors);
+            typecheck_node(child, state, &mut env, annotations, errors);
         }
     }
 }
@@ -327,10 +325,10 @@ fn typecheck_node(
                 (None, Some((_, args_range))) => {
                     errors.push(TypeError::unexpected_arguments(*args_range));
                 }
-                (Some((params, _)), None) => {
+                (Some(params), None) => {
                     errors.push(TypeError::missing_arguments(params, *opening_name_range));
                 }
-                (Some((params, _)), Some((args, args_range))) => {
+                (Some(params), Some((args, args_range))) => {
                     for param in params.values() {
                         if !args.contains_key(&param.var_name.value) {
                             errors.push(TypeError::missing_required_parameter(
