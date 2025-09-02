@@ -126,7 +126,7 @@ impl<'a> Cursor<'a> {
         Some((ch, Range::new(start, Position::new(self.line, self.column))))
     }
 
-    fn advance_n(&mut self, n: usize) {
+    fn next_n(&mut self, n: usize) {
         for _ in 0..n {
             self.next();
         }
@@ -139,14 +139,13 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    fn match_str(&self, s: &str) -> bool {
+    fn matches_str(&self, s: &str) -> bool {
         let mut chars = self.chars.clone();
         for expected_char in s.chars() {
-            match chars.peek() {
-                Some(&actual_char) if actual_char == expected_char => {
-                    chars.next();
-                }
-                _ => return false,
+            if chars.peek().is_some_and(|ch| *ch == expected_char) {
+                chars.next();
+            } else {
+                return false;
             }
         }
         true
@@ -646,11 +645,11 @@ impl<'a> Tokenizer<'a> {
                 }
 
                 TokenizerState::MarkupDeclaration => {
-                    if self.cursor.match_str("--") {
-                        self.cursor.advance_n(2);
+                    if self.cursor.matches_str("--") {
+                        self.cursor.next_n(2);
                         self.state = TokenizerState::Comment;
-                    } else if self.cursor.match_str("DOCTYPE") {
-                        self.cursor.advance_n(7);
+                    } else if self.cursor.matches_str("DOCTYPE") {
+                        self.cursor.next_n(7);
                         self.state = TokenizerState::Doctype;
                     } else {
                         self.cursor.next();
@@ -663,8 +662,8 @@ impl<'a> Tokenizer<'a> {
                 }
 
                 TokenizerState::Comment => {
-                    if self.cursor.match_str("-->") {
-                        self.cursor.advance_n(3);
+                    if self.cursor.matches_str("-->") {
+                        self.cursor.next_n(3);
                         self.state = TokenizerState::Text;
                         return Some(Ok(Token::Comment {
                             range: Range::new(token_start, self.cursor.get_position()),
@@ -744,7 +743,7 @@ impl<'a> Tokenizer<'a> {
 
                 TokenizerState::RawtextData => {
                     let end_tag = format!("</{}>", self.stored_tag_name);
-                    if self.cursor.match_str(&end_tag) {
+                    if self.cursor.matches_str(&end_tag) {
                         if !token_value.is_empty() {
                             self.state = TokenizerState::RawtextData;
                             return Some(Ok(Token::Text {
@@ -754,11 +753,11 @@ impl<'a> Tokenizer<'a> {
                         } else {
                             // No accumulated content, create and return end tag token directly
                             let tag_name = self.stored_tag_name.clone();
-                            self.cursor.advance_n(2); // consume </
+                            self.cursor.next_n(2); // consume </
                             tag_name_range.start = self.cursor.get_position();
-                            self.cursor.advance_n(self.stored_tag_name.len()); // consume tag name 
+                            self.cursor.next_n(self.stored_tag_name.len()); // consume tag name 
                             tag_name_range.end = self.cursor.get_position();
-                            self.cursor.advance_n(1); // consume >
+                            self.cursor.next_n(1); // consume >
                             self.state = TokenizerState::Text;
                             return Some(Ok(Token::ClosingTag {
                                 value: tag_name,
@@ -795,10 +794,10 @@ impl<'a> Tokenizer<'a> {
 
                 TokenizerState::TagExpressionContent => {
                     // Temporary fix until we embed hop tokenizer here
-                    if self.cursor.match_str("}>")
-                        || self.cursor.match_str("} >")
-                        || self.cursor.match_str("}/>")
-                        || self.cursor.match_str("} />")
+                    if self.cursor.matches_str("}>")
+                        || self.cursor.matches_str("} >")
+                        || self.cursor.matches_str("}/>")
+                        || self.cursor.matches_str("} />")
                     {
                         // Store expression on current token and continue parsing tag
                         token_expression = Some((
