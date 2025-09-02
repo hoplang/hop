@@ -1,5 +1,5 @@
-use crate::common::{Position, Range};
-use std::{fmt, iter::Peekable, str::Chars, str::FromStr};
+use crate::common::{Position, Range, StrCursor};
+use std::{fmt, str::FromStr};
 
 use super::parser::ParseError;
 
@@ -57,44 +57,14 @@ impl fmt::Display for DopToken {
     }
 }
 
-struct Cursor<'a> {
-    chars: Chars<'a>,
-    position: Position,
-}
-
-impl<'a> Cursor<'a> {
-    fn new(input: &'a str, start_pos: Position) -> Self {
-        Self {
-            chars: input.chars(),
-            position: start_pos,
-        }
-    }
-}
-
-impl Iterator for Cursor<'_> {
-    type Item = (char, Range);
-    fn next(&mut self) -> Option<Self::Item> {
-        let start = self.position;
-        self.chars.next().map(|ch| {
-            if ch == '\n' {
-                self.position.line += 1;
-                self.position.column = 1;
-            } else {
-                self.position.column += ch.len_utf8();
-            }
-            (ch, Range::new(start, self.position))
-        })
-    }
-}
-
 pub struct DopTokenizer<'a> {
-    cursor: Peekable<Cursor<'a>>,
+    cursor: StrCursor<'a>,
 }
 
 impl<'a> DopTokenizer<'a> {
     pub fn new(input: &'a str, start_pos: Position) -> Self {
         Self {
-            cursor: Cursor::new(input, start_pos).peekable(),
+            cursor: StrCursor::new_with_position(input, start_pos),
         }
     }
 }

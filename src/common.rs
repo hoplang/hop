@@ -1,5 +1,5 @@
 use crate::{dop::DopParameter, tui::source_annotator::Annotated};
-use std::{cmp, collections::BTreeMap, fmt};
+use std::{cmp, collections::BTreeMap, fmt, iter::Peekable, str::Chars};
 
 /// Represents a position in source code
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -89,6 +89,81 @@ pub trait Ranged {
 impl Ranged for Range {
     fn range(&self) -> Range {
         *self
+    }
+}
+
+#[derive(Clone)]
+struct PositionedChars<'a> {
+    chars: Chars<'a>,
+    position: Position,
+}
+
+impl<'a> PositionedChars<'a> {
+    fn new(input: &'a str, start_pos: Position) -> Self {
+        Self {
+            chars: input.chars(),
+            position: start_pos,
+        }
+    }
+}
+
+impl Iterator for PositionedChars<'_> {
+    type Item = (char, Range);
+    fn next(&mut self) -> Option<Self::Item> {
+        let start = self.position;
+        self.chars.next().map(|ch| {
+            if ch == '\n' {
+                self.position.line += 1;
+                self.position.column = 1;
+            } else {
+                self.position.column += ch.len_utf8();
+            }
+            (ch, Range::new(start, self.position))
+        })
+    }
+}
+
+pub struct StrCursor<'a> {
+    chars: Peekable<PositionedChars<'a>>,
+}
+
+impl<'a> StrCursor<'a> {
+    pub fn new(input: &'a str) -> Self {
+        Self {
+            chars: PositionedChars::new(input, Position::default()).peekable(),
+        }
+    }
+    pub fn new_with_position(input: &'a str, pos: Position) -> Self {
+        Self {
+            chars: PositionedChars::new(input, pos).peekable(),
+        }
+    }
+    pub fn peek(&mut self) -> Option<&(char, Range)> {
+        self.chars.peek()
+    }
+    pub fn next_if(&mut self, func: impl FnOnce(&(char, Range)) -> bool) -> Option<(char, Range)> {
+        self.chars.next_if(func)
+    }
+    pub fn next_if_str_eq(&mut self, expected: &str) -> Option<Range> {
+        let mut actual_chars = self.chars.clone();
+        let mut range = self.chars.peek()?.1;
+        for expected_char in expected.chars() {
+            let (actual_char, r) = actual_chars.peek()?;
+            if *actual_char != expected_char {
+                return None;
+            }
+            range = range.extend_to(*r);
+            actual_chars.next();
+        }
+        self.chars = actual_chars;
+        Some(range)
+    }
+}
+
+impl Iterator for StrCursor<'_> {
+    type Item = (char, Range);
+    fn next(&mut self) -> Option<Self::Item> {
+        self.chars.next()
     }
 }
 
