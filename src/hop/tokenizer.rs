@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
+use std::iter::Peekable;
 use std::mem;
+use std::str::Chars;
 
 use crate::common::{ParseError, Position, Range};
 use crate::hop::ast::Attribute;
@@ -76,8 +78,8 @@ enum TokenizerState {
     TagExpressionContent,
 }
 
-struct Cursor {
-    input: Vec<char>,
+struct Cursor<'a> {
+    chars: Peekable<Chars<'a>>,
     /// Current position (0-indexed, in characters)
     position: usize,
     /// Current line number (1-indexed)
@@ -86,50 +88,42 @@ struct Cursor {
     column: usize,
 }
 
-impl Cursor {
-    fn new(input: &str) -> Self {
+impl<'a> Cursor<'a> {
+    fn new(input: &'a str) -> Self {
         Self {
-            input: input.chars().collect(),
+            chars: input.chars().peekable(),
             position: 0,
             line: 1,
             column: 1,
         }
     }
 
-    fn peek(&self) -> Option<(char, Range)> {
-        if self.position >= self.input.len() {
-            None
+    fn peek(&mut self) -> Option<(char, Range)> {
+        let start = Position::new(self.line, self.column);
+        let mut end = Position::new(self.line, self.column);
+        let ch = self.chars.peek()?;
+        let byte_len = ch.len_utf8();
+        if *ch == '\n' {
+            end.line += 1;
+            end.column = 1;
         } else {
-            let start = Position::new(self.line, self.column);
-            let mut end = Position::new(self.line, self.column);
-            let ch = self.input[self.position];
-            let byte_len = ch.len_utf8();
-            if ch == '\n' {
-                end.line += 1;
-                end.column = 1;
-            } else {
-                end.column += byte_len;
-            }
-            Some((ch, Range::new(start, end)))
+            end.column += byte_len;
         }
+        Some((*ch, Range::new(start, end)))
     }
 
     fn next(&mut self) -> Option<(char, Range)> {
-        if self.position >= self.input.len() {
-            None
+        let start = Position::new(self.line, self.column);
+        let ch = self.chars.next()?;
+        let byte_len = ch.len_utf8();
+        if ch == '\n' {
+            self.line += 1;
+            self.column = 1;
         } else {
-            let start = Position::new(self.line, self.column);
-            let ch = self.input[self.position];
-            let byte_len = ch.len_utf8();
-            if ch == '\n' {
-                self.line += 1;
-                self.column = 1;
-            } else {
-                self.column += byte_len;
-            }
-            self.position += 1;
-            Some((ch, Range::new(start, Position::new(self.line, self.column))))
+            self.column += byte_len;
         }
+        self.position += 1;
+        Some((ch, Range::new(start, Position::new(self.line, self.column))))
     }
 
     fn advance_n(&mut self, n: usize) {
@@ -146,28 +140,27 @@ impl Cursor {
     }
 
     fn match_str(&self, s: &str) -> bool {
-        if self.position + s.len() > self.input.len() {
-            return false;
-        }
-
-        let chars: Vec<char> = s.chars().collect();
-        for (i, &ch) in chars.iter().enumerate() {
-            if self.input[self.position + i] != ch {
-                return false;
+        let mut chars = self.chars.clone();
+        for expected_char in s.chars() {
+            match chars.peek() {
+                Some(&actual_char) if actual_char == expected_char => {
+                    chars.next();
+                }
+                _ => return false,
             }
         }
         true
     }
 }
 
-pub struct Tokenizer {
-    cursor: Cursor,
+pub struct Tokenizer<'a> {
+    cursor: Cursor<'a>,
     state: TokenizerState,
     stored_tag_name: String,
 }
 
-impl Tokenizer {
-    pub fn new(input: &str) -> Self {
+impl<'a> Tokenizer<'a> {
+    pub fn new(input: &'a str) -> Self {
         Self {
             cursor: Cursor::new(input),
             state: TokenizerState::Text,
@@ -840,7 +833,7 @@ impl Tokenizer {
     }
 }
 
-impl Iterator for Tokenizer {
+impl<'a> Iterator for Tokenizer<'a> {
     type Item = Result<Token, ParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {
