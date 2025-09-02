@@ -37,7 +37,6 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
             Token::Text { .. } => {}
             Token::ClosingTag { .. } => {}
             Token::Expression { .. } => {}
-            Token::Eof { .. } => {}
             Token::Comment { .. } => {}
             Token::Doctype { .. } => {}
             Token::OpeningTag {

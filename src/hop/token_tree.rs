@@ -122,9 +122,6 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
                             stack.last_mut().unwrap().tree.append_tree(completed.tree);
                         }
                     }
-                    Token::Eof { .. } => {
-                        break;
-                    }
                 }
             }
         }
