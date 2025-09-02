@@ -27,9 +27,9 @@ fn get_ui_program() -> &'static Program {
     CACHED_UI_SERVER.get_or_init(|| {
         let mut program = Program::new();
 
-        program.update_module("hop/error_pages", ERROR_TEMPLATES);
-        program.update_module("hop/ui", UI_TEMPLATES);
-        program.update_module("hop/icons", ICONS_TEMPLATES);
+        program.update_module("hop/error_pages", ERROR_TEMPLATES.to_string());
+        program.update_module("hop/ui", UI_TEMPLATES.to_string());
+        program.update_module("hop/icons", ICONS_TEMPLATES.to_string());
 
         // Check for any errors in the UI templates
         let has_parse_errors = program
@@ -225,7 +225,7 @@ fn create_file_watcher(
                     if is_hop_file {
                         // Reload all modules from scratch
                         if let Ok(modules) = files::load_all_hop_modules(&local_root) {
-                            let new_program = Program::from_modules(modules);
+                            let new_program = Program::from(modules);
                             if let Ok(mut program) = state.program.write() {
                                 *program = new_program;
                             }
@@ -268,7 +268,7 @@ pub async fn execute(
     let (reload_channel, _) = tokio::sync::broadcast::channel::<()>(100);
 
     let app_state = AppState {
-        program: Arc::new(RwLock::new(Program::from_modules(modules))),
+        program: Arc::new(RwLock::new(Program::from(modules))),
         reload_channel,
     };
 

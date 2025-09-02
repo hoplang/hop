@@ -129,16 +129,6 @@ impl TypeError {
         )
     }
 
-    pub fn imports_from_cycle(importer: &str, imported: &str, range: Range) -> Self {
-        Self::new(
-            format!(
-                "Circular import detected: {} imports from {} which is part of a dependency cycle",
-                importer, imported
-            ),
-            range,
-        )
-    }
-
     pub fn import_cycle(importer: &str, imported: &str, cycle: &[String], range: Range) -> Self {
         let cycle_display = if let Some(first) = cycle.first() {
             format!("{} → {}", cycle.join(" → "), first)
@@ -288,11 +278,11 @@ impl ParseError {
     }
 
     pub fn unexpected_end_of_expression(range: Range) -> Self {
-        Self::new(format!("Unexpected end of expression"), range)
+        Self::new("Unexpected end of expression".to_string(), range)
     }
 
     pub fn missing_attribute_value(range: Range) -> Self {
-        Self::new(format!("Missing attribute value"), range)
+        Self::new("Missing attribute value".to_string(), range)
     }
 
     pub fn unclosed_tag(tag: &str, range: Range) -> Self {

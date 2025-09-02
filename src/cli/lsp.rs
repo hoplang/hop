@@ -115,13 +115,14 @@ impl LanguageServer for HopLanguageServer {
     async fn initialized(&self, _: InitializedParams) {
         if let Some(root) = self.root.get() {
             if let Ok(all_modules) = files::load_all_hop_modules(root) {
+                let names: Vec<String> = all_modules.keys().cloned().collect();
                 {
                     let mut server = self.program.write().await;
-                    for (module_name, content) in &all_modules {
-                        server.update_module(module_name, content);
+                    for (module_name, content) in all_modules {
+                        server.update_module(&module_name, content);
                     }
                 }
-                for (module_name, _) in all_modules {
+                for module_name in names {
                     let uri = Self::module_name_to_uri(&module_name, root);
                     self.publish_diagnostics(root, &uri).await;
                 }
@@ -143,7 +144,7 @@ impl LanguageServer for HopLanguageServer {
                 let changed_modules: Vec<String>;
                 {
                     let mut server = self.program.write().await;
-                    changed_modules = server.update_module(&module_name, &change.text);
+                    changed_modules = server.update_module(&module_name, change.text);
                 }
                 for c in changed_modules {
                     let uri = Self::module_name_to_uri(&c, root);

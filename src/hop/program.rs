@@ -137,20 +137,22 @@ pub struct Program {
     type_checker: TypeChecker,
 }
 
+impl From<HashMap<String, String>> for Program {
+    fn from(modules: HashMap<String, String>) -> Self {
+        let mut program = Self::new();
+        for (module_name, source_code) in modules {
+            program.update_module(&module_name, source_code);
+        }
+        program
+    }
+}
+
 impl Program {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn from_modules(modules: HashMap<String, String>) -> Self {
-        let mut program = Self::new();
-        for (module_name, source_code) in &modules {
-            program.update_module(module_name, source_code);
-        }
-        program
-    }
-
-    pub fn update_module(&mut self, module_name: &str, source_code: &str) -> Vec<String> {
+    pub fn update_module(&mut self, module_name: &str, source_code: String) -> Vec<String> {
         // Parse the module
         let parse_errors = self
             .parse_errors
@@ -159,7 +161,7 @@ impl Program {
         parse_errors.clear();
         let ast = parse(
             module_name.to_string(),
-            Tokenizer::new(source_code),
+            Tokenizer::new(&source_code),
             parse_errors,
         );
 
@@ -516,7 +518,7 @@ mod tests {
             let module_name = file.name.replace(".hop", "");
             map.insert(module_name, file.content.clone());
         }
-        Program::from_modules(map)
+        Program::from(map)
     }
 
     fn program_from_archive(archive: &Archive) -> Program {
@@ -525,7 +527,7 @@ mod tests {
             let module_name = file.name.replace(".hop", "");
             map.insert(module_name, file.content.clone());
         }
-        Program::from_modules(map)
+        Program::from(map)
     }
 
     fn check_rename_locations(input: &str, expected: Expect) {
@@ -1163,7 +1165,8 @@ mod tests {
             indoc! {r#"
                 <a-comp>
                 </a-comp>
-            "#},
+            "#}
+            .to_string(),
         );
         // Type errors should now be empty
         check_type_errors(&program, expect![""]);
@@ -1226,7 +1229,8 @@ mod tests {
             indoc! {r#"
                 <c-comp>
                 </c-comp>
-            "#},
+            "#}
+            .to_string(),
         );
         // Type errors should now be empty
         check_type_errors(&program, expect![""]);
@@ -1238,7 +1242,8 @@ mod tests {
                 <b-comp>
                   <a-comp />
                 </b-comp>
-            "#},
+            "#}
+            .to_string(),
         );
         check_type_errors(
             &program,
@@ -1260,7 +1265,8 @@ mod tests {
             indoc! {r#"
                 <b-comp>
                 </b-comp>
-            "#},
+            "#}
+            .to_string(),
         );
         // Type errors should now be empty
         check_type_errors(&program, expect![""]);

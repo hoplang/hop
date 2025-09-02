@@ -1,5 +1,8 @@
 use anyhow::Context;
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProjectRoot(PathBuf);
@@ -136,11 +139,9 @@ pub fn module_name_to_path(module_name: &str, root: &ProjectRoot) -> PathBuf {
 }
 
 /// Load all hop modules from a base directory, returning a HashMap of module_name -> content
-pub fn load_all_hop_modules(
-    base_dir: &ProjectRoot,
-) -> anyhow::Result<std::collections::HashMap<String, String>> {
+pub fn load_all_hop_modules(base_dir: &ProjectRoot) -> anyhow::Result<HashMap<String, String>> {
     let all_hop_files = find_hop_files(base_dir)?;
-    let mut modules = std::collections::HashMap::new();
+    let mut modules = HashMap::new();
 
     for path in all_hop_files {
         let module_name = path_to_module_name(&path, base_dir)?;
