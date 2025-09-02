@@ -40,7 +40,9 @@ impl TopoSorter {
         }
 
         // Calculate strongly connected components
-        self.sccs = self.strongly_connected_components().into_iter().collect();
+        self.sccs = strongly_connected_components(&self.nodes, &self.dependencies)
+            .into_iter()
+            .collect();
     }
 
     /// Get the strongly connected component for a given node.
@@ -90,82 +92,95 @@ impl TopoSorter {
 
         result
     }
+}
 
-    /// Compute strongly connected components using Tarjan's algorithm.
-    /// Returns a vector of SCCs, where each SCC is a vector of node names.
-    /// The SCCs are returned in reverse topological order.
-    ///
-    /// Time complexity: O(V + E) where V is the number of nodes
-    /// and E is the number of edges in the graph.
-    fn strongly_connected_components(&self) -> Vec<Vec<String>> {
-        let mut index_counter = 0;
-        let mut stack = Vec::new();
-        let mut lowlinks = HashMap::new();
-        let mut index = HashMap::new();
-        let mut on_stack = HashSet::new();
-        let mut sccs = Vec::new();
+/// Compute strongly connected components using Tarjan's algorithm.
+/// Returns a vector of SCCs, where each SCC is a vector of node names.
+/// The SCCs are returned in reverse topological order.
+///
+/// Time complexity: O(V + E) where V is the number of nodes
+/// and E is the number of edges in the graph.
+fn strongly_connected_components(
+    nodes: &HashSet<String>,
+    links: &HashMap<String, HashSet<String>>,
+) -> Vec<Vec<String>> {
+    let mut index_counter = 0;
+    let mut stack = Vec::new();
+    let mut lowlinks = HashMap::new();
+    let mut index = HashMap::new();
+    let mut on_stack = HashSet::new();
+    let mut sccs = Vec::new();
 
-        for node in &self.nodes {
-            if !index.contains_key(node) {
-                self.tarjan_scc(
-                    node,
-                    &mut index_counter,
-                    &mut stack,
-                    &mut lowlinks,
-                    &mut index,
-                    &mut on_stack,
-                    &mut sccs,
-                );
-            }
+    for node in nodes {
+        if !index.contains_key(node) {
+            tarjan_scc(
+                node,
+                links,
+                &mut index_counter,
+                &mut stack,
+                &mut lowlinks,
+                &mut index,
+                &mut on_stack,
+                &mut sccs,
+            );
         }
-
-        sccs
     }
 
-    fn tarjan_scc(
-        &self,
-        node: &str,
-        index_counter: &mut usize,
-        stack: &mut Vec<String>,
-        lowlinks: &mut HashMap<String, usize>,
-        index: &mut HashMap<String, usize>,
-        on_stack: &mut HashSet<String>,
-        sccs: &mut Vec<Vec<String>>,
-    ) {
-        index.insert(node.to_string(), *index_counter);
-        lowlinks.insert(node.to_string(), *index_counter);
-        *index_counter += 1;
-        stack.push(node.to_string());
-        on_stack.insert(node.to_string());
+    sccs
+}
 
-        if let Some(deps) = self.dependencies.get(node) {
-            for dep in deps {
-                if !index.contains_key(dep) {
-                    self.tarjan_scc(dep, index_counter, stack, lowlinks, index, on_stack, sccs);
-                    let dep_lowlink = *lowlinks.get(dep).unwrap();
-                    let node_lowlink = *lowlinks.get(node).unwrap();
-                    lowlinks.insert(node.to_string(), node_lowlink.min(dep_lowlink));
-                } else if on_stack.contains(dep) {
-                    let dep_index = *index.get(dep).unwrap();
-                    let node_lowlink = *lowlinks.get(node).unwrap();
-                    lowlinks.insert(node.to_string(), node_lowlink.min(dep_index));
-                }
+fn tarjan_scc(
+    node: &str,
+    links: &HashMap<String, HashSet<String>>,
+    index_counter: &mut usize,
+    stack: &mut Vec<String>,
+    lowlinks: &mut HashMap<String, usize>,
+    index: &mut HashMap<String, usize>,
+    on_stack: &mut HashSet<String>,
+    sccs: &mut Vec<Vec<String>>,
+) {
+    index.insert(node.to_string(), *index_counter);
+    lowlinks.insert(node.to_string(), *index_counter);
+    *index_counter += 1;
+    stack.push(node.to_string());
+    on_stack.insert(node.to_string());
+
+    if let Some(deps) = links.get(node) {
+        for dep in deps {
+            if !index.contains_key(dep) {
+                tarjan_scc(
+                    dep,
+                    links,
+                    index_counter,
+                    stack,
+                    lowlinks,
+                    index,
+                    on_stack,
+                    sccs,
+                );
+                let dep_lowlink = *lowlinks.get(dep).unwrap();
+                let node_lowlink = *lowlinks.get(node).unwrap();
+                lowlinks.insert(node.to_string(), node_lowlink.min(dep_lowlink));
+            } else if on_stack.contains(dep) {
+                let dep_index = *index.get(dep).unwrap();
+                let node_lowlink = *lowlinks.get(node).unwrap();
+                lowlinks.insert(node.to_string(), node_lowlink.min(dep_index));
             }
         }
+    }
 
-        if lowlinks.get(node).unwrap() == index.get(node).unwrap() {
-            let mut scc = Vec::new();
-            loop {
-                let w = stack.pop().unwrap();
-                on_stack.remove(&w);
-                scc.push(w.clone());
-                if w == node {
-                    break;
-                }
+    if lowlinks.get(node).unwrap() == index.get(node).unwrap() {
+        let mut scc = Vec::new();
+        loop {
+            let w = stack.pop().unwrap();
+            on_stack.remove(&w);
+            scc.push(w.clone());
+            if w == node {
+                break;
             }
-            scc.sort();
-            sccs.push(scc);
         }
+        scc.sort();
+        sccs.push(scc);
     }
 }
 
