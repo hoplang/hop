@@ -80,8 +80,6 @@ enum TokenizerState {
 
 struct Cursor<'a> {
     chars: Peekable<Chars<'a>>,
-    /// Current position (0-indexed, in characters)
-    position: usize,
     /// Current line number (1-indexed)
     line: usize,
     /// Current column index (1-indexed, in bytes)
@@ -92,7 +90,6 @@ impl<'a> Cursor<'a> {
     fn new(input: &'a str) -> Self {
         Self {
             chars: input.chars().peekable(),
-            position: 0,
             line: 1,
             column: 1,
         }
@@ -122,7 +119,6 @@ impl<'a> Cursor<'a> {
         } else {
             self.column += byte_len;
         }
-        self.position += 1;
         Some((ch, Range::new(start, Position::new(self.line, self.column))))
     }
 
