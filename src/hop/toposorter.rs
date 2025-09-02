@@ -26,50 +26,19 @@ impl TopoSorter {
                 .insert(node.to_string());
         }
 
-        let closure = dfs(node, &self.reverse_dependencies);
-
-        strongly_connected_components(&closure, &self.reverse_dependencies)
+        compute_scc(node, &self.reverse_dependencies)
     }
 }
 
-/// Perform a depth-first search traversal starting from a given node.
-/// Returns nodes in the order they were visited.
+/// Compute strongly connected components using Tarjan's algorithm starting
+/// from a given node.
 ///
-/// Time complexity: O(V + E) where V is the number of reachable nodes
-/// and E is the number of edges in the reachable subgraph.
-pub fn dfs(start: &str, links: &HashMap<String, HashSet<String>>) -> HashSet<String> {
-    let mut visited = HashSet::new();
-    let mut stack = vec![start.to_string()];
-
-    while let Some(current) = stack.pop() {
-        if visited.contains(&current) {
-            continue;
-        }
-
-        visited.insert(current.clone());
-
-        if let Some(neighbors) = links.get(&current) {
-            for neighbor in neighbors {
-                if !visited.contains(neighbor) {
-                    stack.push(neighbor.clone());
-                }
-            }
-        }
-    }
-
-    visited
-}
-
-/// Compute strongly connected components using Tarjan's algorithm.
 /// Returns a vector of SCCs, where each SCC is a vector of node names.
 /// The SCCs are returned in topological order.
 ///
 /// Time complexity: O(V + E) where V is the number of nodes
 /// and E is the number of edges in the graph.
-fn strongly_connected_components(
-    nodes: &HashSet<String>,
-    links: &HashMap<String, HashSet<String>>,
-) -> Vec<Vec<String>> {
+fn compute_scc(node: &str, links: &HashMap<String, HashSet<String>>) -> Vec<Vec<String>> {
     let mut index_counter = 0;
     let mut stack = Vec::new();
     let mut lowlinks = HashMap::new();
@@ -77,20 +46,16 @@ fn strongly_connected_components(
     let mut on_stack = HashSet::new();
     let mut sccs = Vec::new();
 
-    for node in nodes {
-        if !index.contains_key(node) {
-            tarjan_scc(
-                node,
-                links,
-                &mut index_counter,
-                &mut stack,
-                &mut lowlinks,
-                &mut index,
-                &mut on_stack,
-                &mut sccs,
-            );
-        }
-    }
+    tarjan_scc(
+        node,
+        links,
+        &mut index_counter,
+        &mut stack,
+        &mut lowlinks,
+        &mut index,
+        &mut on_stack,
+        &mut sccs,
+    );
 
     sccs.reverse();
 

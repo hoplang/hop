@@ -5,14 +5,13 @@ use crate::hop::parser::parse;
 use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
-use crate::hop::typechecker::{TypeAnnotation, typecheck};
 use crate::tui::source_annotator::Annotated;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
 use super::ast::HopNode;
 use super::evaluator::HopMode;
-use super::typechecker::TypeCheckerState;
+use super::typechecker::TypeChecker;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct HoverInfo {
@@ -135,9 +134,7 @@ pub struct Program {
     source_code: HashMap<String, String>,
     parse_errors: HashMap<String, Vec<ParseError>>,
     asts: HashMap<String, HopAst>,
-    type_checker_state: HashMap<String, TypeCheckerState>,
-    type_errors: HashMap<String, Vec<TypeError>>,
-    type_annotations: HashMap<String, Vec<TypeAnnotation>>,
+    type_checker: TypeChecker,
 }
 
 impl Program {
@@ -158,46 +155,11 @@ impl Program {
     }
 
     pub fn get_type_errors(&self) -> &HashMap<String, Vec<TypeError>> {
-        &self.type_errors
+        &self.type_checker.type_errors
     }
 
     pub fn get_source_code(&self) -> &HashMap<String, String> {
         &self.source_code
-    }
-
-    fn typecheck_modules(&mut self, modules: &[String]) {
-        for module_name in modules {
-            let ast = match self.asts.get(module_name) {
-                Some(module) => module,
-                None => return,
-            };
-
-            let type_errors = self.type_errors.entry(module_name.to_string()).or_default();
-            let type_annotations = self
-                .type_annotations
-                .entry(module_name.to_string())
-                .or_default();
-
-            type_errors.clear();
-            type_annotations.clear();
-
-            let component_type_info =
-                typecheck(ast, &self.type_checker_state, type_errors, type_annotations);
-            self.type_checker_state
-                .insert(module_name.to_string(), component_type_info);
-
-            if modules.len() > 1 {
-                type_errors.clear();
-                for import_node in ast.get_imports() {
-                    type_errors.push(TypeError::import_cycle(
-                        module_name,
-                        &import_node.from_attr.value,
-                        modules,
-                        import_node.from_attr.range,
-                    ));
-                }
-            }
-        }
     }
 
     fn parse_module(&mut self, module_name: &str, source_code: &str) {
@@ -230,23 +192,20 @@ impl Program {
             .collect::<HashSet<String>>();
 
         let components = self.topo_sorter.update_node(module_name, dependencies);
-        for c in components {
-            self.typecheck_modules(&c);
+        for c in &components {
+            let asts = c
+                .iter()
+                .filter_map(|n| self.asts.get(n))
+                .collect::<Vec<_>>();
+            self.type_checker.typecheck(&asts);
         }
 
-        vec![]
-
-        //let dependent_modules = self.topo_sorter.get_transitive_dependents(module_name);
-        //
-        //for module_name in &dependent_modules {
-        //    self.typecheck_module(module_name)
-        //}
-        //
-        //dependent_modules
+        components.into_iter().flatten().collect()
     }
 
     pub fn get_hover_info(&self, module_name: &str, position: Position) -> Option<HoverInfo> {
-        self.type_annotations
+        self.type_checker
+            .type_annotations
             .get(module_name)?
             .iter()
             .find(|a| a.contains(position))
@@ -474,7 +433,13 @@ impl Program {
         // If there's parse errors for the file we do not emit the type errors since they may be
         // non-sensical if parsing fails.
         if !found_parse_errors {
-            for error in self.type_errors.get(module_name).into_iter().flatten() {
+            for error in self
+                .type_checker
+                .type_errors
+                .get(module_name)
+                .into_iter()
+                .flatten()
+            {
                 diagnostics.push(Diagnostic {
                     message: error.message.clone(),
                     range: error.range,

@@ -634,10 +634,9 @@ fn trim_raw_string(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hop::ast::HopAst;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
-    use crate::hop::typechecker::typecheck;
+    use crate::hop::{ast::HopAst, typechecker::TypeChecker};
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use serde_json::json;
@@ -660,27 +659,21 @@ mod tests {
             asts.insert(module_name, ast);
         }
 
-        // Type check all modules in sequence (inputs are already topologically sorted)
-        let mut type_checker_state = HashMap::new();
+        let mut typechecker = TypeChecker::default();
 
         for file in archive.iter() {
             let module_name = file.name.replace(".hop", "");
             let ast = asts.get(&module_name).unwrap();
-            let mut type_errors = Vec::new();
-            let mut type_annotations = Vec::new();
 
-            let component_type_info = typecheck(
-                ast,
-                &type_checker_state,
-                &mut type_errors,
-                &mut type_annotations,
-            );
+            typechecker.typecheck(&[ast]);
 
-            if !type_errors.is_empty() {
-                panic!("Type errors in {}: {:?}", module_name, type_errors);
+            if !typechecker.type_errors.get(&ast.name).unwrap().is_empty() {
+                panic!(
+                    "Type errors in {}: {:?}",
+                    module_name,
+                    typechecker.type_errors.get(&ast.name).unwrap()
+                );
             }
-
-            type_checker_state.insert(module_name.clone(), component_type_info);
         }
 
         asts
