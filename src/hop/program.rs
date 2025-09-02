@@ -185,17 +185,17 @@ impl Program {
         self.type_checker_state
             .insert(module_name.to_string(), component_type_info);
 
-        for cycle in &self.topo_sorter.cycles {
-            if cycle.iter().any(|v| v == module_name) {
-                type_errors.clear();
-                for import_node in ast.get_imports() {
-                    type_errors.push(TypeError::import_cycle(
-                        module_name,
-                        &import_node.from_attr.value,
-                        cycle,
-                        import_node.from_attr.range,
-                    ));
-                }
+        let scc = self.topo_sorter.get_component(module_name);
+
+        if scc.len() > 1 {
+            type_errors.clear();
+            for import_node in ast.get_imports() {
+                type_errors.push(TypeError::import_cycle(
+                    module_name,
+                    &import_node.from_attr.value,
+                    scc,
+                    import_node.from_attr.range,
+                ));
             }
         }
     }

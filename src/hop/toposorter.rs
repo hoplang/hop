@@ -6,8 +6,7 @@ pub struct TopoSorter {
     nodes: HashSet<String>,
     dependencies: HashMap<String, HashSet<String>>, // a -> set of nodes that a depends on
     dependents: HashMap<String, HashSet<String>>,   // a -> set of nodes that depend on a
-    pub cycles: Vec<Vec<String>>,
-    pub sccs: Vec<Vec<String>>,
+    sccs: Vec<Vec<String>>,
 }
 
 impl TopoSorter {
@@ -39,18 +38,11 @@ impl TopoSorter {
                 .insert(node.to_string());
         }
 
-        // Calculate cycles
+        // Calculate strongly connected components
         self.sccs = self.strongly_connected_components().into_iter().collect();
-        self.cycles = self
-            .sccs
-            .clone()
-            .into_iter()
-            .filter(|v| v.len() > 1)
-            .collect();
     }
 
     /// Get the strongly connected component for a given node.
-    /// Returns None if the node is not in the graph.
     pub fn get_component(&self, node: &str) -> &[String] {
         for scc in &self.sccs {
             if scc.contains(&node.to_string()) {
@@ -183,6 +175,7 @@ mod tests {
     #[test]
     fn test_scc_simple() {
         let mut toposorter = TopoSorter::default();
+        // a → b → c
         toposorter.update_node("a", HashSet::from(["b".to_string()]));
         toposorter.update_node("b", HashSet::from(["c".to_string()]));
 
@@ -194,6 +187,9 @@ mod tests {
     #[test]
     fn test_scc_with_cycle() {
         let mut toposorter = TopoSorter::default();
+        // a → b
+        //  ↖ ↙
+        //   c
         toposorter.update_node("a", HashSet::from(["b".to_string()]));
         toposorter.update_node("b", HashSet::from(["c".to_string()]));
         toposorter.update_node("c", HashSet::from(["a".to_string()]));
@@ -206,14 +202,21 @@ mod tests {
     #[test]
     fn test_scc_multiple_components() {
         let mut toposorter = TopoSorter::default();
+        // a ⇄ b
+        //     ↓
+        // d ⇄ c
         toposorter.update_node("a", HashSet::from(["b".to_string()]));
-        toposorter.update_node("b", HashSet::from(["a".to_string()]));
+        toposorter.update_node("b", HashSet::from(["a".to_string(), "c".to_string()]));
         toposorter.update_node("c", HashSet::from(["d".to_string()]));
         toposorter.update_node("d", HashSet::from(["c".to_string()]));
-        toposorter.update_node("b", HashSet::from(["a".to_string(), "c".to_string()]));
 
         assert_eq!(toposorter.get_component("a"), vec!["a", "b"]);
         assert_eq!(toposorter.get_component("c"), vec!["c", "d"]);
+        assert_eq!(toposorter.get_transitive_dependents("b"), vec!["b", "a"]);
+        assert_eq!(
+            toposorter.get_transitive_dependents("d"),
+            vec!["d", "c", "b", "a"]
+        );
     }
 
     #[test]
