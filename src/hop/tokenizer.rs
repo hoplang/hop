@@ -469,6 +469,8 @@ impl<'a> Tokenizer<'a> {
                             self.state = TokenizerState::BeforeAttrValue;
                         }
                         (ch, ch_range) if ch.is_whitespace() => {
+                            self.cursor.next();
+                            self.state = TokenizerState::BeforeAttrName;
                             // Push current attribute
                             if let Err(err) = Self::push_attribute(
                                 self.attribute_name.consume().unwrap(),
@@ -476,10 +478,8 @@ impl<'a> Tokenizer<'a> {
                                 &mut self.attributes,
                                 ch_range.end,
                             ) {
-                                return self.fail_and_recover(err);
+                                return Some(Err(err));
                             };
-                            self.cursor.next();
-                            self.state = TokenizerState::BeforeAttrName;
                         }
                         ('>', ch_range) => {
                             // Push current attribute
@@ -489,12 +489,16 @@ impl<'a> Tokenizer<'a> {
                                 &mut self.attributes,
                                 ch_range.end,
                             ) {
-                                return self.fail_and_recover(err);
+                                // TODO: We need to handle this in a special way
+                                // and not call cursor next, since we really
+                                // would like to return both an error and a token.
+                                self.state = TokenizerState::BeforeAttrName;
+                                return Some(Err(err));
                             };
+                            self.cursor.next();
                             let (tag_name, tag_name_range) = self.tag_name.consume().unwrap();
                             if is_tag_name_with_raw_content(&tag_name) {
                                 self.stored_tag_name = tag_name.clone();
-                                self.cursor.next();
                                 self.state = TokenizerState::RawtextData;
                                 return Some(Ok(Token::OpeningTag {
                                     self_closing: false,
@@ -505,7 +509,6 @@ impl<'a> Tokenizer<'a> {
                                     range: Range::new(self.token_start, ch_range.end),
                                 }));
                             } else {
-                                self.cursor.next();
                                 self.state = TokenizerState::Text;
                                 return Some(Ok(Token::OpeningTag {
                                     self_closing: false,
@@ -518,6 +521,8 @@ impl<'a> Tokenizer<'a> {
                             }
                         }
                         ('/', ch_range) => {
+                            self.cursor.next();
+                            self.state = TokenizerState::SelfClosing;
                             // Push current attribute
                             if let Err(err) = Self::push_attribute(
                                 self.attribute_name.consume().unwrap(),
@@ -525,10 +530,8 @@ impl<'a> Tokenizer<'a> {
                                 &mut self.attributes,
                                 ch_range.end,
                             ) {
-                                return self.fail_and_recover(err);
+                                return Some(Err(err));
                             };
-                            self.cursor.next();
-                            self.state = TokenizerState::SelfClosing;
                         }
                         (_, ch_range) => {
                             self.cursor.next();
@@ -562,6 +565,7 @@ impl<'a> Tokenizer<'a> {
 
                 TokenizerState::AttrValueDoubleQuote => match self.cursor.next()? {
                     ('"', ch_range) => {
+                        self.state = TokenizerState::BeforeAttrName;
                         // Push current attribute
                         if let Err(err) = Self::push_attribute(
                             self.attribute_name.consume().unwrap(),
@@ -569,9 +573,8 @@ impl<'a> Tokenizer<'a> {
                             &mut self.attributes,
                             ch_range.end,
                         ) {
-                            return self.fail_and_recover(err);
+                            return Some(Err(err));
                         }
-                        self.state = TokenizerState::BeforeAttrName;
                     }
                     (ch, ch_range) => {
                         self.attribute_value.extend(ch, ch_range);
@@ -581,6 +584,7 @@ impl<'a> Tokenizer<'a> {
 
                 TokenizerState::AttrValueSingleQuote => match self.cursor.next()? {
                     ('\'', ch_range) => {
+                        self.state = TokenizerState::BeforeAttrName;
                         // Push current attribute
                         if let Err(err) = Self::push_attribute(
                             self.attribute_name.consume().unwrap(),
@@ -588,9 +592,8 @@ impl<'a> Tokenizer<'a> {
                             &mut self.attributes,
                             ch_range.end,
                         ) {
-                            return self.fail_and_recover(err);
+                            return Some(Err(err));
                         }
-                        self.state = TokenizerState::BeforeAttrName;
                     }
                     (ch, ch_range) => {
                         self.attribute_value.extend(ch, ch_range);
@@ -2205,9 +2208,9 @@ mod tests {
                 1 | <div class="foo" class="bar"></div>
                   |                  ^^^^^
 
-                Text
+                OpeningTag <div>
                 1 | <div class="foo" class="bar"></div>
-                  |                             ^
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
                 ClosingTag </div>
                 1 | <div class="foo" class="bar"></div>
@@ -2225,9 +2228,9 @@ mod tests {
                 1 | <input type="text" type='number'/>
                   |                    ^^^^
 
-                Text
+                OpeningTag <input>
                 1 | <input type="text" type='number'/>
-                  |                                 ^^
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
@@ -2241,9 +2244,9 @@ mod tests {
                 1 | <input required required />
                   |                 ^^^^^^^^
 
-                Text
+                OpeningTag <input>
                 1 | <input required required />
-                  |                         ^^^
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
