@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::mem;
 
-use crate::common::{ParseError, Range, Ranged, StrCursor};
+use crate::common::{ParseError, Position, Range, Ranged, StrCursor};
 use crate::hop::ast::Attribute;
 use crate::tui::source_annotator::Annotated;
 
@@ -104,10 +104,38 @@ enum TokenizerState {
     TagExpressionStart,
 }
 
+#[derive(Debug, Default)]
+struct OptionalRangedString {
+    value: Option<(String, Range)>,
+}
+
+impl OptionalRangedString {
+    fn extend(&mut self, ch: char, r: Range) {
+        match &mut self.value {
+            Some(v) => {
+                v.0.push(ch);
+                v.1 = v.1.extend_to(r);
+            }
+            None => self.value = Some((String::from(ch), r)),
+        }
+    }
+    fn consume(&mut self) -> Option<(String, Range)> {
+        mem::take(&mut self.value)
+    }
+    fn is_some(&self) -> bool {
+        self.value.is_some()
+    }
+    fn is_none(&self) -> bool {
+        self.value.is_none()
+    }
+}
+
 pub struct Tokenizer<'a> {
     cursor: StrCursor<'a>,
     state: TokenizerState,
     stored_tag_name: String,
+    text: OptionalRangedString,
+    token_start: Position,
 }
 
 impl<'a> Tokenizer<'a> {
@@ -116,47 +144,48 @@ impl<'a> Tokenizer<'a> {
             cursor: StrCursor::new(input),
             state: TokenizerState::Text,
             stored_tag_name: String::new(),
+            text: OptionalRangedString::default(),
+            token_start: Position::default(),
         }
     }
 
     fn advance(&mut self) -> Option<Result<Token, ParseError>> {
-        let (_, first_range) = self.cursor.peek()?;
-        let token_start = first_range.start;
-        let mut token_attributes = BTreeMap::new();
+        let mut attributes = BTreeMap::new();
         let mut token_expression = None;
-        let mut tag_name = String::new();
-        let mut tag_name_range = first_range;
-        let mut expression_content = String::new();
-        let mut expression_range = first_range;
-        let mut attribute_name = String::new();
-        let mut attribute_value = String::new();
-        let mut attribute_start = first_range.start;
-        let mut attribute_value_start = first_range.start;
+        let mut tag_name = OptionalRangedString::default();
+        let mut expression_content = OptionalRangedString::default();
+        let mut attribute_name = OptionalRangedString::default();
+        let mut attribute_value = OptionalRangedString::default();
+        let mut attribute_start = Position::default();
 
         loop {
             match self.state {
-                TokenizerState::Text => match self.cursor.next()? {
-                    ('<', _) => {
-                        self.state = TokenizerState::TagStart;
-                    }
-                    ('{', _) => {
-                        self.state = TokenizerState::TextExpressionStart;
-                    }
-                    (ch, start_range) => {
-                        let mut range = start_range;
-                        let mut text_content = String::from(ch);
-                        while let Some((ch, r)) =
-                            self.cursor.next_if(|(ch, _)| *ch != '{' && *ch != '<')
-                        {
-                            text_content.push(ch);
-                            range = range.extend_to(r);
+                TokenizerState::Text => {
+                    // In this state we have just seen text
+                    match self.cursor.next() {
+                        Some(('<', ch_range)) => {
+                            self.token_start = ch_range.start;
+                            self.state = TokenizerState::TagStart;
+                            if let Some((s, r)) = self.text.consume() {
+                                return Some(Ok(Token::Text { value: s, range: r }));
+                            }
                         }
-                        return Some(Ok(Token::Text {
-                            value: text_content,
-                            range,
-                        }));
+                        Some(('{', ch_range)) => {
+                            self.token_start = ch_range.start;
+                            self.state = TokenizerState::TextExpressionStart;
+                            if let Some((s, r)) = self.text.consume() {
+                                return Some(Ok(Token::Text { value: s, range: r }));
+                            }
+                        }
+                        Some((ch, ch_range)) => self.text.extend(ch, ch_range),
+                        None => {
+                            if let Some((s, r)) = self.text.consume() {
+                                return Some(Ok(Token::Text { value: s, range: r }));
+                            }
+                            return None;
+                        }
                     }
-                },
+                }
 
                 // In this state we have just seen '<'
                 TokenizerState::TagStart => match self.cursor.next()? {
@@ -167,8 +196,8 @@ impl<'a> Tokenizer<'a> {
                         self.state = TokenizerState::MarkupDeclaration;
                     }
                     (ch, ch_range) if ch.is_ascii_alphabetic() => {
-                        tag_name.push(ch);
-                        tag_name_range = ch_range;
+                        tag_name.extend(ch, ch_range);
+                        println!("TagStart -> OpeningTagName");
                         self.state = TokenizerState::OpeningTagName;
                     }
                     (_, ch_range) => {
@@ -181,119 +210,134 @@ impl<'a> Tokenizer<'a> {
                 },
 
                 // In this state we have seen '<' and at least one tag name char
-                TokenizerState::OpeningTagName => match self.cursor.next()? {
-                    ('/', _) => {
-                        self.state = TokenizerState::SelfClosing;
-                    }
-                    ('{', _) => {
-                        self.state = TokenizerState::TagExpressionStart;
-                    }
-                    (ch, ch_range) if ch == '-' || ch.is_ascii_alphanumeric() => {
-                        tag_name.push(ch);
-                        tag_name_range = tag_name_range.extend_to(ch_range);
-                    }
-                    (ch, _) if ch.is_whitespace() => {
-                        self.state = TokenizerState::BeforeAttrName;
-                    }
-                    ('>', ch_range) => {
-                        if is_tag_name_with_raw_content(&tag_name) {
-                            self.stored_tag_name = tag_name.clone();
-                            self.state = TokenizerState::RawtextData;
-                            return Some(Ok(Token::OpeningTag {
-                                tag_name,
-                                self_closing: false,
-                                attributes: token_attributes,
-                                name_range: tag_name_range,
-                                expression: token_expression,
-                                range: first_range.extend_to(ch_range),
-                            }));
-                        } else {
+                TokenizerState::OpeningTagName => {
+                    // In this state we have seen '</' and at least one tag name char
+                    debug_assert!(tag_name.is_some(), "Expected tag name to be some");
+                    match self.cursor.next()? {
+                        ('/', _) => {
+                            self.state = TokenizerState::SelfClosing;
+                        }
+                        ('{', _) => {
+                            self.state = TokenizerState::TagExpressionStart;
+                        }
+                        (ch, ch_range) if ch == '-' || ch.is_ascii_alphanumeric() => {
+                            tag_name.extend(ch, ch_range);
+                        }
+                        (ch, _) if ch.is_whitespace() => {
+                            self.state = TokenizerState::BeforeAttrName;
+                        }
+                        ('>', ch_range) => {
+                            let (tag_name, tag_name_range) = tag_name.consume().unwrap();
+                            if is_tag_name_with_raw_content(&tag_name) {
+                                self.stored_tag_name = tag_name.clone();
+                                self.state = TokenizerState::RawtextData;
+                                return Some(Ok(Token::OpeningTag {
+                                    tag_name,
+                                    name_range: tag_name_range,
+                                    self_closing: false,
+                                    attributes,
+                                    expression: token_expression,
+                                    range: Range::new(self.token_start, ch_range.end),
+                                }));
+                            } else {
+                                self.state = TokenizerState::Text;
+                                return Some(Ok(Token::OpeningTag {
+                                    tag_name,
+                                    self_closing: false,
+                                    attributes,
+                                    name_range: tag_name_range,
+                                    expression: token_expression,
+                                    range: Range::new(self.token_start, ch_range.end),
+                                }));
+                            }
+                        }
+                        (_, ch_range) => {
                             self.state = TokenizerState::Text;
-                            return Some(Ok(Token::OpeningTag {
-                                tag_name,
-                                self_closing: false,
-                                attributes: token_attributes,
-                                name_range: tag_name_range,
-                                expression: token_expression,
-                                range: first_range.extend_to(ch_range),
-                            }));
+                            // TODO: Consume tag name
+                            return Some(Err(ParseError::new(
+                                "Invalid character after '<'".to_string(),
+                                ch_range,
+                            )));
                         }
                     }
-                    (_, ch_range) => {
-                        self.state = TokenizerState::Text;
-                        return Some(Err(ParseError::new(
-                            "Invalid character after '<'".to_string(),
-                            ch_range,
-                        )));
-                    }
-                },
+                }
 
-                // In this state we have just seen '</'
-                TokenizerState::ClosingTagStart => match self.cursor.next()? {
-                    (ch, ch_range) if ch.is_ascii_alphabetic() => {
-                        tag_name_range = ch_range;
-                        tag_name.push(ch);
-                        tag_name_range = tag_name_range.extend_to(ch_range);
-                        self.state = TokenizerState::ClosingTagName;
+                TokenizerState::ClosingTagStart => {
+                    // In this state we have just seen '</'
+                    debug_assert!(tag_name.is_none(), "Expected tag name to be none");
+                    match self.cursor.next()? {
+                        (ch, ch_range) if ch.is_ascii_alphabetic() => {
+                            tag_name.extend(ch, ch_range);
+                            self.state = TokenizerState::ClosingTagName;
+                        }
+                        (_, ch_range) => {
+                            self.state = TokenizerState::Text;
+                            return Some(Err(ParseError::new(
+                                "Invalid character after '</'".to_string(),
+                                ch_range,
+                            )));
+                        }
                     }
-                    (_, ch_range) => {
-                        self.state = TokenizerState::Text;
-                        return Some(Err(ParseError::new(
-                            "Invalid character after '</'".to_string(),
-                            ch_range,
-                        )));
-                    }
-                },
+                }
 
-                // In this state we have seen '</' and at least one tag name char
-                TokenizerState::ClosingTagName => match self.cursor.next()? {
-                    (ch, ch_range) if ch == '-' || ch.is_ascii_alphanumeric() => {
-                        tag_name.push(ch);
-                        tag_name_range = tag_name_range.extend_to(ch_range);
-                        self.state = TokenizerState::ClosingTagName;
+                TokenizerState::ClosingTagName => {
+                    // In this state we have seen '</' and at least one tag name char
+                    debug_assert!(tag_name.is_some(), "Expected tag name to be some");
+                    debug_assert!(attributes.is_empty(), "Expected attributes to be empty");
+                    match self.cursor.next()? {
+                        (ch, ch_range) if ch == '-' || ch.is_ascii_alphanumeric() => {
+                            tag_name.extend(ch, ch_range);
+                            self.state = TokenizerState::ClosingTagName;
+                        }
+                        (ch, _) if ch.is_whitespace() => {
+                            self.state = TokenizerState::AfterClosingTagName;
+                        }
+                        ('>', ch_range) => {
+                            let (tag_name, tag_name_range) = tag_name.consume().unwrap();
+                            self.state = TokenizerState::Text;
+                            return Some(Ok(Token::ClosingTag {
+                                value: tag_name,
+                                name_range: tag_name_range,
+                                range: Range::new(self.token_start, ch_range.end),
+                            }));
+                        }
+                        (_, ch_range) => {
+                            self.state = TokenizerState::Text;
+                            return Some(Err(ParseError::new(
+                                "Invalid character in end tag name".to_string(),
+                                ch_range,
+                            )));
+                        }
                     }
-                    (ch, _) if ch.is_whitespace() => {
-                        self.state = TokenizerState::AfterClosingTagName;
-                    }
-                    ('>', ch_range) => {
-                        self.state = TokenizerState::Text;
-                        return Some(Ok(Token::ClosingTag {
-                            value: tag_name,
-                            name_range: tag_name_range,
-                            range: first_range.extend_to(ch_range),
-                        }));
-                    }
-                    (_, ch_range) => {
-                        self.state = TokenizerState::Text;
-                        return Some(Err(ParseError::new(
-                            "Invalid character in end tag name".to_string(),
-                            ch_range,
-                        )));
-                    }
-                },
+                }
 
-                // In this state we have seen '</' as well as the tag name and at least one
-                // whitespace char
-                TokenizerState::AfterClosingTagName => match self.cursor.next()? {
-                    (ch, _) if ch.is_whitespace() => {
-                        // skip whitespace
+                TokenizerState::AfterClosingTagName => {
+                    // In this state we have seen '</' as well as the tag name and at least one
+                    // whitespace char
+                    debug_assert!(tag_name.is_some(), "Expected tag name to be some");
+                    debug_assert!(attributes.is_empty(), "Expected attributes to be empty");
+                    match self.cursor.next()? {
+                        (ch, _) if ch.is_whitespace() => {
+                            // skip whitespace
+                        }
+                        ('>', ch_range) => {
+                            let (tag_name, tag_name_range) = tag_name.consume().unwrap();
+                            self.state = TokenizerState::Text;
+                            return Some(Ok(Token::ClosingTag {
+                                value: tag_name,
+                                name_range: tag_name_range,
+                                range: Range::new(self.token_start, ch_range.end),
+                            }));
+                        }
+                        (_, ch_range) => {
+                            self.state = TokenizerState::Text;
+                            return Some(Err(ParseError::new(
+                                "Invalid character after end tag name".to_string(),
+                                ch_range,
+                            )));
+                        }
                     }
-                    ('>', ch_range) => {
-                        self.state = TokenizerState::Text;
-                        return Some(Ok(Token::ClosingTag {
-                            value: tag_name,
-                            name_range: tag_name_range,
-                            range: first_range.extend_to(ch_range),
-                        }));
-                    }
-                    (_, ch_range) => {
-                        self.state = TokenizerState::Text;
-                        return Some(Err(ParseError::new(
-                            "Invalid character after end tag name".to_string(),
-                            ch_range,
-                        )));
-                    }
-                },
+                }
 
                 // In this state we have seen '<' as well as the tag name and at least one
                 // whitespace char
@@ -308,31 +352,31 @@ impl<'a> Tokenizer<'a> {
                         self.state = TokenizerState::SelfClosing;
                     }
                     (ch, ch_range) if ch.is_ascii_alphabetic() => {
-                        attribute_start = ch_range.start;
-                        attribute_name.push(ch);
+                        attribute_name.extend(ch, ch_range);
                         self.state = TokenizerState::AttrName;
                     }
                     ('>', ch_range) => {
+                        let (tag_name, tag_name_range) = tag_name.consume().unwrap();
                         if is_tag_name_with_raw_content(&tag_name) {
                             self.stored_tag_name = tag_name.clone();
                             self.state = TokenizerState::RawtextData;
                             return Some(Ok(Token::OpeningTag {
                                 self_closing: false,
                                 tag_name,
-                                attributes: token_attributes,
+                                attributes,
                                 expression: token_expression,
                                 name_range: tag_name_range,
-                                range: first_range.extend_to(ch_range),
+                                range: Range::new(self.token_start, ch_range.end),
                             }));
                         } else {
                             self.state = TokenizerState::Text;
                             return Some(Ok(Token::OpeningTag {
                                 self_closing: false,
                                 tag_name,
-                                attributes: token_attributes,
+                                attributes,
                                 expression: token_expression,
                                 name_range: tag_name_range,
-                                range: first_range.extend_to(ch_range),
+                                range: Range::new(self.token_start, ch_range.end),
                             }));
                         }
                     }
@@ -345,9 +389,11 @@ impl<'a> Tokenizer<'a> {
                     }
                 },
 
+                // In this state we have seen at least one character of an
+                // attribute name
                 TokenizerState::AttrName => match self.cursor.peek()? {
-                    (ch, _) if ch == '-' || ch.is_ascii_alphanumeric() => {
-                        attribute_name.push(ch);
+                    (ch, ch_range) if ch == '-' || ch.is_ascii_alphanumeric() => {
+                        attribute_name.extend(ch, ch_range);
                         self.cursor.next();
                         self.state = TokenizerState::AttrName;
                     }
@@ -357,15 +403,15 @@ impl<'a> Tokenizer<'a> {
                     }
                     (ch, ch_range) if ch.is_whitespace() => {
                         // Push current attribute
-                        let attr_name = mem::take(&mut attribute_name);
-                        if token_attributes.contains_key(&attr_name) {
+                        let (attr_name, attr_name_range) = attribute_name.consume().unwrap();
+                        if attributes.contains_key(&attr_name) {
                             self.state = TokenizerState::Text;
                             return Some(Err(ParseError::duplicate_attribute(
                                 &attr_name,
-                                Range::new(attribute_start, ch_range.start),
+                                attr_name_range,
                             )));
                         }
-                        token_attributes.insert(
+                        attributes.insert(
                             attr_name.clone(),
                             Attribute {
                                 name: attr_name,
@@ -382,18 +428,15 @@ impl<'a> Tokenizer<'a> {
                     }
                     ('>', ch_range) => {
                         // Push current attribute
-                        let attr_name = mem::take(&mut attribute_name);
-                        if token_attributes.contains_key(&attr_name) {
+                        let (attr_name, attr_name_range) = attribute_name.consume().unwrap();
+                        if attributes.contains_key(&attr_name) {
                             self.state = TokenizerState::Text;
                             return Some(Err(ParseError::duplicate_attribute(
                                 &attr_name,
-                                Range {
-                                    start: attribute_start,
-                                    end: ch_range.start,
-                                },
+                                attr_name_range,
                             )));
                         }
-                        token_attributes.insert(
+                        attributes.insert(
                             attr_name.clone(),
                             Attribute {
                                 name: attr_name,
@@ -404,6 +447,7 @@ impl<'a> Tokenizer<'a> {
                                 },
                             },
                         );
+                        let (tag_name, tag_name_range) = tag_name.consume().unwrap();
                         if is_tag_name_with_raw_content(&tag_name) {
                             self.stored_tag_name = tag_name.clone();
                             self.cursor.next();
@@ -411,10 +455,10 @@ impl<'a> Tokenizer<'a> {
                             return Some(Ok(Token::OpeningTag {
                                 self_closing: false,
                                 tag_name,
-                                attributes: token_attributes,
+                                attributes,
                                 expression: token_expression,
                                 name_range: tag_name_range,
-                                range: Range::new(token_start, ch_range.end),
+                                range: Range::new(self.token_start, ch_range.end),
                             }));
                         } else {
                             self.cursor.next();
@@ -422,24 +466,24 @@ impl<'a> Tokenizer<'a> {
                             return Some(Ok(Token::OpeningTag {
                                 self_closing: false,
                                 tag_name,
-                                attributes: token_attributes,
+                                attributes,
                                 expression: token_expression,
                                 name_range: tag_name_range,
-                                range: Range::new(token_start, ch_range.end),
+                                range: Range::new(self.token_start, ch_range.end),
                             }));
                         }
                     }
                     ('/', ch_range) => {
                         // Push current attribute
-                        let attr_name = mem::take(&mut attribute_name);
-                        if token_attributes.contains_key(&attr_name) {
+                        let (attr_name, attr_name_range) = attribute_name.consume().unwrap();
+                        if attributes.contains_key(&attr_name) {
                             self.state = TokenizerState::Text;
                             return Some(Err(ParseError::duplicate_attribute(
                                 &attr_name,
-                                Range::new(attribute_start, ch_range.start),
+                                attr_name_range,
                             )));
                         }
-                        token_attributes.insert(
+                        attributes.insert(
                             attr_name.clone(),
                             Attribute {
                                 name: attr_name,
@@ -464,13 +508,11 @@ impl<'a> Tokenizer<'a> {
                 },
 
                 TokenizerState::BeforeAttrValue => match self.cursor.next()? {
-                    ('"', ch_range) => {
+                    ('"', _) => {
                         self.state = TokenizerState::AttrValueDoubleQuote;
-                        attribute_value_start = ch_range.end;
                     }
-                    ('\'', ch_range) => {
+                    ('\'', _) => {
                         self.state = TokenizerState::AttrValueSingleQuote;
-                        attribute_value_start = ch_range.end;
                     }
                     (_, ch_range) => {
                         self.state = TokenizerState::Text;
@@ -483,29 +525,21 @@ impl<'a> Tokenizer<'a> {
 
                 TokenizerState::AttrValueDoubleQuote => match self.cursor.peek()? {
                     ('"', ch_range) => {
-                        let attribute_value_end = ch_range.start;
                         self.cursor.next();
                         // Push current attribute
-                        let attr_name = mem::take(&mut attribute_name);
-                        if token_attributes.contains_key(&attr_name) {
+                        let (attr_name, attr_name_range) = attribute_name.consume().unwrap();
+                        if attributes.contains_key(&attr_name) {
                             self.state = TokenizerState::Text;
                             return Some(Err(ParseError::duplicate_attribute(
                                 &attr_name,
-                                Range::new(attribute_start, ch_range.end),
+                                attr_name_range,
                             )));
                         }
-                        token_attributes.insert(
+                        attributes.insert(
                             attr_name.clone(),
                             Attribute {
                                 name: attr_name,
-                                value: if attribute_value_start == attribute_value_end {
-                                    None
-                                } else {
-                                    Some((
-                                        mem::take(&mut attribute_value),
-                                        Range::new(attribute_value_start, attribute_value_end),
-                                    ))
-                                },
+                                value: attribute_value.consume(),
                                 range: Range {
                                     start: attribute_start,
                                     end: ch_range.end,
@@ -515,8 +549,8 @@ impl<'a> Tokenizer<'a> {
                         attribute_start = ch_range.end;
                         self.state = TokenizerState::BeforeAttrName;
                     }
-                    (ch, _) => {
-                        attribute_value.push(ch);
+                    (ch, ch_range) => {
+                        attribute_value.extend(ch, ch_range);
                         self.cursor.next();
                         self.state = TokenizerState::AttrValueDoubleQuote;
                     }
@@ -524,39 +558,31 @@ impl<'a> Tokenizer<'a> {
 
                 TokenizerState::AttrValueSingleQuote => match self.cursor.peek()? {
                     ('\'', ch_range) => {
-                        let attribute_value_end = ch_range.start;
                         self.cursor.next();
                         // Push current attribute
-                        let attr_name = mem::take(&mut attribute_name);
-                        if token_attributes.contains_key(&attr_name) {
+                        let (attr_name, attr_name_range) = attribute_name.consume().unwrap();
+                        if attributes.contains_key(&attr_name) {
                             // TODO: We shouldn't go back to text state,
                             // we should just keep parsing the tag name
                             self.state = TokenizerState::Text;
                             return Some(Err(ParseError::duplicate_attribute(
                                 &attr_name,
-                                Range::new(attribute_start, ch_range.end),
+                                attr_name_range,
                             )));
                         }
-                        token_attributes.insert(
+                        attributes.insert(
                             attr_name.clone(),
                             Attribute {
                                 name: attr_name,
-                                value: if attribute_value_start != attribute_value_end {
-                                    Some((
-                                        mem::take(&mut attribute_value),
-                                        Range::new(attribute_value_start, attribute_value_end),
-                                    ))
-                                } else {
-                                    None
-                                },
+                                value: attribute_value.consume(),
                                 range: Range::new(attribute_start, ch_range.end),
                             },
                         );
                         attribute_start = ch_range.end;
                         self.state = TokenizerState::BeforeAttrName;
                     }
-                    (ch, _) => {
-                        attribute_value.push(ch);
+                    (ch, ch_range) => {
+                        attribute_value.extend(ch, ch_range);
                         self.cursor.next();
                         self.state = TokenizerState::AttrValueSingleQuote;
                     }
@@ -566,13 +592,14 @@ impl<'a> Tokenizer<'a> {
                     ('>', ch_range) => {
                         self.cursor.next();
                         self.state = TokenizerState::Text;
+                        let (tag_name, tag_name_range) = tag_name.consume().unwrap();
                         return Some(Ok(Token::OpeningTag {
                             self_closing: true,
                             tag_name,
-                            attributes: token_attributes,
+                            attributes,
                             expression: token_expression,
                             name_range: tag_name_range,
-                            range: Range::new(token_start, ch_range.end),
+                            range: Range::new(self.token_start, ch_range.end),
                         }));
                     }
                     (_, ch_range) => {
@@ -609,7 +636,7 @@ impl<'a> Tokenizer<'a> {
                         self.cursor.next_n(3);
                         self.state = TokenizerState::Text;
                         return Some(Ok(Token::Comment {
-                            range: Range::new(token_start, range.end),
+                            range: Range::new(self.token_start, range.end),
                         }));
                     }
                     _ => {
@@ -651,7 +678,7 @@ impl<'a> Tokenizer<'a> {
                     ('>', ch_range) => {
                         self.state = TokenizerState::Text;
                         return Some(Ok(Token::Doctype {
-                            range: Range::new(token_start, ch_range.end),
+                            range: Range::new(self.token_start, ch_range.end),
                         }));
                     }
                     (ch, _) if ch.is_ascii_alphabetic() => {
@@ -669,12 +696,13 @@ impl<'a> Tokenizer<'a> {
                 TokenizerState::RawtextData => {
                     let end_tag = format!("</{}>", self.stored_tag_name);
                     let mut text_token_value = String::new();
-                    let mut text_token_range = None;
+                    let mut text_token_range: Option<Range> = None;
                     loop {
                         if self.cursor.matches_str(&end_tag) {
                             match text_token_range {
                                 Some(r) => {
                                     self.state = TokenizerState::RawtextData;
+                                    self.token_start = r.end;
                                     return Some(Ok(Token::Text {
                                         value: text_token_value,
                                         range: r,
@@ -691,7 +719,7 @@ impl<'a> Tokenizer<'a> {
                                     return Some(Ok(Token::ClosingTag {
                                         value: tag_name,
                                         name_range,
-                                        range: Range::new(token_start, end_range.end),
+                                        range: Range::new(self.token_start, end_range.end),
                                     }));
                                 }
                             }
@@ -714,8 +742,7 @@ impl<'a> Tokenizer<'a> {
                         )));
                     }
                     (ch, ch_range) => {
-                        expression_range = ch_range;
-                        expression_content.push(ch);
+                        expression_content.extend(ch, ch_range);
                         self.state = TokenizerState::TextExpressionContent;
                     }
                 },
@@ -723,15 +750,16 @@ impl<'a> Tokenizer<'a> {
                 TokenizerState::TextExpressionContent => match self.cursor.next()? {
                     ('}', ch_range) => {
                         self.state = TokenizerState::Text;
+                        let (expression_value, expression_range) =
+                            expression_content.consume().unwrap();
                         return Some(Ok(Token::Expression {
-                            value: expression_content,
+                            value: expression_value,
                             expression_range,
-                            range: Range::new(token_start, ch_range.end),
+                            range: Range::new(self.token_start, ch_range.end),
                         }));
                     }
                     (ch, ch_range) => {
-                        expression_range = expression_range.extend_to(ch_range);
-                        expression_content.push(ch);
+                        expression_content.extend(ch, ch_range);
                         self.state = TokenizerState::TextExpressionContent;
                     }
                 },
@@ -744,8 +772,7 @@ impl<'a> Tokenizer<'a> {
                         )));
                     }
                     (ch, ch_range) => {
-                        expression_range = ch_range;
-                        expression_content.push(ch);
+                        expression_content.extend(ch, ch_range);
                         self.state = TokenizerState::TagExpressionContent;
                     }
                 },
@@ -757,15 +784,15 @@ impl<'a> Tokenizer<'a> {
                         || self.cursor.matches_str("}/>")
                         || self.cursor.matches_str("} />")
                     {
+                        let (expression_value, expression_range) =
+                            expression_content.consume().unwrap();
                         // Store expression on current token and continue parsing tag
-                        token_expression =
-                            Some((mem::take(&mut expression_content), expression_range));
+                        token_expression = Some((expression_value, expression_range));
                         self.cursor.next();
                         self.state = TokenizerState::BeforeAttrName;
                     } else {
                         let (ch, ch_range) = self.cursor.next()?;
-                        expression_range = expression_range.extend_to(ch_range);
-                        expression_content.push(ch);
+                        expression_content.extend(ch, ch_range);
                         self.state = TokenizerState::TagExpressionContent;
                     }
                 }
@@ -2151,7 +2178,7 @@ mod tests {
             expect![[r#"
                 Duplicate attribute 'class'
                 1 | <div class="foo" class="bar"></div>
-                  |                  ^^^^^^^^^^^
+                  |                  ^^^^^
 
                 Text
                 1 | <div class="foo" class="bar"></div>
@@ -2171,7 +2198,7 @@ mod tests {
             expect![[r#"
                 Duplicate attribute 'type'
                 1 | <input type="text" type='number'/>
-                  |                    ^^^^^^^^^^^^^
+                  |                    ^^^^
 
                 Text
                 1 | <input type="text" type='number'/>
