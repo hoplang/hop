@@ -340,11 +340,8 @@ impl<'a> Tokenizer<'a> {
 
                 TokenizerState::ClosingTagName => {
                     // In this state we have seen '</' and at least one tag name char
-                    debug_assert!(self.tag_name.is_some(), "Expected tag name to be some");
-                    debug_assert!(
-                        self.attributes.is_empty(),
-                        "Expected attributes to be empty"
-                    );
+                    debug_assert!(self.tag_name.is_some());
+                    debug_assert!(self.attributes.is_empty(),);
                     match self.cursor.next()? {
                         (ch, ch_range) if ch == '-' || ch.is_ascii_alphanumeric() => {
                             self.tag_name.extend(ch, ch_range);
