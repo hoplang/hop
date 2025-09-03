@@ -127,7 +127,6 @@ impl<'a> Tokenizer<'a> {
 
     fn advance(&mut self) -> Option<Result<Token, ParseError>> {
         let (_, first_range) = self.cursor.peek()?;
-        let text_range = first_range;
         let token_start = first_range.start;
         let mut token_attributes = BTreeMap::new();
         let mut token_expression = None;
