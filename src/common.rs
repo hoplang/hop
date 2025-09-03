@@ -141,6 +141,22 @@ impl<'a> StrCursor<'a> {
     pub fn peek(&mut self) -> Option<(char, Range)> {
         self.chars.peek().cloned()
     }
+
+    pub fn peek_n(&mut self, n: usize) -> Option<(String, Range)> {
+        let mut clone = self.chars.clone();
+        let mut s = String::new();
+        let mut r: Option<Range> = None;
+        for _ in 0..n {
+            let (ch, range) = clone.next()?;
+            s.push(ch);
+            r = match r {
+                Some(r) => Some(r.extend_to(range)),
+                None => Some(range),
+            }
+        }
+        Some((s, r?))
+    }
+
     pub fn next_n(&mut self, n: usize) -> Option<(String, Range)> {
         let mut s = String::new();
         let mut r = self.peek()?.1;

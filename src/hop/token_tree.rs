@@ -166,7 +166,7 @@ mod tests {
                         token: OpeningTag {
                             self_closing: false,
                             name_range: 1:2-1:5,
-                            value: "div",
+                            tag_name: "div",
                             attributes: {},
                             expression: None,
                             range: 1:1-1:6,
@@ -201,7 +201,7 @@ mod tests {
                         token: OpeningTag {
                             self_closing: false,
                             name_range: 1:2-1:5,
-                            value: "div",
+                            tag_name: "div",
                             attributes: {},
                             expression: None,
                             range: 1:1-1:6,
@@ -214,7 +214,7 @@ mod tests {
                                 token: OpeningTag {
                                     self_closing: false,
                                     name_range: 1:7-1:9,
-                                    value: "br",
+                                    tag_name: "br",
                                     attributes: {},
                                     expression: None,
                                     range: 1:6-1:10,
@@ -227,7 +227,7 @@ mod tests {
                                 token: OpeningTag {
                                     self_closing: true,
                                     name_range: 1:11-1:13,
-                                    value: "hr",
+                                    tag_name: "hr",
                                     attributes: {},
                                     expression: None,
                                     range: 1:10-1:15,
@@ -253,7 +253,7 @@ mod tests {
                         token: OpeningTag {
                             self_closing: false,
                             name_range: 1:2-1:5,
-                            value: "div",
+                            tag_name: "div",
                             attributes: {},
                             expression: None,
                             range: 1:1-1:6,
@@ -266,7 +266,7 @@ mod tests {
                                 token: OpeningTag {
                                     self_closing: false,
                                     name_range: 1:7-1:8,
-                                    value: "p",
+                                    tag_name: "p",
                                     attributes: {},
                                     expression: None,
                                     range: 1:6-1:9,
@@ -291,7 +291,7 @@ mod tests {
                                 token: OpeningTag {
                                     self_closing: false,
                                     name_range: 1:19-1:23,
-                                    value: "span",
+                                    tag_name: "span",
                                     attributes: {},
                                     expression: None,
                                     range: 1:18-1:24,
