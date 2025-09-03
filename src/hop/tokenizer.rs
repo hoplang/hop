@@ -182,16 +182,18 @@ impl<'a> Tokenizer<'a> {
 
                 // In this state we have seen '<' and at least one tag name char
                 TokenizerState::OpeningTagName => match self.cursor.next()? {
-                    (ch, ch_range) if ch == '-' || ch.is_ascii_alphanumeric() => {
-                        tag_name.push(ch);
-                        tag_name_range = tag_name_range.extend_to(ch_range);
-                        self.state = TokenizerState::OpeningTagName;
-                    }
-                    (ch, _) if ch.is_whitespace() => {
-                        self.state = TokenizerState::BeforeAttrName;
+                    ('/', _) => {
+                        self.state = TokenizerState::SelfClosing;
                     }
                     ('{', _) => {
                         self.state = TokenizerState::TagExpressionStart;
+                    }
+                    (ch, ch_range) if ch == '-' || ch.is_ascii_alphanumeric() => {
+                        tag_name.push(ch);
+                        tag_name_range = tag_name_range.extend_to(ch_range);
+                    }
+                    (ch, _) if ch.is_whitespace() => {
+                        self.state = TokenizerState::BeforeAttrName;
                     }
                     ('>', ch_range) => {
                         if is_tag_name_with_raw_content(&tag_name) {
@@ -216,9 +218,6 @@ impl<'a> Tokenizer<'a> {
                                 range: first_range.extend_to(ch_range),
                             }));
                         }
-                    }
-                    ('/', _) => {
-                        self.state = TokenizerState::SelfClosing;
                     }
                     (_, ch_range) => {
                         self.state = TokenizerState::Text;
@@ -248,14 +247,6 @@ impl<'a> Tokenizer<'a> {
 
                 // In this state we have seen '</' and at least one tag name char
                 TokenizerState::ClosingTagName => match self.cursor.next()? {
-                    ('>', ch_range) => {
-                        self.state = TokenizerState::Text;
-                        return Some(Ok(Token::ClosingTag {
-                            value: tag_name,
-                            name_range: tag_name_range,
-                            range: first_range.extend_to(ch_range),
-                        }));
-                    }
                     (ch, ch_range) if ch == '-' || ch.is_ascii_alphanumeric() => {
                         tag_name.push(ch);
                         tag_name_range = tag_name_range.extend_to(ch_range);
@@ -263,6 +254,14 @@ impl<'a> Tokenizer<'a> {
                     }
                     (ch, _) if ch.is_whitespace() => {
                         self.state = TokenizerState::AfterClosingTagName;
+                    }
+                    ('>', ch_range) => {
+                        self.state = TokenizerState::Text;
+                        return Some(Ok(Token::ClosingTag {
+                            value: tag_name,
+                            name_range: tag_name_range,
+                            range: first_range.extend_to(ch_range),
+                        }));
                     }
                     (_, ch_range) => {
                         self.state = TokenizerState::Text;
@@ -273,9 +272,11 @@ impl<'a> Tokenizer<'a> {
                     }
                 },
 
+                // In this state we have seen '</' as well as the tag name and at least one
+                // whitespace char
                 TokenizerState::AfterClosingTagName => match self.cursor.next()? {
                     (ch, _) if ch.is_whitespace() => {
-                        self.state = TokenizerState::AfterClosingTagName;
+                        // skip whitespace
                     }
                     ('>', ch_range) => {
                         self.state = TokenizerState::Text;
@@ -294,20 +295,22 @@ impl<'a> Tokenizer<'a> {
                     }
                 },
 
+                // In this state we have seen '<' as well as the tag name and at least one
+                // whitespace char
                 TokenizerState::BeforeAttrName => match self.cursor.next()? {
                     (ch, _) if ch.is_whitespace() => {
-                        self.state = TokenizerState::BeforeAttrName;
-                    }
-                    (ch, ch_range) if ch.is_ascii_alphabetic() => {
-                        attribute_start = ch_range.start;
-                        attribute_name.push(ch);
-                        self.state = TokenizerState::AttrName;
+                        // skip whitespace
                     }
                     ('{', _) => {
                         self.state = TokenizerState::TagExpressionStart;
                     }
                     ('/', _) => {
                         self.state = TokenizerState::SelfClosing;
+                    }
+                    (ch, ch_range) if ch.is_ascii_alphabetic() => {
+                        attribute_start = ch_range.start;
+                        attribute_name.push(ch);
+                        self.state = TokenizerState::AttrName;
                     }
                     ('>', ch_range) => {
                         if is_tag_name_with_raw_content(&tag_name) {
