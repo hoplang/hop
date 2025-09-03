@@ -43,7 +43,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                 tag_name,
                 attributes,
                 expression,
-                name_range,
+                tag_name_range: name_range,
                 range,
                 ..
             } => match tag_name.as_str() {
@@ -291,7 +291,7 @@ fn construct_node(
             tag_name: value,
             expression,
             attributes,
-            name_range,
+            tag_name_range: name_range,
             range: opening_tag_range,
             ..
         } => {
