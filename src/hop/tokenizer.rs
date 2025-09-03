@@ -357,24 +357,18 @@ impl<'a> Tokenizer<'a> {
                     }
                     ('>', ch_range) => {
                         let (tag_name, tag_name_range) = self.tag_name.consume().unwrap();
-                        if is_tag_name_with_raw_content(&tag_name) {
-                            self.stored_tag_name = tag_name.clone();
-                            self.tokens.push_back(Ok(Token::OpeningTag {
-                                self_closing: false,
-                                tag_name: (tag_name, tag_name_range),
-                                attributes: mem::take(&mut self.attributes),
-                                expression: self.expression.consume(),
-                                range: Range::new(self.token_start, ch_range.end),
-                            }));
+                        let tag_name_clone = tag_name.clone();
+                        self.tokens.push_back(Ok(Token::OpeningTag {
+                            self_closing: false,
+                            tag_name: (tag_name, tag_name_range),
+                            attributes: mem::take(&mut self.attributes),
+                            expression: self.expression.consume(),
+                            range: Range::new(self.token_start, ch_range.end),
+                        }));
+                        if is_tag_name_with_raw_content(&tag_name_clone) {
+                            self.stored_tag_name = tag_name_clone;
                             Some(TokenizerState::RawtextData)
                         } else {
-                            self.tokens.push_back(Ok(Token::OpeningTag {
-                                self_closing: false,
-                                tag_name: (tag_name, tag_name_range),
-                                attributes: mem::take(&mut self.attributes),
-                                expression: self.expression.consume(),
-                                range: Range::new(self.token_start, ch_range.end),
-                            }));
                             Some(TokenizerState::Text)
                         }
                     }
