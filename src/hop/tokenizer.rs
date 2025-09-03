@@ -156,7 +156,6 @@ impl<'a> Tokenizer<'a> {
         let mut expression_content = OptionalRangedString::default();
         let mut attribute_name = OptionalRangedString::default();
         let mut attribute_value = OptionalRangedString::default();
-        let mut attribute_start = Position::default();
 
         loop {
             match self.state {
@@ -416,13 +415,9 @@ impl<'a> Tokenizer<'a> {
                             Attribute {
                                 name: attr_name,
                                 value: None,
-                                range: Range {
-                                    start: attribute_start,
-                                    end: ch_range.start,
-                                },
+                                range: attr_name_range.extend_to(ch_range),
                             },
                         );
-                        attribute_start = ch_range.start;
                         self.cursor.next();
                         self.state = TokenizerState::BeforeAttrName;
                     }
@@ -441,10 +436,7 @@ impl<'a> Tokenizer<'a> {
                             Attribute {
                                 name: attr_name,
                                 value: None,
-                                range: Range {
-                                    start: attribute_start,
-                                    end: ch_range.start,
-                                },
+                                range: attr_name_range.extend_to(ch_range),
                             },
                         );
                         let (tag_name, tag_name_range) = tag_name.consume().unwrap();
@@ -488,10 +480,7 @@ impl<'a> Tokenizer<'a> {
                             Attribute {
                                 name: attr_name,
                                 value: None,
-                                range: Range {
-                                    start: attribute_start,
-                                    end: ch_range.start,
-                                },
+                                range: attr_name_range.extend_to(ch_range),
                             },
                         );
                         self.cursor.next();
@@ -523,9 +512,8 @@ impl<'a> Tokenizer<'a> {
                     }
                 },
 
-                TokenizerState::AttrValueDoubleQuote => match self.cursor.peek()? {
+                TokenizerState::AttrValueDoubleQuote => match self.cursor.next()? {
                     ('"', ch_range) => {
-                        self.cursor.next();
                         // Push current attribute
                         let (attr_name, attr_name_range) = attribute_name.consume().unwrap();
                         if attributes.contains_key(&attr_name) {
@@ -540,25 +528,19 @@ impl<'a> Tokenizer<'a> {
                             Attribute {
                                 name: attr_name,
                                 value: attribute_value.consume(),
-                                range: Range {
-                                    start: attribute_start,
-                                    end: ch_range.end,
-                                },
+                                range: attr_name_range.extend_to(ch_range),
                             },
                         );
-                        attribute_start = ch_range.end;
                         self.state = TokenizerState::BeforeAttrName;
                     }
                     (ch, ch_range) => {
                         attribute_value.extend(ch, ch_range);
-                        self.cursor.next();
                         self.state = TokenizerState::AttrValueDoubleQuote;
                     }
                 },
 
-                TokenizerState::AttrValueSingleQuote => match self.cursor.peek()? {
+                TokenizerState::AttrValueSingleQuote => match self.cursor.next()? {
                     ('\'', ch_range) => {
-                        self.cursor.next();
                         // Push current attribute
                         let (attr_name, attr_name_range) = attribute_name.consume().unwrap();
                         if attributes.contains_key(&attr_name) {
@@ -575,15 +557,13 @@ impl<'a> Tokenizer<'a> {
                             Attribute {
                                 name: attr_name,
                                 value: attribute_value.consume(),
-                                range: Range::new(attribute_start, ch_range.end),
+                                range: attr_name_range.extend_to(ch_range),
                             },
                         );
-                        attribute_start = ch_range.end;
                         self.state = TokenizerState::BeforeAttrName;
                     }
                     (ch, ch_range) => {
                         attribute_value.extend(ch, ch_range);
-                        self.cursor.next();
                         self.state = TokenizerState::AttrValueSingleQuote;
                     }
                 },
