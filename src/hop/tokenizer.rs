@@ -94,6 +94,8 @@ enum TokenizerState {
     SelfClosing,
     MarkupDeclaration,
     Comment,
+    CommentSeenDash,
+    CommentSeenDashDash,
     Doctype,
     BeforeDoctypeName,
     DoctypeName,
@@ -161,7 +163,10 @@ impl<'a> Tokenizer<'a> {
             match self.state {
                 TokenizerState::Text => {
                     // In this state we have just seen text
-                    debug_assert!(tag_name.is_none(), "Expected tag name to be none");
+                    debug_assert!(tag_name.is_none());
+                    debug_assert!(attributes.is_empty());
+                    debug_assert!(attribute_name.is_none());
+                    debug_assert!(attribute_value.is_none());
                     match self.cursor.next() {
                         Some(('<', ch_range)) => {
                             self.token_start = ch_range.start;
@@ -206,6 +211,24 @@ impl<'a> Tokenizer<'a> {
                             self.state = TokenizerState::Text;
                             return Some(Err(ParseError::new(
                                 "Invalid character after '<'".to_string(),
+                                ch_range,
+                            )));
+                        }
+                    }
+                }
+
+                TokenizerState::ClosingTagStart => {
+                    // In this state we have just seen '</'
+                    debug_assert!(tag_name.is_none(), "Expected tag name to be none");
+                    match self.cursor.next()? {
+                        (ch, ch_range) if ch.is_ascii_alphabetic() => {
+                            tag_name.extend(ch, ch_range);
+                            self.state = TokenizerState::ClosingTagName;
+                        }
+                        (_, ch_range) => {
+                            self.state = TokenizerState::Text;
+                            return Some(Err(ParseError::new(
+                                "Invalid character after '</'".to_string(),
                                 ch_range,
                             )));
                         }
@@ -259,24 +282,6 @@ impl<'a> Tokenizer<'a> {
                             // TODO: Consume tag name
                             return Some(Err(ParseError::new(
                                 "Invalid character after '<'".to_string(),
-                                ch_range,
-                            )));
-                        }
-                    }
-                }
-
-                TokenizerState::ClosingTagStart => {
-                    // In this state we have just seen '</'
-                    debug_assert!(tag_name.is_none(), "Expected tag name to be none");
-                    match self.cursor.next()? {
-                        (ch, ch_range) if ch.is_ascii_alphabetic() => {
-                            tag_name.extend(ch, ch_range);
-                            self.state = TokenizerState::ClosingTagName;
-                        }
-                        (_, ch_range) => {
-                            self.state = TokenizerState::Text;
-                            return Some(Err(ParseError::new(
-                                "Invalid character after '</'".to_string(),
                                 ch_range,
                             )));
                         }
@@ -575,9 +580,8 @@ impl<'a> Tokenizer<'a> {
                     }
                 },
 
-                TokenizerState::SelfClosing => match self.cursor.peek()? {
+                TokenizerState::SelfClosing => match self.cursor.next()? {
                     ('>', ch_range) => {
-                        self.cursor.next();
                         self.state = TokenizerState::Text;
                         let (tag_name, tag_name_range) = tag_name.consume().unwrap();
                         return Some(Ok(Token::OpeningTag {
@@ -590,7 +594,6 @@ impl<'a> Tokenizer<'a> {
                         }));
                     }
                     (_, ch_range) => {
-                        self.cursor.next();
                         self.state = TokenizerState::Text;
                         return Some(Err(ParseError::new(
                             "Expected '>' after '/'".to_string(),
@@ -599,17 +602,16 @@ impl<'a> Tokenizer<'a> {
                     }
                 },
 
-                TokenizerState::MarkupDeclaration => match self.cursor.peek()? {
-                    ('-', _) if self.cursor.peek_n(2)?.0 == "--" => {
-                        self.cursor.next_n(2);
+                TokenizerState::MarkupDeclaration => match self.cursor.next()? {
+                    ('-', _) if self.cursor.peek()?.0 == '-' => {
+                        self.cursor.next();
                         self.state = TokenizerState::Comment;
                     }
-                    ('D', _) if self.cursor.peek_n(7)?.0 == "DOCTYPE" => {
-                        self.cursor.next_n(7);
+                    ('D', _) if self.cursor.peek_n(6)?.0 == "OCTYPE" => {
+                        self.cursor.next_n(6);
                         self.state = TokenizerState::Doctype;
                     }
                     (_, ch_range) => {
-                        self.cursor.next();
                         self.state = TokenizerState::Text;
                         return Some(Err(ParseError::new(
                             "Invalid markup declaration".to_string(),
@@ -618,16 +620,35 @@ impl<'a> Tokenizer<'a> {
                     }
                 },
 
-                TokenizerState::Comment => match self.cursor.peek_n(3)? {
-                    (s, range) if s == "-->" => {
-                        self.cursor.next_n(3);
+                // In this state we are inside a comment
+                TokenizerState::Comment => match self.cursor.next()? {
+                    ('-', _) => {
+                        self.state = TokenizerState::CommentSeenDash;
+                    }
+                    _ => {
+                        // skip
+                    }
+                },
+
+                // In this state we are inside a comment and have seen '-'
+                TokenizerState::CommentSeenDash => match self.cursor.next()? {
+                    ('-', _) => {
+                        self.state = TokenizerState::CommentSeenDashDash;
+                    }
+                    _ => {
+                        self.state = TokenizerState::Comment;
+                    }
+                },
+
+                // In this state we are inside a comment and have seen '--'
+                TokenizerState::CommentSeenDashDash => match self.cursor.next()? {
+                    ('>', ch_range) => {
                         self.state = TokenizerState::Text;
                         return Some(Ok(Token::Comment {
-                            range: Range::new(self.token_start, range.end),
+                            range: Range::new(self.token_start, ch_range.end),
                         }));
                     }
                     _ => {
-                        self.cursor.next();
                         self.state = TokenizerState::Comment;
                     }
                 },
