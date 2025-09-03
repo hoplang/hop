@@ -392,8 +392,7 @@ impl<'a> Tokenizer<'a> {
                     }
                 }
 
-                // In this state we have seen '<' as well as the tag name and at least one
-                // whitespace char
+                // In this state we have seen '<' as well as the tag name
                 TokenizerState::BeforeAttrName => {
                     debug_assert!(self.tag_name.is_some());
                     debug_assert!(self.attribute_name.is_none());
@@ -409,7 +408,15 @@ impl<'a> Tokenizer<'a> {
                             self.state = TokenizerState::SelfClosing;
                         }
                         (ch, ch_range) if ch.is_ascii_alphabetic() => {
+                            // Parse attribute name
                             self.attribute_name.extend(ch, ch_range);
+                            while let Some((ch, ch_range)) = self
+                                .cursor
+                                .next_if(|(ch, _)| *ch == '-' || ch.is_ascii_alphanumeric())
+                            {
+                                self.attribute_name.extend(ch, ch_range);
+                            }
+
                             self.state = TokenizerState::AttrName;
                         }
                         ('>', ch_range) => {
@@ -451,11 +458,6 @@ impl<'a> Tokenizer<'a> {
                     debug_assert!(self.attribute_name.is_some());
                     debug_assert!(self.attribute_value.is_none());
                     match self.cursor.peek()? {
-                        (ch, ch_range) if ch == '-' || ch.is_ascii_alphanumeric() => {
-                            self.attribute_name.extend(ch, ch_range);
-                            self.cursor.next();
-                            self.state = TokenizerState::AttrName;
-                        }
                         ('=', _) => {
                             self.cursor.next();
                             self.state = TokenizerState::BeforeAttrValue;
