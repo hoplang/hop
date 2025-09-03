@@ -128,7 +128,6 @@ impl<'a> Tokenizer<'a> {
     fn advance(&mut self) -> Option<Result<Token, ParseError>> {
         let (_, first_range) = self.cursor.peek()?;
         let text_range = first_range;
-        let mut token_value = String::new();
         let token_start = first_range.start;
         let mut token_attributes = BTreeMap::new();
         let mut token_expression = None;
@@ -689,31 +688,41 @@ impl<'a> Tokenizer<'a> {
 
                 TokenizerState::RawtextData => {
                     let end_tag = format!("</{}>", self.stored_tag_name);
-                    if self.cursor.matches_str(&end_tag) {
-                        if !token_value.is_empty() {
-                            self.state = TokenizerState::RawtextData;
-                            return Some(Ok(Token::Text {
-                                value: token_value,
-                                range: Range::new(token_start, ch_range.start),
-                            }));
+                    let mut text_token_value = String::new();
+                    let mut text_token_range = None;
+                    loop {
+                        if self.cursor.matches_str(&end_tag) {
+                            match text_token_range {
+                                Some(r) => {
+                                    self.state = TokenizerState::RawtextData;
+                                    return Some(Ok(Token::Text {
+                                        value: text_token_value,
+                                        range: r,
+                                    }));
+                                }
+                                None => {
+                                    // No accumulated content, create and return end tag token directly
+                                    let tag_name = self.stored_tag_name.clone();
+                                    self.advance_cursor_by(2); // consume </
+                                    let (_, name_range) =
+                                        self.cursor.next_n(self.stored_tag_name.len()).unwrap();
+                                    let (_, end_range) = self.cursor.next().unwrap(); // consume >
+                                    self.state = TokenizerState::Text;
+                                    return Some(Ok(Token::ClosingTag {
+                                        value: tag_name,
+                                        name_range,
+                                        range: Range::new(token_start, end_range.end),
+                                    }));
+                                }
+                            }
                         } else {
-                            // No accumulated content, create and return end tag token directly
-                            let tag_name = self.stored_tag_name.clone();
-                            self.advance_cursor_by(2); // consume </
-                            let (_, name_range) =
-                                self.cursor.next_n(self.stored_tag_name.len()).unwrap();
-                            let (_, end_range) = self.cursor.next().unwrap(); // consume >
-                            self.state = TokenizerState::Text;
-                            return Some(Ok(Token::ClosingTag {
-                                value: tag_name,
-                                name_range,
-                                range: Range::new(token_start, end_range.end),
-                            }));
+                            let (ch, ch_range) = self.cursor.next()?;
+                            text_token_value.push(ch);
+                            text_token_range = match text_token_range {
+                                Some(range) => Some(range.extend_to(ch_range)),
+                                None => Some(ch_range),
+                            }
                         }
-                    } else {
-                        token_value.push(ch);
-                        self.cursor.next();
-                        self.state = TokenizerState::RawtextData;
                     }
                 }
 
@@ -782,14 +791,6 @@ impl<'a> Tokenizer<'a> {
                     }
                 }
             }
-        }
-
-        // End of input - return any accumulated token
-        if !token_value.is_empty() {
-            return Some(Ok(Token::Text {
-                value: token_value,
-                range: text_range,
-            }));
         }
 
         // No more tokens - return Eof token
