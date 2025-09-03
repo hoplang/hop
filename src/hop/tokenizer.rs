@@ -23,15 +23,13 @@ pub enum Token {
     },
     OpeningTag {
         self_closing: bool,
-        tag_name_range: Range,
-        tag_name: String,
+        tag_name: (String, Range),
         attributes: BTreeMap<String, Attribute>,
         expression: Option<(String, Range)>,
         range: Range,
     },
     ClosingTag {
-        tag_name: String,
-        tag_name_range: Range,
+        tag_name: (String, Range),
         range: Range,
     },
     Text {
@@ -63,11 +61,15 @@ impl Annotated for Token {
                 format!("Doctype")
             }
             Token::ClosingTag {
-                tag_name: value, ..
+                tag_name: (tag_name, _),
+                ..
             } => {
-                format!("ClosingTag </{}>", value)
+                format!("ClosingTag </{}>", tag_name)
             }
-            Token::OpeningTag { tag_name, .. } => {
+            Token::OpeningTag {
+                tag_name: (tag_name, _),
+                ..
+            } => {
                 format!("OpeningTag <{}>", tag_name)
             }
             Token::Comment { .. } => {
@@ -310,8 +312,7 @@ impl<'a> Tokenizer<'a> {
                                 self.stored_tag_name = tag_name.clone();
                                 self.state = TokenizerState::RawtextData;
                                 return Some(Ok(Token::OpeningTag {
-                                    tag_name,
-                                    tag_name_range,
+                                    tag_name: (tag_name, tag_name_range),
                                     self_closing: false,
                                     attributes: mem::take(&mut self.attributes),
                                     expression: self.expression.consume(),
@@ -320,10 +321,9 @@ impl<'a> Tokenizer<'a> {
                             } else {
                                 self.state = TokenizerState::Text;
                                 return Some(Ok(Token::OpeningTag {
-                                    tag_name,
+                                    tag_name: (tag_name, tag_name_range),
                                     self_closing: false,
                                     attributes: mem::take(&mut self.attributes),
-                                    tag_name_range,
                                     expression: self.expression.consume(),
                                     range: Range::new(self.token_start, ch_range.end),
                                 }));
@@ -351,11 +351,9 @@ impl<'a> Tokenizer<'a> {
                             self.state = TokenizerState::AfterClosingTagName;
                         }
                         ('>', ch_range) => {
-                            let (tag_name, tag_name_range) = self.tag_name.consume().unwrap();
                             self.state = TokenizerState::Text;
                             return Some(Ok(Token::ClosingTag {
-                                tag_name,
-                                tag_name_range,
+                                tag_name: self.tag_name.consume().unwrap(),
                                 range: Range::new(self.token_start, ch_range.end),
                             }));
                         }
@@ -381,8 +379,7 @@ impl<'a> Tokenizer<'a> {
                             let (tag_name, tag_name_range) = self.tag_name.consume().unwrap();
                             self.state = TokenizerState::Text;
                             return Some(Ok(Token::ClosingTag {
-                                tag_name,
-                                tag_name_range,
+                                tag_name: (tag_name, tag_name_range),
                                 range: Range::new(self.token_start, ch_range.end),
                             }));
                         }
@@ -422,8 +419,7 @@ impl<'a> Tokenizer<'a> {
                                 self.state = TokenizerState::RawtextData;
                                 return Some(Ok(Token::OpeningTag {
                                     self_closing: false,
-                                    tag_name,
-                                    tag_name_range,
+                                    tag_name: (tag_name, tag_name_range),
                                     attributes: mem::take(&mut self.attributes),
                                     expression: self.expression.consume(),
                                     range: Range::new(self.token_start, ch_range.end),
@@ -432,8 +428,7 @@ impl<'a> Tokenizer<'a> {
                                 self.state = TokenizerState::Text;
                                 return Some(Ok(Token::OpeningTag {
                                     self_closing: false,
-                                    tag_name,
-                                    tag_name_range,
+                                    tag_name: (tag_name, tag_name_range),
                                     attributes: mem::take(&mut self.attributes),
                                     expression: self.expression.consume(),
                                     range: Range::new(self.token_start, ch_range.end),
@@ -499,20 +494,18 @@ impl<'a> Tokenizer<'a> {
                                 self.state = TokenizerState::RawtextData;
                                 return Some(Ok(Token::OpeningTag {
                                     self_closing: false,
-                                    tag_name,
+                                    tag_name: (tag_name, tag_name_range),
                                     attributes: mem::take(&mut self.attributes),
                                     expression: self.expression.consume(),
-                                    tag_name_range,
                                     range: Range::new(self.token_start, ch_range.end),
                                 }));
                             } else {
                                 self.state = TokenizerState::Text;
                                 return Some(Ok(Token::OpeningTag {
                                     self_closing: false,
-                                    tag_name,
+                                    tag_name: (tag_name, tag_name_range),
                                     attributes: mem::take(&mut self.attributes),
                                     expression: self.expression.consume(),
-                                    tag_name_range,
                                     range: Range::new(self.token_start, ch_range.end),
                                 }));
                             }
@@ -608,10 +601,9 @@ impl<'a> Tokenizer<'a> {
                             let (tag_name, tag_name_range) = self.tag_name.consume().unwrap();
                             return Some(Ok(Token::OpeningTag {
                                 self_closing: true,
-                                tag_name,
+                                tag_name: (tag_name, tag_name_range),
                                 attributes: mem::take(&mut self.attributes),
                                 expression: self.expression.consume(),
-                                tag_name_range,
                                 range: Range::new(self.token_start, ch_range.end),
                             }));
                         }
@@ -746,8 +738,7 @@ impl<'a> Tokenizer<'a> {
                                     let (_, end_range) = self.cursor.next().unwrap(); // consume >
                                     self.state = TokenizerState::Text;
                                     return Some(Ok(Token::ClosingTag {
-                                        tag_name,
-                                        tag_name_range,
+                                        tag_name: (tag_name, tag_name_range),
                                         range: Range::new(self.token_start, end_range.end),
                                     }));
                                 }

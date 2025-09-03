@@ -47,9 +47,9 @@ impl TokenTree {
         self.range.end = closing_token.range().end;
         self.closing_tag_name_range = match closing_token {
             Token::ClosingTag {
-                tag_name_range: name_range,
+                tag_name: (_, tag_name_range),
                 ..
-            } => Some(name_range),
+            } => Some(tag_name_range),
             _ => panic!("Called set_closing_tag with a token that was not a ClosingTag"),
         }
     }
@@ -69,9 +69,8 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
 
     let root_token = Token::OpeningTag {
         self_closing: false,
-        tag_name: "root".to_string(),
+        tag_name: ("root".to_string(), Range::default()),
         attributes: BTreeMap::new(),
-        tag_name_range: Range::default(),
         expression: None,
         range: Range::default(),
     };
@@ -93,29 +92,32 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
                         stack.last_mut().unwrap().tree.append_node(token);
                     }
                     Token::OpeningTag {
-                        tag_name: ref value,
+                        tag_name: (ref tag_name_value, _),
                         self_closing,
                         ..
                     } => {
-                        if is_void_element(value) || self_closing {
+                        if is_void_element(tag_name_value) || self_closing {
                             stack.last_mut().unwrap().tree.append_node(token);
                         } else {
                             stack.push(StackElement {
                                 tree: TokenTree::new(token.clone()),
-                                tag_name: value.clone(),
+                                tag_name: tag_name_value.clone(),
                             });
                         }
                     }
                     Token::ClosingTag {
-                        tag_name: ref value,
+                        tag_name: (ref tag_name_value, _),
                         ..
                     } => {
-                        if is_void_element(value) {
-                            errors.push(ParseError::closed_void_tag(value, token.range()));
-                        } else if !stack.iter().any(|el| el.tag_name == *value) {
-                            errors.push(ParseError::unmatched_closing_tag(value, token.range()));
+                        if is_void_element(tag_name_value) {
+                            errors.push(ParseError::closed_void_tag(tag_name_value, token.range()));
+                        } else if !stack.iter().any(|el| el.tag_name == *tag_name_value) {
+                            errors.push(ParseError::unmatched_closing_tag(
+                                tag_name_value,
+                                token.range(),
+                            ));
                         } else {
-                            while stack.last().unwrap().tag_name != *value {
+                            while stack.last().unwrap().tag_name != *tag_name_value {
                                 let unclosed = stack.pop().unwrap();
                                 errors.push(ParseError::unclosed_tag(
                                     &unclosed.tag_name,
@@ -171,8 +173,10 @@ mod tests {
                     TokenTree {
                         token: OpeningTag {
                             self_closing: false,
-                            tag_name_range: 1:2-1:5,
-                            tag_name: "div",
+                            tag_name: (
+                                "div",
+                                1:2-1:5,
+                            ),
                             attributes: {},
                             expression: None,
                             range: 1:1-1:6,
@@ -206,8 +210,10 @@ mod tests {
                     TokenTree {
                         token: OpeningTag {
                             self_closing: false,
-                            tag_name_range: 1:2-1:5,
-                            tag_name: "div",
+                            tag_name: (
+                                "div",
+                                1:2-1:5,
+                            ),
                             attributes: {},
                             expression: None,
                             range: 1:1-1:6,
@@ -219,8 +225,10 @@ mod tests {
                             TokenTree {
                                 token: OpeningTag {
                                     self_closing: false,
-                                    tag_name_range: 1:7-1:9,
-                                    tag_name: "br",
+                                    tag_name: (
+                                        "br",
+                                        1:7-1:9,
+                                    ),
                                     attributes: {},
                                     expression: None,
                                     range: 1:6-1:10,
@@ -232,8 +240,10 @@ mod tests {
                             TokenTree {
                                 token: OpeningTag {
                                     self_closing: true,
-                                    tag_name_range: 1:11-1:13,
-                                    tag_name: "hr",
+                                    tag_name: (
+                                        "hr",
+                                        1:11-1:13,
+                                    ),
                                     attributes: {},
                                     expression: None,
                                     range: 1:10-1:15,
@@ -258,8 +268,10 @@ mod tests {
                     TokenTree {
                         token: OpeningTag {
                             self_closing: false,
-                            tag_name_range: 1:2-1:5,
-                            tag_name: "div",
+                            tag_name: (
+                                "div",
+                                1:2-1:5,
+                            ),
                             attributes: {},
                             expression: None,
                             range: 1:1-1:6,
@@ -271,8 +283,10 @@ mod tests {
                             TokenTree {
                                 token: OpeningTag {
                                     self_closing: false,
-                                    tag_name_range: 1:7-1:8,
-                                    tag_name: "p",
+                                    tag_name: (
+                                        "p",
+                                        1:7-1:8,
+                                    ),
                                     attributes: {},
                                     expression: None,
                                     range: 1:6-1:9,
@@ -296,8 +310,10 @@ mod tests {
                             TokenTree {
                                 token: OpeningTag {
                                     self_closing: false,
-                                    tag_name_range: 1:19-1:23,
-                                    tag_name: "span",
+                                    tag_name: (
+                                        "span",
+                                        1:19-1:23,
+                                    ),
                                     attributes: {},
                                     expression: None,
                                     range: 1:18-1:24,

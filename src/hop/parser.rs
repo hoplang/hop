@@ -40,10 +40,9 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
             Token::Comment { .. } => {}
             Token::Doctype { .. } => {}
             Token::OpeningTag {
-                tag_name,
+                tag_name: (tag_name, tag_name_range),
                 attributes,
                 expression,
-                tag_name_range: name_range,
                 range,
                 ..
             } => match tag_name.as_str() {
@@ -133,7 +132,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                 // Treat as ComponentDefinition
                 name => {
                     if !is_valid_component_name(name) {
-                        errors.push(ParseError::invalid_component_name(name, name_range));
+                        errors.push(ParseError::invalid_component_name(name, tag_name_range));
                     } else {
                         let params = expression.as_ref().and_then(|(expr_string, expr_range)| {
                             let mut tokenizer =
@@ -171,7 +170,10 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         if defined_components.contains(name)
                             || imported_components.contains_key(name)
                         {
-                            errors.push(ParseError::component_is_already_defined(name, name_range));
+                            errors.push(ParseError::component_is_already_defined(
+                                name,
+                                tag_name_range,
+                            ));
                         } else {
                             defined_components.insert(name.to_string());
                         }
@@ -199,7 +201,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
 
                         components.push(ComponentDefinition {
                             tag_name: name.to_string(),
-                            opening_tag_name_range: name_range,
+                            opening_tag_name_range: tag_name_range,
                             closing_tag_name_range: tree.closing_tag_name_range,
                             params,
                             is_entrypoint,
@@ -288,14 +290,13 @@ fn construct_node(
             }
         }
         Token::OpeningTag {
-            tag_name: value,
+            tag_name: (tag_name, tag_name_range),
             expression,
             attributes,
-            tag_name_range: name_range,
             range: opening_tag_range,
             ..
         } => {
-            match value.as_str() {
+            match tag_name.as_str() {
                 "if" => match expression {
                     // TODO: Check for unrecognized attributes
                     Some((expr_string, expr_range)) => {
@@ -398,7 +399,7 @@ fn construct_node(
                             },
                             None => {
                                 errors.push(ParseError::missing_required_attribute(
-                                    &value,
+                                    tag_name,
                                     "cmd",
                                     opening_tag_range,
                                 ));
@@ -415,7 +416,7 @@ fn construct_node(
                         children,
                     },
                     _ => {
-                        errors.push(ParseError::unrecognized_hop_tag(&value, opening_tag_range));
+                        errors.push(ParseError::unrecognized_hop_tag(tag_name, tag_name_range));
                         HopNode::Error {
                             range: tree.range,
                             children: vec![],
@@ -424,7 +425,7 @@ fn construct_node(
                 },
                 tag_name if tag_name.contains('-') => {
                     if !is_valid_component_name(tag_name) {
-                        errors.push(ParseError::invalid_component_name(tag_name, name_range));
+                        errors.push(ParseError::invalid_component_name(tag_name, tag_name_range));
                     }
                     let args = match &expression {
                         Some((expr_string, expr_range)) => {
@@ -461,7 +462,7 @@ fn construct_node(
 
                     HopNode::ComponentReference {
                         component: tag_name.to_string(),
-                        opening_name_range: name_range,
+                        opening_name_range: tag_name_range,
                         closing_name_range: tree.closing_tag_name_range,
                         definition_module,
                         args,
@@ -503,8 +504,8 @@ fn construct_node(
                     }
 
                     HopNode::Html {
-                        tag_name: value.clone(),
-                        opening_name_range: name_range,
+                        tag_name,
+                        opening_name_range: tag_name_range,
                         closing_name_range: tree.closing_tag_name_range,
                         attributes: attributes.clone(),
                         range: tree.range,
@@ -793,7 +794,7 @@ mod tests {
                 error: Unrecognized hop tag: <hop-whatever>
                 1 | <main-comp>
                 2 |     <hop-whatever>Content</hop-whatever>
-                  |     ^^^^^^^^^^^^^^
+                  |      ^^^^^^^^^^^^
             "#]],
         );
     }
