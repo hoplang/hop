@@ -4,6 +4,9 @@ fmt PATH='src/**/*.rs':
 test:
 	cargo test --quiet
 
+fix:
+	cargo clippy --fix --allow-dirty
+
 update-tests:
 	UPDATE_EXPECT=1 cargo test
 

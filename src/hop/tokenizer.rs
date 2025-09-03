@@ -24,7 +24,7 @@ pub enum Token {
     OpeningTag {
         self_closing: bool,
         name_range: Range,
-        value: String,
+        tag_name: String,
         attributes: BTreeMap<String, Attribute>,
         expression: Option<(String, Range)>,
         range: Range,
@@ -65,8 +65,8 @@ impl Annotated for Token {
             Token::ClosingTag { value, .. } => {
                 format!("ClosingTag </{}>", value)
             }
-            Token::OpeningTag { value, .. } => {
-                format!("OpeningTag <{}>", value)
+            Token::OpeningTag { tag_name, .. } => {
+                format!("OpeningTag <{}>", tag_name)
             }
             Token::Comment { .. } => {
                 format!("Comment")
@@ -205,7 +205,7 @@ impl<'a> Tokenizer<'a> {
                             self.stored_tag_name = tag_name.clone();
                             self.state = TokenizerState::RawtextData;
                             return Some(Ok(Token::OpeningTag {
-                                value: tag_name,
+                                tag_name,
                                 self_closing: false,
                                 attributes: token_attributes,
                                 name_range: tag_name_range,
@@ -215,7 +215,7 @@ impl<'a> Tokenizer<'a> {
                         } else {
                             self.state = TokenizerState::Text;
                             return Some(Ok(Token::OpeningTag {
-                                value: tag_name,
+                                tag_name,
                                 self_closing: false,
                                 attributes: token_attributes,
                                 name_range: tag_name_range,
@@ -322,7 +322,7 @@ impl<'a> Tokenizer<'a> {
                             self.state = TokenizerState::RawtextData;
                             return Some(Ok(Token::OpeningTag {
                                 self_closing: false,
-                                value: tag_name,
+                                tag_name,
                                 attributes: token_attributes,
                                 expression: token_expression,
                                 name_range: tag_name_range,
@@ -332,7 +332,7 @@ impl<'a> Tokenizer<'a> {
                             self.state = TokenizerState::Text;
                             return Some(Ok(Token::OpeningTag {
                                 self_closing: false,
-                                value: tag_name,
+                                tag_name,
                                 attributes: token_attributes,
                                 expression: token_expression,
                                 name_range: tag_name_range,
@@ -414,7 +414,7 @@ impl<'a> Tokenizer<'a> {
                             self.state = TokenizerState::RawtextData;
                             return Some(Ok(Token::OpeningTag {
                                 self_closing: false,
-                                value: tag_name,
+                                tag_name,
                                 attributes: token_attributes,
                                 expression: token_expression,
                                 name_range: tag_name_range,
@@ -425,7 +425,7 @@ impl<'a> Tokenizer<'a> {
                             self.state = TokenizerState::Text;
                             return Some(Ok(Token::OpeningTag {
                                 self_closing: false,
-                                value: tag_name,
+                                tag_name,
                                 attributes: token_attributes,
                                 expression: token_expression,
                                 name_range: tag_name_range,
@@ -572,7 +572,7 @@ impl<'a> Tokenizer<'a> {
                         self.state = TokenizerState::Text;
                         return Some(Ok(Token::OpeningTag {
                             self_closing: true,
-                            value: tag_name,
+                            tag_name,
                             attributes: token_attributes,
                             expression: token_expression,
                             name_range: tag_name_range,

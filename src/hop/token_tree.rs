@@ -66,7 +66,7 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
 
     let root_token = Token::OpeningTag {
         self_closing: false,
-        value: "root".to_string(),
+        tag_name: "root".to_string(),
         attributes: BTreeMap::new(),
         name_range: Range::default(),
         expression: None,
@@ -90,7 +90,7 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
                         stack.last_mut().unwrap().tree.append_node(token);
                     }
                     Token::OpeningTag {
-                        ref value,
+                        tag_name: ref value,
                         self_closing,
                         ..
                     } => {

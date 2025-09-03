@@ -40,13 +40,13 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
             Token::Comment { .. } => {}
             Token::Doctype { .. } => {}
             Token::OpeningTag {
-                value,
+                tag_name,
                 attributes,
                 expression,
                 name_range,
                 range,
                 ..
-            } => match value.as_str() {
+            } => match tag_name.as_str() {
                 "import" => {
                     let mut component_attr = None;
                     let mut from_attr = None;
@@ -89,14 +89,14 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         (component, from) => {
                             if component.is_none() {
                                 errors.push(ParseError::missing_required_attribute(
-                                    &value,
+                                    &tag_name,
                                     "component",
                                     range,
                                 ));
                             }
                             if from.is_none() {
                                 errors.push(ParseError::missing_required_attribute(
-                                    &value, "from", range,
+                                    &tag_name, "from", range,
                                 ));
                             }
                         }
@@ -126,7 +126,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                             });
                         }
                         None => errors.push(ParseError::missing_required_attribute(
-                            &value, "file", range,
+                            &tag_name, "file", range,
                         )),
                     }
                 }
@@ -288,7 +288,7 @@ fn construct_node(
             }
         }
         Token::OpeningTag {
-            value,
+            tag_name: value,
             expression,
             attributes,
             name_range,
