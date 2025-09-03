@@ -138,7 +138,6 @@ impl<'a> Tokenizer<'a> {
         let mut attribute_value = String::new();
         let mut attribute_start = first_range.start;
         let mut attribute_value_start = first_range.start;
-        let mut doctype_name_buffer = String::new();
         while self.cursor.peek().is_some() {
             let (ch, ch_range) = self.cursor.peek().unwrap();
 
@@ -638,8 +637,6 @@ impl<'a> Tokenizer<'a> {
                         self.state = TokenizerState::BeforeDoctypeName;
                     }
                     ch if ch.is_ascii_alphabetic() => {
-                        doctype_name_buffer.clear();
-                        doctype_name_buffer.push(ch);
                         self.cursor.next();
                         self.state = TokenizerState::DoctypeName;
                     }
@@ -655,25 +652,15 @@ impl<'a> Tokenizer<'a> {
 
                 TokenizerState::DoctypeName => match ch {
                     ch if ch.is_ascii_alphabetic() => {
-                        doctype_name_buffer.push(ch);
                         self.cursor.next();
                         self.state = TokenizerState::DoctypeName;
                     }
                     '>' => {
-                        if doctype_name_buffer.to_lowercase() == "html" {
-                            self.cursor.next();
-                            self.state = TokenizerState::Text;
-                            return Some(Ok(Token::Doctype {
-                                range: Range::new(token_start, ch_range.end),
-                            }));
-                        } else {
-                            self.cursor.next();
-                            self.state = TokenizerState::Text;
-                            return Some(Err(ParseError::new(
-                                "Invalid DOCTYPE name".to_string(),
-                                ch_range,
-                            )));
-                        }
+                        self.cursor.next();
+                        self.state = TokenizerState::Text;
+                        return Some(Ok(Token::Doctype {
+                            range: Range::new(token_start, ch_range.end),
+                        }));
                     }
                     _ => {
                         self.cursor.next();
