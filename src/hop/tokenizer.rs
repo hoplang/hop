@@ -119,12 +119,6 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn advance_cursor_by(&mut self, n: usize) {
-        for _ in 0..n {
-            self.cursor.next();
-        }
-    }
-
     fn advance(&mut self) -> Option<Result<Token, ParseError>> {
         let (_, first_range) = self.cursor.peek()?;
         let token_start = first_range.start;
@@ -138,7 +132,8 @@ impl<'a> Tokenizer<'a> {
         let mut attribute_value = String::new();
         let mut attribute_start = first_range.start;
         let mut attribute_value_start = first_range.start;
-        while self.cursor.peek().is_some() {
+
+        loop {
             match self.state {
                 TokenizerState::Text => match self.cursor.next()? {
                     ('<', _) => {
@@ -253,11 +248,6 @@ impl<'a> Tokenizer<'a> {
 
                 // In this state we have seen '</' and at least one tag name char
                 TokenizerState::ClosingTagName => match self.cursor.next()? {
-                    (ch, ch_range) if ch == '-' || ch.is_ascii_alphanumeric() => {
-                        tag_name.push(ch);
-                        tag_name_range = tag_name_range.extend_to(ch_range);
-                        self.state = TokenizerState::ClosingTagName;
-                    }
                     ('>', ch_range) => {
                         self.state = TokenizerState::Text;
                         return Some(Ok(Token::ClosingTag {
@@ -266,10 +256,15 @@ impl<'a> Tokenizer<'a> {
                             range: first_range.extend_to(ch_range),
                         }));
                     }
+                    (ch, ch_range) if ch == '-' || ch.is_ascii_alphanumeric() => {
+                        tag_name.push(ch);
+                        tag_name_range = tag_name_range.extend_to(ch_range);
+                        self.state = TokenizerState::ClosingTagName;
+                    }
                     (ch, _) if ch.is_whitespace() => {
                         self.state = TokenizerState::AfterClosingTagName;
                     }
-                    (ch, ch_range) => {
+                    (_, ch_range) => {
                         self.state = TokenizerState::Text;
                         return Some(Err(ParseError::new(
                             "Invalid character in end tag name".to_string(),
@@ -517,7 +512,7 @@ impl<'a> Tokenizer<'a> {
                         attribute_start = ch_range.end;
                         self.state = TokenizerState::BeforeAttrName;
                     }
-                    (ch, ch_range) => {
+                    (ch, _) => {
                         attribute_value.push(ch);
                         self.cursor.next();
                         self.state = TokenizerState::AttrValueDoubleQuote;
@@ -685,7 +680,7 @@ impl<'a> Tokenizer<'a> {
                                 None => {
                                     // No accumulated content, create and return end tag token directly
                                     let tag_name = self.stored_tag_name.clone();
-                                    self.advance_cursor_by(2); // consume </
+                                    self.cursor.next_n(2); // consume </
                                     let (_, name_range) =
                                         self.cursor.next_n(self.stored_tag_name.len()).unwrap();
                                     let (_, end_range) = self.cursor.next().unwrap(); // consume >
@@ -773,9 +768,6 @@ impl<'a> Tokenizer<'a> {
                 }
             }
         }
-
-        // No more tokens - return Eof token
-        None
     }
 }
 
