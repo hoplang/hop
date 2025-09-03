@@ -167,6 +167,7 @@ impl<'a> Tokenizer<'a> {
                     }
                 },
 
+                // In this state we have just seen '<'
                 TokenizerState::TagStart => match self.cursor.next()? {
                     ('/', _) => {
                         self.state = TokenizerState::ClosingTagStart;
@@ -188,22 +189,22 @@ impl<'a> Tokenizer<'a> {
                     }
                 },
 
-                TokenizerState::OpeningTagName => {
-                    if ch == '-' || ch.is_ascii_alphanumeric() {
+                // In this state we have seen '<' and at least one tag name char
+                TokenizerState::OpeningTagName => match self.cursor.next()? {
+                    (ch, ch_range) if ch == '-' || ch.is_ascii_alphanumeric() => {
                         token_value.push(ch);
-                        self.cursor.next();
                         tag_name_range = tag_name_range.extend_to(ch_range);
                         self.state = TokenizerState::OpeningTagName;
-                    } else if ch.is_whitespace() {
-                        self.cursor.next();
+                    }
+                    (ch, _) if ch.is_whitespace() => {
                         self.state = TokenizerState::BeforeAttrName;
-                    } else if ch == '{' {
-                        self.cursor.next();
+                    }
+                    ('{', _) => {
                         self.state = TokenizerState::TagExpressionStart;
-                    } else if ch == '>' {
+                    }
+                    ('>', _) => {
                         if is_tag_name_with_raw_content(&token_value) {
                             self.stored_tag_name = token_value.clone();
-                            self.cursor.next();
                             self.state = TokenizerState::RawtextData;
                             return Some(Ok(Token::OpeningTag {
                                 value: token_value,
@@ -214,7 +215,6 @@ impl<'a> Tokenizer<'a> {
                                 range: first_range.extend_to(ch_range),
                             }));
                         } else {
-                            self.cursor.next();
                             self.state = TokenizerState::Text;
                             return Some(Ok(Token::OpeningTag {
                                 value: token_value,
@@ -225,104 +225,102 @@ impl<'a> Tokenizer<'a> {
                                 range: first_range.extend_to(ch_range),
                             }));
                         }
-                    } else if ch == '/' {
-                        self.cursor.next();
+                    }
+                    ('/', _) => {
                         self.state = TokenizerState::SelfClosing;
-                    } else {
-                        self.cursor.next();
+                    }
+                    _ => {
                         self.state = TokenizerState::Text;
                         return Some(Err(ParseError::new(
                             "Invalid character after '<'".to_string(),
                             ch_range,
                         )));
                     }
-                }
+                },
 
-                TokenizerState::ClosingTagStart => {
-                    if ch.is_ascii_alphabetic() {
+                // In this state we have just seen '</'
+                TokenizerState::ClosingTagStart => match self.cursor.next()? {
+                    (ch, _) if ch.is_ascii_alphabetic() => {
                         tag_name_range = ch_range;
                         token_value.push(ch);
-                        self.cursor.next();
                         tag_name_range = tag_name_range.extend_to(ch_range);
                         self.state = TokenizerState::ClosingTagName;
-                    } else {
-                        self.cursor.next();
+                    }
+                    _ => {
                         self.state = TokenizerState::Text;
                         return Some(Err(ParseError::new(
                             "Invalid character after '</'".to_string(),
                             ch_range,
                         )));
                     }
-                }
+                },
 
-                TokenizerState::ClosingTagName => {
-                    if ch == '-' || ch.is_ascii_alphanumeric() {
+                // In this state we have seen '</' and at least one tag name char
+                TokenizerState::ClosingTagName => match self.cursor.next()? {
+                    (ch, _) if ch == '-' || ch.is_ascii_alphanumeric() => {
                         token_value.push(ch);
-                        self.cursor.next();
                         tag_name_range = tag_name_range.extend_to(ch_range);
                         self.state = TokenizerState::ClosingTagName;
-                    } else if ch == '>' {
-                        self.cursor.next();
+                    }
+                    ('>', _) => {
                         self.state = TokenizerState::Text;
                         return Some(Ok(Token::ClosingTag {
                             value: token_value,
                             name_range: tag_name_range,
                             range: first_range.extend_to(ch_range),
                         }));
-                    } else if ch.is_whitespace() {
-                        self.cursor.next();
+                    }
+                    (ch, _) if ch.is_whitespace() => {
                         self.state = TokenizerState::AfterClosingTagName;
-                    } else {
-                        self.cursor.next();
+                    }
+                    _ => {
                         self.state = TokenizerState::Text;
                         return Some(Err(ParseError::new(
                             "Invalid character in end tag name".to_string(),
                             ch_range,
                         )));
                     }
-                }
+                },
 
-                TokenizerState::AfterClosingTagName => {
-                    if ch.is_whitespace() {
-                        self.cursor.next();
+                TokenizerState::AfterClosingTagName => match self.cursor.next()? {
+                    (ch, _) if ch.is_whitespace() => {
                         self.state = TokenizerState::AfterClosingTagName;
-                    } else if ch == '>' {
-                        self.cursor.next();
+                    }
+                    ('>', _) => {
                         self.state = TokenizerState::Text;
                         return Some(Ok(Token::ClosingTag {
                             value: token_value,
                             name_range: tag_name_range,
                             range: first_range.extend_to(ch_range),
                         }));
-                    } else {
-                        self.cursor.next();
+                    }
+                    _ => {
                         self.state = TokenizerState::Text;
                         return Some(Err(ParseError::new(
                             "Invalid character after end tag name".to_string(),
                             ch_range,
                         )));
                     }
-                }
+                },
 
-                TokenizerState::BeforeAttrName => {
-                    if ch.is_whitespace() {
-                        self.cursor.next();
+                TokenizerState::BeforeAttrName => match self.cursor.next()? {
+                    (ch, _) if ch.is_whitespace() => {
                         self.state = TokenizerState::BeforeAttrName;
-                    } else if ch.is_ascii_alphabetic() {
+                    }
+                    (ch, _) if ch.is_ascii_alphabetic() => {
                         attribute_start = ch_range.start;
                         attribute_name.push(ch);
-                        self.cursor.next();
                         self.state = TokenizerState::AttrName;
-                    } else if ch == '{' {
-                        self.cursor.next();
+                    }
+                    ('{', _) => {
                         self.state = TokenizerState::TagExpressionStart;
-                    } else if ch == '/' {
-                        self.cursor.next();
+                    }
+                    ('/', _) => {
                         self.state = TokenizerState::SelfClosing;
-                    } else if ch == '>' {
+                    }
+                    ('>', _) => {
                         if is_tag_name_with_raw_content(&token_value) {
                             self.stored_tag_name = token_value.clone();
-                            self.cursor.next();
                             self.state = TokenizerState::RawtextData;
                             return Some(Ok(Token::OpeningTag {
                                 self_closing: false,
@@ -333,7 +331,6 @@ impl<'a> Tokenizer<'a> {
                                 range: first_range.extend_to(ch_range),
                             }));
                         } else {
-                            self.cursor.next();
                             self.state = TokenizerState::Text;
                             return Some(Ok(Token::OpeningTag {
                                 self_closing: false,
@@ -344,15 +341,15 @@ impl<'a> Tokenizer<'a> {
                                 range: first_range.extend_to(ch_range),
                             }));
                         }
-                    } else {
-                        self.cursor.next();
+                    }
+                    _ => {
                         self.state = TokenizerState::Text;
                         return Some(Err(ParseError::new(
                             "Invalid character before attribute name".to_string(),
                             ch_range,
                         )));
                     }
-                }
+                },
 
                 TokenizerState::AttrName => {
                     if ch == '-' || ch.is_ascii_alphanumeric() {
