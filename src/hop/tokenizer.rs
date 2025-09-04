@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::iter::Peekable;
 use std::mem;
 
-use crate::common::{ParseError, Position, Range, Ranged, RangedChars};
+use crate::common::{ParseError, Position, Range, Ranged, RangedChars, RangedString};
 use crate::dop::DopTokenizer;
 use crate::dop::tokenizer::DopToken;
 use crate::hop::ast::Attribute;
@@ -113,28 +113,6 @@ impl Annotated for Token {
                 format!("Expression {:#?}", value)
             }
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct RangedString(String, Range);
-
-impl RangedString {
-    pub fn push(&mut self, (ch, r): (char, Range)) {
-        self.0.push(ch);
-        self.1 = self.1.extend_to(r);
-    }
-}
-
-impl From<RangedString> for (String, Range) {
-    fn from(val: RangedString) -> Self {
-        (val.0, val.1)
-    }
-}
-
-impl From<(char, Range)> for RangedString {
-    fn from((ch, r): (char, Range)) -> Self {
-        RangedString(String::from(ch), r)
     }
 }
 
@@ -388,7 +366,7 @@ impl<'a> Tokenizer<'a> {
                             .take(stored_closing_tag.len())
                             .eq(stored_closing_tag.chars()) =>
                     {
-                        if let Some(RangedString(s, r)) = raw_text {
+                        if let Some((s, r)) = raw_text.map(|v| v.into()) {
                             return Some(Token::Text { value: s, range: r });
                         } else {
                             break;
@@ -519,10 +497,8 @@ impl<'a> Tokenizer<'a> {
                 while let Some(ch) = self.chars.next_if(|(ch, _)| *ch != '{' && *ch != '<') {
                     text.push(ch);
                 }
-                Some(Token::Text {
-                    value: text.0,
-                    range: text.1,
-                })
+                let (value, range) = text.into();
+                Some(Token::Text { value, range })
             }
         }
     }

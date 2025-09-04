@@ -1,4 +1,4 @@
-use crate::common::{Position, Range, RangedChars};
+use crate::common::{Position, Range, Ranged as _, RangedChars, RangedString};
 use std::{fmt, iter::Peekable, str::FromStr};
 
 use super::parser::ParseError;
@@ -120,18 +120,18 @@ impl Iterator for DopTokenizer<'_> {
                     }
                 }
                 ch @ ('A'..='Z' | 'a'..='z' | '_') => {
-                    let mut end_range = start_range;
-                    let mut identifier = String::from(ch);
+                    let mut identifier = RangedString::from((ch, start_range));
 
-                    while let Some((ch, range)) = self
+                    while let Some(ch) = self
                         .chars
                         .next_if(|(ch, _)| matches!(ch, 'A'..='Z' | 'a'..='z' | '0'..='9' | '_'))
                     {
                         identifier.push(ch);
-                        end_range = range;
                     }
 
-                    let t = match identifier.as_str() {
+                    let (value, range) = identifier.into();
+
+                    let t = match value.as_str() {
                         "in" => DopToken::In,
                         "true" => DopToken::BooleanLiteral(true),
                         "false" => DopToken::BooleanLiteral(false),
@@ -141,46 +141,31 @@ impl Iterator for DopTokenizer<'_> {
                         "boolean" => DopToken::TypeBoolean,
                         "void" => DopToken::TypeVoid,
                         "array" => DopToken::TypeArray,
-                        _ => DopToken::Identifier(identifier),
+                        _ => DopToken::Identifier(value),
                     };
-                    Ok((t, start_range.extend_to(end_range)))
+                    Ok((t, range))
                 }
                 ch if ch.is_ascii_digit() => {
-                    let mut end_range = start_range;
-
-                    let mut number_string = String::from(ch);
-
-                    while let Some((ch, range)) = self.chars.next_if(|(ch, _)| ch.is_ascii_digit())
-                    {
-                        number_string.push(ch);
-                        end_range = range;
+                    let mut number_string = RangedString::from((ch, start_range));
+                    while let Some(digit) = self.chars.next_if(|(ch, _)| ch.is_ascii_digit()) {
+                        number_string.push(digit);
                     }
-
-                    if let Some((_, range)) = self.chars.next_if(|(ch, _)| *ch == '.') {
-                        number_string.push('.');
-                        end_range = range;
-
+                    if let Some(dot) = self.chars.next_if(|(ch, _)| *ch == '.') {
+                        number_string.push(dot);
                         if !self.chars.peek().is_some_and(|(ch, _)| ch.is_ascii_digit()) {
                             return Err(ParseError::expected_digit_after_decimal_point(
-                                start_range.extend_to(end_range),
+                                number_string.range(),
                             ));
                         }
-
-                        while let Some((ch, range)) =
-                            self.chars.next_if(|(ch, _)| ch.is_ascii_digit())
-                        {
-                            number_string.push(ch);
-                            end_range = range;
+                        while let Some(digit) = self.chars.next_if(|(ch, _)| ch.is_ascii_digit()) {
+                            number_string.push(digit);
                         }
                     }
-
-                    let parse_result = serde_json::Number::from_str(&number_string);
-
-                    match parse_result {
-                        Ok(n) => Ok((DopToken::NumberLiteral(n), start_range.extend_to(end_range))),
+                    match serde_json::Number::from_str(number_string.value()) {
+                        Ok(n) => Ok((DopToken::NumberLiteral(n), number_string.range())),
                         Err(_) => Err(ParseError::new(
-                            format!("Invalid number format: {}", number_string),
-                            start_range.extend_to(end_range),
+                            format!("Invalid number format: {}", number_string.value()),
+                            number_string.range(),
                         )),
                     }
                 }
