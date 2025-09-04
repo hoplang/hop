@@ -122,9 +122,9 @@ impl RangedString {
     }
 }
 
-impl Into<(String, Range)> for RangedString {
-    fn into(self) -> (String, Range) {
-        (self.0, self.1)
+impl From<RangedString> for (String, Range) {
+    fn from(val: RangedString) -> Self {
+        (val.0, val.1)
     }
 }
 
