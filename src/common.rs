@@ -170,6 +170,16 @@ impl<'a> StrCursor<'a> {
     pub fn next_if(&mut self, func: impl FnOnce(&(char, Range)) -> bool) -> Option<(char, Range)> {
         self.chars.next_if(func)
     }
+    pub fn next_while(&mut self, func: impl Fn(&(char, Range)) -> bool) {
+        loop {
+            match self.chars.peek() {
+                Some(matched) if func(matched) => self.chars.next(),
+                _ => {
+                    return;
+                }
+            };
+        }
+    }
     pub fn matches_str(&mut self, expected: &str) -> bool {
         let mut actual_chars = self.chars.clone();
         for expected_char in expected.chars() {

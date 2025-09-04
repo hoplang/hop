@@ -299,10 +299,7 @@ impl<'a> Tokenizer<'a> {
         tag_start: Position,
         tag_name: RangedString,
     ) -> Option<TokenizerState> {
-        // skip whitespace
-        while self.cursor.peek().is_some_and(|(ch, _)| ch.is_whitespace()) {
-            self.cursor.next();
-        }
+        self.cursor.next_while(|(ch, _)| ch.is_whitespace());
         match self.cursor.next()? {
             ('>', ch_range) => {
                 let RangedString(tag_name, tag_name_range) = tag_name;
@@ -324,11 +321,7 @@ impl<'a> Tokenizer<'a> {
         tag_start: Position,
         tag_name: RangedString,
     ) -> Option<TokenizerState> {
-        // skip whitespace
-        while self.cursor.peek().is_some_and(|(ch, _)| ch.is_whitespace()) {
-            self.cursor.next();
-        }
-
+        self.cursor.next_while(|(ch, _)| ch.is_whitespace());
         match self.cursor.next()? {
             ('{', _) => self.state_tag_expression_start(tag_start, tag_name),
             ('/', _) => self.state_self_closing(tag_start, tag_name),
@@ -541,30 +534,7 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn state_doctype(&mut self, tag_start: Position) -> Option<TokenizerState> {
-        match self.cursor.next()? {
-            (ch, _) if ch.is_whitespace() => self.state_before_doctype_name(tag_start),
-            (_, ch_range) => self.fail_and_recover(ParseError::new(
-                "Expected whitespace after DOCTYPE".to_string(),
-                ch_range,
-            )),
-        }
-    }
-
-    fn state_before_doctype_name(&mut self, tag_start: Position) -> Option<TokenizerState> {
-        match self.cursor.next()? {
-            (ch, _) if ch.is_whitespace() => {
-                // TODO: Recursive
-                self.state_before_doctype_name(tag_start)
-            }
-            (ch, _) if ch.is_ascii_alphabetic() => self.state_doctype_name(tag_start),
-            (_, ch_range) => self.fail_and_recover(ParseError::new(
-                "Expected DOCTYPE name".to_string(),
-                ch_range,
-            )),
-        }
-    }
-
-    fn state_doctype_name(&mut self, tag_start: Position) -> Option<TokenizerState> {
+        self.cursor.next_while(|(ch, _)| *ch != '>');
         match self.cursor.next()? {
             ('>', ch_range) => {
                 self.tokens.push_back(Ok(Token::Doctype {
@@ -572,12 +542,8 @@ impl<'a> Tokenizer<'a> {
                 }));
                 Some(TokenizerState::Text)
             }
-            (ch, _) if ch.is_ascii_alphabetic() => {
-                // TODO: Recursive
-                self.state_doctype_name(tag_start)
-            }
             (_, ch_range) => self.fail_and_recover(ParseError::new(
-                "Invalid character in DOCTYPE name".to_string(),
+                "Expected whitespace after DOCTYPE".to_string(),
                 ch_range,
             )),
         }
