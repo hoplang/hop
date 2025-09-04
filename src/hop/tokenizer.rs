@@ -214,7 +214,7 @@ impl<'a> Tokenizer<'a> {
                     self.tokens
                         .push_back(Ok(Token::Text { value: s, range: r }));
                 }
-                Some(TokenizerState::TagStart)
+                self.state_tag_start()
             }
             Some(('{', ch_range)) => {
                 self.token_start = ch_range.start;
@@ -222,11 +222,11 @@ impl<'a> Tokenizer<'a> {
                     self.tokens
                         .push_back(Ok(Token::Text { value: s, range: r }));
                 }
-                Some(TokenizerState::TextExpressionStart)
+                self.state_text_expression_start()
             }
             Some((ch, ch_range)) => {
                 self.text.extend(ch, ch_range);
-                Some(TokenizerState::Text)
+                self.state_text()
             }
             None => {
                 if let Some((s, r)) = self.text.consume() {
