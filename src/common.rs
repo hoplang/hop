@@ -92,7 +92,7 @@ impl Ranged for Range {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct PositionedChars<'a> {
     chars: Chars<'a>,
     position: Position,
@@ -123,6 +123,7 @@ impl Iterator for PositionedChars<'_> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct StrCursor<'a> {
     chars: Peekable<PositionedChars<'a>>,
 }

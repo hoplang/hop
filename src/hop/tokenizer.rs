@@ -1,9 +1,10 @@
 use std::collections::{BTreeMap, VecDeque};
-use std::mem;
 
 use crate::common::{ParseError, Position, Range, Ranged, StrCursor};
 use crate::hop::ast::Attribute;
 use crate::tui::source_annotator::Annotated;
+
+type Attributes = BTreeMap<String, Attribute>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
@@ -19,7 +20,7 @@ pub enum Token {
     },
     OpeningTag {
         tag_name: (String, Range),
-        attributes: BTreeMap<String, Attribute>,
+        attributes: Attributes,
         expression: Option<(String, Range)>,
         self_closing: bool,
         range: Range,
@@ -151,6 +152,138 @@ impl<'a> Tokenizer<'a> {
         self.cursor.next_while(|(ch, _)| ch.is_whitespace());
     }
 
+    fn parse_attribute(&mut self) -> Option<((String, Range), Attribute)> {
+        let (ch, ch_range) = self.cursor.next()?; // consume initial name char
+        let attr_name = self.parse_tag_name(ch, ch_range);
+
+        let attr_name_range = attr_name.1;
+
+        self.skip_whitespace();
+
+        match self.cursor.peek()? {
+            ('=', _) => {
+                self.cursor.next(); // consume '='
+            }
+            _ => {
+                return Some((
+                    attr_name,
+                    Attribute {
+                        value: None,
+                        range: attr_name_range,
+                    },
+                ));
+            }
+        }
+        self.skip_whitespace();
+
+        let terminator = match self.cursor.peek()? {
+            ('"', _) => '"',
+            ('\'', _) => '\'',
+            (_, ch_range) => {
+                self.errors.push_back(ParseError::new(
+                    "Expected quoted attribute value".to_string(),
+                    ch_range,
+                ));
+                return None;
+            }
+        };
+
+        self.cursor.next(); // consume terminator
+
+        // Handle empty attribute
+        if self.cursor.peek()?.0 == terminator {
+            let (_, terminator_range) = self.cursor.next()?;
+            return Some((
+                attr_name,
+                Attribute {
+                    value: None,
+                    range: attr_name_range.extend_to(terminator_range),
+                },
+            ));
+        }
+
+        let (attr_value, attr_value_range) = self.cursor.next_while(|(ch, _)| *ch != terminator)?;
+
+        let (_, terminator_range) = self.cursor.next()?; // consume terminator
+
+        Some((
+            attr_name,
+            Attribute {
+                value: Some((attr_value, attr_value_range)),
+                range: attr_name_range.extend_to(terminator_range),
+            },
+        ))
+    }
+
+    // Parse tag content from the cursor
+    fn parse_tag_content(&mut self) -> Option<(Attributes, Option<(String, Range)>)> {
+        let mut attributes = Attributes::new();
+        let mut expression: Option<(String, Range)> = None;
+        loop {
+            self.skip_whitespace();
+
+            match self.cursor.peek()? {
+                // Parse expression
+                ('{', _) => {
+                    self.cursor.next(); // consume '{'
+                    match self.cursor.next()? {
+                        ('}', ch_range) => {
+                            self.errors.push_back(ParseError::new(
+                                "Empty expression".to_string(),
+                                ch_range,
+                            ));
+                            continue;
+                        }
+                        (ch, ch_range) => {
+                            let mut expr = (String::from(ch), ch_range);
+                            loop {
+                                // Temporary fix until we embed hop tokenizer here
+                                if self.cursor.matches_str("}>")
+                                    || self.cursor.matches_str("} >")
+                                    || self.cursor.matches_str("}/>")
+                                    || self.cursor.matches_str("} />")
+                                {
+                                    self.cursor.next(); // consume '}'
+                                    break;
+                                } else {
+                                    let (ch, ch_range) = self.cursor.next()?;
+                                    expr.0.push(ch);
+                                    expr.1 = expr.1.extend_to(ch_range);
+                                }
+                            }
+                            expression = Some(expr);
+                        }
+                    }
+                }
+                // Parse attribute
+                (ch, _) if ch.is_ascii_alphabetic() => {
+                    if let Some(((attr_name, attr_name_range), attr_value)) = self.parse_attribute()
+                    {
+                        if attributes.contains_key(&attr_name) {
+                            self.errors.push_back(ParseError::duplicate_attribute(
+                                &attr_name,
+                                attr_name_range,
+                            ));
+                        }
+                        attributes.insert(attr_name.to_string(), attr_value);
+                    }
+                }
+                // Return
+                (ch, _) if ch == '/' || ch == '>' => {
+                    return Some((attributes, expression));
+                }
+                (_, ch_range) => {
+                    self.cursor.next();
+                    self.errors.push_back(ParseError::new(
+                        "Invalid character inside tag".to_string(),
+                        ch_range,
+                    ));
+                    continue;
+                }
+            };
+        }
+    }
+
     fn state_text(&mut self) -> Option<Token> {
         match self.cursor.next()? {
             ('<', left_angle_range) => match self.cursor.next()? {
@@ -181,6 +314,39 @@ impl<'a> Tokenizer<'a> {
                             ch_range,
                         ));
                         self.state_text()
+                    }
+                }
+                // OpeningTag
+                (ch, ch_range) if ch.is_ascii_alphabetic() => {
+                    let tag_name = self.parse_tag_name(ch, ch_range);
+                    let (attributes, expression) = self.parse_tag_content()?;
+
+                    self.skip_whitespace();
+
+                    let mut self_closing = false;
+
+                    if self.cursor.peek()?.0 == '/' {
+                        self_closing = true;
+                        self.cursor.next();
+                    }
+
+                    match self.cursor.next()? {
+                        ('>', ch_range) => {
+                            let (tag_name_clone, _) = tag_name.clone();
+                            if is_tag_name_with_raw_content(&tag_name_clone) {
+                                self.state = TokenizerState::RawtextData(tag_name_clone);
+                            }
+                            Some(Token::OpeningTag {
+                                self_closing,
+                                tag_name,
+                                attributes,
+                                expression,
+                                range: left_angle_range.extend_to(ch_range),
+                            })
+                        }
+                        _ => {
+                            panic!()
+                        }
                     }
                 }
                 // Doctype/Comment
@@ -227,17 +393,6 @@ impl<'a> Tokenizer<'a> {
                         }
                     }
                 }
-                // Text
-                (ch, ch_range) if ch.is_ascii_alphabetic() => {
-                    let tag_name = self.parse_tag_name(ch, ch_range);
-
-                    self.state_parse_tag_content(
-                        left_angle_range.start,
-                        tag_name,
-                        &mut BTreeMap::new(),
-                        None,
-                    )
-                }
                 // Invalid
                 (_, ch_range) => {
                     self.errors.push_back(ParseError::new(
@@ -282,146 +437,6 @@ impl<'a> Tokenizer<'a> {
                 }
                 Some(Token::Text { value, range })
             }
-        }
-    }
-
-    fn state_parse_tag_content(
-        &mut self,
-        tag_start: Position,
-        tag_name: (String, Range),
-        attributes: &mut BTreeMap<String, Attribute>,
-        expression: Option<(String, Range)>,
-    ) -> Option<Token> {
-        loop {
-            self.skip_whitespace();
-
-            match self.cursor.next()? {
-                ('{', _) => return self.state_tag_expression(tag_start, tag_name, attributes),
-                // Self-closing
-                ('/', _) => match self.cursor.next()? {
-                    ('>', ch_range) => {
-                        return Some(Token::OpeningTag {
-                            self_closing: true,
-                            tag_name,
-                            attributes: mem::take(attributes),
-                            expression,
-                            range: Range::new(tag_start, ch_range.end),
-                        });
-                    }
-                    (_, ch_range) => {
-                        self.errors.push_back(ParseError::new(
-                            "Expected '>' after '/'".to_string(),
-                            ch_range,
-                        ));
-                        return Some(Token::OpeningTag {
-                            self_closing: true,
-                            tag_name,
-                            attributes: mem::take(attributes),
-                            expression,
-                            range: Range::new(tag_start, ch_range.end),
-                        });
-                    }
-                },
-                (ch, ch_range) if ch.is_ascii_alphabetic() => {
-                    let (attr_name, attr_name_range) = self.parse_tag_name(ch, ch_range);
-
-                    self.skip_whitespace();
-
-                    match self.cursor.peek()? {
-                        ('=', _) => {
-                            self.cursor.next(); // consume '='
-                        }
-                        _ => {
-                            if attributes.contains_key(&attr_name) {
-                                self.errors.push_back(ParseError::duplicate_attribute(
-                                    &attr_name,
-                                    attr_name_range,
-                                ));
-                            }
-                            attributes.insert(
-                                attr_name,
-                                Attribute {
-                                    value: None,
-                                    range: attr_name_range,
-                                },
-                            );
-                            continue;
-                        }
-                    }
-                    self.skip_whitespace();
-
-                    let terminator = match self.cursor.peek()? {
-                        ('"', _) => '"',
-                        ('\'', _) => '\'',
-                        (_, ch_range) => {
-                            self.errors.push_back(ParseError::new(
-                                "Expected quoted attribute value".to_string(),
-                                ch_range,
-                            ));
-                            continue;
-                        }
-                    };
-
-                    self.cursor.next(); // consume terminator
-
-                    if self.cursor.peek()?.0 == terminator {
-                        let (_, terminator_range) = self.cursor.next()?;
-                        if attributes.contains_key(&attr_name) {
-                            self.errors.push_back(ParseError::duplicate_attribute(
-                                &attr_name,
-                                attr_name_range,
-                            ));
-                        }
-                        attributes.insert(
-                            attr_name,
-                            Attribute {
-                                value: None,
-                                range: Range::new(attr_name_range.start, terminator_range.end),
-                            },
-                        );
-                        continue;
-                    }
-
-                    let (attr_value, attr_value_range) =
-                        self.cursor.next_while(|(ch, _)| *ch != terminator)?;
-
-                    let (_, terminator_range) = self.cursor.next()?; // consume terminator
-
-                    if attributes.contains_key(&attr_name) {
-                        self.errors.push_back(ParseError::duplicate_attribute(
-                            &attr_name,
-                            attr_name_range,
-                        ));
-                    }
-                    attributes.insert(
-                        attr_name,
-                        Attribute {
-                            value: Some((attr_value, attr_value_range)),
-                            range: Range::new(attr_name_range.start, terminator_range.end),
-                        },
-                    );
-                }
-                ('>', ch_range) => {
-                    let (tag_name_clone, _) = tag_name.clone();
-                    if is_tag_name_with_raw_content(&tag_name_clone) {
-                        self.state = TokenizerState::RawtextData(tag_name_clone);
-                    }
-                    return Some(Token::OpeningTag {
-                        self_closing: false,
-                        tag_name,
-                        attributes: mem::take(attributes),
-                        expression,
-                        range: Range::new(tag_start, ch_range.end),
-                    });
-                }
-                (_, ch_range) => {
-                    self.errors.push_back(ParseError::new(
-                        "Invalid character inside tag".to_string(),
-                        ch_range,
-                    ));
-                    continue;
-                }
-            };
         }
     }
 
@@ -474,67 +489,6 @@ impl<'a> Tokenizer<'a> {
                     }
                     None => text = Some((String::from(ch), ch_range)),
                 },
-            }
-        }
-    }
-
-    fn state_text_expression(&mut self, expression_start: Position) -> Option<Token> {
-        match self.cursor.next()? {
-            ('}', ch_range) => {
-                self.errors
-                    .push_back(ParseError::new("Empty expression".to_string(), ch_range));
-                self.state_text()
-            }
-            (ch, ch_range) => {
-                let mut expression = (String::from(ch), ch_range);
-                // TODO: Handle EOF
-                while let Some((ch, range)) = self.cursor.next_if(|(ch, _)| *ch != '}') {
-                    expression.0.push(ch);
-                    expression.1 = expression.1.extend_to(range);
-                }
-                let (_, end_range) = self.cursor.next()?; // consume }
-                Some(Token::Expression {
-                    expression,
-                    range: Range::new(expression_start, end_range.end),
-                })
-            }
-        }
-    }
-
-    fn state_tag_expression(
-        &mut self,
-        tag_start: Position,
-        tag_name: (String, Range),
-        attributes: &mut BTreeMap<String, Attribute>,
-    ) -> Option<Token> {
-        match self.cursor.next()? {
-            ('}', ch_range) => {
-                self.errors
-                    .push_back(ParseError::new("Empty expression".to_string(), ch_range));
-                self.state_text()
-            }
-            (ch, ch_range) => {
-                let mut expression = (String::from(ch), ch_range);
-                loop {
-                    // Temporary fix until we embed hop tokenizer here
-                    if self.cursor.matches_str("}>")
-                        || self.cursor.matches_str("} >")
-                        || self.cursor.matches_str("}/>")
-                        || self.cursor.matches_str("} />")
-                    {
-                        self.cursor.next(); // consume '}'
-                        return self.state_parse_tag_content(
-                            tag_start,
-                            tag_name,
-                            attributes,
-                            Some(expression),
-                        );
-                    } else {
-                        let (ch, ch_range) = self.cursor.next()?;
-                        expression.0.push(ch);
-                        expression.1 = expression.1.extend_to(ch_range);
-                    }
-                }
             }
         }
     }
