@@ -229,7 +229,7 @@ impl<'a> Tokenizer<'a> {
         ))
     }
 
-    // Parse an expression using the dop tokenizer.
+    // Find the end of an expression using the dop tokenizer.
     //
     // Expects the current char iterator be on the first '{' that marks the
     // start of a dop expression.
