@@ -21,10 +21,10 @@ pub enum Token {
         range: Range,
     },
     OpeningTag {
-        self_closing: bool,
         tag_name: (String, Range),
         attributes: BTreeMap<String, Attribute>,
         expression: Option<(String, Range)>,
+        self_closing: bool,
         range: Range,
     },
     ClosingTag {

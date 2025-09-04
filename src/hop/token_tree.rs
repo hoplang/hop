@@ -172,13 +172,13 @@ mod tests {
                 [
                     TokenTree {
                         token: OpeningTag {
-                            self_closing: false,
                             tag_name: (
                                 "div",
                                 1:2-1:5,
                             ),
                             attributes: {},
                             expression: None,
+                            self_closing: false,
                             range: 1:1-1:6,
                         },
                         closing_tag_name_range: Some(
@@ -209,13 +209,13 @@ mod tests {
                 [
                     TokenTree {
                         token: OpeningTag {
-                            self_closing: false,
                             tag_name: (
                                 "div",
                                 1:2-1:5,
                             ),
                             attributes: {},
                             expression: None,
+                            self_closing: false,
                             range: 1:1-1:6,
                         },
                         closing_tag_name_range: Some(
@@ -224,13 +224,13 @@ mod tests {
                         children: [
                             TokenTree {
                                 token: OpeningTag {
-                                    self_closing: false,
                                     tag_name: (
                                         "br",
                                         1:7-1:9,
                                     ),
                                     attributes: {},
                                     expression: None,
+                                    self_closing: false,
                                     range: 1:6-1:10,
                                 },
                                 closing_tag_name_range: None,
@@ -239,13 +239,13 @@ mod tests {
                             },
                             TokenTree {
                                 token: OpeningTag {
-                                    self_closing: true,
                                     tag_name: (
                                         "hr",
                                         1:11-1:13,
                                     ),
                                     attributes: {},
                                     expression: None,
+                                    self_closing: true,
                                     range: 1:10-1:15,
                                 },
                                 closing_tag_name_range: None,
@@ -267,13 +267,13 @@ mod tests {
                 [
                     TokenTree {
                         token: OpeningTag {
-                            self_closing: false,
                             tag_name: (
                                 "div",
                                 1:2-1:5,
                             ),
                             attributes: {},
                             expression: None,
+                            self_closing: false,
                             range: 1:1-1:6,
                         },
                         closing_tag_name_range: Some(
@@ -282,13 +282,13 @@ mod tests {
                         children: [
                             TokenTree {
                                 token: OpeningTag {
-                                    self_closing: false,
                                     tag_name: (
                                         "p",
                                         1:7-1:8,
                                     ),
                                     attributes: {},
                                     expression: None,
+                                    self_closing: false,
                                     range: 1:6-1:9,
                                 },
                                 closing_tag_name_range: Some(
@@ -309,13 +309,13 @@ mod tests {
                             },
                             TokenTree {
                                 token: OpeningTag {
-                                    self_closing: false,
                                     tag_name: (
                                         "span",
                                         1:19-1:23,
                                     ),
                                     attributes: {},
                                     expression: None,
+                                    self_closing: false,
                                     range: 1:18-1:24,
                                 },
                                 closing_tag_name_range: Some(
