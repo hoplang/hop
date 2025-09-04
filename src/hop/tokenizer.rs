@@ -13,9 +13,6 @@ pub enum Token {
     Comment {
         range: Range,
     },
-
-    /// An Expression token represents an expression in the text position
-    /// E.g. <div>hello {expression}<div>
     Expression {
         expression: (String, Range),
         range: Range,
@@ -53,8 +50,8 @@ impl Ranged for Token {
 impl Annotated for Token {
     fn message(&self) -> String {
         match self {
-            Token::Text { .. } => {
-                format!("Text")
+            Token::Text { value, .. } => {
+                format!("Text [{} byte, {:#?}]", value.len(), value)
             }
             Token::Doctype { .. } => {
                 format!("Doctype")
@@ -646,7 +643,7 @@ mod tests {
         check(
             "this\ntext\nspans\nmultiple lines",
             expect![[r#"
-                Text
+                Text [30 byte, "this\ntext\nspans\nmultiple lines"]
                 1 | this
                   | ^^^^
                 2 | text
@@ -715,7 +712,7 @@ mod tests {
                 1 | <p><!-- -->
                   |    ^^^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 1 | <p><!-- -->
                 2 | </p>
 
@@ -723,7 +720,7 @@ mod tests {
                 2 | </p>
                   | ^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 2 | </p>
             "#]],
         );
@@ -742,7 +739,7 @@ mod tests {
                 1 | <textarea>
                   | ^^^^^^^^^^
 
-                Text
+                Text [2 byte, "\n\t"]
                 1 | <textarea>
                 2 |     <div></div>
                   | ^^^^
@@ -755,7 +752,7 @@ mod tests {
                 2 |     <div></div>
                   |          ^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 2 |     <div></div>
                 3 | </textarea>
 
@@ -763,7 +760,7 @@ mod tests {
                 3 | </textarea>
                   | ^^^^^^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 3 | </textarea>
             "#]],
         );
@@ -852,7 +849,7 @@ mod tests {
                 5 | lines --></p>
                   |          ^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 5 | lines --></p>
             "#]],
         );
@@ -932,7 +929,7 @@ mod tests {
                 1 | <style>
                   | ^^^^^^^
 
-                Text
+                Text [54 byte, "\n  body { color: red; }\n  .class { font-size: 12px; }\n"]
                 1 | <style>
                 2 |   body { color: red; }
                   | ^^^^^^^^^^^^^^^^^^^^^^
@@ -944,7 +941,7 @@ mod tests {
                 4 | </style>
                   | ^^^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 4 | </style>
             "#]],
         );
@@ -970,7 +967,7 @@ mod tests {
                 1 | <h1></h1>
                   |     ^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 1 | <h1></h1>
                 2 | <h2></h2>
 
@@ -982,7 +979,7 @@ mod tests {
                 2 | <h2></h2>
                   |     ^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 2 | <h2></h2>
                 3 | <h3></h3>
 
@@ -994,7 +991,7 @@ mod tests {
                 3 | <h3></h3>
                   |     ^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 3 | <h3></h3>
                 4 | <h4></h4>
 
@@ -1006,7 +1003,7 @@ mod tests {
                 4 | <h4></h4>
                   |     ^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 4 | <h4></h4>
                 5 | <h5></h5>
 
@@ -1018,7 +1015,7 @@ mod tests {
                 5 | <h5></h5>
                   |     ^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 5 | <h5></h5>
                 6 | <h6></h6>
 
@@ -1030,7 +1027,7 @@ mod tests {
                 6 | <h6></h6>
                   |     ^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 6 | <h6></h6>
             "#]],
         );
@@ -1057,7 +1054,7 @@ mod tests {
                 4 |   data-value="something">
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 4 |   data-value="something">
                 5 | </div>
 
@@ -1065,7 +1062,7 @@ mod tests {
                 5 | </div>
                   | ^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 5 | </div>
             "#]],
         );
@@ -1085,7 +1082,7 @@ mod tests {
                 1 | <script>
                   | ^^^^^^^^
 
-                Text
+                Text [65 byte, "\n  const html = \"<title>Nested</title>\";\n  document.write(html);\n"]
                 1 | <script>
                 2 |   const html = "<title>Nested</title>";
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1097,7 +1094,7 @@ mod tests {
                 4 | </script>
                   | ^^^^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 4 | </script>
             "#]],
         );
@@ -1112,7 +1109,7 @@ mod tests {
                 1 | <hop-x-raw>foo bar</hop-x-raw>
                   | ^^^^^^^^^^^
 
-                Text
+                Text [7 byte, "foo bar"]
                 1 | <hop-x-raw>foo bar</hop-x-raw>
                   |            ^^^^^^^
 
@@ -1136,7 +1133,7 @@ mod tests {
                 1 | <hop-x-raw>
                   | ^^^^^^^^^^^
 
-                Text
+                Text [24 byte, "\n  <div>some html</div>\n"]
                 1 | <hop-x-raw>
                 2 |   <div>some html</div>
                   | ^^^^^^^^^^^^^^^^^^^^^^
@@ -1146,7 +1143,7 @@ mod tests {
                 3 | </hop-x-raw>
                   | ^^^^^^^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 3 | </hop-x-raw>
             "#]],
         );
@@ -1191,7 +1188,7 @@ mod tests {
                 1 | <main-comp {foo}>
                   | ^^^^^^^^^^^^^^^^^
 
-                Text
+                Text [2 byte, "\n\t"]
                 1 | <main-comp {foo}>
                 2 |     <script>
                   | ^^^^
@@ -1200,7 +1197,7 @@ mod tests {
                 2 |     <script>
                   |     ^^^^^^^^
 
-                Text
+                Text [29 byte, "\n\t\tconst x = \"<div></div>\";\n\t"]
                 2 |     <script>
                 3 |         const x = "<div></div>";
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1211,7 +1208,7 @@ mod tests {
                 4 |     </script>
                   |     ^^^^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 4 |     </script>
                 5 | </main-comp>
 
@@ -1219,7 +1216,7 @@ mod tests {
                 5 | </main-comp>
                   | ^^^^^^^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 5 | </main-comp>
             "#]],
         );
@@ -1246,7 +1243,7 @@ mod tests {
                  1 | <!DOCTYPE html>
                    | ^^^^^^^^^^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                  1 | <!DOCTYPE html>
                  2 | <html>
 
@@ -1254,7 +1251,7 @@ mod tests {
                  2 | <html>
                    | ^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                  2 | <html>
                  3 | <head>
 
@@ -1262,7 +1259,7 @@ mod tests {
                  3 | <head>
                    | ^^^^^^
 
-                Text
+                Text [3 byte, "\n  "]
                  3 | <head>
                  4 |   <title>My Page</title>
                    | ^^
@@ -1271,7 +1268,7 @@ mod tests {
                  4 |   <title>My Page</title>
                    |   ^^^^^^^
 
-                Text
+                Text [7 byte, "My Page"]
                  4 |   <title>My Page</title>
                    |          ^^^^^^^
 
@@ -1279,7 +1276,7 @@ mod tests {
                  4 |   <title>My Page</title>
                    |                 ^^^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                  4 |   <title>My Page</title>
                  5 | </head>
 
@@ -1287,7 +1284,7 @@ mod tests {
                  5 | </head>
                    | ^^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                  5 | </head>
                  6 | <body>
 
@@ -1295,7 +1292,7 @@ mod tests {
                  6 | <body>
                    | ^^^^^^
 
-                Text
+                Text [3 byte, "\n  "]
                  6 | <body>
                  7 |   <div class="container">
                    | ^^
@@ -1304,7 +1301,7 @@ mod tests {
                  7 |   <div class="container">
                    |   ^^^^^^^^^^^^^^^^^^^^^^^
 
-                Text
+                Text [21 byte, "\n    Hello, world!\n  "]
                  7 |   <div class="container">
                  8 |     Hello, world!
                    | ^^^^^^^^^^^^^^^^^
@@ -1315,7 +1312,7 @@ mod tests {
                  9 |   </div>
                    |   ^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                  9 |   </div>
                 10 | </body>
 
@@ -1323,7 +1320,7 @@ mod tests {
                 10 | </body>
                    | ^^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 10 | </body>
                 11 | </html>
 
@@ -1331,7 +1328,7 @@ mod tests {
                 11 | </html>
                    | ^^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 11 | </html>
             "#]],
         );
@@ -1353,7 +1350,7 @@ mod tests {
                 1 | <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 1 | <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 2 | <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
 
@@ -1365,7 +1362,7 @@ mod tests {
                 2 | <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
                   |                                             ^^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 2 | <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
                 3 | <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
 
@@ -1377,7 +1374,7 @@ mod tests {
                 3 | <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
                   |                                                                                                                                     ^^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 3 | <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
                 4 | <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
 
@@ -1389,7 +1386,7 @@ mod tests {
                 4 | <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
                   |                                                  ^^^^^^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 4 | <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
                 5 | <line x1="12" y1="22.08" x2="12" y2="12"></line>
 
@@ -1401,7 +1398,7 @@ mod tests {
                 5 | <line x1="12" y1="22.08" x2="12" y2="12"></line>
                   |                                          ^^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 5 | <line x1="12" y1="22.08" x2="12" y2="12"></line>
                 6 | </svg>
 
@@ -1409,7 +1406,7 @@ mod tests {
                 6 | </svg>
                   | ^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 6 | </svg>
             "#]],
         );
@@ -1432,7 +1429,7 @@ mod tests {
                 1 | <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" version="1.1" viewBox="0 0 128 128" class="size-12">
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-                Text
+                Text [2 byte, "\n\t"]
                 1 | <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" version="1.1" viewBox="0 0 128 128" class="size-12">
                 2 |     <g style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;">
                   | ^^^^
@@ -1441,7 +1438,7 @@ mod tests {
                 2 |     <g style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;">
                   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-                Text
+                Text [3 byte, "\n\t\t"]
                 2 |     <g style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;">
                 3 |         <path d="M20.04 38 64 22l43.96 16L64 54Z"></path>
                   | ^^^^^^^^
@@ -1454,7 +1451,7 @@ mod tests {
                 3 |         <path d="M20.04 38 64 22l43.96 16L64 54Z"></path>
                   |                                                   ^^^^^^^
 
-                Text
+                Text [3 byte, "\n\t\t"]
                 3 |         <path d="M20.04 38 64 22l43.96 16L64 54Z"></path>
                 4 |         <path d="M17.54 47.09v48l35.099 12.775"></path>
                   | ^^^^^^^^
@@ -1467,7 +1464,7 @@ mod tests {
                 4 |         <path d="M17.54 47.09v48l35.099 12.775"></path>
                   |                                                 ^^^^^^^
 
-                Text
+                Text [3 byte, "\n\t\t"]
                 4 |         <path d="M17.54 47.09v48l35.099 12.775"></path>
                 5 |         <path d="M64 112V64l46.46-16.91v48L77.988 106.91"></path>
                   | ^^^^^^^^
@@ -1480,7 +1477,7 @@ mod tests {
                 5 |         <path d="M64 112V64l46.46-16.91v48L77.988 106.91"></path>
                   |                                                           ^^^^^^^
 
-                Text
+                Text [2 byte, "\n\t"]
                 5 |         <path d="M64 112V64l46.46-16.91v48L77.988 106.91"></path>
                 6 |     </g>
                   | ^^^^
@@ -1489,7 +1486,7 @@ mod tests {
                 6 |     </g>
                   |     ^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 6 |     </g>
                 7 | </svg>
 
@@ -1497,7 +1494,7 @@ mod tests {
                 7 | </svg>
                   | ^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 7 | </svg>
             "#]],
         );
@@ -1519,7 +1516,7 @@ mod tests {
                 1 | <main-comp>
                   | ^^^^^^^^^^^
 
-                Text
+                Text [2 byte, "\n\t"]
                 1 | <main-comp>
                 2 |     <form id="form">
                   | ^^^^
@@ -1528,7 +1525,7 @@ mod tests {
                 2 |     <form id="form">
                   |     ^^^^^^^^^^^^^^^^
 
-                Text
+                Text [3 byte, "\n\t\t"]
                 2 |     <form id="form">
                 3 |         <input type="text" required>
                   | ^^^^^^^^
@@ -1537,7 +1534,7 @@ mod tests {
                 3 |         <input type="text" required>
                   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-                Text
+                Text [3 byte, "\n\t\t"]
                 3 |         <input type="text" required>
                 4 |         <button type="submit">Send</button>
                   | ^^^^^^^^
@@ -1546,7 +1543,7 @@ mod tests {
                 4 |         <button type="submit">Send</button>
                   |         ^^^^^^^^^^^^^^^^^^^^^^
 
-                Text
+                Text [4 byte, "Send"]
                 4 |         <button type="submit">Send</button>
                   |                               ^^^^
 
@@ -1554,7 +1551,7 @@ mod tests {
                 4 |         <button type="submit">Send</button>
                   |                                   ^^^^^^^^^
 
-                Text
+                Text [2 byte, "\n\t"]
                 4 |         <button type="submit">Send</button>
                 5 |     </form>
                   | ^^^^
@@ -1563,7 +1560,7 @@ mod tests {
                 5 |     </form>
                   |     ^^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 5 |     </form>
                 6 | </main-comp>
 
@@ -1571,7 +1568,7 @@ mod tests {
                 6 | </main-comp>
                   | ^^^^^^^^^^^^
 
-                Text
+                Text [1 byte, "\n"]
                 6 | </main-comp>
             "#]],
         );
@@ -1742,7 +1739,7 @@ mod tests {
                 1 | <h1>Hello {name}!</h1>
                   | ^^^^
 
-                Text
+                Text [6 byte, "Hello "]
                 1 | <h1>Hello {name}!</h1>
                   |     ^^^^^^
 
@@ -1750,7 +1747,7 @@ mod tests {
                 1 | <h1>Hello {name}!</h1>
                   |           ^^^^^^
 
-                Text
+                Text [1 byte, "!"]
                 1 | <h1>Hello {name}!</h1>
                   |                 ^
 
@@ -1770,7 +1767,7 @@ mod tests {
                 1 | <p>User {user.name} has {user.count} items</p>
                   | ^^^
 
-                Text
+                Text [5 byte, "User "]
                 1 | <p>User {user.name} has {user.count} items</p>
                   |    ^^^^^
 
@@ -1778,7 +1775,7 @@ mod tests {
                 1 | <p>User {user.name} has {user.count} items</p>
                   |         ^^^^^^^^^^^
 
-                Text
+                Text [5 byte, " has "]
                 1 | <p>User {user.name} has {user.count} items</p>
                   |                    ^^^^^
 
@@ -1786,7 +1783,7 @@ mod tests {
                 1 | <p>User {user.name} has {user.count} items</p>
                   |                         ^^^^^^^^^^^^
 
-                Text
+                Text [6 byte, " items"]
                 1 | <p>User {user.name} has {user.count} items</p>
                   |                                     ^^^^^^
 
@@ -1810,7 +1807,7 @@ mod tests {
                 1 | <span>{greeting} world!</span>
                   |       ^^^^^^^^^^
 
-                Text
+                Text [7 byte, " world!"]
                 1 | <span>{greeting} world!</span>
                   |                 ^^^^^^^
 
@@ -1830,7 +1827,7 @@ mod tests {
                 1 | <div>Price: {price}</div>
                   | ^^^^^
 
-                Text
+                Text [7 byte, "Price: "]
                 1 | <div>Price: {price}</div>
                   |      ^^^^^^^
 
@@ -1874,7 +1871,7 @@ mod tests {
                 1 | <p>Status: {user.profile.status == 'active'}</p>
                   | ^^^
 
-                Text
+                Text [8 byte, "Status: "]
                 1 | <p>Status: {user.profile.status == 'active'}</p>
                   |    ^^^^^^^^
 
@@ -1898,7 +1895,7 @@ mod tests {
                 1 | <span>Item: {item.title}</span>
                   | ^^^^^^
 
-                Text
+                Text [6 byte, "Item: "]
                 1 | <span>Item: {item.title}</span>
                   |       ^^^^^^
 
@@ -1922,7 +1919,7 @@ mod tests {
                 1 | <div {className}>Content: {content}</div>
                   | ^^^^^^^^^^^^^^^^^
 
-                Text
+                Text [9 byte, "Content: "]
                 1 | <div {className}>Content: {content}</div>
                   |                  ^^^^^^^^^
 
