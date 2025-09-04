@@ -112,6 +112,27 @@ impl Annotated for Token {
     }
 }
 
+pub struct RangedString(String, Range);
+
+impl RangedString {
+    pub fn push(&mut self, (ch, r): (char, Range)) {
+        self.0.push(ch);
+        self.1 = self.1.extend_to(r);
+    }
+}
+
+impl Into<(String, Range)> for RangedString {
+    fn into(self) -> (String, Range) {
+        (self.0, self.1)
+    }
+}
+
+impl From<(char, Range)> for RangedString {
+    fn from((ch, r): (char, Range)) -> Self {
+        RangedString(String::from(ch), r)
+    }
+}
+
 #[derive(Debug)]
 enum TokenizerState {
     Text,
@@ -136,81 +157,75 @@ impl<'a> Tokenizer<'a> {
 
     // Parse a tag name from the cursor given an initial char
     fn parse_tag_name(&mut self, initial_char: char, initial_range: Range) -> (String, Range) {
-        let mut result = (String::from(initial_char), initial_range);
-        while let Some((ch, r)) = self
+        let mut result = RangedString::from((initial_char, initial_range));
+        while let Some(ch) = self
             .cursor
             .next_if(|(ch, _)| *ch == '-' || ch.is_ascii_alphanumeric())
         {
-            result.0.push(ch);
-            result.1 = result.1.extend_to(r);
+            result.push(ch);
         }
-        result
+        result.into()
     }
 
     // Skip whitespace from the cursor
     fn skip_whitespace(&mut self) {
-        self.cursor.next_while(|(ch, _)| ch.is_whitespace());
+        while self.cursor.next_if(|(ch, _)| ch.is_whitespace()).is_some() {}
     }
 
     fn parse_attribute(&mut self) -> Option<((String, Range), Attribute)> {
         let (ch, ch_range) = self.cursor.next()?; // consume initial name char
-        let attr_name = self.parse_tag_name(ch, ch_range);
-
-        let attr_name_range = attr_name.1;
+        let (attr_name, attr_name_range) = self.parse_tag_name(ch, ch_range);
 
         self.skip_whitespace();
 
-        match self.cursor.peek()? {
-            ('=', _) => {
-                self.cursor.next(); // consume '='
-            }
-            _ => {
-                return Some((
-                    attr_name,
-                    Attribute {
-                        value: None,
-                        range: attr_name_range,
-                    },
-                ));
-            }
-        }
-        self.skip_whitespace();
-
-        let terminator = match self.cursor.peek()? {
-            ('"', _) => '"',
-            ('\'', _) => '\'',
-            (_, ch_range) => {
-                self.errors.push_back(ParseError::new(
-                    "Expected quoted attribute value".to_string(),
-                    ch_range,
-                ));
-                return None;
-            }
-        };
-
-        self.cursor.next(); // consume terminator
-
-        // Handle empty attribute
-        if self.cursor.peek()?.0 == terminator {
-            let (_, terminator_range) = self.cursor.next()?;
+        if self.cursor.peek_char()? != '=' {
             return Some((
-                attr_name,
+                (attr_name, attr_name_range),
                 Attribute {
                     value: None,
-                    range: attr_name_range.extend_to(terminator_range),
+                    range: attr_name_range,
                 },
             ));
         }
 
-        let (attr_value, attr_value_range) = self.cursor.next_while(|(ch, _)| *ch != terminator)?;
+        self.cursor.next(); // consume '='
+        self.skip_whitespace();
 
-        let (_, terminator_range) = self.cursor.next()?; // consume terminator
+        if !matches!(self.cursor.peek_char()?, '"' | '\'') {
+            self.errors.push_back(ParseError::new(
+                "Expected quoted attribute value".to_string(),
+                ch_range,
+            ));
+            return None;
+        }
+
+        let (quote_ch, _) = self.cursor.next()?;
+
+        // handle empty attribute
+        if self.cursor.peek_char()? == quote_ch {
+            let (_, closing_quote_ch) = self.cursor.next()?;
+            return Some((
+                (attr_name, attr_name_range),
+                Attribute {
+                    value: None,
+                    range: attr_name_range.extend_to(closing_quote_ch),
+                },
+            ));
+        }
+
+        let mut attr_value = RangedString::from(self.cursor.next()?);
+
+        while let Some(ch) = self.cursor.next_if(|(ch, _)| *ch != quote_ch) {
+            attr_value.push(ch);
+        }
+
+        let (_, closing_quote_ch) = self.cursor.next()?; // consume quote ch
 
         Some((
-            attr_name,
+            (attr_name, attr_name_range),
             Attribute {
-                value: Some((attr_value, attr_value_range)),
-                range: attr_name_range.extend_to(terminator_range),
+                value: Some(attr_value.into()),
+                range: attr_name_range.extend_to(closing_quote_ch),
             },
         ))
     }
@@ -224,36 +239,31 @@ impl<'a> Tokenizer<'a> {
 
             match self.cursor.peek()? {
                 // Parse expression
-                ('{', _) => {
+                ('{', left_brace_range) => {
                     self.cursor.next(); // consume '{'
-                    match self.cursor.next()? {
-                        ('}', ch_range) => {
-                            self.errors.push_back(ParseError::new(
-                                "Empty expression".to_string(),
-                                ch_range,
-                            ));
-                            continue;
-                        }
-                        (ch, ch_range) => {
-                            let mut expr = (String::from(ch), ch_range);
-                            loop {
-                                // Temporary fix until we embed hop tokenizer here
-                                if self.cursor.matches_str("}>")
-                                    || self.cursor.matches_str("} >")
-                                    || self.cursor.matches_str("}/>")
-                                    || self.cursor.matches_str("} />")
-                                {
-                                    self.cursor.next(); // consume '}'
-                                    break;
-                                } else {
-                                    let (ch, ch_range) = self.cursor.next()?;
-                                    expr.0.push(ch);
-                                    expr.1 = expr.1.extend_to(ch_range);
-                                }
-                            }
-                            expression = Some(expr);
+                    if self.cursor.peek_char()? == '}' {
+                        let (_, right_brace_range) = self.cursor.next()?;
+                        self.errors.push_back(ParseError::new(
+                            "Empty expression".to_string(),
+                            left_brace_range.extend_to(right_brace_range),
+                        ));
+                        continue;
+                    }
+                    let mut expr = RangedString::from(self.cursor.next()?);
+                    loop {
+                        // Temporary fix until we embed hop tokenizer here
+                        if self.cursor.matches_str("}>")
+                            || self.cursor.matches_str("} >")
+                            || self.cursor.matches_str("}/>")
+                            || self.cursor.matches_str("} />")
+                        {
+                            self.cursor.next(); // consume '}'
+                            break;
+                        } else {
+                            expr.push(self.cursor.next()?);
                         }
                     }
+                    expression = Some(expr.into());
                 }
                 // Parse attribute
                 (ch, _) if ch.is_ascii_alphabetic() => {
@@ -325,7 +335,7 @@ impl<'a> Tokenizer<'a> {
 
                     let mut self_closing = false;
 
-                    if self.cursor.peek()?.0 == '/' {
+                    if self.cursor.peek_char()? == '/' {
                         self_closing = true;
                         self.cursor.next();
                     }
@@ -353,7 +363,7 @@ impl<'a> Tokenizer<'a> {
                 ('!', _) => {
                     match self.cursor.next()? {
                         // Comment
-                        ('-', _) if self.cursor.peek()?.0 == '-' => {
+                        ('-', _) if self.cursor.peek_char()? == '-' => {
                             self.cursor.next();
                             loop {
                                 if self.cursor.next()?.0 == '-' && self.cursor.next()?.0 == '-' {
@@ -370,7 +380,7 @@ impl<'a> Tokenizer<'a> {
                             for _ in 0..6 {
                                 self.cursor.next();
                             }
-                            self.cursor.next_while(|(ch, _)| *ch != '>');
+                            while self.cursor.next_if(|(ch, _)| *ch != '>').is_some() {}
                             match self.cursor.next()? {
                                 ('>', ch_range) => Some(Token::Doctype {
                                     range: left_angle_range.extend_to(ch_range),
@@ -412,30 +422,29 @@ impl<'a> Tokenizer<'a> {
                         ));
                         self.state_text()
                     }
-                    (ch, ch_range) => {
-                        let mut expression = (String::from(ch), ch_range);
-                        // TODO: Handle EOF
-                        while let Some((ch, range)) = self.cursor.next_if(|(ch, _)| *ch != '}') {
-                            expression.0.push(ch);
-                            expression.1 = expression.1.extend_to(range);
+                    ch => {
+                        let mut expression = RangedString::from(ch);
+                        while let Some(ch) = self.cursor.next_if(|(ch, _)| *ch != '}') {
+                            expression.push(ch);
                         }
                         let (_, right_brace_range) = self.cursor.next()?; // consume }
                         Some(Token::Expression {
-                            expression,
+                            expression: expression.into(),
                             range: left_brace_range.extend_to(right_brace_range),
                         })
                     }
                 }
             }
             // Text
-            (ch, ch_range) => {
-                let mut value = String::from(ch);
-                let mut range = ch_range;
-                while let Some((ch, r)) = self.cursor.next_if(|(ch, _)| *ch != '{' && *ch != '<') {
-                    value.push(ch);
-                    range = range.extend_to(r);
+            ch => {
+                let mut text = RangedString::from(ch);
+                while let Some(ch) = self.cursor.next_if(|(ch, _)| *ch != '{' && *ch != '<') {
+                    text.push(ch);
                 }
-                Some(Token::Text { value, range })
+                Some(Token::Text {
+                    value: text.0,
+                    range: text.1,
+                })
             }
         }
     }
@@ -445,12 +454,17 @@ impl<'a> Tokenizer<'a> {
         stored_tag_name: String,
         token_start: Position,
     ) -> Option<Token> {
-        self.cursor.next(); // consume /
-        let (tag_name, tag_name_range) = self.cursor.next_n(stored_tag_name.len()).unwrap();
-        let (_, end_range) = self.cursor.next().unwrap(); // consume >
+        self.cursor.next(); // consume '/'
+        // consume tag name
+        let mut tag_name = RangedString::from(self.cursor.next()?);
+        for _ in 0..stored_tag_name.len() - 1 {
+            tag_name.push(self.cursor.next()?);
+        }
+        // consume >
+        let (_, end_range) = self.cursor.next()?;
         self.state = TokenizerState::Text;
         Some(Token::ClosingTag {
-            tag_name: (tag_name, tag_name_range),
+            tag_name: tag_name.into(),
             range: Range::new(token_start, end_range.end),
         })
     }

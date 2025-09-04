@@ -143,6 +143,10 @@ impl<'a> StrCursor<'a> {
         self.chars.peek().cloned()
     }
 
+    pub fn peek_char(&mut self) -> Option<char> {
+        self.chars.peek().map(|(ch, _)| *ch)
+    }
+
     pub fn peek_n(&mut self, n: usize) -> Option<(String, Range)> {
         let mut clone = self.chars.clone();
         let mut result: Option<(String, Range)> = None;
@@ -162,44 +166,6 @@ impl<'a> StrCursor<'a> {
     }
     pub fn next_if(&mut self, func: impl FnOnce(&(char, Range)) -> bool) -> Option<(char, Range)> {
         self.chars.next_if(func)
-    }
-    pub fn next_n(&mut self, n: usize) -> Option<(String, Range)> {
-        let mut result: Option<(String, Range)> = None;
-        for _ in 0..n {
-            let (ch, range) = self.next()?;
-            match &mut result {
-                Some(result) => {
-                    result.0.push(ch);
-                    result.1 = result.1.extend_to(range);
-                }
-                None => {
-                    result = Some((String::from(ch), range));
-                }
-            }
-        }
-        result
-    }
-    pub fn next_while(&mut self, func: impl Fn(&(char, Range)) -> bool) -> Option<(String, Range)> {
-        let mut result: Option<(String, Range)> = None;
-        loop {
-            match self.chars.peek() {
-                Some(matched) if func(matched) => {
-                    let (ch, range) = self.next().unwrap();
-                    match &mut result {
-                        Some(result) => {
-                            result.0.push(ch);
-                            result.1 = result.1.extend_to(range);
-                        }
-                        None => {
-                            result = Some((String::from(ch), range));
-                        }
-                    }
-                }
-                _ => {
-                    return result;
-                }
-            };
-        }
     }
     pub fn matches_str(&mut self, expected: &str) -> bool {
         let mut actual_chars = self.chars.clone();
