@@ -82,9 +82,11 @@ impl Annotated for Token {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug)]
 enum TokenizerState {
     Text,
+    RawtextData(String),
+    RawtextClosingTag(String, Position),
 }
 
 #[derive(Debug, Default)]
@@ -122,7 +124,7 @@ impl RangedString {
 
 pub struct Tokenizer<'a> {
     cursor: StrCursor<'a>,
-    stored_tag_name: String,
+    state: TokenizerState,
     // attributes are the attributes of the tag we're currently processing
     attributes: BTreeMap<String, Attribute>,
 
@@ -137,8 +139,8 @@ pub struct Tokenizer<'a> {
 impl<'a> Tokenizer<'a> {
     pub fn new(input: &'a str) -> Self {
         Self {
+            state: TokenizerState::Text,
             cursor: StrCursor::new(input),
-            stored_tag_name: String::new(),
             expression: OptionalRangedString::default(),
             attributes: BTreeMap::default(),
             tokens: VecDeque::new(),
@@ -387,8 +389,8 @@ impl<'a> Tokenizer<'a> {
                         range: Range::new(tag_start, ch_range.end),
                     });
                     return if is_tag_name_with_raw_content(&tag_name_clone) {
-                        self.stored_tag_name = tag_name_clone;
-                        self.state_rawtext_data()
+                        self.state = TokenizerState::RawtextData(tag_name_clone);
+                        Some(TokenizerState::Text)
                     } else {
                         Some(TokenizerState::Text)
                     };
@@ -451,26 +453,41 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn state_rawtext_data(&mut self) -> Option<TokenizerState> {
+    fn state_rawtext_closing_tag(
+        &mut self,
+        stored_tag_name: String,
+        token_start: Position,
+    ) -> Option<TokenizerState> {
+        let tag_name = stored_tag_name.to_string();
+        self.cursor.next_n(1).unwrap(); // consume /
+        let (_, tag_name_range) = self.cursor.next_n(stored_tag_name.len()).unwrap();
+        let (_, end_range) = self.cursor.next().unwrap(); // consume >
+        self.tokens.push_back(Token::ClosingTag {
+            tag_name: (tag_name, tag_name_range),
+            range: Range::new(token_start, end_range.end),
+        });
+        self.state = TokenizerState::Text;
+        Some(TokenizerState::Text)
+    }
+
+    fn state_rawtext_data(&mut self, stored_tag_name: String) -> Option<TokenizerState> {
         let mut text = OptionalRangedString::default();
         loop {
             match self.cursor.next()? {
                 ('<', langle_range) => {
-                    let end_tag = format!("/{}>", self.stored_tag_name);
+                    let end_tag = format!("/{}>", stored_tag_name);
                     if self.cursor.peek_n(end_tag.len())?.0 == end_tag {
                         if let Some((s, r)) = text.consume() {
                             self.tokens.push_back(Token::Text { value: s, range: r });
+                            self.state = TokenizerState::RawtextClosingTag(
+                                stored_tag_name.clone(),
+                                langle_range.start,
+                            );
+                            return Some(TokenizerState::Text);
+                        } else {
+                            return self
+                                .state_rawtext_closing_tag(stored_tag_name, langle_range.start);
                         }
-                        let tag_name = self.stored_tag_name.clone();
-                        self.cursor.next_n(1).unwrap(); // consume /
-                        let (_, tag_name_range) =
-                            self.cursor.next_n(self.stored_tag_name.len()).unwrap();
-                        let (_, end_range) = self.cursor.next().unwrap(); // consume >
-                        self.tokens.push_back(Token::ClosingTag {
-                            tag_name: (tag_name, tag_name_range),
-                            range: Range::new(langle_range.start, end_range.end),
-                        });
-                        return Some(TokenizerState::Text);
                     } else {
                         text.extend('<', langle_range);
                     }
@@ -552,7 +569,17 @@ impl<'a> Tokenizer<'a> {
         if !self.tokens.is_empty() {
             return Some(Ok(self.tokens.pop_front()?));
         }
-        self.state_text();
+        match &self.state {
+            TokenizerState::Text => {
+                self.state_text();
+            }
+            TokenizerState::RawtextData(stored_tag_name) => {
+                self.state_rawtext_data(stored_tag_name.clone());
+            }
+            TokenizerState::RawtextClosingTag(stored_tag_name, tag_start) => {
+                self.state_rawtext_closing_tag(stored_tag_name.clone(), *tag_start);
+            }
+        }
         if !self.errors.is_empty() {
             return Some(Err(self.errors.pop_front()?));
         }
