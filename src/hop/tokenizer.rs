@@ -191,10 +191,7 @@ impl<'a> Tokenizer<'a> {
                 self.token_start = ch_range.start;
                 self.state_tag_start()
             }
-            Some(('{', ch_range)) => {
-                self.token_start = ch_range.start;
-                self.state_text_expression_start()
-            }
+            Some(('{', ch_range)) => self.state_text_expression_start(ch_range.start),
             Some((ch, ch_range)) => {
                 let mut text = RangedString::init(ch, ch_range);
                 while let Some((ch, range)) =
@@ -599,31 +596,28 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn state_text_expression_start(&mut self) -> Option<TokenizerState> {
+    fn state_text_expression_start(
+        &mut self,
+        expression_start: Position,
+    ) -> Option<TokenizerState> {
         match self.cursor.next()? {
             ('}', ch_range) => {
                 self.fail_and_recover(ParseError::new("Empty expression".to_string(), ch_range))
             }
             (ch, ch_range) => {
-                self.expression.extend(ch, ch_range);
-                self.state_text_expression_content()
-            }
-        }
-    }
-    fn state_text_expression_content(&mut self) -> Option<TokenizerState> {
-        match self.cursor.next()? {
-            ('}', ch_range) => {
-                let (expression_value, expression_range) = self.expression.consume().unwrap();
+                let mut text = RangedString::init(ch, ch_range);
+                // TODO: Handle EOF
+                while let Some((ch, range)) = self.cursor.next_if(|(ch, _)| *ch != '}') {
+                    text.push(ch, range);
+                }
+                let RangedString(expression_value, expression_range) = text;
+                let (_, end_range) = self.cursor.next()?; // consume }
                 self.tokens.push_back(Ok(Token::Expression {
                     value: expression_value,
                     expression_range,
-                    range: Range::new(self.token_start, ch_range.end),
+                    range: Range::new(expression_start, end_range.end),
                 }));
                 Some(TokenizerState::Text)
-            }
-            (ch, ch_range) => {
-                self.expression.extend(ch, ch_range);
-                self.state_text_expression_content()
             }
         }
     }
