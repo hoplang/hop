@@ -156,18 +156,10 @@ impl SourceAnnotator {
                 Position::new(line_num, line.len() + 1),
             );
 
-            // TODO: Here we do special handling for zero-length ranges,
-            // we should remove this when ranges are no longer allowed to
-            // have length 0.
-            //
-            // Special handling for zero-length ranges (e.g., position markers)
-            if range.start == range.end && range.start.line == line_num {
-                // For zero-length ranges, we still want to show a single caret
-                self.format_underline(output, line, range, max_line_num_width);
-            } else if let Some(intersection) = range.intersection(&line_range) {
-                // If this line intersects with the annotation, add underline
-                // The intersection will always be on a single line (line_num)
-                // So we can safely pass it to format_underline
+            // If this line intersects with the annotation, add underline
+            // The intersection will always be on a single line (line_num)
+            // So we can safely pass it to format_underline
+            if let Some(intersection) = range.intersection(&line_range) {
                 debug_assert_eq!(intersection.start.line, intersection.end.line);
                 self.format_underline(output, line, intersection, max_line_num_width);
             }
