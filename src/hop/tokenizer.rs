@@ -144,30 +144,6 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn push_attribute(
-        &mut self,
-        attribute_name: RangedString,
-        attribute_value: Option<RangedString>,
-        ends_at: Position,
-    ) {
-        let RangedString(attr_name, attr_name_range) = attribute_name;
-        if self.attributes.contains_key(&attr_name) {
-            self.tokens.push_back(Err(ParseError::duplicate_attribute(
-                &attr_name,
-                attr_name_range,
-            )));
-            return;
-        }
-        self.attributes.insert(
-            attr_name.clone(),
-            Attribute {
-                name: attr_name,
-                value: attribute_value.map(|RangedString(s, r)| (s, r)),
-                range: Range::new(attr_name_range.start, ends_at),
-            },
-        );
-    }
-
     fn fail_and_recover(&mut self, err: ParseError) -> Option<TokenizerState> {
         self.attributes.clear();
         self.expression.consume();
@@ -234,7 +210,7 @@ impl<'a> Tokenizer<'a> {
                 // TODO
                 self.state_opening_tag_name(tag_start, tag_name)
             }
-            (ch, _) if ch.is_whitespace() => self.state_before_attr_name(tag_start, tag_name),
+            (ch, _) if ch.is_whitespace() => self.state_parse_tag_content(tag_start, tag_name),
             ('>', ch_range) => {
                 let RangedString(tag_name, tag_name_range) = tag_name;
                 if is_tag_name_with_raw_content(&tag_name) {
@@ -314,70 +290,109 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn state_before_attr_name(
+    fn state_parse_tag_content(
         &mut self,
         tag_start: Position,
         tag_name: RangedString,
     ) -> Option<TokenizerState> {
-        self.cursor.next_while(|(ch, _)| ch.is_whitespace());
+        loop {
+            self.cursor.next_while(|(ch, _)| ch.is_whitespace());
 
-        match self.cursor.next()? {
-            ('{', _) => self.state_tag_expression_start(tag_start, tag_name),
-            ('/', _) => self.state_self_closing(tag_start, tag_name),
-            (ch, ch_range) if ch.is_ascii_alphabetic() => {
-                let mut attr_name = RangedString::init(ch, ch_range);
-                // Parse attribute name
-                while let Some((ch, ch_range)) = self
-                    .cursor
-                    .next_if(|(ch, _)| *ch == '-' || ch.is_ascii_alphanumeric())
-                {
-                    attr_name.push(ch, ch_range);
+            match self.cursor.next()? {
+                ('{', _) => return self.state_tag_expression_start(tag_start, tag_name),
+                ('/', _) => return self.state_self_closing(tag_start, tag_name),
+                (ch, ch_range) if ch.is_ascii_alphabetic() => {
+                    let mut attr_name = String::from(ch);
+                    let mut attr_name_range = ch_range;
+                    // Parse attribute name
+                    while let Some((ch, ch_range)) = self
+                        .cursor
+                        .next_if(|(ch, _)| *ch == '-' || ch.is_ascii_alphanumeric())
+                    {
+                        attr_name.push(ch);
+                        attr_name_range = attr_name_range.extend_to(ch_range);
+                    }
+
+                    self.cursor.next_while(|(ch, _)| ch.is_whitespace());
+
+                    match self.cursor.peek()? {
+                        ('=', _) => {
+                            self.cursor.next(); // consume '='
+                        }
+                        _ => {
+                            if self.attributes.contains_key(&attr_name) {
+                                self.tokens.push_back(Err(ParseError::duplicate_attribute(
+                                    &attr_name,
+                                    attr_name_range,
+                                )));
+                            }
+                            self.attributes.insert(
+                                attr_name.clone(),
+                                Attribute {
+                                    name: attr_name,
+                                    value: None,
+                                    range: attr_name_range,
+                                },
+                            );
+                            continue;
+                        }
+                    }
+                    // skip whitespace
+                    self.cursor.next_while(|(ch, _)| ch.is_whitespace());
+
+                    let terminator = match self.cursor.next()? {
+                        ('"', _) => '"',
+                        ('\'', _) => '\'',
+                        (_, ch_range) => {
+                            return self.fail_and_recover(ParseError::new(
+                                "Expected quoted attribute name".to_string(),
+                                ch_range,
+                            ));
+                        }
+                    };
+
+                    if self.cursor.peek()?.0 == terminator {
+                        let (_, terminator_range) = self.cursor.next()?;
+                        if self.attributes.contains_key(&attr_name) {
+                            self.tokens.push_back(Err(ParseError::duplicate_attribute(
+                                &attr_name,
+                                attr_name_range,
+                            )));
+                        }
+                        self.attributes.insert(
+                            attr_name.clone(),
+                            Attribute {
+                                name: attr_name,
+                                value: None,
+                                range: Range::new(attr_name_range.start, terminator_range.end),
+                            },
+                        );
+                        continue;
+                    }
+
+                    let (attr_value, attr_value_range) =
+                        self.cursor.next_while(|(ch, _)| *ch != terminator)?;
+
+                    let (_, terminator_range) = self.cursor.next()?; // consume terminator
+
+                    if self.attributes.contains_key(&attr_name) {
+                        self.tokens.push_back(Err(ParseError::duplicate_attribute(
+                            &attr_name,
+                            attr_name_range,
+                        )));
+                    }
+                    self.attributes.insert(
+                        attr_name.clone(),
+                        Attribute {
+                            name: attr_name,
+                            value: Some((attr_value, attr_value_range)),
+                            range: Range::new(attr_name_range.start, terminator_range.end),
+                        },
+                    );
                 }
-
-                self.state_attr_name(tag_start, tag_name, attr_name)
-            }
-            ('>', ch_range) => {
-                let RangedString(tag_name, tag_name_range) = tag_name;
-                let tag_name_clone = tag_name.clone();
-                self.tokens.push_back(Ok(Token::OpeningTag {
-                    self_closing: false,
-                    tag_name: (tag_name, tag_name_range),
-                    attributes: mem::take(&mut self.attributes),
-                    expression: self.expression.consume(),
-                    range: Range::new(tag_start, ch_range.end),
-                }));
-                if is_tag_name_with_raw_content(&tag_name_clone) {
-                    self.stored_tag_name = tag_name_clone;
-                    self.state_rawtext_data()
-                } else {
-                    Some(TokenizerState::Text)
-                }
-            }
-            (_, ch_range) => self.fail_and_recover(ParseError::new(
-                "Invalid character before attribute name".to_string(),
-                ch_range,
-            )),
-        }
-    }
-
-    fn state_attr_name(
-        &mut self,
-        tag_start: Position,
-        tag_name: RangedString,
-        attr_name: RangedString,
-    ) -> Option<TokenizerState> {
-        match self.cursor.next()? {
-            ('=', _) => self.state_before_attr_value(tag_start, tag_name, attr_name),
-            (ch, ch_range) if ch.is_whitespace() => {
-                self.push_attribute(attr_name, None, ch_range.end);
-                self.state_before_attr_name(tag_start, tag_name)
-            }
-            ('>', ch_range) => {
-                // Push current attribute
-                self.push_attribute(attr_name, None, ch_range.end);
-                let RangedString(tag_name, tag_name_range) = tag_name;
-                if is_tag_name_with_raw_content(&tag_name) {
-                    self.stored_tag_name = tag_name.clone();
+                ('>', ch_range) => {
+                    let RangedString(tag_name, tag_name_range) = tag_name;
+                    let tag_name_clone = tag_name.clone();
                     self.tokens.push_back(Ok(Token::OpeningTag {
                         self_closing: false,
                         tag_name: (tag_name, tag_name_range),
@@ -385,95 +400,20 @@ impl<'a> Tokenizer<'a> {
                         expression: self.expression.consume(),
                         range: Range::new(tag_start, ch_range.end),
                     }));
-                    self.state_rawtext_data()
-                } else {
-                    self.tokens.push_back(Ok(Token::OpeningTag {
-                        self_closing: false,
-                        tag_name: (tag_name, tag_name_range),
-                        attributes: mem::take(&mut self.attributes),
-                        expression: self.expression.consume(),
-                        range: Range::new(tag_start, ch_range.end),
-                    }));
-                    Some(TokenizerState::Text)
+                    return if is_tag_name_with_raw_content(&tag_name_clone) {
+                        self.stored_tag_name = tag_name_clone;
+                        self.state_rawtext_data()
+                    } else {
+                        Some(TokenizerState::Text)
+                    };
                 }
-            }
-            ('/', ch_range) => {
-                // Push current attribute
-                self.push_attribute(attr_name, None, ch_range.end);
-                self.state_self_closing(tag_start, tag_name)
-            }
-            (_, ch_range) => {
-                self.cursor.next();
-                self.fail_and_recover(ParseError::new(
-                    "Invalid character in attribute name".to_string(),
-                    ch_range,
-                ))
-            }
-        }
-    }
-
-    fn state_before_attr_value(
-        &mut self,
-        tag_start: Position,
-        tag_name: RangedString,
-        attr_name: RangedString,
-    ) -> Option<TokenizerState> {
-        self.cursor.next_while(|(ch, _)| ch.is_whitespace());
-        match self.cursor.next()? {
-            ('"', _) => self.state_attr_value_double_quote(tag_start, tag_name, attr_name),
-            ('\'', _) => self.state_attr_value_single_quote(tag_start, tag_name, attr_name),
-            (_, ch_range) => self.fail_and_recover(ParseError::new(
-                "Expected quoted attribute name".to_string(),
-                ch_range,
-            )),
-        }
-    }
-
-    fn state_attr_value_double_quote(
-        &mut self,
-        tag_start: Position,
-        tag_name: RangedString,
-        attr_name: RangedString,
-    ) -> Option<TokenizerState> {
-        match self.cursor.next()? {
-            ('"', ch_range) => {
-                self.push_attribute(attr_name, None, ch_range.end);
-                self.state_before_attr_name(tag_start, tag_name)
-            }
-            (ch, ch_range) => {
-                let mut attr_value = RangedString::init(ch, ch_range);
-                while let Some((ch, range)) = self.cursor.next_if(|(ch, _)| *ch != '"') {
-                    attr_value.push(ch, range);
+                (_, ch_range) => {
+                    return self.fail_and_recover(ParseError::new(
+                        "Invalid character before attribute name".to_string(),
+                        ch_range,
+                    ));
                 }
-                let (_, end_range) = self.cursor.next()?; // consume "
-                // TODO: Handle EOF
-                self.push_attribute(attr_name, Some(attr_value), end_range.end);
-                self.state_before_attr_name(tag_start, tag_name)
-            }
-        }
-    }
-
-    fn state_attr_value_single_quote(
-        &mut self,
-        tag_start: Position,
-        tag_name: RangedString,
-        attr_name: RangedString,
-    ) -> Option<TokenizerState> {
-        match self.cursor.next()? {
-            ('\'', ch_range) => {
-                self.push_attribute(attr_name, None, ch_range.end);
-                self.state_before_attr_name(tag_start, tag_name)
-            }
-            (ch, ch_range) => {
-                let mut attr_value = RangedString::init(ch, ch_range);
-                while let Some((ch, range)) = self.cursor.next_if(|(ch, _)| *ch != '\'') {
-                    attr_value.push(ch, range);
-                }
-                let (_, end_range) = self.cursor.next()?; // consume '
-                // TODO: Handle EOF
-                self.push_attribute(attr_name, Some(attr_value), end_range.end);
-                self.state_before_attr_name(tag_start, tag_name)
-            }
+            };
         }
     }
 
@@ -635,7 +575,7 @@ impl<'a> Tokenizer<'a> {
             || self.cursor.matches_str("} />")
         {
             self.cursor.next();
-            self.state_before_attr_name(tag_start, tag_name)
+            self.state_parse_tag_content(tag_start, tag_name)
         } else {
             let (ch, ch_range) = self.cursor.next()?;
             self.expression.extend(ch, ch_range);
