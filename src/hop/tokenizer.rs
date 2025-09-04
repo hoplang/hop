@@ -125,11 +125,6 @@ impl RangedString {
 pub struct Tokenizer<'a> {
     cursor: StrCursor<'a>,
     state: TokenizerState,
-
-    // expression is the current value of the expression, it could be either on a tag or a
-    // free-standing expression.
-    expression: OptionalRangedString,
-
     errors: VecDeque<ParseError>,
 }
 
@@ -138,7 +133,6 @@ impl<'a> Tokenizer<'a> {
         Self {
             state: TokenizerState::Text,
             cursor: StrCursor::new(input),
-            expression: OptionalRangedString::default(),
             errors: VecDeque::new(),
         }
     }
@@ -164,6 +158,7 @@ impl<'a> Tokenizer<'a> {
                         left_bracket_range.start,
                         RangedString(tag_name, tag_name_range),
                         &mut BTreeMap::new(),
+                        None,
                     )
                 }
                 (_, ch_range) => {
@@ -267,6 +262,7 @@ impl<'a> Tokenizer<'a> {
         tag_start: Position,
         tag_name: RangedString,
         attributes: &mut BTreeMap<String, Attribute>,
+        expression: Option<RangedString>,
     ) -> Option<Token> {
         loop {
             self.cursor.next_while(|(ch, _)| ch.is_whitespace());
@@ -281,7 +277,7 @@ impl<'a> Tokenizer<'a> {
                             self_closing: true,
                             tag_name: (tag_name, tag_name_range),
                             attributes: mem::take(attributes),
-                            expression: self.expression.consume(),
+                            expression: expression.map(|RangedString(s, r)| (s, r)),
                             range: Range::new(tag_start, ch_range.end),
                         });
                     }
@@ -295,7 +291,7 @@ impl<'a> Tokenizer<'a> {
                             self_closing: true,
                             tag_name: (tag_name, tag_name_range),
                             attributes: mem::take(attributes),
-                            expression: self.expression.consume(),
+                            expression: expression.map(|RangedString(s, r)| (s, r)),
                             range: Range::new(tag_start, ch_range.end),
                         });
                     }
@@ -402,7 +398,7 @@ impl<'a> Tokenizer<'a> {
                         self_closing: false,
                         tag_name: (tag_name, tag_name_range),
                         attributes: mem::take(attributes),
-                        expression: self.expression.consume(),
+                        expression: expression.map(|RangedString(s, r)| (s, r)),
                         range: Range::new(tag_start, ch_range.end),
                     });
                 }
@@ -541,7 +537,7 @@ impl<'a> Tokenizer<'a> {
                 self.state_text()
             }
             (ch, ch_range) => {
-                self.expression.extend(ch, ch_range);
+                let mut expression = RangedString::init(ch, ch_range);
                 loop {
                     // Temporary fix until we embed hop tokenizer here
                     if self.cursor.matches_str("}>")
@@ -550,10 +546,15 @@ impl<'a> Tokenizer<'a> {
                         || self.cursor.matches_str("} />")
                     {
                         self.cursor.next(); // consume '}'
-                        return self.state_parse_tag_content(tag_start, tag_name, attributes);
+                        return self.state_parse_tag_content(
+                            tag_start,
+                            tag_name,
+                            attributes,
+                            Some(expression),
+                        );
                     } else {
                         let (ch, ch_range) = self.cursor.next()?;
-                        self.expression.extend(ch, ch_range);
+                        expression.push(ch, ch_range);
                     }
                 }
             }
