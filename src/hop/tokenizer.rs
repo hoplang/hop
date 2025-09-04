@@ -679,17 +679,8 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn advance(&mut self) -> Option<Result<Token, ParseError>> {
-        loop {
-            if !self.tokens.is_empty() {
-                return self.tokens.pop_front();
-            }
-            if self.state_text().is_none() {
-                if !self.tokens.is_empty() {
-                    return self.tokens.pop_front();
-                }
-                return None;
-            }
-        }
+        self.state_text();
+        self.tokens.pop_front()
     }
 }
 
