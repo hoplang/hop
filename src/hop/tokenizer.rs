@@ -418,6 +418,7 @@ impl<'a> Tokenizer<'a> {
         tag_name: RangedString,
         attr_name: RangedString,
     ) -> Option<TokenizerState> {
+        self.cursor.next_while(|(ch, _)| ch.is_whitespace());
         match self.cursor.next()? {
             ('"', _) => self.state_attr_value_double_quote(tag_start, tag_name, attr_name),
             ('\'', _) => self.state_attr_value_single_quote(tag_start, tag_name, attr_name),
