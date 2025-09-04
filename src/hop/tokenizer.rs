@@ -138,7 +138,7 @@ impl From<(char, Range)> for RangedString {
 enum TokenizerState {
     Text,
     RawtextData(String),
-    RawtextClosingTag(String, Position),
+    RawtextClosingTag(String, Range),
 }
 
 pub struct Tokenizer<'a> {
@@ -204,12 +204,12 @@ impl<'a> Tokenizer<'a> {
 
         // handle empty attribute
         if self.cursor.peek()?.0 == quote_ch {
-            let (_, closing_quote_ch) = self.cursor.next()?;
+            let (_, closing_quote_range) = self.cursor.next()?;
             return Some((
                 (attr_name, attr_name_range),
                 Attribute {
                     value: None,
-                    range: attr_name_range.extend_to(closing_quote_ch),
+                    range: attr_name_range.extend_to(closing_quote_range),
                 },
             ));
         }
@@ -220,13 +220,13 @@ impl<'a> Tokenizer<'a> {
             attr_value.push(ch);
         }
 
-        let (_, closing_quote_ch) = self.cursor.next()?; // consume quote ch
+        let (_, closing_quote_range) = self.cursor.next()?;
 
         Some((
             (attr_name, attr_name_range),
             Attribute {
                 value: Some(attr_value.into()),
-                range: attr_name_range.extend_to(closing_quote_ch),
+                range: attr_name_range.extend_to(closing_quote_range),
             },
         ))
     }
@@ -463,7 +463,7 @@ impl<'a> Tokenizer<'a> {
     fn state_rawtext_closing_tag(
         &mut self,
         stored_tag_name: String,
-        token_start: Position,
+        token_start: Range,
     ) -> Option<Token> {
         self.cursor.next(); // consume '/'
         // consume tag name
@@ -476,7 +476,7 @@ impl<'a> Tokenizer<'a> {
         self.state = TokenizerState::Text;
         Some(Token::ClosingTag {
             tag_name: tag_name.into(),
-            range: Range::new(token_start, end_range.end),
+            range: token_start.extend_to(end_range),
         })
     }
 
@@ -497,12 +497,11 @@ impl<'a> Tokenizer<'a> {
                         if let Some((s, r)) = text {
                             self.state = TokenizerState::RawtextClosingTag(
                                 stored_tag_name.clone(),
-                                langle_range.start,
+                                langle_range,
                             );
                             return Some(Token::Text { value: s, range: r });
                         } else {
-                            return self
-                                .state_rawtext_closing_tag(stored_tag_name, langle_range.start);
+                            return self.state_rawtext_closing_tag(stored_tag_name, langle_range);
                         }
                     } else {
                         match &mut text {
