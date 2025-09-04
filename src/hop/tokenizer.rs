@@ -420,13 +420,33 @@ impl<'a> Tokenizer<'a> {
 
     fn state_markup_declaration(&mut self, tag_start: Position) -> Option<Token> {
         match self.cursor.next()? {
+            // Parse comment
             ('-', _) if self.cursor.peek()?.0 == '-' => {
                 self.cursor.next();
-                self.state_comment(tag_start)
+                loop {
+                    if let ('-', _) = self.cursor.next()? {
+                        if let ('-', _) = self.cursor.next()? {
+                            if let ('>', ch_range) = self.cursor.next()? {
+                                return Some(Token::Comment {
+                                    range: Range::new(tag_start, ch_range.end),
+                                });
+                            }
+                        }
+                    }
+                }
             }
+            // Parse doctype
             ('D', _) if self.cursor.peek_n(6)?.0 == "OCTYPE" => {
                 self.cursor.next_n(6);
-                self.state_doctype(tag_start)
+                self.cursor.next_while(|(ch, _)| *ch != '>');
+                match self.cursor.next()? {
+                    ('>', ch_range) => Some(Token::Doctype {
+                        range: Range::new(tag_start, ch_range.end),
+                    }),
+                    _ => {
+                        unreachable!()
+                    }
+                }
             }
             (_, ch_range) => {
                 self.errors.push_back(ParseError::new(
@@ -437,32 +457,6 @@ impl<'a> Tokenizer<'a> {
                 Some(Token::Doctype {
                     range: Range::new(tag_start, ch_range.end),
                 })
-            }
-        }
-    }
-
-    fn state_comment(&mut self, tag_start: Position) -> Option<Token> {
-        loop {
-            if let ('-', _) = self.cursor.next()? {
-                if let ('-', _) = self.cursor.next()? {
-                    if let ('>', ch_range) = self.cursor.next()? {
-                        return Some(Token::Comment {
-                            range: Range::new(tag_start, ch_range.end),
-                        });
-                    }
-                }
-            }
-        }
-    }
-
-    fn state_doctype(&mut self, tag_start: Position) -> Option<Token> {
-        self.cursor.next_while(|(ch, _)| *ch != '>');
-        match self.cursor.next()? {
-            ('>', ch_range) => Some(Token::Doctype {
-                range: Range::new(tag_start, ch_range.end),
-            }),
-            _ => {
-                unreachable!()
             }
         }
     }
@@ -701,6 +695,22 @@ mod tests {
                   | ^^^^^
                 4 | multiple lines
                   | ^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_invalid_char_in_middle_of_tag() {
+        check(
+            "<div!>",
+            expect![[r#"
+                OpeningTag <div>
+                1 | <div!>
+                  | ^^^^^^
+
+                Invalid character inside tag
+                1 | <div!>
+                  |     ^
             "#]],
         );
     }
