@@ -58,14 +58,20 @@ impl fmt::Display for DopToken {
 }
 
 pub struct DopTokenizer<'a> {
-    cursor: Peekable<RangedChars<'a>>,
+    chars: Peekable<RangedChars<'a>>,
 }
 
 impl<'a> DopTokenizer<'a> {
     pub fn new(input: &'a str, start_pos: Position) -> Self {
         Self {
-            cursor: RangedChars::new(input, start_pos).peekable(),
+            chars: RangedChars::new(input, start_pos).peekable(),
         }
+    }
+    pub fn new_from_chars(chars: Peekable<RangedChars<'a>>) -> Self {
+        Self { chars }
+    }
+    pub fn get_chars(self) -> Peekable<RangedChars<'a>> {
+        self.chars
     }
 }
 
@@ -73,11 +79,11 @@ impl Iterator for DopTokenizer<'_> {
     type Item = Result<(DopToken, Range), ParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while self.cursor.peek().is_some_and(|(ch, _)| ch.is_whitespace()) {
-            self.cursor.next();
+        while self.chars.peek().is_some_and(|(ch, _)| ch.is_whitespace()) {
+            self.chars.next();
         }
 
-        self.cursor.next().map(|(t, start_range)| {
+        self.chars.next().map(|(t, start_range)| {
             match t {
                 '.' => Ok((DopToken::Dot, start_range)),
                 '(' => Ok((DopToken::LeftParen, start_range)),
@@ -90,7 +96,7 @@ impl Iterator for DopTokenizer<'_> {
                 ',' => Ok((DopToken::Comma, start_range)),
                 '!' => Ok((DopToken::Not, start_range)),
                 '=' => {
-                    if let Some((_, end_range)) = self.cursor.next_if(|(ch, _)| *ch == '=') {
+                    if let Some((_, end_range)) = self.chars.next_if(|(ch, _)| *ch == '=') {
                         return Ok((DopToken::Equal, start_range.extend_to(end_range)));
                     }
                     Err(ParseError::new(
@@ -101,11 +107,11 @@ impl Iterator for DopTokenizer<'_> {
                 '\'' => {
                     let mut end_range = start_range;
                     let mut result = String::new();
-                    while let Some((ch, range)) = self.cursor.next_if(|(ch, _)| *ch != '\'') {
+                    while let Some((ch, range)) = self.chars.next_if(|(ch, _)| *ch != '\'') {
                         end_range = range;
                         result.push(ch);
                     }
-                    match self.cursor.next() {
+                    match self.chars.next() {
                         None => Err(ParseError::unterminated_string_literal(
                             start_range.extend_to(end_range),
                         )),
@@ -121,7 +127,7 @@ impl Iterator for DopTokenizer<'_> {
                     let mut identifier = String::from(ch);
 
                     while let Some((ch, range)) = self
-                        .cursor
+                        .chars
                         .next_if(|(ch, _)| matches!(ch, 'A'..='Z' | 'a'..='z' | '0'..='9' | '_'))
                     {
                         identifier.push(ch);
@@ -147,28 +153,24 @@ impl Iterator for DopTokenizer<'_> {
 
                     let mut number_string = String::from(ch);
 
-                    while let Some((ch, range)) = self.cursor.next_if(|(ch, _)| ch.is_ascii_digit())
+                    while let Some((ch, range)) = self.chars.next_if(|(ch, _)| ch.is_ascii_digit())
                     {
                         number_string.push(ch);
                         end_range = range;
                     }
 
-                    if let Some((_, range)) = self.cursor.next_if(|(ch, _)| *ch == '.') {
+                    if let Some((_, range)) = self.chars.next_if(|(ch, _)| *ch == '.') {
                         number_string.push('.');
                         end_range = range;
 
-                        if !self
-                            .cursor
-                            .peek()
-                            .is_some_and(|(ch, _)| ch.is_ascii_digit())
-                        {
+                        if !self.chars.peek().is_some_and(|(ch, _)| ch.is_ascii_digit()) {
                             return Err(ParseError::expected_digit_after_decimal_point(
                                 start_range.extend_to(end_range),
                             ));
                         }
 
                         while let Some((ch, range)) =
-                            self.cursor.next_if(|(ch, _)| ch.is_ascii_digit())
+                            self.chars.next_if(|(ch, _)| ch.is_ascii_digit())
                         {
                             number_string.push(ch);
                             end_range = range;

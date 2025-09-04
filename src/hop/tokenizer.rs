@@ -2,6 +2,8 @@ use std::collections::{BTreeMap, VecDeque};
 use std::iter::Peekable;
 
 use crate::common::{ParseError, Position, Range, Ranged, RangedChars};
+use crate::dop::DopTokenizer;
+use crate::dop::tokenizer::DopToken;
 use crate::hop::ast::Attribute;
 use crate::tui::source_annotator::Annotated;
 
@@ -113,6 +115,7 @@ impl Annotated for Token {
     }
 }
 
+#[derive(Debug)]
 pub struct RangedString(String, Range);
 
 impl RangedString {
@@ -142,7 +145,7 @@ enum TokenizerState {
 }
 
 pub struct Tokenizer<'a> {
-    cursor: Peekable<RangedChars<'a>>,
+    chars: Peekable<RangedChars<'a>>,
     state: TokenizerState,
     errors: VecDeque<ParseError>,
 }
@@ -151,16 +154,16 @@ impl<'a> Tokenizer<'a> {
     pub fn new(input: &'a str) -> Self {
         Self {
             state: TokenizerState::Text,
-            cursor: RangedChars::new(input, Position::default()).peekable(),
+            chars: RangedChars::new(input, Position::default()).peekable(),
             errors: VecDeque::new(),
         }
     }
 
-    // Parse a tag name from the cursor given an initial char
+    // Parse a tag name given an initial char
     fn parse_tag_name(&mut self, initial_char: char, initial_range: Range) -> (String, Range) {
         let mut result = RangedString::from((initial_char, initial_range));
         while let Some(ch) = self
-            .cursor
+            .chars
             .next_if(|(ch, _)| *ch == '-' || ch.is_ascii_alphanumeric())
         {
             result.push(ch);
@@ -168,18 +171,18 @@ impl<'a> Tokenizer<'a> {
         result.into()
     }
 
-    // Skip whitespace from the cursor
+    // Skip whitespace
     fn skip_whitespace(&mut self) {
-        while self.cursor.next_if(|(ch, _)| ch.is_whitespace()).is_some() {}
+        while self.chars.next_if(|(ch, _)| ch.is_whitespace()).is_some() {}
     }
 
     fn parse_attribute(&mut self) -> Option<((String, Range), Attribute)> {
-        let (ch, ch_range) = self.cursor.next()?; // consume initial name char
+        let (ch, ch_range) = self.chars.next()?; // consume initial name char
         let (attr_name, attr_name_range) = self.parse_tag_name(ch, ch_range);
 
         self.skip_whitespace();
 
-        if self.cursor.peek()?.0 != '=' {
+        if self.chars.peek()?.0 != '=' {
             return Some((
                 (attr_name, attr_name_range),
                 Attribute {
@@ -189,10 +192,10 @@ impl<'a> Tokenizer<'a> {
             ));
         }
 
-        self.cursor.next(); // consume '='
+        self.chars.next(); // consume '='
         self.skip_whitespace();
 
-        if !matches!(self.cursor.peek()?, ('"' | '\'', _)) {
+        if !matches!(self.chars.peek()?, ('"' | '\'', _)) {
             self.errors.push_back(ParseError::new(
                 "Expected quoted attribute value".to_string(),
                 ch_range,
@@ -200,11 +203,11 @@ impl<'a> Tokenizer<'a> {
             return None;
         }
 
-        let (quote_ch, _) = self.cursor.next()?;
+        let (quote_ch, _) = self.chars.next()?;
 
         // handle empty attribute
-        if self.cursor.peek()?.0 == quote_ch {
-            let (_, closing_quote_range) = self.cursor.next()?;
+        if self.chars.peek()?.0 == quote_ch {
+            let (_, closing_quote_range) = self.chars.next()?;
             return Some((
                 (attr_name, attr_name_range),
                 Attribute {
@@ -214,13 +217,13 @@ impl<'a> Tokenizer<'a> {
             ));
         }
 
-        let mut attr_value = RangedString::from(self.cursor.next()?);
+        let mut attr_value = RangedString::from(self.chars.next()?);
 
-        while let Some(ch) = self.cursor.next_if(|(ch, _)| *ch != quote_ch) {
+        while let Some(ch) = self.chars.next_if(|(ch, _)| *ch != quote_ch) {
             attr_value.push(ch);
         }
 
-        let (_, closing_quote_range) = self.cursor.next()?;
+        let (_, closing_quote_range) = self.chars.next()?;
 
         Some((
             (attr_name, attr_name_range),
@@ -231,6 +234,40 @@ impl<'a> Tokenizer<'a> {
         ))
     }
 
+    // Parse an expression using the dop tokenizer.
+    //
+    // Expects the current char iterator be on the first '{' that marks the
+    // start of a dop expression.
+    //
+    // The returned range will be the range for the closing
+    // '}' of the dop expression.
+    //
+    // Returns None if we reached EOF before finding the closing '}'.
+    fn find_expression_end(&mut self) -> Option<Range> {
+        let mut dop_tokenizer = DopTokenizer::new_from_chars(self.chars.clone());
+        assert!(
+            dop_tokenizer
+                .next()
+                .is_some_and(|t| matches!(t, Ok((DopToken::LeftBrace, _))))
+        );
+        let mut open_braces = 1;
+        loop {
+            let token = dop_tokenizer.next()?;
+            match token {
+                Ok((DopToken::LeftBrace, _)) => {
+                    open_braces += 1;
+                }
+                Ok((DopToken::RightBrace, range)) => {
+                    open_braces -= 1;
+                    if open_braces == 0 {
+                        return Some(range);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     // Parse tag content from the cursor
     fn parse_tag_content(&mut self) -> Option<(Attributes, Option<(String, Range)>)> {
         let mut attributes = Attributes::new();
@@ -238,32 +275,26 @@ impl<'a> Tokenizer<'a> {
         loop {
             self.skip_whitespace();
 
-            match self.cursor.peek()? {
+            match self.chars.peek()? {
                 // Parse expression
                 ('{', _) => {
-                    let (_, left_brace_range) = self.cursor.next()?; // consume '{'
-                    if self.cursor.peek()?.0 == '}' {
-                        let (_, right_brace_range) = self.cursor.next()?;
+                    let right_brace_range = self.find_expression_end()?;
+                    let (_, left_brace_range) = self.chars.next()?;
+                    if left_brace_range.end == right_brace_range.start {
+                        self.next(); // skip right brace
                         self.errors.push_back(ParseError::new(
                             "Empty expression".to_string(),
                             left_brace_range.extend_to(right_brace_range),
                         ));
                         continue;
                     }
-                    let mut expr = RangedString::from(self.cursor.next()?);
+                    let mut expr = RangedString::from(self.chars.next()?);
                     loop {
-                        match self.cursor.next()? {
-                            // Temporary fix until we embed hop tokenizer here
-                            ('}', _)
-                                if self
-                                    .cursor
-                                    .clone()
-                                    .find(|(ch, _)| !ch.is_whitespace())
-                                    .is_some_and(|(ch, _)| ch == '>' || ch == '/') =>
-                            {
-                                break;
-                            }
-                            ch => expr.push(ch),
+                        let (ch, ch_range) = self.chars.next()?;
+                        if ch_range == right_brace_range {
+                            break;
+                        } else {
+                            expr.push((ch, ch_range));
                         }
                     }
                     expression = Some(expr.into());
@@ -286,7 +317,7 @@ impl<'a> Tokenizer<'a> {
                     return Some((attributes, expression));
                 }
                 _ => {
-                    let (_, ch_range) = self.cursor.next()?;
+                    let (_, ch_range) = self.chars.next()?;
                     self.errors.push_back(ParseError::new(
                         "Invalid character inside tag".to_string(),
                         ch_range,
@@ -298,15 +329,15 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn state_text(&mut self) -> Option<Token> {
-        match self.cursor.next()? {
-            ('<', left_angle_range) => match self.cursor.next()? {
+        match self.chars.next()? {
+            ('<', left_angle_range) => match self.chars.next()? {
                 // ClosingTag
                 ('/', _) => {
-                    let (ch, ch_range) = self.cursor.next()?;
+                    let (ch, ch_range) = self.chars.next()?;
                     if ch.is_ascii_alphabetic() {
                         let tag_name = self.parse_tag_name(ch, ch_range);
                         self.skip_whitespace();
-                        let (right_angle, right_angle_range) = self.cursor.next()?;
+                        let (right_angle, right_angle_range) = self.chars.next()?;
                         if right_angle != '>' {
                             self.errors.push_back(ParseError::new(
                                 "Invalid character after closing tag name".to_string(),
@@ -338,12 +369,12 @@ impl<'a> Tokenizer<'a> {
 
                     let mut self_closing = false;
 
-                    if self.cursor.peek()?.0 == '/' {
+                    if self.chars.peek()?.0 == '/' {
                         self_closing = true;
-                        self.cursor.next();
+                        self.chars.next();
                     }
 
-                    match self.cursor.next()? {
+                    match self.chars.next()? {
                         ('>', ch_range) => {
                             let (tag_name_clone, _) = tag_name.clone();
                             if is_tag_name_with_raw_content(&tag_name_clone) {
@@ -364,13 +395,13 @@ impl<'a> Tokenizer<'a> {
                 }
                 // Doctype/Comment
                 ('!', _) => {
-                    match self.cursor.next()? {
+                    match self.chars.next()? {
                         // Comment
-                        ('-', _) if self.cursor.peek()?.0 == '-' => {
-                            self.cursor.next();
+                        ('-', _) if self.chars.peek()?.0 == '-' => {
+                            self.chars.next();
                             loop {
-                                if self.cursor.next()?.0 == '-' && self.cursor.next()?.0 == '-' {
-                                    if let ('>', ch_range) = self.cursor.next()? {
+                                if self.chars.next()?.0 == '-' && self.chars.next()?.0 == '-' {
+                                    if let ('>', ch_range) = self.chars.next()? {
                                         return Some(Token::Comment {
                                             range: left_angle_range.extend_to(ch_range),
                                         });
@@ -381,7 +412,7 @@ impl<'a> Tokenizer<'a> {
                         // Doctype
                         ('D', _)
                             if self
-                                .cursor
+                                .chars
                                 .clone()
                                 .map(|(ch, _)| ch)
                                 .take(6)
@@ -389,10 +420,10 @@ impl<'a> Tokenizer<'a> {
                                 == "OCTYPE" =>
                         {
                             for _ in 0..6 {
-                                self.cursor.next();
+                                self.chars.next();
                             }
-                            while self.cursor.next_if(|(ch, _)| *ch != '>').is_some() {}
-                            match self.cursor.next()? {
+                            while self.chars.next_if(|(ch, _)| *ch != '>').is_some() {}
+                            match self.chars.next()? {
                                 ('>', ch_range) => Some(Token::Doctype {
                                     range: left_angle_range.extend_to(ch_range),
                                 }),
@@ -425,7 +456,7 @@ impl<'a> Tokenizer<'a> {
             },
             // TextExpression
             ('{', left_brace_range) => {
-                match self.cursor.next()? {
+                match self.chars.next()? {
                     ('}', right_brace_range) => {
                         self.errors.push_back(ParseError::new(
                             "Empty expression".to_string(),
@@ -435,10 +466,10 @@ impl<'a> Tokenizer<'a> {
                     }
                     ch => {
                         let mut expression = RangedString::from(ch);
-                        while let Some(ch) = self.cursor.next_if(|(ch, _)| *ch != '}') {
+                        while let Some(ch) = self.chars.next_if(|(ch, _)| *ch != '}') {
                             expression.push(ch);
                         }
-                        let (_, right_brace_range) = self.cursor.next()?; // consume }
+                        let (_, right_brace_range) = self.chars.next()?; // consume }
                         Some(Token::Expression {
                             expression: expression.into(),
                             range: left_brace_range.extend_to(right_brace_range),
@@ -449,7 +480,7 @@ impl<'a> Tokenizer<'a> {
             // Text
             ch => {
                 let mut text = RangedString::from(ch);
-                while let Some(ch) = self.cursor.next_if(|(ch, _)| *ch != '{' && *ch != '<') {
+                while let Some(ch) = self.chars.next_if(|(ch, _)| *ch != '{' && *ch != '<') {
                     text.push(ch);
                 }
                 Some(Token::Text {
@@ -465,14 +496,14 @@ impl<'a> Tokenizer<'a> {
         stored_tag_name: String,
         token_start: Range,
     ) -> Option<Token> {
-        self.cursor.next(); // consume '/'
+        self.chars.next(); // consume '/'
         // consume tag name
-        let mut tag_name = RangedString::from(self.cursor.next()?);
+        let mut tag_name = RangedString::from(self.chars.next()?);
         for _ in 0..stored_tag_name.len() - 1 {
-            tag_name.push(self.cursor.next()?);
+            tag_name.push(self.chars.next()?);
         }
         // consume >
-        let (_, end_range) = self.cursor.next()?;
+        let (_, end_range) = self.chars.next()?;
         self.state = TokenizerState::Text;
         Some(Token::ClosingTag {
             tag_name: tag_name.into(),
@@ -483,11 +514,11 @@ impl<'a> Tokenizer<'a> {
     fn state_rawtext_data(&mut self, stored_tag_name: String) -> Option<Token> {
         let mut text = None;
         loop {
-            match self.cursor.next()? {
+            match self.chars.next()? {
                 ('<', langle_range) => {
                     let end_tag = format!("/{}>", stored_tag_name);
                     if self
-                        .cursor
+                        .chars
                         .clone()
                         .map(|(ch, _)| ch)
                         .take(end_tag.len())
@@ -679,6 +710,18 @@ mod tests {
                 OpeningTag <h1 bar foo/>
                 1 | <h1 foo bar/>
                   | ^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_with_expr_before_attributes() {
+        check(
+            "<h1 {foo: {k: string}} foo bar/>",
+            expect![[r#"
+                OpeningTag <h1 bar foo {foo: {k: string}}/>
+                1 | <h1 {foo: {k: string}} foo bar/>
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
         );
     }
