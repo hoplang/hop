@@ -1,5 +1,5 @@
-use crate::common::{Position, Range, StrCursor};
-use std::{fmt, str::FromStr};
+use crate::common::{Position, Range, RangedChars};
+use std::{fmt, iter::Peekable, str::FromStr};
 
 use super::parser::ParseError;
 
@@ -58,13 +58,13 @@ impl fmt::Display for DopToken {
 }
 
 pub struct DopTokenizer<'a> {
-    cursor: StrCursor<'a>,
+    cursor: Peekable<RangedChars<'a>>,
 }
 
 impl<'a> DopTokenizer<'a> {
     pub fn new(input: &'a str, start_pos: Position) -> Self {
         Self {
-            cursor: StrCursor::new_with_position(input, start_pos),
+            cursor: RangedChars::new(input, start_pos).peekable(),
         }
     }
 }

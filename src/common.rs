@@ -1,5 +1,5 @@
 use crate::{dop::DopParameter, tui::source_annotator::Annotated};
-use std::{cmp, collections::BTreeMap, fmt, iter::Peekable, str::Chars};
+use std::{cmp, collections::BTreeMap, fmt, str::Chars};
 
 /// Represents a position in source code
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -93,21 +93,21 @@ impl Ranged for Range {
 }
 
 #[derive(Debug, Clone)]
-struct PositionedChars<'a> {
+pub struct RangedChars<'a> {
     chars: Chars<'a>,
     position: Position,
 }
 
-impl<'a> PositionedChars<'a> {
-    fn new(input: &'a str, start_pos: Position) -> Self {
+impl<'a> RangedChars<'a> {
+    pub fn new(input: &'a str, position: Position) -> Self {
         Self {
             chars: input.chars(),
-            position: start_pos,
+            position,
         }
     }
 }
 
-impl Iterator for PositionedChars<'_> {
+impl Iterator for RangedChars<'_> {
     type Item = (char, Range);
     fn next(&mut self) -> Option<Self::Item> {
         let start = self.position;
@@ -120,74 +120,6 @@ impl Iterator for PositionedChars<'_> {
             }
             (ch, Range::new(start, self.position))
         })
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct StrCursor<'a> {
-    chars: Peekable<PositionedChars<'a>>,
-}
-
-impl<'a> StrCursor<'a> {
-    pub fn new(input: &'a str) -> Self {
-        Self {
-            chars: PositionedChars::new(input, Position::default()).peekable(),
-        }
-    }
-    pub fn new_with_position(input: &'a str, pos: Position) -> Self {
-        Self {
-            chars: PositionedChars::new(input, pos).peekable(),
-        }
-    }
-    pub fn peek(&mut self) -> Option<(char, Range)> {
-        self.chars.peek().cloned()
-    }
-
-    pub fn peek_char(&mut self) -> Option<char> {
-        self.chars.peek().map(|(ch, _)| *ch)
-    }
-
-    pub fn peek_n(&mut self, n: usize) -> Option<(String, Range)> {
-        let mut clone = self.chars.clone();
-        let mut result: Option<(String, Range)> = None;
-        for _ in 0..n {
-            let (ch, range) = clone.next()?;
-            match &mut result {
-                Some(result) => {
-                    result.0.push(ch);
-                    result.1 = result.1.extend_to(range);
-                }
-                None => {
-                    result = Some((String::from(ch), range));
-                }
-            }
-        }
-        result
-    }
-    pub fn next_if(&mut self, func: impl FnOnce(&(char, Range)) -> bool) -> Option<(char, Range)> {
-        self.chars.next_if(func)
-    }
-    pub fn matches_str(&mut self, expected: &str) -> bool {
-        let mut actual_chars = self.chars.clone();
-        for expected_char in expected.chars() {
-            match actual_chars.peek() {
-                None => return false,
-                Some((actual_char, _)) => {
-                    if *actual_char != expected_char {
-                        return false;
-                    }
-                }
-            }
-            actual_chars.next();
-        }
-        true
-    }
-}
-
-impl Iterator for StrCursor<'_> {
-    type Item = (char, Range);
-    fn next(&mut self) -> Option<Self::Item> {
-        self.chars.next()
     }
 }
 
