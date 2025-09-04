@@ -50,30 +50,60 @@ impl Ranged for Token {
 impl Annotated for Token {
     fn message(&self) -> String {
         match self {
-            Token::Text { value, .. } => {
+            Token::Text { value, range: _ } => {
                 format!("Text [{} byte, {:#?}]", value.len(), value)
             }
-            Token::Doctype { .. } => {
+            Token::Doctype { range: _ } => {
                 format!("Doctype")
             }
             Token::ClosingTag {
                 tag_name: (tag_name, _),
-                ..
+                range: _,
             } => {
                 format!("ClosingTag </{}>", tag_name)
             }
             Token::OpeningTag {
                 tag_name: (tag_name, _),
-                ..
+                attributes,
+                expression,
+                self_closing,
+                range: _,
             } => {
-                format!("OpeningTag <{}>", tag_name)
+                let mut result = String::new();
+                result.push_str(&format!("OpeningTag <{}", tag_name));
+
+                if !attributes.is_empty() {
+                    result.push(' ');
+                    let attr_strs: Vec<String> = attributes
+                        .iter()
+                        .map(|(name, attr)| {
+                            if let Some((value, _)) = &attr.value {
+                                format!("{}={:#?}", name, value)
+                            } else {
+                                name.clone()
+                            }
+                        })
+                        .collect();
+                    result.push_str(&attr_strs.join(" "));
+                }
+
+                if let Some((expr, _)) = expression {
+                    result.push_str(&format!(" {{{}}}", expr));
+                }
+
+                if *self_closing {
+                    result.push('/');
+                }
+                result.push('>');
+
+                result
             }
-            Token::Comment { .. } => {
+            Token::Comment { range: _ } => {
                 format!("Comment")
             }
             Token::Expression {
                 expression: (value, _),
-                ..
+                range: _,
             } => {
                 format!("Expression {{{}}}", value)
             }
@@ -619,7 +649,7 @@ mod tests {
         check(
             r#"<input type="" value="" disabled="">"#,
             expect![[r#"
-                OpeningTag <input>
+                OpeningTag <input disabled type value>
                 1 | <input type="" value="" disabled="">
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -631,7 +661,7 @@ mod tests {
         check(
             r#"<h1 foo="bar"x="y">"#,
             expect![[r#"
-                OpeningTag <h1>
+                OpeningTag <h1 foo="bar" x="y">
                 1 | <h1 foo="bar"x="y">
                   | ^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -677,7 +707,7 @@ mod tests {
         check(
             "<h1 foo bar/>",
             expect![[r#"
-                OpeningTag <h1>
+                OpeningTag <h1 bar foo/>
                 1 | <h1 foo bar/>
                   | ^^^^^^^^^^^^^
             "#]],
@@ -689,7 +719,7 @@ mod tests {
         check(
             "<h1 foo/>",
             expect![[r#"
-                OpeningTag <h1>
+                OpeningTag <h1 foo/>
                 1 | <h1 foo/>
                   | ^^^^^^^^^
             "#]],
@@ -775,7 +805,7 @@ mod tests {
                 1 | <title><slot-title/></title>
                   | ^^^^^^^
 
-                OpeningTag <slot-title>
+                OpeningTag <slot-title/>
                 1 | <title><slot-title/></title>
                   |        ^^^^^^^^^^^^^
 
@@ -896,7 +926,7 @@ mod tests {
         check(
             "<h1/>",
             expect![[r#"
-                OpeningTag <h1>
+                OpeningTag <h1/>
                 1 | <h1/>
                   | ^^^^^
             "#]],
@@ -908,7 +938,7 @@ mod tests {
         check(
             "<h1 />",
             expect![[r#"
-                OpeningTag <h1>
+                OpeningTag <h1/>
                 1 | <h1 />
                   | ^^^^^^
             "#]],
@@ -1044,7 +1074,7 @@ mod tests {
                 </div>
             "#},
             expect![[r#"
-                OpeningTag <div>
+                OpeningTag <div class="multiline" data-value="something" id="test">
                 1 | <div
                   | ^^^^
                 2 |   class="multiline"
@@ -1184,7 +1214,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                OpeningTag <main-comp>
+                OpeningTag <main-comp {foo}>
                 1 | <main-comp {foo}>
                   | ^^^^^^^^^^^^^^^^^
 
@@ -1297,7 +1327,7 @@ mod tests {
                  7 |   <div class="container">
                    | ^^
 
-                OpeningTag <div>
+                OpeningTag <div class="container">
                  7 |   <div class="container">
                    |   ^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1346,7 +1376,7 @@ mod tests {
                 </svg>
             "#},
             expect![[r#"
-                OpeningTag <svg>
+                OpeningTag <svg fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
                 1 | <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1354,7 +1384,7 @@ mod tests {
                 1 | <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 2 | <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
 
-                OpeningTag <line>
+                OpeningTag <line x1="16.5" x2="7.5" y1="9.4" y2="4.21">
                 2 | <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1366,7 +1396,7 @@ mod tests {
                 2 | <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
                 3 | <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
 
-                OpeningTag <path>
+                OpeningTag <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
                 3 | <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1378,7 +1408,7 @@ mod tests {
                 3 | <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
                 4 | <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
 
-                OpeningTag <polyline>
+                OpeningTag <polyline points="3.27 6.96 12 12.01 20.73 6.96">
                 4 | <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1390,7 +1420,7 @@ mod tests {
                 4 | <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
                 5 | <line x1="12" y1="22.08" x2="12" y2="12"></line>
 
-                OpeningTag <line>
+                OpeningTag <line x1="12" x2="12" y1="22.08" y2="12">
                 5 | <line x1="12" y1="22.08" x2="12" y2="12"></line>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1425,7 +1455,7 @@ mod tests {
                 </svg>
             "#},
             expect![[r#"
-                OpeningTag <svg>
+                OpeningTag <svg class="size-12" height="128" version="1.1" viewBox="0 0 128 128" width="128" xmlns="http://www.w3.org/2000/svg">
                 1 | <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" version="1.1" viewBox="0 0 128 128" class="size-12">
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1434,7 +1464,7 @@ mod tests {
                 2 |     <g style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;">
                   | ^^^^
 
-                OpeningTag <g>
+                OpeningTag <g style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;">
                 2 |     <g style="fill: none; stroke: currentcolor; stroke-width: 5px; stroke-linecap: round; stroke-linejoin: round;">
                   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1443,7 +1473,7 @@ mod tests {
                 3 |         <path d="M20.04 38 64 22l43.96 16L64 54Z"></path>
                   | ^^^^^^^^
 
-                OpeningTag <path>
+                OpeningTag <path d="M20.04 38 64 22l43.96 16L64 54Z">
                 3 |         <path d="M20.04 38 64 22l43.96 16L64 54Z"></path>
                   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1456,7 +1486,7 @@ mod tests {
                 4 |         <path d="M17.54 47.09v48l35.099 12.775"></path>
                   | ^^^^^^^^
 
-                OpeningTag <path>
+                OpeningTag <path d="M17.54 47.09v48l35.099 12.775">
                 4 |         <path d="M17.54 47.09v48l35.099 12.775"></path>
                   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1469,7 +1499,7 @@ mod tests {
                 5 |         <path d="M64 112V64l46.46-16.91v48L77.988 106.91"></path>
                   | ^^^^^^^^
 
-                OpeningTag <path>
+                OpeningTag <path d="M64 112V64l46.46-16.91v48L77.988 106.91">
                 5 |         <path d="M64 112V64l46.46-16.91v48L77.988 106.91"></path>
                   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1521,7 +1551,7 @@ mod tests {
                 2 |     <form id="form">
                   | ^^^^
 
-                OpeningTag <form>
+                OpeningTag <form id="form">
                 2 |     <form id="form">
                   |     ^^^^^^^^^^^^^^^^
 
@@ -1530,7 +1560,7 @@ mod tests {
                 3 |         <input type="text" required>
                   | ^^^^^^^^
 
-                OpeningTag <input>
+                OpeningTag <input required type="text">
                 3 |         <input type="text" required>
                   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1539,7 +1569,7 @@ mod tests {
                 4 |         <button type="submit">Send</button>
                   | ^^^^^^^^
 
-                OpeningTag <button>
+                OpeningTag <button type="submit">
                 4 |         <button type="submit">Send</button>
                   |         ^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1579,7 +1609,7 @@ mod tests {
         check(
             "<if {foo}>",
             expect![[r#"
-                OpeningTag <if>
+                OpeningTag <if {foo}>
                 1 | <if {foo}>
                   | ^^^^^^^^^^
             "#]],
@@ -1591,7 +1621,7 @@ mod tests {
         check(
             "<div class=\"test\" {bar}>",
             expect![[r#"
-                OpeningTag <div>
+                OpeningTag <div class="test" {bar}>
                 1 | <div class="test" {bar}>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1603,7 +1633,7 @@ mod tests {
         check(
             "<if {user.name == 'John'}>",
             expect![[r#"
-                OpeningTag <if>
+                OpeningTag <if {user.name == 'John'}>
                 1 | <if {user.name == 'John'}>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1615,7 +1645,7 @@ mod tests {
         check(
             "<component {obj.prop.subprop}>",
             expect![[r#"
-                OpeningTag <component>
+                OpeningTag <component {obj.prop.subprop}>
                 1 | <component {obj.prop.subprop}>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1627,7 +1657,7 @@ mod tests {
         check(
             "<button disabled {enabled == 'yes'}>",
             expect![[r#"
-                OpeningTag <button>
+                OpeningTag <button disabled {enabled == 'yes'}>
                 1 | <button disabled {enabled == 'yes'}>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1639,7 +1669,7 @@ mod tests {
         check(
             "<input {variable_name_123}>",
             expect![[r#"
-                OpeningTag <input>
+                OpeningTag <input {variable_name_123}>
                 1 | <input {variable_name_123}>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1651,7 +1681,7 @@ mod tests {
         check(
             "<div class=\"test\" {  user.name  }>",
             expect![[r#"
-                OpeningTag <div>
+                OpeningTag <div class="test" {  user.name  }>
                 1 | <div class="test" {  user.name  }>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1663,7 +1693,7 @@ mod tests {
         check(
             "<span {'hello world'}>",
             expect![[r#"
-                OpeningTag <span>
+                OpeningTag <span {'hello world'}>
                 1 | <span {'hello world'}>
                   | ^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1675,7 +1705,7 @@ mod tests {
         check(
             "<form {(user.role == 'admin')}>",
             expect![[r#"
-                OpeningTag <form>
+                OpeningTag <form {(user.role == 'admin')}>
                 1 | <form {(user.role == 'admin')}>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1687,7 +1717,7 @@ mod tests {
         check(
             "<section {a == b == c}>",
             expect![[r#"
-                OpeningTag <section>
+                OpeningTag <section {a == b == c}>
                 1 | <section {a == b == c}>
                   | ^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1699,7 +1729,7 @@ mod tests {
         check(
             "<for {user in users}>",
             expect![[r#"
-                OpeningTag <for>
+                OpeningTag <for {user in users}>
                 1 | <for {user in users}>
                   | ^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1711,7 +1741,7 @@ mod tests {
         check(
             "<for {item in user.items}>",
             expect![[r#"
-                OpeningTag <for>
+                OpeningTag <for {item in user.items}>
                 1 | <for {item in user.items}>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1723,7 +1753,7 @@ mod tests {
         check(
             "<div {foo in bars}>",
             expect![[r#"
-                OpeningTag <div>
+                OpeningTag <div {foo in bars}>
                 1 | <div {foo in bars}>
                   | ^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1915,7 +1945,7 @@ mod tests {
         check(
             "<div {className}>Content: {content}</div>",
             expect![[r#"
-                OpeningTag <div>
+                OpeningTag <div {className}>
                 1 | <div {className}>Content: {content}</div>
                   | ^^^^^^^^^^^^^^^^^
 
@@ -1939,7 +1969,7 @@ mod tests {
         check(
             r#"<div class="foo" class="bar"></div>"#,
             expect![[r#"
-                OpeningTag <div>
+                OpeningTag <div class="bar">
                 1 | <div class="foo" class="bar"></div>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1959,7 +1989,7 @@ mod tests {
         check(
             r#"<input type="text" type='number'/>"#,
             expect![[r#"
-                OpeningTag <input>
+                OpeningTag <input type="number"/>
                 1 | <input type="text" type='number'/>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1975,7 +2005,7 @@ mod tests {
         check(
             r#"<input required required />"#,
             expect![[r#"
-                OpeningTag <input>
+                OpeningTag <input required/>
                 1 | <input required required />
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
