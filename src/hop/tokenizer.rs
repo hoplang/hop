@@ -131,8 +131,6 @@ pub struct Tokenizer<'a> {
     cursor: StrCursor<'a>,
     state: TokenizerState,
     stored_tag_name: String,
-    // attribute_name is the name of the attribute we're currently processing.
-    attribute_name: OptionalRangedString,
     // attribute_value is the value of the attribute we're currently processing.
     attribute_value: OptionalRangedString,
     // attributes are the attributes of the tag we're currently processing
@@ -153,7 +151,6 @@ impl<'a> Tokenizer<'a> {
             cursor: StrCursor::new(input),
             state: TokenizerState::Text,
             stored_tag_name: String::new(),
-            attribute_name: OptionalRangedString::default(),
             attribute_value: OptionalRangedString::default(),
             expression: OptionalRangedString::default(),
             attributes: BTreeMap::default(),
@@ -163,12 +160,12 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn push_attribute(
-        attribute_name: (String, Range),
+        attribute_name: RangedString,
         attribute_value: Option<(String, Range)>,
         attributes: &mut BTreeMap<String, Attribute>,
         ends_at: Position,
     ) -> Result<(), ParseError> {
-        let (attr_name, attr_name_range) = attribute_name;
+        let RangedString(attr_name, attr_name_range) = attribute_name;
         if attributes.contains_key(&attr_name) {
             return Err(ParseError::duplicate_attribute(&attr_name, attr_name_range));
         }
@@ -184,7 +181,6 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn fail_and_recover(&mut self, err: ParseError) -> Option<TokenizerState> {
-        self.attribute_name.consume();
         self.attribute_value.consume();
         self.attributes.clear();
         self.expression.consume();
@@ -338,16 +334,16 @@ impl<'a> Tokenizer<'a> {
             ('{', _) => self.state_tag_expression_start(tag_name),
             ('/', _) => self.state_self_closing(tag_name),
             (ch, ch_range) if ch.is_ascii_alphabetic() => {
+                let mut attr_name = RangedString::init(ch, ch_range);
                 // Parse attribute name
-                self.attribute_name.extend(ch, ch_range);
                 while let Some((ch, ch_range)) = self
                     .cursor
                     .next_if(|(ch, _)| *ch == '-' || ch.is_ascii_alphanumeric())
                 {
-                    self.attribute_name.extend(ch, ch_range);
+                    attr_name.push(ch, ch_range);
                 }
 
-                self.state_attr_name(tag_name)
+                self.state_attr_name(tag_name, attr_name)
             }
             ('>', ch_range) => {
                 let RangedString(tag_name, tag_name_range) = tag_name;
@@ -373,13 +369,17 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn state_attr_name(&mut self, tag_name: RangedString) -> Option<TokenizerState> {
+    fn state_attr_name(
+        &mut self,
+        tag_name: RangedString,
+        attr_name: RangedString,
+    ) -> Option<TokenizerState> {
         match self.cursor.next()? {
-            ('=', _) => self.state_before_attr_value(tag_name),
+            ('=', _) => self.state_before_attr_value(tag_name, attr_name),
             (ch, ch_range) if ch.is_whitespace() => {
                 // Push current attribute
                 if let Err(err) = Self::push_attribute(
-                    self.attribute_name.consume().unwrap(),
+                    attr_name,
                     self.attribute_value.consume(),
                     &mut self.attributes,
                     ch_range.end,
@@ -391,7 +391,7 @@ impl<'a> Tokenizer<'a> {
             ('>', ch_range) => {
                 // Push current attribute
                 if let Err(err) = Self::push_attribute(
-                    self.attribute_name.consume().unwrap(),
+                    attr_name,
                     self.attribute_value.consume(),
                     &mut self.attributes,
                     ch_range.end,
@@ -423,7 +423,7 @@ impl<'a> Tokenizer<'a> {
             ('/', ch_range) => {
                 // Push current attribute
                 if let Err(err) = Self::push_attribute(
-                    self.attribute_name.consume().unwrap(),
+                    attr_name,
                     self.attribute_value.consume(),
                     &mut self.attributes,
                     ch_range.end,
@@ -442,10 +442,14 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn state_before_attr_value(&mut self, tag_name: RangedString) -> Option<TokenizerState> {
+    fn state_before_attr_value(
+        &mut self,
+        tag_name: RangedString,
+        attr_name: RangedString,
+    ) -> Option<TokenizerState> {
         match self.cursor.next()? {
-            ('"', _) => self.state_attr_value_double_quote(tag_name),
-            ('\'', _) => self.state_attr_value_single_quote(tag_name),
+            ('"', _) => self.state_attr_value_double_quote(tag_name, attr_name),
+            ('\'', _) => self.state_attr_value_single_quote(tag_name, attr_name),
             (_, ch_range) => self.fail_and_recover(ParseError::new(
                 "Expected quoted attribute name".to_string(),
                 ch_range,
@@ -453,12 +457,16 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn state_attr_value_double_quote(&mut self, tag_name: RangedString) -> Option<TokenizerState> {
+    fn state_attr_value_double_quote(
+        &mut self,
+        tag_name: RangedString,
+        attr_name: RangedString,
+    ) -> Option<TokenizerState> {
         match self.cursor.next()? {
             ('"', ch_range) => {
                 // Push current attribute
                 if let Err(err) = Self::push_attribute(
-                    self.attribute_name.consume().unwrap(),
+                    attr_name,
                     self.attribute_value.consume(),
                     &mut self.attributes,
                     ch_range.end,
@@ -469,17 +477,21 @@ impl<'a> Tokenizer<'a> {
             }
             (ch, ch_range) => {
                 self.attribute_value.extend(ch, ch_range);
-                self.state_attr_value_double_quote(tag_name)
+                self.state_attr_value_double_quote(tag_name, attr_name)
             }
         }
     }
 
-    fn state_attr_value_single_quote(&mut self, tag_name: RangedString) -> Option<TokenizerState> {
+    fn state_attr_value_single_quote(
+        &mut self,
+        tag_name: RangedString,
+        attr_name: RangedString,
+    ) -> Option<TokenizerState> {
         match self.cursor.next()? {
             ('\'', ch_range) => {
                 // Push current attribute
                 if let Err(err) = Self::push_attribute(
-                    self.attribute_name.consume().unwrap(),
+                    attr_name,
                     self.attribute_value.consume(),
                     &mut self.attributes,
                     ch_range.end,
@@ -490,7 +502,7 @@ impl<'a> Tokenizer<'a> {
             }
             (ch, ch_range) => {
                 self.attribute_value.extend(ch, ch_range);
-                self.state_attr_value_single_quote(tag_name)
+                self.state_attr_value_single_quote(tag_name, attr_name)
             }
         }
     }
