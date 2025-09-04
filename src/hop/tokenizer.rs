@@ -89,19 +89,6 @@ enum TokenizerState {
     RawtextClosingTag(String, Position),
 }
 
-#[derive(Debug)]
-struct RangedString(String, Range);
-
-impl RangedString {
-    fn init(ch: char, r: Range) -> RangedString {
-        Self(String::from(ch), r)
-    }
-    fn push(&mut self, ch: char, r: Range) {
-        self.0.push(ch);
-        self.1 = self.1.extend_to(r);
-    }
-}
-
 pub struct Tokenizer<'a> {
     cursor: StrCursor<'a>,
     state: TokenizerState,
@@ -136,7 +123,7 @@ impl<'a> Tokenizer<'a> {
 
                     self.state_parse_tag_content(
                         left_bracket_range.start,
-                        RangedString(tag_name, tag_name_range),
+                        (tag_name, tag_name_range),
                         &mut BTreeMap::new(),
                         None,
                     )
@@ -168,7 +155,7 @@ impl<'a> Tokenizer<'a> {
     fn state_closing_tag_start(&mut self, tag_start: Position) -> Option<Token> {
         match self.cursor.next()? {
             (ch, ch_range) if ch.is_ascii_alphabetic() => {
-                self.state_closing_tag_name(tag_start, RangedString::init(ch, ch_range))
+                self.state_closing_tag_name(tag_start, (String::from(ch), ch_range))
             }
             (_, ch_range) => {
                 self.errors.push_back(ParseError::new(
@@ -183,22 +170,20 @@ impl<'a> Tokenizer<'a> {
     fn state_closing_tag_name(
         &mut self,
         tag_start: Position,
-        mut tag_name: RangedString,
+        mut tag_name: (String, Range),
     ) -> Option<Token> {
         match self.cursor.next()? {
             (ch, ch_range) if ch == '-' || ch.is_ascii_alphanumeric() => {
-                tag_name.push(ch, ch_range);
+                tag_name.0.push(ch);
+                tag_name.1 = tag_name.1.extend_to(ch_range);
                 // TODO: Recursive
                 self.state_closing_tag_name(tag_start, tag_name)
             }
             (ch, _) if ch.is_whitespace() => self.state_after_closing_tag_name(tag_start, tag_name),
-            ('>', ch_range) => {
-                let RangedString(tag_name, range) = tag_name;
-                Some(Token::ClosingTag {
-                    tag_name: (tag_name, range),
-                    range: Range::new(tag_start, ch_range.end),
-                })
-            }
+            ('>', ch_range) => Some(Token::ClosingTag {
+                tag_name,
+                range: Range::new(tag_start, ch_range.end),
+            }),
             (_, ch_range) => {
                 self.errors.push_back(ParseError::new(
                     "Invalid character in closing tag name".to_string(),
@@ -212,25 +197,21 @@ impl<'a> Tokenizer<'a> {
     fn state_after_closing_tag_name(
         &mut self,
         tag_start: Position,
-        tag_name: RangedString,
+        tag_name: (String, Range),
     ) -> Option<Token> {
         self.cursor.next_while(|(ch, _)| ch.is_whitespace());
         match self.cursor.next()? {
-            ('>', ch_range) => {
-                let RangedString(tag_name, tag_name_range) = tag_name;
-                Some(Token::ClosingTag {
-                    tag_name: (tag_name, tag_name_range),
-                    range: Range::new(tag_start, ch_range.end),
-                })
-            }
+            ('>', ch_range) => Some(Token::ClosingTag {
+                tag_name,
+                range: Range::new(tag_start, ch_range.end),
+            }),
             (_, ch_range) => {
                 self.errors.push_back(ParseError::new(
                     "Invalid character after closing tag name".to_string(),
                     ch_range,
                 ));
-                let RangedString(tag_name, tag_name_range) = tag_name;
                 Some(Token::ClosingTag {
-                    tag_name: (tag_name, tag_name_range),
+                    tag_name,
                     range: Range::new(tag_start, ch_range.end),
                 })
             }
@@ -240,9 +221,9 @@ impl<'a> Tokenizer<'a> {
     fn state_parse_tag_content(
         &mut self,
         tag_start: Position,
-        tag_name: RangedString,
+        tag_name: (String, Range),
         attributes: &mut BTreeMap<String, Attribute>,
-        expression: Option<RangedString>,
+        expression: Option<(String, Range)>,
     ) -> Option<Token> {
         loop {
             self.cursor.next_while(|(ch, _)| ch.is_whitespace());
@@ -252,12 +233,11 @@ impl<'a> Tokenizer<'a> {
                 // Self-closing
                 ('/', _) => match self.cursor.next()? {
                     ('>', ch_range) => {
-                        let RangedString(tag_name, tag_name_range) = tag_name;
                         return Some(Token::OpeningTag {
                             self_closing: true,
-                            tag_name: (tag_name, tag_name_range),
+                            tag_name,
                             attributes: mem::take(attributes),
-                            expression: expression.map(|RangedString(s, r)| (s, r)),
+                            expression,
                             range: Range::new(tag_start, ch_range.end),
                         });
                     }
@@ -266,12 +246,11 @@ impl<'a> Tokenizer<'a> {
                             "Expected '>' after '/'".to_string(),
                             ch_range,
                         ));
-                        let RangedString(tag_name, tag_name_range) = tag_name;
                         return Some(Token::OpeningTag {
                             self_closing: true,
-                            tag_name: (tag_name, tag_name_range),
+                            tag_name,
                             attributes: mem::take(attributes),
-                            expression: expression.map(|RangedString(s, r)| (s, r)),
+                            expression,
                             range: Range::new(tag_start, ch_range.end),
                         });
                     }
@@ -369,16 +348,15 @@ impl<'a> Tokenizer<'a> {
                     );
                 }
                 ('>', ch_range) => {
-                    let RangedString(tag_name, tag_name_range) = tag_name;
-                    let tag_name_clone = tag_name.clone();
+                    let (tag_name_clone, _) = tag_name.clone();
                     if is_tag_name_with_raw_content(&tag_name_clone) {
                         self.state = TokenizerState::RawtextData(tag_name_clone);
                     }
                     return Some(Token::OpeningTag {
                         self_closing: false,
-                        tag_name: (tag_name, tag_name_range),
+                        tag_name,
                         attributes: mem::take(attributes),
-                        expression: expression.map(|RangedString(s, r)| (s, r)),
+                        expression,
                         range: Range::new(tag_start, ch_range.end),
                     });
                 }
@@ -459,7 +437,7 @@ impl<'a> Tokenizer<'a> {
                 ('<', langle_range) => {
                     let end_tag = format!("/{}>", stored_tag_name);
                     if self.cursor.peek_n(end_tag.len())?.0 == end_tag {
-                        if let Some(RangedString(s, r)) = text {
+                        if let Some((s, r)) = text {
                             self.state = TokenizerState::RawtextClosingTag(
                                 stored_tag_name.clone(),
                                 langle_range.start,
@@ -471,14 +449,20 @@ impl<'a> Tokenizer<'a> {
                         }
                     } else {
                         match &mut text {
-                            Some(v) => v.push('<', langle_range),
-                            None => text = Some(RangedString::init('<', langle_range)),
+                            Some(v) => {
+                                v.0.push('<');
+                                v.1 = v.1.extend_to(langle_range);
+                            }
+                            None => text = Some((String::from('<'), langle_range)),
                         }
                     }
                 }
                 (ch, ch_range) => match &mut text {
-                    Some(v) => v.push(ch, ch_range),
-                    None => text = Some(RangedString::init(ch, ch_range)),
+                    Some(v) => {
+                        v.0.push(ch);
+                        v.1 = v.1.extend_to(ch_range);
+                    }
+                    None => text = Some((String::from(ch), ch_range)),
                 },
             }
         }
@@ -492,16 +476,16 @@ impl<'a> Tokenizer<'a> {
                 self.state_text()
             }
             (ch, ch_range) => {
-                let mut text = RangedString::init(ch, ch_range);
+                let mut expression = (String::from(ch), ch_range);
                 // TODO: Handle EOF
                 while let Some((ch, range)) = self.cursor.next_if(|(ch, _)| *ch != '}') {
-                    text.push(ch, range);
+                    expression.0.push(ch);
+                    expression.1 = expression.1.extend_to(range);
                 }
-                let RangedString(expression_value, expression_range) = text;
                 let (_, end_range) = self.cursor.next()?; // consume }
                 Some(Token::Expression {
-                    value: expression_value,
-                    expression_range,
+                    value: expression.0,
+                    expression_range: expression.1,
                     range: Range::new(expression_start, end_range.end),
                 })
             }
@@ -511,7 +495,7 @@ impl<'a> Tokenizer<'a> {
     fn state_tag_expression(
         &mut self,
         tag_start: Position,
-        tag_name: RangedString,
+        tag_name: (String, Range),
         attributes: &mut BTreeMap<String, Attribute>,
     ) -> Option<Token> {
         match self.cursor.next()? {
@@ -521,7 +505,7 @@ impl<'a> Tokenizer<'a> {
                 self.state_text()
             }
             (ch, ch_range) => {
-                let mut expression = RangedString::init(ch, ch_range);
+                let mut expression = (String::from(ch), ch_range);
                 loop {
                     // Temporary fix until we embed hop tokenizer here
                     if self.cursor.matches_str("}>")
@@ -538,7 +522,8 @@ impl<'a> Tokenizer<'a> {
                         );
                     } else {
                         let (ch, ch_range) = self.cursor.next()?;
-                        expression.push(ch, ch_range);
+                        expression.0.push(ch);
+                        expression.1 = expression.1.extend_to(ch_range);
                     }
                 }
             }
