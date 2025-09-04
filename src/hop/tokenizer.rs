@@ -248,7 +248,30 @@ impl<'a> Tokenizer<'a> {
                 }
             },
             // TextExpression
-            ('{', ch_range) => self.state_text_expression(ch_range.start),
+            ('{', left_brace_range) => {
+                match self.cursor.next()? {
+                    ('}', right_brace_range) => {
+                        self.errors.push_back(ParseError::new(
+                            "Empty expression".to_string(),
+                            left_brace_range.extend_to(right_brace_range),
+                        ));
+                        self.state_text()
+                    }
+                    (ch, ch_range) => {
+                        let mut expression = (String::from(ch), ch_range);
+                        // TODO: Handle EOF
+                        while let Some((ch, range)) = self.cursor.next_if(|(ch, _)| *ch != '}') {
+                            expression.0.push(ch);
+                            expression.1 = expression.1.extend_to(range);
+                        }
+                        let (_, right_brace_range) = self.cursor.next()?; // consume }
+                        Some(Token::Expression {
+                            expression,
+                            range: left_brace_range.extend_to(right_brace_range),
+                        })
+                    }
+                }
+            }
             // Text
             (ch, ch_range) => {
                 let mut value = String::from(ch);
@@ -1984,7 +2007,7 @@ mod tests {
             expect![[r#"
                 Empty expression
                 1 | {}
-                  |  ^
+                  | ^^
             "#]],
         );
     }
