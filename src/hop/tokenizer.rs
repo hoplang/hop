@@ -180,15 +180,13 @@ impl<'a> Tokenizer<'a> {
             Some(('<', ch_range)) => self.state_tag_start(ch_range.start),
             Some(('{', ch_range)) => self.state_text_expression_start(ch_range.start),
             Some((ch, ch_range)) => {
-                let mut text = RangedString::init(ch, ch_range);
-                while let Some((ch, range)) =
-                    self.cursor.next_if(|(ch, _)| *ch != '{' && *ch != '<')
-                {
-                    text.push(ch, range);
+                let mut value = String::from(ch);
+                let mut range = ch_range;
+                while let Some((ch, r)) = self.cursor.next_if(|(ch, _)| *ch != '{' && *ch != '<') {
+                    value.push(ch);
+                    range = range.extend_to(r);
                 }
-                let RangedString(s, r) = text;
-                self.tokens
-                    .push_back(Ok(Token::Text { value: s, range: r }));
+                self.tokens.push_back(Ok(Token::Text { value, range }));
                 self.state_text()
             }
             None => None,
@@ -275,7 +273,7 @@ impl<'a> Tokenizer<'a> {
         match self.cursor.next()? {
             (ch, ch_range) if ch == '-' || ch.is_ascii_alphanumeric() => {
                 tag_name.push(ch, ch_range);
-                // TODO
+                // TODO: Recursive
                 self.state_closing_tag_name(tag_start, tag_name)
             }
             (ch, _) if ch.is_whitespace() => self.state_after_closing_tag_name(tag_start, tag_name),
@@ -322,6 +320,7 @@ impl<'a> Tokenizer<'a> {
         tag_name: RangedString,
     ) -> Option<TokenizerState> {
         self.cursor.next_while(|(ch, _)| ch.is_whitespace());
+
         match self.cursor.next()? {
             ('{', _) => self.state_tag_expression_start(tag_start, tag_name),
             ('/', _) => self.state_self_closing(tag_start, tag_name),

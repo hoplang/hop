@@ -170,12 +170,22 @@ impl<'a> StrCursor<'a> {
     pub fn next_if(&mut self, func: impl FnOnce(&(char, Range)) -> bool) -> Option<(char, Range)> {
         self.chars.next_if(func)
     }
-    pub fn next_while(&mut self, func: impl Fn(&(char, Range)) -> bool) {
+    pub fn next_while(&mut self, func: impl Fn(&(char, Range)) -> bool) -> Option<(String, Range)> {
+        let mut result: Option<(String, Range)> = None;
         loop {
             match self.chars.peek() {
-                Some(matched) if func(matched) => self.chars.next(),
+                Some(matched) if func(matched) => {
+                    let (ch, range) = self.next().unwrap();
+                    match &mut result {
+                        Some(val) => {
+                            val.0.push(ch);
+                            val.1 = val.1.extend_to(range);
+                        }
+                        None => result = Some((String::from(ch), range)),
+                    }
+                }
                 _ => {
-                    return;
+                    return result;
                 }
             };
         }
