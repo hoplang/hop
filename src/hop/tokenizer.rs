@@ -133,32 +133,113 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn state_text(&mut self) -> Option<Token> {
-        match self.cursor.next() {
-            Some(('<', left_bracket_range)) => match self.cursor.next()? {
-                ('/', _) => self.state_closing_tag_start(left_bracket_range.start),
-                ('!', _) => self.state_markup_declaration(left_bracket_range.start),
-                (ch, ch_range) if ch.is_ascii_alphabetic() => {
-                    let mut tag_name = String::from(ch);
-                    let mut tag_name_range = ch_range;
+    // Parse a tag name from the cursor given an initial char
+    fn parse_tag_name(&mut self, initial_char: char, initial_range: Range) -> (String, Range) {
+        let mut result = (String::from(initial_char), initial_range);
+        while let Some((ch, r)) = self
+            .cursor
+            .next_if(|(ch, _)| *ch == '-' || ch.is_ascii_alphanumeric())
+        {
+            result.0.push(ch);
+            result.1 = result.1.extend_to(r);
+        }
+        result
+    }
 
-                    while let Some((ch, r)) = self
-                        .cursor
-                        .next_if(|(ch, _)| *ch == '-' || ch.is_ascii_alphanumeric())
-                    {
-                        tag_name.push(ch);
-                        tag_name_range = tag_name_range.extend_to(r);
+    // Skip whitespace from the cursor
+    fn skip_whitespace(&mut self) {
+        self.cursor.next_while(|(ch, _)| ch.is_whitespace());
+    }
+
+    fn state_text(&mut self) -> Option<Token> {
+        match self.cursor.next()? {
+            ('<', left_angle_range) => match self.cursor.next()? {
+                // ClosingTag
+                ('/', _) => {
+                    let (ch, ch_range) = self.cursor.next()?;
+                    if ch.is_ascii_alphabetic() {
+                        let tag_name = self.parse_tag_name(ch, ch_range);
+                        self.skip_whitespace();
+                        let (right_angle, right_angle_range) = self.cursor.next()?;
+                        if right_angle != '>' {
+                            self.errors.push_back(ParseError::new(
+                                "Invalid character after closing tag name".to_string(),
+                                ch_range,
+                            ));
+                            return Some(Token::ClosingTag {
+                                tag_name,
+                                range: left_angle_range.extend_to(right_angle_range),
+                            });
+                        }
+                        Some(Token::ClosingTag {
+                            tag_name,
+                            range: left_angle_range.extend_to(right_angle_range),
+                        })
+                    } else {
+                        self.errors.push_back(ParseError::new(
+                            "Invalid character after </".to_string(),
+                            ch_range,
+                        ));
+                        self.state_text()
                     }
+                }
+                // Doctype/Comment
+                ('!', _) => {
+                    match self.cursor.next()? {
+                        // Comment
+                        ('-', _) if self.cursor.peek()?.0 == '-' => {
+                            self.cursor.next();
+                            loop {
+                                if self.cursor.next()?.0 == '-' && self.cursor.next()?.0 == '-' {
+                                    if let ('>', ch_range) = self.cursor.next()? {
+                                        return Some(Token::Comment {
+                                            range: left_angle_range.extend_to(ch_range),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                        // Doctype
+                        ('D', _) if self.cursor.peek_n(6)?.0 == "OCTYPE" => {
+                            for _ in 0..6 {
+                                self.cursor.next();
+                            }
+                            self.cursor.next_while(|(ch, _)| *ch != '>');
+                            match self.cursor.next()? {
+                                ('>', ch_range) => Some(Token::Doctype {
+                                    range: left_angle_range.extend_to(ch_range),
+                                }),
+                                _ => {
+                                    unreachable!()
+                                }
+                            }
+                        }
+                        // Invalid
+                        (_, ch_range) => {
+                            self.errors.push_back(ParseError::new(
+                                "Invalid character in markup declaration".to_string(),
+                                ch_range,
+                            ));
+
+                            Some(Token::Doctype {
+                                range: left_angle_range.extend_to(ch_range),
+                            })
+                        }
+                    }
+                }
+                // Text
+                (ch, ch_range) if ch.is_ascii_alphabetic() => {
+                    let tag_name = self.parse_tag_name(ch, ch_range);
 
                     self.state_parse_tag_content(
-                        left_bracket_range.start,
-                        (tag_name, tag_name_range),
+                        left_angle_range.start,
+                        tag_name,
                         &mut BTreeMap::new(),
                         None,
                     )
                 }
+                // Invalid
                 (_, ch_range) => {
-                    //
                     self.errors.push_back(ParseError::new(
                         "Invalid character after '<'".to_string(),
                         ch_range,
@@ -166,8 +247,10 @@ impl<'a> Tokenizer<'a> {
                     self.state_text()
                 }
             },
-            Some(('{', ch_range)) => self.state_text_expression(ch_range.start),
-            Some((ch, ch_range)) => {
+            // TextExpression
+            ('{', ch_range) => self.state_text_expression(ch_range.start),
+            // Text
+            (ch, ch_range) => {
                 let mut value = String::from(ch);
                 let mut range = ch_range;
                 while let Some((ch, r)) = self.cursor.next_if(|(ch, _)| *ch != '{' && *ch != '<') {
@@ -175,74 +258,6 @@ impl<'a> Tokenizer<'a> {
                     range = range.extend_to(r);
                 }
                 Some(Token::Text { value, range })
-            }
-            None => None,
-        }
-    }
-
-    /// In this state we have just seen '</'
-    fn state_closing_tag_start(&mut self, tag_start: Position) -> Option<Token> {
-        match self.cursor.next()? {
-            (ch, ch_range) if ch.is_ascii_alphabetic() => {
-                self.state_closing_tag_name(tag_start, (String::from(ch), ch_range))
-            }
-            (_, ch_range) => {
-                self.errors.push_back(ParseError::new(
-                    "Invalid character after </".to_string(),
-                    ch_range,
-                ));
-                self.state_text()
-            }
-        }
-    }
-
-    fn state_closing_tag_name(
-        &mut self,
-        tag_start: Position,
-        mut tag_name: (String, Range),
-    ) -> Option<Token> {
-        match self.cursor.next()? {
-            (ch, ch_range) if ch == '-' || ch.is_ascii_alphanumeric() => {
-                tag_name.0.push(ch);
-                tag_name.1 = tag_name.1.extend_to(ch_range);
-                // TODO: Recursive
-                self.state_closing_tag_name(tag_start, tag_name)
-            }
-            (ch, _) if ch.is_whitespace() => self.state_after_closing_tag_name(tag_start, tag_name),
-            ('>', ch_range) => Some(Token::ClosingTag {
-                tag_name,
-                range: Range::new(tag_start, ch_range.end),
-            }),
-            (_, ch_range) => {
-                self.errors.push_back(ParseError::new(
-                    "Invalid character in closing tag name".to_string(),
-                    ch_range,
-                ));
-                self.state_after_closing_tag_name(tag_start, tag_name)
-            }
-        }
-    }
-
-    fn state_after_closing_tag_name(
-        &mut self,
-        tag_start: Position,
-        tag_name: (String, Range),
-    ) -> Option<Token> {
-        self.cursor.next_while(|(ch, _)| ch.is_whitespace());
-        match self.cursor.next()? {
-            ('>', ch_range) => Some(Token::ClosingTag {
-                tag_name,
-                range: Range::new(tag_start, ch_range.end),
-            }),
-            (_, ch_range) => {
-                self.errors.push_back(ParseError::new(
-                    "Invalid character after closing tag name".to_string(),
-                    ch_range,
-                ));
-                Some(Token::ClosingTag {
-                    tag_name,
-                    range: Range::new(tag_start, ch_range.end),
-                })
             }
         }
     }
@@ -255,7 +270,7 @@ impl<'a> Tokenizer<'a> {
         expression: Option<(String, Range)>,
     ) -> Option<Token> {
         loop {
-            self.cursor.next_while(|(ch, _)| ch.is_whitespace());
+            self.skip_whitespace();
 
             match self.cursor.next()? {
                 ('{', _) => return self.state_tag_expression(tag_start, tag_name, attributes),
@@ -285,18 +300,9 @@ impl<'a> Tokenizer<'a> {
                     }
                 },
                 (ch, ch_range) if ch.is_ascii_alphabetic() => {
-                    let mut attr_name = String::from(ch);
-                    let mut attr_name_range = ch_range;
-                    // Parse attribute name
-                    while let Some((ch, ch_range)) = self
-                        .cursor
-                        .next_if(|(ch, _)| *ch == '-' || ch.is_ascii_alphanumeric())
-                    {
-                        attr_name.push(ch);
-                        attr_name_range = attr_name_range.extend_to(ch_range);
-                    }
+                    let (attr_name, attr_name_range) = self.parse_tag_name(ch, ch_range);
 
-                    self.cursor.next_while(|(ch, _)| ch.is_whitespace());
+                    self.skip_whitespace();
 
                     match self.cursor.peek()? {
                         ('=', _) => {
@@ -319,8 +325,7 @@ impl<'a> Tokenizer<'a> {
                             continue;
                         }
                     }
-                    // skip whitespace
-                    self.cursor.next_while(|(ch, _)| ch.is_whitespace());
+                    self.skip_whitespace();
 
                     let terminator = match self.cursor.peek()? {
                         ('"', _) => '"',
@@ -397,57 +402,13 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn state_markup_declaration(&mut self, tag_start: Position) -> Option<Token> {
-        match self.cursor.next()? {
-            // Parse comment
-            ('-', _) if self.cursor.peek()?.0 == '-' => {
-                self.cursor.next();
-                loop {
-                    if let ('-', _) = self.cursor.next()? {
-                        if let ('-', _) = self.cursor.next()? {
-                            if let ('>', ch_range) = self.cursor.next()? {
-                                return Some(Token::Comment {
-                                    range: Range::new(tag_start, ch_range.end),
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-            // Parse doctype
-            ('D', _) if self.cursor.peek_n(6)?.0 == "OCTYPE" => {
-                self.cursor.next_n(6);
-                self.cursor.next_while(|(ch, _)| *ch != '>');
-                match self.cursor.next()? {
-                    ('>', ch_range) => Some(Token::Doctype {
-                        range: Range::new(tag_start, ch_range.end),
-                    }),
-                    _ => {
-                        unreachable!()
-                    }
-                }
-            }
-            (_, ch_range) => {
-                self.errors.push_back(ParseError::new(
-                    "Invalid character in markup declaration".to_string(),
-                    ch_range,
-                ));
-
-                Some(Token::Doctype {
-                    range: Range::new(tag_start, ch_range.end),
-                })
-            }
-        }
-    }
-
     fn state_rawtext_closing_tag(
         &mut self,
         stored_tag_name: String,
         token_start: Position,
     ) -> Option<Token> {
-        let tag_name = stored_tag_name.to_string();
-        self.cursor.next_n(1).unwrap(); // consume /
-        let (_, tag_name_range) = self.cursor.next_n(stored_tag_name.len()).unwrap();
+        self.cursor.next(); // consume /
+        let (tag_name, tag_name_range) = self.cursor.next_n(stored_tag_name.len()).unwrap();
         let (_, end_range) = self.cursor.next().unwrap(); // consume >
         self.state = TokenizerState::Text;
         Some(Token::ClosingTag {

@@ -144,31 +144,39 @@ impl<'a> StrCursor<'a> {
 
     pub fn peek_n(&mut self, n: usize) -> Option<(String, Range)> {
         let mut clone = self.chars.clone();
-        let mut s = String::new();
-        let mut r: Option<Range> = None;
+        let mut result: Option<(String, Range)> = None;
         for _ in 0..n {
             let (ch, range) = clone.next()?;
-            s.push(ch);
-            r = match r {
-                Some(r) => Some(r.extend_to(range)),
-                None => Some(range),
+            match &mut result {
+                Some(result) => {
+                    result.0.push(ch);
+                    result.1 = result.1.extend_to(range);
+                }
+                None => {
+                    result = Some((String::from(ch), range));
+                }
             }
         }
-        Some((s, r?))
-    }
-
-    pub fn next_n(&mut self, n: usize) -> Option<(String, Range)> {
-        let mut s = String::new();
-        let mut r = self.peek()?.1;
-        for _ in 0..n {
-            let (ch, range) = self.next()?;
-            s.push(ch);
-            r = r.extend_to(range);
-        }
-        Some((s, r))
+        result
     }
     pub fn next_if(&mut self, func: impl FnOnce(&(char, Range)) -> bool) -> Option<(char, Range)> {
         self.chars.next_if(func)
+    }
+    pub fn next_n(&mut self, n: usize) -> Option<(String, Range)> {
+        let mut result: Option<(String, Range)> = None;
+        for _ in 0..n {
+            let (ch, range) = self.next()?;
+            match &mut result {
+                Some(result) => {
+                    result.0.push(ch);
+                    result.1 = result.1.extend_to(range);
+                }
+                None => {
+                    result = Some((String::from(ch), range));
+                }
+            }
+        }
+        result
     }
     pub fn next_while(&mut self, func: impl Fn(&(char, Range)) -> bool) -> Option<(String, Range)> {
         let mut result: Option<(String, Range)> = None;
@@ -177,11 +185,13 @@ impl<'a> StrCursor<'a> {
                 Some(matched) if func(matched) => {
                     let (ch, range) = self.next().unwrap();
                     match &mut result {
-                        Some(val) => {
-                            val.0.push(ch);
-                            val.1 = val.1.extend_to(range);
+                        Some(result) => {
+                            result.0.push(ch);
+                            result.1 = result.1.extend_to(range);
                         }
-                        None => result = Some((String::from(ch), range)),
+                        None => {
+                            result = Some((String::from(ch), range));
+                        }
                     }
                 }
                 _ => {
