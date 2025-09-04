@@ -11,7 +11,6 @@ pub struct PresentAttribute {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Attribute {
-    pub name: String,
     pub value: Option<(String, Range)>,
     pub range: Range,
 }

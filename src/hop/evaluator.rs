@@ -107,12 +107,12 @@ pub fn evaluate_component(
         output.push_str(component_name);
         output.push('"');
 
-        for attr in component.attributes.values() {
-            if attr.name == "class" {
+        for (name, attr) in &component.attributes {
+            if name == "class" {
                 match additional_classes {
                     None => {
                         output.push(' ');
-                        output.push_str(&attr.name);
+                        output.push_str(&name);
                         if let Some((val, _)) = &attr.value {
                             output.push_str("=\"");
                             output.push_str(val);
@@ -121,7 +121,7 @@ pub fn evaluate_component(
                     }
                     Some(cls) => {
                         output.push(' ');
-                        output.push_str(&attr.name);
+                        output.push_str(&name);
                         output.push_str("=\"");
                         if let Some((val, _)) = &attr.value {
                             output.push_str(val);
@@ -133,7 +133,7 @@ pub fn evaluate_component(
                 }
             } else {
                 output.push(' ');
-                output.push_str(&attr.name);
+                output.push_str(&name);
                 if let Some((val, _)) = &attr.value {
                     output.push_str("=\"");
                     output.push_str(val);
@@ -339,10 +339,10 @@ fn evaluate_node(
 
             output.push('<');
             output.push_str(tag_name);
-            for attr in attributes.values() {
-                if !attr.name.starts_with("set-") {
+            for (name, attr) in attributes {
+                if !name.starts_with("set-") {
                     output.push(' ');
-                    output.push_str(&attr.name);
+                    output.push_str(&name);
                     if let Some((val, _)) = &attr.value {
                         output.push_str("=\"");
                         output.push_str(val);
@@ -483,10 +483,10 @@ fn evaluate_node_entrypoint(
             // For entrypoints, preserve script and style tags
             output.push('<');
             output.push_str(tag_name);
-            for attr in attributes.values() {
-                if !attr.name.starts_with("set-") {
+            for (name, attr) in attributes {
+                if !name.starts_with("set-") {
                     output.push(' ');
-                    output.push_str(&attr.name);
+                    output.push_str(&name);
                     if let Some((attr_val, _)) = &attr.value {
                         output.push_str("=\"");
                         output.push_str(attr_val);

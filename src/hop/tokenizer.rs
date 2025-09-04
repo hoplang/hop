@@ -283,9 +283,8 @@ impl<'a> Tokenizer<'a> {
                                 ));
                             }
                             attributes.insert(
-                                attr_name.clone(),
+                                attr_name,
                                 Attribute {
-                                    name: attr_name,
                                     value: None,
                                     range: attr_name_range,
                                 },
@@ -319,9 +318,8 @@ impl<'a> Tokenizer<'a> {
                             ));
                         }
                         attributes.insert(
-                            attr_name.clone(),
+                            attr_name,
                             Attribute {
-                                name: attr_name,
                                 value: None,
                                 range: Range::new(attr_name_range.start, terminator_range.end),
                             },
@@ -341,9 +339,8 @@ impl<'a> Tokenizer<'a> {
                         ));
                     }
                     attributes.insert(
-                        attr_name.clone(),
+                        attr_name,
                         Attribute {
-                            name: attr_name,
                             value: Some((attr_value, attr_value_range)),
                             range: Range::new(attr_name_range.start, terminator_range.end),
                         },

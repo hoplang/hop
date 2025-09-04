@@ -473,8 +473,8 @@ fn construct_node(
                 // Treat as HTML
                 _ => {
                     let mut set_attributes = Vec::new();
-                    for attr in attributes.values() {
-                        if attr.name.starts_with("set-") {
+                    for (name, attr) in &attributes {
+                        if name.starts_with("set-") {
                             let (attr_val, attr_val_range) = match &attr.value {
                                 None => {
                                     errors.push(ParseError::missing_attribute_value(attr.range));
@@ -486,7 +486,7 @@ fn construct_node(
                                 DopTokenizer::new(attr_val, attr_val_range.start).peekable();
                             match dop::parse_expr(&mut tokenizer) {
                                 Ok(expression) => set_attributes.push(DopExprAttribute {
-                                    name: attr.name.to_string(),
+                                    name: name.to_string(),
                                     expression,
                                     range: attr.range,
                                 }),
