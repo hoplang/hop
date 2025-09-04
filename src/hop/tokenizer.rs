@@ -89,26 +89,6 @@ enum TokenizerState {
     RawtextClosingTag(String, Position),
 }
 
-#[derive(Debug, Default)]
-struct OptionalRangedString {
-    value: Option<(String, Range)>,
-}
-
-impl OptionalRangedString {
-    fn extend(&mut self, ch: char, r: Range) {
-        match &mut self.value {
-            Some(v) => {
-                v.0.push(ch);
-                v.1 = v.1.extend_to(r);
-            }
-            None => self.value = Some((String::from(ch), r)),
-        }
-    }
-    fn consume(&mut self) -> Option<(String, Range)> {
-        mem::take(&mut self.value)
-    }
-}
-
 #[derive(Debug)]
 struct RangedString(String, Range);
 
@@ -473,13 +453,13 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn state_rawtext_data(&mut self, stored_tag_name: String) -> Option<Token> {
-        let mut text = OptionalRangedString::default();
+        let mut text = None;
         loop {
             match self.cursor.next()? {
                 ('<', langle_range) => {
                     let end_tag = format!("/{}>", stored_tag_name);
                     if self.cursor.peek_n(end_tag.len())?.0 == end_tag {
-                        if let Some((s, r)) = text.consume() {
+                        if let Some(RangedString(s, r)) = text {
                             self.state = TokenizerState::RawtextClosingTag(
                                 stored_tag_name.clone(),
                                 langle_range.start,
@@ -490,12 +470,16 @@ impl<'a> Tokenizer<'a> {
                                 .state_rawtext_closing_tag(stored_tag_name, langle_range.start);
                         }
                     } else {
-                        text.extend('<', langle_range);
+                        match &mut text {
+                            Some(v) => v.push('<', langle_range),
+                            None => text = Some(RangedString::init('<', langle_range)),
+                        }
                     }
                 }
-                (ch, ch_range) => {
-                    text.extend(ch, ch_range);
-                }
+                (ch, ch_range) => match &mut text {
+                    Some(v) => v.push(ch, ch_range),
+                    None => text = Some(RangedString::init(ch, ch_range)),
+                },
             }
         }
     }
