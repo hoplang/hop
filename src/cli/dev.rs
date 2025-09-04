@@ -32,17 +32,14 @@ fn get_ui_program() -> &'static Program {
         program.update_module("hop/icons", ICONS_TEMPLATES.to_string());
 
         // Check for any errors in the UI templates
-        let has_parse_errors = program
-            .get_parse_errors()
-            .values()
-            .any(|errors| !errors.is_empty());
-        let has_type_errors = program
-            .get_type_errors()
-            .values()
-            .any(|errors| !errors.is_empty());
+        let parse_errors = program.get_parse_errors();
+        let type_errors = program.get_type_errors();
 
-        if has_parse_errors || has_type_errors {
-            panic!("Failed to compile UI templates");
+        if parse_errors.values().any(|errors| !errors.is_empty()) {
+            panic!("Parse errors in UI templates: {:#?}", parse_errors);
+        }
+        if type_errors.values().any(|errors| !errors.is_empty()) {
+            panic!("Type errors in UI templates: {:#?}", type_errors);
         }
 
         program

@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::iter::Peekable;
+use std::mem;
 
 use crate::common::{ParseError, Position, Range, Ranged, RangedChars};
 use crate::dop::DopTokenizer;
@@ -137,26 +138,24 @@ impl From<(char, Range)> for RangedString {
     }
 }
 
-#[derive(Debug)]
-enum TokenizerState {
-    Text,
-    RawtextData(String),
-    RawtextClosingTag(String),
-}
-
 pub struct Tokenizer<'a> {
     chars: Peekable<RangedChars<'a>>,
-    state: TokenizerState,
     errors: VecDeque<ParseError>,
+    raw_text_closing_tag: Option<String>,
 }
 
 impl<'a> Tokenizer<'a> {
     pub fn new(input: &'a str) -> Self {
         Self {
-            state: TokenizerState::Text,
             chars: RangedChars::new(input, Position::default()).peekable(),
             errors: VecDeque::new(),
+            raw_text_closing_tag: None,
         }
+    }
+
+    // Skip whitespace
+    fn skip_whitespace(&mut self) {
+        while self.chars.next_if(|(ch, _)| ch.is_whitespace()).is_some() {}
     }
 
     // Parse a tag name given an initial char
@@ -171,11 +170,7 @@ impl<'a> Tokenizer<'a> {
         result.into()
     }
 
-    // Skip whitespace
-    fn skip_whitespace(&mut self) {
-        while self.chars.next_if(|(ch, _)| ch.is_whitespace()).is_some() {}
-    }
-
+    // Parse an attribute, e.g. foo="bar"
     fn parse_attribute(&mut self) -> Option<((String, Range), Attribute)> {
         let (ch, ch_range) = self.chars.next()?; // consume initial name char
         let (attr_name, attr_name_range) = self.parse_tag_name(ch, ch_range);
@@ -268,7 +263,7 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    // Parse tag content from the cursor
+    // Parse tag content, e.g. 'foo="bar" {x: string}'
     fn parse_tag_content(&mut self) -> Option<(Attributes, Option<(String, Range)>)> {
         let mut attributes = Attributes::new();
         let mut expression: Option<(String, Range)> = None;
@@ -301,16 +296,14 @@ impl<'a> Tokenizer<'a> {
                 }
                 // Parse attribute
                 (ch, _) if ch.is_ascii_alphabetic() => {
-                    if let Some(((attr_name, attr_name_range), attr_value)) = self.parse_attribute()
-                    {
-                        if attributes.contains_key(&attr_name) {
-                            self.errors.push_back(ParseError::duplicate_attribute(
-                                &attr_name,
-                                attr_name_range,
-                            ));
-                        }
-                        attributes.insert(attr_name.to_string(), attr_value);
+                    let ((attr_name, attr_name_range), attr_value) = self.parse_attribute()?;
+                    if attributes.contains_key(&attr_name) {
+                        self.errors.push_back(ParseError::duplicate_attribute(
+                            &attr_name,
+                            attr_name_range,
+                        ));
                     }
+                    attributes.insert(attr_name.to_string(), attr_value);
                 }
                 // Return
                 (ch, _) if *ch == '/' || *ch == '>' => {
@@ -347,27 +340,22 @@ impl<'a> Tokenizer<'a> {
                 }
             }
             // Doctype
-            ('D', _)
+            ('D' | 'd', _)
                 if self
                     .chars
                     .clone()
-                    .map(|(ch, _)| ch)
+                    .flat_map(|(ch, _)| ch.to_lowercase())
                     .take(6)
-                    .collect::<String>()
-                    == "OCTYPE" =>
+                    .eq("octype".chars()) =>
             {
                 for _ in 0..6 {
                     self.chars.next();
                 }
                 while self.chars.next_if(|(ch, _)| *ch != '>').is_some() {}
-                match self.chars.next()? {
-                    ('>', ch_range) => Some(Token::Doctype {
-                        range: first_token_range.extend_to(ch_range),
-                    }),
-                    _ => {
-                        unreachable!()
-                    }
-                }
+                let (_, ch_range) = self.chars.next()?;
+                Some(Token::Doctype {
+                    range: first_token_range.extend_to(ch_range),
+                })
             }
             // Invalid
             (_, ch_range) => {
@@ -383,13 +371,45 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn state_text(&mut self) -> Option<Token> {
+    fn step(&mut self) -> Option<Token> {
+        // If we have a stored raw_text_closing_tag we need to parse all content
+        // as raw text until we find the tag.
+        if let Some(stored_closing_tag) = mem::take(&mut self.raw_text_closing_tag) {
+            let mut raw_text: Option<RangedString> = None;
+            loop {
+                let peeked = *self.chars.peek()?;
+                match peeked {
+                    ('<', _)
+                        if self
+                            .chars
+                            .clone()
+                            .map(|(ch, _)| ch)
+                            .filter(|ch| !ch.is_whitespace())
+                            .take(stored_closing_tag.len())
+                            .eq(stored_closing_tag.chars()) =>
+                    {
+                        if let Some(RangedString(s, r)) = raw_text {
+                            return Some(Token::Text { value: s, range: r });
+                        } else {
+                            break;
+                        }
+                    }
+                    _ => match &mut raw_text {
+                        Some(v) => {
+                            v.push(self.chars.next()?);
+                        }
+                        None => raw_text = Some(RangedString::from(self.chars.next()?)),
+                    },
+                }
+            }
+        }
         match self.chars.peek()? {
             ('<', _) => {
                 let (_, left_angle_range) = self.chars.next()?;
                 match self.chars.next()? {
                     // ClosingTag
                     ('/', _) => {
+                        self.skip_whitespace();
                         let (ch, ch_range) = self.chars.next()?;
                         if ch.is_ascii_alphabetic() {
                             let tag_name = self.parse_tag_name(ch, ch_range);
@@ -415,7 +435,7 @@ impl<'a> Tokenizer<'a> {
                                 ch_range,
                             ));
                             // TODO: Recursive
-                            self.state_text()
+                            self.step()
                         }
                     }
                     // OpeningTag
@@ -436,7 +456,8 @@ impl<'a> Tokenizer<'a> {
                             ('>', ch_range) => {
                                 let (tag_name_clone, _) = tag_name.clone();
                                 if is_tag_name_with_raw_content(&tag_name_clone) {
-                                    self.state = TokenizerState::RawtextData(tag_name_clone);
+                                    self.raw_text_closing_tag =
+                                        Some(format!("</{}>", tag_name_clone));
                                 }
                                 Some(Token::OpeningTag {
                                     self_closing,
@@ -461,7 +482,7 @@ impl<'a> Tokenizer<'a> {
                             ch_range,
                         ));
                         // TODO: Recursive
-                        self.state_text()
+                        self.step()
                     }
                 }
             }
@@ -476,7 +497,7 @@ impl<'a> Tokenizer<'a> {
                         left_brace_range.extend_to(right_brace_range),
                     ));
                     // TODO: Recursive
-                    return self.state_text();
+                    return self.step();
                 }
                 let mut expr = RangedString::from(self.chars.next()?);
                 loop {
@@ -505,92 +526,22 @@ impl<'a> Tokenizer<'a> {
             }
         }
     }
-
-    fn state_rawtext_closing_tag(&mut self, stored_tag_name: String) -> Option<Token> {
-        let (_, token_start) = self.chars.next()?; // consume '<'
-        self.chars.next(); // consume '/'
-        self.skip_whitespace();
-        // consume tag name
-        let mut tag_name = RangedString::from(self.chars.next()?);
-        for _ in 0..stored_tag_name.len() - 1 {
-            tag_name.push(self.chars.next()?);
-        }
-        self.skip_whitespace();
-        // consume >
-        let (_, end_range) = self.chars.next()?;
-        self.state = TokenizerState::Text;
-        Some(Token::ClosingTag {
-            tag_name: tag_name.into(),
-            range: token_start.extend_to(end_range),
-        })
-    }
-
-    fn state_rawtext_data(&mut self, stored_tag_name: String) -> Option<Token> {
-        let mut text: Option<RangedString> = None;
-        loop {
-            match self.chars.peek()? {
-                ('<', _) => {
-                    let actual = self
-                        .chars
-                        .clone()
-                        .map(|(ch, _)| ch)
-                        .filter(|ch| !ch.is_whitespace())
-                        .take(stored_tag_name.len() + 3)
-                        .collect::<String>();
-                    if actual == format!("</{}>", stored_tag_name) {
-                        if let Some(RangedString(s, r)) = text {
-                            self.state = TokenizerState::RawtextClosingTag(stored_tag_name.clone());
-                            return Some(Token::Text { value: s, range: r });
-                        } else {
-                            return self.state_rawtext_closing_tag(stored_tag_name);
-                        }
-                    } else {
-                        match &mut text {
-                            Some(v) => {
-                                v.push(self.chars.next()?);
-                            }
-                            None => text = Some(RangedString::from(self.chars.next()?)),
-                        }
-                    }
-                }
-                _ => match &mut text {
-                    Some(v) => {
-                        v.push(self.chars.next()?);
-                    }
-                    None => text = Some(RangedString::from(self.chars.next()?)),
-                },
-            }
-        }
-    }
-
-    fn advance(&mut self) -> Option<Result<Token, ParseError>> {
-        if !self.errors.is_empty() {
-            return Some(Err(self.errors.pop_front()?));
-        }
-        let token = match &self.state {
-            TokenizerState::Text => self.state_text(),
-            TokenizerState::RawtextData(stored_tag_name) => {
-                self.state_rawtext_data(stored_tag_name.clone())
-            }
-            TokenizerState::RawtextClosingTag(stored_tag_name) => {
-                self.state_rawtext_closing_tag(stored_tag_name.clone())
-            }
-        };
-        if let Some(token) = token {
-            return Some(Ok(token));
-        }
-        if !self.errors.is_empty() {
-            return Some(Err(self.errors.pop_front()?));
-        }
-        None
-    }
 }
 
 impl Iterator for Tokenizer<'_> {
     type Item = Result<Token, ParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.advance()
+        if !self.errors.is_empty() {
+            return Some(Err(self.errors.pop_front()?));
+        }
+        if let Some(token) = self.step() {
+            return Some(Ok(token));
+        }
+        if !self.errors.is_empty() {
+            return Some(Err(self.errors.pop_front()?));
+        }
+        None
     }
 }
 
@@ -665,6 +616,38 @@ mod tests {
     }
 
     #[test]
+    fn test_tokenize_raw_text_tricky() {
+        check(
+            r#"<script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>"#,
+            expect![[r#"
+                OpeningTag <script>
+                1 | <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
+                  | ^^^^^^^^
+
+                Text [62 byte, "</scri</<<</div></div><</scrip</scrip></cript></script</script"]
+                1 | <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
+                  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                ClosingTag </script>
+                1 | <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
+                  |                                                                       ^^^^^^^^^
+
+                OpeningTag <div>
+                1 | <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
+                  |                                                                                ^^^^^
+
+                Text [6 byte, "works!"]
+                1 | <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
+                  |                                                                                     ^^^^^^
+
+                OpeningTag <div>
+                1 | <script></scri</<<</div></div><</scrip</scrip></cript></script</script</script><div>works!<div>
+                  |                                                                                           ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn test_tokenize_attributes_without_spaces() {
         check(
             r#"<h1 foo="bar"x="y">"#,
@@ -690,6 +673,213 @@ mod tests {
                   | ^^^^^
                 4 | multiple lines
                   | ^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_script_with_src() {
+        check(
+            r#"<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>"#,
+            expect![[r#"
+                OpeningTag <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4">
+                1 | <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                ClosingTag </script>
+                1 | <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+                  |                                                                   ^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_component_with_src() {
+        check(
+            indoc! {r#"
+                <not-found-error entrypoint {path: string, available_routes: array[string]}>
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>404 Not Found</title>
+                        <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+                        <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+                        <style>
+                          body { font-family: "JetBrains Mono"; }
+                        </style>
+                    </head>
+                    <body>
+                        <page-container>
+                            <error-not-found-error {requested_path: path, available_routes: available_routes} />
+                        </page-container>
+                    </body>
+                    </html>
+                </not-found-error>
+            "#},
+            expect![[r#"
+                OpeningTag <not-found-error entrypoint expr="path: string, available_routes: array[string]">
+                 1 | <not-found-error entrypoint {path: string, available_routes: array[string]}>
+                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                Text [5 byte, "\n    "]
+                 1 | <not-found-error entrypoint {path: string, available_routes: array[string]}>
+                 2 |     <!DOCTYPE html>
+                   | ^^^^
+
+                Doctype
+                 2 |     <!DOCTYPE html>
+                   |     ^^^^^^^^^^^^^^^
+
+                Text [5 byte, "\n    "]
+                 2 |     <!DOCTYPE html>
+                 3 |     <html>
+                   | ^^^^
+
+                OpeningTag <html>
+                 3 |     <html>
+                   |     ^^^^^^
+
+                Text [5 byte, "\n    "]
+                 3 |     <html>
+                 4 |     <head>
+                   | ^^^^
+
+                OpeningTag <head>
+                 4 |     <head>
+                   |     ^^^^^^
+
+                Text [9 byte, "\n        "]
+                 4 |     <head>
+                 5 |         <title>404 Not Found</title>
+                   | ^^^^^^^^
+
+                OpeningTag <title>
+                 5 |         <title>404 Not Found</title>
+                   |         ^^^^^^^
+
+                Text [13 byte, "404 Not Found"]
+                 5 |         <title>404 Not Found</title>
+                   |                ^^^^^^^^^^^^^
+
+                ClosingTag </title>
+                 5 |         <title>404 Not Found</title>
+                   |                             ^^^^^^^^
+
+                Text [9 byte, "\n        "]
+                 5 |         <title>404 Not Found</title>
+                 6 |         <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+                   | ^^^^^^^^
+
+                OpeningTag <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4">
+                 6 |         <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+                   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                ClosingTag </script>
+                 6 |         <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+                   |                                                                           ^^^^^^^^^
+
+                Text [9 byte, "\n        "]
+                 6 |         <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+                 7 |         <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+                   | ^^^^^^^^
+
+                OpeningTag <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+                 7 |         <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+                   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                Text [9 byte, "\n        "]
+                 7 |         <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
+                 8 |         <style>
+                   | ^^^^^^^^
+
+                OpeningTag <style>
+                 8 |         <style>
+                   |         ^^^^^^^
+
+                Text [59 byte, "\n          body { font-family: \"JetBrains Mono\"; }\n        "]
+                 8 |         <style>
+                 9 |           body { font-family: "JetBrains Mono"; }
+                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                10 |         </style>
+                   | ^^^^^^^^
+
+                ClosingTag </style>
+                10 |         </style>
+                   |         ^^^^^^^^
+
+                Text [5 byte, "\n    "]
+                10 |         </style>
+                11 |     </head>
+                   | ^^^^
+
+                ClosingTag </head>
+                11 |     </head>
+                   |     ^^^^^^^
+
+                Text [5 byte, "\n    "]
+                11 |     </head>
+                12 |     <body>
+                   | ^^^^
+
+                OpeningTag <body>
+                12 |     <body>
+                   |     ^^^^^^
+
+                Text [9 byte, "\n        "]
+                12 |     <body>
+                13 |         <page-container>
+                   | ^^^^^^^^
+
+                OpeningTag <page-container>
+                13 |         <page-container>
+                   |         ^^^^^^^^^^^^^^^^
+
+                Text [13 byte, "\n            "]
+                13 |         <page-container>
+                14 |             <error-not-found-error {requested_path: path, available_routes: available_routes} />
+                   | ^^^^^^^^^^^^
+
+                OpeningTag <error-not-found-error expr="requested_path: path, available_routes: available_routes"/>
+                14 |             <error-not-found-error {requested_path: path, available_routes: available_routes} />
+                   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                Text [9 byte, "\n        "]
+                14 |             <error-not-found-error {requested_path: path, available_routes: available_routes} />
+                15 |         </page-container>
+                   | ^^^^^^^^
+
+                ClosingTag </page-container>
+                15 |         </page-container>
+                   |         ^^^^^^^^^^^^^^^^^
+
+                Text [5 byte, "\n    "]
+                15 |         </page-container>
+                16 |     </body>
+                   | ^^^^
+
+                ClosingTag </body>
+                16 |     </body>
+                   |     ^^^^^^^
+
+                Text [5 byte, "\n    "]
+                16 |     </body>
+                17 |     </html>
+                   | ^^^^
+
+                ClosingTag </html>
+                17 |     </html>
+                   |     ^^^^^^^
+
+                Text [1 byte, "\n"]
+                17 |     </html>
+                18 | </not-found-error>
+
+                ClosingTag </not-found-error>
+                18 | </not-found-error>
+                   | ^^^^^^^^^^^^^^^^^^
+
+                Text [1 byte, "\n"]
+                18 | </not-found-error>
             "#]],
         );
     }

@@ -70,9 +70,6 @@ impl<'a> DopTokenizer<'a> {
     pub fn new_from_chars(chars: Peekable<RangedChars<'a>>) -> Self {
         Self { chars }
     }
-    pub fn get_chars(self) -> Peekable<RangedChars<'a>> {
-        self.chars
-    }
 }
 
 impl Iterator for DopTokenizer<'_> {

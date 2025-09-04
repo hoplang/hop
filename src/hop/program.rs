@@ -128,7 +128,7 @@ impl Annotated for RenameableSymbol {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Program {
     topo_sorter: TopoSorter,
     source_code: HashMap<String, String>,

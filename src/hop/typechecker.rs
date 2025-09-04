@@ -76,7 +76,7 @@ impl State {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct TypeChecker {
     state: State,
     pub type_errors: HashMap<String, Vec<TypeError>>,
