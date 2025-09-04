@@ -263,11 +263,10 @@ fn construct_node(
             range: tree.range,
         },
         Token::Expression {
-            value,
-            expression_range,
+            expression: (expression, expression_range),
             ..
         } => {
-            let mut tokenizer = DopTokenizer::new(&value, expression_range.start).peekable();
+            let mut tokenizer = DopTokenizer::new(&expression, expression_range.start).peekable();
             match dop::parse_expr(&mut tokenizer) {
                 Ok(expression) => HopNode::TextExpression {
                     expression,

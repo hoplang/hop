@@ -17,8 +17,7 @@ pub enum Token {
     /// An Expression token represents an expression in the text position
     /// E.g. <div>hello {expression}<div>
     Expression {
-        value: String,
-        expression_range: Range,
+        expression: (String, Range),
         range: Range,
     },
     OpeningTag {
@@ -75,7 +74,10 @@ impl Annotated for Token {
             Token::Comment { .. } => {
                 format!("Comment")
             }
-            Token::Expression { value, .. } => {
+            Token::Expression {
+                expression: (value, _),
+                ..
+            } => {
                 format!("Expression {{{}}}", value)
             }
         }
@@ -484,8 +486,7 @@ impl<'a> Tokenizer<'a> {
                 }
                 let (_, end_range) = self.cursor.next()?; // consume }
                 Some(Token::Expression {
-                    value: expression.0,
-                    expression_range: expression.1,
+                    expression,
                     range: Range::new(expression_start, end_range.end),
                 })
             }
