@@ -141,7 +141,7 @@ impl From<(char, Range)> for RangedString {
 enum TokenizerState {
     Text,
     RawtextData(String),
-    RawtextClosingTag(String, Range),
+    RawtextClosingTag(String),
 }
 
 pub struct Tokenizer<'a> {
@@ -506,11 +506,8 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn state_rawtext_closing_tag(
-        &mut self,
-        stored_tag_name: String,
-        token_start: Range,
-    ) -> Option<Token> {
+    fn state_rawtext_closing_tag(&mut self, stored_tag_name: String) -> Option<Token> {
+        let (_, token_start) = self.chars.next()?; // consume '<'
         self.chars.next(); // consume '/'
         self.skip_whitespace();
         // consume tag name
@@ -531,39 +528,36 @@ impl<'a> Tokenizer<'a> {
     fn state_rawtext_data(&mut self, stored_tag_name: String) -> Option<Token> {
         let mut text: Option<RangedString> = None;
         loop {
-            match self.chars.next()? {
-                ('<', langle_range) => {
+            match self.chars.peek()? {
+                ('<', _) => {
                     let actual = self
                         .chars
                         .clone()
                         .map(|(ch, _)| ch)
                         .filter(|ch| !ch.is_whitespace())
-                        .take(stored_tag_name.len() + 2)
+                        .take(stored_tag_name.len() + 3)
                         .collect::<String>();
-                    if actual == format!("/{}>", stored_tag_name) {
+                    if actual == format!("</{}>", stored_tag_name) {
                         if let Some(RangedString(s, r)) = text {
-                            self.state = TokenizerState::RawtextClosingTag(
-                                stored_tag_name.clone(),
-                                langle_range,
-                            );
+                            self.state = TokenizerState::RawtextClosingTag(stored_tag_name.clone());
                             return Some(Token::Text { value: s, range: r });
                         } else {
-                            return self.state_rawtext_closing_tag(stored_tag_name, langle_range);
+                            return self.state_rawtext_closing_tag(stored_tag_name);
                         }
                     } else {
                         match &mut text {
                             Some(v) => {
-                                v.push(('<', langle_range));
+                                v.push(self.chars.next()?);
                             }
-                            None => text = Some(RangedString::from(('<', langle_range))),
+                            None => text = Some(RangedString::from(self.chars.next()?)),
                         }
                     }
                 }
-                ch => match &mut text {
+                _ => match &mut text {
                     Some(v) => {
-                        v.push(ch);
+                        v.push(self.chars.next()?);
                     }
-                    None => text = Some(RangedString::from(ch)),
+                    None => text = Some(RangedString::from(self.chars.next()?)),
                 },
             }
         }
@@ -578,8 +572,8 @@ impl<'a> Tokenizer<'a> {
             TokenizerState::RawtextData(stored_tag_name) => {
                 self.state_rawtext_data(stored_tag_name.clone())
             }
-            TokenizerState::RawtextClosingTag(stored_tag_name, tag_start) => {
-                self.state_rawtext_closing_tag(stored_tag_name.clone(), *tag_start)
+            TokenizerState::RawtextClosingTag(stored_tag_name) => {
+                self.state_rawtext_closing_tag(stored_tag_name.clone())
             }
         };
         if let Some(token) = token {
