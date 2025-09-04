@@ -122,7 +122,6 @@ impl RangedString {
 
 pub struct Tokenizer<'a> {
     cursor: StrCursor<'a>,
-    state: TokenizerState,
     stored_tag_name: String,
     // attributes are the attributes of the tag we're currently processing
     attributes: BTreeMap<String, Attribute>,
@@ -138,7 +137,6 @@ impl<'a> Tokenizer<'a> {
     pub fn new(input: &'a str) -> Self {
         Self {
             cursor: StrCursor::new(input),
-            state: TokenizerState::Text,
             stored_tag_name: String::new(),
             expression: OptionalRangedString::default(),
             attributes: BTreeMap::default(),
@@ -680,27 +678,16 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn step(&mut self) -> Option<TokenizerState> {
-        match self.state {
-            TokenizerState::Text => self.state_text(),
-        }
-    }
-
     fn advance(&mut self) -> Option<Result<Token, ParseError>> {
         loop {
             if !self.tokens.is_empty() {
                 return self.tokens.pop_front();
             }
-            match self.step() {
-                None => {
-                    if !self.tokens.is_empty() {
-                        return self.tokens.pop_front();
-                    }
-                    return None;
+            if self.state_text().is_none() {
+                if !self.tokens.is_empty() {
+                    return self.tokens.pop_front();
                 }
-                Some(state) => {
-                    self.state = state;
-                }
+                return None;
             }
         }
     }
