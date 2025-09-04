@@ -125,7 +125,7 @@ impl SourceAnnotator {
     fn format_annotation(&self, output: &mut String, lines: &[&str], range: Range) {
         use crate::common::Position;
 
-        let max_line_num_width = if self.show_line_numbers {
+        let max_line_col_width = if self.show_line_numbers {
             lines.len().to_string().len()
         } else {
             0
@@ -143,7 +143,7 @@ impl SourceAnnotator {
                 continue;
             }
 
-            self.format_line(output, line_num, line, max_line_num_width);
+            self.format_line(output, line_num, line, max_line_col_width);
 
             if line.is_empty() {
                 continue;
@@ -160,8 +160,7 @@ impl SourceAnnotator {
             // The intersection will always be on a single line (line_num)
             // So we can safely pass it to format_underline
             if let Some(intersection) = range.intersection(&line_range) {
-                debug_assert_eq!(intersection.start.line, intersection.end.line);
-                self.format_underline(output, line, intersection, max_line_num_width);
+                self.format_underline(output, line, intersection, max_line_col_width);
             }
         }
     }
@@ -171,13 +170,13 @@ impl SourceAnnotator {
         output: &mut String,
         line: &str,
         range: Range,
-        max_line_num_width: usize,
+        max_line_col_width: usize,
     ) {
         if range.start.line != range.end.line {
             panic!("Expected range.start.line == range.end.line")
         }
         if self.show_line_numbers {
-            output.push_str(&format!("{:width$} | ", "", width = max_line_num_width));
+            output.push_str(&format!("{:width$} | ", "", width = max_line_col_width));
         }
 
         let display_start = self.byte_to_display_position(line, range.start.column);
