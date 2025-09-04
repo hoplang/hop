@@ -177,7 +177,7 @@ impl<'a> Tokenizer<'a> {
                     self.state_text()
                 }
             },
-            Some(('{', ch_range)) => self.state_text_expression_start(ch_range.start),
+            Some(('{', ch_range)) => self.state_text_expression(ch_range.start),
             Some((ch, ch_range)) => {
                 let mut value = String::from(ch);
                 let mut range = ch_range;
@@ -273,7 +273,7 @@ impl<'a> Tokenizer<'a> {
             self.cursor.next_while(|(ch, _)| ch.is_whitespace());
 
             match self.cursor.next()? {
-                ('{', _) => return self.state_tag_expression_start(tag_start, tag_name),
+                ('{', _) => return self.state_tag_expression(tag_start, tag_name),
                 // Self-closing
                 ('/', _) => match self.cursor.next()? {
                     ('>', ch_range) => {
@@ -505,7 +505,7 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn state_text_expression_start(&mut self, expression_start: Position) -> Option<Token> {
+    fn state_text_expression(&mut self, expression_start: Position) -> Option<Token> {
         match self.cursor.next()? {
             ('}', ch_range) => {
                 self.errors
@@ -529,7 +529,7 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn state_tag_expression_start(
+    fn state_tag_expression(
         &mut self,
         tag_start: Position,
         tag_name: RangedString,
@@ -542,29 +542,21 @@ impl<'a> Tokenizer<'a> {
             }
             (ch, ch_range) => {
                 self.expression.extend(ch, ch_range);
-                self.state_tag_expression_content(tag_start, tag_name)
+                loop {
+                    // Temporary fix until we embed hop tokenizer here
+                    if self.cursor.matches_str("}>")
+                        || self.cursor.matches_str("} >")
+                        || self.cursor.matches_str("}/>")
+                        || self.cursor.matches_str("} />")
+                    {
+                        self.cursor.next(); // consume '}'
+                        return self.state_parse_tag_content(tag_start, tag_name);
+                    } else {
+                        let (ch, ch_range) = self.cursor.next()?;
+                        self.expression.extend(ch, ch_range);
+                    }
+                }
             }
-        }
-    }
-
-    fn state_tag_expression_content(
-        &mut self,
-        tag_start: Position,
-        tag_name: RangedString,
-    ) -> Option<Token> {
-        // Temporary fix until we embed hop tokenizer here
-        if self.cursor.matches_str("}>")
-            || self.cursor.matches_str("} >")
-            || self.cursor.matches_str("}/>")
-            || self.cursor.matches_str("} />")
-        {
-            self.cursor.next();
-            self.state_parse_tag_content(tag_start, tag_name)
-        } else {
-            let (ch, ch_range) = self.cursor.next()?;
-            self.expression.extend(ch, ch_range);
-            // TODO: Recursive
-            self.state_tag_expression_content(tag_start, tag_name)
         }
     }
 
