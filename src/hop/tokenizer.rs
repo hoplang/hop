@@ -130,7 +130,8 @@ pub struct Tokenizer<'a> {
     // free-standing expression.
     expression: OptionalRangedString,
 
-    tokens: VecDeque<Result<Token, ParseError>>,
+    tokens: VecDeque<Token>,
+    errors: VecDeque<ParseError>,
 }
 
 impl<'a> Tokenizer<'a> {
@@ -141,19 +142,44 @@ impl<'a> Tokenizer<'a> {
             expression: OptionalRangedString::default(),
             attributes: BTreeMap::default(),
             tokens: VecDeque::new(),
+            errors: VecDeque::new(),
         }
     }
 
     fn fail_and_recover(&mut self, err: ParseError) -> Option<TokenizerState> {
         self.attributes.clear();
         self.expression.consume();
-        self.tokens.push_back(Err(err));
+        self.errors.push_back(err);
         Some(TokenizerState::Text)
     }
 
     fn state_text(&mut self) -> Option<TokenizerState> {
         match self.cursor.next() {
-            Some(('<', ch_range)) => self.state_tag_start(ch_range.start),
+            Some(('<', left_bracket_range)) => match self.cursor.next()? {
+                ('/', _) => self.state_closing_tag_start(left_bracket_range.start),
+                ('!', _) => self.state_markup_declaration(left_bracket_range.start),
+                (ch, ch_range) if ch.is_ascii_alphabetic() => {
+                    let mut tag_name = String::from(ch);
+                    let mut tag_name_range = ch_range;
+
+                    while let Some((ch, r)) = self
+                        .cursor
+                        .next_if(|(ch, _)| *ch == '-' || ch.is_ascii_alphanumeric())
+                    {
+                        tag_name.push(ch);
+                        tag_name_range = tag_name_range.extend_to(r);
+                    }
+
+                    self.state_parse_tag_content(
+                        left_bracket_range.start,
+                        RangedString(tag_name, tag_name_range),
+                    )
+                }
+                (_, ch_range) => self.fail_and_recover(ParseError::new(
+                    "Invalid character after '<'".to_string(),
+                    ch_range,
+                )),
+            },
             Some(('{', ch_range)) => self.state_text_expression_start(ch_range.start),
             Some((ch, ch_range)) => {
                 let mut value = String::from(ch);
@@ -162,25 +188,10 @@ impl<'a> Tokenizer<'a> {
                     value.push(ch);
                     range = range.extend_to(r);
                 }
-                self.tokens.push_back(Ok(Token::Text { value, range }));
+                self.tokens.push_back(Token::Text { value, range });
                 self.state_text()
             }
             None => None,
-        }
-    }
-
-    /// In this state we have just seen a single '<'
-    fn state_tag_start(&mut self, tag_start: Position) -> Option<TokenizerState> {
-        match self.cursor.next()? {
-            ('/', _) => self.state_closing_tag_start(tag_start),
-            ('!', _) => self.state_markup_declaration(tag_start),
-            (ch, ch_range) if ch.is_ascii_alphabetic() => {
-                self.state_opening_tag_name(tag_start, RangedString::init(ch, ch_range))
-            }
-            (_, ch_range) => self.fail_and_recover(ParseError::new(
-                "Invalid character after '<'".to_string(),
-                ch_range,
-            )),
         }
     }
 
@@ -192,50 +203,6 @@ impl<'a> Tokenizer<'a> {
             }
             (_, ch_range) => self.fail_and_recover(ParseError::new(
                 "Invalid character after '</'".to_string(),
-                ch_range,
-            )),
-        }
-    }
-
-    fn state_opening_tag_name(
-        &mut self,
-        tag_start: Position,
-        mut tag_name: RangedString,
-    ) -> Option<TokenizerState> {
-        match self.cursor.next()? {
-            ('/', _) => self.state_self_closing(tag_start, tag_name),
-            ('{', _) => self.state_tag_expression_start(tag_start, tag_name),
-            (ch, ch_range) if ch == '-' || ch.is_ascii_alphanumeric() => {
-                tag_name.push(ch, ch_range);
-                // TODO
-                self.state_opening_tag_name(tag_start, tag_name)
-            }
-            (ch, _) if ch.is_whitespace() => self.state_parse_tag_content(tag_start, tag_name),
-            ('>', ch_range) => {
-                let RangedString(tag_name, tag_name_range) = tag_name;
-                if is_tag_name_with_raw_content(&tag_name) {
-                    self.stored_tag_name = tag_name.clone();
-                    self.tokens.push_back(Ok(Token::OpeningTag {
-                        tag_name: (tag_name, tag_name_range),
-                        self_closing: false,
-                        attributes: mem::take(&mut self.attributes),
-                        expression: self.expression.consume(),
-                        range: Range::new(tag_start, ch_range.end),
-                    }));
-                    self.state_rawtext_data()
-                } else {
-                    self.tokens.push_back(Ok(Token::OpeningTag {
-                        tag_name: (tag_name, tag_name_range),
-                        self_closing: false,
-                        attributes: mem::take(&mut self.attributes),
-                        expression: self.expression.consume(),
-                        range: Range::new(tag_start, ch_range.end),
-                    }));
-                    Some(TokenizerState::Text)
-                }
-            }
-            (_, ch_range) => self.fail_and_recover(ParseError::new(
-                "Invalid character after '<'".to_string(),
                 ch_range,
             )),
         }
@@ -255,10 +222,10 @@ impl<'a> Tokenizer<'a> {
             (ch, _) if ch.is_whitespace() => self.state_after_closing_tag_name(tag_start, tag_name),
             ('>', ch_range) => {
                 let RangedString(tag_name, range) = tag_name;
-                self.tokens.push_back(Ok(Token::ClosingTag {
+                self.tokens.push_back(Token::ClosingTag {
                     tag_name: (tag_name, range),
                     range: Range::new(tag_start, ch_range.end),
-                }));
+                });
                 Some(TokenizerState::Text)
             }
             (_, ch_range) => self.fail_and_recover(ParseError::new(
@@ -277,10 +244,10 @@ impl<'a> Tokenizer<'a> {
         match self.cursor.next()? {
             ('>', ch_range) => {
                 let RangedString(tag_name, tag_name_range) = tag_name;
-                self.tokens.push_back(Ok(Token::ClosingTag {
+                self.tokens.push_back(Token::ClosingTag {
                     tag_name: (tag_name, tag_name_range),
                     range: Range::new(tag_start, ch_range.end),
-                }));
+                });
                 Some(TokenizerState::Text)
             }
             (_, ch_range) => self.fail_and_recover(ParseError::new(
@@ -300,7 +267,26 @@ impl<'a> Tokenizer<'a> {
 
             match self.cursor.next()? {
                 ('{', _) => return self.state_tag_expression_start(tag_start, tag_name),
-                ('/', _) => return self.state_self_closing(tag_start, tag_name),
+                // Self-closing
+                ('/', _) => match self.cursor.next()? {
+                    ('>', ch_range) => {
+                        let RangedString(tag_name, tag_name_range) = tag_name;
+                        self.tokens.push_back(Token::OpeningTag {
+                            self_closing: true,
+                            tag_name: (tag_name, tag_name_range),
+                            attributes: mem::take(&mut self.attributes),
+                            expression: self.expression.consume(),
+                            range: Range::new(tag_start, ch_range.end),
+                        });
+                        return Some(TokenizerState::Text);
+                    }
+                    (_, ch_range) => {
+                        return self.fail_and_recover(ParseError::new(
+                            "Expected '>' after '/'".to_string(),
+                            ch_range,
+                        ));
+                    }
+                },
                 (ch, ch_range) if ch.is_ascii_alphabetic() => {
                     let mut attr_name = String::from(ch);
                     let mut attr_name_range = ch_range;
@@ -321,10 +307,10 @@ impl<'a> Tokenizer<'a> {
                         }
                         _ => {
                             if self.attributes.contains_key(&attr_name) {
-                                self.tokens.push_back(Err(ParseError::duplicate_attribute(
+                                self.errors.push_back(ParseError::duplicate_attribute(
                                     &attr_name,
                                     attr_name_range,
-                                )));
+                                ));
                             }
                             self.attributes.insert(
                                 attr_name.clone(),
@@ -354,10 +340,10 @@ impl<'a> Tokenizer<'a> {
                     if self.cursor.peek()?.0 == terminator {
                         let (_, terminator_range) = self.cursor.next()?;
                         if self.attributes.contains_key(&attr_name) {
-                            self.tokens.push_back(Err(ParseError::duplicate_attribute(
+                            self.errors.push_back(ParseError::duplicate_attribute(
                                 &attr_name,
                                 attr_name_range,
-                            )));
+                            ));
                         }
                         self.attributes.insert(
                             attr_name.clone(),
@@ -376,10 +362,10 @@ impl<'a> Tokenizer<'a> {
                     let (_, terminator_range) = self.cursor.next()?; // consume terminator
 
                     if self.attributes.contains_key(&attr_name) {
-                        self.tokens.push_back(Err(ParseError::duplicate_attribute(
+                        self.errors.push_back(ParseError::duplicate_attribute(
                             &attr_name,
                             attr_name_range,
-                        )));
+                        ));
                     }
                     self.attributes.insert(
                         attr_name.clone(),
@@ -393,13 +379,13 @@ impl<'a> Tokenizer<'a> {
                 ('>', ch_range) => {
                     let RangedString(tag_name, tag_name_range) = tag_name;
                     let tag_name_clone = tag_name.clone();
-                    self.tokens.push_back(Ok(Token::OpeningTag {
+                    self.tokens.push_back(Token::OpeningTag {
                         self_closing: false,
                         tag_name: (tag_name, tag_name_range),
                         attributes: mem::take(&mut self.attributes),
                         expression: self.expression.consume(),
                         range: Range::new(tag_start, ch_range.end),
-                    }));
+                    });
                     return if is_tag_name_with_raw_content(&tag_name_clone) {
                         self.stored_tag_name = tag_name_clone;
                         self.state_rawtext_data()
@@ -414,30 +400,6 @@ impl<'a> Tokenizer<'a> {
                     ));
                 }
             };
-        }
-    }
-
-    fn state_self_closing(
-        &mut self,
-        tag_start: Position,
-        tag_name: RangedString,
-    ) -> Option<TokenizerState> {
-        match self.cursor.next()? {
-            ('>', ch_range) => {
-                let RangedString(tag_name, tag_name_range) = tag_name;
-                self.tokens.push_back(Ok(Token::OpeningTag {
-                    self_closing: true,
-                    tag_name: (tag_name, tag_name_range),
-                    attributes: mem::take(&mut self.attributes),
-                    expression: self.expression.consume(),
-                    range: Range::new(tag_start, ch_range.end),
-                }));
-                Some(TokenizerState::Text)
-            }
-            (_, ch_range) => self.fail_and_recover(ParseError::new(
-                "Expected '>' after '/'".to_string(),
-                ch_range,
-            )),
         }
     }
 
@@ -463,9 +425,9 @@ impl<'a> Tokenizer<'a> {
             if let ('-', _) = self.cursor.next()? {
                 if let ('-', _) = self.cursor.next()? {
                     if let ('>', ch_range) = self.cursor.next()? {
-                        self.tokens.push_back(Ok(Token::Comment {
+                        self.tokens.push_back(Token::Comment {
                             range: Range::new(tag_start, ch_range.end),
-                        }));
+                        });
                         return Some(TokenizerState::Text);
                     }
                 }
@@ -477,9 +439,9 @@ impl<'a> Tokenizer<'a> {
         self.cursor.next_while(|(ch, _)| *ch != '>');
         match self.cursor.next()? {
             ('>', ch_range) => {
-                self.tokens.push_back(Ok(Token::Doctype {
+                self.tokens.push_back(Token::Doctype {
                     range: Range::new(tag_start, ch_range.end),
-                }));
+                });
                 Some(TokenizerState::Text)
             }
             (_, ch_range) => self.fail_and_recover(ParseError::new(
@@ -497,18 +459,17 @@ impl<'a> Tokenizer<'a> {
                     let end_tag = format!("/{}>", self.stored_tag_name);
                     if self.cursor.peek_n(end_tag.len())?.0 == end_tag {
                         if let Some((s, r)) = text.consume() {
-                            self.tokens
-                                .push_back(Ok(Token::Text { value: s, range: r }));
+                            self.tokens.push_back(Token::Text { value: s, range: r });
                         }
                         let tag_name = self.stored_tag_name.clone();
                         self.cursor.next_n(1).unwrap(); // consume /
                         let (_, tag_name_range) =
                             self.cursor.next_n(self.stored_tag_name.len()).unwrap();
                         let (_, end_range) = self.cursor.next().unwrap(); // consume >
-                        self.tokens.push_back(Ok(Token::ClosingTag {
+                        self.tokens.push_back(Token::ClosingTag {
                             tag_name: (tag_name, tag_name_range),
                             range: Range::new(langle_range.start, end_range.end),
-                        }));
+                        });
                         return Some(TokenizerState::Text);
                     } else {
                         text.extend('<', langle_range);
@@ -537,11 +498,11 @@ impl<'a> Tokenizer<'a> {
                 }
                 let RangedString(expression_value, expression_range) = text;
                 let (_, end_range) = self.cursor.next()?; // consume }
-                self.tokens.push_back(Ok(Token::Expression {
+                self.tokens.push_back(Token::Expression {
                     value: expression_value,
                     expression_range,
                     range: Range::new(expression_start, end_range.end),
-                }));
+                });
                 Some(TokenizerState::Text)
             }
         }
@@ -585,8 +546,20 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn advance(&mut self) -> Option<Result<Token, ParseError>> {
+        if !self.errors.is_empty() {
+            return Some(Err(self.errors.pop_front()?));
+        }
+        if !self.tokens.is_empty() {
+            return Some(Ok(self.tokens.pop_front()?));
+        }
         self.state_text();
-        self.tokens.pop_front()
+        if !self.errors.is_empty() {
+            return Some(Err(self.errors.pop_front()?));
+        }
+        if !self.tokens.is_empty() {
+            return Some(Ok(self.tokens.pop_front()?));
+        }
+        None
     }
 }
 
