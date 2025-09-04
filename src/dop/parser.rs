@@ -184,7 +184,9 @@ pub struct DopParameter {
     pub type_annotation: DopType,
 }
 
-/// A DopArgument represents a parsed argument with name and expression.
+/// A DopArgument represents a parsed argument with a name and expression.
+/// E.g. <my-comp {x: [1,2], y: 2}>
+///                ^^^^^^^^
 #[derive(Debug, Clone, PartialEq)]
 pub struct DopArgument {
     pub var_name: DopVarName,
