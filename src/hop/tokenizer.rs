@@ -92,7 +92,7 @@ impl Annotated for Token {
                 }
 
                 if let Some((expr, _)) = expression {
-                    result.push_str(&format!(" {{{}}}", expr));
+                    result.push_str(&format!(" expr={:#?}", expr));
                 }
 
                 if *self_closing {
@@ -109,7 +109,7 @@ impl Annotated for Token {
                 expression: (value, _),
                 range: _,
             } => {
-                format!("Expression {{{}}}", value)
+                format!("Expression {:#?}", value)
             }
         }
     }
@@ -328,158 +328,173 @@ impl<'a> Tokenizer<'a> {
         }
     }
 
-    fn state_text(&mut self) -> Option<Token> {
+    // Parse a markup declaration and return the token.
+    //
+    // Expects that '<!' have been read from the chars.
+    fn parse_markup_declaration(&mut self, first_token_range: Range) -> Option<Token> {
         match self.chars.next()? {
-            ('<', left_angle_range) => match self.chars.next()? {
-                // ClosingTag
-                ('/', _) => {
-                    let (ch, ch_range) = self.chars.next()?;
-                    if ch.is_ascii_alphabetic() {
-                        let tag_name = self.parse_tag_name(ch, ch_range);
-                        self.skip_whitespace();
-                        let (right_angle, right_angle_range) = self.chars.next()?;
-                        if right_angle != '>' {
-                            self.errors.push_back(ParseError::new(
-                                "Invalid character after closing tag name".to_string(),
-                                ch_range,
-                            ));
-                            return Some(Token::ClosingTag {
-                                tag_name,
-                                range: left_angle_range.extend_to(right_angle_range),
+            // Comment
+            ('-', _) if self.chars.peek()?.0 == '-' => {
+                self.chars.next();
+                loop {
+                    if self.chars.next()?.0 == '-' && self.chars.next()?.0 == '-' {
+                        if let ('>', ch_range) = self.chars.next()? {
+                            return Some(Token::Comment {
+                                range: first_token_range.extend_to(ch_range),
                             });
                         }
-                        Some(Token::ClosingTag {
-                            tag_name,
-                            range: left_angle_range.extend_to(right_angle_range),
-                        })
-                    } else {
-                        self.errors.push_back(ParseError::new(
-                            "Invalid character after </".to_string(),
-                            ch_range,
-                        ));
-                        self.state_text()
-                    }
-                }
-                // OpeningTag
-                (ch, ch_range) if ch.is_ascii_alphabetic() => {
-                    let tag_name = self.parse_tag_name(ch, ch_range);
-                    let (attributes, expression) = self.parse_tag_content()?;
-
-                    self.skip_whitespace();
-
-                    let mut self_closing = false;
-
-                    if self.chars.peek()?.0 == '/' {
-                        self_closing = true;
-                        self.chars.next();
-                    }
-
-                    match self.chars.next()? {
-                        ('>', ch_range) => {
-                            let (tag_name_clone, _) = tag_name.clone();
-                            if is_tag_name_with_raw_content(&tag_name_clone) {
-                                self.state = TokenizerState::RawtextData(tag_name_clone);
-                            }
-                            Some(Token::OpeningTag {
-                                self_closing,
-                                tag_name,
-                                attributes,
-                                expression,
-                                range: left_angle_range.extend_to(ch_range),
-                            })
-                        }
-                        _ => {
-                            panic!()
-                        }
-                    }
-                }
-                // Doctype/Comment
-                ('!', _) => {
-                    match self.chars.next()? {
-                        // Comment
-                        ('-', _) if self.chars.peek()?.0 == '-' => {
-                            self.chars.next();
-                            loop {
-                                if self.chars.next()?.0 == '-' && self.chars.next()?.0 == '-' {
-                                    if let ('>', ch_range) = self.chars.next()? {
-                                        return Some(Token::Comment {
-                                            range: left_angle_range.extend_to(ch_range),
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                        // Doctype
-                        ('D', _)
-                            if self
-                                .chars
-                                .clone()
-                                .map(|(ch, _)| ch)
-                                .take(6)
-                                .collect::<String>()
-                                == "OCTYPE" =>
-                        {
-                            for _ in 0..6 {
-                                self.chars.next();
-                            }
-                            while self.chars.next_if(|(ch, _)| *ch != '>').is_some() {}
-                            match self.chars.next()? {
-                                ('>', ch_range) => Some(Token::Doctype {
-                                    range: left_angle_range.extend_to(ch_range),
-                                }),
-                                _ => {
-                                    unreachable!()
-                                }
-                            }
-                        }
-                        // Invalid
-                        (_, ch_range) => {
-                            self.errors.push_back(ParseError::new(
-                                "Invalid character in markup declaration".to_string(),
-                                ch_range,
-                            ));
-
-                            Some(Token::Doctype {
-                                range: left_angle_range.extend_to(ch_range),
-                            })
-                        }
-                    }
-                }
-                // Invalid
-                (_, ch_range) => {
-                    self.errors.push_back(ParseError::new(
-                        "Invalid character after '<'".to_string(),
-                        ch_range,
-                    ));
-                    self.state_text()
-                }
-            },
-            // TextExpression
-            ('{', left_brace_range) => {
-                match self.chars.next()? {
-                    ('}', right_brace_range) => {
-                        self.errors.push_back(ParseError::new(
-                            "Empty expression".to_string(),
-                            left_brace_range.extend_to(right_brace_range),
-                        ));
-                        self.state_text()
-                    }
-                    ch => {
-                        let mut expression = RangedString::from(ch);
-                        while let Some(ch) = self.chars.next_if(|(ch, _)| *ch != '}') {
-                            expression.push(ch);
-                        }
-                        let (_, right_brace_range) = self.chars.next()?; // consume }
-                        Some(Token::Expression {
-                            expression: expression.into(),
-                            range: left_brace_range.extend_to(right_brace_range),
-                        })
                     }
                 }
             }
+            // Doctype
+            ('D', _)
+                if self
+                    .chars
+                    .clone()
+                    .map(|(ch, _)| ch)
+                    .take(6)
+                    .collect::<String>()
+                    == "OCTYPE" =>
+            {
+                for _ in 0..6 {
+                    self.chars.next();
+                }
+                while self.chars.next_if(|(ch, _)| *ch != '>').is_some() {}
+                match self.chars.next()? {
+                    ('>', ch_range) => Some(Token::Doctype {
+                        range: first_token_range.extend_to(ch_range),
+                    }),
+                    _ => {
+                        unreachable!()
+                    }
+                }
+            }
+            // Invalid
+            (_, ch_range) => {
+                self.errors.push_back(ParseError::new(
+                    "Invalid character in markup declaration".to_string(),
+                    ch_range,
+                ));
+
+                Some(Token::Doctype {
+                    range: first_token_range.extend_to(ch_range),
+                })
+            }
+        }
+    }
+
+    fn state_text(&mut self) -> Option<Token> {
+        match self.chars.peek()? {
+            ('<', _) => {
+                let (_, left_angle_range) = self.chars.next()?;
+                match self.chars.next()? {
+                    // ClosingTag
+                    ('/', _) => {
+                        let (ch, ch_range) = self.chars.next()?;
+                        if ch.is_ascii_alphabetic() {
+                            let tag_name = self.parse_tag_name(ch, ch_range);
+                            self.skip_whitespace();
+                            let (right_angle, right_angle_range) = self.chars.next()?;
+                            if right_angle != '>' {
+                                self.errors.push_back(ParseError::new(
+                                    "Invalid character after closing tag name".to_string(),
+                                    ch_range,
+                                ));
+                                return Some(Token::ClosingTag {
+                                    tag_name,
+                                    range: left_angle_range.extend_to(right_angle_range),
+                                });
+                            }
+                            Some(Token::ClosingTag {
+                                tag_name,
+                                range: left_angle_range.extend_to(right_angle_range),
+                            })
+                        } else {
+                            self.errors.push_back(ParseError::new(
+                                "Invalid character after </".to_string(),
+                                ch_range,
+                            ));
+                            // TODO: Recursive
+                            self.state_text()
+                        }
+                    }
+                    // OpeningTag
+                    (ch, ch_range) if ch.is_ascii_alphabetic() => {
+                        let tag_name = self.parse_tag_name(ch, ch_range);
+                        let (attributes, expression) = self.parse_tag_content()?;
+
+                        self.skip_whitespace();
+
+                        let mut self_closing = false;
+
+                        if self.chars.peek()?.0 == '/' {
+                            self_closing = true;
+                            self.chars.next();
+                        }
+
+                        match self.chars.next()? {
+                            ('>', ch_range) => {
+                                let (tag_name_clone, _) = tag_name.clone();
+                                if is_tag_name_with_raw_content(&tag_name_clone) {
+                                    self.state = TokenizerState::RawtextData(tag_name_clone);
+                                }
+                                Some(Token::OpeningTag {
+                                    self_closing,
+                                    tag_name,
+                                    attributes,
+                                    expression,
+                                    range: left_angle_range.extend_to(ch_range),
+                                })
+                            }
+                            _ => {
+                                // TODO: Handle
+                                panic!()
+                            }
+                        }
+                    }
+                    // Doctype/Comment
+                    ('!', _) => self.parse_markup_declaration(left_angle_range),
+                    // Invalid
+                    (_, ch_range) => {
+                        self.errors.push_back(ParseError::new(
+                            "Invalid character after '<'".to_string(),
+                            ch_range,
+                        ));
+                        // TODO: Recursive
+                        self.state_text()
+                    }
+                }
+            }
+            // TextExpression
+            ('{', _) => {
+                let right_brace_range = self.find_expression_end()?;
+                let (_, left_brace_range) = self.chars.next()?;
+                if left_brace_range.end == right_brace_range.start {
+                    self.next(); // skip right brace
+                    self.errors.push_back(ParseError::new(
+                        "Empty expression".to_string(),
+                        left_brace_range.extend_to(right_brace_range),
+                    ));
+                    // TODO: Recursive
+                    return self.state_text();
+                }
+                let mut expr = RangedString::from(self.chars.next()?);
+                loop {
+                    let (ch, ch_range) = self.chars.next()?;
+                    if ch_range == right_brace_range {
+                        break;
+                    } else {
+                        expr.push((ch, ch_range));
+                    }
+                }
+                Some(Token::Expression {
+                    expression: expr.into(),
+                    range: left_brace_range.extend_to(right_brace_range),
+                })
+            }
             // Text
-            ch => {
-                let mut text = RangedString::from(ch);
+            _ => {
+                let mut text = RangedString::from(self.chars.next()?);
                 while let Some(ch) = self.chars.next_if(|(ch, _)| *ch != '{' && *ch != '<') {
                     text.push(ch);
                 }
@@ -497,11 +512,13 @@ impl<'a> Tokenizer<'a> {
         token_start: Range,
     ) -> Option<Token> {
         self.chars.next(); // consume '/'
+        self.skip_whitespace();
         // consume tag name
         let mut tag_name = RangedString::from(self.chars.next()?);
         for _ in 0..stored_tag_name.len() - 1 {
             tag_name.push(self.chars.next()?);
         }
+        self.skip_whitespace();
         // consume >
         let (_, end_range) = self.chars.next()?;
         self.state = TokenizerState::Text;
@@ -512,20 +529,19 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn state_rawtext_data(&mut self, stored_tag_name: String) -> Option<Token> {
-        let mut text = None;
+        let mut text: Option<RangedString> = None;
         loop {
             match self.chars.next()? {
                 ('<', langle_range) => {
-                    let end_tag = format!("/{}>", stored_tag_name);
-                    if self
+                    let actual = self
                         .chars
                         .clone()
                         .map(|(ch, _)| ch)
-                        .take(end_tag.len())
-                        .collect::<String>()
-                        == end_tag
-                    {
-                        if let Some((s, r)) = text {
+                        .filter(|ch| !ch.is_whitespace())
+                        .take(stored_tag_name.len() + 2)
+                        .collect::<String>();
+                    if actual == format!("/{}>", stored_tag_name) {
+                        if let Some(RangedString(s, r)) = text {
                             self.state = TokenizerState::RawtextClosingTag(
                                 stored_tag_name.clone(),
                                 langle_range,
@@ -537,19 +553,17 @@ impl<'a> Tokenizer<'a> {
                     } else {
                         match &mut text {
                             Some(v) => {
-                                v.0.push('<');
-                                v.1 = v.1.extend_to(langle_range);
+                                v.push(('<', langle_range));
                             }
-                            None => text = Some((String::from('<'), langle_range)),
+                            None => text = Some(RangedString::from(('<', langle_range))),
                         }
                     }
                 }
-                (ch, ch_range) => match &mut text {
+                ch => match &mut text {
                     Some(v) => {
-                        v.0.push(ch);
-                        v.1 = v.1.extend_to(ch_range);
+                        v.push(ch);
                     }
-                    None => text = Some((String::from(ch), ch_range)),
+                    None => text = Some(RangedString::from(ch)),
                 },
             }
         }
@@ -719,7 +733,7 @@ mod tests {
         check(
             "<h1 {foo: {k: string}} foo bar/>",
             expect![[r#"
-                OpeningTag <h1 bar foo {foo: {k: string}}/>
+                OpeningTag <h1 bar foo expr="foo: {k: string}"/>
                 1 | <h1 {foo: {k: string}} foo bar/>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1143,6 +1157,90 @@ mod tests {
     }
 
     #[test]
+    fn test_tokenize_script_with_content_and_white_space_in_closing_tag() {
+        check(
+            indoc! {r#"
+                <script>
+                  const html = "<title>Nested</title>";
+                  document.write(html);
+                </ script>
+
+                <script>
+                  const html = "<title>Nested</title>";
+                  document.write(html);
+                </script  >
+
+                <script>
+                  const html = "<title>Nested</title>";
+                  document.write(html);
+                </ script  >
+            "#},
+            expect![[r#"
+                OpeningTag <script>
+                 1 | <script>
+                   | ^^^^^^^^
+
+                Text [65 byte, "\n  const html = \"<title>Nested</title>\";\n  document.write(html);\n"]
+                 1 | <script>
+                 2 |   const html = "<title>Nested</title>";
+                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                 3 |   document.write(html);
+                   | ^^^^^^^^^^^^^^^^^^^^^^^
+                 4 | </ script>
+
+                ClosingTag </script>
+                 4 | </ script>
+                   | ^^^^^^^^^^
+
+                Text [2 byte, "\n\n"]
+                 4 | </ script>
+                 5 | 
+                 6 | <script>
+
+                OpeningTag <script>
+                 6 | <script>
+                   | ^^^^^^^^
+
+                Text [65 byte, "\n  const html = \"<title>Nested</title>\";\n  document.write(html);\n"]
+                 6 | <script>
+                 7 |   const html = "<title>Nested</title>";
+                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                 8 |   document.write(html);
+                   | ^^^^^^^^^^^^^^^^^^^^^^^
+                 9 | </script  >
+
+                ClosingTag </script>
+                 9 | </script  >
+                   | ^^^^^^^^^^^
+
+                Text [2 byte, "\n\n"]
+                 9 | </script  >
+                10 | 
+                11 | <script>
+
+                OpeningTag <script>
+                11 | <script>
+                   | ^^^^^^^^
+
+                Text [65 byte, "\n  const html = \"<title>Nested</title>\";\n  document.write(html);\n"]
+                11 | <script>
+                12 |   const html = "<title>Nested</title>";
+                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                13 |   document.write(html);
+                   | ^^^^^^^^^^^^^^^^^^^^^^^
+                14 | </ script  >
+
+                ClosingTag </script>
+                14 | </ script  >
+                   | ^^^^^^^^^^^^
+
+                Text [1 byte, "\n"]
+                14 | </ script  >
+            "#]],
+        );
+    }
+
+    #[test]
     fn test_tokenize_hop_x_raw_simple() {
         check(
             "<hop-x-raw>foo bar</hop-x-raw>",
@@ -1226,7 +1324,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                OpeningTag <main-comp {foo}>
+                OpeningTag <main-comp expr="foo">
                 1 | <main-comp {foo}>
                   | ^^^^^^^^^^^^^^^^^
 
@@ -1621,7 +1719,7 @@ mod tests {
         check(
             "<if {foo}>",
             expect![[r#"
-                OpeningTag <if {foo}>
+                OpeningTag <if expr="foo">
                 1 | <if {foo}>
                   | ^^^^^^^^^^
             "#]],
@@ -1633,7 +1731,7 @@ mod tests {
         check(
             "<div class=\"test\" {bar}>",
             expect![[r#"
-                OpeningTag <div class="test" {bar}>
+                OpeningTag <div class="test" expr="bar">
                 1 | <div class="test" {bar}>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1645,7 +1743,7 @@ mod tests {
         check(
             "<if {user.name == 'John'}>",
             expect![[r#"
-                OpeningTag <if {user.name == 'John'}>
+                OpeningTag <if expr="user.name == 'John'">
                 1 | <if {user.name == 'John'}>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1657,7 +1755,7 @@ mod tests {
         check(
             "<component {obj.prop.subprop}>",
             expect![[r#"
-                OpeningTag <component {obj.prop.subprop}>
+                OpeningTag <component expr="obj.prop.subprop">
                 1 | <component {obj.prop.subprop}>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1669,7 +1767,7 @@ mod tests {
         check(
             "<button disabled {enabled == 'yes'}>",
             expect![[r#"
-                OpeningTag <button disabled {enabled == 'yes'}>
+                OpeningTag <button disabled expr="enabled == 'yes'">
                 1 | <button disabled {enabled == 'yes'}>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1681,7 +1779,7 @@ mod tests {
         check(
             "<input {variable_name_123}>",
             expect![[r#"
-                OpeningTag <input {variable_name_123}>
+                OpeningTag <input expr="variable_name_123">
                 1 | <input {variable_name_123}>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1693,7 +1791,7 @@ mod tests {
         check(
             "<div class=\"test\" {  user.name  }>",
             expect![[r#"
-                OpeningTag <div class="test" {  user.name  }>
+                OpeningTag <div class="test" expr="  user.name  ">
                 1 | <div class="test" {  user.name  }>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1705,7 +1803,7 @@ mod tests {
         check(
             "<span {'hello world'}>",
             expect![[r#"
-                OpeningTag <span {'hello world'}>
+                OpeningTag <span expr="'hello world'">
                 1 | <span {'hello world'}>
                   | ^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1717,7 +1815,7 @@ mod tests {
         check(
             "<form {(user.role == 'admin')}>",
             expect![[r#"
-                OpeningTag <form {(user.role == 'admin')}>
+                OpeningTag <form expr="(user.role == 'admin')">
                 1 | <form {(user.role == 'admin')}>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1729,7 +1827,7 @@ mod tests {
         check(
             "<section {a == b == c}>",
             expect![[r#"
-                OpeningTag <section {a == b == c}>
+                OpeningTag <section expr="a == b == c">
                 1 | <section {a == b == c}>
                   | ^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1741,7 +1839,7 @@ mod tests {
         check(
             "<for {user in users}>",
             expect![[r#"
-                OpeningTag <for {user in users}>
+                OpeningTag <for expr="user in users">
                 1 | <for {user in users}>
                   | ^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1753,7 +1851,7 @@ mod tests {
         check(
             "<for {item in user.items}>",
             expect![[r#"
-                OpeningTag <for {item in user.items}>
+                OpeningTag <for expr="item in user.items">
                 1 | <for {item in user.items}>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1765,7 +1863,7 @@ mod tests {
         check(
             "<div {foo in bars}>",
             expect![[r#"
-                OpeningTag <div {foo in bars}>
+                OpeningTag <div expr="foo in bars">
                 1 | <div {foo in bars}>
                   | ^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1785,7 +1883,7 @@ mod tests {
                 1 | <h1>Hello {name}!</h1>
                   |     ^^^^^^
 
-                Expression {name}
+                Expression "name"
                 1 | <h1>Hello {name}!</h1>
                   |           ^^^^^^
 
@@ -1813,7 +1911,7 @@ mod tests {
                 1 | <p>User {user.name} has {user.count} items</p>
                   |    ^^^^^
 
-                Expression {user.name}
+                Expression "user.name"
                 1 | <p>User {user.name} has {user.count} items</p>
                   |         ^^^^^^^^^^^
 
@@ -1821,7 +1919,7 @@ mod tests {
                 1 | <p>User {user.name} has {user.count} items</p>
                   |                    ^^^^^
 
-                Expression {user.count}
+                Expression "user.count"
                 1 | <p>User {user.name} has {user.count} items</p>
                   |                         ^^^^^^^^^^^^
 
@@ -1845,7 +1943,7 @@ mod tests {
                 1 | <span>{greeting} world!</span>
                   | ^^^^^^
 
-                Expression {greeting}
+                Expression "greeting"
                 1 | <span>{greeting} world!</span>
                   |       ^^^^^^^^^^
 
@@ -1873,13 +1971,37 @@ mod tests {
                 1 | <div>Price: {price}</div>
                   |      ^^^^^^^
 
-                Expression {price}
+                Expression "price"
                 1 | <div>Price: {price}</div>
                   |             ^^^^^^^
 
                 ClosingTag </div>
                 1 | <div>Price: {price}</div>
                   |                    ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_text_with_expression_with_braces() {
+        check(
+            "<div>Price: {{k: v}}</div>",
+            expect![[r#"
+                OpeningTag <div>
+                1 | <div>Price: {{k: v}}</div>
+                  | ^^^^^
+
+                Text [7 byte, "Price: "]
+                1 | <div>Price: {{k: v}}</div>
+                  |      ^^^^^^^
+
+                Expression "{k: v}"
+                1 | <div>Price: {{k: v}}</div>
+                  |             ^^^^^^^^
+
+                ClosingTag </div>
+                1 | <div>Price: {{k: v}}</div>
+                  |                     ^^^^^^
             "#]],
         );
     }
@@ -1893,7 +2015,7 @@ mod tests {
                 1 | <h2>{title}</h2>
                   | ^^^^
 
-                Expression {title}
+                Expression "title"
                 1 | <h2>{title}</h2>
                   |     ^^^^^^^
 
@@ -1917,7 +2039,7 @@ mod tests {
                 1 | <p>Status: {user.profile.status == 'active'}</p>
                   |    ^^^^^^^^
 
-                Expression {user.profile.status == 'active'}
+                Expression "user.profile.status == 'active'"
                 1 | <p>Status: {user.profile.status == 'active'}</p>
                   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1941,7 +2063,7 @@ mod tests {
                 1 | <span>Item: {item.title}</span>
                   |       ^^^^^^
 
-                Expression {item.title}
+                Expression "item.title"
                 1 | <span>Item: {item.title}</span>
                   |             ^^^^^^^^^^^^
 
@@ -1957,7 +2079,7 @@ mod tests {
         check(
             "<div {className}>Content: {content}</div>",
             expect![[r#"
-                OpeningTag <div {className}>
+                OpeningTag <div expr="className">
                 1 | <div {className}>Content: {content}</div>
                   | ^^^^^^^^^^^^^^^^^
 
@@ -1965,7 +2087,7 @@ mod tests {
                 1 | <div {className}>Content: {content}</div>
                   |                  ^^^^^^^^^
 
-                Expression {content}
+                Expression "content"
                 1 | <div {className}>Content: {content}</div>
                   |                           ^^^^^^^^^
 
