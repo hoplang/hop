@@ -86,8 +86,6 @@ impl Annotated for Token {
 enum TokenizerState {
     Text,
     MarkupDeclaration,
-    Comment,
-    CommentSeenDashDash,
     Doctype,
     BeforeDoctypeName,
     DoctypeName,
@@ -504,7 +502,7 @@ impl<'a> Tokenizer<'a> {
         match self.cursor.next()? {
             ('-', _) if self.cursor.peek()?.0 == '-' => {
                 self.cursor.next();
-                Some(TokenizerState::Comment)
+                self.state_comment()
             }
             ('D', _) if self.cursor.peek_n(6)?.0 == "OCTYPE" => {
                 self.cursor.next_n(6);
@@ -518,27 +516,17 @@ impl<'a> Tokenizer<'a> {
     }
 
     fn state_comment(&mut self) -> Option<TokenizerState> {
-        match self.cursor.next()? {
-            ('-', _) => self.state_comment_seen_dash(),
-            _ => self.state_comment(),
-        }
-    }
-
-    fn state_comment_seen_dash(&mut self) -> Option<TokenizerState> {
-        match self.cursor.next()? {
-            ('-', _) => Some(TokenizerState::CommentSeenDashDash),
-            _ => Some(TokenizerState::Comment),
-        }
-    }
-    fn state_comment_seen_dash_dash(&mut self) -> Option<TokenizerState> {
-        match self.cursor.next()? {
-            ('>', ch_range) => {
-                self.tokens.push_back(Ok(Token::Comment {
-                    range: Range::new(self.token_start, ch_range.end),
-                }));
-                Some(TokenizerState::Text)
+        loop {
+            if let ('-', _) = self.cursor.next()? {
+                if let ('-', _) = self.cursor.next()? {
+                    if let ('>', ch_range) = self.cursor.next()? {
+                        self.tokens.push_back(Ok(Token::Comment {
+                            range: Range::new(self.token_start, ch_range.end),
+                        }));
+                        return Some(TokenizerState::Text);
+                    }
+                }
             }
-            _ => Some(TokenizerState::Comment),
         }
     }
 
@@ -672,8 +660,6 @@ impl<'a> Tokenizer<'a> {
         match self.state {
             TokenizerState::Text => self.state_text(),
             TokenizerState::MarkupDeclaration => self.state_markup_declaration(),
-            TokenizerState::Comment => self.state_comment(),
-            TokenizerState::CommentSeenDashDash => self.state_comment_seen_dash_dash(),
             TokenizerState::Doctype => self.state_doctype(),
             TokenizerState::BeforeDoctypeName => self.state_before_doctype_name(),
             TokenizerState::DoctypeName => self.state_doctype_name(),
