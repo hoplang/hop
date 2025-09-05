@@ -3,11 +3,11 @@ use std::iter::Peekable;
 use std::mem;
 
 use crate::common::ParseError;
-use crate::range::{Range, Ranged, RangedChars, RangedString};
 use crate::dop::DopTokenizer;
 use crate::dop::tokenizer::DopToken;
 use crate::hop::ast::Attribute;
 use crate::range::Annotated;
+use crate::range::{Range, Ranged, RangedChars, RangedString};
 
 type Attributes = BTreeMap<String, Attribute>;
 
@@ -186,7 +186,7 @@ impl<'a> Tokenizer<'a> {
                 (attr_name, attr_name_range),
                 Attribute {
                     value: None,
-                    range: attr_name_range.extend_to(closing_quote_range),
+                    range: attr_name_range.spanning(closing_quote_range),
                 },
             ));
         }
@@ -203,7 +203,7 @@ impl<'a> Tokenizer<'a> {
             (attr_name, attr_name_range),
             Attribute {
                 value: Some(attr_value.into()),
-                range: attr_name_range.extend_to(closing_quote_range),
+                range: attr_name_range.spanning(closing_quote_range),
             },
         ))
     }
@@ -258,7 +258,7 @@ impl<'a> Tokenizer<'a> {
                         self.next(); // skip right brace
                         self.errors.push_back(ParseError::new(
                             "Empty expression".to_string(),
-                            left_brace_range.extend_to(right_brace_range),
+                            left_brace_range.spanning(right_brace_range),
                         ));
                         continue;
                     }
@@ -317,7 +317,7 @@ impl<'a> Tokenizer<'a> {
                         ('>', ch_range) => {
                             if count >= 2 {
                                 return Some(Token::Comment {
-                                    range: first_token_range.extend_to(ch_range),
+                                    range: first_token_range.spanning(ch_range),
                                 });
                             } else {
                                 count = 0;
@@ -344,7 +344,7 @@ impl<'a> Tokenizer<'a> {
                 while self.chars.next_if(|(ch, _)| *ch != '>').is_some() {}
                 let (_, ch_range) = self.chars.next()?;
                 Some(Token::Doctype {
-                    range: first_token_range.extend_to(ch_range),
+                    range: first_token_range.spanning(ch_range),
                 })
             }
             // Invalid
@@ -355,7 +355,7 @@ impl<'a> Tokenizer<'a> {
                 ));
 
                 Some(Token::Doctype {
-                    range: first_token_range.extend_to(ch_range),
+                    range: first_token_range.spanning(ch_range),
                 })
             }
         }
@@ -412,12 +412,12 @@ impl<'a> Tokenizer<'a> {
                                 ));
                                 return Some(Token::ClosingTag {
                                     tag_name,
-                                    range: left_angle_range.extend_to(right_angle_range),
+                                    range: left_angle_range.spanning(right_angle_range),
                                 });
                             }
                             Some(Token::ClosingTag {
                                 tag_name,
-                                range: left_angle_range.extend_to(right_angle_range),
+                                range: left_angle_range.spanning(right_angle_range),
                             })
                         } else {
                             self.errors.push_back(ParseError::new(
@@ -454,7 +454,7 @@ impl<'a> Tokenizer<'a> {
                                     tag_name,
                                     attributes,
                                     expression,
-                                    range: left_angle_range.extend_to(ch_range),
+                                    range: left_angle_range.spanning(ch_range),
                                 })
                             }
                             _ => {
@@ -484,7 +484,7 @@ impl<'a> Tokenizer<'a> {
                     self.next(); // skip right brace
                     self.errors.push_back(ParseError::new(
                         "Empty expression".to_string(),
-                        left_brace_range.extend_to(right_brace_range),
+                        left_brace_range.spanning(right_brace_range),
                     ));
                     // TODO: Recursive
                     return self.step();
@@ -500,7 +500,7 @@ impl<'a> Tokenizer<'a> {
                 }
                 Some(Token::Expression {
                     expression: expr.into(),
-                    range: left_brace_range.extend_to(right_brace_range),
+                    range: left_brace_range.spanning(right_brace_range),
                 })
             }
             // Text
@@ -559,7 +559,10 @@ mod tests {
                     panic!(
                         "Non-contiguous ranges detected: token ends at {:?}, but next token starts at {:?}. \
                          Current token: {:?}, Next token: {:?}",
-                        current_range.end(), next_range.start(), current_token, next_token
+                        current_range.end(),
+                        next_range.start(),
+                        current_token,
+                        next_token
                     );
                 }
             }

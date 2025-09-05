@@ -6,7 +6,7 @@ pub struct RangedString(String, Range);
 impl RangedString {
     pub fn push(&mut self, (ch, r): (char, Range)) {
         self.0.push(ch);
-        self.1 = self.1.extend_to(r);
+        self.1 = self.1.spanning(r);
     }
     pub fn value(&self) -> &str {
         &self.0
@@ -30,3 +30,4 @@ impl Ranged for RangedString {
         self.1
     }
 }
+

@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 use std::iter::Peekable;
 
-use crate::range::{Range, Ranged};
 use crate::dop::DopType;
 use crate::dop::tokenizer::{DopToken, DopTokenizer};
 use crate::dop::typechecker::RangeDopType;
+use crate::range::{Range, Ranged};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ParseError {
@@ -364,7 +364,7 @@ fn parse_type(tokenizer: &mut Peekable<DopTokenizer>) -> Result<RangeDopType, Pa
 
             Ok(RangeDopType {
                 dop_type: DopType::Array(Some(Box::new(inner_type.dop_type))),
-                range: type_array_range.extend_to(right_bracket_range),
+                range: type_array_range.spanning(right_bracket_range),
             })
         }
         (DopToken::LeftBrace, left_brace_range) => {
@@ -388,7 +388,7 @@ fn parse_type(tokenizer: &mut Peekable<DopTokenizer>) -> Result<RangeDopType, Pa
                         {
                             return Ok(RangeDopType {
                                 dop_type: DopType::Object(properties),
-                                range: left_brace_range.extend_to(right_brace_range),
+                                range: left_brace_range.spanning(right_brace_range),
                             });
                         }
                         continue;
@@ -396,7 +396,7 @@ fn parse_type(tokenizer: &mut Peekable<DopTokenizer>) -> Result<RangeDopType, Pa
                     (DopToken::RightBrace, right_brace_range) => {
                         return Ok(RangeDopType {
                             dop_type: DopType::Object(properties),
-                            range: left_brace_range.extend_to(right_brace_range),
+                            range: left_brace_range.spanning(right_brace_range),
                         });
                     }
                     (t, range) => {
@@ -420,7 +420,7 @@ fn parse_equality(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Par
     while let Some(operator_range) = advance_if(tokenizer, DopToken::Equal) {
         let right = parse_unary(tokenizer)?;
         expr = DopExpr::BinaryOp {
-            range: expr.range().extend_to(right.range()),
+            range: expr.range().spanning(right.range()),
             left: Box::new(expr),
             operator: BinaryOp::Equal,
             operator_range,
@@ -436,7 +436,7 @@ fn parse_unary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, ParseE
     if let Some(operator_range) = advance_if(tokenizer, DopToken::Not) {
         let expr = parse_unary(tokenizer)?; // Right associative for multiple !
         Ok(DopExpr::UnaryOp {
-            range: operator_range.extend_to(expr.range()),
+            range: operator_range.spanning(expr.range()),
             operator: UnaryOp::Not,
             operator_range,
             operand: Box::new(expr),
@@ -463,7 +463,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                 match tokenizer.next().ok_or(ParseError::UnexpectedEof)?? {
                     (DopToken::Identifier(prop), property_range) => {
                         expr = DopExpr::PropertyAccess {
-                            range: expr.range().extend_to(property_range),
+                            range: expr.range().spanning(property_range),
                             object: Box::new(expr),
                             property: prop,
                             property_range,
@@ -490,7 +490,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
             if let Some(right_bracket_range) = advance_if(tokenizer, DopToken::RightBracket) {
                 return Ok(DopExpr::ArrayLiteral {
                     elements,
-                    range: left_bracket_range.extend_to(right_bracket_range),
+                    range: left_bracket_range.spanning(right_bracket_range),
                 });
             }
 
@@ -508,7 +508,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                         {
                             return Ok(DopExpr::ArrayLiteral {
                                 elements,
-                                range: left_bracket_range.extend_to(right_bracket_range),
+                                range: left_bracket_range.spanning(right_bracket_range),
                             });
                         }
                         continue;
@@ -516,7 +516,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                     (DopToken::RightBracket, right_bracket_range) => {
                         return Ok(DopExpr::ArrayLiteral {
                             elements,
-                            range: left_bracket_range.extend_to(right_bracket_range),
+                            range: left_bracket_range.spanning(right_bracket_range),
                         });
                     }
                     (t, range) => {
@@ -537,7 +537,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
             if let Some(right_brace_range) = advance_if(tokenizer, DopToken::RightBrace) {
                 return Ok(DopExpr::ObjectLiteral {
                     properties,
-                    range: left_brace_range.extend_to(right_brace_range),
+                    range: left_brace_range.spanning(right_brace_range),
                 });
             }
 
@@ -562,7 +562,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                         {
                             return Ok(DopExpr::ObjectLiteral {
                                 properties,
-                                range: left_brace_range.extend_to(right_brace_range),
+                                range: left_brace_range.spanning(right_brace_range),
                             });
                         }
                         continue;
@@ -570,7 +570,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                     (DopToken::RightBrace, right_brace_range) => {
                         return Ok(DopExpr::ObjectLiteral {
                             properties,
-                            range: left_brace_range.extend_to(right_brace_range),
+                            range: left_brace_range.spanning(right_brace_range),
                         });
                     }
                     (t, range) => {

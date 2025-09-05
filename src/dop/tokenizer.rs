@@ -67,7 +67,7 @@ impl<'a> DopTokenizer<'a> {
             chars: RangedChars::with_position(input, start_pos).peekable(),
         }
     }
-    
+
     pub fn new_from_chars(chars: Peekable<RangedChars<'a>>) -> Self {
         Self { chars }
     }
@@ -103,7 +103,7 @@ impl Iterator for DopTokenizer<'_> {
                 '!' => Ok((DopToken::Not, start_range)),
                 '=' => {
                     if let Some((_, end_range)) = self.chars.next_if(|(ch, _)| *ch == '=') {
-                        return Ok((DopToken::Equal, start_range.extend_to(end_range)));
+                        return Ok((DopToken::Equal, start_range.spanning(end_range)));
                     }
                     Err(ParseError::new(
                         "Expected '==' but found single '='".to_string(),
@@ -119,11 +119,11 @@ impl Iterator for DopTokenizer<'_> {
                     }
                     match self.chars.next() {
                         None => Err(ParseError::unterminated_string_literal(
-                            start_range.extend_to(end_range),
+                            start_range.spanning(end_range),
                         )),
                         Some(('\'', end_range)) => Ok((
                             DopToken::StringLiteral(result),
-                            start_range.extend_to(end_range),
+                            start_range.spanning(end_range),
                         )),
                         _ => unreachable!(),
                     }

@@ -43,7 +43,7 @@ impl TokenTree {
     }
 
     pub fn set_closing_tag(&mut self, closing_token: Token) {
-        self.range = self.range.extend_to(closing_token.range());
+        self.range = self.range.spanning(closing_token.range());
         self.closing_tag_name_range = match closing_token {
             Token::ClosingTag {
                 tag_name: (_, tag_name_range),
