@@ -10,6 +10,7 @@ pub struct Position {
 }
 
 impl Position {
+    #[cfg(test)]
     pub(super) fn new(line: usize, column: usize) -> Self {
         Position { line, column }
     }
