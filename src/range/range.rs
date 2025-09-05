@@ -65,16 +65,6 @@ impl Range {
         self.end
     }
 
-    /// Creates a range that spans the entire string from start to end.
-    /// Returns None for empty strings since they don't have a valid range.
-    pub fn for_string(input: &str) -> Option<Self> {
-        use super::RangedChars;
-        let mut ranged_chars = RangedChars::from(input);
-        let first = ranged_chars.next()?;
-        let last = ranged_chars.last().unwrap_or(first);
-        Some(first.1.spanning(last.1))
-    }
-
     /// Creates a range spanning from the earliest start to the latest end of two ranges.
     /// This operation is commutative: a.spanning(b) == b.spanning(a)
     pub fn spanning(&self, range: Range) -> Range {

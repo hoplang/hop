@@ -612,14 +612,7 @@ mod tests {
             .without_location()
             .without_line_numbers();
         match error {
-            ParseError::UnexpectedEof => annotator.annotate(
-                None,
-                input,
-                &[SimpleAnnotation {
-                    message: "Unexpected end of expression".to_string(),
-                    range: Range::for_string(input).unwrap(),
-                }],
-            ),
+            ParseError::UnexpectedEof => "Unexpected end of expression".to_string(),
             ParseError::Ranged { message, range } => {
                 annotator.annotate(None, input, &[SimpleAnnotation { message, range }])
             }
@@ -757,11 +750,7 @@ mod tests {
     fn test_parse_expr_error_dot_no_identifier() {
         check_parse_expr(
             "user.",
-            expect![[r#"
-                error: Unexpected end of expression
-                user.
-                ^^^^^
-            "#]],
+            expect!["Unexpected end of expression"],
         );
     }
 
@@ -865,11 +854,7 @@ mod tests {
     fn test_parse_expr_error_operator_at_end() {
         check_parse_expr(
             "x ==",
-            expect![[r#"
-                error: Unexpected end of expression
-                x ==
-                ^^^^
-            "#]],
+            expect!["Unexpected end of expression"],
         );
     }
 
@@ -877,11 +862,7 @@ mod tests {
     fn test_parse_expr_error_not_without_operand() {
         check_parse_expr(
             "!",
-            expect![[r#"
-                error: Unexpected end of expression
-                !
-                ^
-            "#]],
+            expect!["Unexpected end of expression"],
         );
     }
 
@@ -1811,11 +1792,7 @@ mod tests {
     fn test_parse_named_arguments_missing_value_error() {
         check_parse_arguments(
             "name:",
-            expect![[r#"
-                error: Unexpected end of expression
-                name:
-                ^^^^^
-            "#]],
+            expect!["Unexpected end of expression"],
         );
     }
 
