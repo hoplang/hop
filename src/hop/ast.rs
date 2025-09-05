@@ -417,7 +417,7 @@ mod tests {
     use crate::hop::tokenizer::Tokenizer;
     use crate::range::SimpleAnnotation;
     use crate::range::SourceAnnotator;
-    use crate::test_utils::position_marker::extract_position;
+    use crate::range::position_marker::extract_position;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 

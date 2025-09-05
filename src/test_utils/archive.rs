@@ -1,4 +1,4 @@
-use super::position_marker::extract_position;
+use crate::range::position_marker::extract_position;
 use crate::range::Position;
 use simple_txtar::{Archive, Builder, File};
 use std::{
