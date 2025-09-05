@@ -1,7 +1,7 @@
 use std::{cmp, fmt, str::Chars};
 
 /// Represents a position in source code
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Position {
     /// Line number (0-based)
     line: usize,

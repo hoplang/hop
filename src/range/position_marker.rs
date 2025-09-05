@@ -1,4 +1,6 @@
-use super::range::Position;
+use std::collections::HashSet;
+
+use super::{RangedChars, range::Position};
 
 /// Extracts a single position marked with `^` from the source.
 ///
@@ -8,42 +10,31 @@ use super::range::Position;
 /// Panics if multiple position markers are found or if marker does not point to a valid character
 /// on the above line.
 pub fn extract_position(input: &str) -> Option<(String, Position)> {
-    let mut output = String::new();
-    let mut line_iter = input.lines().enumerate().peekable();
-    let mut position = None;
-
-    if line_iter.peek().is_some_and(|(_, line)| line.contains('^')) {
-        panic!("Cannot place position marker on first line");
-    }
-
-    while let Some((i, line)) = line_iter.next() {
-        if let Some((_, next_line)) = line_iter.peek() {
-            if let Some(col_idx) = next_line.find('^') {
-                if col_idx >= line.len() {
-                    panic!("Position marker is past the end of the line");
-                }
-
-                if position.is_some() {
-                    panic!("Multiple position markers (^) found in source");
-                }
-
-                position = Some(Position::new(i + 1, col_idx + 1));
-
-                output.push_str(line);
-                output.push('\n');
-                line_iter.next(); // Skip the marker line
-                continue;
-            }
+    let markers = RangedChars::from(input)
+        .filter(|(ch, _)| *ch == '^')
+        .map(|(_, range)| Position::new(range.start().line() - 1, range.start().column()))
+        .collect::<Vec<_>>();
+    assert!(
+        markers.len() < 2,
+        "Multiple position markers (^) found in source"
+    );
+    markers.first().map(|marker| {
+        let char_starts = RangedChars::from(input)
+            .map(|(_, range)| range.start())
+            .collect::<HashSet<_>>();
+        assert!(
+            char_starts.contains(marker),
+            "Marker does not point to a valid position"
+        );
+        let mut output = input
+            .lines()
+            .filter(|line| !line.contains('^'))
+            .collect::<Vec<_>>()
+            .join("\n");
+        if input.ends_with('\n') {
+            output.push('\n');
         }
-        output.push_str(line);
-        output.push('\n');
-    }
-
-    position.map(|pos| {
-        if !input.ends_with('\n') {
-            output.pop();
-        }
-        (output, pos)
+        (output, *marker)
     })
 }
 
@@ -158,7 +149,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Cannot place position marker on first line")]
+    #[should_panic(expected = "Marker does not point to a valid position")]
     fn test_marker_on_first_line_panics() {
         let input = indoc! {r#"
             ^
@@ -171,7 +162,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Cannot place position marker on first line")]
+    #[should_panic(expected = "Marker does not point to a valid position")]
     fn test_marker_in_middle_of_first_line_panics() {
         let input = indoc! {r#"
                  ^
@@ -184,11 +175,11 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Position marker is past the end of the line")]
+    #[should_panic(expected = "Marker does not point to a valid position")]
     fn test_marker_past_end_of_line_panics() {
         let input = indoc! {r#"
             <hello-world>
-                         ^
+                          ^
               <h1>Hello World</h1>
             </hello-world>
         "#};
