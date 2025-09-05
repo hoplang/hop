@@ -161,24 +161,18 @@ impl SourceAnnotator {
             }
             if let Some(line) = lines.get(&line_num) {
                 if let Some(intersection) = line.range().intersection(&range) {
-                    self.format_underline(output, line_str, intersection, max_line_col_width);
+                    if self.show_line_numbers {
+                        output.push_str(&format!("{:width$} | ", "", width = max_line_col_width));
+                    }
+                    self.format_underline(output, line_str, intersection);
                 }
             }
         }
     }
 
-    fn format_underline(
-        &self,
-        output: &mut String,
-        line: &str,
-        range: Range,
-        max_line_col_width: usize,
-    ) {
+    fn format_underline(&self, output: &mut String, line: &str, range: Range) {
         if range.start().line() != range.end().line() {
             panic!("Expected range.start().line == range.end().line")
-        }
-        if self.show_line_numbers {
-            output.push_str(&format!("{:width$} | ", "", width = max_line_col_width));
         }
 
         let display_start = self.byte_to_display_position(line, range.start().column());
