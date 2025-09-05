@@ -106,12 +106,15 @@ impl SourceAnnotator {
                 if let Some(filename) = filename {
                     output.push_str(&format!(
                         "  --> {} (line {}, col {})\n",
-                        filename, range.start().line, range.start().column
+                        filename,
+                        range.start().line,
+                        range.start().column
                     ));
                 } else {
                     output.push_str(&format!(
                         "  --> (line {}, col {})\n",
-                        range.start().line, range.start().column
+                        range.start().line,
+                        range.start().column
                     ));
                 }
             }
@@ -149,10 +152,7 @@ impl SourceAnnotator {
 
             // Check if this line intersects with the annotation range
             // Create a range for the current line (from column 1 to end of line + 1)
-            let line_range = Range::new(
-                Position::new(line_num, 1),
-                Position::new(line_num, line.len() + 1),
-            );
+            let line_range = Position::new(line_num, 1).to(Position::new(line_num, line.len() + 1));
 
             // If this line intersects with the annotation, add underline
             // The intersection will always be on a single line (line_num)
@@ -251,7 +251,7 @@ mod tests {
     #[test]
     fn test_simple_annotation() {
         let annotations = vec![SimpleAnnotation {
-            range: Range::new(Position::new(2, 15), Position::new(2, 19)),
+            range: Position::new(2, 15).to(Position::new(2, 19)),
             message: "Test error".to_string(),
         }];
         let source = "there is\n    some code here";
@@ -271,7 +271,7 @@ mod tests {
     #[test]
     fn test_with_label() {
         let annotations = vec![SimpleAnnotation {
-            range: Range::new(Position::new(1, 1), Position::new(1, 5)),
+            range: Position::new(1, 1).to(Position::new(1, 5)),
             message: "Missing semicolon".to_string(),
         }];
         let source = "code";
@@ -291,7 +291,7 @@ mod tests {
     #[test]
     fn test_with_location_info() {
         let annotations = vec![SimpleAnnotation {
-            range: Range::new(Position::new(2, 8), Position::new(2, 12)),
+            range: Position::new(2, 8).to(Position::new(2, 12)),
             message: "Type error".to_string(),
         }];
         let source = "first line\nsecond line";
@@ -312,7 +312,7 @@ mod tests {
     #[test]
     fn test_with_lines_before() {
         let annotations = vec![SimpleAnnotation {
-            range: Range::new(Position::new(3, 6), Position::new(3, 11)),
+            range: Position::new(3, 6).to(Position::new(3, 11)),
             message: "Error here".to_string(),
         }];
         let source = "line one\nline two\nline three\nline four";
@@ -334,7 +334,7 @@ mod tests {
     #[test]
     fn test_with_lines_after() {
         let annotations = vec![SimpleAnnotation {
-            range: Range::new(Position::new(2, 6), Position::new(2, 9)),
+            range: Position::new(2, 6).to(Position::new(2, 9)),
             message: "Error here".to_string(),
         }];
 
@@ -357,7 +357,7 @@ mod tests {
     #[test]
     fn test_tab_expansion() {
         let annotations = vec![SimpleAnnotation {
-            range: Range::new(Position::new(2, 2), Position::new(2, 6)),
+            range: Position::new(2, 2).to(Position::new(2, 6)),
             message: "Tab test".to_string(),
         }];
         let source = "code\n\tcode";
@@ -379,11 +379,11 @@ mod tests {
     fn test_multiple_annotations() {
         let annotations = vec![
             SimpleAnnotation {
-                range: Range::new(Position::new(1, 6), Position::new(1, 9)),
+                range: Position::new(1, 6).to(Position::new(1, 9)),
                 message: "First error".to_string(),
             },
             SimpleAnnotation {
-                range: Range::new(Position::new(3, 6), Position::new(3, 11)),
+                range: Position::new(3, 6).to(Position::new(3, 11)),
                 message: "Second error".to_string(),
             },
         ];
@@ -409,7 +409,7 @@ mod tests {
     #[test]
     fn test_unicode_emoji_width() {
         let annotations = vec![SimpleAnnotation {
-            range: Range::new(Position::new(1, 6), Position::new(1, 10)),
+            range: Position::new(1, 6).to(Position::new(1, 10)),
             message: "After emoji".to_string(),
         }];
 
@@ -432,7 +432,7 @@ mod tests {
     #[test]
     fn test_location_without_filename() {
         let annotations = vec![SimpleAnnotation {
-            range: Range::new(Position::new(1, 6), Position::new(1, 10)),
+            range: Position::new(1, 6).to(Position::new(1, 10)),
             message: "Error without filename".to_string(),
         }];
         let source = "some code";
@@ -453,7 +453,7 @@ mod tests {
     #[test]
     fn test_lines_before_exceeds_start() {
         let annotations = vec![SimpleAnnotation {
-            range: Range::new(Position::new(5, 6), Position::new(5, 10)),
+            range: Position::new(5, 6).to(Position::new(5, 10)),
             message: "Error on line 5".to_string(),
         }];
         let source = "line one\nline two\nline three\nline four\nline five\nline six";
@@ -477,7 +477,7 @@ mod tests {
     #[test]
     fn test_multi_line_annotation() {
         let annotations = vec![SimpleAnnotation {
-            range: Range::new(Position::new(2, 6), Position::new(4, 5)),
+            range: Position::new(2, 6).to(Position::new(4, 5)),
             message: "Multi-line error".to_string(),
         }];
         let source = "line one\nline two\nline three\nline four\nline five";

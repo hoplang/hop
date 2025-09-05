@@ -36,7 +36,7 @@ impl Iterator for RangedChars<'_> {
             } else {
                 self.position.column += ch.len_utf8();
             }
-            (ch, Range::new(start, self.position))
+            (ch, start.to(self.position))
         })
     }
 }

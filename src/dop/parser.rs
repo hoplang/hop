@@ -603,7 +603,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::range::{Position, SimpleAnnotation, SourceAnnotator};
+    use crate::range::{SimpleAnnotation, SourceAnnotator};
     use expect_test::{Expect, expect};
 
     fn annotate_error(input: &str, error: ParseError) -> String {

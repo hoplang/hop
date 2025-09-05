@@ -18,6 +18,11 @@ impl Position {
     pub(super) fn default_position() -> Self {
         Position { line: 1, column: 1 }
     }
+
+    /// Creates a Range from this position to another position.
+    pub fn to(&self, other: Position) -> super::Range {
+        super::Range::new(*self, other)
+    }
 }
 
 impl fmt::Display for Position {
