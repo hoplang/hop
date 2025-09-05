@@ -154,27 +154,36 @@ impl SourceAnnotator {
         let last_line = cmp::min(line_count, range.end().line() + self.lines_after);
 
         for line_num in first_line..=last_line {
-            let line_str = lines.get(&line_num).map(|s| s.value()).unwrap_or_default();
-            self.format_line(output, line_num, line_str, max_line_col_width);
-            if line_str.is_empty() {
-                continue;
+            // Write line content
+            if self.show_line_numbers {
+                output.push_str(&format!(
+                    "{:width$} | ",
+                    line_num,
+                    width = max_line_col_width
+                ));
             }
-            if let Some(line) = lines.get(&line_num) {
-                let mut written = false;
+            let line = lines.get(&line_num);
+            if let Some(line) = line {
+                output.push_str(&self.expand_tabs(line.value()));
+            }
+            output.push('\n');
+            // Write annotation line
+            if let Some(line) = line {
                 if let Some(intersection) = line.range().intersection(&range) {
+                    let mut has_written_annotation = false;
                     if self.show_line_numbers {
                         output.push_str(&format!("{:width$} | ", "", width = max_line_col_width));
                     }
                     for (ch, ch_range) in line.chars() {
                         if intersection.contains_range(ch_range) {
-                            written = true;
+                            has_written_annotation = true;
                             output.push_str(
                                 &self
                                     .underline_char
                                     .to_string()
                                     .repeat(self.char_display_width(ch)),
                             );
-                        } else if !written {
+                        } else if !has_written_annotation {
                             output.push_str(&" ".repeat(self.char_display_width(ch)));
                         }
                     }
@@ -182,14 +191,6 @@ impl SourceAnnotator {
                 }
             }
         }
-    }
-
-    fn format_line(&self, output: &mut String, line_num: usize, content: &str, width: usize) {
-        if self.show_line_numbers {
-            output.push_str(&format!("{:width$} | ", line_num, width = width));
-        }
-        output.push_str(&self.expand_tabs(content));
-        output.push('\n');
     }
 
     fn char_display_width(&self, ch: char) -> usize {
