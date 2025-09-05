@@ -208,14 +208,14 @@ mod tests {
         let mut env = Environment::new();
 
         if !env_str.is_empty() {
-            let mut tokenizer = DopTokenizer::new(env_str, Position::default()).peekable();
+            let mut tokenizer = DopTokenizer::from(env_str).peekable();
             let params = parse_parameters(&mut tokenizer).expect("Failed to parse environment");
             for (_, param) in params {
                 let _ = env.push(param.var_name.value, param.type_annotation);
             }
         }
 
-        let mut tokenizer = DopTokenizer::new(expr_str, Position::default()).peekable();
+        let mut tokenizer = DopTokenizer::from(expr_str).peekable();
         let expr = parse_expr(&mut tokenizer).expect("Failed to parse expression");
 
         let mut annotations = Vec::new();

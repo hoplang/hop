@@ -62,13 +62,22 @@ pub struct DopTokenizer<'a> {
 }
 
 impl<'a> DopTokenizer<'a> {
-    pub fn new(input: &'a str, start_pos: Position) -> Self {
+    pub fn with_position(input: &'a str, start_pos: Position) -> Self {
         Self {
             chars: RangedChars::new(input, start_pos).peekable(),
         }
     }
+    
     pub fn new_from_chars(chars: Peekable<RangedChars<'a>>) -> Self {
         Self { chars }
+    }
+}
+
+impl<'a> From<&'a str> for DopTokenizer<'a> {
+    fn from(input: &'a str) -> Self {
+        Self {
+            chars: RangedChars::new(input, Position::default()).peekable(),
+        }
     }
 }
 
@@ -186,7 +195,7 @@ mod tests {
     use expect_test::{Expect, expect};
 
     fn check(input: &str, expected: Expect) {
-        let tokenizer = DopTokenizer::new(input, Position::default());
+        let tokenizer = DopTokenizer::from(input);
         let mut annotations = Vec::new();
         for t in tokenizer {
             match t {

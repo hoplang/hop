@@ -99,7 +99,7 @@ mod tests {
         }
 
         // Parse the expression
-        let mut tokenizer = DopTokenizer::new(expr_str, Position::default()).peekable();
+        let mut tokenizer = DopTokenizer::from(expr_str).peekable();
 
         let expr = parse_expr(&mut tokenizer).expect("Failed to parse expression");
 
