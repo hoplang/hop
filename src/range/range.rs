@@ -21,8 +21,12 @@ impl Position {
 
     /// Creates a Range from this position to another position.
     pub fn to(self, end: Position) -> Range {
-        debug_assert!(self < end, "start must be less than end in Position::to");
-        Range { start: self, end }
+        let result = Range { start: self, end };
+        debug_assert!(
+            result.start < result.end,
+            "start must be less than end in Position::to"
+        );
+        result
     }
 }
 
@@ -68,10 +72,15 @@ impl Range {
     /// Creates a range spanning from the earliest start to the latest end of two ranges.
     /// This operation is commutative: a.spanning(b) == b.spanning(a)
     pub fn spanning(&self, range: Range) -> Range {
-        Range {
+        let result = Range {
             start: cmp::min(self.start, range.start),
             end: cmp::max(self.end, range.end),
-        }
+        };
+        debug_assert!(
+            result.start < result.end,
+            "start must be less than end in Range::spanning"
+        );
+        result
     }
 
     pub fn contains(&self, position: Position) -> bool {
@@ -86,7 +95,12 @@ impl Range {
         if start >= end {
             None
         } else {
-            Some(Range { start, end })
+            let result = Range { start, end };
+            debug_assert!(
+                result.start < result.end,
+                "start must be less than end in Range::spanning"
+            );
+            Some(result)
         }
     }
 }
