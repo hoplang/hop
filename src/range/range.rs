@@ -25,29 +25,19 @@ impl Range {
     /// Returns None for empty strings since they don't have a valid range.
     pub fn for_string(input: &str) -> Option<Self> {
         use super::RangedChars;
-
         let mut ranged_chars = RangedChars::from(input);
-
-        // Get the first character to determine start position
         let first = ranged_chars.next()?;
-        let start = first.1.start;
-
-        // Find the last position by consuming remaining characters
-        let end = ranged_chars
-            .last()
-            .map(|(_, range)| range.end())
-            .unwrap_or(first.1.end());
-
-        Some(Range::new(start, end))
+        let last = ranged_chars.last().unwrap_or(first);
+        Some(first.1.spanning(last.1))
     }
 
     /// Creates a range spanning from the earliest start to the latest end of two ranges.
     /// This operation is commutative: a.spanning(b) == b.spanning(a)
     pub fn spanning(&self, range: Range) -> Range {
-        Range::new(
-            cmp::min(self.start, range.start),
-            cmp::max(self.end, range.end)
-        )
+        Range {
+            start: cmp::min(self.start, range.start),
+            end: cmp::max(self.end, range.end),
+        }
     }
 
     pub fn contains(&self, position: Position) -> bool {
@@ -63,7 +53,7 @@ impl Range {
         if start >= end {
             None
         } else {
-            Some(Range::new(start, end))
+            Some(Range { start, end })
         }
     }
 }
@@ -137,4 +127,3 @@ mod tests {
         assert_eq!(range.end(), Position::new(3, 6));
     }
 }
-
