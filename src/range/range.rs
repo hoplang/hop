@@ -162,6 +162,45 @@ impl<'a> RangedChars<'a> {
             position,
         }
     }
+
+    pub fn split_by<F>(
+        mut self,
+        predicate: F,
+    ) -> impl Iterator<Item = super::ranged_string::RangedString>
+    where
+        F: Fn(char) -> bool,
+    {
+        let mut current_segment: Option<super::ranged_string::RangedString> = None;
+
+        std::iter::from_fn(move || {
+            loop {
+                match self.next() {
+                    Some((ch, range)) => {
+                        if predicate(ch) {
+                            // Hit a delimiter, return current segment if we have one
+                            if current_segment.is_some() {
+                                return current_segment.take();
+                            }
+                            // Otherwise continue to skip delimiters
+                        } else {
+                            // Non-delimiter character, add to current segment
+                            match current_segment.as_mut() {
+                                Some(segment) => segment.push((ch, range)),
+                                None => {
+                                    current_segment =
+                                        Some(super::ranged_string::RangedString::from((ch, range)))
+                                }
+                            }
+                        }
+                    }
+                    None => {
+                        // End of input, return final segment if we have one
+                        return current_segment.take();
+                    }
+                }
+            }
+        })
+    }
 }
 
 impl<'a> From<&'a str> for RangedChars<'a> {
@@ -186,5 +225,63 @@ impl Iterator for RangedChars<'_> {
             }
             (ch, start.to(self.position))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_split_by_whitespace() {
+        let input = "foo   bar  baz";
+        let chars = RangedChars::from(input);
+        let segments: Vec<_> = chars.split_by(|ch| ch.is_whitespace()).collect();
+
+        assert_eq!(segments.len(), 3);
+        assert_eq!(segments[0].value(), "foo");
+        assert_eq!(segments[1].value(), "bar");
+        assert_eq!(segments[2].value(), "baz");
+    }
+
+    #[test]
+    fn test_split_by_with_leading_trailing_delimiters() {
+        let input = "  foo bar  ";
+        let chars = RangedChars::from(input);
+        let segments: Vec<_> = chars.split_by(|ch| ch.is_whitespace()).collect();
+
+        assert_eq!(segments.len(), 2);
+        assert_eq!(segments[0].value(), "foo");
+        assert_eq!(segments[1].value(), "bar");
+    }
+
+    #[test]
+    fn test_split_by_empty_input() {
+        let input = "";
+        let chars = RangedChars::from(input);
+        let segments: Vec<_> = chars.split_by(|ch| ch.is_whitespace()).collect();
+
+        assert_eq!(segments.len(), 0);
+    }
+
+    #[test]
+    fn test_split_by_only_delimiters() {
+        let input = "   ";
+        let chars = RangedChars::from(input);
+        let segments: Vec<_> = chars.split_by(|ch| ch.is_whitespace()).collect();
+
+        assert_eq!(segments.len(), 0);
+    }
+
+    #[test]
+    fn test_split_by_custom_predicate() {
+        let input = "foo,bar;baz";
+        let chars = RangedChars::from(input);
+        let segments: Vec<_> = chars.split_by(|ch| ch == ',' || ch == ';').collect();
+
+        assert_eq!(segments.len(), 3);
+        assert_eq!(segments[0].value(), "foo");
+        assert_eq!(segments[1].value(), "bar");
+        assert_eq!(segments[2].value(), "baz");
     }
 }
