@@ -34,7 +34,10 @@ impl fmt::Display for Position {
 
 impl From<tower_lsp::lsp_types::Position> for Position {
     fn from(position: tower_lsp::lsp_types::Position) -> Self {
-        Position::new(position.line as usize + 1, position.character as usize + 1)
+        Self {
+            line: position.line as usize + 1,
+            column: position.character as usize + 1,
+        }
     }
 }
 
