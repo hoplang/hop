@@ -1,5 +1,36 @@
-use super::Position;
 use std::{cmp, fmt};
+
+/// Represents a position in source code
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Position {
+    /// Line number (1-based)
+    pub line: usize,
+    /// Byte column within the line (1-based)
+    pub column: usize,
+}
+
+impl Position {
+    pub fn new(line: usize, column: usize) -> Self {
+        Position { line, column }
+    }
+
+    /// Internal default position for use within the range module only
+    pub(super) fn default_position() -> Self {
+        Position { line: 1, column: 1 }
+    }
+
+    /// Creates a Range from this position to another position.
+    pub fn to(self, end: Position) -> Range {
+        debug_assert!(self < end, "start must be less than end in Position::to");
+        Range { start: self, end }
+    }
+}
+
+impl fmt::Display for Position {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.line, self.column)
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Range {
@@ -8,11 +39,6 @@ pub struct Range {
 }
 
 impl Range {
-    pub(super) fn new(start: Position, end: Position) -> Self {
-        debug_assert!(start < end, "start must be less than end in Range::new");
-        Range { start, end }
-    }
-
     pub fn start(&self) -> Position {
         self.start
     }
@@ -44,7 +70,6 @@ impl Range {
         position >= self.start && position < self.end
     }
 
-    // returns the intersection of two ranges, or None if they don't overlap
     pub fn intersection(&self, other: &Range) -> Option<Range> {
         let start = cmp::max(self.start, other.start);
         let end = cmp::min(self.end, other.end);

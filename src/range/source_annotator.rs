@@ -1,4 +1,4 @@
-use super::{Position, Range, Ranged};
+use super::range::{Position, Range, Ranged};
 
 /// Trait for any annotation that can be displayed on source code
 pub trait Annotated: Ranged {

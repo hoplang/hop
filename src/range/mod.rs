@@ -1,11 +1,9 @@
-pub mod position;
 pub mod range;
 pub mod ranged_chars;
 pub mod ranged_string;
 pub mod source_annotator;
 
-pub use position::Position;
-pub use range::{Range, Ranged};
+pub use range::{Position, Range, Ranged};
 pub use ranged_chars::RangedChars;
 pub use ranged_string::RangedString;
 pub use source_annotator::{Annotated, SourceAnnotator};

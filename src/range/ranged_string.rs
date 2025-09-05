@@ -1,4 +1,4 @@
-use super::{Range, Ranged};
+use super::range::{Range, Ranged};
 
 #[derive(Debug)]
 pub struct RangedString(String, Range);

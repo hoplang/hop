@@ -1,4 +1,4 @@
-use super::{Position, Range};
+use super::range::{Position, Range};
 use std::str::Chars;
 
 #[derive(Debug, Clone)]
