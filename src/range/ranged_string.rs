@@ -1,4 +1,5 @@
 use super::range::{Range, Ranged};
+use super::source_annotator::Annotated;
 
 #[derive(Debug)]
 pub struct RangedString(String, Range);
@@ -28,5 +29,11 @@ impl From<(char, Range)> for RangedString {
 impl Ranged for RangedString {
     fn range(&self) -> Range {
         self.1
+    }
+}
+
+impl Annotated for RangedString {
+    fn message(&self) -> String {
+        format!("{:#?}", self.0)
     }
 }

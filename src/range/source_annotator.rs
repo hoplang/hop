@@ -248,266 +248,322 @@ impl Default for SourceAnnotator {
 
 #[cfg(test)]
 mod tests {
+    use crate::range::RangedChars;
+
     use super::*;
-    use expect_test::{Expect, expect};
-
-    fn check(
-        annotator: SourceAnnotator,
-        source: &str,
-        annotations: Vec<SimpleAnnotation>,
-        expect: Expect,
-    ) {
-        let actual = annotator.annotate(None, source, annotations);
-        expect.assert_eq(&actual);
-    }
-
-    #[test]
-    fn test_simple_annotation() {
-        let annotations = vec![SimpleAnnotation {
-            range: Position::new(2, 15).to(Position::new(2, 19)),
-            message: "Test error".to_string(),
-        }];
-        let source = "there is\n    some code here";
-
-        check(
-            SourceAnnotator::new(),
-            source,
-            annotations,
-            expect![[r#"
-                Test error
-                2 |     some code here
-                  |               ^^^^
-            "#]],
-        );
-    }
+    use expect_test::expect;
 
     #[test]
     fn test_with_label() {
-        let annotations = vec![SimpleAnnotation {
-            range: Position::new(1, 1).to(Position::new(1, 5)),
-            message: "Missing semicolon".to_string(),
-        }];
-        let source = "code";
+        let source = "line one\nline two\nline three\nline four";
 
-        check(
-            SourceAnnotator::new().with_label("error"),
+        let actual = SourceAnnotator::new().with_label("error").annotate(
+            None,
             source,
-            annotations,
-            expect![[r#"
-                error: Missing semicolon
-                1 | code
-                  | ^^^^
-            "#]],
+            RangedChars::from(source).split_by(|ch| ch == '\n'),
         );
+
+        expect![[r#"
+            error: "line one"
+            1 | line one
+              | ^^^^^^^^
+
+            error: "line two"
+            2 | line two
+              | ^^^^^^^^
+
+            error: "line three"
+            3 | line three
+              | ^^^^^^^^^^
+
+            error: "line four"
+            4 | line four
+              | ^^^^^^^^^
+        "#]]
+        .assert_eq(&actual);
     }
 
     #[test]
     fn test_with_location_info() {
-        let annotations = vec![SimpleAnnotation {
-            range: Position::new(2, 8).to(Position::new(2, 12)),
-            message: "Type error".to_string(),
-        }];
-        let source = "first line\nsecond line";
+        let source = "line one\nline two\nline three\nline four";
 
-        let actual =
-            SourceAnnotator::new()
-                .with_location()
-                .annotate(Some("main.rs"), source, annotations);
+        let actual = SourceAnnotator::new().with_location().annotate(
+            Some("main.rs"),
+            source,
+            RangedChars::from(source).split_by(|ch| ch == '\n'),
+        );
+
         expect![[r#"
-            Type error
-              --> main.rs (line 2, col 8)
-            2 | second line
-              |        ^^^^
+            "line one"
+              --> main.rs (line 1, col 1)
+            1 | line one
+              | ^^^^^^^^
+
+            "line two"
+              --> main.rs (line 2, col 1)
+            2 | line two
+              | ^^^^^^^^
+
+            "line three"
+              --> main.rs (line 3, col 1)
+            3 | line three
+              | ^^^^^^^^^^
+
+            "line four"
+              --> main.rs (line 4, col 1)
+            4 | line four
+              | ^^^^^^^^^
         "#]]
         .assert_eq(&actual);
     }
 
     #[test]
     fn test_with_lines_before() {
-        let annotations = vec![SimpleAnnotation {
-            range: Position::new(3, 6).to(Position::new(3, 11)),
-            message: "Error here".to_string(),
-        }];
         let source = "line one\nline two\nline three\nline four";
 
-        check(
-            SourceAnnotator::new().with_lines_before(2),
+        let actual = SourceAnnotator::new().with_lines_before(2).annotate(
+            None,
             source,
-            annotations,
-            expect![[r#"
-                Error here
-                1 | line one
-                2 | line two
-                3 | line three
-                  |      ^^^^^
-            "#]],
+            RangedChars::from(source).split_by(|ch| ch == '\n'),
         );
+
+        expect![[r#"
+            "line one"
+            1 | line one
+              | ^^^^^^^^
+
+            "line two"
+            1 | line one
+            2 | line two
+              | ^^^^^^^^
+
+            "line three"
+            1 | line one
+            2 | line two
+            3 | line three
+              | ^^^^^^^^^^
+
+            "line four"
+            2 | line two
+            3 | line three
+            4 | line four
+              | ^^^^^^^^^
+        "#]]
+        .assert_eq(&actual);
     }
 
     #[test]
     fn test_with_lines_after() {
-        let annotations = vec![SimpleAnnotation {
-            range: Position::new(2, 6).to(Position::new(2, 9)),
-            message: "Error here".to_string(),
-        }];
-
         let source = "line one\nline two\nline three\nline four";
 
-        check(
-            SourceAnnotator::new().with_lines_after(2),
+        let actual = SourceAnnotator::new().with_lines_after(2).annotate(
+            None,
             source,
-            annotations,
-            expect![[r#"
-                Error here
-                2 | line two
-                  |      ^^^
-                3 | line three
-                4 | line four
-            "#]],
+            RangedChars::from(source).split_by(|ch| ch == '\n'),
         );
+
+        expect![[r#"
+            "line one"
+            1 | line one
+              | ^^^^^^^^
+            2 | line two
+            3 | line three
+
+            "line two"
+            2 | line two
+              | ^^^^^^^^
+            3 | line three
+            4 | line four
+
+            "line three"
+            3 | line three
+              | ^^^^^^^^^^
+            4 | line four
+
+            "line four"
+            4 | line four
+              | ^^^^^^^^^
+        "#]]
+        .assert_eq(&actual);
     }
 
     #[test]
     fn test_tab_expansion() {
-        let annotations = vec![SimpleAnnotation {
-            range: Position::new(2, 2).to(Position::new(2, 6)),
-            message: "Tab test".to_string(),
-        }];
-        let source = "code\n\tcode";
+        let source = "code\n\t\tcode\n\tcode";
 
-        check(
-            SourceAnnotator::new().with_lines_before(1),
+        let actual = SourceAnnotator::new().with_location().annotate(
+            None,
             source,
-            annotations,
-            expect![[r#"
-                Tab test
-                1 | code
-                2 |     code
-                  |     ^^^^
-            "#]],
+            RangedChars::from(source).split_by(|ch| ch.is_whitespace()),
         );
-    }
 
-    #[test]
-    fn test_multiple_annotations() {
-        let annotations = vec![
-            SimpleAnnotation {
-                range: Position::new(1, 6).to(Position::new(1, 9)),
-                message: "First error".to_string(),
-            },
-            SimpleAnnotation {
-                range: Position::new(3, 6).to(Position::new(3, 11)),
-                message: "Second error".to_string(),
-            },
-        ];
+        expect![[r#"
+            "code"
+              --> (line 1, col 1)
+            1 | code
+              | ^^^^
 
-        let source = "line one\nline two\nline three";
+            "code"
+              --> (line 2, col 3)
+            2 |         code
+              |         ^^^^
 
-        check(
-            SourceAnnotator::new(),
-            source,
-            annotations,
-            expect![[r#"
-                First error
-                1 | line one
-                  |      ^^^
-
-                Second error
-                3 | line three
-                  |      ^^^^^
-            "#]],
-        );
+            "code"
+              --> (line 3, col 2)
+            3 |     code
+              |     ^^^^
+        "#]]
+        .assert_eq(&actual);
     }
 
     #[test]
     fn test_unicode_emoji_width() {
-        let annotations = vec![SimpleAnnotation {
-            range: Position::new(1, 6).to(Position::new(1, 10)),
-            message: "After emoji".to_string(),
-        }];
-
-        // Emoji is 4 bytes (positions 1-4), space is 1 byte (position 5)
-        // "code" starts at byte position 6
         let source = "😀 code";
 
-        check(
-            SourceAnnotator::new(),
+        let actual = SourceAnnotator::new().with_location().annotate(
+            None,
             source,
-            annotations,
-            expect![[r#"
-                After emoji
-                1 | 😀 code
-                  |    ^^^^
-            "#]],
+            RangedChars::from(source).split_by(|ch| ch.is_whitespace()),
         );
+
+        expect![[r#"
+            "😀"
+              --> (line 1, col 1)
+            1 | 😀 code
+              | ^^
+
+            "code"
+              --> (line 1, col 6)
+            1 | 😀 code
+              |    ^^^^
+        "#]]
+        .assert_eq(&actual);
     }
 
     #[test]
     fn test_location_without_filename() {
-        let annotations = vec![SimpleAnnotation {
-            range: Position::new(1, 6).to(Position::new(1, 10)),
-            message: "Error without filename".to_string(),
-        }];
         let source = "some code";
 
-        check(
-            SourceAnnotator::new().with_location(),
+        let actual = SourceAnnotator::new().with_location().annotate(
+            None,
             source,
-            annotations,
-            expect![[r#"
-                Error without filename
-                  --> (line 1, col 6)
-                1 | some code
-                  |      ^^^^
-            "#]],
+            RangedChars::from(source).split_by(|ch| ch.is_whitespace()),
         );
+
+        expect![[r#"
+            "some"
+              --> (line 1, col 1)
+            1 | some code
+              | ^^^^
+
+            "code"
+              --> (line 1, col 6)
+            1 | some code
+              |      ^^^^
+        "#]]
+        .assert_eq(&actual);
     }
 
     #[test]
     fn test_lines_before_exceeds_start() {
-        let annotations = vec![SimpleAnnotation {
-            range: Position::new(5, 6).to(Position::new(5, 10)),
-            message: "Error on line 5".to_string(),
-        }];
         let source = "line one\nline two\nline three\nline four\nline five\nline six";
 
-        check(
-            SourceAnnotator::new().with_lines_before(1000),
+        let actual = SourceAnnotator::new().with_lines_before(1000).annotate(
+            None,
             source,
-            annotations,
-            expect![[r#"
-                Error on line 5
-                1 | line one
-                2 | line two
-                3 | line three
-                4 | line four
-                5 | line five
-                  |      ^^^^
-            "#]],
+            RangedChars::from(source).split_by(|ch| ch == '\n'),
         );
+
+        expect![[r#"
+            "line one"
+            1 | line one
+              | ^^^^^^^^
+
+            "line two"
+            1 | line one
+            2 | line two
+              | ^^^^^^^^
+
+            "line three"
+            1 | line one
+            2 | line two
+            3 | line three
+              | ^^^^^^^^^^
+
+            "line four"
+            1 | line one
+            2 | line two
+            3 | line three
+            4 | line four
+              | ^^^^^^^^^
+
+            "line five"
+            1 | line one
+            2 | line two
+            3 | line three
+            4 | line four
+            5 | line five
+              | ^^^^^^^^^
+
+            "line six"
+            1 | line one
+            2 | line two
+            3 | line three
+            4 | line four
+            5 | line five
+            6 | line six
+              | ^^^^^^^^
+        "#]]
+        .assert_eq(&actual);
     }
 
     #[test]
     fn test_multi_line_annotation() {
-        let annotations = vec![SimpleAnnotation {
-            range: Position::new(2, 6).to(Position::new(4, 5)),
-            message: "Multi-line error".to_string(),
-        }];
         let source = "line one\nline two\nline three\nline four\nline five";
 
-        check(
-            SourceAnnotator::new(),
+        let actual = SourceAnnotator::new().annotate(
+            None,
             source,
-            annotations,
-            expect![[r#"
-                Multi-line error
-                2 | line two
-                  |      ^^^
-                3 | line three
-                  | ^^^^^^^^^^
-                4 | line four
-                  | ^^^^
-            "#]],
+            RangedChars::from(source).split_by(|ch| ch == 'n'),
         );
+
+        expect![[r#"
+            "li"
+            1 | line one
+              | ^^
+
+            "e o"
+            1 | line one
+              |    ^^^
+
+            "e\nli"
+            1 | line one
+              |        ^
+            2 | line two
+              | ^^
+
+            "e two\nli"
+            2 | line two
+              |    ^^^^^
+            3 | line three
+              | ^^
+
+            "e three\nli"
+            3 | line three
+              |    ^^^^^^^
+            4 | line four
+              | ^^
+
+            "e four\nli"
+            4 | line four
+              |    ^^^^^^
+            5 | line five
+              | ^^
+
+            "e five"
+            5 | line five
+              |    ^^^^^^
+        "#]]
+        .assert_eq(&actual);
     }
 }
