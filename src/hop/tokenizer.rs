@@ -307,12 +307,23 @@ impl<'a> Tokenizer<'a> {
             // Comment
             ('-', _) if self.chars.peek()?.0 == '-' => {
                 self.chars.next();
+                let mut count = 0;
                 loop {
-                    if self.chars.next()?.0 == '-' && self.chars.next()?.0 == '-' {
-                        if let ('>', ch_range) = self.chars.next()? {
-                            return Some(Token::Comment {
-                                range: first_token_range.extend_to(ch_range),
-                            });
+                    match self.chars.next()? {
+                        ('-', _) => {
+                            count += 1;
+                        }
+                        ('>', ch_range) => {
+                            if count >= 2 {
+                                return Some(Token::Comment {
+                                    range: first_token_range.extend_to(ch_range),
+                                });
+                            } else {
+                                count = 0;
+                            }
+                        }
+                        _ => {
+                            count = 0;
                         }
                     }
                 }
@@ -938,6 +949,39 @@ mod tests {
 
                 Text [1 byte, "\n"]
                 2 | </p>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_comment_tricky() {
+        check(
+            indoc! {"
+                <!-- ---><!-- ----><!----><!-----><!-- ---->
+            "},
+            expect![[r#"
+                Comment
+                1 | <!-- ---><!-- ----><!----><!-----><!-- ---->
+                  | ^^^^^^^^^
+
+                Comment
+                1 | <!-- ---><!-- ----><!----><!-----><!-- ---->
+                  |          ^^^^^^^^^^
+
+                Comment
+                1 | <!-- ---><!-- ----><!----><!-----><!-- ---->
+                  |                    ^^^^^^^
+
+                Comment
+                1 | <!-- ---><!-- ----><!----><!-----><!-- ---->
+                  |                           ^^^^^^^^
+
+                Comment
+                1 | <!-- ---><!-- ----><!----><!-----><!-- ---->
+                  |                                   ^^^^^^^^^^
+
+                Text [1 byte, "\n"]
+                1 | <!-- ---><!-- ----><!----><!-----><!-- ---->
             "#]],
         );
     }
