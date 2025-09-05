@@ -2,7 +2,7 @@ use std::{cmp, collections::HashMap};
 
 use super::{
     RangedChars, RangedString,
-    range::{Position, Range, Ranged},
+    range::{Range, Ranged},
 };
 
 /// Trait for any annotation that can be displayed on source code
