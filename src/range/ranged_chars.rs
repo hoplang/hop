@@ -8,10 +8,19 @@ pub struct RangedChars<'a> {
 }
 
 impl<'a> RangedChars<'a> {
-    pub fn new(input: &'a str, position: Position) -> Self {
+    pub fn with_position(input: &'a str, position: Position) -> Self {
         Self {
             chars: input.chars(),
             position,
+        }
+    }
+}
+
+impl<'a> From<&'a str> for RangedChars<'a> {
+    fn from(input: &'a str) -> Self {
+        Self {
+            chars: input.chars(),
+            position: Position::default(),
         }
     }
 }

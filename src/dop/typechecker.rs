@@ -1,8 +1,8 @@
 use super::parser::{BinaryOp, DopExpr, UnaryOp};
 use crate::common::TypeError;
-use crate::range::{Range, Ranged};
 use crate::hop::environment::Environment;
 use crate::hop::typechecker::TypeAnnotation;
+use crate::range::{Range, Ranged};
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -197,7 +197,6 @@ pub fn typecheck_expr(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::range::Position;
     use crate::dop::DopTokenizer;
     use crate::dop::parse_parameters;
     use crate::dop::parser::parse_expr;

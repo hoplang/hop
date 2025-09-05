@@ -3,7 +3,7 @@ use std::iter::Peekable;
 use std::mem;
 
 use crate::common::ParseError;
-use crate::range::{Position, Range, Ranged, RangedChars, RangedString};
+use crate::range::{Range, Ranged, RangedChars, RangedString};
 use crate::dop::DopTokenizer;
 use crate::dop::tokenizer::DopToken;
 use crate::hop::ast::Attribute;
@@ -126,7 +126,7 @@ pub struct Tokenizer<'a> {
 impl<'a> Tokenizer<'a> {
     pub fn new(input: &'a str) -> Self {
         Self {
-            chars: RangedChars::new(input, Position::default()).peekable(),
+            chars: RangedChars::from(input).peekable(),
             errors: VecDeque::new(),
             raw_text_closing_tag: None,
         }

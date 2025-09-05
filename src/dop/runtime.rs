@@ -83,7 +83,6 @@ pub fn evaluate_expr(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::range::Position;
     use crate::dop::{DopTokenizer, parse_expr};
     use crate::hop::environment::Environment;
     use expect_test::{Expect, expect};

@@ -64,7 +64,7 @@ pub struct DopTokenizer<'a> {
 impl<'a> DopTokenizer<'a> {
     pub fn with_position(input: &'a str, start_pos: Position) -> Self {
         Self {
-            chars: RangedChars::new(input, start_pos).peekable(),
+            chars: RangedChars::with_position(input, start_pos).peekable(),
         }
     }
     
@@ -76,7 +76,7 @@ impl<'a> DopTokenizer<'a> {
 impl<'a> From<&'a str> for DopTokenizer<'a> {
     fn from(input: &'a str) -> Self {
         Self {
-            chars: RangedChars::new(input, Position::default()).peekable(),
+            chars: RangedChars::from(input).peekable(),
         }
     }
 }
