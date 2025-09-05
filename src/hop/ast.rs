@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::common::{Position, Range, Ranged};
+use crate::range::{Position, Range, Ranged};
 use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -416,8 +416,8 @@ mod tests {
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
     use crate::test_utils::position_marker::extract_position;
-    use crate::tui::source_annotator::SimpleAnnotation;
-    use crate::{common::Range, tui::source_annotator::SourceAnnotator};
+    use crate::range::SimpleAnnotation;
+    use crate::range::{Range, SourceAnnotator};
     use expect_test::{Expect, expect};
     use indoc::indoc;
 

@@ -1,4 +1,4 @@
-use crate::common::{Range, Ranged};
+use super::{Position, Range, Ranged};
 
 /// Trait for any annotation that can be displayed on source code
 pub trait Annotated: Ranged {
@@ -123,8 +123,6 @@ impl SourceAnnotator {
     }
 
     fn format_annotation(&self, output: &mut String, lines: &[&str], range: Range) {
-        use crate::common::Position;
-
         let max_line_col_width = if self.show_line_numbers {
             lines.len().to_string().len()
         } else {
@@ -238,7 +236,6 @@ impl Default for SourceAnnotator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::Position;
     use expect_test::{Expect, expect};
 
     fn check(

@@ -1,5 +1,6 @@
 use super::parser::{BinaryOp, DopExpr, UnaryOp};
-use crate::common::{Range, Ranged, TypeError};
+use crate::common::TypeError;
+use crate::range::{Range, Ranged};
 use crate::hop::environment::Environment;
 use crate::hop::typechecker::TypeAnnotation;
 use std::collections::BTreeMap;
@@ -196,11 +197,11 @@ pub fn typecheck_expr(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::Position;
+    use crate::range::Position;
     use crate::dop::DopTokenizer;
     use crate::dop::parse_parameters;
     use crate::dop::parser::parse_expr;
-    use crate::tui::source_annotator::SourceAnnotator;
+    use crate::range::SourceAnnotator;
     use expect_test::{Expect, expect};
 
     fn check(env_str: &str, expr_str: &str, expected: Expect) {

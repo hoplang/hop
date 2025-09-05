@@ -1,4 +1,4 @@
-use crate::common::Position;
+use crate::range::Position;
 use crate::filesystem::files::{self as files, ProjectRoot};
 use crate::hop::program::{DefinitionLocation, Program, RenameLocation};
 use std::path::Path;
@@ -33,7 +33,7 @@ impl HopLanguageServer {
         }
     }
 
-    fn to_lsp_range(range: crate::common::Range) -> tower_lsp::lsp_types::Range {
+    fn to_lsp_range(range: crate::range::Range) -> tower_lsp::lsp_types::Range {
         tower_lsp::lsp_types::Range {
             start: Self::to_lsp_position(range.start),
             end: Self::to_lsp_position(range.end),

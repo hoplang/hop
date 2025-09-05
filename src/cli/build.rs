@@ -7,7 +7,7 @@ use std::path::Path;
 
 use crate::filesystem::files;
 use crate::hop::program::Program;
-use crate::tui::source_annotator::SourceAnnotator;
+use crate::range::SourceAnnotator;
 use crate::tui::timing;
 
 fn copy_dir_recursive(

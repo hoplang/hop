@@ -1,4 +1,4 @@
-use crate::common::{Position, Range, Ranged as _, RangedChars, RangedString};
+use crate::range::{Position, Range, Ranged as _, RangedChars, RangedString};
 use std::{fmt, iter::Peekable, str::FromStr};
 
 use super::parser::ParseError;
@@ -180,7 +180,7 @@ impl Iterator for DopTokenizer<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::tui::source_annotator::{SimpleAnnotation, SourceAnnotator};
+    use crate::range::{SimpleAnnotation, SourceAnnotator};
 
     use super::*;
     use expect_test::{Expect, expect};

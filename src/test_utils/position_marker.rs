@@ -1,4 +1,4 @@
-use crate::common::Position;
+use crate::range::Position;
 
 /// Extracts a single position marked with `^` from the source.
 ///

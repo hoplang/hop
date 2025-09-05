@@ -1,9 +1,10 @@
-use crate::common::{Range, Ranged, TypeError};
+use crate::common::TypeError;
+use crate::range::{Range, Ranged};
 use crate::dop::{DopParameter, DopType, is_subtype, typecheck_expr};
 use crate::hop::ast::HopAst;
 use crate::hop::ast::{ComponentDefinition, HopNode, Import, Render};
 use crate::hop::environment::Environment;
-use crate::tui::source_annotator::Annotated;
+use crate::range::Annotated;
 use std::collections::{BTreeMap, HashMap};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -445,7 +446,7 @@ mod tests {
     use super::*;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
-    use crate::tui::source_annotator::SourceAnnotator;
+    use crate::range::SourceAnnotator;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use simple_txtar::Archive;

@@ -1,11 +1,12 @@
-use crate::common::{ParseError, Position, Range, Ranged, TypeError};
+use crate::common::{ParseError, TypeError};
+use crate::range::{Position, Range, Ranged};
 use crate::hop::ast::HopAst;
 use crate::hop::evaluator;
 use crate::hop::parser::parse;
 use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
-use crate::tui::source_annotator::Annotated;
+use crate::range::Annotated;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
@@ -493,7 +494,7 @@ impl Program {
 mod tests {
     use super::*;
     use crate::test_utils::archive::extract_markers_from_archive;
-    use crate::tui::source_annotator::SourceAnnotator;
+    use crate::range::SourceAnnotator;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use simple_txtar::Archive;

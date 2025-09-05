@@ -2,11 +2,12 @@ use std::collections::{BTreeMap, VecDeque};
 use std::iter::Peekable;
 use std::mem;
 
-use crate::common::{ParseError, Position, Range, Ranged, RangedChars, RangedString};
+use crate::common::ParseError;
+use crate::range::{Position, Range, Ranged, RangedChars, RangedString};
 use crate::dop::DopTokenizer;
 use crate::dop::tokenizer::DopToken;
 use crate::hop::ast::Attribute;
-use crate::tui::source_annotator::Annotated;
+use crate::range::Annotated;
 
 type Attributes = BTreeMap<String, Attribute>;
 
@@ -538,7 +539,7 @@ fn is_tag_name_with_raw_content(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::tui::source_annotator::{SimpleAnnotation, SourceAnnotator};
+    use crate::range::{SimpleAnnotation, SourceAnnotator};
 
     use super::*;
     use expect_test::{Expect, expect};

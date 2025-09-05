@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::iter::Peekable;
 
-use crate::common::{Range, Ranged};
+use crate::range::{Range, Ranged};
 use crate::dop::DopType;
 use crate::dop::tokenizer::{DopToken, DopTokenizer};
 use crate::dop::typechecker::RangeDopType;
@@ -610,10 +610,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        common::Position,
-        tui::source_annotator::{SimpleAnnotation, SourceAnnotator},
-    };
+    use crate::range::{Position, SimpleAnnotation, SourceAnnotator};
     use expect_test::{Expect, expect};
 
     fn annotate_error(input: &str, error: ParseError) -> String {

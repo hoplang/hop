@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
-use crate::common::{ParseError, Range, Ranged, is_void_element};
+use crate::common::{ParseError, is_void_element};
+use crate::range::{Range, Ranged};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
 

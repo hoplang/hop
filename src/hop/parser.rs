@@ -523,7 +523,7 @@ fn construct_node(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{common::Ranged, tui::source_annotator::SourceAnnotator};
+    use crate::range::{Ranged, SourceAnnotator};
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
