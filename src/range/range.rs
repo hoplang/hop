@@ -201,6 +201,11 @@ impl<'a> RangedChars<'a> {
             }
         })
     }
+
+    pub fn lines(self) -> impl Iterator<Item = (usize, super::ranged_string::RangedString)> {
+        self.split_by(|ch| ch == '\n')
+            .map(|line| (line.range().start().line(), line))
+    }
 }
 
 impl<'a> From<&'a str> for RangedChars<'a> {

@@ -1,4 +1,9 @@
-use super::range::{Position, Range, Ranged};
+use std::{cmp, collections::HashMap};
+
+use super::{
+    RangedChars, RangedString,
+    range::{Position, Range, Ranged},
+};
 
 /// Trait for any annotation that can be displayed on source code
 pub trait Annotated: Ranged {
@@ -96,7 +101,9 @@ impl SourceAnnotator {
         annotations: impl IntoIterator<Item = impl Annotated>,
     ) -> String {
         let mut output = String::new();
-        let lines: Vec<&str> = source.lines().collect();
+        let lines = RangedChars::from(source).lines().collect::<HashMap<_, _>>();
+
+        let line_count = source.lines().count();
 
         for (i, annotation) in annotations.into_iter().enumerate() {
             if i > 0 {
@@ -128,50 +135,34 @@ impl SourceAnnotator {
                 }
             }
 
-            self.format_annotation(&mut output, &lines, range);
+            self.format_annotation(&mut output, &lines, range, line_count);
         }
 
         output
     }
 
-    fn format_annotation(&self, output: &mut String, lines: &[&str], range: Range) {
-        let max_line_col_width = if self.show_line_numbers {
-            lines.len().to_string().len()
-        } else {
-            0
-        };
+    fn format_annotation(
+        &self,
+        output: &mut String,
+        lines: &HashMap<usize, RangedString>,
+        range: Range,
+        line_count: usize,
+    ) {
+        let max_line_col_width = lines.len().to_string().len();
 
-        let first_line = range
-            .start()
-            .line()
-            .saturating_sub(self.lines_before)
-            .max(1);
-        let last_line = (range.end().line() + self.lines_after).min(lines.len());
+        let first_line = cmp::max(1, range.start().line().saturating_sub(self.lines_before));
+        let last_line = cmp::min(line_count, range.end().line() + self.lines_after);
 
-        // Use enumerated iterator over lines
-        for (i, line) in lines.iter().enumerate() {
-            let line_num = i + 1; // Convert 0-based index to 1-based line number
-
-            // Skip lines outside our display range
-            if line_num < first_line || line_num > last_line {
+        for line_num in first_line..=last_line {
+            let line_str = lines.get(&line_num).map(|s| s.value()).unwrap_or_default();
+            self.format_line(output, line_num, line_str, max_line_col_width);
+            if line_str.is_empty() {
                 continue;
             }
-
-            self.format_line(output, line_num, line, max_line_col_width);
-
-            if line.is_empty() {
-                continue;
-            }
-
-            // Check if this line intersects with the annotation range
-            // Create a range for the current line (from column 1 to end of line + 1)
-            let line_range = Position::new(line_num, 1).to(Position::new(line_num, line.len() + 1));
-
-            // If this line intersects with the annotation, add underline
-            // The intersection will always be on a single line (line_num)
-            // So we can safely pass it to format_underline
-            if let Some(intersection) = range.intersection(&line_range) {
-                self.format_underline(output, line, intersection, max_line_col_width);
+            if let Some(line) = lines.get(&line_num) {
+                if let Some(intersection) = line.range().intersection(&range) {
+                    self.format_underline(output, line_str, intersection, max_line_col_width);
+                }
             }
         }
     }
