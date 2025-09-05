@@ -86,6 +86,10 @@ impl Range {
         position >= self.start && position < self.end
     }
 
+    pub fn contains_range(&self, range: Range) -> bool {
+        self.start <= range.start && range.end <= self.end
+    }
+
     pub fn intersection(&self, other: &Range) -> Option<Range> {
         let start = cmp::max(self.start, other.start);
         let end = cmp::min(self.end, other.end);

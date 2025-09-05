@@ -160,28 +160,28 @@ impl SourceAnnotator {
                 continue;
             }
             if let Some(line) = lines.get(&line_num) {
+                let mut written = false;
                 if let Some(intersection) = line.range().intersection(&range) {
                     if self.show_line_numbers {
                         output.push_str(&format!("{:width$} | ", "", width = max_line_col_width));
                     }
-                    self.format_underline(output, line_str, intersection);
+                    for (ch, ch_range) in line.chars() {
+                        if intersection.contains_range(ch_range) {
+                            written = true;
+                            output.push_str(
+                                &self
+                                    .underline_char
+                                    .to_string()
+                                    .repeat(self.char_display_width(ch)),
+                            );
+                        } else if !written {
+                            output.push_str(&" ".repeat(self.char_display_width(ch)));
+                        }
+                    }
+                    output.push('\n');
                 }
             }
         }
-    }
-
-    fn format_underline(&self, output: &mut String, line: &str, range: Range) {
-        if range.start().line() != range.end().line() {
-            panic!("Expected range.start().line == range.end().line")
-        }
-
-        let display_start = self.byte_to_display_position(line, range.start().column());
-        let display_end = self.byte_to_display_position(line, range.end().column());
-
-        output.push_str(&" ".repeat(display_start.saturating_sub(1)));
-        let underline_length = display_end.saturating_sub(display_start).max(1);
-        output.push_str(&self.underline_char.to_string().repeat(underline_length));
-        output.push('\n');
     }
 
     fn format_line(&self, output: &mut String, line_num: usize, content: &str, width: usize) {
@@ -192,31 +192,13 @@ impl SourceAnnotator {
         output.push('\n');
     }
 
-    fn byte_to_display_position(&self, line: &str, byte_column: usize) -> usize {
-        // byte_column is 1-based, convert to 0-based byte offset
-        let target_byte_offset = byte_column.saturating_sub(1);
-
-        // If byte offset is beyond the line, return display width + 1
-        if target_byte_offset >= line.len() {
-            return self.display_width(line) + 1;
-        }
-
-        // Calculate display width of the substring up to the byte offset
-        let substring = &line[..target_byte_offset];
-        self.display_width(substring) + 1 // +1 for 1-based indexing
-    }
-
-    fn display_width(&self, text: &str) -> usize {
+    fn char_display_width(&self, ch: char) -> usize {
         use unicode_width::UnicodeWidthChar;
-        let mut width = 0;
-        for ch in text.chars() {
-            if ch == '\t' {
-                width += self.tab_width;
-            } else {
-                width += ch.width().unwrap_or(0);
-            }
+        if ch == '\t' {
+            self.tab_width
+        } else {
+            ch.width().unwrap_or(0)
         }
-        width
     }
 
     fn expand_tabs(&self, text: &str) -> String {
