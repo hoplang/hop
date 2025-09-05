@@ -1,6 +1,6 @@
-use crate::range::Position;
 use crate::filesystem::files::{self as files, ProjectRoot};
 use crate::hop::program::{DefinitionLocation, Program, RenameLocation};
+use crate::range::Position;
 use std::path::Path;
 use tokio::sync::{OnceCell, RwLock};
 use tower_lsp::jsonrpc::Result;

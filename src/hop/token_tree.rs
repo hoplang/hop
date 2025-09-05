@@ -1,7 +1,7 @@
 use crate::common::{ParseError, is_void_element};
-use crate::range::{Range, Ranged};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
+use crate::range::{Range, Ranged};
 
 /// A TokenTree represents a tree of tokens.
 ///
