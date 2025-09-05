@@ -431,13 +431,15 @@ mod tests {
         let found_node = ast.find_node_at_position(position);
 
         let output = if let Some(node) = found_node {
-            let annotation = SimpleAnnotation {
-                range: node.range(),
-                message: "range".to_string(),
-            };
             let annotator = SourceAnnotator::new().without_location();
-
-            annotator.annotate(None, &source, &[annotation])
+            annotator.annotate(
+                None,
+                &source,
+                [SimpleAnnotation {
+                    range: node.range(),
+                    message: "range".to_string(),
+                }],
+            )
         } else {
             "No node found at position".to_string()
         };

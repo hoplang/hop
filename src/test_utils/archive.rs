@@ -1,5 +1,5 @@
-use crate::range::position_marker::extract_position;
 use crate::range::Position;
+use crate::range::position_marker::extract_position;
 use simple_txtar::{Archive, Builder, File};
 use std::{
     env, fs,

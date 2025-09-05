@@ -1,5 +1,4 @@
 use crate::common::{ParseError, TypeError};
-use crate::range::{Position, Range, Ranged};
 use crate::hop::ast::HopAst;
 use crate::hop::evaluator;
 use crate::hop::parser::parse;
@@ -7,6 +6,7 @@ use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
 use crate::range::Annotated;
+use crate::range::{Position, Range, Ranged};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
@@ -493,8 +493,8 @@ impl Program {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::archive::extract_markers_from_archive;
     use crate::range::SourceAnnotator;
+    use crate::test_utils::archive::extract_markers_from_archive;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use simple_txtar::Archive;
@@ -583,7 +583,7 @@ mod tests {
         let output = SourceAnnotator::new().with_location().annotate(
             Some(&loc.module.clone()),
             source_code,
-            &[loc],
+            [loc],
         );
 
         expected.assert_eq(&output);

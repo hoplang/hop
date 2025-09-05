@@ -136,7 +136,8 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                     } else {
                         let params = expression.as_ref().and_then(|(expr_string, expr_range)| {
                             let mut tokenizer =
-                                DopTokenizer::with_position(expr_string, expr_range.start()).peekable();
+                                DopTokenizer::with_position(expr_string, expr_range.start())
+                                    .peekable();
                             match dop::parse_parameters(&mut tokenizer) {
                                 Ok(params) => Some((params, *expr_range)),
                                 Err(dop::parser::ParseError::UnexpectedEof) => {
@@ -266,7 +267,8 @@ fn construct_node(
             expression: (expression, expression_range),
             ..
         } => {
-            let mut tokenizer = DopTokenizer::with_position(&expression, expression_range.start()).peekable();
+            let mut tokenizer =
+                DopTokenizer::with_position(&expression, expression_range.start()).peekable();
             match dop::parse_expr(&mut tokenizer) {
                 Ok(expression) => HopNode::TextExpression {
                     expression,
@@ -300,7 +302,8 @@ fn construct_node(
                     // TODO: Check for unrecognized attributes
                     Some((expr_string, expr_range)) => {
                         let mut tokenizer =
-                            DopTokenizer::with_position(&expr_string, expr_range.start()).peekable();
+                            DopTokenizer::with_position(&expr_string, expr_range.start())
+                                .peekable();
                         match dop::parse_expr(&mut tokenizer) {
                             Ok(condition) => HopNode::If {
                                 condition,
@@ -338,7 +341,8 @@ fn construct_node(
                     // TODO: Check for unrecognized attributes
                     Some((expr_string, expr_range)) => {
                         let mut tokenizer =
-                            DopTokenizer::with_position(&expr_string, expr_range.start()).peekable();
+                            DopTokenizer::with_position(&expr_string, expr_range.start())
+                                .peekable();
                         match dop::parse_loop_header(&mut tokenizer) {
                             Ok((var_name, array_expr)) => HopNode::For {
                                 var_name,
@@ -429,7 +433,8 @@ fn construct_node(
                     let args = match &expression {
                         Some((expr_string, expr_range)) => {
                             let mut tokenizer =
-                                DopTokenizer::with_position(expr_string, expr_range.start()).peekable();
+                                DopTokenizer::with_position(expr_string, expr_range.start())
+                                    .peekable();
                             match dop::parse_arguments(&mut tokenizer) {
                                 Ok(named_args) => Some((named_args, *expr_range)),
                                 Err(dop::parser::ParseError::UnexpectedEof) => {
@@ -483,7 +488,8 @@ fn construct_node(
                                 Some(val) => val,
                             };
                             let mut tokenizer =
-                                DopTokenizer::with_position(attr_val, attr_val_range.start()).peekable();
+                                DopTokenizer::with_position(attr_val, attr_val_range.start())
+                                    .peekable();
                             match dop::parse_expr(&mut tokenizer) {
                                 Ok(expression) => set_attributes.push(DopExprAttribute {
                                     name: name.to_string(),
@@ -571,7 +577,7 @@ mod tests {
             SourceAnnotator::new()
                 .with_label("error")
                 .with_lines_before(1)
-                .annotate(None, input, &errors)
+                .annotate(None, input, errors)
         } else {
             for component in module.get_component_definitions() {
                 if component.tag_name == "main-comp" {

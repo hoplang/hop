@@ -614,7 +614,7 @@ mod tests {
         match error {
             ParseError::UnexpectedEof => "Unexpected end of expression".to_string(),
             ParseError::Ranged { message, range } => {
-                annotator.annotate(None, input, &[SimpleAnnotation { message, range }])
+                annotator.annotate(None, input, [SimpleAnnotation { message, range }])
             }
         }
     }
@@ -748,10 +748,7 @@ mod tests {
 
     #[test]
     fn test_parse_expr_error_dot_no_identifier() {
-        check_parse_expr(
-            "user.",
-            expect!["Unexpected end of expression"],
-        );
+        check_parse_expr("user.", expect!["Unexpected end of expression"]);
     }
 
     #[test]
@@ -852,18 +849,12 @@ mod tests {
 
     #[test]
     fn test_parse_expr_error_operator_at_end() {
-        check_parse_expr(
-            "x ==",
-            expect!["Unexpected end of expression"],
-        );
+        check_parse_expr("x ==", expect!["Unexpected end of expression"]);
     }
 
     #[test]
     fn test_parse_expr_error_not_without_operand() {
-        check_parse_expr(
-            "!",
-            expect!["Unexpected end of expression"],
-        );
+        check_parse_expr("!", expect!["Unexpected end of expression"]);
     }
 
     #[test]
@@ -1790,10 +1781,7 @@ mod tests {
 
     #[test]
     fn test_parse_named_arguments_missing_value_error() {
-        check_parse_arguments(
-            "name:",
-            expect!["Unexpected end of expression"],
-        );
+        check_parse_arguments("name:", expect!["Unexpected end of expression"]);
     }
 
     #[test]

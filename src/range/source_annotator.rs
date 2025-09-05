@@ -5,6 +5,12 @@ pub trait Annotated: Ranged {
     fn message(&self) -> String;
 }
 
+impl<T: Annotated> Annotated for &T {
+    fn message(&self) -> String {
+        (*self).message()
+    }
+}
+
 /// Simple annotation implementation for basic use cases
 pub struct SimpleAnnotation {
     pub range: Range,
@@ -83,16 +89,16 @@ impl SourceAnnotator {
         self
     }
 
-    pub fn annotate<A: Annotated>(
+    pub fn annotate(
         &self,
         filename: Option<&str>,
         source: &str,
-        annotations: &[A],
+        annotations: impl IntoIterator<Item = impl Annotated>,
     ) -> String {
         let mut output = String::new();
         let lines: Vec<&str> = source.lines().collect();
 
-        for (i, annotation) in annotations.iter().enumerate() {
+        for (i, annotation) in annotations.into_iter().enumerate() {
             if i > 0 {
                 output.push('\n');
             }
@@ -251,7 +257,7 @@ mod tests {
         annotations: Vec<SimpleAnnotation>,
         expect: Expect,
     ) {
-        let actual = annotator.annotate(None, source, &annotations);
+        let actual = annotator.annotate(None, source, annotations);
         expect.assert_eq(&actual);
     }
 
@@ -306,7 +312,7 @@ mod tests {
         let actual =
             SourceAnnotator::new()
                 .with_location()
-                .annotate(Some("main.rs"), source, &annotations);
+                .annotate(Some("main.rs"), source, annotations);
         expect![[r#"
             Type error
               --> main.rs (line 2, col 8)

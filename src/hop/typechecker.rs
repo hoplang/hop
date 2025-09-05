@@ -1,10 +1,10 @@
 use crate::common::TypeError;
-use crate::range::{Range, Ranged};
 use crate::dop::{DopParameter, DopType, is_subtype, typecheck_expr};
 use crate::hop::ast::HopAst;
 use crate::hop::ast::{ComponentDefinition, HopNode, Import, Render};
 use crate::hop::environment::Environment;
 use crate::range::Annotated;
+use crate::range::{Range, Ranged};
 use std::collections::{BTreeMap, HashMap};
 
 #[derive(Debug, Clone, PartialEq)]

@@ -586,7 +586,7 @@ mod tests {
             }
         }
 
-        expected.assert_eq(&SourceAnnotator::new().annotate(None, input, &annotations));
+        expected.assert_eq(&SourceAnnotator::new().annotate(None, input, annotations));
     }
 
     #[test]

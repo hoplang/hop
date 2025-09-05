@@ -226,7 +226,7 @@ mod tests {
                 .with_label("error")
                 .without_location()
                 .without_line_numbers()
-                .annotate(None, expr_str, &[e]),
+                .annotate(None, expr_str, [e]),
         };
 
         expected.assert_eq(&actual);

@@ -143,6 +143,12 @@ impl Ranged for Range {
     }
 }
 
+impl<T: Ranged> Ranged for &T {
+    fn range(&self) -> Range {
+        (*self).range()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RangedChars<'a> {
     chars: Chars<'a>,
