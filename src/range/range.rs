@@ -32,6 +32,21 @@ impl fmt::Display for Position {
     }
 }
 
+impl From<tower_lsp::lsp_types::Position> for Position {
+    fn from(position: tower_lsp::lsp_types::Position) -> Self {
+        Position::new(position.line as usize + 1, position.character as usize + 1)
+    }
+}
+
+impl From<Position> for tower_lsp::lsp_types::Position {
+    fn from(position: Position) -> Self {
+        tower_lsp::lsp_types::Position {
+            line: (position.line - 1) as u32,
+            character: (position.column - 1) as u32,
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Range {
     start: Position,
@@ -92,6 +107,15 @@ impl fmt::Display for Range {
 impl fmt::Debug for Range {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(self, f)
+    }
+}
+
+impl From<Range> for tower_lsp::lsp_types::Range {
+    fn from(range: Range) -> Self {
+        tower_lsp::lsp_types::Range {
+            start: range.start().into(),
+            end: range.end().into(),
+        }
     }
 }
 

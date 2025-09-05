@@ -1,6 +1,5 @@
 use crate::filesystem::files::{self as files, ProjectRoot};
 use crate::hop::program::{DefinitionLocation, Program, RenameLocation};
-use crate::range::Position;
 use std::path::Path;
 use tokio::sync::{OnceCell, RwLock};
 use tower_lsp::jsonrpc::Result;
@@ -19,24 +18,6 @@ impl HopLanguageServer {
             client,
             program: RwLock::new(Program::new()),
             root: OnceCell::new(),
-        }
-    }
-
-    fn from_lsp_position(position: tower_lsp::lsp_types::Position) -> Position {
-        Position::new(position.line as usize + 1, position.character as usize + 1)
-    }
-
-    fn to_lsp_position(position: Position) -> tower_lsp::lsp_types::Position {
-        tower_lsp::lsp_types::Position {
-            line: (position.line - 1) as u32,
-            character: (position.column - 1) as u32,
-        }
-    }
-
-    fn to_lsp_range(range: crate::range::Range) -> tower_lsp::lsp_types::Range {
-        tower_lsp::lsp_types::Range {
-            start: Self::to_lsp_position(range.start()),
-            end: Self::to_lsp_position(range.end()),
         }
     }
 
@@ -63,7 +44,7 @@ impl HopLanguageServer {
         let lsp_diagnostics: Vec<tower_lsp::lsp_types::Diagnostic> = diagnostics
             .into_iter()
             .map(|d| tower_lsp::lsp_types::Diagnostic {
-                range: Self::to_lsp_range(d.range),
+                range: d.range.into(),
                 severity: Some(DiagnosticSeverity::ERROR),
                 code: None,
                 code_description: None,
@@ -162,10 +143,10 @@ impl LanguageServer for HopLanguageServer {
 
             let program = self.program.read().await;
             Ok(program
-                .get_hover_info(&module_name, Self::from_lsp_position(position))
+                .get_hover_info(&module_name, position.into())
                 .map(|hover_info| Hover {
                     contents: HoverContents::Scalar(MarkedString::String(hover_info.type_str)),
-                    range: Some(Self::to_lsp_range(hover_info.range)),
+                    range: Some(hover_info.range.into()),
                 }))
         } else {
             Ok(None)
@@ -184,11 +165,11 @@ impl LanguageServer for HopLanguageServer {
             let program = self.program.read().await;
 
             Ok(program
-                .get_definition_location(&module_name, Self::from_lsp_position(position))
+                .get_definition_location(&module_name, position.into())
                 .map(|DefinitionLocation { module, range }| {
                     GotoDefinitionResponse::Scalar(Location {
                         uri: Self::module_name_to_uri(&module, root),
-                        range: Self::to_lsp_range(range),
+                        range: range.into(),
                     })
                 }))
         } else {
@@ -208,10 +189,10 @@ impl LanguageServer for HopLanguageServer {
             let program = self.program.read().await;
 
             if let Some(renameable_symbol) =
-                program.get_renameable_symbol(&module_name, Self::from_lsp_position(position))
+                program.get_renameable_symbol(&module_name, position.into())
             {
                 Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
-                    range: Self::to_lsp_range(renameable_symbol.range),
+                    range: renameable_symbol.range.into(),
                     placeholder: renameable_symbol.current_name,
                 }))
             } else {
@@ -232,7 +213,7 @@ impl LanguageServer for HopLanguageServer {
             let server = self.program.read().await;
 
             if let Some(rename_locations) =
-                server.get_rename_locations(&module_name, Self::from_lsp_position(position))
+                server.get_rename_locations(&module_name, position.into())
             {
                 let mut changes: std::collections::HashMap<Url, Vec<TextEdit>> =
                     std::collections::HashMap::new();
@@ -240,7 +221,7 @@ impl LanguageServer for HopLanguageServer {
                 for RenameLocation { module, range } in rename_locations {
                     let file_uri = Self::module_name_to_uri(&module, root);
                     let edit = TextEdit {
-                        range: Self::to_lsp_range(range),
+                        range: range.into(),
                         new_text: new_name.clone(),
                     };
 
