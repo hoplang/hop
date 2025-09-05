@@ -91,7 +91,12 @@ impl HopAst {
     ///                  ^
     /// </div>
     ///
-    /// returns Some(&NativeHTML { tag_name: "span", .. })
+    /// returns
+    ///
+    /// <div>
+    ///     <span>text</span>
+    ///     ^^^^^^^^^^^^^^^^^
+    /// </div>
     ///
     pub fn find_node_at_position(&self, position: Position) -> Option<&HopNode> {
         for n in &self.renders {
@@ -179,19 +184,21 @@ impl ComponentDefinition {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum HopNode {
-    /// A Text node represents text in the document, e.g. the 'hello world' between
-    /// the divs in <div>hello world</div>.
+    /// A Text node represents text in the document.
+    /// E.g. <div>hello world</div>
+    ///           ^^^^^^^^^^^
     Text { value: String, range: Range },
 
-    /// A TextExpression represents an expression that occurs in a text position,
-    /// e.g. the '{world}' in <div>hello {world}</div>.
+    /// A TextExpression represents an expression that occurs in a text position.
+    /// E.g. <div>hello {world}</div>
+    ///                 ^^^^^^^
     TextExpression { expression: DopExpr, range: Range },
 
     /// A ComponentReference represents a reference to a component.
-    /// E.g. the <other-component/> in:
-    ///
+    /// E.g.
     /// <my-component>
     ///   <other-component/>
+    ///   ^^^^^^^^^^^^^^^^^^
     /// </my-component>
     ComponentReference {
         component: String,
@@ -232,7 +239,9 @@ pub enum HopNode {
     /// A Doctype node represents a doctype, e.g. a <!DOCTYPE html>
     Doctype { value: String, range: Range },
 
-    /// An HTML node represents a plain HTML node, e.g. a <div>...</div>.
+    /// An HTML node represents a plain HTML node.
+    /// E.g. <div>...</div>
+    ///      ^^^^^^^^^^^^^^
     Html {
         tag_name: String,
         opening_name_range: Range,
