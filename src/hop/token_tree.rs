@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use crate::common::{ParseError, is_void_element};
 use crate::range::{Range, Ranged};
 use crate::hop::tokenizer::Token;
@@ -67,18 +65,7 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
     }
 
     let mut stack: Vec<StackElement> = Vec::new();
-
-    let root_token = Token::OpeningTag {
-        self_closing: false,
-        tag_name: ("root".to_string(), Range::default()),
-        attributes: BTreeMap::new(),
-        expression: None,
-        range: Range::default(),
-    };
-    stack.push(StackElement {
-        tree: TokenTree::new(root_token),
-        tag_name: "root".to_string(),
-    });
+    let mut top_level_trees: Vec<TokenTree> = Vec::new();
 
     for t in tokenizer {
         match t {
@@ -90,7 +77,12 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
                         continue;
                     }
                     Token::Doctype { .. } | Token::Text { .. } | Token::Expression { .. } => {
-                        stack.last_mut().unwrap().tree.append_node(token);
+                        if let Some(parent) = stack.last_mut() {
+                            parent.tree.append_node(token);
+                        } else {
+                            // Top-level text/expression/doctype
+                            top_level_trees.push(TokenTree::new(token));
+                        }
                     }
                     Token::OpeningTag {
                         tag_name: (ref tag_name_value, _),
@@ -98,7 +90,12 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
                         ..
                     } => {
                         if is_void_element(tag_name_value) || self_closing {
-                            stack.last_mut().unwrap().tree.append_node(token);
+                            if let Some(parent) = stack.last_mut() {
+                                parent.tree.append_node(token);
+                            } else {
+                                // Top-level void/self-closing tag
+                                top_level_trees.push(TokenTree::new(token));
+                            }
                         } else {
                             stack.push(StackElement {
                                 tree: TokenTree::new(token.clone()),
@@ -128,7 +125,12 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
                             }
                             let mut completed = stack.pop().unwrap();
                             completed.tree.set_closing_tag(token);
-                            stack.last_mut().unwrap().tree.append_tree(completed.tree);
+                            if let Some(parent) = stack.last_mut() {
+                                parent.tree.append_tree(completed.tree);
+                            } else {
+                                // This was a top-level element
+                                top_level_trees.push(completed.tree);
+                            }
                         }
                     }
                 }
@@ -136,15 +138,15 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
         }
     }
 
-    while stack.len() > 1 {
-        let unclosed = stack.pop().unwrap();
+    // Report errors for any unclosed tags
+    for unclosed in stack {
         errors.push(ParseError::unclosed_tag(
             &unclosed.tag_name,
             unclosed.tree.token.range(),
         ));
     }
 
-    stack.pop().unwrap().tree.children
+    top_level_trees
 }
 
 #[cfg(test)]

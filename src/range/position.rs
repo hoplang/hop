@@ -13,10 +13,9 @@ impl Position {
     pub fn new(line: usize, column: usize) -> Self {
         Position { line, column }
     }
-}
-
-impl Default for Position {
-    fn default() -> Self {
+    
+    /// Internal default position for use within the range module only
+    pub(super) fn default_position() -> Self {
         Position { line: 1, column: 1 }
     }
 }

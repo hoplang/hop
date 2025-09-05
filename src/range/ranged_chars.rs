@@ -20,7 +20,7 @@ impl<'a> From<&'a str> for RangedChars<'a> {
     fn from(input: &'a str) -> Self {
         Self {
             chars: input.chars(),
-            position: Position::default(),
+            position: Position::default_position(),
         }
     }
 }
