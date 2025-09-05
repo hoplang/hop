@@ -3,14 +3,22 @@ use std::{cmp, fmt};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Range {
-    pub start: Position,
-    pub end: Position,
+    start: Position,
+    end: Position,
 }
 
 impl Range {
     pub(super) fn new(start: Position, end: Position) -> Self {
         debug_assert!(start < end, "start must be less than end in Range::new");
         Range { start, end }
+    }
+
+    pub fn start(&self) -> Position {
+        self.start
+    }
+
+    pub fn end(&self) -> Position {
+        self.end
     }
 
     /// Creates a range that spans the entire string from start to end.
@@ -27,8 +35,8 @@ impl Range {
         // Find the last position by consuming remaining characters
         let end = ranged_chars
             .last()
-            .map(|(_, range)| range.end)
-            .unwrap_or(first.1.end);
+            .map(|(_, range)| range.end())
+            .unwrap_or(first.1.end());
         
         Some(Range::new(start, end))
     }
@@ -98,29 +106,29 @@ mod tests {
     #[test]
     fn test_for_string_single_line() {
         let range = Range::for_string("hello").unwrap();
-        assert_eq!(range.start, Position::new(1, 1));
-        assert_eq!(range.end, Position::new(1, 6));
+        assert_eq!(range.start(), Position::new(1, 1));
+        assert_eq!(range.end(), Position::new(1, 6));
     }
 
     #[test]
     fn test_for_string_multiline() {
         let range = Range::for_string("hello\nworld").unwrap();
-        assert_eq!(range.start, Position::new(1, 1));
-        assert_eq!(range.end, Position::new(2, 6));
+        assert_eq!(range.start(), Position::new(1, 1));
+        assert_eq!(range.end(), Position::new(2, 6));
     }
 
     #[test]
     fn test_for_string_with_unicode() {
         let range = Range::for_string("hello 😀 world").unwrap();
-        assert_eq!(range.start, Position::new(1, 1));
+        assert_eq!(range.start(), Position::new(1, 1));
         // 😀 emoji is 4 bytes, so: "hello " (6) + "😀" (4) + " world" (6) = 16, +1 for position = 17
-        assert_eq!(range.end, Position::new(1, 17));
+        assert_eq!(range.end(), Position::new(1, 17));
     }
 
     #[test]
     fn test_for_string_multiple_newlines() {
         let range = Range::for_string("line1\nline2\nline3").unwrap();
-        assert_eq!(range.start, Position::new(1, 1));
-        assert_eq!(range.end, Position::new(3, 6));
+        assert_eq!(range.start(), Position::new(1, 1));
+        assert_eq!(range.end(), Position::new(3, 6));
     }
 }

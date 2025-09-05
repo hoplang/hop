@@ -254,7 +254,7 @@ impl<'a> Tokenizer<'a> {
                 ('{', _) => {
                     let right_brace_range = self.find_expression_end()?;
                     let (_, left_brace_range) = self.chars.next()?;
-                    if left_brace_range.end == right_brace_range.start {
+                    if left_brace_range.end() == right_brace_range.start() {
                         self.next(); // skip right brace
                         self.errors.push_back(ParseError::new(
                             "Empty expression".to_string(),
@@ -480,7 +480,7 @@ impl<'a> Tokenizer<'a> {
             ('{', _) => {
                 let right_brace_range = self.find_expression_end()?;
                 let (_, left_brace_range) = self.chars.next()?;
-                if left_brace_range.end == right_brace_range.start {
+                if left_brace_range.end() == right_brace_range.start() {
                     self.next(); // skip right brace
                     self.errors.push_back(ParseError::new(
                         "Empty expression".to_string(),
@@ -555,11 +555,11 @@ mod tests {
             if let (Ok(current_token), Some(Ok(next_token))) = (token_result, iter.peek()) {
                 let current_range = current_token.range();
                 let next_range = next_token.range();
-                if current_range.end != next_range.start {
+                if current_range.end() != next_range.start() {
                     panic!(
                         "Non-contiguous ranges detected: token ends at {:?}, but next token starts at {:?}. \
                          Current token: {:?}, Next token: {:?}",
-                        current_range.end, next_range.start, current_token, next_token
+                        current_range.end(), next_range.start(), current_token, next_token
                     );
                 }
             }

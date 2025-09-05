@@ -98,10 +98,10 @@ impl Ord for RenameLocation {
         match self.module.cmp(&other.module) {
             std::cmp::Ordering::Equal => {
                 // Then by range start
-                match self.range.start.cmp(&other.range.start) {
+                match self.range.start().cmp(&other.range.start()) {
                     std::cmp::Ordering::Equal => {
                         // Finally by range end
-                        self.range.end.cmp(&other.range.end)
+                        self.range.end().cmp(&other.range.end())
                     }
                     other => other,
                 }

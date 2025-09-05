@@ -35,8 +35,8 @@ impl HopLanguageServer {
 
     fn to_lsp_range(range: crate::range::Range) -> tower_lsp::lsp_types::Range {
         tower_lsp::lsp_types::Range {
-            start: Self::to_lsp_position(range.start),
-            end: Self::to_lsp_position(range.end),
+            start: Self::to_lsp_position(range.start()),
+            end: Self::to_lsp_position(range.end()),
         }
     }
 

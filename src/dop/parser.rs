@@ -462,15 +462,11 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
             while advance_if(tokenizer, DopToken::Dot).is_some() {
                 match tokenizer.next().ok_or(ParseError::UnexpectedEof)?? {
                     (DopToken::Identifier(prop), property_range) => {
-                        let start = expr.range().start;
                         expr = DopExpr::PropertyAccess {
+                            range: expr.range().extend_to(property_range),
                             object: Box::new(expr),
                             property: prop,
                             property_range,
-                            range: Range {
-                                start,
-                                end: property_range.end,
-                            },
                         };
                     }
                     (_, range) => {
@@ -541,10 +537,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
             if let Some(right_brace_range) = advance_if(tokenizer, DopToken::RightBrace) {
                 return Ok(DopExpr::ObjectLiteral {
                     properties,
-                    range: Range {
-                        start: left_brace_range.start,
-                        end: right_brace_range.end,
-                    },
+                    range: left_brace_range.extend_to(right_brace_range),
                 });
             }
 
