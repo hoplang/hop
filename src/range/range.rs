@@ -3,7 +3,7 @@ use std::{cmp, fmt, str::Chars};
 /// Represents a position in source code
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Position {
-    /// Line number (1-based)
+    /// Line number (0-based)
     line: usize,
     /// Byte column within the line (1-based)
     column: usize,
@@ -24,12 +24,8 @@ impl Position {
 
     /// Creates a Range from this position to another position.
     pub fn to(self, end: Position) -> Range {
-        let result = Range { start: self, end };
-        debug_assert!(
-            result.start < result.end,
-            "start must be less than end in Position::to"
-        );
-        result
+        debug_assert!(self < end, "start must be less than end in Position::to");
+        Range { start: self, end }
     }
 }
 
