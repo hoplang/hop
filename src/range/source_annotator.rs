@@ -60,6 +60,7 @@ impl SourceAnnotator {
         self
     }
 
+    #[cfg(test)]
     pub fn with_lines_after(mut self, n: usize) -> Self {
         self.lines_after = n;
         self
@@ -70,11 +71,13 @@ impl SourceAnnotator {
         self
     }
 
+    #[cfg(test)]
     pub fn without_location(mut self) -> Self {
         self.show_location = false;
         self
     }
 
+    #[cfg(test)]
     pub fn without_line_numbers(mut self) -> Self {
         self.show_line_numbers = false;
         self
@@ -107,14 +110,14 @@ impl SourceAnnotator {
                     output.push_str(&format!(
                         "  --> {} (line {}, col {})\n",
                         filename,
-                        range.start().line,
-                        range.start().column
+                        range.start().line(),
+                        range.start().column()
                     ));
                 } else {
                     output.push_str(&format!(
                         "  --> (line {}, col {})\n",
-                        range.start().line,
-                        range.start().column
+                        range.start().line(),
+                        range.start().column()
                     ));
                 }
             }
@@ -132,8 +135,12 @@ impl SourceAnnotator {
             0
         };
 
-        let first_line = range.start().line.saturating_sub(self.lines_before).max(1);
-        let last_line = (range.end().line + self.lines_after).min(lines.len());
+        let first_line = range
+            .start()
+            .line()
+            .saturating_sub(self.lines_before)
+            .max(1);
+        let last_line = (range.end().line() + self.lines_after).min(lines.len());
 
         // Use enumerated iterator over lines
         for (i, line) in lines.iter().enumerate() {
@@ -170,15 +177,15 @@ impl SourceAnnotator {
         range: Range,
         max_line_col_width: usize,
     ) {
-        if range.start().line != range.end().line {
+        if range.start().line() != range.end().line() {
             panic!("Expected range.start().line == range.end().line")
         }
         if self.show_line_numbers {
             output.push_str(&format!("{:width$} | ", "", width = max_line_col_width));
         }
 
-        let display_start = self.byte_to_display_position(line, range.start().column);
-        let display_end = self.byte_to_display_position(line, range.end().column);
+        let display_start = self.byte_to_display_position(line, range.start().column());
+        let display_end = self.byte_to_display_position(line, range.end().column());
 
         output.push_str(&" ".repeat(display_start.saturating_sub(1)));
         let underline_length = display_end.saturating_sub(display_start).max(1);

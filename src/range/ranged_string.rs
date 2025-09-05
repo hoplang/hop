@@ -30,4 +30,3 @@ impl Ranged for RangedString {
         self.1
     }
 }
-

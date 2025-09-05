@@ -1,12 +1,12 @@
-use std::{cmp, fmt};
+use std::{cmp, fmt, str::Chars};
 
 /// Represents a position in source code
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Position {
     /// Line number (1-based)
-    pub line: usize,
+    line: usize,
     /// Byte column within the line (1-based)
-    pub column: usize,
+    column: usize,
 }
 
 impl Position {
@@ -14,9 +14,12 @@ impl Position {
         Position { line, column }
     }
 
-    /// Internal default position for use within the range module only
-    pub(super) fn default_position() -> Self {
-        Position { line: 1, column: 1 }
+    pub(super) fn line(self) -> usize {
+        self.line
+    }
+
+    pub(super) fn column(self) -> usize {
+        self.column
     }
 
     /// Creates a Range from this position to another position.
@@ -141,5 +144,45 @@ pub trait Ranged {
 impl Ranged for Range {
     fn range(&self) -> Range {
         *self
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RangedChars<'a> {
+    chars: Chars<'a>,
+    position: Position,
+}
+
+impl<'a> RangedChars<'a> {
+    pub fn with_position(input: &'a str, position: Position) -> Self {
+        Self {
+            chars: input.chars(),
+            position,
+        }
+    }
+}
+
+impl<'a> From<&'a str> for RangedChars<'a> {
+    fn from(input: &'a str) -> Self {
+        Self {
+            chars: input.chars(),
+            position: Position { line: 1, column: 1 },
+        }
+    }
+}
+
+impl Iterator for RangedChars<'_> {
+    type Item = (char, Range);
+    fn next(&mut self) -> Option<Self::Item> {
+        let start = self.position;
+        self.chars.next().map(|ch| {
+            if ch == '\n' {
+                self.position.line += 1;
+                self.position.column = 1;
+            } else {
+                self.position.column += ch.len_utf8();
+            }
+            (ch, start.to(self.position))
+        })
     }
 }
