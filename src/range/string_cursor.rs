@@ -121,6 +121,18 @@ impl Ranged for StringSpan {
     }
 }
 
+/// Trait for types that have a StringSpan representing their location in source code.
+pub trait Spanned {
+    /// Returns a reference to the StringSpan for this item.
+    fn span(&self) -> &StringSpan;
+}
+
+impl Spanned for StringSpan {
+    fn span(&self) -> &StringSpan {
+        self
+    }
+}
+
 impl SourceInfo {
     fn new(text: String) -> Self {
         let mut line_starts = vec![0];

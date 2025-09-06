@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
-use crate::range::string_cursor::StringSpan;
+use crate::range::string_cursor::{StringSpan, Spanned};
 use crate::range::{Position, Range, Ranged};
 
 #[derive(Debug, Clone)]
@@ -13,6 +13,18 @@ pub struct PresentAttribute {
 pub struct Attribute {
     pub value: Option<StringSpan>,
     pub span: StringSpan,
+}
+
+impl Ranged for Attribute {
+    fn range(&self) -> Range {
+        self.span.range()
+    }
+}
+
+impl Spanned for Attribute {
+    fn span(&self) -> &StringSpan {
+        &self.span
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -149,6 +161,12 @@ impl Ranged for Render {
     }
 }
 
+impl Spanned for Render {
+    fn span(&self) -> &StringSpan {
+        &self.span
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ComponentDefinition {
     pub tag_name: StringSpan,
@@ -165,6 +183,12 @@ pub struct ComponentDefinition {
 impl Ranged for ComponentDefinition {
     fn range(&self) -> Range {
         self.span.range()
+    }
+}
+
+impl Spanned for ComponentDefinition {
+    fn span(&self) -> &StringSpan {
+        &self.span
     }
 }
 
@@ -231,7 +255,7 @@ pub enum HopNode {
     },
 
     /// A Doctype node represents a doctype, e.g. a <!DOCTYPE html>
-    Doctype { range: Range },
+    Doctype { span: StringSpan },
 
     /// An HTML node represents a plain HTML node.
     /// E.g. <div>...</div>
@@ -360,7 +384,7 @@ impl HopNode {
 impl Ranged for HopNode {
     fn range(&self) -> Range {
         match self {
-            HopNode::Doctype { range, .. } => *range,
+            HopNode::Doctype { span, .. } => span.range(),
             HopNode::Text { span: value, .. } => value.range(),
             HopNode::TextExpression { span, .. } => span.range(),
             HopNode::ComponentReference { span, .. } => span.range(),
@@ -371,6 +395,24 @@ impl Ranged for HopNode {
             HopNode::Error { span, .. } => span.range(),
             HopNode::XExec { span, .. } => span.range(),
             HopNode::XRaw { span, .. } => span.range(),
+        }
+    }
+}
+
+impl Spanned for HopNode {
+    fn span(&self) -> &StringSpan {
+        match self {
+            HopNode::Text { span, .. } => span,
+            HopNode::TextExpression { span, .. } => span,
+            HopNode::ComponentReference { span, .. } => span,
+            HopNode::SlotDefinition { span, .. } => span,
+            HopNode::If { span, .. } => span,
+            HopNode::For { span, .. } => span,
+            HopNode::Html { span, .. } => span,
+            HopNode::XExec { span, .. } => span,
+            HopNode::XRaw { span, .. } => span,
+            HopNode::Error { span, .. } => span,
+            HopNode::Doctype { span, .. } => span,
         }
     }
 }

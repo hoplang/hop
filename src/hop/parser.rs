@@ -249,7 +249,7 @@ fn construct_node(
 
     match t {
         Token::Doctype { span } => HopNode::Doctype {
-            range: span.range(),
+            span: span.clone(),
         },
         Token::Text { span: value, .. } => HopNode::Text { span: value },
         Token::Expression {
