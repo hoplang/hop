@@ -39,56 +39,63 @@ pub enum DopExpr {
     PropertyAccess {
         object: Box<DopExpr>,
         property: StringSpan,
-        range: Range,
+        span: StringSpan,
     },
     StringLiteral {
         value: String,
-        range: Range,
+        span: StringSpan,
     },
     BooleanLiteral {
         value: bool,
-        range: Range,
+        span: StringSpan,
     },
     NumberLiteral {
         value: serde_json::Number,
-        range: Range,
+        span: StringSpan,
     },
     /// An array literal, e.g. [1, 2, 3]
     ArrayLiteral {
         elements: Vec<DopExpr>,
-        range: Range,
+        span: StringSpan,
     },
     ObjectLiteral {
         properties: BTreeMap<String, DopExpr>,
-        range: Range,
+        span: StringSpan,
     },
     BinaryOp {
         left: Box<DopExpr>,
         operator: BinaryOp,
         right: Box<DopExpr>,
-        range: Range,
+        span: StringSpan,
     },
     UnaryOp {
         operator: UnaryOp,
         operand: Box<DopExpr>,
-        range: Range,
+        span: StringSpan,
     },
+}
+
+impl DopExpr {
+    /// Returns the span of this expression in the source code
+    pub fn span(&self) -> StringSpan {
+        match self {
+            DopExpr::Variable { value, .. } => value.span().clone(),
+            DopExpr::PropertyAccess { span, .. } => span.clone(),
+            DopExpr::StringLiteral { span, .. } => span.clone(),
+            DopExpr::BooleanLiteral { span, .. } => span.clone(),
+            DopExpr::NumberLiteral { span, .. } => span.clone(),
+            DopExpr::ArrayLiteral { span, .. } => span.clone(),
+            DopExpr::ObjectLiteral { span, .. } => span.clone(),
+            DopExpr::BinaryOp { span, .. } => span.clone(),
+            DopExpr::UnaryOp { span, .. } => span.clone(),
+        }
+    }
 }
 
 impl Ranged for DopExpr {
     /// Returns the range of this expression in the source code
     fn range(&self) -> Range {
-        match self {
-            DopExpr::Variable { value, .. } => value.range(),
-            DopExpr::PropertyAccess { range, .. } => *range,
-            DopExpr::StringLiteral { range, .. } => *range,
-            DopExpr::BooleanLiteral { range, .. } => *range,
-            DopExpr::NumberLiteral { range, .. } => *range,
-            DopExpr::ArrayLiteral { range, .. } => *range,
-            DopExpr::ObjectLiteral { range, .. } => *range,
-            DopExpr::BinaryOp { range, .. } => *range,
-            DopExpr::UnaryOp { range, .. } => *range,
-        }
+        self.span().range()
     }
 }
 

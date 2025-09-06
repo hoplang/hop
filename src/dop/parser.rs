@@ -38,6 +38,9 @@ impl DopVarName {
     pub fn as_str(&self) -> &str {
         self.value.as_str()
     }
+    pub fn span(&self) -> &StringSpan {
+        &self.value
+    }
     pub fn range(&self) -> Range {
         self.value.range()
     }
@@ -310,7 +313,7 @@ fn parse_equality(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Par
     while advance_if(tokenizer, DopToken::Equal).is_some() {
         let right = parse_unary(tokenizer)?;
         expr = DopExpr::BinaryOp {
-            range: expr.range().to(right.range()),
+            span: expr.span().to(right.span()),
             left: Box::new(expr),
             operator: BinaryOp::Equal,
             right: Box::new(right),
@@ -325,7 +328,7 @@ fn parse_unary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, ParseE
     if let Some(operator_span) = advance_if(tokenizer, DopToken::Not) {
         let expr = parse_unary(tokenizer)?; // Right associative for multiple !
         Ok(DopExpr::UnaryOp {
-            range: operator_span.range().to(expr.range()),
+            span: operator_span.to(expr.span()),
             operator: UnaryOp::Not,
             operand: Box::new(expr),
         })
@@ -352,7 +355,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                 match tokenizer.next().ok_or(ParseError::UnexpectedEof)?? {
                     (DopToken::Identifier(prop), property_span) => {
                         expr = DopExpr::PropertyAccess {
-                            range: expr.range().to(property_span.range()),
+                            span: expr.span().to(property_span.clone()),
                             object: Box::new(expr),
                             property: prop,
                         };
@@ -367,15 +370,15 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
         }
         (DopToken::StringLiteral(value), span) => Ok(DopExpr::StringLiteral {
             value,
-            range: span.range(),
+            span,
         }),
         (DopToken::BooleanLiteral(value), span) => Ok(DopExpr::BooleanLiteral {
             value,
-            range: span.range(),
+            span,
         }),
         (DopToken::NumberLiteral(value), span) => Ok(DopExpr::NumberLiteral {
             value,
-            range: span.range(),
+            span,
         }),
         (DopToken::LeftBracket, left_bracket_span) => {
             let mut elements = Vec::new();
@@ -384,7 +387,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
             if let Some(right_bracket_span) = advance_if(tokenizer, DopToken::RightBracket) {
                 return Ok(DopExpr::ArrayLiteral {
                     elements,
-                    range: left_bracket_span.range().to(right_bracket_span.range()),
+                    span: left_bracket_span.to(right_bracket_span),
                 });
             }
 
@@ -402,7 +405,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                         {
                             return Ok(DopExpr::ArrayLiteral {
                                 elements,
-                                range: left_bracket_span.range().to(right_bracket_span.range()),
+                                span: left_bracket_span.to(right_bracket_span),
                             });
                         }
                         continue;
@@ -410,7 +413,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                     (DopToken::RightBracket, right_bracket_span) => {
                         return Ok(DopExpr::ArrayLiteral {
                             elements,
-                            range: left_bracket_span.range().to(right_bracket_span.range()),
+                            span: left_bracket_span.to(right_bracket_span),
                         });
                     }
                     (t, span) => {
@@ -431,7 +434,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
             if let Some(right_brace_span) = advance_if(tokenizer, DopToken::RightBrace) {
                 return Ok(DopExpr::ObjectLiteral {
                     properties,
-                    range: left_brace_span.range().to(right_brace_span.range()),
+                    span: left_brace_span.to(right_brace_span),
                 });
             }
 
@@ -459,7 +462,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                         {
                             return Ok(DopExpr::ObjectLiteral {
                                 properties,
-                                range: left_brace_span.range().to(right_brace_span.range()),
+                                span: left_brace_span.to(right_brace_span),
                             });
                         }
                         continue;
@@ -467,7 +470,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                     (DopToken::RightBrace, right_brace_span) => {
                         return Ok(DopExpr::ObjectLiteral {
                             properties,
-                            range: left_brace_span.range().to(right_brace_span.range()),
+                            span: left_brace_span.to(right_brace_span),
                         });
                     }
                     (t, span) => {
