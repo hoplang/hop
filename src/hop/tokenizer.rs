@@ -536,7 +536,7 @@ fn is_tag_name_with_raw_content(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::range::{SimpleAnnotation, SourceAnnotator};
+    use crate::range::{RangedAnnotation, SourceAnnotator};
 
     use super::*;
     use expect_test::{Expect, expect};
@@ -569,13 +569,13 @@ mod tests {
         for r in result {
             match r {
                 Err(err) => {
-                    annotations.push(SimpleAnnotation {
+                    annotations.push(RangedAnnotation {
                         message: err.to_string(),
                         range: err.range(),
                     });
                 }
                 Ok(ok) => {
-                    annotations.push(SimpleAnnotation {
+                    annotations.push(RangedAnnotation {
                         message: ok.to_string(),
                         range: ok.range(),
                     });
@@ -583,7 +583,7 @@ mod tests {
             }
         }
 
-        expected.assert_eq(&SourceAnnotator::new().annotate(None, input, annotations));
+        expected.assert_eq(&SourceAnnotator::new().annotate_ranged(None, input, annotations));
     }
 
     #[test]

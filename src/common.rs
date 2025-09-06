@@ -1,6 +1,6 @@
 use crate::dop::DopParameter;
 use crate::range::{Range, Ranged};
-use crate::range::string_cursor::StringSpan;
+use crate::range::string_cursor::{Spanned, StringSpan};
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 
@@ -168,6 +168,18 @@ impl Ranged for TypeError {
     }
 }
 
+impl Spanned for TypeError {
+    fn span(&self) -> &StringSpan {
+        &self.span
+    }
+}
+
+impl Spanned for &TypeError {
+    fn span(&self) -> &StringSpan {
+        &self.span
+    }
+}
+
 impl Display for TypeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.message)
@@ -244,6 +256,18 @@ impl ParseError {
 impl Ranged for ParseError {
     fn range(&self) -> Range {
         self.span.range()
+    }
+}
+
+impl Spanned for ParseError {
+    fn span(&self) -> &StringSpan {
+        &self.span
+    }
+}
+
+impl Spanned for &ParseError {
+    fn span(&self) -> &StringSpan {
+        &self.span
     }
 }
 

@@ -11,4 +11,4 @@ pub use range::{Range, Ranged};
 pub use source_annotator::SourceAnnotator;
 
 #[cfg(test)]
-pub use source_annotator::SimpleAnnotation;
+pub use source_annotator::{RangedAnnotation, SimpleAnnotation};

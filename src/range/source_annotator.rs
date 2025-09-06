@@ -5,19 +5,43 @@ use itertools::Itertools as _;
 
 use super::{
     range::{Range, Ranged},
-    string_cursor::{StringCursor, StringSpan},
+    string_cursor::{Spanned, StringCursor, StringSpan},
 };
 
 
 /// Simple annotation implementation for basic use cases
 pub struct SimpleAnnotation {
+    pub span: StringSpan,
+    pub message: String,
+}
+
+/// Simple annotation implementation that works with Range for tests
+pub struct RangedAnnotation {
     pub range: Range,
     pub message: String,
 }
 
-impl Ranged for SimpleAnnotation {
+impl Display for RangedAnnotation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl Ranged for RangedAnnotation {
     fn range(&self) -> Range {
         self.range
+    }
+}
+
+impl Spanned for SimpleAnnotation {
+    fn span(&self) -> &StringSpan {
+        &self.span
+    }
+}
+
+impl Ranged for SimpleAnnotation {
+    fn range(&self) -> Range {
+        self.span.range()
     }
 }
 
@@ -26,6 +50,7 @@ impl Display for SimpleAnnotation {
         write!(f, "{}", self.message)
     }
 }
+
 
 /// Annotator that can display source code with annotations
 pub struct SourceAnnotator {
@@ -94,7 +119,33 @@ impl SourceAnnotator {
         annotations: impl IntoIterator<Item = A>,
     ) -> String
     where
+        A: Display + Spanned,
+    {
+        self.annotate_impl(filename, source, annotations, |a| a.span().range())
+    }
+    
+    pub fn annotate_ranged<A>(
+        &self,
+        filename: Option<&str>,
+        source: &str,
+        annotations: impl IntoIterator<Item = A>,
+    ) -> String
+    where
         A: Display + Ranged,
+    {
+        self.annotate_impl(filename, source, annotations, |a| a.range())
+    }
+    
+    fn annotate_impl<A, F>(
+        &self,
+        filename: Option<&str>,
+        source: &str,
+        annotations: impl IntoIterator<Item = A>,
+        get_range: F,
+    ) -> String
+    where
+        A: Display,
+        F: Fn(&A) -> Range,
     {
         let mut output = String::new();
         let lines: Vec<Option<StringSpan>> = StringCursor::new(source)
@@ -108,7 +159,7 @@ impl SourceAnnotator {
                 output.push('\n');
             }
 
-            let range = annotation.range();
+            let range = get_range(&annotation);
 
             if let Some(ref label) = self.label {
                 output.push_str(&format!("{}: {}\n", label, annotation));

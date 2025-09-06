@@ -5,7 +5,6 @@ use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
 use crate::range::Ranged as _;
-use crate::range::string_cursor::StringSpan;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::ast::PresentAttribute;

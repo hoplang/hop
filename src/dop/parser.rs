@@ -518,7 +518,7 @@ mod tests {
                 input,
                 [SimpleAnnotation {
                     message,
-                    range: span.range(),
+                    span,
                 }],
             ),
         }

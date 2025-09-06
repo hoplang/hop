@@ -500,7 +500,7 @@ mod tests {
                     typechecker.type_errors.get(&module.name).unwrap(),
                 ));
             } else if type_annotations.is_some_and(|ann| !ann.is_empty()) {
-                let formatted_errors = type_annotator.annotate(
+                let formatted_errors = type_annotator.annotate_ranged(
                     Some(&file.name),
                     source_code,
                     typechecker.type_annotations.get(&module.name).unwrap(),

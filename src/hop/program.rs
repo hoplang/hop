@@ -561,7 +561,7 @@ mod tests {
                 .collect();
 
             if !module_locs.is_empty() {
-                output.push(annotator.annotate(Some(&file.name), &file.content, &module_locs));
+                output.push(annotator.annotate_ranged(Some(&file.name), &file.content, &module_locs));
             }
         }
 
@@ -592,7 +592,7 @@ mod tests {
             .get(&loc.module)
             .expect("Could not get source code");
 
-        let output = SourceAnnotator::new().with_location().annotate(
+        let output = SourceAnnotator::new().with_location().annotate_ranged(
             Some(&loc.module.clone()),
             source_code,
             [loc],
@@ -615,7 +615,7 @@ mod tests {
             .get(module)
             .expect("Source code not found");
 
-        let output = SourceAnnotator::new().with_location().annotate(
+        let output = SourceAnnotator::new().with_location().annotate_ranged(
             Some(module),
             source_code,
             &diagnostics,
@@ -670,7 +670,7 @@ mod tests {
             .find(|f| f.name.replace(".hop", "") == module)
             .expect("Could not find file in archive");
 
-        let output = SourceAnnotator::new().with_location().annotate(
+        let output = SourceAnnotator::new().with_location().annotate_ranged(
             Some(&file.name),
             &file.content,
             &[symbol],
@@ -701,7 +701,7 @@ mod tests {
             .find(|f| f.name.replace(".hop", "") == module)
             .expect("Could not find file in archive");
 
-        let output = SourceAnnotator::new().with_location().annotate(
+        let output = SourceAnnotator::new().with_location().annotate_ranged(
             Some(&file.name),
             &file.content,
             &[hover_info],

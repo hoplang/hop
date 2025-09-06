@@ -1,7 +1,4 @@
-use crate::range::{
-    Ranged,
-    string_cursor::{StringCursor, StringSpan},
-};
+use crate::range::string_cursor::{StringCursor, StringSpan};
 use std::{fmt, iter::Peekable, str::FromStr};
 
 use super::errors::ParseError;
@@ -215,7 +212,7 @@ impl Iterator for DopTokenizer {
 
 #[cfg(test)]
 mod tests {
-    use crate::range::{SimpleAnnotation, SourceAnnotator};
+    use crate::range::{RangedAnnotation, Ranged, SourceAnnotator};
 
     use super::*;
     use expect_test::{Expect, expect};
@@ -226,13 +223,13 @@ mod tests {
         for t in tokenizer {
             match t {
                 Ok((tok, span)) => {
-                    annotations.push(SimpleAnnotation {
+                    annotations.push(RangedAnnotation {
                         message: format!("token: {}", tok),
                         range: span.range(),
                     });
                 }
                 Err(ParseError::Spanned { message, span }) => {
-                    annotations.push(SimpleAnnotation {
+                    annotations.push(RangedAnnotation {
                         message: format!("error: {}", message),
                         range: span.range(),
                     });
@@ -242,7 +239,7 @@ mod tests {
                 }
             }
         }
-        expected.assert_eq(&SourceAnnotator::new().without_line_numbers().annotate(
+        expected.assert_eq(&SourceAnnotator::new().without_line_numbers().annotate_ranged(
             None,
             input,
             &annotations,

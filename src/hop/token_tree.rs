@@ -1,7 +1,6 @@
 use crate::common::{ParseError, is_void_element};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
-use crate::range::Ranged;
 use crate::range::string_cursor::StringSpan;
 use std::fmt::{self, Display};
 
