@@ -10,7 +10,6 @@ use crate::dop::typechecker::RangeDopType;
 use crate::range::string_cursor::StringSpan;
 use crate::range::{Range, Ranged};
 
-
 /// A DopVarName represents a validated variable name in dop.
 #[derive(Debug, Clone)]
 pub struct DopVarName {
@@ -19,7 +18,7 @@ pub struct DopVarName {
 
 impl Display for DopVarName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.value)
+        f.write_str(self.value.as_str())
     }
 }
 
