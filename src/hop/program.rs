@@ -6,7 +6,7 @@ use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
 use crate::range::Position;
-use crate::range::string_cursor::{StringSpan, Spanned};
+use crate::range::string_cursor::{Spanned, StringSpan};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Display};
@@ -18,12 +18,12 @@ use super::typechecker::TypeChecker;
 #[derive(Debug, Clone)]
 pub struct HoverInfo {
     pub type_str: String,
-    pub range: StringSpan,
+    pub span: StringSpan,
 }
 
 impl Spanned for HoverInfo {
     fn span(&self) -> &StringSpan {
-        &self.range
+        &self.span
     }
 }
 
@@ -36,12 +36,12 @@ impl Display for HoverInfo {
 #[derive(Debug, Clone)]
 pub struct DefinitionLocation {
     pub module: String,
-    pub range: StringSpan,
+    pub span: StringSpan,
 }
 
 impl Spanned for DefinitionLocation {
     fn span(&self) -> &StringSpan {
-        &self.range
+        &self.span
     }
 }
 
@@ -54,12 +54,12 @@ impl Display for DefinitionLocation {
 #[derive(Debug, Clone)]
 pub struct Diagnostic {
     pub message: String,
-    pub range: StringSpan,
+    pub span: StringSpan,
 }
 
 impl Spanned for Diagnostic {
     fn span(&self) -> &StringSpan {
-        &self.range
+        &self.span
     }
 }
 
@@ -72,12 +72,12 @@ impl Display for Diagnostic {
 #[derive(Debug, Clone)]
 pub struct RenameLocation {
     pub module: String,
-    pub range: StringSpan,
+    pub span: StringSpan,
 }
 
 impl Spanned for RenameLocation {
     fn span(&self) -> &StringSpan {
-        &self.range
+        &self.span
     }
 }
 
@@ -90,8 +90,8 @@ impl Display for RenameLocation {
 impl PartialEq for RenameLocation {
     fn eq(&self, other: &Self) -> bool {
         self.module == other.module
-            && self.range.start() == other.range.start()
-            && self.range.end() == other.range.end()
+            && self.span.start() == other.span.start()
+            && self.span.end() == other.span.end()
     }
 }
 
@@ -109,10 +109,10 @@ impl Ord for RenameLocation {
         match self.module.cmp(&other.module) {
             std::cmp::Ordering::Equal => {
                 // Then by range start
-                match self.range.start().cmp(&other.range.start()) {
+                match self.span.start().cmp(&other.span.start()) {
                     std::cmp::Ordering::Equal => {
                         // Finally by range end
-                        self.range.end().cmp(&other.range.end())
+                        self.span.end().cmp(&other.span.end())
                     }
                     other => other,
                 }
@@ -224,7 +224,7 @@ impl Program {
             .find(|a| a.range.range().contains(position))
             .map(|annotation| HoverInfo {
                 type_str: format!("`{}`: `{}`", annotation.name, annotation.typ),
-                range: annotation.range.clone(),
+                span: annotation.range.clone(),
             })
     }
 
@@ -257,7 +257,7 @@ impl Program {
                 let component_def = module.get_component_definition(tag_name.as_str())?;
                 Some(DefinitionLocation {
                     module: m.to_string(),
-                    range: component_def.tag_name.clone(),
+                    span: component_def.tag_name.clone(),
                 })
             }
             HopNode::Html { .. } => {
@@ -302,7 +302,7 @@ impl Program {
                 n.tag_name_ranges()
                     .map(|range| RenameLocation {
                         module: module_name.to_string(),
-                        range,
+                        span: range,
                     })
                     .collect(),
             ),
@@ -365,14 +365,14 @@ impl Program {
                 // Add the definition's opening tag name
                 locations.push(RenameLocation {
                     module: definition_module.to_string(),
-                    range: component_node.tag_name.clone(),
+                    span: component_node.tag_name.clone(),
                 });
 
                 // Add the definition's closing tag name if it exists
                 if let Some(span) = component_node.closing_tag_name.as_ref() {
                     locations.push(RenameLocation {
                         module: definition_module.to_string(),
-                        range: span.clone(),
+                        span: span.clone(),
                     });
                 }
             }
@@ -388,7 +388,7 @@ impl Program {
                     })
                     .map(|n| RenameLocation {
                         module: module_name.clone(),
-                        range: n.component_attr.value.clone(),
+                        span: n.component_attr.value.clone(),
                     }),
             );
 
@@ -411,7 +411,7 @@ impl Program {
                     .flat_map(|node| node.tag_name_ranges())
                     .map(|range| RenameLocation {
                         module: module_name.clone(),
-                        range,
+                        span: range,
                     }),
             );
         }
@@ -427,7 +427,7 @@ impl Program {
         for error in self.parse_errors.get(module_name).into_iter().flatten() {
             diagnostics.push(Diagnostic {
                 message: error.message.clone(),
-                range: error.span.clone(),
+                span: error.span.clone(),
             });
             found_parse_errors = true;
         }
@@ -444,7 +444,7 @@ impl Program {
             {
                 diagnostics.push(Diagnostic {
                     message: error.message.clone(),
-                    range: error.span.clone(),
+                    span: error.span.clone(),
                 });
             }
         }
@@ -562,11 +562,7 @@ mod tests {
                 .collect();
 
             if !module_locs.is_empty() {
-                output.push(annotator.annotate(
-                    Some(&file.name),
-                    &file.content,
-                    &module_locs,
-                ));
+                output.push(annotator.annotate(Some(&file.name), &file.content, &module_locs));
             }
         }
 

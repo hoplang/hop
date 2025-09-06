@@ -1,6 +1,7 @@
 use crate::filesystem::files::{self as files, ProjectRoot};
 use crate::hop::program::{DefinitionLocation, Program, RenameLocation};
-use crate::range::{Position, Range};
+use crate::range::Position;
+use crate::range::string_cursor::StringSpan;
 use std::path::Path;
 use tokio::sync::{OnceCell, RwLock};
 use tower_lsp::jsonrpc::Result;
@@ -23,11 +24,11 @@ impl From<Position> for tower_lsp::lsp_types::Position {
     }
 }
 
-impl From<Range> for tower_lsp::lsp_types::Range {
-    fn from(range: Range) -> Self {
+impl From<StringSpan> for tower_lsp::lsp_types::Range {
+    fn from(span: StringSpan) -> Self {
         tower_lsp::lsp_types::Range {
-            start: range.start().into(),
-            end: range.end().into(),
+            start: span.range().start().into(),
+            end: span.range().end().into(),
         }
     }
 }
@@ -70,7 +71,7 @@ impl HopLanguageServer {
         let lsp_diagnostics: Vec<tower_lsp::lsp_types::Diagnostic> = diagnostics
             .into_iter()
             .map(|d| tower_lsp::lsp_types::Diagnostic {
-                range: d.range.range().into(),
+                range: d.span.into(),
                 severity: Some(DiagnosticSeverity::ERROR),
                 code: None,
                 code_description: None,
@@ -172,7 +173,7 @@ impl LanguageServer for HopLanguageServer {
                 .get_hover_info(&module_name, position.into())
                 .map(|hover_info| Hover {
                     contents: HoverContents::Scalar(MarkedString::String(hover_info.type_str)),
-                    range: Some(hover_info.range.range().into()),
+                    range: Some(hover_info.span.into()),
                 }))
         } else {
             Ok(None)
@@ -192,10 +193,10 @@ impl LanguageServer for HopLanguageServer {
 
             Ok(program
                 .get_definition_location(&module_name, position.into())
-                .map(|DefinitionLocation { module, range }| {
+                .map(|DefinitionLocation { module, span }| {
                     GotoDefinitionResponse::Scalar(Location {
                         uri: Self::module_name_to_uri(&module, root),
-                        range: range.range().into(),
+                        range: span.into(),
                     })
                 }))
         } else {
@@ -218,7 +219,7 @@ impl LanguageServer for HopLanguageServer {
                 program.get_renameable_symbol(&module_name, position.into())
             {
                 Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
-                    range: renameable_symbol.range.range().into(),
+                    range: renameable_symbol.range.into(),
                     placeholder: renameable_symbol.current_name,
                 }))
             } else {
@@ -244,10 +245,10 @@ impl LanguageServer for HopLanguageServer {
                 let mut changes: std::collections::HashMap<Url, Vec<TextEdit>> =
                     std::collections::HashMap::new();
 
-                for RenameLocation { module, range } in rename_locations {
+                for RenameLocation { module, span } in rename_locations {
                     let file_uri = Self::module_name_to_uri(&module, root);
                     let edit = TextEdit {
-                        range: range.range().into(),
+                        range: span.into(),
                         new_text: new_name.clone(),
                     };
 
