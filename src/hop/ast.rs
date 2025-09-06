@@ -158,8 +158,7 @@ impl Ranged for Render {
 #[derive(Debug, Clone)]
 pub struct ComponentDefinition {
     pub tag_name: StringSpan,
-    pub opening_tag_name_range: Range,
-    pub closing_tag_name_range: Option<Range>,
+    pub closing_tag_name: Option<StringSpan>,
     pub params: Option<(BTreeMap<String, DopParameter>, Range)>,
     pub as_attr: Option<PresentAttribute>,
     pub attributes: BTreeMap<String, Attribute>,
@@ -177,9 +176,10 @@ impl Ranged for ComponentDefinition {
 
 impl ComponentDefinition {
     pub fn tag_name_ranges(&self) -> impl Iterator<Item = Range> {
-        self.closing_tag_name_range
-            .into_iter()
-            .chain(Some(self.opening_tag_name_range))
+        self.closing_tag_name
+            .iter()
+            .map(|s| s.range())
+            .chain(Some(self.tag_name.range()))
     }
 }
 

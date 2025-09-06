@@ -204,9 +204,8 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         }
 
                         components.push(ComponentDefinition {
-                            opening_tag_name_range: tag_name.range(),
                             tag_name,
-                            closing_tag_name_range: tree.closing_tag_name_range,
+                            closing_tag_name: tree.closing_tag_name,
                             params,
                             is_entrypoint,
                             as_attr: as_attr.map(|v| PresentAttribute {
@@ -471,7 +470,7 @@ fn construct_node(
                     HopNode::ComponentReference {
                         component: tag_name.to_string(),
                         opening_name_range: tag_name.range(),
-                        closing_name_range: tree.closing_tag_name_range,
+                        closing_name_range: tree.closing_tag_name.map(|s| s.range()),
                         definition_module,
                         args,
                         attributes,
@@ -513,7 +512,7 @@ fn construct_node(
                     HopNode::Html {
                         tag_name: tag_name.to_string(),
                         opening_name_range: tag_name.range(),
-                        closing_name_range: tree.closing_tag_name_range,
+                        closing_name_range: tree.closing_tag_name.map(|s| s.range()),
                         attributes: attributes.clone(),
                         range: tree.range,
                         children,

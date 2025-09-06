@@ -1,6 +1,7 @@
 use crate::common::{ParseError, is_void_element};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
+use crate::range::string_cursor::StringSpan;
 use crate::range::{Range, Ranged};
 
 /// A TokenTree represents a tree of tokens.
@@ -19,7 +20,7 @@ pub struct TokenTree {
     /// <div></div>
     ///        ^^^
     /// This information is needed by the parser.
-    pub closing_tag_name_range: Option<Range>,
+    pub closing_tag_name: Option<StringSpan>,
     pub children: Vec<TokenTree>,
     pub range: Range,
 }
@@ -29,7 +30,7 @@ impl TokenTree {
         TokenTree {
             range: opening_token.range(),
             token: opening_token,
-            closing_tag_name_range: None,
+            closing_tag_name: None,
             children: Vec::new(),
         }
     }
@@ -44,8 +45,8 @@ impl TokenTree {
 
     pub fn set_closing_tag(&mut self, closing_token: Token) {
         self.range = self.range.spanning(closing_token.range());
-        self.closing_tag_name_range = match closing_token {
-            Token::ClosingTag { tag_name, .. } => Some(tag_name.range()),
+        self.closing_tag_name = match closing_token {
+            Token::ClosingTag { tag_name, .. } => Some(tag_name),
             _ => panic!("Called set_closing_tag with a token that was not a ClosingTag"),
         }
     }
@@ -186,8 +187,16 @@ mod tests {
                             self_closing: false,
                             range: 1:1-1:6,
                         },
-                        closing_tag_name_range: Some(
-                            1:13-1:16,
+                        closing_tag_name: Some(
+                            StringSpan {
+                                source: "<div>Hello</div>",
+                                ch: 'd',
+                                offset: (
+                                    12,
+                                    15,
+                                ),
+                                range: 1:13-1:16,
+                            },
                         ),
                         children: [
                             TokenTree {
@@ -202,7 +211,7 @@ mod tests {
                                         range: 1:6-1:11,
                                     },
                                 },
-                                closing_tag_name_range: None,
+                                closing_tag_name: None,
                                 children: [],
                                 range: 1:6-1:11,
                             },
@@ -235,8 +244,16 @@ mod tests {
                             self_closing: false,
                             range: 1:1-1:6,
                         },
-                        closing_tag_name_range: Some(
-                            1:17-1:20,
+                        closing_tag_name: Some(
+                            StringSpan {
+                                source: "<div><br><hr/></div>",
+                                ch: 'd',
+                                offset: (
+                                    16,
+                                    19,
+                                ),
+                                range: 1:17-1:20,
+                            },
                         ),
                         children: [
                             TokenTree {
@@ -255,7 +272,7 @@ mod tests {
                                     self_closing: false,
                                     range: 1:6-1:10,
                                 },
-                                closing_tag_name_range: None,
+                                closing_tag_name: None,
                                 children: [],
                                 range: 1:6-1:10,
                             },
@@ -275,7 +292,7 @@ mod tests {
                                     self_closing: true,
                                     range: 1:10-1:15,
                                 },
-                                closing_tag_name_range: None,
+                                closing_tag_name: None,
                                 children: [],
                                 range: 1:10-1:15,
                             },
@@ -308,8 +325,16 @@ mod tests {
                             self_closing: false,
                             range: 1:1-1:6,
                         },
-                        closing_tag_name_range: Some(
-                            1:38-1:41,
+                        closing_tag_name: Some(
+                            StringSpan {
+                                source: "<div><p>Hello</p><span>World</span></div>",
+                                ch: 'd',
+                                offset: (
+                                    37,
+                                    40,
+                                ),
+                                range: 1:38-1:41,
+                            },
                         ),
                         children: [
                             TokenTree {
@@ -328,8 +353,16 @@ mod tests {
                                     self_closing: false,
                                     range: 1:6-1:9,
                                 },
-                                closing_tag_name_range: Some(
-                                    1:16-1:17,
+                                closing_tag_name: Some(
+                                    StringSpan {
+                                        source: "<div><p>Hello</p><span>World</span></div>",
+                                        ch: 'p',
+                                        offset: (
+                                            15,
+                                            16,
+                                        ),
+                                        range: 1:16-1:17,
+                                    },
                                 ),
                                 children: [
                                     TokenTree {
@@ -344,7 +377,7 @@ mod tests {
                                                 range: 1:9-1:14,
                                             },
                                         },
-                                        closing_tag_name_range: None,
+                                        closing_tag_name: None,
                                         children: [],
                                         range: 1:9-1:14,
                                     },
@@ -367,8 +400,16 @@ mod tests {
                                     self_closing: false,
                                     range: 1:18-1:24,
                                 },
-                                closing_tag_name_range: Some(
-                                    1:31-1:35,
+                                closing_tag_name: Some(
+                                    StringSpan {
+                                        source: "<div><p>Hello</p><span>World</span></div>",
+                                        ch: 's',
+                                        offset: (
+                                            30,
+                                            34,
+                                        ),
+                                        range: 1:31-1:35,
+                                    },
                                 ),
                                 children: [
                                     TokenTree {
@@ -383,7 +424,7 @@ mod tests {
                                                 range: 1:24-1:29,
                                             },
                                         },
-                                        closing_tag_name_range: None,
+                                        closing_tag_name: None,
                                         children: [],
                                         range: 1:24-1:29,
                                     },

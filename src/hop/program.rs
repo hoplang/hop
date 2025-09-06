@@ -246,7 +246,7 @@ impl Program {
                 let component_def = module.get_component_definition(component)?;
                 Some(DefinitionLocation {
                     module: m.to_string(),
-                    range: component_def.opening_tag_name_range,
+                    range: component_def.tag_name.range(),
                 })
             }
             HopNode::Html { .. } => {
@@ -354,14 +354,14 @@ impl Program {
                 // Add the definition's opening tag name
                 locations.push(RenameLocation {
                     module: definition_module.to_string(),
-                    range: component_node.opening_tag_name_range,
+                    range: component_node.tag_name.range(),
                 });
 
                 // Add the definition's closing tag name if it exists
-                if let Some(range) = component_node.closing_tag_name_range {
+                if let Some(span) = component_node.closing_tag_name.as_ref() {
                     locations.push(RenameLocation {
                         module: definition_module.to_string(),
-                        range,
+                        range: span.range(),
                     });
                 }
             }
