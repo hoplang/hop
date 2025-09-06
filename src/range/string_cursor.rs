@@ -1,6 +1,6 @@
-use std::{fmt, str::Chars, sync::Arc};
+use std::{fmt, iter::FromIterator, str::Chars, sync::Arc};
 
-use super::{Position, Range};
+use super::{Position, Range, range::Ranged, source_annotator::Annotated};
 
 #[derive(Clone)]
 pub struct StringCursor<'a> {
@@ -86,6 +86,26 @@ impl Iterator for StringCursor<'_> {
                 range: Range::new(start_position, self.position),
             }
         })
+    }
+}
+
+impl FromIterator<StringSpan> for Option<StringSpan> {
+    fn from_iter<I: IntoIterator<Item = StringSpan>>(iter: I) -> Self {
+        let mut spans = iter.into_iter();
+        let first = spans.next()?;
+        spans.fold(Some(first), |acc, span| acc.map(|a| a.extend(span)))
+    }
+}
+
+impl Ranged for StringSpan {
+    fn range(&self) -> Range {
+        self.range
+    }
+}
+
+impl Annotated for StringSpan {
+    fn message(&self) -> String {
+        format!("{:?}", self.as_str())
     }
 }
 
@@ -215,5 +235,51 @@ mod tests {
 
         let span = cursor2.next().unwrap();
         assert_eq!(span.ch, 't');
+    }
+
+    #[test]
+    fn test_collect_string_spans() {
+        let result: Option<StringSpan> = StringCursor::new("   hello")
+            .take_while(|s| s.ch == ' ')
+            .collect();
+
+        let span = result.unwrap();
+        assert_eq!(span.as_str(), "   ");
+        assert_eq!(span.range().start, Position::new(1, 1));
+        assert_eq!(span.range().end, Position::new(1, 4));
+    }
+
+    #[test]
+    fn test_collect_empty_spans() {
+        let result: Option<StringSpan> = StringCursor::new("hello")
+            .take_while(|s| s.ch == ' ')
+            .collect();
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_collect_multiline_spans() {
+        let result: Option<StringSpan> = StringCursor::new("aaa\nbbb")
+            .take_while(|s| s.ch == 'a')
+            .collect();
+
+        let span = result.unwrap();
+        assert_eq!(span.as_str(), "aaa");
+        assert_eq!(span.range().start, Position::new(1, 1));
+        assert_eq!(span.range().end, Position::new(1, 4));
+    }
+
+    #[test]
+    fn test_collect_with_skip() {
+        let result: Option<StringSpan> = StringCursor::new("   hello   ")
+            .skip(3)
+            .take_while(|s| s.ch.is_alphabetic())
+            .collect();
+
+        let span = result.unwrap();
+        assert_eq!(span.as_str(), "hello");
+        assert_eq!(span.range().start, Position::new(1, 4));
+        assert_eq!(span.range().end, Position::new(1, 9));
     }
 }

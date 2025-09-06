@@ -23,6 +23,7 @@ anyhow = "1.0"
 colored = "3.0"
 jsonschema = "0.18"
 rayon = "1.8"
+itertools = "0.13"
 
 [dev-dependencies]
 simple_txtar = "1.1.0"

@@ -1,8 +1,10 @@
-use std::{cmp, collections::HashMap};
+use std::cmp;
+
+use itertools::Itertools as _;
 
 use super::{
-    RangedChars, RangedString,
     range::{Range, Ranged},
+    string_cursor::{StringCursor, StringSpan},
 };
 
 /// Trait for any annotation that can be displayed on source code
@@ -101,9 +103,11 @@ impl SourceAnnotator {
         annotations: impl IntoIterator<Item = impl Annotated>,
     ) -> String {
         let mut output = String::new();
-        let lines = RangedChars::from(source).lines().collect::<HashMap<_, _>>();
-
-        let line_count = source.lines().count();
+        let lines: Vec<Option<StringSpan>> = StringCursor::new(source)
+            .chunk_by(|span| span.range().start.line)
+            .into_iter()
+            .map(|(_, group)| group.filter(|s| s.ch != '\n').collect())
+            .collect();
 
         for (i, annotation) in annotations.into_iter().enumerate() {
             if i > 0 {
@@ -135,36 +139,29 @@ impl SourceAnnotator {
                 }
             }
 
-            self.format_annotation(&mut output, &lines, range, line_count);
+            self.format_annotation(&mut output, &lines, range);
         }
 
         output
     }
 
-    fn format_annotation(
-        &self,
-        output: &mut String,
-        lines: &HashMap<usize, RangedString>,
-        range: Range,
-        line_count: usize,
-    ) {
+    fn format_annotation(&self, output: &mut String, lines: &[Option<StringSpan>], range: Range) {
         let max_line_col_width = lines.len().to_string().len();
 
         let first_line = cmp::max(1, range.start().line().saturating_sub(self.lines_before));
-        let last_line = cmp::min(line_count, range.end().line() + self.lines_after);
+        let last_line = cmp::min(lines.len(), range.end().line() + self.lines_after);
 
-        for line_num in first_line..=last_line {
+        for (i, line) in lines.iter().enumerate() {
+            if i < first_line - 1 || i > last_line - 1 {
+                continue;
+            }
+
             // Write line content
             if self.show_line_numbers {
-                output.push_str(&format!(
-                    "{:width$} | ",
-                    line_num,
-                    width = max_line_col_width
-                ));
+                output.push_str(&format!("{:width$} | ", i + 1, width = max_line_col_width));
             }
-            let line = lines.get(&line_num);
             if let Some(line) = line {
-                output.push_str(&self.expand_tabs(line.value()));
+                output.push_str(&self.expand_tabs(line.as_str()));
             }
             output.push('\n');
             // Write annotation line
@@ -174,17 +171,17 @@ impl SourceAnnotator {
                     if self.show_line_numbers {
                         output.push_str(&format!("{:width$} | ", "", width = max_line_col_width));
                     }
-                    for (ch, ch_range) in line.chars() {
-                        if intersection.contains_range(ch_range) {
+                    for span in line.cursor() {
+                        if intersection.contains_range(span.range()) {
                             has_written_annotation = true;
                             output.push_str(
                                 &self
                                     .underline_char
                                     .to_string()
-                                    .repeat(self.char_display_width(ch)),
+                                    .repeat(self.char_display_width(span.ch)),
                             );
                         } else if !has_written_annotation {
-                            output.push_str(&" ".repeat(self.char_display_width(ch)));
+                            output.push_str(&" ".repeat(self.char_display_width(span.ch)));
                         }
                     }
                     output.push('\n');
@@ -216,20 +213,33 @@ impl Default for SourceAnnotator {
 
 #[cfg(test)]
 mod tests {
-    use crate::range::RangedChars;
-
     use super::*;
     use expect_test::expect;
+
+    fn create_annotations_from_chunks(
+        source: &str,
+        predicate: impl Fn(char) -> bool,
+    ) -> Vec<StringSpan> {
+        StringCursor::new(source)
+            .chunk_by(|span| predicate(span.ch))
+            .into_iter()
+            .filter_map(
+                |(is_separator, group)| {
+                    if !is_separator { group.collect() } else { None }
+                },
+            )
+            .collect()
+    }
 
     #[test]
     fn test_with_label() {
         let source = "line one\nline two\nline three\nline four";
 
-        let actual = SourceAnnotator::new().with_label("error").annotate(
-            None,
-            source,
-            RangedChars::from(source).split_by(|ch| ch == '\n'),
-        );
+        let annotations = create_annotations_from_chunks(source, |ch| ch == '\n');
+
+        let actual = SourceAnnotator::new()
+            .with_label("error")
+            .annotate(None, source, annotations);
 
         expect![[r#"
             error: "line one"
@@ -255,11 +265,12 @@ mod tests {
     fn test_with_location_info() {
         let source = "line one\nline two\nline three\nline four";
 
-        let actual = SourceAnnotator::new().with_location().annotate(
-            Some("main.rs"),
-            source,
-            RangedChars::from(source).split_by(|ch| ch == '\n'),
-        );
+        let annotations = create_annotations_from_chunks(source, |ch| ch == '\n');
+
+        let actual =
+            SourceAnnotator::new()
+                .with_location()
+                .annotate(Some("main.rs"), source, annotations);
 
         expect![[r#"
             "line one"
@@ -289,11 +300,12 @@ mod tests {
     fn test_with_lines_before() {
         let source = "line one\nline two\nline three\nline four";
 
-        let actual = SourceAnnotator::new().with_lines_before(2).annotate(
-            None,
-            source,
-            RangedChars::from(source).split_by(|ch| ch == '\n'),
-        );
+        let annotations = create_annotations_from_chunks(source, |ch| ch == '\n');
+
+        let actual =
+            SourceAnnotator::new()
+                .with_lines_before(2)
+                .annotate(None, source, annotations);
 
         expect![[r#"
             "line one"
@@ -324,11 +336,11 @@ mod tests {
     fn test_with_lines_after() {
         let source = "line one\nline two\nline three\nline four";
 
-        let actual = SourceAnnotator::new().with_lines_after(2).annotate(
-            None,
-            source,
-            RangedChars::from(source).split_by(|ch| ch == '\n'),
-        );
+        let annotations = create_annotations_from_chunks(source, |ch| ch == '\n');
+
+        let actual = SourceAnnotator::new()
+            .with_lines_after(2)
+            .annotate(None, source, annotations);
 
         expect![[r#"
             "line one"
@@ -359,11 +371,11 @@ mod tests {
     fn test_tab_expansion() {
         let source = "code\n\t\tcode\n\tcode";
 
-        let actual = SourceAnnotator::new().with_location().annotate(
-            None,
-            source,
-            RangedChars::from(source).split_by(|ch| ch.is_whitespace()),
-        );
+        let annotations = create_annotations_from_chunks(source, |ch| ch.is_whitespace());
+
+        let actual = SourceAnnotator::new()
+            .with_location()
+            .annotate(None, source, annotations);
 
         expect![[r#"
             "code"
@@ -388,11 +400,11 @@ mod tests {
     fn test_unicode_emoji_width() {
         let source = "😀 code";
 
-        let actual = SourceAnnotator::new().with_location().annotate(
-            None,
-            source,
-            RangedChars::from(source).split_by(|ch| ch.is_whitespace()),
-        );
+        let annotations = create_annotations_from_chunks(source, |ch| ch.is_whitespace());
+
+        let actual = SourceAnnotator::new()
+            .with_location()
+            .annotate(None, source, annotations);
 
         expect![[r#"
             "😀"
@@ -412,11 +424,11 @@ mod tests {
     fn test_location_without_filename() {
         let source = "some code";
 
-        let actual = SourceAnnotator::new().with_location().annotate(
-            None,
-            source,
-            RangedChars::from(source).split_by(|ch| ch.is_whitespace()),
-        );
+        let annotations = create_annotations_from_chunks(source, |ch| ch.is_whitespace());
+
+        let actual = SourceAnnotator::new()
+            .with_location()
+            .annotate(None, source, annotations);
 
         expect![[r#"
             "some"
@@ -436,11 +448,12 @@ mod tests {
     fn test_lines_before_exceeds_start() {
         let source = "line one\nline two\nline three\nline four\nline five\nline six";
 
-        let actual = SourceAnnotator::new().with_lines_before(1000).annotate(
-            None,
-            source,
-            RangedChars::from(source).split_by(|ch| ch == '\n'),
-        );
+        let annotations = create_annotations_from_chunks(source, |ch| ch == '\n');
+
+        let actual =
+            SourceAnnotator::new()
+                .with_lines_before(1000)
+                .annotate(None, source, annotations);
 
         expect![[r#"
             "line one"
@@ -489,11 +502,9 @@ mod tests {
     fn test_multi_line_annotation() {
         let source = "line one\nline two\nline three\nline four\nline five";
 
-        let actual = SourceAnnotator::new().annotate(
-            None,
-            source,
-            RangedChars::from(source).split_by(|ch| ch == 'n'),
-        );
+        let annotations = create_annotations_from_chunks(source, |ch| ch == 'n');
+
+        let actual = SourceAnnotator::new().annotate(None, source, annotations);
 
         expect![[r#"
             "li"
