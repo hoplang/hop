@@ -107,12 +107,12 @@ pub fn evaluate_component(
         output.push_str(component_name);
         output.push('"');
 
-        for (name, attr) in &component.attributes {
-            if name == "class" {
+        for attr in &component.attributes {
+            if attr.name.as_str() == "class" {
                 match additional_classes {
                     None => {
                         output.push(' ');
-                        output.push_str(name);
+                        output.push_str(attr.name.as_str());
                         if let Some(val) = &attr.value {
                             output.push_str("=\"");
                             output.push_str(val.as_str());
@@ -121,7 +121,7 @@ pub fn evaluate_component(
                     }
                     Some(cls) => {
                         output.push(' ');
-                        output.push_str(name);
+                        output.push_str(attr.name.as_str());
                         output.push_str("=\"");
                         if let Some(val) = &attr.value {
                             output.push_str(val.as_str());
@@ -133,7 +133,7 @@ pub fn evaluate_component(
                 }
             } else {
                 output.push(' ');
-                output.push_str(name);
+                output.push_str(attr.name.as_str());
                 if let Some(val) = &attr.value {
                     output.push_str("=\"");
                     output.push_str(val.as_str());
@@ -143,7 +143,7 @@ pub fn evaluate_component(
         }
 
         // If component doesn't have a class attribute but the reference does, add it
-        if !component.attributes.contains_key("class") {
+        if !component.attributes.iter().any(|attr| attr.name.as_str() == "class") {
             if let Some(cls) = additional_classes {
                 output.push_str(" class=\"");
                 output.push_str(cls);
@@ -294,7 +294,8 @@ fn evaluate_node(
 
             // Extract class attribute from component reference
             let additional_classes = attributes
-                .get("class")
+                .iter()
+                .find(|attr| attr.name.as_str() == "class")
                 .and_then(|attr| attr.value.clone())
                 .map(|val| val.to_string());
 
@@ -331,16 +332,16 @@ fn evaluate_node(
             }
 
             // Skip script nodes without a src attribute
-            if tag_name.as_str() == "script" && !attributes.contains_key("src") {
+            if tag_name.as_str() == "script" && !attributes.iter().any(|attr| attr.name.as_str() == "src") {
                 return Ok(());
             }
 
             output.push('<');
             output.push_str(tag_name.as_str());
-            for (name, attr) in attributes {
-                if !name.starts_with("set-") {
+            for attr in attributes {
+                if !attr.name.as_str().starts_with("set-") {
                     output.push(' ');
-                    output.push_str(name);
+                    output.push_str(attr.name.as_str());
                     if let Some(val) = &attr.value {
                         output.push_str("=\"");
                         output.push_str(val.as_str());
@@ -351,7 +352,7 @@ fn evaluate_node(
 
             // Evaluate and add set-* attributes
             for set_attr in set_attributes {
-                let attr_name = &set_attr.name[4..]; // Remove "set-" prefix
+                let attr_name = &set_attr.name.as_str()[4..]; // Remove "set-" prefix
                 let evaluated = evaluate_expr(&set_attr.expression, env)?;
                 output.push(' ');
                 output.push_str(attr_name);
@@ -481,10 +482,10 @@ fn evaluate_node_entrypoint(
             // For entrypoints, preserve script and style tags
             output.push('<');
             output.push_str(tag_name.as_str());
-            for (name, attr) in attributes {
-                if !name.starts_with("set-") {
+            for attr in attributes {
+                if !attr.name.as_str().starts_with("set-") {
                     output.push(' ');
-                    output.push_str(name);
+                    output.push_str(attr.name.as_str());
                     if let Some(val) = &attr.value {
                         output.push_str("=\"");
                         output.push_str(val.as_str());
@@ -495,7 +496,7 @@ fn evaluate_node_entrypoint(
 
             // Evaluate and add set-* attributes
             for set_attr in set_attributes {
-                let attr_name = &set_attr.name[4..]; // Remove "set-" prefix
+                let attr_name = &set_attr.name.as_str()[4..]; // Remove "set-" prefix
                 let evaluated = evaluate_expr(&set_attr.expression, env)?;
                 output.push(' ');
                 output.push_str(attr_name);

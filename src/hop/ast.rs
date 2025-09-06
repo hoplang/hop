@@ -11,18 +11,19 @@ pub struct PresentAttribute {
 
 #[derive(Debug, Clone)]
 pub struct Attribute {
+    pub name: StringSpan,
     pub value: Option<StringSpan>,
     pub span: StringSpan,
 }
 
 #[derive(Debug, Clone)]
 pub struct DopExprAttribute {
-    pub name: String,
+    pub name: StringSpan,
     pub expression: DopExpr,
     pub span: StringSpan,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct HopAst {
     pub name: String,
     imports: Vec<Import>,
@@ -155,7 +156,7 @@ pub struct ComponentDefinition {
     pub closing_tag_name: Option<StringSpan>,
     pub params: Option<(BTreeMap<String, DopParameter>, StringSpan)>,
     pub as_attr: Option<PresentAttribute>,
-    pub attributes: BTreeMap<String, Attribute>,
+    pub attributes: Vec<Attribute>,
     pub span: StringSpan,
     pub children: Vec<HopNode>,
     pub is_entrypoint: bool,
@@ -200,7 +201,7 @@ pub enum HopNode {
         definition_module: Option<String>,
         closing_tag_name: Option<StringSpan>,
         args: Option<(BTreeMap<String, DopArgument>, StringSpan)>,
-        attributes: BTreeMap<String, Attribute>,
+        attributes: Vec<Attribute>,
         span: StringSpan,
         children: Vec<HopNode>,
     },
@@ -239,7 +240,7 @@ pub enum HopNode {
     Html {
         tag_name: StringSpan,
         closing_tag_name: Option<StringSpan>,
-        attributes: BTreeMap<String, Attribute>,
+        attributes: Vec<Attribute>,
         span: StringSpan,
         children: Vec<HopNode>,
         set_attributes: Vec<DopExprAttribute>,

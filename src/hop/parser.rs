@@ -4,7 +4,7 @@ use crate::hop::ast::{ComponentDefinition, DopExprAttribute, HopAst, HopNode, Im
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
 use super::ast::PresentAttribute;
 
@@ -50,8 +50,8 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                     let mut component_attr = None;
                     let mut from_attr = None;
 
-                    for (key, attr) in attributes {
-                        match key.as_str() {
+                    for attr in attributes {
+                        match attr.name.as_str() {
                             "component" => component_attr = Some(attr),
                             "from" => from_attr = Some(attr),
                             _ => {
@@ -100,8 +100,8 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                 "render" => {
                     let mut file_attr = None;
 
-                    for (key, attr) in attributes {
-                        match key.as_str() {
+                    for attr in attributes {
+                        match attr.name.as_str() {
                             "file" => file_attr = Some(attr),
                             _ => {
                                 // TODO: Check for unrecognized attributes
@@ -176,10 +176,10 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
 
                         let mut is_entrypoint = false;
                         let mut as_attr = None;
-                        let mut unhandled_attributes = BTreeMap::new();
+                        let mut unhandled_attributes = Vec::new();
 
-                        for (key, attr) in attributes.into_iter() {
-                            match key.as_str() {
+                        for attr in attributes.into_iter() {
+                            match attr.name.as_str() {
                                 "as" => {
                                     as_attr = attr.value;
                                 }
@@ -190,7 +190,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                                     // Here we keep the unhandled attributes
                                     // since they should be rendered in the
                                     // resulting HTML.
-                                    unhandled_attributes.insert(key, attr);
+                                    unhandled_attributes.push(attr);
                                 }
                             }
                         }
@@ -366,8 +366,8 @@ fn construct_node(
                     "hop-x-exec" => {
                         let mut cmd_attr = None;
 
-                        for (key, attr) in attributes {
-                            match key.as_str() {
+                        for attr in attributes {
+                            match attr.name.as_str() {
                                 "cmd" => cmd_attr = Some(attr),
                                 _ => {
                                     // TODO: Check for unrecognized attributes
@@ -395,7 +395,7 @@ fn construct_node(
                         }
                     }
                     "hop-x-raw" => HopNode::XRaw {
-                        trim: attributes.contains_key("trim"),
+                        trim: attributes.iter().any(|attr| attr.name.as_str() == "trim"),
                         span: tree.span.clone(),
                         children,
                     },
@@ -462,8 +462,8 @@ fn construct_node(
                 // Treat as HTML
                 _ => {
                     let mut set_attributes = Vec::new();
-                    for (name, attr) in &attributes {
-                        if name.starts_with("set-") {
+                    for attr in &attributes {
+                        if attr.name.as_str().starts_with("set-") {
                             let attr_val = match &attr.value {
                                 None => {
                                     errors.push(ParseError::missing_attribute_value(
@@ -476,7 +476,7 @@ fn construct_node(
                             let mut tokenizer = DopTokenizer::from(attr_val.cursor()).peekable();
                             match dop::parse_expr(&mut tokenizer) {
                                 Ok(expression) => set_attributes.push(DopExprAttribute {
-                                    name: name.to_string(),
+                                    name: attr.name.clone(),
                                     expression,
                                     span: attr.span.clone(),
                                 }),

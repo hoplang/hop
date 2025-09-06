@@ -2601,16 +2601,16 @@ mod tests {
                   |             ^^^^
 
                 user: {theme: string, url: string}
-                  --> main.hop (line 2, col 37)
-                1 | <main-comp {user: {url: string, theme: string}}>
-                2 |   <a set-href="user.url" set-class="user.theme">Link</a>
-                  |                                     ^^^^
-
-                user: {theme: string, url: string}
                   --> main.hop (line 2, col 16)
                 1 | <main-comp {user: {url: string, theme: string}}>
                 2 |   <a set-href="user.url" set-class="user.theme">Link</a>
                   |                ^^^^
+
+                user: {theme: string, url: string}
+                  --> main.hop (line 2, col 37)
+                1 | <main-comp {user: {url: string, theme: string}}>
+                2 |   <a set-href="user.url" set-class="user.theme">Link</a>
+                  |                                     ^^^^
             "#]],
         );
     }

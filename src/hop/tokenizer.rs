@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::VecDeque;
 use std::fmt::{self, Display};
 use std::iter::Peekable;
 use std::mem;
@@ -10,8 +10,6 @@ use crate::dop::DopTokenizer;
 use crate::dop::tokenizer::DopToken;
 use crate::hop::ast::Attribute;
 use crate::span::string_cursor::{Spanned, StringCursor, StringSpan};
-
-type Attributes = BTreeMap<String, Attribute>;
 
 #[derive(Debug, Clone)]
 pub enum Token {
@@ -27,7 +25,7 @@ pub enum Token {
     },
     OpeningTag {
         tag_name: StringSpan,
-        attributes: Attributes,
+        attributes: Vec<Attribute>,
         expression: Option<StringSpan>,
         self_closing: bool,
         span: StringSpan,
@@ -84,11 +82,11 @@ impl Display for Token {
                     write!(f, " ")?;
                     let attr_strs: Vec<String> = attributes
                         .iter()
-                        .map(|(name, attr)| {
+                        .map(|attr| {
                             if let Some(val) = &attr.value {
-                                format!("{}={:#?}", name, val.to_string())
+                                format!("{}={:#?}", attr.name, val.to_string())
                             } else {
-                                name.clone()
+                                attr.name.to_string()
                             }
                         })
                         .collect();
@@ -145,20 +143,18 @@ impl Tokenizer {
     }
 
     // Parse an attribute, e.g. foo="bar"
-    fn parse_attribute(&mut self) -> Option<(StringSpan, Attribute)> {
+    fn parse_attribute(&mut self) -> Option<Attribute> {
         let initial = self.iter.next()?; // consume initial name char
         let attr_name = self.parse_tag_name(initial);
 
         self.skip_whitespace();
 
         if self.iter.peek()?.ch() != '=' {
-            return Some((
-                attr_name.clone(),
-                Attribute {
-                    value: None,
-                    span: attr_name,
-                },
-            ));
+            return Some(Attribute {
+                name: attr_name.clone(),
+                value: None,
+                span: attr_name,
+            });
         }
 
         self.iter.next(); // consume '='
@@ -177,13 +173,11 @@ impl Tokenizer {
         // handle empty attribute
         if self.iter.peek()?.ch() == open_quote.ch() {
             let close_quote = self.iter.next()?;
-            return Some((
-                attr_name.clone(),
-                Attribute {
-                    value: None,
-                    span: attr_name.to(close_quote),
-                },
-            ));
+            return Some(Attribute {
+                name: attr_name.clone(),
+                value: None,
+                span: attr_name.to(close_quote),
+            });
         }
 
         let attr_value = self
@@ -193,13 +187,11 @@ impl Tokenizer {
 
         let close_quote = self.iter.next()?;
 
-        Some((
-            attr_name.clone(),
-            Attribute {
-                value: Some(attr_value),
-                span: attr_name.to(close_quote),
-            },
-        ))
+        Some(Attribute {
+            name: attr_name.clone(),
+            value: Some(attr_value),
+            span: attr_name.to(close_quote),
+        })
     }
 
     // Find the end of an expression using the dop tokenizer.
@@ -237,8 +229,8 @@ impl Tokenizer {
     }
 
     // Parse tag content, e.g. 'foo="bar" {x: string}'
-    fn parse_tag_content(&mut self) -> Option<(Attributes, Option<StringSpan>)> {
-        let mut attributes = Attributes::new();
+    fn parse_tag_content(&mut self) -> Option<(Vec<Attribute>, Option<StringSpan>)> {
+        let mut attributes: Vec<Attribute> = Vec::new();
         let mut expression: Option<StringSpan> = None;
         loop {
             self.skip_whitespace();
@@ -265,14 +257,18 @@ impl Tokenizer {
                 }
                 // Parse attribute
                 ch if ch.is_ascii_alphabetic() => {
-                    let (attr_name, attr_value) = self.parse_attribute()?;
-                    if attributes.contains_key(attr_name.as_str()) {
+                    let attr = self.parse_attribute()?;
+                    if attributes
+                        .iter()
+                        .any(|a| a.name.as_str() == attr.name.as_str())
+                    {
                         self.errors.push_back(ParseError::duplicate_attribute(
-                            attr_name.as_str(),
-                            attr_name.clone(),
+                            attr.name.as_str(),
+                            attr.name.clone(),
                         ));
+                    } else {
+                        attributes.push(attr);
                     }
-                    attributes.insert(attr_name.to_string(), attr_value);
                 }
                 // Return
                 ch if ch == '/' || ch == '>' => {
@@ -580,7 +576,7 @@ mod tests {
         check(
             r#"<input type="" value="" disabled="">"#,
             expect![[r#"
-                OpeningTag <input disabled type value>
+                OpeningTag <input type value disabled>
                 1 | <input type="" value="" disabled="">
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -877,7 +873,7 @@ mod tests {
         check(
             "<h1 foo bar/>",
             expect![[r#"
-                OpeningTag <h1 bar foo/>
+                OpeningTag <h1 foo bar/>
                 1 | <h1 foo bar/>
                   | ^^^^^^^^^^^^^
             "#]],
@@ -889,7 +885,7 @@ mod tests {
         check(
             "<h1 {foo: {k: string}} foo bar/>",
             expect![[r#"
-                OpeningTag <h1 bar foo expr="foo: {k: string}"/>
+                OpeningTag <h1 foo bar expr="foo: {k: string}"/>
                 1 | <h1 {foo: {k: string}} foo bar/>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
             "#]],
@@ -1289,7 +1285,7 @@ mod tests {
                 </div>
             "#},
             expect![[r#"
-                OpeningTag <div class="multiline" data-value="something" id="test">
+                OpeningTag <div class="multiline" id="test" data-value="something">
                 1 | <div
                   | ^^^^
                 2 |   class="multiline"
@@ -1675,7 +1671,7 @@ mod tests {
                 </svg>
             "#},
             expect![[r#"
-                OpeningTag <svg fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
+                OpeningTag <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 1 | <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1683,7 +1679,7 @@ mod tests {
                 1 | <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 2 | <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
 
-                OpeningTag <line x1="16.5" x2="7.5" y1="9.4" y2="4.21">
+                OpeningTag <line x1="16.5" y1="9.4" x2="7.5" y2="4.21">
                 2 | <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1719,7 +1715,7 @@ mod tests {
                 4 | <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
                 5 | <line x1="12" y1="22.08" x2="12" y2="12"></line>
 
-                OpeningTag <line x1="12" x2="12" y1="22.08" y2="12">
+                OpeningTag <line x1="12" y1="22.08" x2="12" y2="12">
                 5 | <line x1="12" y1="22.08" x2="12" y2="12"></line>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1754,7 +1750,7 @@ mod tests {
                 </svg>
             "#},
             expect![[r#"
-                OpeningTag <svg class="size-12" height="128" version="1.1" viewBox="0 0 128 128" width="128" xmlns="http://www.w3.org/2000/svg">
+                OpeningTag <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" version="1.1" viewBox="0 0 128 128" class="size-12">
                 1 | <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" version="1.1" viewBox="0 0 128 128" class="size-12">
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1859,7 +1855,7 @@ mod tests {
                 3 |         <input type="text" required>
                   | ^^^^^^^^
 
-                OpeningTag <input required type="text">
+                OpeningTag <input type="text" required>
                 3 |         <input type="text" required>
                   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -2292,7 +2288,7 @@ mod tests {
         check(
             r#"<div class="foo" class="bar"></div>"#,
             expect![[r#"
-                OpeningTag <div class="bar">
+                OpeningTag <div class="foo">
                 1 | <div class="foo" class="bar"></div>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -2312,7 +2308,7 @@ mod tests {
         check(
             r#"<input type="text" type='number'/>"#,
             expect![[r#"
-                OpeningTag <input type="number"/>
+                OpeningTag <input type="text"/>
                 1 | <input type="text" type='number'/>
                   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
