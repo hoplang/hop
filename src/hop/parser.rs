@@ -267,18 +267,16 @@ fn construct_node(
             range: tree.range,
         },
         Token::Expression {
-            expression: (expression, expression_range),
-            ..
+            expression: expr, ..
         } => {
-            let span = StringSpan::new(expression.clone(), expression_range);
-            let mut tokenizer = DopTokenizer::from(span.cursor()).peekable();
+            let mut tokenizer = DopTokenizer::from(expr.cursor()).peekable();
             match dop::parse_expr(&mut tokenizer) {
                 Ok(expression) => HopNode::TextExpression {
                     expression,
                     range: tree.range,
                 },
                 Err(dop::parser::ParseError::UnexpectedEof) => {
-                    errors.push(ParseError::unexpected_end_of_expression(expression_range));
+                    errors.push(ParseError::unexpected_end_of_expression(expr.range()));
                     HopNode::Error {
                         range: tree.range,
                         children: vec![],

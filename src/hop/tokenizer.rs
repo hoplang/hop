@@ -21,7 +21,7 @@ pub enum Token {
         range: Range,
     },
     Expression {
-        expression: (String, Range),
+        expression: StringSpan,
         range: Range,
     },
     OpeningTag {
@@ -109,10 +109,10 @@ impl Annotated for Token {
                 format!("Comment")
             }
             Token::Expression {
-                expression: (value, _),
+                expression,
                 range: _,
             } => {
-                format!("Expression {:#?}", value)
+                format!("Expression {:#?}", expression.to_string())
             }
         }
     }
@@ -491,7 +491,7 @@ impl<'a> Tokenizer<'a> {
                 }
                 self.chars.next()?; // skip right brace
                 Some(Token::Expression {
-                    expression: expr.into(),
+                    expression: expr,
                     range: left_brace.range().spanning(right_brace_range),
                 })
             }
