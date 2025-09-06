@@ -9,7 +9,6 @@ use crate::common::ParseError;
 use crate::dop::DopTokenizer;
 use crate::dop::tokenizer::DopToken;
 use crate::hop::ast::Attribute;
-use crate::range::Ranged;
 use crate::range::string_cursor::{StringCursor, StringSpan};
 
 type Attributes = BTreeMap<String, Attribute>;
@@ -558,7 +557,7 @@ mod tests {
                 Err(err) => {
                     annotations.push(RangedAnnotation {
                         message: err.to_string(),
-                        range: err.range(),
+                        range: err.span.range(),
                     });
                 }
                 Ok(ok) => {

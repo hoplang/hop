@@ -7,8 +7,8 @@ use crate::dop::ast::{BinaryOp, DopExpr, UnaryOp};
 use crate::dop::errors::ParseError;
 use crate::dop::tokenizer::{DopToken, DopTokenizer};
 use crate::dop::typechecker::SpannedDopType;
+use crate::range::Range;
 use crate::range::string_cursor::StringSpan;
-use crate::range::{Range, Ranged};
 
 /// A DopVarName represents a validated variable name in dop.
 #[derive(Debug, Clone)]
@@ -368,18 +368,9 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
 
             Ok(expr)
         }
-        (DopToken::StringLiteral(value), span) => Ok(DopExpr::StringLiteral {
-            value,
-            span,
-        }),
-        (DopToken::BooleanLiteral(value), span) => Ok(DopExpr::BooleanLiteral {
-            value,
-            span,
-        }),
-        (DopToken::NumberLiteral(value), span) => Ok(DopExpr::NumberLiteral {
-            value,
-            span,
-        }),
+        (DopToken::StringLiteral(value), span) => Ok(DopExpr::StringLiteral { value, span }),
+        (DopToken::BooleanLiteral(value), span) => Ok(DopExpr::BooleanLiteral { value, span }),
+        (DopToken::NumberLiteral(value), span) => Ok(DopExpr::NumberLiteral { value, span }),
         (DopToken::LeftBracket, left_bracket_span) => {
             let mut elements = Vec::new();
 
@@ -513,14 +504,9 @@ mod tests {
             .without_line_numbers();
         match error {
             ParseError::UnexpectedEof => "Unexpected end of expression".to_string(),
-            ParseError::Spanned { message, span } => annotator.annotate(
-                None,
-                input,
-                [SimpleAnnotation {
-                    message,
-                    span,
-                }],
-            ),
+            ParseError::Spanned { message, span } => {
+                annotator.annotate(None, input, [SimpleAnnotation { message, span }])
+            }
         }
     }
 

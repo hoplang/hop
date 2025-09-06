@@ -212,7 +212,7 @@ impl Iterator for DopTokenizer {
 
 #[cfg(test)]
 mod tests {
-    use crate::range::{RangedAnnotation, Ranged, SourceAnnotator};
+    use crate::range::{RangedAnnotation, SourceAnnotator};
 
     use super::*;
     use expect_test::{Expect, expect};
@@ -239,11 +239,11 @@ mod tests {
                 }
             }
         }
-        expected.assert_eq(&SourceAnnotator::new().without_line_numbers().annotate_ranged(
-            None,
-            input,
-            &annotations,
-        ));
+        expected.assert_eq(
+            &SourceAnnotator::new()
+                .without_line_numbers()
+                .annotate_ranged(None, input, &annotations),
+        );
     }
 
     #[test]

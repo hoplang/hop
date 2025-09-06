@@ -98,6 +98,13 @@ impl StringSpan {
     pub fn end(&self) -> Position {
         self.source.offset_to_position(self.end)
     }
+
+    pub fn range(&self) -> Range {
+        Range::new(
+            self.source.offset_to_position(self.start),
+            self.source.offset_to_position(self.end),
+        )
+    }
 }
 
 impl fmt::Display for StringSpan {
@@ -109,15 +116,6 @@ impl fmt::Display for StringSpan {
 impl FromIterator<StringSpan> for Option<StringSpan> {
     fn from_iter<I: IntoIterator<Item = StringSpan>>(iter: I) -> Self {
         iter.into_iter().reduce(|acc, span| acc.to(span))
-    }
-}
-
-impl Ranged for StringSpan {
-    fn range(&self) -> Range {
-        Range::new(
-            self.source.offset_to_position(self.start),
-            self.source.offset_to_position(self.end),
-        )
     }
 }
 
