@@ -30,7 +30,7 @@ impl DopVarName {
         {
             return Err(ParseError::invalid_variable_name(
                 value.as_str(),
-                value.range(),
+                value.clone(),
             ));
         }
         Ok(DopVarName { value })
@@ -88,7 +88,7 @@ fn expect_token(
     match tokenizer.next().ok_or(ParseError::UnexpectedEof)?? {
         (token, span) if token == expected => Ok(span.range()),
         (actual, span) => Err(ParseError::expected_token_but_got(
-            &expected, &actual, span.range(),
+            &expected, &actual, span.clone(),
         )),
     }
 }
@@ -96,21 +96,21 @@ fn expect_token(
 fn expect_variable_name(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopVarName, ParseError> {
     match tokenizer.next().ok_or(ParseError::UnexpectedEof)?? {
         (DopToken::Identifier(name), _) => DopVarName::new(name),
-        (actual, span) => Err(ParseError::expected_variable_name_but_got(&actual, span.range())),
+        (actual, span) => Err(ParseError::expected_variable_name_but_got(&actual, span.clone())),
     }
 }
 
 fn expect_property_name(tokenizer: &mut Peekable<DopTokenizer>) -> Result<StringSpan, ParseError> {
     match tokenizer.next().ok_or(ParseError::UnexpectedEof)?? {
         (DopToken::Identifier(name), _) => Ok(name),
-        (token, span) => Err(ParseError::expected_property_name_but_got(&token, span.range())),
+        (token, span) => Err(ParseError::expected_property_name_but_got(&token, span.clone())),
     }
 }
 
 fn expect_eof(tokenizer: &mut Peekable<DopTokenizer>) -> Result<(), ParseError> {
     match tokenizer.next().transpose()? {
         None => Ok(()),
-        Some((token, span)) => Err(ParseError::unexpected_token(&token, span.range())),
+        Some((token, span)) => Err(ParseError::unexpected_token(&token, span.clone())),
     }
 }
 
@@ -171,7 +171,7 @@ pub fn parse_parameters(
         if params.contains_key(param.var_name.value.as_str()) {
             return Err(ParseError::duplicate_parameter(
                 param.var_name.value.as_str(),
-                param.var_name.value.range(),
+                param.var_name.value.clone(),
             ));
         }
         params.insert(param.var_name.value.to_string(), param);
@@ -199,7 +199,7 @@ pub fn parse_arguments(
         if args.contains_key(arg.var_name.value.as_str()) {
             return Err(ParseError::duplicate_argument(
                 arg.var_name.value.as_str(),
-                arg.var_name.value.range(),
+                arg.var_name.value.clone(),
             ));
         }
         args.insert(arg.var_name.value.to_string(), arg);
@@ -253,13 +253,13 @@ fn parse_type(tokenizer: &mut Peekable<DopTokenizer>) -> Result<RangeDopType, Pa
                 if properties.contains_key(prop_name.as_str()) {
                     return Err(ParseError::duplicate_property(
                         prop_name.as_str(),
-                        prop_name.range(),
+                        prop_name.clone(),
                     ));
                 }
                 properties.insert(prop_name.to_string(), typ.dop_type);
 
                 match tokenizer.next().ok_or_else(|| {
-                    ParseError::unmatched_token(&DopToken::LeftBrace, left_brace_span.range())
+                    ParseError::unmatched_token(&DopToken::LeftBrace, left_brace_span.clone())
                 })?? {
                     (DopToken::Comma, _) => {
                         // Check for trailing comma (closing brace after comma)
@@ -282,13 +282,13 @@ fn parse_type(tokenizer: &mut Peekable<DopTokenizer>) -> Result<RangeDopType, Pa
                         return Err(ParseError::expected_tokens_but_got(
                             &[DopToken::Comma, DopToken::RightBrace],
                             &t,
-                            span.range(),
+                            span.clone(),
                         ));
                     }
                 };
             }
         }
-        (_, span) => Err(ParseError::new("Expected type name".to_string(), span.range())),
+        (_, span) => Err(ParseError::new("Expected type name".to_string(), span.clone())),
     }
 }
 
@@ -347,7 +347,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                         };
                     }
                     (_, span) => {
-                        return Err(ParseError::expected_identifier_after_dot(span.range()));
+                        return Err(ParseError::expected_identifier_after_dot(span.clone()));
                     }
                 }
             }
@@ -373,7 +373,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                 elements.push(parse_equality(tokenizer)?);
 
                 match tokenizer.next().ok_or_else(|| {
-                    ParseError::unmatched_token(&DopToken::LeftBracket, left_bracket_span.range())
+                    ParseError::unmatched_token(&DopToken::LeftBracket, left_bracket_span.clone())
                 })?? {
                     (DopToken::Comma, _) => {
                         // Handle trailing comma
@@ -397,7 +397,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                         return Err(ParseError::expected_tokens_but_got(
                             &[DopToken::Comma, DopToken::RightBracket],
                             &t,
-                            span.range(),
+                            span.clone(),
                         ));
                     }
                 }
@@ -421,7 +421,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                 if properties.contains_key(prop_name.as_str()) {
                     return Err(ParseError::duplicate_property(
                         prop_name.as_str(),
-                        prop_name.range(),
+                        prop_name.clone(),
                     ));
                 }
 
@@ -431,7 +431,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
 
                 // Expect comma or right brace
                 match tokenizer.next().ok_or_else(|| {
-                    ParseError::unmatched_token(&DopToken::LeftBrace, left_brace_span.range())
+                    ParseError::unmatched_token(&DopToken::LeftBrace, left_brace_span.clone())
                 })?? {
                     (DopToken::Comma, _) => {
                         // Check for trailing comma (closing brace after comma)
@@ -454,7 +454,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                         return Err(ParseError::expected_tokens_but_got(
                             &[DopToken::Comma, DopToken::RightBrace],
                             &t,
-                            span.range(),
+                            span.clone(),
                         ));
                     }
                 }
@@ -463,17 +463,17 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
         (DopToken::LeftParen, left_paren_span) => {
             let expr = parse_equality(tokenizer)?;
             match tokenizer.next().ok_or_else(|| {
-                ParseError::unmatched_token(&DopToken::LeftParen, left_paren_span.range())
+                ParseError::unmatched_token(&DopToken::LeftParen, left_paren_span.clone())
             })?? {
                 (DopToken::RightParen, _) => Ok(expr),
                 (t, span) => Err(ParseError::expected_token_but_got(
                     &DopToken::RightParen,
                     &t,
-                    span.range(),
+                    span.clone(),
                 )),
             }
         }
-        (token, span) => Err(ParseError::unexpected_token(&token, span.range())),
+        (token, span) => Err(ParseError::unexpected_token(&token, span.clone())),
     }
 }
 
@@ -490,8 +490,8 @@ mod tests {
             .without_line_numbers();
         match error {
             ParseError::UnexpectedEof => "Unexpected end of expression".to_string(),
-            ParseError::Ranged { message, range } => {
-                annotator.annotate(None, input, [SimpleAnnotation { message, range }])
+            ParseError::Ranged { message, span } => {
+                annotator.annotate(None, input, [SimpleAnnotation { message, range: span.range() }])
             }
         }
     }

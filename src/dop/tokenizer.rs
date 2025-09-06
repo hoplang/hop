@@ -1,5 +1,5 @@
 use crate::range::{
-    Ranged as _,
+    Ranged,
     string_cursor::{StringCursor, StringSpan},
 };
 use std::{fmt, iter::Peekable, str::FromStr};
@@ -141,7 +141,7 @@ impl Iterator for DopTokenizer {
                     }
                     Err(ParseError::new(
                         "Expected '==' but found single '='".to_string(),
-                        start.range(),
+                        start.clone(),
                     ))
                 }
                 '\'' => {
@@ -153,7 +153,7 @@ impl Iterator for DopTokenizer {
                     }
                     match self.iter.next() {
                         None => Err(ParseError::unterminated_string_literal(
-                            start.to(end_span).range(),
+                            start.to(end_span),
                         )),
                         Some(end) => Ok((DopToken::StringLiteral(result), start.to(end))),
                     }
@@ -191,7 +191,7 @@ impl Iterator for DopTokenizer {
                         number_string = number_string.to(dot);
                         if !self.iter.peek().is_some_and(|s| s.ch().is_ascii_digit()) {
                             return Err(ParseError::expected_digit_after_decimal_point(
-                                number_string.range(),
+                                number_string.clone(),
                             ));
                         }
                         while let Some(digit) = self.iter.next_if(|s| s.ch().is_ascii_digit()) {
@@ -202,13 +202,13 @@ impl Iterator for DopTokenizer {
                         Ok(n) => Ok((DopToken::NumberLiteral(n), number_string)),
                         Err(_) => Err(ParseError::new(
                             format!("Invalid number format: {}", number_string.as_str()),
-                            number_string.range(),
+                            number_string.clone(),
                         )),
                     }
                 }
                 ch => Err(ParseError::new(
                     format!("Unexpected character: '{}'", ch),
-                    start.range(),
+                    start.clone(),
                 )),
             }
         })
@@ -233,10 +233,10 @@ mod tests {
                         range: span.range(),
                     });
                 }
-                Err(ParseError::Ranged { message, range }) => {
+                Err(ParseError::Ranged { message, span }) => {
                     annotations.push(SimpleAnnotation {
                         message: format!("error: {}", message),
-                        range,
+                        range: span.range(),
                     });
                 }
                 Err(_) => {

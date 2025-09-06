@@ -140,8 +140,8 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                                     ));
                                     None
                                 }
-                                Err(dop::errors::ParseError::Ranged { message, range }) => {
-                                    errors.push(ParseError::new(message, range));
+                                Err(dop::errors::ParseError::Ranged { message, span }) => {
+                                    errors.push(ParseError::new(message, span.range()));
                                     None
                                 }
                             }
@@ -268,8 +268,8 @@ fn construct_node(
                         children: vec![],
                     }
                 }
-                Err(dop::errors::ParseError::Ranged { message, range }) => {
-                    errors.push(ParseError::new(message, range));
+                Err(dop::errors::ParseError::Ranged { message, span }) => {
+                    errors.push(ParseError::new(message, span.range()));
                     HopNode::Error {
                         span: tree.span.clone(),
                         children: vec![],
@@ -302,8 +302,8 @@ fn construct_node(
                                     children,
                                 }
                             }
-                            Err(dop::errors::ParseError::Ranged { message, range }) => {
-                                errors.push(ParseError::new(message, range));
+                            Err(dop::errors::ParseError::Ranged { message, span }) => {
+                                errors.push(ParseError::new(message, span.range()));
                                 HopNode::Error {
                                     span: tree.span.clone(),
                                     children,
@@ -340,8 +340,8 @@ fn construct_node(
                                     children,
                                 }
                             }
-                            Err(dop::errors::ParseError::Ranged { message, range }) => {
-                                errors.push(ParseError::new(message, range));
+                            Err(dop::errors::ParseError::Ranged { message, span }) => {
+                                errors.push(ParseError::new(message, span.range()));
                                 HopNode::Error {
                                     span: tree.span.clone(),
                                     children,
@@ -430,8 +430,8 @@ fn construct_node(
                                         children: vec![],
                                     };
                                 }
-                                Err(dop::errors::ParseError::Ranged { message, range }) => {
-                                    errors.push(ParseError::new(message, range));
+                                Err(dop::errors::ParseError::Ranged { message, span }) => {
+                                    errors.push(ParseError::new(message, span.range()));
                                     return HopNode::Error {
                                         span: tree.span.clone(),
                                         children: vec![],
@@ -482,8 +482,8 @@ fn construct_node(
                                         attr_val.range(),
                                     ));
                                 }
-                                Err(dop::errors::ParseError::Ranged { message, range }) => {
-                                    errors.push(ParseError::new(message, range));
+                                Err(dop::errors::ParseError::Ranged { message, span }) => {
+                                    errors.push(ParseError::new(message, span.range()));
                                 }
                             };
                         }

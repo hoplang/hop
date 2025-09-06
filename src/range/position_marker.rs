@@ -1,7 +1,5 @@
 use std::collections::HashSet;
 
-use crate::range::Ranged as _;
-
 use super::{Position, string_cursor::StringCursor};
 
 /// Extracts a single position marked with `^` from the source.
