@@ -15,12 +15,6 @@ pub struct Attribute {
     pub span: StringSpan,
 }
 
-impl Spanned for Attribute {
-    fn span(&self) -> &StringSpan {
-        &self.span
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct DopExprAttribute {
     pub name: String,
