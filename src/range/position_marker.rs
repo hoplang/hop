@@ -12,7 +12,10 @@ use super::{Position, string_cursor::StringCursor};
 pub fn extract_position(input: &str) -> Option<(String, Position)> {
     let markers = StringCursor::new(input)
         .filter(|span| span.ch() == '^')
-        .map(|span| Position::new(span.start().line() - 1, span.start().column()))
+        .map(|span| {
+            // Subtract 1 to get position at line above
+            Position::new(span.start().line() - 1, span.start().column())
+        })
         .collect::<Vec<_>>();
     assert!(
         markers.len() < 2,
