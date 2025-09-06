@@ -24,18 +24,18 @@ pub enum Token {
     },
     Expression {
         expression: StringSpan,
-        range: Range,
+        span: StringSpan,
     },
     OpeningTag {
         tag_name: StringSpan,
         attributes: Attributes,
         expression: Option<StringSpan>,
         self_closing: bool,
-        range: Range,
+        span: StringSpan,
     },
     ClosingTag {
         tag_name: StringSpan,
-        range: Range,
+        span: StringSpan,
     },
     Text {
         value: StringSpan,
@@ -47,9 +47,9 @@ impl Ranged for Token {
         match self {
             Token::Doctype { span } => span.range(),
             Token::Comment { span } => span.range(),
-            Token::Expression { range, .. } => *range,
-            Token::OpeningTag { range, .. } => *range,
-            Token::ClosingTag { range, .. } => *range,
+            Token::Expression { span, .. } => span.range(),
+            Token::OpeningTag { span, .. } => span.range(),
+            Token::ClosingTag { span, .. } => span.range(),
             Token::Text { value, .. } => value.range(),
         }
     }
@@ -403,12 +403,12 @@ impl Tokenizer {
                                 ));
                                 return Some(Token::ClosingTag {
                                     tag_name,
-                                    range: left_angle.range().to(right_angle.range()),
+                                    span: left_angle.to(right_angle),
                                 });
                             }
                             Some(Token::ClosingTag {
                                 tag_name,
-                                range: left_angle.range().to(right_angle.range()),
+                                span: left_angle.to(right_angle),
                             })
                         } else {
                             self.errors.push_back(ParseError::new(
@@ -444,7 +444,7 @@ impl Tokenizer {
                                     tag_name,
                                     attributes,
                                     expression,
-                                    range: left_angle.range().to(right_angle.range()),
+                                    span: left_angle.to(right_angle),
                                 })
                             }
                             _ => {
@@ -486,7 +486,7 @@ impl Tokenizer {
                 self.iter.next()?; // skip right brace
                 Some(Token::Expression {
                     expression: expr,
-                    range: left_brace.range().to(right_brace_span.range()),
+                    span: left_brace.to(right_brace_span),
                 })
             }
             // Text

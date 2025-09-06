@@ -44,7 +44,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                 tag_name,
                 attributes,
                 expression,
-                range,
+                span,
                 ..
             } => match tag_name.as_str() {
                 "import" => {
@@ -85,14 +85,14 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                                 errors.push(ParseError::missing_required_attribute(
                                     tag_name.as_str(),
                                     "component",
-                                    range,
+                                    span.range(),
                                 ));
                             }
                             if from.is_none() {
                                 errors.push(ParseError::missing_required_attribute(
                                     tag_name.as_str(),
                                     "from",
-                                    range,
+                                    span.range(),
                                 ));
                             }
                         }
@@ -121,7 +121,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         None => errors.push(ParseError::missing_required_attribute(
                             tag_name.as_str(),
                             "file",
-                            range,
+                            span.range(),
                         )),
                     }
                 }
@@ -279,7 +279,7 @@ fn construct_node(
             tag_name,
             expression,
             attributes,
-            range: opening_tag_range,
+            span: opening_tag_span,
             ..
         } => {
             match tag_name.as_str() {
@@ -312,7 +312,7 @@ fn construct_node(
                     None => {
                         errors.push(ParseError::new(
                             "Missing expression in <if> tag".to_string(),
-                            opening_tag_range,
+                            opening_tag_span.range(),
                         ));
                         HopNode::Error {
                             range: tree.range,
@@ -350,7 +350,7 @@ fn construct_node(
                     None => {
                         errors.push(ParseError::new(
                             "Missing loop generator expression in <for> tag".to_string(),
-                            opening_tag_range,
+                            opening_tag_span.range(),
                         ));
                         HopNode::Error {
                             range: tree.range,
@@ -382,7 +382,7 @@ fn construct_node(
                                 errors.push(ParseError::missing_required_attribute(
                                     tag_name.as_str(),
                                     "cmd",
-                                    opening_tag_range,
+                                    opening_tag_span.range(),
                                 ));
                                 HopNode::Error {
                                     range: tree.range,
