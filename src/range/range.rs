@@ -9,6 +9,12 @@ pub struct Position {
     pub(super) column: usize,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct Range {
+    start: Position,
+    end: Position,
+}
+
 impl Position {
     pub(super) fn new(line: usize, column: usize) -> Self {
         Position { line, column }
@@ -51,12 +57,6 @@ impl From<Position> for tower_lsp::lsp_types::Position {
             character: (position.column - 1) as u32,
         }
     }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct Range {
-    start: Position,
-    end: Position,
 }
 
 impl Range {
