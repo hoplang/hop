@@ -209,7 +209,7 @@ mod tests {
             let mut tokenizer = DopTokenizer::from(env_str).peekable();
             let params = parse_parameters(&mut tokenizer).expect("Failed to parse environment");
             for (_, param) in params {
-                let _ = env.push(param.var_name.value.to_string(), param.type_annotation);
+                let _ = env.push(param.var_name.to_string(), param.type_annotation);
             }
         }
 

@@ -238,7 +238,7 @@ pub enum HopNode {
     ///      ^^^^^^^^^^^^^^
     Html {
         tag_name: StringSpan,
-        closing_name: Option<StringSpan>,
+        closing_tag_name: Option<StringSpan>,
         attributes: BTreeMap<String, Attribute>,
         range: Range,
         children: Vec<HopNode>,
@@ -328,7 +328,10 @@ impl HopNode {
             HopNode::ComponentReference {
                 closing_tag_name, ..
             } => closing_tag_name.as_ref().map(|s| s.range()),
-            HopNode::Html { closing_name, .. } => closing_name.as_ref().map(|s| s.range()),
+            HopNode::Html {
+                closing_tag_name: closing_name,
+                ..
+            } => closing_name.as_ref().map(|s| s.range()),
             _ => None,
         }
     }

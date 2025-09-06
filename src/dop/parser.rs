@@ -158,7 +158,7 @@ impl Ranged for DopExpr {
 /// A DopVarName represents a validated variable name in dop.
 #[derive(Debug, Clone)]
 pub struct DopVarName {
-    pub value: StringSpan,
+    value: StringSpan,
 }
 
 impl DopVarName {
@@ -173,6 +173,15 @@ impl DopVarName {
             ));
         }
         Ok(DopVarName { value })
+    }
+    pub fn as_str(&self) -> &str {
+        self.value.as_str()
+    }
+    pub fn to_string(&self) -> String {
+        self.value.to_string()
+    }
+    pub fn range(&self) -> Range {
+        self.value.range()
     }
 }
 

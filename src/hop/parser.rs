@@ -488,7 +488,7 @@ fn construct_node(
 
                     HopNode::Html {
                         tag_name,
-                        closing_name: tree.closing_tag_name,
+                        closing_tag_name: tree.closing_tag_name,
                         attributes: attributes.clone(),
                         range: tree.range,
                         children,

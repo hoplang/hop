@@ -73,7 +73,7 @@ impl TypeError {
                 "Component requires arguments: {}",
                 params
                     .iter()
-                    .map(|(_, p)| p.var_name.value.clone().to_string())
+                    .map(|(_, p)| p.var_name.as_str())
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
