@@ -1,10 +1,10 @@
-use std::{fmt, rc::Rc, str::Chars};
+use std::{fmt, str::Chars, sync::Arc};
 
 use super::{Position, Range};
 
 #[derive(Clone)]
 pub struct StringCursor<'a> {
-    source: Rc<String>,
+    source: Arc<String>,
     chars: Chars<'a>,
     offset: usize,
     position: Position,
@@ -12,7 +12,7 @@ pub struct StringCursor<'a> {
 
 #[derive(Debug, Clone)]
 pub struct StringSpan {
-    source: Rc<String>,
+    source: Arc<String>,
     pub ch: char,
     offset: (usize, usize),
     range: Range,
@@ -27,10 +27,12 @@ impl From<StringSpan> for (String, Range) {
 impl StringSpan {
     // TODO: Remove this later
     pub fn new(s: String, r: Range) -> Self {
+        let ch = s.chars().next().unwrap();
+        let len = s.len();
         StringSpan {
-            source: Rc::new(s.clone()),
-            ch: s.chars().next().unwrap(),
-            offset: (0, s.len()),
+            source: Arc::new(s),
+            ch,
+            offset: (0, len),
             range: r,
         }
     }
@@ -70,7 +72,7 @@ impl<'a> StringCursor<'a> {
             chars: source.chars(),
             offset: 0,
             position: Position::new(1, 1),
-            source: Rc::new(source.to_string()),
+            source: Arc::new(source.to_string()),
         }
     }
 }
