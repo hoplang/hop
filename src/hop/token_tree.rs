@@ -45,7 +45,7 @@ impl TokenTree {
     }
 
     pub fn set_closing_tag(&mut self, closing_token: Token) {
-        self.range = self.range.spanning(closing_token.range());
+        self.range = self.range.to(closing_token.range());
         self.closing_tag_name = match closing_token {
             Token::ClosingTag { tag_name, .. } => Some(tag_name),
             _ => panic!("Called set_closing_tag with a token that was not a ClosingTag"),

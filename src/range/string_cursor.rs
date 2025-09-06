@@ -69,7 +69,7 @@ impl StringSpan {
         self.source.text[self.start..].chars().next().unwrap()
     }
 
-    pub fn span(self, other: StringSpan) -> Self {
+    pub fn to(self, other: StringSpan) -> Self {
         StringSpan {
             source: self.source,
             start: self.start,
@@ -80,7 +80,7 @@ impl StringSpan {
     where
         I: IntoIterator<Item = StringSpan>,
     {
-        iter.into_iter().fold(self, |acc, span| acc.span(span))
+        iter.into_iter().fold(self, |acc, span| acc.to(span))
     }
     pub fn as_str(&self) -> &str {
         &self.source.text[self.start..self.end]
@@ -108,7 +108,7 @@ impl fmt::Display for StringSpan {
 
 impl FromIterator<StringSpan> for Option<StringSpan> {
     fn from_iter<I: IntoIterator<Item = StringSpan>>(iter: I) -> Self {
-        iter.into_iter().reduce(|acc, span| acc.span(span))
+        iter.into_iter().reduce(|acc, span| acc.to(span))
     }
 }
 
@@ -245,7 +245,7 @@ mod tests {
         let _span2 = cursor.next().unwrap();
         let span3 = cursor.next().unwrap();
 
-        let extended = span1.clone().span(span3);
+        let extended = span1.clone().to(span3);
         assert_eq!(extended.ch(), 'a');
         assert_eq!(extended.to_string(), "abc");
         assert_eq!(extended.start(), Position::new(1, 1));
@@ -263,7 +263,7 @@ mod tests {
         assert_eq!(spans[3].to_string(), "l");
         assert_eq!(spans[4].to_string(), "o");
 
-        let extended = spans[0].clone().span(spans[4].clone());
+        let extended = spans[0].clone().to(spans[4].clone());
         assert_eq!(extended.to_string(), "hello");
     }
 

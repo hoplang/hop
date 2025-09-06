@@ -21,13 +21,8 @@ impl Range {
         self.end
     }
 
-    /// Creates a range spanning from the earliest start to the latest end of two ranges.
-    /// This operation is commutative: a.spanning(b) == b.spanning(a)
-    pub fn spanning(&self, range: Range) -> Range {
-        Range::new(
-            cmp::min(self.start, range.start),
-            cmp::max(self.end, range.end),
-        )
+    pub fn to(&self, other: Range) -> Range {
+        Range::new(self.start, other.end)
     }
 
     pub fn contains(&self, position: Position) -> bool {

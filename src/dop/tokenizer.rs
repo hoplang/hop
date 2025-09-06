@@ -137,7 +137,7 @@ impl Iterator for DopTokenizer {
                 '!' => Ok((DopToken::Not, start.range())),
                 '=' => {
                     if let Some(end) = self.iter.next_if(|s| s.ch() == '=') {
-                        return Ok((DopToken::Equal, start.range().spanning(end.range())));
+                        return Ok((DopToken::Equal, start.range().to(end.range())));
                     }
                     Err(ParseError::new(
                         "Expected '==' but found single '='".to_string(),
@@ -153,11 +153,11 @@ impl Iterator for DopTokenizer {
                     }
                     match self.iter.next() {
                         None => Err(ParseError::unterminated_string_literal(
-                            start.range().spanning(end_range),
+                            start.range().to(end_range),
                         )),
                         Some(end) => Ok((
                             DopToken::StringLiteral(result),
-                            start.range().spanning(end.range()),
+                            start.range().to(end.range()),
                         )),
                     }
                 }
@@ -168,7 +168,7 @@ impl Iterator for DopTokenizer {
                         .iter
                         .next_if(|s| matches!(s.ch(), 'A'..='Z' | 'a'..='z' | '0'..='9' | '_'))
                     {
-                        identifier = identifier.span(s);
+                        identifier = identifier.to(s);
                     }
 
                     let range = identifier.range();
@@ -190,17 +190,17 @@ impl Iterator for DopTokenizer {
                 ch if ch.is_ascii_digit() => {
                     let mut number_string = start;
                     while let Some(digit) = self.iter.next_if(|s| s.ch().is_ascii_digit()) {
-                        number_string = number_string.span(digit);
+                        number_string = number_string.to(digit);
                     }
                     if let Some(dot) = self.iter.next_if(|s| s.ch() == '.') {
-                        number_string = number_string.span(dot);
+                        number_string = number_string.to(dot);
                         if !self.iter.peek().is_some_and(|s| s.ch().is_ascii_digit()) {
                             return Err(ParseError::expected_digit_after_decimal_point(
                                 number_string.range(),
                             ));
                         }
                         while let Some(digit) = self.iter.next_if(|s| s.ch().is_ascii_digit()) {
-                            number_string = number_string.span(digit);
+                            number_string = number_string.to(digit);
                         }
                     }
                     match serde_json::Number::from_str(number_string.as_str()) {

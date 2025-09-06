@@ -115,7 +115,6 @@ impl Display for Token {
     }
 }
 
-
 pub struct Tokenizer {
     iter: Peekable<StringCursor>,
     errors: VecDeque<ParseError>,
@@ -184,7 +183,7 @@ impl Tokenizer {
                 attr_name,
                 Attribute {
                     value: None,
-                    range: attr_name_range.spanning(close_quote.range()),
+                    range: attr_name_range.to(close_quote.range()),
                 },
             ));
         }
@@ -200,7 +199,7 @@ impl Tokenizer {
             attr_name,
             Attribute {
                 value: Some(attr_value),
-                range: attr_name_range.spanning(close_quote.range()),
+                range: attr_name_range.to(close_quote.range()),
             },
         ))
     }
@@ -255,13 +254,13 @@ impl Tokenizer {
                         self.next(); // skip right brace
                         self.errors.push_back(ParseError::new(
                             "Empty expression".to_string(),
-                            left_brace.range().spanning(right_brace_range),
+                            left_brace.range().to(right_brace_range),
                         ));
                         continue;
                     }
                     let mut expr = self.iter.next()?;
                     while self.iter.peek()?.range() != right_brace_range {
-                        expr = expr.span(self.iter.next()?);
+                        expr = expr.to(self.iter.next()?);
                     }
                     self.iter.next()?; // skip right brace
                     expression = Some(expr);
@@ -310,7 +309,7 @@ impl Tokenizer {
                         s if s.ch() == '>' => {
                             if count >= 2 {
                                 return Some(Token::Comment {
-                                    range: first_token_range.spanning(s.range()),
+                                    range: first_token_range.to(s.range()),
                                 });
                             } else {
                                 count = 0;
@@ -337,7 +336,7 @@ impl Tokenizer {
                 while self.iter.next_if(|s| s.ch() != '>').is_some() {}
                 let ch = self.iter.next()?;
                 Some(Token::Doctype {
-                    range: first_token_range.spanning(ch.range()),
+                    range: first_token_range.to(ch.range()),
                 })
             }
             // Invalid
@@ -348,7 +347,7 @@ impl Tokenizer {
                 ));
 
                 Some(Token::Doctype {
-                    range: first_token_range.spanning(ch.range()),
+                    range: first_token_range.to(ch.range()),
                 })
             }
         }
@@ -378,7 +377,7 @@ impl Tokenizer {
                     }
                     _ => match raw_text.take() {
                         Some(v) => {
-                            raw_text = Some(v.span(self.iter.next()?));
+                            raw_text = Some(v.to(self.iter.next()?));
                         }
                         None => raw_text = Some(self.iter.next()?),
                     },
@@ -404,12 +403,12 @@ impl Tokenizer {
                                 ));
                                 return Some(Token::ClosingTag {
                                     tag_name,
-                                    range: left_angle.range().spanning(right_angle.range()),
+                                    range: left_angle.range().to(right_angle.range()),
                                 });
                             }
                             Some(Token::ClosingTag {
                                 tag_name,
-                                range: left_angle.range().spanning(right_angle.range()),
+                                range: left_angle.range().to(right_angle.range()),
                             })
                         } else {
                             self.errors.push_back(ParseError::new(
@@ -445,7 +444,7 @@ impl Tokenizer {
                                     tag_name,
                                     attributes,
                                     expression,
-                                    range: left_angle.range().spanning(right_angle.range()),
+                                    range: left_angle.range().to(right_angle.range()),
                                 })
                             }
                             _ => {
@@ -475,26 +474,26 @@ impl Tokenizer {
                     let right_brace = self.iter.next()?; // skip right brace
                     self.errors.push_back(ParseError::new(
                         "Empty expression".to_string(),
-                        left_brace.range().spanning(right_brace.range()),
+                        left_brace.range().to(right_brace.range()),
                     ));
                     // TODO: Recursive
                     return self.step();
                 }
                 let mut expr = self.iter.next()?;
                 while self.iter.peek()?.range() != right_brace_range {
-                    expr = expr.span(self.iter.next()?);
+                    expr = expr.to(self.iter.next()?);
                 }
                 self.iter.next()?; // skip right brace
                 Some(Token::Expression {
                     expression: expr,
-                    range: left_brace.range().spanning(right_brace_range),
+                    range: left_brace.range().to(right_brace_range),
                 })
             }
             // Text
             _ => {
                 let mut value = self.iter.next()?;
                 while let Some(ch) = self.iter.next_if(|s| s.ch() != '{' && s.ch() != '<') {
-                    value = value.span(ch);
+                    value = value.to(ch);
                 }
                 Some(Token::Text { value })
             }
