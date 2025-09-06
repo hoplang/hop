@@ -44,8 +44,14 @@ impl Iterator for StringCursor {
 
 #[derive(Debug, Clone)]
 pub struct StringSpan {
+    // source is the string representing the source text of the document
+    // that this string span references.
     source: Arc<String>,
+    /// ch is the first character of the string span.
+    /// This value is used during tokenization.
     pub ch: char,
+    /// offset is the start offset and end offset for this string span
+    /// in the document (in bytes).
     offset: (usize, usize),
     range: Range,
 }

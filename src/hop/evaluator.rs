@@ -246,22 +246,20 @@ fn evaluate_node(
         }
 
         HopNode::ComponentReference {
-            component,
+            tag_name,
             args,
             attributes,
             definition_module,
             children,
             ..
         } => {
-            let component_name = component;
-
             let target_module = definition_module
                 .as_ref()
                 .expect("Could not find definition module for component reference");
 
             let target_component = asts
                 .get(target_module)
-                .and_then(|ast| ast.get_component_definition(component_name))
+                .and_then(|ast| ast.get_component_definition(tag_name.as_str()))
                 .expect("Could not find target component for component reference");
 
             let mut arg_values = HashMap::new();
@@ -304,7 +302,7 @@ fn evaluate_node(
                 asts,
                 hop_mode,
                 target_module,
-                component_name,
+                tag_name.as_str(),
                 arg_values,
                 slot_html.as_deref(),
                 additional_classes.as_deref(),

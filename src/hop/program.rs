@@ -234,7 +234,7 @@ impl Program {
 
         match node {
             HopNode::ComponentReference {
-                component,
+                tag_name,
                 definition_module,
                 ..
             } => {
@@ -243,7 +243,7 @@ impl Program {
                     None => return None,
                 };
                 let module = self.asts.get(m)?;
-                let component_def = module.get_component_definition(component)?;
+                let component_def = module.get_component_definition(tag_name.as_str())?;
                 Some(DefinitionLocation {
                     module: m.to_string(),
                     range: component_def.tag_name.range(),
@@ -281,11 +281,11 @@ impl Program {
 
         match node {
             HopNode::ComponentReference {
-                component,
+                tag_name,
                 definition_module: definition_location,
                 ..
             } => definition_location.as_ref().map(|target_module| {
-                self.collect_component_rename_locations(component, target_module)
+                self.collect_component_rename_locations(tag_name.as_str(), target_module)
             }),
             n @ HopNode::Html { .. } => Some(
                 n.tag_name_ranges()
@@ -386,14 +386,14 @@ impl Program {
                 ast.iter_all_nodes()
                     .filter(|node| match node {
                         HopNode::ComponentReference {
-                            component,
+                            tag_name,
                             definition_module: reference_definition_module,
                             ..
                         } => {
                             reference_definition_module
                                 .as_ref()
                                 .is_some_and(|d| d == definition_module)
-                                && component == component_name
+                                && tag_name.as_str() == component_name
                         }
                         _ => false,
                     })

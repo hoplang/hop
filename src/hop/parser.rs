@@ -446,9 +446,8 @@ fn construct_node(
                     };
 
                     HopNode::ComponentReference {
-                        component: tag_name.to_string(),
-                        opening_name_range: tag_name.range(),
-                        closing_name_range: tree.closing_tag_name.map(|s| s.range()),
+                        tag_name,
+                        closing_tag_name: tree.closing_tag_name,
                         definition_module,
                         args,
                         attributes,

@@ -200,10 +200,9 @@ pub enum HopNode {
     ///   ^^^^^^^^^^^^^^^^^^
     /// </my-component>
     ComponentReference {
-        component: String,
+        tag_name: StringSpan,
         definition_module: Option<String>,
-        opening_name_range: Range,
-        closing_name_range: Option<Range>,
+        closing_tag_name: Option<StringSpan>,
         args: Option<(BTreeMap<String, DopArgument>, Range)>,
         attributes: BTreeMap<String, Attribute>,
         range: Range,
@@ -317,9 +316,7 @@ impl HopNode {
     ///  ^^^
     pub fn opening_tag_name_range(&self) -> Option<Range> {
         match self {
-            HopNode::ComponentReference {
-                opening_name_range, ..
-            } => Some(*opening_name_range),
+            HopNode::ComponentReference { tag_name, .. } => Some(tag_name.range()),
             HopNode::Html { tag_name, .. } => Some(tag_name.range()),
             _ => None,
         }
@@ -333,8 +330,8 @@ impl HopNode {
     pub fn closing_tag_name_range(&self) -> Option<Range> {
         match self {
             HopNode::ComponentReference {
-                closing_name_range, ..
-            } => *closing_name_range,
+                closing_tag_name, ..
+            } => closing_tag_name.as_ref().map(|s| s.range()),
             HopNode::Html { closing_name, .. } => closing_name.as_ref().map(|s| s.range()),
             _ => None,
         }
@@ -343,7 +340,7 @@ impl HopNode {
     /// Get the tag_name for a node. E.g. "div" for <div>...</div>.
     pub fn tag_name(&self) -> Option<&str> {
         match self {
-            HopNode::ComponentReference { component, .. } => Some(component),
+            HopNode::ComponentReference { tag_name, .. } => Some(tag_name.as_str()),
             HopNode::Html { tag_name, .. } => Some(tag_name.as_str()),
             _ => None,
         }

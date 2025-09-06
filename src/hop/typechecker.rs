@@ -295,11 +295,10 @@ fn typecheck_node(
         }
 
         HopNode::ComponentReference {
-            component,
+            tag_name,
             definition_module,
             args,
             children,
-            opening_name_range,
             ..
         } => {
             for child in children {
@@ -310,26 +309,32 @@ fn typecheck_node(
                 Some(module_name) => module_name,
                 None => {
                     errors.push(TypeError::undefined_component(
-                        component,
-                        *opening_name_range,
+                        tag_name.as_str(),
+                        tag_name.range(),
                     ));
                     return;
                 }
             };
 
             // Validate that content is only passed to components with slot-default
-            if !children.is_empty() && !state.component_has_slot(module_name, component) {
-                errors.push(TypeError::undefined_slot(component, *opening_name_range));
+            if !children.is_empty() && !state.component_has_slot(module_name, tag_name.as_str()) {
+                errors.push(TypeError::undefined_slot(
+                    tag_name.as_str(),
+                    tag_name.range(),
+                ));
             }
 
             // Validate arguments
-            match (state.get_parameter_types(module_name, component), args) {
+            match (
+                state.get_parameter_types(module_name, tag_name.as_str()),
+                args,
+            ) {
                 (None, None) => {}
                 (None, Some((_, args_range))) => {
                     errors.push(TypeError::unexpected_arguments(*args_range));
                 }
                 (Some(params), None) => {
-                    errors.push(TypeError::missing_arguments(params, *opening_name_range));
+                    errors.push(TypeError::missing_arguments(params, tag_name.range()));
                 }
                 (Some(params), Some((args, args_range))) => {
                     for param in params.values() {
