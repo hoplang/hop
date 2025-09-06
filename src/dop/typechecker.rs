@@ -83,15 +83,15 @@ pub fn typecheck_expr(
 ) -> Result<DopType, TypeError> {
     match expr {
         DopExpr::Variable { name, .. } => {
-            if let Some(var_type) = env.lookup(name) {
+            if let Some(var_type) = env.lookup(name.as_str()) {
                 annotations.push(TypeAnnotation {
                     range: expr.range(),
                     typ: var_type.clone(),
-                    name: name.clone(),
+                    name: name.to_string(),
                 });
                 Ok(var_type.clone())
             } else {
-                Err(TypeError::undefined_variable(name, expr.range()))
+                Err(TypeError::undefined_variable(name.as_str(), expr.range()))
             }
         }
         DopExpr::BooleanLiteral { .. } => Ok(DopType::Bool),
@@ -210,7 +210,7 @@ mod tests {
             let mut tokenizer = DopTokenizer::from(env_str).peekable();
             let params = parse_parameters(&mut tokenizer).expect("Failed to parse environment");
             for (_, param) in params {
-                let _ = env.push(param.var_name.value, param.type_annotation);
+                let _ = env.push(param.var_name.value.to_string(), param.type_annotation);
             }
         }
 

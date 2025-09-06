@@ -2,7 +2,6 @@ use crate::dop::DopParameter;
 use crate::range::{Annotated, Range, Ranged};
 use std::collections::BTreeMap;
 
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeError {
     pub message: String,
@@ -74,7 +73,7 @@ impl TypeError {
                 "Component requires arguments: {}",
                 params
                     .iter()
-                    .map(|(_, p)| p.var_name.value.clone())
+                    .map(|(_, p)| p.var_name.value.clone().to_string())
                     .collect::<Vec<_>>()
                     .join(", ")
             ),

@@ -1,11 +1,14 @@
-use crate::range::{Range, string_cursor::StringCursor};
+use crate::range::{
+    Range,
+    string_cursor::{StringCursor, StringSpan},
+};
 use std::{fmt, iter::Peekable, str::FromStr};
 
 use super::parser::ParseError;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum DopToken {
-    Identifier(String),
+    Identifier(StringSpan),
     StringLiteral(String),
     BooleanLiteral(bool),
     NumberLiteral(serde_json::Number),
@@ -27,6 +30,35 @@ pub enum DopToken {
     TypeBoolean,
     TypeVoid,
     TypeArray,
+}
+
+impl PartialEq for DopToken {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (DopToken::Identifier(a), DopToken::Identifier(b)) => a.as_str() == b.as_str(),
+            (DopToken::StringLiteral(a), DopToken::StringLiteral(b)) => a == b,
+            (DopToken::BooleanLiteral(a), DopToken::BooleanLiteral(b)) => a == b,
+            (DopToken::NumberLiteral(a), DopToken::NumberLiteral(b)) => a == b,
+            (DopToken::Equal, DopToken::Equal) => true,
+            (DopToken::Not, DopToken::Not) => true,
+            (DopToken::Dot, DopToken::Dot) => true,
+            (DopToken::LeftParen, DopToken::LeftParen) => true,
+            (DopToken::RightParen, DopToken::RightParen) => true,
+            (DopToken::LeftBracket, DopToken::LeftBracket) => true,
+            (DopToken::RightBracket, DopToken::RightBracket) => true,
+            (DopToken::LeftBrace, DopToken::LeftBrace) => true,
+            (DopToken::RightBrace, DopToken::RightBrace) => true,
+            (DopToken::Colon, DopToken::Colon) => true,
+            (DopToken::Comma, DopToken::Comma) => true,
+            (DopToken::In, DopToken::In) => true,
+            (DopToken::TypeString, DopToken::TypeString) => true,
+            (DopToken::TypeNumber, DopToken::TypeNumber) => true,
+            (DopToken::TypeBoolean, DopToken::TypeBoolean) => true,
+            (DopToken::TypeVoid, DopToken::TypeVoid) => true,
+            (DopToken::TypeArray, DopToken::TypeArray) => true,
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for DopToken {
@@ -139,6 +171,8 @@ impl Iterator for DopTokenizer {
                         identifier = identifier.span(s);
                     }
 
+                    let range = identifier.range();
+
                     let t = match identifier.as_str() {
                         "in" => DopToken::In,
                         "true" => DopToken::BooleanLiteral(true),
@@ -149,9 +183,9 @@ impl Iterator for DopTokenizer {
                         "boolean" => DopToken::TypeBoolean,
                         "void" => DopToken::TypeVoid,
                         "array" => DopToken::TypeArray,
-                        _ => DopToken::Identifier(identifier.to_string()),
+                        _ => DopToken::Identifier(identifier),
                     };
-                    Ok((t, identifier.range()))
+                    Ok((t, range))
                 }
                 ch if ch.is_ascii_digit() => {
                     let mut number_string = start;

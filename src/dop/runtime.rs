@@ -8,7 +8,7 @@ pub fn evaluate_expr(
 ) -> Result<serde_json::Value> {
     match expr {
         DopExpr::Variable { name, .. } => {
-            if let Some(val) = env.lookup(name) {
+            if let Some(val) = env.lookup(name.as_str()) {
                 Ok(val.clone())
             } else {
                 Err(anyhow::anyhow!("Undefined variable: {}", name))

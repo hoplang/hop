@@ -4,6 +4,7 @@ use std::iter::Peekable;
 use crate::dop::DopType;
 use crate::dop::tokenizer::{DopToken, DopTokenizer};
 use crate::dop::typechecker::RangeDopType;
+use crate::range::string_cursor::StringSpan;
 use crate::range::{Range, Ranged};
 
 #[derive(Debug, Clone)]
@@ -96,11 +97,12 @@ pub enum UnaryOp {
 #[derive(Debug, Clone)]
 pub enum DopExpr {
     Variable {
-        name: String,
+        name: StringSpan,
         range: Range,
     },
     PropertyAccess {
         object: Box<DopExpr>,
+        // TODO: Use StringSpan
         property: String,
         property_range: Range,
         range: Range,
@@ -129,13 +131,11 @@ pub enum DopExpr {
     BinaryOp {
         left: Box<DopExpr>,
         operator: BinaryOp,
-        operator_range: Range,
         right: Box<DopExpr>,
         range: Range,
     },
     UnaryOp {
         operator: UnaryOp,
-        operator_range: Range,
         operand: Box<DopExpr>,
         range: Range,
     },
@@ -161,19 +161,21 @@ impl Ranged for DopExpr {
 /// A DopVarName represents a validated variable name in dop.
 #[derive(Debug, Clone)]
 pub struct DopVarName {
-    pub value: String,
-    pub range: Range,
+    pub value: StringSpan,
 }
 
 impl DopVarName {
-    pub fn new(value: String, range: Range) -> Result<Self, ParseError> {
-        let mut chars = value.chars();
+    pub fn new(value: StringSpan) -> Result<Self, ParseError> {
+        let mut chars = value.as_str().chars();
         if !chars.next().is_some_and(|c| c.is_ascii_lowercase())
             || !chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
         {
-            return Err(ParseError::invalid_variable_name(&value, range));
+            return Err(ParseError::invalid_variable_name(
+                value.as_str(),
+                value.range(),
+            ));
         }
-        Ok(DopVarName { value, range })
+        Ok(DopVarName { value })
     }
 }
 
@@ -217,16 +219,14 @@ fn expect_token(
 
 fn expect_variable_name(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopVarName, ParseError> {
     match tokenizer.next().ok_or(ParseError::UnexpectedEof)?? {
-        (DopToken::Identifier(name), range) => DopVarName::new(name, range),
+        (DopToken::Identifier(name), _) => DopVarName::new(name),
         (actual, range) => Err(ParseError::expected_variable_name_but_got(&actual, range)),
     }
 }
 
-fn expect_property_name(
-    tokenizer: &mut Peekable<DopTokenizer>,
-) -> Result<(String, Range), ParseError> {
+fn expect_property_name(tokenizer: &mut Peekable<DopTokenizer>) -> Result<StringSpan, ParseError> {
     match tokenizer.next().ok_or(ParseError::UnexpectedEof)?? {
-        (DopToken::Identifier(name), range) => Ok((name, range)),
+        (DopToken::Identifier(name), _) => Ok(name),
         (token, range) => Err(ParseError::expected_property_name_but_got(&token, range)),
     }
 }
@@ -284,7 +284,7 @@ pub fn parse_parameters(
 ) -> Result<BTreeMap<String, DopParameter>, ParseError> {
     let mut params = BTreeMap::new();
     let first_param = parse_parameter(tokenizer)?;
-    params.insert(first_param.var_name.value.clone(), first_param);
+    params.insert(first_param.var_name.value.to_string(), first_param);
 
     while advance_if(tokenizer, DopToken::Comma).is_some() {
         // Handle trailing comma
@@ -292,13 +292,13 @@ pub fn parse_parameters(
             break;
         }
         let param = parse_parameter(tokenizer)?;
-        if params.contains_key(&param.var_name.value) {
+        if params.contains_key(param.var_name.value.as_str()) {
             return Err(ParseError::duplicate_parameter(
-                &param.var_name.value,
-                param.var_name.range,
+                param.var_name.value.as_str(),
+                param.var_name.value.range(),
             ));
         }
-        params.insert(param.var_name.value.clone(), param);
+        params.insert(param.var_name.value.to_string(), param);
     }
 
     expect_eof(tokenizer)?;
@@ -312,7 +312,7 @@ pub fn parse_arguments(
 ) -> Result<BTreeMap<String, DopArgument>, ParseError> {
     let mut args = BTreeMap::new();
     let first_arg = parse_argument(tokenizer)?;
-    args.insert(first_arg.var_name.value.clone(), first_arg);
+    args.insert(first_arg.var_name.value.to_string(), first_arg);
 
     while advance_if(tokenizer, DopToken::Comma).is_some() {
         // Handle trailing comma
@@ -320,13 +320,13 @@ pub fn parse_arguments(
             break;
         }
         let arg = parse_argument(tokenizer)?;
-        if args.contains_key(&arg.var_name.value) {
+        if args.contains_key(arg.var_name.value.as_str()) {
             return Err(ParseError::duplicate_argument(
-                &arg.var_name.value,
-                arg.var_name.range,
+                arg.var_name.value.as_str(),
+                arg.var_name.value.range(),
             ));
         }
-        args.insert(arg.var_name.value.clone(), arg);
+        args.insert(arg.var_name.value.to_string(), arg);
     }
 
     expect_eof(tokenizer)?;
@@ -371,13 +371,16 @@ fn parse_type(tokenizer: &mut Peekable<DopTokenizer>) -> Result<RangeDopType, Pa
             let mut properties = BTreeMap::new();
 
             loop {
-                let (prop_name, prop_name_range) = expect_property_name(tokenizer)?;
+                let prop_name = expect_property_name(tokenizer)?;
                 expect_token(tokenizer, DopToken::Colon)?;
                 let typ = parse_type(tokenizer)?;
-                if properties.contains_key(&prop_name) {
-                    return Err(ParseError::duplicate_property(&prop_name, prop_name_range));
+                if properties.contains_key(prop_name.as_str()) {
+                    return Err(ParseError::duplicate_property(
+                        prop_name.as_str(),
+                        prop_name.range(),
+                    ));
                 }
-                properties.insert(prop_name, typ.dop_type);
+                properties.insert(prop_name.to_string(), typ.dop_type);
 
                 match tokenizer.next().ok_or_else(|| {
                     ParseError::unmatched_token(&DopToken::LeftBrace, left_brace_range)
@@ -417,13 +420,12 @@ fn parse_type(tokenizer: &mut Peekable<DopTokenizer>) -> Result<RangeDopType, Pa
 fn parse_equality(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, ParseError> {
     let mut expr = parse_unary(tokenizer)?;
 
-    while let Some(operator_range) = advance_if(tokenizer, DopToken::Equal) {
+    while advance_if(tokenizer, DopToken::Equal).is_some() {
         let right = parse_unary(tokenizer)?;
         expr = DopExpr::BinaryOp {
             range: expr.range().spanning(right.range()),
             left: Box::new(expr),
             operator: BinaryOp::Equal,
-            operator_range,
             right: Box::new(right),
         };
     }
@@ -438,7 +440,6 @@ fn parse_unary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, ParseE
         Ok(DopExpr::UnaryOp {
             range: operator_range.spanning(expr.range()),
             operator: UnaryOp::Not,
-            operator_range,
             operand: Box::new(expr),
         })
     } else {
@@ -465,7 +466,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                         expr = DopExpr::PropertyAccess {
                             range: expr.range().spanning(property_range),
                             object: Box::new(expr),
-                            property: prop,
+                            property: prop.to_string(),
                             property_range,
                         };
                     }
@@ -543,14 +544,17 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
 
             // Parse object properties
             loop {
-                let (prop_name, prop_name_range) = expect_property_name(tokenizer)?;
-                if properties.contains_key(&prop_name) {
-                    return Err(ParseError::duplicate_property(&prop_name, prop_name_range));
+                let prop_name = expect_property_name(tokenizer)?;
+                if properties.contains_key(prop_name.as_str()) {
+                    return Err(ParseError::duplicate_property(
+                        prop_name.as_str(),
+                        prop_name.range(),
+                    ));
                 }
 
                 expect_token(tokenizer, DopToken::Colon)?;
 
-                properties.insert(prop_name, parse_equality(tokenizer)?);
+                properties.insert(prop_name.to_string(), parse_equality(tokenizer)?);
 
                 // Expect comma or right brace
                 match tokenizer.next().ok_or_else(|| {
@@ -877,21 +881,43 @@ mod tests {
                 BinaryOp {
                     left: BinaryOp {
                         left: Variable {
-                            name: "a",
+                            name: StringSpan {
+                                source: "a == b == c",
+                                ch: 'a',
+                                offset: (
+                                    0,
+                                    1,
+                                ),
+                                range: 1:1-1:2,
+                            },
                             range: 1:1-1:2,
                         },
                         operator: Equal,
-                        operator_range: 1:3-1:5,
                         right: Variable {
-                            name: "b",
+                            name: StringSpan {
+                                source: "a == b == c",
+                                ch: 'b',
+                                offset: (
+                                    5,
+                                    6,
+                                ),
+                                range: 1:6-1:7,
+                            },
                             range: 1:6-1:7,
                         },
                         range: 1:1-1:7,
                     },
                     operator: Equal,
-                    operator_range: 1:8-1:10,
                     right: Variable {
-                        name: "c",
+                        name: StringSpan {
+                            source: "a == b == c",
+                            ch: 'c',
+                            offset: (
+                                10,
+                                11,
+                            ),
+                            range: 1:11-1:12,
+                        },
                         range: 1:11-1:12,
                     },
                     range: 1:1-1:12,
@@ -908,7 +934,15 @@ mod tests {
                 BinaryOp {
                     left: PropertyAccess {
                         object: Variable {
-                            name: "user",
+                            name: StringSpan {
+                                source: "user.name == admin.name",
+                                ch: 'u',
+                                offset: (
+                                    0,
+                                    4,
+                                ),
+                                range: 1:1-1:5,
+                            },
                             range: 1:1-1:5,
                         },
                         property: "name",
@@ -916,10 +950,17 @@ mod tests {
                         range: 1:1-1:10,
                     },
                     operator: Equal,
-                    operator_range: 1:11-1:13,
                     right: PropertyAccess {
                         object: Variable {
-                            name: "admin",
+                            name: StringSpan {
+                                source: "user.name == admin.name",
+                                ch: 'a',
+                                offset: (
+                                    13,
+                                    18,
+                                ),
+                                range: 1:14-1:19,
+                            },
                             range: 1:14-1:19,
                         },
                         property: "name",
@@ -942,7 +983,15 @@ mod tests {
                         object: PropertyAccess {
                             object: PropertyAccess {
                                 object: Variable {
-                                    name: "app",
+                                    name: StringSpan {
+                                        source: "app.user.profile.settings.theme",
+                                        ch: 'a',
+                                        offset: (
+                                            0,
+                                            3,
+                                        ),
+                                        range: 1:1-1:4,
+                                    },
                                     range: 1:1-1:4,
                                 },
                                 property: "user",
@@ -1011,13 +1060,28 @@ mod tests {
             expect![[r#"
                 BinaryOp {
                     left: Variable {
-                        name: "x",
+                        name: StringSpan {
+                            source: "(x == y)",
+                            ch: 'x',
+                            offset: (
+                                1,
+                                2,
+                            ),
+                            range: 1:2-1:3,
+                        },
                         range: 1:2-1:3,
                     },
                     operator: Equal,
-                    operator_range: 1:4-1:6,
                     right: Variable {
-                        name: "y",
+                        name: StringSpan {
+                            source: "(x == y)",
+                            ch: 'y',
+                            offset: (
+                                6,
+                                7,
+                            ),
+                            range: 1:7-1:8,
+                        },
                         range: 1:7-1:8,
                     },
                     range: 1:2-1:8,
@@ -1033,7 +1097,15 @@ mod tests {
             expect![[r#"
                 PropertyAccess {
                     object: Variable {
-                        name: "user",
+                        name: StringSpan {
+                            source: "user.name",
+                            ch: 'u',
+                            offset: (
+                                0,
+                                4,
+                            ),
+                            range: 1:1-1:5,
+                        },
                         range: 1:1-1:5,
                     },
                     property: "name",
@@ -1055,10 +1127,17 @@ mod tests {
                         range: 1:1-1:8,
                     },
                     operator: Equal,
-                    operator_range: 1:9-1:11,
                     right: PropertyAccess {
                         object: Variable {
-                            name: "user",
+                            name: StringSpan {
+                                source: "'guest' == user.role",
+                                ch: 'u',
+                                offset: (
+                                    11,
+                                    15,
+                                ),
+                                range: 1:12-1:16,
+                            },
                             range: 1:12-1:16,
                         },
                         property: "role",
@@ -1078,13 +1157,28 @@ mod tests {
             expect![[r#"
                 BinaryOp {
                     left: Variable {
-                        name: "x",
+                        name: StringSpan {
+                            source: "x == y",
+                            ch: 'x',
+                            offset: (
+                                0,
+                                1,
+                            ),
+                            range: 1:1-1:2,
+                        },
                         range: 1:1-1:2,
                     },
                     operator: Equal,
-                    operator_range: 1:3-1:5,
                     right: Variable {
-                        name: "y",
+                        name: StringSpan {
+                            source: "x == y",
+                            ch: 'y',
+                            offset: (
+                                5,
+                                6,
+                            ),
+                            range: 1:6-1:7,
+                        },
                         range: 1:6-1:7,
                     },
                     range: 1:1-1:7,
@@ -1112,7 +1206,15 @@ mod tests {
             "x",
             expect![[r#"
                 Variable {
-                    name: "x",
+                    name: StringSpan {
+                        source: "x",
+                        ch: 'x',
+                        offset: (
+                            0,
+                            1,
+                        ),
+                        range: 1:1-1:2,
+                    },
                     range: 1:1-1:2,
                 }
             "#]],
@@ -1130,7 +1232,6 @@ mod tests {
                         range: 1:1-1:8,
                     },
                     operator: Equal,
-                    operator_range: 1:9-1:11,
                     right: StringLiteral {
                         value: "orange",
                         range: 1:12-1:20,
@@ -1149,7 +1250,15 @@ mod tests {
                 BinaryOp {
                     left: PropertyAccess {
                         object: Variable {
-                            name: "user",
+                            name: StringSpan {
+                                source: "user.name == 'admin'",
+                                ch: 'u',
+                                offset: (
+                                    0,
+                                    4,
+                                ),
+                                range: 1:1-1:5,
+                            },
                             range: 1:1-1:5,
                         },
                         property: "name",
@@ -1157,7 +1266,6 @@ mod tests {
                         range: 1:1-1:10,
                     },
                     operator: Equal,
-                    operator_range: 1:11-1:13,
                     right: StringLiteral {
                         value: "admin",
                         range: 1:14-1:21,
@@ -1189,7 +1297,15 @@ mod tests {
                 BinaryOp {
                     left: PropertyAccess {
                         object: Variable {
-                            name: "user",
+                            name: StringSpan {
+                                source: "  user . name   ==   admin . name  ",
+                                ch: 'u',
+                                offset: (
+                                    2,
+                                    6,
+                                ),
+                                range: 1:3-1:7,
+                            },
                             range: 1:3-1:7,
                         },
                         property: "name",
@@ -1197,10 +1313,17 @@ mod tests {
                         range: 1:3-1:14,
                     },
                     operator: Equal,
-                    operator_range: 1:17-1:19,
                     right: PropertyAccess {
                         object: Variable {
-                            name: "admin",
+                            name: StringSpan {
+                                source: "  user . name   ==   admin . name  ",
+                                ch: 'a',
+                                offset: (
+                                    21,
+                                    26,
+                                ),
+                                range: 1:22-1:27,
+                            },
                             range: 1:22-1:27,
                         },
                         property: "name",
@@ -1326,12 +1449,28 @@ mod tests {
                 ArrayLiteral {
                     elements: [
                         Variable {
-                            name: "x",
+                            name: StringSpan {
+                                source: "[x, user.name]",
+                                ch: 'x',
+                                offset: (
+                                    1,
+                                    2,
+                                ),
+                                range: 1:2-1:3,
+                            },
                             range: 1:2-1:3,
                         },
                         PropertyAccess {
                             object: Variable {
-                                name: "user",
+                                name: StringSpan {
+                                    source: "[x, user.name]",
+                                    ch: 'u',
+                                    offset: (
+                                        4,
+                                        8,
+                                    ),
+                                    range: 1:5-1:9,
+                                },
                                 range: 1:5-1:9,
                             },
                             property: "name",
@@ -1407,10 +1546,17 @@ mod tests {
                     properties: {
                         "active": UnaryOp {
                             operator: Not,
-                            operator_range: 1:27-1:28,
                             operand: PropertyAccess {
                                 object: Variable {
-                                    name: "user",
+                                    name: StringSpan {
+                                        source: "{user: user.name, active: !user.disabled}",
+                                        ch: 'u',
+                                        offset: (
+                                            27,
+                                            31,
+                                        ),
+                                        range: 1:28-1:32,
+                                    },
                                     range: 1:28-1:32,
                                 },
                                 property: "disabled",
@@ -1421,7 +1567,15 @@ mod tests {
                         },
                         "user": PropertyAccess {
                             object: Variable {
-                                name: "user",
+                                name: StringSpan {
+                                    source: "{user: user.name, active: !user.disabled}",
+                                    ch: 'u',
+                                    offset: (
+                                        7,
+                                        11,
+                                    ),
+                                    range: 1:8-1:12,
+                                },
                                 range: 1:8-1:12,
                             },
                             property: "name",
@@ -1511,7 +1665,15 @@ mod tests {
                     elements: [
                         PropertyAccess {
                             object: Variable {
-                                name: "user",
+                                name: StringSpan {
+                                    source: "[\n\tuser.name,\n\t!user.disabled,\n]",
+                                    ch: 'u',
+                                    offset: (
+                                        3,
+                                        7,
+                                    ),
+                                    range: 2:2-2:6,
+                                },
                                 range: 2:2-2:6,
                             },
                             property: "name",
@@ -1520,10 +1682,17 @@ mod tests {
                         },
                         UnaryOp {
                             operator: Not,
-                            operator_range: 3:2-3:3,
                             operand: PropertyAccess {
                                 object: Variable {
-                                    name: "user",
+                                    name: StringSpan {
+                                        source: "[\n\tuser.name,\n\t!user.disabled,\n]",
+                                        ch: 'u',
+                                        offset: (
+                                            16,
+                                            20,
+                                        ),
+                                        range: 3:3-3:7,
+                                    },
                                     range: 3:3-3:7,
                                 },
                                 property: "disabled",
@@ -1588,10 +1757,17 @@ mod tests {
                     properties: {
                         "active": UnaryOp {
                             operator: Not,
-                            operator_range: 3:10-3:11,
                             operand: PropertyAccess {
                                 object: Variable {
-                                    name: "user",
+                                    name: StringSpan {
+                                        source: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
+                                        ch: 'u',
+                                        offset: (
+                                            30,
+                                            34,
+                                        ),
+                                        range: 3:11-3:15,
+                                    },
                                     range: 3:11-3:15,
                                 },
                                 property: "disabled",
@@ -1602,7 +1778,15 @@ mod tests {
                         },
                         "user": PropertyAccess {
                             object: Variable {
-                                name: "user",
+                                name: StringSpan {
+                                    source: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
+                                    ch: 'u',
+                                    offset: (
+                                        9,
+                                        13,
+                                    ),
+                                    range: 2:8-2:12,
+                                },
                                 range: 2:8-2:12,
                             },
                             property: "name",
@@ -1624,8 +1808,15 @@ mod tests {
                 {
                     "name": DopArgument {
                         var_name: DopVarName {
-                            value: "name",
-                            range: 1:1-1:5,
+                            value: StringSpan {
+                                source: "name: 'John'",
+                                ch: 'n',
+                                offset: (
+                                    0,
+                                    4,
+                                ),
+                                range: 1:1-1:5,
+                            },
                         },
                         expression: StringLiteral {
                             value: "John",
@@ -1645,8 +1836,15 @@ mod tests {
                 {
                     "active": DopArgument {
                         var_name: DopVarName {
-                            value: "active",
-                            range: 1:24-1:30,
+                            value: StringSpan {
+                                source: "name: 'John', age: 25, active: true",
+                                ch: 'a',
+                                offset: (
+                                    23,
+                                    29,
+                                ),
+                                range: 1:24-1:30,
+                            },
                         },
                         expression: BooleanLiteral {
                             value: true,
@@ -1655,8 +1853,15 @@ mod tests {
                     },
                     "age": DopArgument {
                         var_name: DopVarName {
-                            value: "age",
-                            range: 1:15-1:18,
+                            value: StringSpan {
+                                source: "name: 'John', age: 25, active: true",
+                                ch: 'a',
+                                offset: (
+                                    14,
+                                    17,
+                                ),
+                                range: 1:15-1:18,
+                            },
                         },
                         expression: NumberLiteral {
                             value: Number(25),
@@ -1665,8 +1870,15 @@ mod tests {
                     },
                     "name": DopArgument {
                         var_name: DopVarName {
-                            value: "name",
-                            range: 1:1-1:5,
+                            value: StringSpan {
+                                source: "name: 'John', age: 25, active: true",
+                                ch: 'n',
+                                offset: (
+                                    0,
+                                    4,
+                                ),
+                                range: 1:1-1:5,
+                            },
                         },
                         expression: StringLiteral {
                             value: "John",
@@ -1686,15 +1898,29 @@ mod tests {
                 {
                     "enabled": DopArgument {
                         var_name: DopVarName {
-                            value: "enabled",
-                            range: 1:18-1:25,
+                            value: StringSpan {
+                                source: "user: user.name, enabled: !user.disabled",
+                                ch: 'e',
+                                offset: (
+                                    17,
+                                    24,
+                                ),
+                                range: 1:18-1:25,
+                            },
                         },
                         expression: UnaryOp {
                             operator: Not,
-                            operator_range: 1:27-1:28,
                             operand: PropertyAccess {
                                 object: Variable {
-                                    name: "user",
+                                    name: StringSpan {
+                                        source: "user: user.name, enabled: !user.disabled",
+                                        ch: 'u',
+                                        offset: (
+                                            27,
+                                            31,
+                                        ),
+                                        range: 1:28-1:32,
+                                    },
                                     range: 1:28-1:32,
                                 },
                                 property: "disabled",
@@ -1706,12 +1932,27 @@ mod tests {
                     },
                     "user": DopArgument {
                         var_name: DopVarName {
-                            value: "user",
-                            range: 1:1-1:5,
+                            value: StringSpan {
+                                source: "user: user.name, enabled: !user.disabled",
+                                ch: 'u',
+                                offset: (
+                                    0,
+                                    4,
+                                ),
+                                range: 1:1-1:5,
+                            },
                         },
                         expression: PropertyAccess {
                             object: Variable {
-                                name: "user",
+                                name: StringSpan {
+                                    source: "user: user.name, enabled: !user.disabled",
+                                    ch: 'u',
+                                    offset: (
+                                        6,
+                                        10,
+                                    ),
+                                    range: 1:7-1:11,
+                                },
                                 range: 1:7-1:11,
                             },
                             property: "name",
@@ -1732,8 +1973,15 @@ mod tests {
                 {
                     "age": DopArgument {
                         var_name: DopVarName {
-                            value: "age",
-                            range: 1:15-1:18,
+                            value: StringSpan {
+                                source: "name: 'John', age: 25,",
+                                ch: 'a',
+                                offset: (
+                                    14,
+                                    17,
+                                ),
+                                range: 1:15-1:18,
+                            },
                         },
                         expression: NumberLiteral {
                             value: Number(25),
@@ -1742,8 +1990,15 @@ mod tests {
                     },
                     "name": DopArgument {
                         var_name: DopVarName {
-                            value: "name",
-                            range: 1:1-1:5,
+                            value: StringSpan {
+                                source: "name: 'John', age: 25,",
+                                ch: 'n',
+                                offset: (
+                                    0,
+                                    4,
+                                ),
+                                range: 1:1-1:5,
+                            },
                         },
                         expression: StringLiteral {
                             value: "John",

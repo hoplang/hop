@@ -11,6 +11,7 @@ use std::collections::{BTreeMap, HashMap};
 pub struct TypeAnnotation {
     pub range: Range,
     pub typ: DopType,
+    // TODO: Use StringSpan?
     pub name: String,
 }
 
@@ -161,11 +162,14 @@ fn typecheck_module(
         if let Some((params, _)) = params {
             for param in params.values() {
                 annotations.push(TypeAnnotation {
-                    range: param.var_name.range,
+                    range: param.var_name.value.range(),
                     typ: param.type_annotation.clone(),
-                    name: param.var_name.value.clone(),
+                    name: param.var_name.value.to_string(),
                 });
-                let _ = env.push(param.var_name.value.clone(), param.type_annotation.clone());
+                let _ = env.push(
+                    param.var_name.value.to_string(),
+                    param.type_annotation.clone(),
+                );
             }
         }
 
@@ -179,8 +183,8 @@ fn typecheck_module(
                 if !accessed {
                     let param = params.get(&key).unwrap();
                     errors.push(TypeError::unused_variable(
-                        &param.var_name.value,
-                        param.var_name.range,
+                        param.var_name.value.as_str(),
+                        param.var_name.value.range(),
                     ))
                 }
             }
@@ -265,19 +269,19 @@ fn typecheck_node(
 
             // Push the loop variable into scope
             let mut pushed = false;
-            match env.push(var_name.value.clone(), element_type.clone()) {
+            match env.push(var_name.value.to_string(), element_type.clone()) {
                 Ok(_) => {
                     pushed = true;
                     annotations.push(TypeAnnotation {
-                        range: var_name.range,
+                        range: var_name.value.range(),
                         typ: element_type.clone(),
-                        name: var_name.value.clone(),
+                        name: var_name.value.to_string(),
                     });
                 }
                 Err(_) => {
                     errors.push(TypeError::variable_is_already_defined(
-                        &var_name.value,
-                        var_name.range,
+                        var_name.value.as_str(),
+                        var_name.value.range(),
                     ));
                 }
             }
@@ -289,7 +293,10 @@ fn typecheck_node(
             if pushed {
                 let (_, _, accessed) = env.pop();
                 if !accessed {
-                    errors.push(TypeError::unused_variable(&var_name.value, var_name.range))
+                    errors.push(TypeError::unused_variable(
+                        var_name.value.as_str(),
+                        var_name.value.range(),
+                    ))
                 }
             }
         }
@@ -338,20 +345,20 @@ fn typecheck_node(
                 }
                 (Some(params), Some((args, args_range))) => {
                     for param in params.values() {
-                        if !args.contains_key(&param.var_name.value) {
+                        if !args.contains_key(param.var_name.value.as_str()) {
                             errors.push(TypeError::missing_required_parameter(
-                                &param.var_name.value,
+                                param.var_name.value.as_str(),
                                 *args_range,
                             ));
                         }
                     }
 
                     for arg in args.values() {
-                        let param = match params.get(&arg.var_name.value) {
+                        let param = match params.get(arg.var_name.value.as_str()) {
                             None => {
                                 errors.push(TypeError::unexpected_argument(
-                                    &arg.var_name.value,
-                                    arg.var_name.range,
+                                    arg.var_name.value.as_str(),
+                                    arg.var_name.value.range(),
                                 ));
                                 continue;
                             }
@@ -371,7 +378,7 @@ fn typecheck_node(
                             errors.push(TypeError::argument_is_incompatible(
                                 &param.type_annotation.to_string(),
                                 &evaluated_arg_type.to_string(),
-                                &arg.var_name.value,
+                                arg.var_name.value.as_str(),
                                 arg.expression.range(),
                             ));
                             continue;
@@ -380,7 +387,7 @@ fn typecheck_node(
                         annotations.push(TypeAnnotation {
                             range: arg.expression.range(),
                             typ: evaluated_arg_type,
-                            name: arg.var_name.value.clone(),
+                            name: arg.var_name.value.to_string(),
                         });
                     }
                 }

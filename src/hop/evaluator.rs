@@ -81,8 +81,8 @@ pub fn evaluate_component(
     // Set up environment with all parameters and their corresponding values
     if let Some((params, _)) = &component.params {
         for (_, param) in params.iter() {
-            if let Some(value) = args.get(&param.var_name.value) {
-                let _ = env.push(param.var_name.value.clone(), value.clone());
+            if let Some(value) = args.get(param.var_name.value.as_str()) {
+                let _ = env.push(param.var_name.value.to_string(), value.clone());
             }
         }
     }
@@ -227,7 +227,7 @@ fn evaluate_node(
                 .ok_or_else(|| anyhow::anyhow!("For loop expects an array"))?;
 
             for item in array {
-                _ = env.push(var_name.value.clone(), item.clone());
+                _ = env.push(var_name.value.to_string(), item.clone());
                 for child in children {
                     evaluate_node(
                         asts,
@@ -268,7 +268,7 @@ fn evaluate_node(
                 Some((args, _)) => {
                     for arg in args.values() {
                         let value = evaluate_expr(&arg.expression, env)?;
-                        arg_values.insert(arg.var_name.value.clone(), value);
+                        arg_values.insert(arg.var_name.value.to_string(), value);
                     }
                 }
             }
