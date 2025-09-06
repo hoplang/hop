@@ -175,7 +175,6 @@ mod tests {
                         token: OpeningTag {
                             tag_name: StringSpan {
                                 source: "<div>Hello</div>",
-                                ch: 'd',
                                 start: 1,
                                 end: 4,
                                 range: 1:2-1:5,
@@ -188,7 +187,6 @@ mod tests {
                         closing_tag_name: Some(
                             StringSpan {
                                 source: "<div>Hello</div>",
-                                ch: 'd',
                                 start: 12,
                                 end: 15,
                                 range: 1:13-1:16,
@@ -199,7 +197,6 @@ mod tests {
                                 token: Text {
                                     value: StringSpan {
                                         source: "<div>Hello</div>",
-                                        ch: 'H',
                                         start: 5,
                                         end: 10,
                                         range: 1:6-1:11,
@@ -226,7 +223,6 @@ mod tests {
                         token: OpeningTag {
                             tag_name: StringSpan {
                                 source: "<div><br><hr/></div>",
-                                ch: 'd',
                                 start: 1,
                                 end: 4,
                                 range: 1:2-1:5,
@@ -239,7 +235,6 @@ mod tests {
                         closing_tag_name: Some(
                             StringSpan {
                                 source: "<div><br><hr/></div>",
-                                ch: 'd',
                                 start: 16,
                                 end: 19,
                                 range: 1:17-1:20,
@@ -250,7 +245,6 @@ mod tests {
                                 token: OpeningTag {
                                     tag_name: StringSpan {
                                         source: "<div><br><hr/></div>",
-                                        ch: 'b',
                                         start: 6,
                                         end: 8,
                                         range: 1:7-1:9,
@@ -268,7 +262,6 @@ mod tests {
                                 token: OpeningTag {
                                     tag_name: StringSpan {
                                         source: "<div><br><hr/></div>",
-                                        ch: 'h',
                                         start: 10,
                                         end: 12,
                                         range: 1:11-1:13,
@@ -299,7 +292,6 @@ mod tests {
                         token: OpeningTag {
                             tag_name: StringSpan {
                                 source: "<div><p>Hello</p><span>World</span></div>",
-                                ch: 'd',
                                 start: 1,
                                 end: 4,
                                 range: 1:2-1:5,
@@ -312,7 +304,6 @@ mod tests {
                         closing_tag_name: Some(
                             StringSpan {
                                 source: "<div><p>Hello</p><span>World</span></div>",
-                                ch: 'd',
                                 start: 37,
                                 end: 40,
                                 range: 1:38-1:41,
@@ -323,7 +314,6 @@ mod tests {
                                 token: OpeningTag {
                                     tag_name: StringSpan {
                                         source: "<div><p>Hello</p><span>World</span></div>",
-                                        ch: 'p',
                                         start: 6,
                                         end: 7,
                                         range: 1:7-1:8,
@@ -336,7 +326,6 @@ mod tests {
                                 closing_tag_name: Some(
                                     StringSpan {
                                         source: "<div><p>Hello</p><span>World</span></div>",
-                                        ch: 'p',
                                         start: 15,
                                         end: 16,
                                         range: 1:16-1:17,
@@ -347,7 +336,6 @@ mod tests {
                                         token: Text {
                                             value: StringSpan {
                                                 source: "<div><p>Hello</p><span>World</span></div>",
-                                                ch: 'H',
                                                 start: 8,
                                                 end: 13,
                                                 range: 1:9-1:14,
@@ -364,7 +352,6 @@ mod tests {
                                 token: OpeningTag {
                                     tag_name: StringSpan {
                                         source: "<div><p>Hello</p><span>World</span></div>",
-                                        ch: 's',
                                         start: 18,
                                         end: 22,
                                         range: 1:19-1:23,
@@ -377,7 +364,6 @@ mod tests {
                                 closing_tag_name: Some(
                                     StringSpan {
                                         source: "<div><p>Hello</p><span>World</span></div>",
-                                        ch: 's',
                                         start: 30,
                                         end: 34,
                                         range: 1:31-1:35,
@@ -388,7 +374,6 @@ mod tests {
                                         token: Text {
                                             value: StringSpan {
                                                 source: "<div><p>Hello</p><span>World</span></div>",
-                                                ch: 'W',
                                                 start: 23,
                                                 end: 28,
                                                 range: 1:24-1:29,

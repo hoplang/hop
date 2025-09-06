@@ -888,7 +888,6 @@ mod tests {
                         left: Variable {
                             value: StringSpan {
                                 source: "a == b == c",
-                                ch: 'a',
                                 start: 0,
                                 end: 1,
                                 range: 1:1-1:2,
@@ -898,7 +897,6 @@ mod tests {
                         right: Variable {
                             value: StringSpan {
                                 source: "a == b == c",
-                                ch: 'b',
                                 start: 5,
                                 end: 6,
                                 range: 1:6-1:7,
@@ -910,7 +908,6 @@ mod tests {
                     right: Variable {
                         value: StringSpan {
                             source: "a == b == c",
-                            ch: 'c',
                             start: 10,
                             end: 11,
                             range: 1:11-1:12,
@@ -932,7 +929,6 @@ mod tests {
                         object: Variable {
                             value: StringSpan {
                                 source: "user.name == admin.name",
-                                ch: 'u',
                                 start: 0,
                                 end: 4,
                                 range: 1:1-1:5,
@@ -940,7 +936,6 @@ mod tests {
                         },
                         property: StringSpan {
                             source: "user.name == admin.name",
-                            ch: 'n',
                             start: 5,
                             end: 9,
                             range: 1:6-1:10,
@@ -952,7 +947,6 @@ mod tests {
                         object: Variable {
                             value: StringSpan {
                                 source: "user.name == admin.name",
-                                ch: 'a',
                                 start: 13,
                                 end: 18,
                                 range: 1:14-1:19,
@@ -960,7 +954,6 @@ mod tests {
                         },
                         property: StringSpan {
                             source: "user.name == admin.name",
-                            ch: 'n',
                             start: 19,
                             end: 23,
                             range: 1:20-1:24,
@@ -985,7 +978,6 @@ mod tests {
                                 object: Variable {
                                     value: StringSpan {
                                         source: "app.user.profile.settings.theme",
-                                        ch: 'a',
                                         start: 0,
                                         end: 3,
                                         range: 1:1-1:4,
@@ -993,7 +985,6 @@ mod tests {
                                 },
                                 property: StringSpan {
                                     source: "app.user.profile.settings.theme",
-                                    ch: 'u',
                                     start: 4,
                                     end: 8,
                                     range: 1:5-1:9,
@@ -1002,7 +993,6 @@ mod tests {
                             },
                             property: StringSpan {
                                 source: "app.user.profile.settings.theme",
-                                ch: 'p',
                                 start: 9,
                                 end: 16,
                                 range: 1:10-1:17,
@@ -1011,7 +1001,6 @@ mod tests {
                         },
                         property: StringSpan {
                             source: "app.user.profile.settings.theme",
-                            ch: 's',
                             start: 17,
                             end: 25,
                             range: 1:18-1:26,
@@ -1020,7 +1009,6 @@ mod tests {
                     },
                     property: StringSpan {
                         source: "app.user.profile.settings.theme",
-                        ch: 't',
                         start: 26,
                         end: 31,
                         range: 1:27-1:32,
@@ -1079,7 +1067,6 @@ mod tests {
                     left: Variable {
                         value: StringSpan {
                             source: "(x == y)",
-                            ch: 'x',
                             start: 1,
                             end: 2,
                             range: 1:2-1:3,
@@ -1089,7 +1076,6 @@ mod tests {
                     right: Variable {
                         value: StringSpan {
                             source: "(x == y)",
-                            ch: 'y',
                             start: 6,
                             end: 7,
                             range: 1:7-1:8,
@@ -1110,7 +1096,6 @@ mod tests {
                     object: Variable {
                         value: StringSpan {
                             source: "user.name",
-                            ch: 'u',
                             start: 0,
                             end: 4,
                             range: 1:1-1:5,
@@ -1118,7 +1103,6 @@ mod tests {
                     },
                     property: StringSpan {
                         source: "user.name",
-                        ch: 'n',
                         start: 5,
                         end: 9,
                         range: 1:6-1:10,
@@ -1144,7 +1128,6 @@ mod tests {
                         object: Variable {
                             value: StringSpan {
                                 source: "'guest' == user.role",
-                                ch: 'u',
                                 start: 11,
                                 end: 15,
                                 range: 1:12-1:16,
@@ -1152,7 +1135,6 @@ mod tests {
                         },
                         property: StringSpan {
                             source: "'guest' == user.role",
-                            ch: 'r',
                             start: 16,
                             end: 20,
                             range: 1:17-1:21,
@@ -1174,7 +1156,6 @@ mod tests {
                     left: Variable {
                         value: StringSpan {
                             source: "x == y",
-                            ch: 'x',
                             start: 0,
                             end: 1,
                             range: 1:1-1:2,
@@ -1184,7 +1165,6 @@ mod tests {
                     right: Variable {
                         value: StringSpan {
                             source: "x == y",
-                            ch: 'y',
                             start: 5,
                             end: 6,
                             range: 1:6-1:7,
@@ -1217,7 +1197,6 @@ mod tests {
                 Variable {
                     value: StringSpan {
                         source: "x",
-                        ch: 'x',
                         start: 0,
                         end: 1,
                         range: 1:1-1:2,
@@ -1258,7 +1237,6 @@ mod tests {
                         object: Variable {
                             value: StringSpan {
                                 source: "user.name == 'admin'",
-                                ch: 'u',
                                 start: 0,
                                 end: 4,
                                 range: 1:1-1:5,
@@ -1266,7 +1244,6 @@ mod tests {
                         },
                         property: StringSpan {
                             source: "user.name == 'admin'",
-                            ch: 'n',
                             start: 5,
                             end: 9,
                             range: 1:6-1:10,
@@ -1307,7 +1284,6 @@ mod tests {
                         object: Variable {
                             value: StringSpan {
                                 source: "  user . name   ==   admin . name  ",
-                                ch: 'u',
                                 start: 2,
                                 end: 6,
                                 range: 1:3-1:7,
@@ -1315,7 +1291,6 @@ mod tests {
                         },
                         property: StringSpan {
                             source: "  user . name   ==   admin . name  ",
-                            ch: 'n',
                             start: 9,
                             end: 13,
                             range: 1:10-1:14,
@@ -1327,7 +1302,6 @@ mod tests {
                         object: Variable {
                             value: StringSpan {
                                 source: "  user . name   ==   admin . name  ",
-                                ch: 'a',
                                 start: 21,
                                 end: 26,
                                 range: 1:22-1:27,
@@ -1335,7 +1309,6 @@ mod tests {
                         },
                         property: StringSpan {
                             source: "  user . name   ==   admin . name  ",
-                            ch: 'n',
                             start: 29,
                             end: 33,
                             range: 1:30-1:34,
@@ -1463,7 +1436,6 @@ mod tests {
                         Variable {
                             value: StringSpan {
                                 source: "[x, user.name]",
-                                ch: 'x',
                                 start: 1,
                                 end: 2,
                                 range: 1:2-1:3,
@@ -1473,7 +1445,6 @@ mod tests {
                             object: Variable {
                                 value: StringSpan {
                                     source: "[x, user.name]",
-                                    ch: 'u',
                                     start: 4,
                                     end: 8,
                                     range: 1:5-1:9,
@@ -1481,7 +1452,6 @@ mod tests {
                             },
                             property: StringSpan {
                                 source: "[x, user.name]",
-                                ch: 'n',
                                 start: 9,
                                 end: 13,
                                 range: 1:10-1:14,
@@ -1561,7 +1531,6 @@ mod tests {
                                 object: Variable {
                                     value: StringSpan {
                                         source: "{user: user.name, active: !user.disabled}",
-                                        ch: 'u',
                                         start: 27,
                                         end: 31,
                                         range: 1:28-1:32,
@@ -1569,7 +1538,6 @@ mod tests {
                                 },
                                 property: StringSpan {
                                     source: "{user: user.name, active: !user.disabled}",
-                                    ch: 'd',
                                     start: 32,
                                     end: 40,
                                     range: 1:33-1:41,
@@ -1582,7 +1550,6 @@ mod tests {
                             object: Variable {
                                 value: StringSpan {
                                     source: "{user: user.name, active: !user.disabled}",
-                                    ch: 'u',
                                     start: 7,
                                     end: 11,
                                     range: 1:8-1:12,
@@ -1590,7 +1557,6 @@ mod tests {
                             },
                             property: StringSpan {
                                 source: "{user: user.name, active: !user.disabled}",
-                                ch: 'n',
                                 start: 12,
                                 end: 16,
                                 range: 1:13-1:17,
@@ -1682,7 +1648,6 @@ mod tests {
                             object: Variable {
                                 value: StringSpan {
                                     source: "[\n\tuser.name,\n\t!user.disabled,\n]",
-                                    ch: 'u',
                                     start: 3,
                                     end: 7,
                                     range: 2:2-2:6,
@@ -1690,7 +1655,6 @@ mod tests {
                             },
                             property: StringSpan {
                                 source: "[\n\tuser.name,\n\t!user.disabled,\n]",
-                                ch: 'n',
                                 start: 8,
                                 end: 12,
                                 range: 2:7-2:11,
@@ -1703,7 +1667,6 @@ mod tests {
                                 object: Variable {
                                     value: StringSpan {
                                         source: "[\n\tuser.name,\n\t!user.disabled,\n]",
-                                        ch: 'u',
                                         start: 16,
                                         end: 20,
                                         range: 3:3-3:7,
@@ -1711,7 +1674,6 @@ mod tests {
                                 },
                                 property: StringSpan {
                                     source: "[\n\tuser.name,\n\t!user.disabled,\n]",
-                                    ch: 'd',
                                     start: 21,
                                     end: 29,
                                     range: 3:8-3:16,
@@ -1780,7 +1742,6 @@ mod tests {
                                 object: Variable {
                                     value: StringSpan {
                                         source: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
-                                        ch: 'u',
                                         start: 30,
                                         end: 34,
                                         range: 3:11-3:15,
@@ -1788,7 +1749,6 @@ mod tests {
                                 },
                                 property: StringSpan {
                                     source: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
-                                    ch: 'd',
                                     start: 35,
                                     end: 43,
                                     range: 3:16-3:24,
@@ -1801,7 +1761,6 @@ mod tests {
                             object: Variable {
                                 value: StringSpan {
                                     source: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
-                                    ch: 'u',
                                     start: 9,
                                     end: 13,
                                     range: 2:8-2:12,
@@ -1809,7 +1768,6 @@ mod tests {
                             },
                             property: StringSpan {
                                 source: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
-                                ch: 'n',
                                 start: 14,
                                 end: 18,
                                 range: 2:13-2:17,
@@ -1833,7 +1791,6 @@ mod tests {
                         var_name: DopVarName {
                             value: StringSpan {
                                 source: "name: 'John'",
-                                ch: 'n',
                                 start: 0,
                                 end: 4,
                                 range: 1:1-1:5,
@@ -1859,7 +1816,6 @@ mod tests {
                         var_name: DopVarName {
                             value: StringSpan {
                                 source: "name: 'John', age: 25, active: true",
-                                ch: 'a',
                                 start: 23,
                                 end: 29,
                                 range: 1:24-1:30,
@@ -1874,7 +1830,6 @@ mod tests {
                         var_name: DopVarName {
                             value: StringSpan {
                                 source: "name: 'John', age: 25, active: true",
-                                ch: 'a',
                                 start: 14,
                                 end: 17,
                                 range: 1:15-1:18,
@@ -1889,7 +1844,6 @@ mod tests {
                         var_name: DopVarName {
                             value: StringSpan {
                                 source: "name: 'John', age: 25, active: true",
-                                ch: 'n',
                                 start: 0,
                                 end: 4,
                                 range: 1:1-1:5,
@@ -1915,7 +1869,6 @@ mod tests {
                         var_name: DopVarName {
                             value: StringSpan {
                                 source: "user: user.name, enabled: !user.disabled",
-                                ch: 'e',
                                 start: 17,
                                 end: 24,
                                 range: 1:18-1:25,
@@ -1927,7 +1880,6 @@ mod tests {
                                 object: Variable {
                                     value: StringSpan {
                                         source: "user: user.name, enabled: !user.disabled",
-                                        ch: 'u',
                                         start: 27,
                                         end: 31,
                                         range: 1:28-1:32,
@@ -1935,7 +1887,6 @@ mod tests {
                                 },
                                 property: StringSpan {
                                     source: "user: user.name, enabled: !user.disabled",
-                                    ch: 'd',
                                     start: 32,
                                     end: 40,
                                     range: 1:33-1:41,
@@ -1949,7 +1900,6 @@ mod tests {
                         var_name: DopVarName {
                             value: StringSpan {
                                 source: "user: user.name, enabled: !user.disabled",
-                                ch: 'u',
                                 start: 0,
                                 end: 4,
                                 range: 1:1-1:5,
@@ -1959,7 +1909,6 @@ mod tests {
                             object: Variable {
                                 value: StringSpan {
                                     source: "user: user.name, enabled: !user.disabled",
-                                    ch: 'u',
                                     start: 6,
                                     end: 10,
                                     range: 1:7-1:11,
@@ -1967,7 +1916,6 @@ mod tests {
                             },
                             property: StringSpan {
                                 source: "user: user.name, enabled: !user.disabled",
-                                ch: 'n',
                                 start: 11,
                                 end: 15,
                                 range: 1:12-1:16,
@@ -1990,7 +1938,6 @@ mod tests {
                         var_name: DopVarName {
                             value: StringSpan {
                                 source: "name: 'John', age: 25,",
-                                ch: 'a',
                                 start: 14,
                                 end: 17,
                                 range: 1:15-1:18,
@@ -2005,7 +1952,6 @@ mod tests {
                         var_name: DopVarName {
                             value: StringSpan {
                                 source: "name: 'John', age: 25,",
-                                ch: 'n',
                                 start: 0,
                                 end: 4,
                                 range: 1:1-1:5,

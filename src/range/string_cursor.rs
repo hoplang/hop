@@ -33,7 +33,6 @@ impl Iterator for StringCursor {
                 self.position.column += ch.len_utf8();
             }
             StringSpan {
-                ch,
                 source: self.source.clone(),
                 start: start_offset,
                 end: self.offset,
@@ -48,9 +47,6 @@ pub struct StringSpan {
     // source is the string representing the source text of the document
     // that this string span references.
     source: Arc<String>,
-    /// ch is the first character of the string span.
-    /// This value is used during tokenization.
-    ch: char,
     /// the start offset for this string span in the document (in bytes).
     start: usize,
     /// the end offset for this string span in the document (in bytes).
@@ -61,13 +57,12 @@ pub struct StringSpan {
 
 impl StringSpan {
     pub fn ch(&self) -> char {
-        self.ch
+        self.source[self.start..].chars().next().unwrap()
     }
-    
+
     pub fn span(self, other: StringSpan) -> Self {
         StringSpan {
             source: self.source,
-            ch: self.ch,
             start: self.start,
             end: other.end,
             range: self.range.spanning(other.range),
