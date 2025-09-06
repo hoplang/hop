@@ -114,9 +114,6 @@ impl DopVarName {
     pub fn as_str(&self) -> &str {
         self.value.as_str()
     }
-    pub fn to_string(&self) -> String {
-        self.value.to_string()
-    }
     pub fn range(&self) -> Range {
         self.value.range()
     }
@@ -605,7 +602,7 @@ mod tests {
 
         let actual = match parse_arguments(&mut tokenizer) {
             Ok(result) => {
-                let args: Vec<String> = result.iter().map(|(_, arg)| arg.to_string()).collect();
+                let args: Vec<String> = result.values().map(|arg| arg.to_string()).collect();
                 format!("[{}]\n", args.join(", "))
             }
             Err(err) => annotate_error(input, err),

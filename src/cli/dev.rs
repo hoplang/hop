@@ -155,6 +155,7 @@ async fn handle_request(
     }
 }
 
+#[allow(dead_code)]
 fn create_error_page(error: &anyhow::Error) -> String {
     let program = get_ui_program();
 

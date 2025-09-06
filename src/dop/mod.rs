@@ -4,7 +4,7 @@ pub mod runtime;
 pub mod tokenizer;
 pub mod typechecker;
 
-pub use ast::{BinaryOp, DopExpr, UnaryOp};
+pub use ast::DopExpr;
 pub use parser::{
     DopArgument, DopParameter, parse_arguments, parse_expr, parse_loop_header,
     parse_parameters,
