@@ -42,6 +42,19 @@ pub enum Token {
     },
 }
 
+impl Token {
+    pub fn span(&self) -> &StringSpan {
+        match self {
+            Token::Doctype { span } => span,
+            Token::Comment { span } => span,
+            Token::Expression { span, .. } => span,
+            Token::OpeningTag { span, .. } => span,
+            Token::ClosingTag { span, .. } => span,
+            Token::Text { span } => span,
+        }
+    }
+}
+
 impl Ranged for Token {
     fn range(&self) -> Range {
         match self {

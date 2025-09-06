@@ -1,8 +1,8 @@
 use crate::common::{ParseError, is_void_element};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
+use crate::range::Ranged;
 use crate::range::string_cursor::StringSpan;
-use crate::range::{Range, Ranged};
 use std::fmt::{self, Display};
 
 /// A TokenTree represents a tree of tokens.
@@ -23,13 +23,14 @@ pub struct TokenTree {
     /// This information is needed by the parser.
     pub closing_tag_name: Option<StringSpan>,
     pub children: Vec<TokenTree>,
-    pub range: Range,
+    pub span: StringSpan,
 }
 
 impl TokenTree {
     pub fn new(opening_token: Token) -> Self {
+        let span = opening_token.span().clone();
         TokenTree {
-            range: opening_token.range(),
+            span,
             token: opening_token,
             closing_tag_name: None,
             children: Vec::new(),
@@ -45,9 +46,11 @@ impl TokenTree {
     }
 
     pub fn set_closing_tag(&mut self, closing_token: Token) {
-        self.range = self.range.to(closing_token.range());
-        self.closing_tag_name = match closing_token {
-            Token::ClosingTag { tag_name, .. } => Some(tag_name),
+        match closing_token {
+            Token::ClosingTag { tag_name, span } => {
+                self.closing_tag_name = Some(tag_name);
+                self.span = self.span.clone().to(span);
+            }
             _ => panic!("Called set_closing_tag with a token that was not a ClosingTag"),
         }
     }
