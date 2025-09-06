@@ -2,7 +2,8 @@ use super::ast::{BinaryOp, DopExpr, UnaryOp};
 use crate::common::TypeError;
 use crate::hop::environment::Environment;
 use crate::hop::typechecker::TypeAnnotation;
-use crate::range::{Range, Ranged};
+use crate::range::Ranged;
+use crate::range::string_cursor::StringSpan;
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -16,9 +17,9 @@ pub enum DopType {
 }
 
 #[derive(Debug, Clone)]
-pub struct RangeDopType {
+pub struct SpannedDopType {
     pub dop_type: DopType,
-    pub range: Range,
+    pub span: StringSpan,
 }
 
 impl fmt::Display for DopType {

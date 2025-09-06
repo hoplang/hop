@@ -4,12 +4,12 @@ use crate::range::string_cursor::StringSpan;
 #[derive(Debug, Clone)]
 pub enum ParseError {
     UnexpectedEof,
-    Ranged { message: String, span: StringSpan },
+    Spanned { message: String, span: StringSpan },
 }
 
 impl ParseError {
     pub fn new(message: String, span: StringSpan) -> Self {
-        Self::Ranged { message, span }
+        Self::Spanned { message, span }
     }
 
     pub fn unterminated_string_literal(span: StringSpan) -> Self {
@@ -26,12 +26,18 @@ impl ParseError {
 
     pub fn invalid_variable_name(name: &str, span: StringSpan) -> Self {
         Self::new(
-            format!("Invalid variable name '{name}'. Variable names must start with a letter and contain only letters, digits, and underscores"),
+            format!(
+                "Invalid variable name '{name}'. Variable names must start with a letter and contain only letters, digits, and underscores"
+            ),
             span,
         )
     }
 
-    pub fn expected_tokens_but_got(expected: &[DopToken], actual: &DopToken, span: StringSpan) -> Self {
+    pub fn expected_tokens_but_got(
+        expected: &[DopToken],
+        actual: &DopToken,
+        span: StringSpan,
+    ) -> Self {
         Self::new(
             format!(
                 "Expected {} but got '{}'",
@@ -46,7 +52,11 @@ impl ParseError {
         )
     }
 
-    pub fn expected_token_but_got(expected: &DopToken, actual: &DopToken, span: StringSpan) -> Self {
+    pub fn expected_token_but_got(
+        expected: &DopToken,
+        actual: &DopToken,
+        span: StringSpan,
+    ) -> Self {
         Self::new(
             format!("Expected token '{expected}' but got '{actual}'"),
             span,
@@ -81,3 +91,4 @@ impl ParseError {
         Self::new(format!("Duplicate property '{name}'"), span)
     }
 }
+

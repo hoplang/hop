@@ -231,7 +231,7 @@ mod tests {
                         range: span.range(),
                     });
                 }
-                Err(ParseError::Ranged { message, span }) => {
+                Err(ParseError::Spanned { message, span }) => {
                     annotations.push(SimpleAnnotation {
                         message: format!("error: {}", message),
                         range: span.range(),
