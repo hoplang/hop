@@ -35,7 +35,7 @@ pub fn render_file(
     let render = asts
         .values()
         .flat_map(|ast| ast.get_renders())
-        .find(|r| r.file_attr.value == file_path);
+        .find(|r| r.file_attr.value.as_str() == file_path);
     match render {
         Some(node) => {
             let mut env = init_environment(hop_mode);
@@ -95,7 +95,7 @@ pub fn evaluate_component(
         Ok(())
     } else {
         let tag_name = match &component.as_attr {
-            Some(as_attr) => &as_attr.value,
+            Some(as_attr) => &as_attr.value.as_str(),
             _ => "div",
         };
 
@@ -328,17 +328,17 @@ fn evaluate_node(
             ..
         } => {
             // Skip style nodes
-            if tag_name == "style" {
+            if tag_name.as_str() == "style" {
                 return Ok(());
             }
 
             // Skip script nodes without a src attribute
-            if tag_name == "script" && !attributes.contains_key("src") {
+            if tag_name.as_str() == "script" && !attributes.contains_key("src") {
                 return Ok(());
             }
 
             output.push('<');
-            output.push_str(tag_name);
+            output.push_str(tag_name.as_str());
             for (name, attr) in attributes {
                 if !name.starts_with("set-") {
                     output.push(' ');
@@ -364,7 +364,7 @@ fn evaluate_node(
 
             output.push('>');
 
-            if !is_void_element(tag_name) {
+            if !is_void_element(tag_name.as_str()) {
                 for child in children {
                     evaluate_node(
                         asts,
@@ -377,7 +377,7 @@ fn evaluate_node(
                     )?;
                 }
                 output.push_str("</");
-                output.push_str(tag_name);
+                output.push_str(tag_name.as_str());
                 output.push('>');
             }
 
@@ -425,7 +425,7 @@ fn evaluate_node(
 
             // Execute the command with stdin
             let command = &cmd_attr.value;
-            let result = execute_command(command, &stdin_content)?;
+            let result = execute_command(command.as_str(), &stdin_content)?;
             output.push_str(&result);
             Ok(())
         }
@@ -482,7 +482,7 @@ fn evaluate_node_entrypoint(
         } => {
             // For entrypoints, preserve script and style tags
             output.push('<');
-            output.push_str(tag_name);
+            output.push_str(tag_name.as_str());
             for (name, attr) in attributes {
                 if !name.starts_with("set-") {
                     output.push(' ');
@@ -508,12 +508,12 @@ fn evaluate_node_entrypoint(
 
             output.push('>');
 
-            if !is_void_element(tag_name) {
+            if !is_void_element(tag_name.as_str()) {
                 for child in children {
                     evaluate_node_entrypoint(asts, hop_mode, child, env, current_module, output)?;
                 }
                 output.push_str("</");
-                output.push_str(tag_name);
+                output.push_str(tag_name.as_str());
                 output.push('>');
             }
 

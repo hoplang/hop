@@ -170,7 +170,7 @@ impl Program {
         let dependencies = ast
             .get_imports()
             .iter()
-            .map(|import_node| import_node.from_attr.value.clone())
+            .map(|import_node| import_node.from_attr.value.to_string())
             .collect::<HashSet<String>>();
 
         // Store the AST and source code
@@ -377,7 +377,7 @@ impl Program {
                     })
                     .map(|n| RenameLocation {
                         module: module_name.clone(),
-                        range: n.component_attr.range,
+                        range: n.component_attr.value.range(),
                     }),
             );
 
@@ -455,7 +455,7 @@ impl Program {
         let mut result = Vec::new();
         for ast in self.asts.values() {
             for node in ast.get_renders() {
-                result.push(node.file_attr.value.clone())
+                result.push(node.file_attr.value.to_string())
             }
         }
         result

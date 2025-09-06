@@ -22,7 +22,7 @@ impl ScriptCollector {
                         tag_name, children, ..
                     } = node
                     {
-                        if tag_name != "script" {
+                        if tag_name.as_str() != "script" {
                             continue;
                         }
 

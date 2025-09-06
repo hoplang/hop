@@ -6,8 +6,7 @@ use crate::range::{Position, Range, Ranged};
 
 #[derive(Debug, Clone)]
 pub struct PresentAttribute {
-    pub value: String,
-    pub range: Range,
+    pub value: StringSpan,
 }
 
 #[derive(Debug, Clone)]
@@ -134,11 +133,11 @@ pub struct Import {
 
 impl Import {
     pub fn imports_component(&self, component_name: &str) -> bool {
-        self.component_attr.value == component_name
+        self.component_attr.value.as_str() == component_name
     }
 
     pub fn imports_from(&self, from_path: &str) -> bool {
-        self.from_attr.value == from_path
+        self.from_attr.value.as_str() == from_path
     }
 }
 
@@ -244,8 +243,7 @@ pub enum HopNode {
     /// E.g. <div>...</div>
     ///      ^^^^^^^^^^^^^^
     Html {
-        tag_name: String,
-        opening_name_range: Range,
+        tag_name: StringSpan,
         closing_name_range: Option<Range>,
         attributes: BTreeMap<String, Attribute>,
         range: Range,
@@ -323,9 +321,7 @@ impl HopNode {
             HopNode::ComponentReference {
                 opening_name_range, ..
             } => Some(*opening_name_range),
-            HopNode::Html {
-                opening_name_range, ..
-            } => Some(*opening_name_range),
+            HopNode::Html { tag_name, .. } => Some(tag_name.range()),
             _ => None,
         }
     }
@@ -351,7 +347,7 @@ impl HopNode {
     pub fn tag_name(&self) -> Option<&str> {
         match self {
             HopNode::ComponentReference { component, .. } => Some(component),
-            HopNode::Html { tag_name, .. } => Some(tag_name),
+            HopNode::Html { tag_name, .. } => Some(tag_name.as_str()),
             _ => None,
         }
     }

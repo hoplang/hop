@@ -75,14 +75,8 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                                     .insert(cmp_attr.to_string(), from_attr.to_string());
                             }
                             imports.push(Import {
-                                component_attr: PresentAttribute {
-                                    value: cmp_attr.to_string(),
-                                    range: cmp_attr.range(),
-                                },
-                                from_attr: PresentAttribute {
-                                    value: from_attr.to_string(),
-                                    range: from_attr.range(),
-                                },
+                                component_attr: PresentAttribute { value: cmp_attr },
+                                from_attr: PresentAttribute { value: from_attr },
                                 range: tree.range,
                             });
                         }
@@ -119,10 +113,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                     match file_attr.and_then(|attr| attr.value) {
                         Some(file_attr) => {
                             renders.push(Render {
-                                file_attr: PresentAttribute {
-                                    value: file_attr.to_string(),
-                                    range: file_attr.range(),
-                                },
+                                file_attr: PresentAttribute { value: file_attr },
                                 range: tree.range,
                                 children,
                             });
@@ -208,10 +199,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                             closing_tag_name: tree.closing_tag_name,
                             params,
                             is_entrypoint,
-                            as_attr: as_attr.map(|v| PresentAttribute {
-                                value: v.to_string(),
-                                range: v.range(),
-                            }),
+                            as_attr: as_attr.map(|v| PresentAttribute { value: v }),
                             attributes: unhandled_attributes,
                             range: tree.range,
                             children,
@@ -392,10 +380,7 @@ fn construct_node(
 
                         match cmd_attr.and_then(|attr| attr.value) {
                             Some(cmd_attr) => HopNode::XExec {
-                                cmd_attr: PresentAttribute {
-                                    value: cmd_attr.to_string(),
-                                    range: cmd_attr.range(),
-                                },
+                                cmd_attr: PresentAttribute { value: cmd_attr },
                                 range: tree.range,
                                 children,
                             },
@@ -510,8 +495,7 @@ fn construct_node(
                     }
 
                     HopNode::Html {
-                        tag_name: tag_name.to_string(),
-                        opening_name_range: tag_name.range(),
+                        tag_name,
                         closing_name_range: tree.closing_tag_name.map(|s| s.range()),
                         attributes: attributes.clone(),
                         range: tree.range,
@@ -540,7 +524,7 @@ mod tests {
             HopNode::ComponentReference { .. } => "component_reference",
             HopNode::If { .. } => "if",
             HopNode::For { .. } => "for",
-            HopNode::Html { tag_name, .. } => tag_name,
+            HopNode::Html { tag_name, .. } => tag_name.as_str(),
             HopNode::SlotDefinition { .. } => "slot-definition",
             HopNode::XExec { .. } => "hop-x-exec",
             HopNode::XRaw { .. } => "hop-x-raw",

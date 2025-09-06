@@ -105,12 +105,12 @@ impl TypeChecker {
                 for import_node in module.get_imports() {
                     type_errors.push(TypeError::import_cycle(
                         &module.name,
-                        &import_node.from_attr.value,
+                        import_node.from_attr.value.as_str(),
                         &modules
                             .iter()
                             .map(|m| m.name.to_string())
                             .collect::<Vec<_>>(),
-                        import_node.from_attr.range,
+                        import_node.from_attr.value.range(),
                     ));
                 }
             }
@@ -133,16 +133,16 @@ fn typecheck_module(
         let from_module = &from_attr.value;
         let component_name = &component_attr.value;
 
-        if !state.module_is_declared(from_module) {
+        if !state.module_is_declared(from_module.as_str()) {
             errors.push(TypeError::import_from_undefined_module(
-                from_module,
-                from_attr.range,
+                from_module.as_str(),
+                from_module.range(),
             ));
-        } else if !state.component_is_declared(from_module, component_name) {
+        } else if !state.component_is_declared(from_module.as_str(), component_name.as_str()) {
             errors.push(TypeError::undeclared_component(
-                from_module,
-                component_name,
-                component_attr.range,
+                from_module.as_str(),
+                component_name.as_str(),
+                component_name.range(),
             ));
         }
     }
