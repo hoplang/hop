@@ -45,10 +45,7 @@ impl TokenTree {
     pub fn set_closing_tag(&mut self, closing_token: Token) {
         self.range = self.range.spanning(closing_token.range());
         self.closing_tag_name_range = match closing_token {
-            Token::ClosingTag {
-                tag_name: (_, tag_name_range),
-                ..
-            } => Some(tag_name_range),
+            Token::ClosingTag { tag_name, .. } => Some(tag_name.range()),
             _ => panic!("Called set_closing_tag with a token that was not a ClosingTag"),
         }
     }
@@ -103,19 +100,19 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
                             });
                         }
                     }
-                    Token::ClosingTag {
-                        tag_name: (ref tag_name_value, _),
-                        ..
-                    } => {
-                        if is_void_element(tag_name_value) {
-                            errors.push(ParseError::closed_void_tag(tag_name_value, token.range()));
-                        } else if !stack.iter().any(|el| el.tag_name == *tag_name_value) {
+                    Token::ClosingTag { ref tag_name, .. } => {
+                        if is_void_element(tag_name.as_str()) {
+                            errors.push(ParseError::closed_void_tag(
+                                tag_name.as_str(),
+                                token.range(),
+                            ));
+                        } else if !stack.iter().any(|el| el.tag_name == tag_name.as_str()) {
                             errors.push(ParseError::unmatched_closing_tag(
-                                tag_name_value,
+                                tag_name.as_str(),
                                 token.range(),
                             ));
                         } else {
-                            while stack.last().unwrap().tag_name != *tag_name_value {
+                            while stack.last().unwrap().tag_name != tag_name.as_str() {
                                 let unclosed = stack.pop().unwrap();
                                 errors.push(ParseError::unclosed_tag(
                                     &unclosed.tag_name,

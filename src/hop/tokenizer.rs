@@ -32,7 +32,7 @@ pub enum Token {
         range: Range,
     },
     ClosingTag {
-        tag_name: (String, Range),
+        tag_name: StringSpan,
         range: Range,
     },
     Text {
@@ -63,10 +63,7 @@ impl Annotated for Token {
             Token::Doctype { range: _ } => {
                 format!("Doctype")
             }
-            Token::ClosingTag {
-                tag_name: (tag_name, _),
-                range: _,
-            } => {
+            Token::ClosingTag { tag_name, range: _ } => {
                 format!("ClosingTag </{}>", tag_name)
             }
             Token::OpeningTag {
@@ -408,12 +405,12 @@ impl<'a> Tokenizer<'a> {
                                     right_angle.range(),
                                 ));
                                 return Some(Token::ClosingTag {
-                                    tag_name: tag_name.into(),
+                                    tag_name,
                                     range: left_angle.range().spanning(right_angle.range()),
                                 });
                             }
                             Some(Token::ClosingTag {
-                                tag_name: tag_name.into(),
+                                tag_name,
                                 range: left_angle.range().spanning(right_angle.range()),
                             })
                         } else {
