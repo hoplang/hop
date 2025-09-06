@@ -3,26 +3,26 @@ use std::collections::BTreeMap;
 use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
 use crate::range::{Position, Range, Ranged};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct PresentAttribute {
     pub value: String,
     pub range: Range,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Attribute {
     pub value: Option<(String, Range)>,
     pub range: Range,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct DopExprAttribute {
     pub name: String,
     pub expression: DopExpr,
     pub range: Range,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct HopAst {
     pub name: String,
     imports: Vec<Import>,
@@ -124,7 +124,7 @@ impl HopAst {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Import {
     pub component_attr: PresentAttribute,
     pub from_attr: PresentAttribute,
@@ -141,7 +141,7 @@ impl Import {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Render {
     pub file_attr: PresentAttribute,
     pub range: Range,
@@ -154,7 +154,7 @@ impl Ranged for Render {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct ComponentDefinition {
     pub tag_name: String,
     pub opening_tag_name_range: Range,
@@ -182,7 +182,7 @@ impl ComponentDefinition {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum HopNode {
     /// A Text node represents text in the document.
     /// E.g. <div>hello world</div>
