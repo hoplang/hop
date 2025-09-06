@@ -54,6 +54,10 @@ impl Iterator for StringCursor {
     }
 }
 
+/// A StringSpan represents a segment of text in a document.
+///
+/// It is always non-empty, i.e. span.start < span.end and span.as_str().len() > 0
+/// always holds.
 #[derive(Debug, Clone)]
 pub struct StringSpan {
     /// The source info containing the document text and line starts.
@@ -65,14 +69,16 @@ pub struct StringSpan {
 }
 
 impl StringSpan {
-    // Get the first character from the string span.
+    /// Get the first char from the string span.
     pub fn ch(&self) -> char {
         self.source.text[self.start..].chars().next().unwrap()
     }
 
-    // Extend a string span to encompass another string span that occurs
-    // later in the document.
+    /// Extend a string span to encompass another string span that occurs
+    /// later in the document.
     pub fn to(self, other: StringSpan) -> Self {
+        debug_assert!(other.start > self.start);
+        debug_assert!(other.end > self.end);
         StringSpan {
             source: self.source,
             start: self.start,
@@ -80,6 +86,10 @@ impl StringSpan {
         }
     }
 
+    /// Extend a StringSpan with an iterator of StringSpans
+    /// producing a single string span.
+    ///
+    /// The string spans must occur sequentially in the document.
     pub fn extend<I>(self, iter: I) -> Self
     where
         I: IntoIterator<Item = StringSpan>,
@@ -87,12 +97,12 @@ impl StringSpan {
         iter.into_iter().fold(self, |acc, span| acc.to(span))
     }
 
-    // Get the underlying string slice for this string span.
+    /// Get the underlying string slice for this string span.
     pub fn as_str(&self) -> &str {
         &self.source.text[self.start..self.end]
     }
 
-    // Get a string cursor for this string slice.
+    /// Get a string cursor for this string slice.
     pub fn cursor(&self) -> StringCursor {
         StringCursor {
             source: self.source.clone(),
@@ -151,15 +161,17 @@ impl fmt::Display for StringSpan {
     }
 }
 
+/// Turn an iterator of StringSpans into a single
+/// Some(StringSpan) or None if the iterator is empty.
+///
+/// The string spans must occur sequentially in the document.
 impl FromIterator<StringSpan> for Option<StringSpan> {
     fn from_iter<I: IntoIterator<Item = StringSpan>>(iter: I) -> Self {
         iter.into_iter().reduce(|acc, span| acc.to(span))
     }
 }
 
-/// Trait for types that have a StringSpan representing their location in source code.
 pub trait Spanned {
-    /// Returns a reference to the StringSpan for this item.
     fn span(&self) -> &StringSpan;
 
     fn start_utf16(&self) -> Position {
