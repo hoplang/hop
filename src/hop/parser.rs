@@ -139,14 +139,13 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                     if !is_valid_component_name(name) {
                         errors.push(ParseError::invalid_component_name(name, tag_name.range()));
                     } else {
-                        let params = expression.as_ref().and_then(|(expr_string, expr_range)| {
-                            let span = StringSpan::new(expr_string.clone(), *expr_range);
-                            let mut tokenizer = DopTokenizer::from(span.cursor()).peekable();
+                        let params = expression.as_ref().and_then(|expr| {
+                            let mut tokenizer = DopTokenizer::from(expr.cursor()).peekable();
                             match dop::parse_parameters(&mut tokenizer) {
-                                Ok(params) => Some((params, *expr_range)),
+                                Ok(params) => Some((params, expr.range())),
                                 Err(dop::parser::ParseError::UnexpectedEof) => {
                                     errors.push(ParseError::unexpected_end_of_expression(
-                                        *expr_range,
+                                        expr.range(),
                                     ));
                                     None
                                 }
@@ -304,9 +303,8 @@ fn construct_node(
             match tag_name.as_str() {
                 "if" => match expression {
                     // TODO: Check for unrecognized attributes
-                    Some((expr_string, expr_range)) => {
-                        let span = StringSpan::new(expr_string.clone(), expr_range);
-                        let mut tokenizer = DopTokenizer::from(span.cursor()).peekable();
+                    Some(expr) => {
+                        let mut tokenizer = DopTokenizer::from(expr.cursor()).peekable();
                         match dop::parse_expr(&mut tokenizer) {
                             Ok(condition) => HopNode::If {
                                 condition,
@@ -314,7 +312,7 @@ fn construct_node(
                                 children,
                             },
                             Err(dop::parser::ParseError::UnexpectedEof) => {
-                                errors.push(ParseError::unexpected_end_of_expression(expr_range));
+                                errors.push(ParseError::unexpected_end_of_expression(expr.range()));
                                 HopNode::Error {
                                     range: tree.range,
                                     children,
@@ -342,9 +340,8 @@ fn construct_node(
                 },
                 "for" => match expression {
                     // TODO: Check for unrecognized attributes
-                    Some((expr_string, expr_range)) => {
-                        let span = StringSpan::new(expr_string.clone(), expr_range);
-                        let mut tokenizer = DopTokenizer::from(span.cursor()).peekable();
+                    Some(expr) => {
+                        let mut tokenizer = DopTokenizer::from(expr.cursor()).peekable();
                         match dop::parse_loop_header(&mut tokenizer) {
                             Ok((var_name, array_expr)) => HopNode::For {
                                 var_name,
@@ -353,7 +350,7 @@ fn construct_node(
                                 children,
                             },
                             Err(dop::parser::ParseError::UnexpectedEof) => {
-                                errors.push(ParseError::unexpected_end_of_expression(expr_range));
+                                errors.push(ParseError::unexpected_end_of_expression(expr.range()));
                                 HopNode::Error {
                                     range: tree.range,
                                     children,
@@ -439,14 +436,13 @@ fn construct_node(
                         ));
                     }
                     let args = match &expression {
-                        Some((expr_string, expr_range)) => {
-                            let span = StringSpan::new(expr_string.clone(), *expr_range);
-                            let mut tokenizer = DopTokenizer::from(span.cursor()).peekable();
+                        Some(expr) => {
+                            let mut tokenizer = DopTokenizer::from(expr.cursor()).peekable();
                             match dop::parse_arguments(&mut tokenizer) {
-                                Ok(named_args) => Some((named_args, *expr_range)),
+                                Ok(named_args) => Some((named_args, expr.range())),
                                 Err(dop::parser::ParseError::UnexpectedEof) => {
                                     errors.push(ParseError::unexpected_end_of_expression(
-                                        *expr_range,
+                                        expr.range(),
                                     ));
                                     return HopNode::Error {
                                         range: tree.range,

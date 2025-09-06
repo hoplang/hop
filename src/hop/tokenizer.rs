@@ -27,7 +27,7 @@ pub enum Token {
     OpeningTag {
         tag_name: StringSpan,
         attributes: Attributes,
-        expression: Option<(String, Range)>,
+        expression: Option<StringSpan>,
         self_closing: bool,
         range: Range,
     },
@@ -77,7 +77,7 @@ impl Annotated for Token {
                 range: _,
             } => {
                 let mut result = String::new();
-                result.push_str(&format!("OpeningTag <{}", tag_name.as_str()));
+                result.push_str(&format!("OpeningTag <{}", tag_name));
 
                 if !attributes.is_empty() {
                     result.push(' ');
@@ -94,8 +94,8 @@ impl Annotated for Token {
                     result.push_str(&attr_strs.join(" "));
                 }
 
-                if let Some((expr, _)) = expression {
-                    result.push_str(&format!(" expr={:#?}", expr));
+                if let Some(expr) = expression {
+                    result.push_str(&format!(" expr={:#?}", expr.to_string()));
                 }
 
                 if *self_closing {
@@ -449,7 +449,7 @@ impl<'a> Tokenizer<'a> {
                                     self_closing,
                                     tag_name,
                                     attributes,
-                                    expression: expression.map(|s| s.into()),
+                                    expression,
                                     range: left_angle.range().spanning(right_angle.range()),
                                 })
                             }

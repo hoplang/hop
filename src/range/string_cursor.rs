@@ -1,4 +1,4 @@
-use std::{rc::Rc, str::Chars};
+use std::{fmt, rc::Rc, str::Chars};
 
 use super::{Position, Range};
 
@@ -42,9 +42,6 @@ impl StringSpan {
             range: self.range.spanning(other.range),
         }
     }
-    pub fn to_string(&self) -> String {
-        self.source[self.offset.0..self.offset.1].to_string()
-    }
     pub fn as_str(&self) -> &str {
         &self.source[self.offset.0..self.offset.1]
     }
@@ -58,6 +55,12 @@ impl StringSpan {
             offset: self.offset.0,
             position: self.range.start,
         }
+    }
+}
+
+impl fmt::Display for StringSpan {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", &self.source[self.offset.0..self.offset.1])
     }
 }
 
