@@ -32,4 +32,3 @@ impl fmt::Display for Position {
         write!(f, "{}:{}", self.line(), self.column())
     }
 }
-

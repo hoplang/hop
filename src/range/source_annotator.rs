@@ -8,7 +8,6 @@ use super::{
     string_cursor::{Spanned, StringCursor, StringSpan},
 };
 
-
 /// Simple annotation implementation for basic use cases
 pub struct SimpleAnnotation {
     pub span: StringSpan,
@@ -50,7 +49,6 @@ impl Display for SimpleAnnotation {
         write!(f, "{}", self.message)
     }
 }
-
 
 /// Annotator that can display source code with annotations
 pub struct SourceAnnotator {
@@ -123,7 +121,7 @@ impl SourceAnnotator {
     {
         self.annotate_impl(filename, source, annotations, |a| a.span().range())
     }
-    
+
     pub fn annotate_ranged<A>(
         &self,
         filename: Option<&str>,
@@ -135,7 +133,7 @@ impl SourceAnnotator {
     {
         self.annotate_impl(filename, source, annotations, |a| a.range())
     }
-    
+
     fn annotate_impl<A, F>(
         &self,
         filename: Option<&str>,

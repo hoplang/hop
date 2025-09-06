@@ -212,7 +212,7 @@ impl Iterator for DopTokenizer {
 
 #[cfg(test)]
 mod tests {
-    use crate::range::{RangedAnnotation, SourceAnnotator};
+    use crate::range::{SimpleAnnotation, SourceAnnotator};
 
     use super::*;
     use expect_test::{Expect, expect};
@@ -223,15 +223,15 @@ mod tests {
         for t in tokenizer {
             match t {
                 Ok((tok, span)) => {
-                    annotations.push(RangedAnnotation {
+                    annotations.push(SimpleAnnotation {
                         message: format!("token: {}", tok),
-                        range: span.range(),
+                        span,
                     });
                 }
                 Err(ParseError::Spanned { message, span }) => {
-                    annotations.push(RangedAnnotation {
+                    annotations.push(SimpleAnnotation {
                         message: format!("error: {}", message),
-                        range: span.range(),
+                        span,
                     });
                 }
                 Err(_) => {
@@ -242,7 +242,7 @@ mod tests {
         expected.assert_eq(
             &SourceAnnotator::new()
                 .without_line_numbers()
-                .annotate_ranged(None, input, &annotations),
+                .annotate(None, input, &annotations),
         );
     }
 
