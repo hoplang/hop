@@ -219,7 +219,7 @@ impl LanguageServer for HopLanguageServer {
                 program.get_renameable_symbol(&module_name, position.into())
             {
                 Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
-                    range: renameable_symbol.range.into(),
+                    range: renameable_symbol.span.into(),
                     placeholder: renameable_symbol.current_name,
                 }))
             } else {

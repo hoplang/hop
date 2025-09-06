@@ -105,6 +105,10 @@ impl StringSpan {
             self.source.offset_to_position(self.end),
         )
     }
+
+    pub fn contains(&self, other: &StringSpan) -> bool {
+        self.start <= other.start && other.end <= self.end
+    }
 }
 
 impl fmt::Display for StringSpan {
@@ -135,9 +139,15 @@ pub trait Spanned {
     }
 
     /// Returns true if this spanned item contains the given StringSpan.
-    fn contains(&self, other: &StringSpan) -> bool {
-        let self_span = self.span();
-        self_span.start <= other.start && other.end <= self_span.end
+    fn contains(&self, other: &Self) -> bool {
+        self.span().contains(other.span())
+    }
+
+    /// Returns true if this spanned item contains the given Position.
+    fn contains_position(&self, position: Position) -> bool {
+        let start = self.start();
+        let end = self.end();
+        start <= position && position < end
     }
 }
 

@@ -102,7 +102,7 @@ impl HopAst {
     ///
     pub fn find_node_at_position(&self, position: Position) -> Option<&HopNode> {
         for n in &self.renders {
-            if n.span.range().contains(position) {
+            if n.contains_position(position) {
                 for child in &n.children {
                     if let Some(node) = child.find_node_at_position(position) {
                         return Some(node);
@@ -112,7 +112,7 @@ impl HopAst {
             }
         }
         for n in &self.component_definitions {
-            if n.span.range().contains(position) {
+            if n.contains_position(position) {
                 for child in &n.children {
                     if let Some(node) = child.find_node_at_position(position) {
                         return Some(node);
@@ -303,7 +303,7 @@ impl HopNode {
     }
 
     pub fn find_node_at_position(&self, position: Position) -> Option<&HopNode> {
-        if !self.span().range().contains(position) {
+        if !self.contains_position(position) {
             return None;
         }
         for child in self.children() {

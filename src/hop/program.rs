@@ -125,12 +125,12 @@ impl Ord for RenameLocation {
 #[derive(Debug, Clone)]
 pub struct RenameableSymbol {
     pub current_name: String,
-    pub range: StringSpan,
+    pub span: StringSpan,
 }
 
 impl Spanned for RenameableSymbol {
     fn span(&self) -> &StringSpan {
-        &self.range
+        &self.span
     }
 }
 
@@ -221,10 +221,10 @@ impl Program {
             .type_annotations
             .get(module_name)?
             .iter()
-            .find(|a| a.range.range().contains(position))
+            .find(|a| a.span.contains_position(position))
             .map(|annotation| HoverInfo {
                 type_str: format!("`{}`: `{}`", annotation.name, annotation.typ),
-                span: annotation.range.clone(),
+                span: annotation.span.clone(),
             })
     }
 
@@ -237,7 +237,9 @@ impl Program {
 
         let node = ast.find_node_at_position(position)?;
 
-        let is_on_tag_name = node.tag_name_ranges().any(|r| r.range().contains(position));
+        let is_on_tag_name = node
+            .tag_name_ranges()
+            .any(|r| r.contains_position(position));
 
         if !is_on_tag_name {
             return None;
@@ -275,7 +277,10 @@ impl Program {
     ) -> Option<Vec<RenameLocation>> {
         let ast = self.asts.get(module_name)?;
         for node in ast.get_component_definitions() {
-            if node.tag_name_ranges().any(|r| r.range().contains(position)) {
+            if node
+                .tag_name_ranges()
+                .any(|r| r.contains_position(position))
+            {
                 return Some(
                     self.collect_component_rename_locations(node.tag_name.as_str(), module_name),
                 );
@@ -284,7 +289,9 @@ impl Program {
 
         let node = ast.find_node_at_position(position)?;
 
-        let is_on_tag_name = node.tag_name_ranges().any(|r| r.range().contains(position));
+        let is_on_tag_name = node
+            .tag_name_ranges()
+            .any(|r| r.contains_position(position));
 
         if !is_on_tag_name {
             return None;
@@ -324,11 +331,11 @@ impl Program {
         for component_node in ast.get_component_definitions() {
             if let Some(range) = component_node
                 .tag_name_ranges()
-                .find(|r| r.range().contains(position))
+                .find(|r| r.contains_position(position))
             {
                 return Some(RenameableSymbol {
                     current_name: component_node.tag_name.to_string(),
-                    range,
+                    span: range,
                 });
             }
         }
@@ -338,10 +345,10 @@ impl Program {
         let tag_name = node.tag_name()?;
 
         node.tag_name_ranges()
-            .find(|r| r.range().contains(position))
+            .find(|r| r.contains_position(position))
             .map(|range| RenameableSymbol {
                 current_name: tag_name.to_string(),
-                range,
+                span: range,
             })
     }
 

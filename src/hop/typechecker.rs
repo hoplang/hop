@@ -3,20 +3,20 @@ use crate::dop::{DopParameter, DopType, is_subtype, typecheck_expr};
 use crate::hop::ast::HopAst;
 use crate::hop::ast::{ComponentDefinition, HopNode, Import, Render};
 use crate::hop::environment::Environment;
-use crate::range::string_cursor::{StringSpan, Spanned};
+use crate::range::string_cursor::{Spanned, StringSpan};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
 #[derive(Debug, Clone)]
 pub struct TypeAnnotation {
-    pub range: StringSpan,
     pub typ: DopType,
     pub name: String,
+    pub span: StringSpan,
 }
 
 impl Spanned for TypeAnnotation {
     fn span(&self) -> &StringSpan {
-        &self.range
+        &self.span
     }
 }
 
@@ -161,7 +161,7 @@ fn typecheck_module(
         if let Some((params, _)) = params {
             for param in params.values() {
                 annotations.push(TypeAnnotation {
-                    range: param.var_name.span().clone(),
+                    span: param.var_name.span().clone(),
                     typ: param.type_annotation.clone(),
                     name: param.var_name.to_string(),
                 });
@@ -269,7 +269,7 @@ fn typecheck_node(
                 Ok(_) => {
                     pushed = true;
                     annotations.push(TypeAnnotation {
-                        range: var_name.span().clone(),
+                        span: var_name.span().clone(),
                         typ: element_type.clone(),
                         name: var_name.to_string(),
                     });
@@ -381,7 +381,7 @@ fn typecheck_node(
                         }
 
                         annotations.push(TypeAnnotation {
-                            range: arg.expression.span().clone(),
+                            span: arg.expression.span().clone(),
                             typ: evaluated_arg_type,
                             name: arg.var_name.to_string(),
                         });
