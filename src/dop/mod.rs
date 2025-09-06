@@ -1,10 +1,12 @@
+pub mod ast;
 pub mod parser;
 pub mod runtime;
 pub mod tokenizer;
 pub mod typechecker;
 
+pub use ast::{BinaryOp, DopExpr, UnaryOp};
 pub use parser::{
-    DopArgument, DopExpr, DopParameter, parse_arguments, parse_expr, parse_loop_header,
+    DopArgument, DopParameter, parse_arguments, parse_expr, parse_loop_header,
     parse_parameters,
 };
 pub use runtime::evaluate_expr;

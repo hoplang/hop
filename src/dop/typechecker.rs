@@ -1,4 +1,4 @@
-use super::parser::{BinaryOp, DopExpr, UnaryOp};
+use super::ast::{BinaryOp, DopExpr, UnaryOp};
 use crate::common::TypeError;
 use crate::hop::environment::Environment;
 use crate::hop::typechecker::TypeAnnotation;
