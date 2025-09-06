@@ -260,18 +260,18 @@ impl Tokenizer {
             match self.iter.peek()?.ch() {
                 // Parse expression
                 '{' => {
-                    let right_brace_span = self.find_expression_end()?;
+                    let right_brace = self.find_expression_end()?;
                     let left_brace = self.iter.next()?;
-                    if left_brace.end() == right_brace_span.start() {
+                    if left_brace.end() == right_brace.start() {
                         self.next(); // skip right brace
                         self.errors.push_back(ParseError::new(
                             "Empty expression".to_string(),
-                            left_brace.range().to(right_brace_span.range()),
+                            left_brace.range().to(right_brace.range()),
                         ));
                         continue;
                     }
                     let mut expr = self.iter.next()?;
-                    while self.iter.peek()?.range() != right_brace_span.range() {
+                    while self.iter.peek()?.range() != right_brace.range() {
                         expr = expr.to(self.iter.next()?);
                     }
                     self.iter.next()?; // skip right brace
@@ -307,7 +307,7 @@ impl Tokenizer {
     // Parse a markup declaration and return the token.
     //
     // Expects that '<!' have been read from the chars.
-    fn parse_markup_declaration(&mut self, first_token_span: StringSpan) -> Option<Token> {
+    fn parse_markup_declaration(&mut self, first_token: StringSpan) -> Option<Token> {
         match self.iter.next()? {
             // Comment
             s if s.ch() == '-' && self.iter.peek()?.ch() == '-' => {
@@ -321,7 +321,7 @@ impl Tokenizer {
                         s if s.ch() == '>' => {
                             if count >= 2 {
                                 return Some(Token::Comment {
-                                    span: first_token_span.to(s),
+                                    span: first_token.to(s),
                                 });
                             } else {
                                 count = 0;
@@ -348,7 +348,7 @@ impl Tokenizer {
                 while self.iter.next_if(|s| s.ch() != '>').is_some() {}
                 let ch = self.iter.next()?;
                 Some(Token::Doctype {
-                    span: first_token_span.to(ch),
+                    span: first_token.to(ch),
                 })
             }
             // Invalid
@@ -359,7 +359,7 @@ impl Tokenizer {
                 ));
 
                 Some(Token::Doctype {
-                    span: first_token_span.to(ch),
+                    span: first_token.to(ch),
                 })
             }
         }
@@ -480,9 +480,9 @@ impl Tokenizer {
             }
             // TextExpression
             '{' => {
-                let right_brace_span = self.find_expression_end()?;
+                let right_brace = self.find_expression_end()?;
                 let left_brace = self.iter.next()?;
-                if left_brace.end() == right_brace_span.start() {
+                if left_brace.end() == right_brace.start() {
                     let right_brace = self.iter.next()?; // skip right brace
                     self.errors.push_back(ParseError::new(
                         "Empty expression".to_string(),
@@ -492,13 +492,13 @@ impl Tokenizer {
                     return self.step();
                 }
                 let mut expr = self.iter.next()?;
-                while self.iter.peek()?.range() != right_brace_span.range() {
+                while self.iter.peek()?.range() != right_brace.range() {
                     expr = expr.to(self.iter.next()?);
                 }
                 self.iter.next()?; // skip right brace
                 Some(Token::Expression {
                     expression: expr,
-                    span: left_brace.to(right_brace_span),
+                    span: left_brace.to(right_brace),
                 })
             }
             // Text
