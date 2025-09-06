@@ -887,19 +887,27 @@ mod tests {
                     left: BinaryOp {
                         left: Variable {
                             value: StringSpan {
-                                source: "a == b == c",
+                                source: SourceInfo {
+                                    text: "a == b == c",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 0,
                                 end: 1,
-                                range: 1:1-1:2,
                             },
                         },
                         operator: Equal,
                         right: Variable {
                             value: StringSpan {
-                                source: "a == b == c",
+                                source: SourceInfo {
+                                    text: "a == b == c",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 5,
                                 end: 6,
-                                range: 1:6-1:7,
                             },
                         },
                         range: 1:1-1:7,
@@ -907,10 +915,14 @@ mod tests {
                     operator: Equal,
                     right: Variable {
                         value: StringSpan {
-                            source: "a == b == c",
+                            source: SourceInfo {
+                                text: "a == b == c",
+                                line_starts: [
+                                    0,
+                                ],
+                            },
                             start: 10,
                             end: 11,
-                            range: 1:11-1:12,
                         },
                     },
                     range: 1:1-1:12,
@@ -928,17 +940,25 @@ mod tests {
                     left: PropertyAccess {
                         object: Variable {
                             value: StringSpan {
-                                source: "user.name == admin.name",
+                                source: SourceInfo {
+                                    text: "user.name == admin.name",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 0,
                                 end: 4,
-                                range: 1:1-1:5,
                             },
                         },
                         property: StringSpan {
-                            source: "user.name == admin.name",
+                            source: SourceInfo {
+                                text: "user.name == admin.name",
+                                line_starts: [
+                                    0,
+                                ],
+                            },
                             start: 5,
                             end: 9,
-                            range: 1:6-1:10,
                         },
                         range: 1:1-1:10,
                     },
@@ -946,17 +966,25 @@ mod tests {
                     right: PropertyAccess {
                         object: Variable {
                             value: StringSpan {
-                                source: "user.name == admin.name",
+                                source: SourceInfo {
+                                    text: "user.name == admin.name",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 13,
                                 end: 18,
-                                range: 1:14-1:19,
                             },
                         },
                         property: StringSpan {
-                            source: "user.name == admin.name",
+                            source: SourceInfo {
+                                text: "user.name == admin.name",
+                                line_starts: [
+                                    0,
+                                ],
+                            },
                             start: 19,
                             end: 23,
-                            range: 1:20-1:24,
                         },
                         range: 1:14-1:24,
                     },
@@ -977,41 +1005,61 @@ mod tests {
                             object: PropertyAccess {
                                 object: Variable {
                                     value: StringSpan {
-                                        source: "app.user.profile.settings.theme",
+                                        source: SourceInfo {
+                                            text: "app.user.profile.settings.theme",
+                                            line_starts: [
+                                                0,
+                                            ],
+                                        },
                                         start: 0,
                                         end: 3,
-                                        range: 1:1-1:4,
                                     },
                                 },
                                 property: StringSpan {
-                                    source: "app.user.profile.settings.theme",
+                                    source: SourceInfo {
+                                        text: "app.user.profile.settings.theme",
+                                        line_starts: [
+                                            0,
+                                        ],
+                                    },
                                     start: 4,
                                     end: 8,
-                                    range: 1:5-1:9,
                                 },
                                 range: 1:1-1:9,
                             },
                             property: StringSpan {
-                                source: "app.user.profile.settings.theme",
+                                source: SourceInfo {
+                                    text: "app.user.profile.settings.theme",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 9,
                                 end: 16,
-                                range: 1:10-1:17,
                             },
                             range: 1:1-1:17,
                         },
                         property: StringSpan {
-                            source: "app.user.profile.settings.theme",
+                            source: SourceInfo {
+                                text: "app.user.profile.settings.theme",
+                                line_starts: [
+                                    0,
+                                ],
+                            },
                             start: 17,
                             end: 25,
-                            range: 1:18-1:26,
                         },
                         range: 1:1-1:26,
                     },
                     property: StringSpan {
-                        source: "app.user.profile.settings.theme",
+                        source: SourceInfo {
+                            text: "app.user.profile.settings.theme",
+                            line_starts: [
+                                0,
+                            ],
+                        },
                         start: 26,
                         end: 31,
-                        range: 1:27-1:32,
                     },
                     range: 1:1-1:32,
                 }
@@ -1066,19 +1114,27 @@ mod tests {
                 BinaryOp {
                     left: Variable {
                         value: StringSpan {
-                            source: "(x == y)",
+                            source: SourceInfo {
+                                text: "(x == y)",
+                                line_starts: [
+                                    0,
+                                ],
+                            },
                             start: 1,
                             end: 2,
-                            range: 1:2-1:3,
                         },
                     },
                     operator: Equal,
                     right: Variable {
                         value: StringSpan {
-                            source: "(x == y)",
+                            source: SourceInfo {
+                                text: "(x == y)",
+                                line_starts: [
+                                    0,
+                                ],
+                            },
                             start: 6,
                             end: 7,
-                            range: 1:7-1:8,
                         },
                     },
                     range: 1:2-1:8,
@@ -1095,17 +1151,25 @@ mod tests {
                 PropertyAccess {
                     object: Variable {
                         value: StringSpan {
-                            source: "user.name",
+                            source: SourceInfo {
+                                text: "user.name",
+                                line_starts: [
+                                    0,
+                                ],
+                            },
                             start: 0,
                             end: 4,
-                            range: 1:1-1:5,
                         },
                     },
                     property: StringSpan {
-                        source: "user.name",
+                        source: SourceInfo {
+                            text: "user.name",
+                            line_starts: [
+                                0,
+                            ],
+                        },
                         start: 5,
                         end: 9,
-                        range: 1:6-1:10,
                     },
                     range: 1:1-1:10,
                 }
@@ -1127,17 +1191,25 @@ mod tests {
                     right: PropertyAccess {
                         object: Variable {
                             value: StringSpan {
-                                source: "'guest' == user.role",
+                                source: SourceInfo {
+                                    text: "'guest' == user.role",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 11,
                                 end: 15,
-                                range: 1:12-1:16,
                             },
                         },
                         property: StringSpan {
-                            source: "'guest' == user.role",
+                            source: SourceInfo {
+                                text: "'guest' == user.role",
+                                line_starts: [
+                                    0,
+                                ],
+                            },
                             start: 16,
                             end: 20,
-                            range: 1:17-1:21,
                         },
                         range: 1:12-1:21,
                     },
@@ -1155,19 +1227,27 @@ mod tests {
                 BinaryOp {
                     left: Variable {
                         value: StringSpan {
-                            source: "x == y",
+                            source: SourceInfo {
+                                text: "x == y",
+                                line_starts: [
+                                    0,
+                                ],
+                            },
                             start: 0,
                             end: 1,
-                            range: 1:1-1:2,
                         },
                     },
                     operator: Equal,
                     right: Variable {
                         value: StringSpan {
-                            source: "x == y",
+                            source: SourceInfo {
+                                text: "x == y",
+                                line_starts: [
+                                    0,
+                                ],
+                            },
                             start: 5,
                             end: 6,
-                            range: 1:6-1:7,
                         },
                     },
                     range: 1:1-1:7,
@@ -1196,10 +1276,14 @@ mod tests {
             expect![[r#"
                 Variable {
                     value: StringSpan {
-                        source: "x",
+                        source: SourceInfo {
+                            text: "x",
+                            line_starts: [
+                                0,
+                            ],
+                        },
                         start: 0,
                         end: 1,
-                        range: 1:1-1:2,
                     },
                 }
             "#]],
@@ -1236,17 +1320,25 @@ mod tests {
                     left: PropertyAccess {
                         object: Variable {
                             value: StringSpan {
-                                source: "user.name == 'admin'",
+                                source: SourceInfo {
+                                    text: "user.name == 'admin'",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 0,
                                 end: 4,
-                                range: 1:1-1:5,
                             },
                         },
                         property: StringSpan {
-                            source: "user.name == 'admin'",
+                            source: SourceInfo {
+                                text: "user.name == 'admin'",
+                                line_starts: [
+                                    0,
+                                ],
+                            },
                             start: 5,
                             end: 9,
-                            range: 1:6-1:10,
                         },
                         range: 1:1-1:10,
                     },
@@ -1283,17 +1375,25 @@ mod tests {
                     left: PropertyAccess {
                         object: Variable {
                             value: StringSpan {
-                                source: "  user . name   ==   admin . name  ",
+                                source: SourceInfo {
+                                    text: "  user . name   ==   admin . name  ",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 2,
                                 end: 6,
-                                range: 1:3-1:7,
                             },
                         },
                         property: StringSpan {
-                            source: "  user . name   ==   admin . name  ",
+                            source: SourceInfo {
+                                text: "  user . name   ==   admin . name  ",
+                                line_starts: [
+                                    0,
+                                ],
+                            },
                             start: 9,
                             end: 13,
-                            range: 1:10-1:14,
                         },
                         range: 1:3-1:14,
                     },
@@ -1301,17 +1401,25 @@ mod tests {
                     right: PropertyAccess {
                         object: Variable {
                             value: StringSpan {
-                                source: "  user . name   ==   admin . name  ",
+                                source: SourceInfo {
+                                    text: "  user . name   ==   admin . name  ",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 21,
                                 end: 26,
-                                range: 1:22-1:27,
                             },
                         },
                         property: StringSpan {
-                            source: "  user . name   ==   admin . name  ",
+                            source: SourceInfo {
+                                text: "  user . name   ==   admin . name  ",
+                                line_starts: [
+                                    0,
+                                ],
+                            },
                             start: 29,
                             end: 33,
-                            range: 1:30-1:34,
                         },
                         range: 1:22-1:34,
                     },
@@ -1435,26 +1543,38 @@ mod tests {
                     elements: [
                         Variable {
                             value: StringSpan {
-                                source: "[x, user.name]",
+                                source: SourceInfo {
+                                    text: "[x, user.name]",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 1,
                                 end: 2,
-                                range: 1:2-1:3,
                             },
                         },
                         PropertyAccess {
                             object: Variable {
                                 value: StringSpan {
-                                    source: "[x, user.name]",
+                                    source: SourceInfo {
+                                        text: "[x, user.name]",
+                                        line_starts: [
+                                            0,
+                                        ],
+                                    },
                                     start: 4,
                                     end: 8,
-                                    range: 1:5-1:9,
                                 },
                             },
                             property: StringSpan {
-                                source: "[x, user.name]",
+                                source: SourceInfo {
+                                    text: "[x, user.name]",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 9,
                                 end: 13,
-                                range: 1:10-1:14,
                             },
                             range: 1:5-1:14,
                         },
@@ -1530,17 +1650,25 @@ mod tests {
                             operand: PropertyAccess {
                                 object: Variable {
                                     value: StringSpan {
-                                        source: "{user: user.name, active: !user.disabled}",
+                                        source: SourceInfo {
+                                            text: "{user: user.name, active: !user.disabled}",
+                                            line_starts: [
+                                                0,
+                                            ],
+                                        },
                                         start: 27,
                                         end: 31,
-                                        range: 1:28-1:32,
                                     },
                                 },
                                 property: StringSpan {
-                                    source: "{user: user.name, active: !user.disabled}",
+                                    source: SourceInfo {
+                                        text: "{user: user.name, active: !user.disabled}",
+                                        line_starts: [
+                                            0,
+                                        ],
+                                    },
                                     start: 32,
                                     end: 40,
-                                    range: 1:33-1:41,
                                 },
                                 range: 1:28-1:41,
                             },
@@ -1549,17 +1677,25 @@ mod tests {
                         "user": PropertyAccess {
                             object: Variable {
                                 value: StringSpan {
-                                    source: "{user: user.name, active: !user.disabled}",
+                                    source: SourceInfo {
+                                        text: "{user: user.name, active: !user.disabled}",
+                                        line_starts: [
+                                            0,
+                                        ],
+                                    },
                                     start: 7,
                                     end: 11,
-                                    range: 1:8-1:12,
                                 },
                             },
                             property: StringSpan {
-                                source: "{user: user.name, active: !user.disabled}",
+                                source: SourceInfo {
+                                    text: "{user: user.name, active: !user.disabled}",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 12,
                                 end: 16,
-                                range: 1:13-1:17,
                             },
                             range: 1:8-1:17,
                         },
@@ -1647,17 +1783,31 @@ mod tests {
                         PropertyAccess {
                             object: Variable {
                                 value: StringSpan {
-                                    source: "[\n\tuser.name,\n\t!user.disabled,\n]",
+                                    source: SourceInfo {
+                                        text: "[\n\tuser.name,\n\t!user.disabled,\n]",
+                                        line_starts: [
+                                            0,
+                                            2,
+                                            14,
+                                            31,
+                                        ],
+                                    },
                                     start: 3,
                                     end: 7,
-                                    range: 2:2-2:6,
                                 },
                             },
                             property: StringSpan {
-                                source: "[\n\tuser.name,\n\t!user.disabled,\n]",
+                                source: SourceInfo {
+                                    text: "[\n\tuser.name,\n\t!user.disabled,\n]",
+                                    line_starts: [
+                                        0,
+                                        2,
+                                        14,
+                                        31,
+                                    ],
+                                },
                                 start: 8,
                                 end: 12,
-                                range: 2:7-2:11,
                             },
                             range: 2:2-2:11,
                         },
@@ -1666,17 +1816,31 @@ mod tests {
                             operand: PropertyAccess {
                                 object: Variable {
                                     value: StringSpan {
-                                        source: "[\n\tuser.name,\n\t!user.disabled,\n]",
+                                        source: SourceInfo {
+                                            text: "[\n\tuser.name,\n\t!user.disabled,\n]",
+                                            line_starts: [
+                                                0,
+                                                2,
+                                                14,
+                                                31,
+                                            ],
+                                        },
                                         start: 16,
                                         end: 20,
-                                        range: 3:3-3:7,
                                     },
                                 },
                                 property: StringSpan {
-                                    source: "[\n\tuser.name,\n\t!user.disabled,\n]",
+                                    source: SourceInfo {
+                                        text: "[\n\tuser.name,\n\t!user.disabled,\n]",
+                                        line_starts: [
+                                            0,
+                                            2,
+                                            14,
+                                            31,
+                                        ],
+                                    },
                                     start: 21,
                                     end: 29,
-                                    range: 3:8-3:16,
                                 },
                                 range: 3:3-3:16,
                             },
@@ -1741,17 +1905,31 @@ mod tests {
                             operand: PropertyAccess {
                                 object: Variable {
                                     value: StringSpan {
-                                        source: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
+                                        source: SourceInfo {
+                                            text: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
+                                            line_starts: [
+                                                0,
+                                                2,
+                                                20,
+                                                45,
+                                            ],
+                                        },
                                         start: 30,
                                         end: 34,
-                                        range: 3:11-3:15,
                                     },
                                 },
                                 property: StringSpan {
-                                    source: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
+                                    source: SourceInfo {
+                                        text: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
+                                        line_starts: [
+                                            0,
+                                            2,
+                                            20,
+                                            45,
+                                        ],
+                                    },
                                     start: 35,
                                     end: 43,
-                                    range: 3:16-3:24,
                                 },
                                 range: 3:11-3:24,
                             },
@@ -1760,17 +1938,31 @@ mod tests {
                         "user": PropertyAccess {
                             object: Variable {
                                 value: StringSpan {
-                                    source: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
+                                    source: SourceInfo {
+                                        text: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
+                                        line_starts: [
+                                            0,
+                                            2,
+                                            20,
+                                            45,
+                                        ],
+                                    },
                                     start: 9,
                                     end: 13,
-                                    range: 2:8-2:12,
                                 },
                             },
                             property: StringSpan {
-                                source: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
+                                source: SourceInfo {
+                                    text: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
+                                    line_starts: [
+                                        0,
+                                        2,
+                                        20,
+                                        45,
+                                    ],
+                                },
                                 start: 14,
                                 end: 18,
-                                range: 2:13-2:17,
                             },
                             range: 2:8-2:17,
                         },
@@ -1790,10 +1982,14 @@ mod tests {
                     "name": DopArgument {
                         var_name: DopVarName {
                             value: StringSpan {
-                                source: "name: 'John'",
+                                source: SourceInfo {
+                                    text: "name: 'John'",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 0,
                                 end: 4,
-                                range: 1:1-1:5,
                             },
                         },
                         expression: StringLiteral {
@@ -1815,10 +2011,14 @@ mod tests {
                     "active": DopArgument {
                         var_name: DopVarName {
                             value: StringSpan {
-                                source: "name: 'John', age: 25, active: true",
+                                source: SourceInfo {
+                                    text: "name: 'John', age: 25, active: true",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 23,
                                 end: 29,
-                                range: 1:24-1:30,
                             },
                         },
                         expression: BooleanLiteral {
@@ -1829,10 +2029,14 @@ mod tests {
                     "age": DopArgument {
                         var_name: DopVarName {
                             value: StringSpan {
-                                source: "name: 'John', age: 25, active: true",
+                                source: SourceInfo {
+                                    text: "name: 'John', age: 25, active: true",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 14,
                                 end: 17,
-                                range: 1:15-1:18,
                             },
                         },
                         expression: NumberLiteral {
@@ -1843,10 +2047,14 @@ mod tests {
                     "name": DopArgument {
                         var_name: DopVarName {
                             value: StringSpan {
-                                source: "name: 'John', age: 25, active: true",
+                                source: SourceInfo {
+                                    text: "name: 'John', age: 25, active: true",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 0,
                                 end: 4,
-                                range: 1:1-1:5,
                             },
                         },
                         expression: StringLiteral {
@@ -1868,10 +2076,14 @@ mod tests {
                     "enabled": DopArgument {
                         var_name: DopVarName {
                             value: StringSpan {
-                                source: "user: user.name, enabled: !user.disabled",
+                                source: SourceInfo {
+                                    text: "user: user.name, enabled: !user.disabled",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 17,
                                 end: 24,
-                                range: 1:18-1:25,
                             },
                         },
                         expression: UnaryOp {
@@ -1879,17 +2091,25 @@ mod tests {
                             operand: PropertyAccess {
                                 object: Variable {
                                     value: StringSpan {
-                                        source: "user: user.name, enabled: !user.disabled",
+                                        source: SourceInfo {
+                                            text: "user: user.name, enabled: !user.disabled",
+                                            line_starts: [
+                                                0,
+                                            ],
+                                        },
                                         start: 27,
                                         end: 31,
-                                        range: 1:28-1:32,
                                     },
                                 },
                                 property: StringSpan {
-                                    source: "user: user.name, enabled: !user.disabled",
+                                    source: SourceInfo {
+                                        text: "user: user.name, enabled: !user.disabled",
+                                        line_starts: [
+                                            0,
+                                        ],
+                                    },
                                     start: 32,
                                     end: 40,
-                                    range: 1:33-1:41,
                                 },
                                 range: 1:28-1:41,
                             },
@@ -1899,26 +2119,38 @@ mod tests {
                     "user": DopArgument {
                         var_name: DopVarName {
                             value: StringSpan {
-                                source: "user: user.name, enabled: !user.disabled",
+                                source: SourceInfo {
+                                    text: "user: user.name, enabled: !user.disabled",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 0,
                                 end: 4,
-                                range: 1:1-1:5,
                             },
                         },
                         expression: PropertyAccess {
                             object: Variable {
                                 value: StringSpan {
-                                    source: "user: user.name, enabled: !user.disabled",
+                                    source: SourceInfo {
+                                        text: "user: user.name, enabled: !user.disabled",
+                                        line_starts: [
+                                            0,
+                                        ],
+                                    },
                                     start: 6,
                                     end: 10,
-                                    range: 1:7-1:11,
                                 },
                             },
                             property: StringSpan {
-                                source: "user: user.name, enabled: !user.disabled",
+                                source: SourceInfo {
+                                    text: "user: user.name, enabled: !user.disabled",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 11,
                                 end: 15,
-                                range: 1:12-1:16,
                             },
                             range: 1:7-1:16,
                         },
@@ -1937,10 +2169,14 @@ mod tests {
                     "age": DopArgument {
                         var_name: DopVarName {
                             value: StringSpan {
-                                source: "name: 'John', age: 25,",
+                                source: SourceInfo {
+                                    text: "name: 'John', age: 25,",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 14,
                                 end: 17,
-                                range: 1:15-1:18,
                             },
                         },
                         expression: NumberLiteral {
@@ -1951,10 +2187,14 @@ mod tests {
                     "name": DopArgument {
                         var_name: DopVarName {
                             value: StringSpan {
-                                source: "name: 'John', age: 25,",
+                                source: SourceInfo {
+                                    text: "name: 'John', age: 25,",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 0,
                                 end: 4,
-                                range: 1:1-1:5,
                             },
                         },
                         expression: StringLiteral {

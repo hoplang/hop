@@ -174,10 +174,14 @@ mod tests {
                     TokenTree {
                         token: OpeningTag {
                             tag_name: StringSpan {
-                                source: "<div>Hello</div>",
+                                source: SourceInfo {
+                                    text: "<div>Hello</div>",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 1,
                                 end: 4,
-                                range: 1:2-1:5,
                             },
                             attributes: {},
                             expression: None,
@@ -186,20 +190,28 @@ mod tests {
                         },
                         closing_tag_name: Some(
                             StringSpan {
-                                source: "<div>Hello</div>",
+                                source: SourceInfo {
+                                    text: "<div>Hello</div>",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 12,
                                 end: 15,
-                                range: 1:13-1:16,
                             },
                         ),
                         children: [
                             TokenTree {
                                 token: Text {
                                     value: StringSpan {
-                                        source: "<div>Hello</div>",
+                                        source: SourceInfo {
+                                            text: "<div>Hello</div>",
+                                            line_starts: [
+                                                0,
+                                            ],
+                                        },
                                         start: 5,
                                         end: 10,
-                                        range: 1:6-1:11,
                                     },
                                 },
                                 closing_tag_name: None,
@@ -222,10 +234,14 @@ mod tests {
                     TokenTree {
                         token: OpeningTag {
                             tag_name: StringSpan {
-                                source: "<div><br><hr/></div>",
+                                source: SourceInfo {
+                                    text: "<div><br><hr/></div>",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 1,
                                 end: 4,
-                                range: 1:2-1:5,
                             },
                             attributes: {},
                             expression: None,
@@ -234,20 +250,28 @@ mod tests {
                         },
                         closing_tag_name: Some(
                             StringSpan {
-                                source: "<div><br><hr/></div>",
+                                source: SourceInfo {
+                                    text: "<div><br><hr/></div>",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 16,
                                 end: 19,
-                                range: 1:17-1:20,
                             },
                         ),
                         children: [
                             TokenTree {
                                 token: OpeningTag {
                                     tag_name: StringSpan {
-                                        source: "<div><br><hr/></div>",
+                                        source: SourceInfo {
+                                            text: "<div><br><hr/></div>",
+                                            line_starts: [
+                                                0,
+                                            ],
+                                        },
                                         start: 6,
                                         end: 8,
-                                        range: 1:7-1:9,
                                     },
                                     attributes: {},
                                     expression: None,
@@ -261,10 +285,14 @@ mod tests {
                             TokenTree {
                                 token: OpeningTag {
                                     tag_name: StringSpan {
-                                        source: "<div><br><hr/></div>",
+                                        source: SourceInfo {
+                                            text: "<div><br><hr/></div>",
+                                            line_starts: [
+                                                0,
+                                            ],
+                                        },
                                         start: 10,
                                         end: 12,
-                                        range: 1:11-1:13,
                                     },
                                     attributes: {},
                                     expression: None,
@@ -291,10 +319,14 @@ mod tests {
                     TokenTree {
                         token: OpeningTag {
                             tag_name: StringSpan {
-                                source: "<div><p>Hello</p><span>World</span></div>",
+                                source: SourceInfo {
+                                    text: "<div><p>Hello</p><span>World</span></div>",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 1,
                                 end: 4,
-                                range: 1:2-1:5,
                             },
                             attributes: {},
                             expression: None,
@@ -303,20 +335,28 @@ mod tests {
                         },
                         closing_tag_name: Some(
                             StringSpan {
-                                source: "<div><p>Hello</p><span>World</span></div>",
+                                source: SourceInfo {
+                                    text: "<div><p>Hello</p><span>World</span></div>",
+                                    line_starts: [
+                                        0,
+                                    ],
+                                },
                                 start: 37,
                                 end: 40,
-                                range: 1:38-1:41,
                             },
                         ),
                         children: [
                             TokenTree {
                                 token: OpeningTag {
                                     tag_name: StringSpan {
-                                        source: "<div><p>Hello</p><span>World</span></div>",
+                                        source: SourceInfo {
+                                            text: "<div><p>Hello</p><span>World</span></div>",
+                                            line_starts: [
+                                                0,
+                                            ],
+                                        },
                                         start: 6,
                                         end: 7,
-                                        range: 1:7-1:8,
                                     },
                                     attributes: {},
                                     expression: None,
@@ -325,20 +365,28 @@ mod tests {
                                 },
                                 closing_tag_name: Some(
                                     StringSpan {
-                                        source: "<div><p>Hello</p><span>World</span></div>",
+                                        source: SourceInfo {
+                                            text: "<div><p>Hello</p><span>World</span></div>",
+                                            line_starts: [
+                                                0,
+                                            ],
+                                        },
                                         start: 15,
                                         end: 16,
-                                        range: 1:16-1:17,
                                     },
                                 ),
                                 children: [
                                     TokenTree {
                                         token: Text {
                                             value: StringSpan {
-                                                source: "<div><p>Hello</p><span>World</span></div>",
+                                                source: SourceInfo {
+                                                    text: "<div><p>Hello</p><span>World</span></div>",
+                                                    line_starts: [
+                                                        0,
+                                                    ],
+                                                },
                                                 start: 8,
                                                 end: 13,
-                                                range: 1:9-1:14,
                                             },
                                         },
                                         closing_tag_name: None,
@@ -351,10 +399,14 @@ mod tests {
                             TokenTree {
                                 token: OpeningTag {
                                     tag_name: StringSpan {
-                                        source: "<div><p>Hello</p><span>World</span></div>",
+                                        source: SourceInfo {
+                                            text: "<div><p>Hello</p><span>World</span></div>",
+                                            line_starts: [
+                                                0,
+                                            ],
+                                        },
                                         start: 18,
                                         end: 22,
-                                        range: 1:19-1:23,
                                     },
                                     attributes: {},
                                     expression: None,
@@ -363,20 +415,28 @@ mod tests {
                                 },
                                 closing_tag_name: Some(
                                     StringSpan {
-                                        source: "<div><p>Hello</p><span>World</span></div>",
+                                        source: SourceInfo {
+                                            text: "<div><p>Hello</p><span>World</span></div>",
+                                            line_starts: [
+                                                0,
+                                            ],
+                                        },
                                         start: 30,
                                         end: 34,
-                                        range: 1:31-1:35,
                                     },
                                 ),
                                 children: [
                                     TokenTree {
                                         token: Text {
                                             value: StringSpan {
-                                                source: "<div><p>Hello</p><span>World</span></div>",
+                                                source: SourceInfo {
+                                                    text: "<div><p>Hello</p><span>World</span></div>",
+                                                    line_starts: [
+                                                        0,
+                                                    ],
+                                                },
                                                 start: 23,
                                                 end: 28,
-                                                range: 1:24-1:29,
                                             },
                                         },
                                         closing_tag_name: None,

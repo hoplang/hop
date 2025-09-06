@@ -2,27 +2,33 @@ use std::{fmt, iter::FromIterator, sync::Arc};
 
 use super::{Position, Range, range::Ranged, source_annotator::Annotated};
 
+/// Holds source text and precomputed line start offsets for
+/// efficient position lookups.
+#[derive(Debug, Clone)]
+struct SourceInfo {
+    /// The source text.
+    text: String,
+    /// Byte offsets where each line starts.
+    /// First line always starts at 0.
+    line_starts: Vec<usize>,
+}
+
 #[derive(Clone)]
 pub struct StringCursor {
-    /// The source string being iterated over.
-    source: Arc<String>,
+    /// The source info containing text and line starts.
+    source: Arc<SourceInfo>,
     /// The current byte offset in the source string.
     offset: usize,
     /// The byte offset where iteration should stop (exclusive).
     end: usize,
-    /// The current position (line and column) in the source text.
-    position: Position,
 }
 
 impl StringCursor {
     pub fn new(source: &str) -> Self {
-        let source = Arc::new(source.to_string());
-        let end = source.len();
         Self {
             offset: 0,
-            end,
-            position: Position::new(1, 1),
-            source,
+            end: source.len(),
+            source: Arc::new(SourceInfo::new(source.to_string())),
         }
     }
 }
@@ -33,42 +39,34 @@ impl Iterator for StringCursor {
         if self.offset >= self.end {
             return None;
         }
-        let start_position = self.position;
         let start_offset = self.offset;
-        self.source[self.offset..self.end].chars().next().map(|ch| {
-            self.offset += ch.len_utf8();
-            if ch == '\n' {
-                self.position.line += 1;
-                self.position.column = 1;
-            } else {
-                self.position.column += ch.len_utf8();
-            }
-            StringSpan {
-                source: self.source.clone(),
-                start: start_offset,
-                end: self.offset,
-                range: Range::new(start_position, self.position),
-            }
-        })
+        self.source.text[self.offset..self.end]
+            .chars()
+            .next()
+            .map(|ch| {
+                self.offset += ch.len_utf8();
+                StringSpan {
+                    source: self.source.clone(),
+                    start: start_offset,
+                    end: self.offset,
+                }
+            })
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct StringSpan {
-    // source is the string representing the source text of the document
-    // that this string span references.
-    source: Arc<String>,
+    /// The source info containing text and line starts.
+    source: Arc<SourceInfo>,
     /// the start offset for this string span in the document (in bytes).
     start: usize,
     /// the end offset for this string span in the document (in bytes).
     end: usize,
-    /// the position information (line, col).
-    range: Range,
 }
 
 impl StringSpan {
     pub fn ch(&self) -> char {
-        self.source[self.start..].chars().next().unwrap()
+        self.source.text[self.start..].chars().next().unwrap()
     }
 
     pub fn span(self, other: StringSpan) -> Self {
@@ -76,7 +74,6 @@ impl StringSpan {
             source: self.source,
             start: self.start,
             end: other.end,
-            range: self.range.spanning(other.range),
         }
     }
     pub fn extend<I>(self, iter: I) -> Self
@@ -86,24 +83,20 @@ impl StringSpan {
         iter.into_iter().fold(self, |acc, span| acc.span(span))
     }
     pub fn as_str(&self) -> &str {
-        &self.source[self.start..self.end]
-    }
-    pub fn range(&self) -> Range {
-        self.range
+        &self.source.text[self.start..self.end]
     }
     pub fn cursor(&self) -> StringCursor {
         StringCursor {
             source: self.source.clone(),
             offset: self.start,
             end: self.end,
-            position: self.range.start,
         }
     }
 }
 
 impl fmt::Display for StringSpan {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", &self.source[self.start..self.end])
+        write!(f, "{}", &self.source.text[self.start..self.end])
     }
 }
 
@@ -115,13 +108,49 @@ impl FromIterator<StringSpan> for Option<StringSpan> {
 
 impl Ranged for StringSpan {
     fn range(&self) -> Range {
-        self.range
+        Range::new(
+            self.source.offset_to_position(self.start),
+            self.source.offset_to_position(self.end),
+        )
     }
 }
 
 impl Annotated for StringSpan {
     fn message(&self) -> String {
         format!("{:?}", self.as_str())
+    }
+}
+
+impl SourceInfo {
+    fn new(text: String) -> Self {
+        let mut line_starts = vec![0];
+        for (i, ch) in text.char_indices() {
+            if ch == '\n' {
+                line_starts.push(i + ch.len_utf8());
+            }
+        }
+        Self { text, line_starts }
+    }
+
+    /// Convert a byte offset to a Position (line, column) using binary search.
+    fn offset_to_position(&self, offset: usize) -> Position {
+        // Binary search to find the line containing this offset
+        let line_idx = match self.line_starts.binary_search(&offset) {
+            Ok(idx) => idx,
+            Err(idx) => idx.saturating_sub(1),
+        };
+
+        let line = line_idx + 1; // Lines are 1-indexed
+        let line_start = self.line_starts[line_idx];
+
+        // Calculate column by counting UTF-8 characters from line start to offset
+        let column = self.text[line_start..offset]
+            .chars()
+            .map(|ch| ch.len_utf8())
+            .sum::<usize>()
+            + 1; // Columns are 1-indexed
+
+        Position::new(line, column)
     }
 }
 
@@ -133,7 +162,7 @@ mod tests {
     fn test_string_cursor_new() {
         let cursor = StringCursor::new("hello");
         assert_eq!(cursor.offset, 0);
-        assert_eq!(cursor.position, Position::new(1, 1));
+        assert_eq!(cursor.end, 5);
     }
 
     #[test]
@@ -142,18 +171,18 @@ mod tests {
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), 'a');
-        assert_eq!(span1.range.start, Position::new(1, 1));
-        assert_eq!(span1.range.end, Position::new(1, 2));
+        assert_eq!(span1.range().start, Position::new(1, 1));
+        assert_eq!(span1.range().end, Position::new(1, 2));
 
         let span2 = cursor.next().unwrap();
         assert_eq!(span2.ch(), 'b');
-        assert_eq!(span2.range.start, Position::new(1, 2));
-        assert_eq!(span2.range.end, Position::new(1, 3));
+        assert_eq!(span2.range().start, Position::new(1, 2));
+        assert_eq!(span2.range().end, Position::new(1, 3));
 
         let span3 = cursor.next().unwrap();
         assert_eq!(span3.ch(), 'c');
-        assert_eq!(span3.range.start, Position::new(1, 3));
-        assert_eq!(span3.range.end, Position::new(1, 4));
+        assert_eq!(span3.range().start, Position::new(1, 3));
+        assert_eq!(span3.range().end, Position::new(1, 4));
 
         assert!(cursor.next().is_none());
     }
@@ -164,28 +193,28 @@ mod tests {
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), 'a');
-        assert_eq!(span1.range.start, Position::new(1, 1));
-        assert_eq!(span1.range.end, Position::new(1, 2));
+        assert_eq!(span1.range().start, Position::new(1, 1));
+        assert_eq!(span1.range().end, Position::new(1, 2));
 
         let span2 = cursor.next().unwrap();
         assert_eq!(span2.ch(), '\n');
-        assert_eq!(span2.range.start, Position::new(1, 2));
-        assert_eq!(span2.range.end, Position::new(2, 1));
+        assert_eq!(span2.range().start, Position::new(1, 2));
+        assert_eq!(span2.range().end, Position::new(2, 1));
 
         let span3 = cursor.next().unwrap();
         assert_eq!(span3.ch(), 'b');
-        assert_eq!(span3.range.start, Position::new(2, 1));
-        assert_eq!(span3.range.end, Position::new(2, 2));
+        assert_eq!(span3.range().start, Position::new(2, 1));
+        assert_eq!(span3.range().end, Position::new(2, 2));
 
         let span4 = cursor.next().unwrap();
         assert_eq!(span4.ch(), '\n');
-        assert_eq!(span4.range.start, Position::new(2, 2));
-        assert_eq!(span4.range.end, Position::new(3, 1));
+        assert_eq!(span4.range().start, Position::new(2, 2));
+        assert_eq!(span4.range().end, Position::new(3, 1));
 
         let span5 = cursor.next().unwrap();
         assert_eq!(span5.ch(), 'c');
-        assert_eq!(span5.range.start, Position::new(3, 1));
-        assert_eq!(span5.range.end, Position::new(3, 2));
+        assert_eq!(span5.range().start, Position::new(3, 1));
+        assert_eq!(span5.range().end, Position::new(3, 2));
 
         assert!(cursor.next().is_none());
     }
@@ -196,17 +225,17 @@ mod tests {
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), 'a');
-        assert_eq!(span1.range.end.column, 2);
+        assert_eq!(span1.range().end.column, 2);
 
         let span2 = cursor.next().unwrap();
         assert_eq!(span2.ch(), '€');
-        assert_eq!(span2.range.start.column, 2);
-        assert_eq!(span2.range.end.column, 5); // € is 3 bytes in UTF-8
+        assert_eq!(span2.range().start.column, 2);
+        assert_eq!(span2.range().end.column, 5); // € is 3 bytes in UTF-8
 
         let span3 = cursor.next().unwrap();
         assert_eq!(span3.ch(), 'b');
-        assert_eq!(span3.range.start.column, 5);
-        assert_eq!(span3.range.end.column, 6);
+        assert_eq!(span3.range().start.column, 5);
+        assert_eq!(span3.range().end.column, 6);
     }
 
     #[test]
@@ -219,8 +248,8 @@ mod tests {
         let extended = span1.clone().span(span3);
         assert_eq!(extended.ch(), 'a');
         assert_eq!(extended.to_string(), "abc");
-        assert_eq!(extended.range.start, Position::new(1, 1));
-        assert_eq!(extended.range.end, Position::new(1, 4));
+        assert_eq!(extended.range().start, Position::new(1, 1));
+        assert_eq!(extended.range().end, Position::new(1, 4));
     }
 
     #[test]

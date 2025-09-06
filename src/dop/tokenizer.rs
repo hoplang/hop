@@ -1,5 +1,5 @@
 use crate::range::{
-    Range,
+    Range, Ranged as _,
     string_cursor::{StringCursor, StringSpan},
 };
 use std::{fmt, iter::Peekable, str::FromStr};
@@ -90,27 +90,27 @@ impl fmt::Display for DopToken {
 }
 
 pub struct DopTokenizer {
-    chars: Peekable<StringCursor>,
+    iter: Peekable<StringCursor>,
 }
 
 impl From<StringCursor> for DopTokenizer {
     fn from(iter: StringCursor) -> Self {
         Self {
-            chars: iter.peekable(),
+            iter: iter.peekable(),
         }
     }
 }
 
 impl From<Peekable<StringCursor>> for DopTokenizer {
     fn from(iter: Peekable<StringCursor>) -> Self {
-        Self { chars: iter }
+        Self { iter }
     }
 }
 
 impl From<&str> for DopTokenizer {
     fn from(input: &str) -> Self {
         Self {
-            chars: StringCursor::new(input).peekable(),
+            iter: StringCursor::new(input).peekable(),
         }
     }
 }
@@ -119,11 +119,11 @@ impl Iterator for DopTokenizer {
     type Item = Result<(DopToken, Range), ParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while self.chars.peek().is_some_and(|s| s.ch().is_whitespace()) {
-            self.chars.next();
+        while self.iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
+            self.iter.next();
         }
 
-        self.chars.next().map(|start| {
+        self.iter.next().map(|start| {
             match start.ch() {
                 '.' => Ok((DopToken::Dot, start.range())),
                 '(' => Ok((DopToken::LeftParen, start.range())),
@@ -136,7 +136,7 @@ impl Iterator for DopTokenizer {
                 ',' => Ok((DopToken::Comma, start.range())),
                 '!' => Ok((DopToken::Not, start.range())),
                 '=' => {
-                    if let Some(end) = self.chars.next_if(|s| s.ch() == '=') {
+                    if let Some(end) = self.iter.next_if(|s| s.ch() == '=') {
                         return Ok((DopToken::Equal, start.range().spanning(end.range())));
                     }
                     Err(ParseError::new(
@@ -147,11 +147,11 @@ impl Iterator for DopTokenizer {
                 '\'' => {
                     let mut end_range = start.range();
                     let mut result = String::new();
-                    while let Some(s) = self.chars.next_if(|s| s.ch() != '\'') {
+                    while let Some(s) = self.iter.next_if(|s| s.ch() != '\'') {
                         end_range = s.range();
                         result.push(s.ch());
                     }
-                    match self.chars.next() {
+                    match self.iter.next() {
                         None => Err(ParseError::unterminated_string_literal(
                             start.range().spanning(end_range),
                         )),
@@ -165,7 +165,7 @@ impl Iterator for DopTokenizer {
                     let mut identifier = start;
 
                     while let Some(s) = self
-                        .chars
+                        .iter
                         .next_if(|s| matches!(s.ch(), 'A'..='Z' | 'a'..='z' | '0'..='9' | '_'))
                     {
                         identifier = identifier.span(s);
@@ -189,17 +189,17 @@ impl Iterator for DopTokenizer {
                 }
                 ch if ch.is_ascii_digit() => {
                     let mut number_string = start;
-                    while let Some(digit) = self.chars.next_if(|s| s.ch().is_ascii_digit()) {
+                    while let Some(digit) = self.iter.next_if(|s| s.ch().is_ascii_digit()) {
                         number_string = number_string.span(digit);
                     }
-                    if let Some(dot) = self.chars.next_if(|s| s.ch() == '.') {
+                    if let Some(dot) = self.iter.next_if(|s| s.ch() == '.') {
                         number_string = number_string.span(dot);
-                        if !self.chars.peek().is_some_and(|s| s.ch().is_ascii_digit()) {
+                        if !self.iter.peek().is_some_and(|s| s.ch().is_ascii_digit()) {
                             return Err(ParseError::expected_digit_after_decimal_point(
                                 number_string.range(),
                             ));
                         }
-                        while let Some(digit) = self.chars.next_if(|s| s.ch().is_ascii_digit()) {
+                        while let Some(digit) = self.iter.next_if(|s| s.ch().is_ascii_digit()) {
                             number_string = number_string.span(digit);
                         }
                     }
