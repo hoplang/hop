@@ -192,8 +192,15 @@ mod tests {
                         children: [
                             TokenTree {
                                 token: Text {
-                                    value: "Hello",
-                                    range: 1:6-1:11,
+                                    value: StringSpan {
+                                        source: "<div>Hello</div>",
+                                        ch: 'H',
+                                        offset: (
+                                            5,
+                                            10,
+                                        ),
+                                        range: 1:6-1:11,
+                                    },
                                 },
                                 closing_tag_name_range: None,
                                 children: [],
@@ -327,8 +334,15 @@ mod tests {
                                 children: [
                                     TokenTree {
                                         token: Text {
-                                            value: "Hello",
-                                            range: 1:9-1:14,
+                                            value: StringSpan {
+                                                source: "<div><p>Hello</p><span>World</span></div>",
+                                                ch: 'H',
+                                                offset: (
+                                                    8,
+                                                    13,
+                                                ),
+                                                range: 1:9-1:14,
+                                            },
                                         },
                                         closing_tag_name_range: None,
                                         children: [],
@@ -359,8 +373,15 @@ mod tests {
                                 children: [
                                     TokenTree {
                                         token: Text {
-                                            value: "World",
-                                            range: 1:24-1:29,
+                                            value: StringSpan {
+                                                source: "<div><p>Hello</p><span>World</span></div>",
+                                                ch: 'W',
+                                                offset: (
+                                                    23,
+                                                    28,
+                                                ),
+                                                range: 1:24-1:29,
+                                            },
                                         },
                                         closing_tag_name_range: None,
                                         children: [],

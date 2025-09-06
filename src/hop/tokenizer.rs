@@ -36,8 +36,7 @@ pub enum Token {
         range: Range,
     },
     Text {
-        value: String,
-        range: Range,
+        value: StringSpan,
     },
 }
 
@@ -49,7 +48,7 @@ impl Ranged for Token {
             Token::Expression { range, .. } => *range,
             Token::OpeningTag { range, .. } => *range,
             Token::ClosingTag { range, .. } => *range,
-            Token::Text { range, .. } => *range,
+            Token::Text { value, .. } => value.range(),
         }
     }
 }
@@ -57,8 +56,12 @@ impl Ranged for Token {
 impl Annotated for Token {
     fn message(&self) -> String {
         match self {
-            Token::Text { value, range: _ } => {
-                format!("Text [{} byte, {:#?}]", value.len(), value)
+            Token::Text { value } => {
+                format!(
+                    "Text [{} byte, {:#?}]",
+                    value.as_str().len(),
+                    value.to_string()
+                )
             }
             Token::Doctype { range: _ } => {
                 format!("Doctype")
@@ -372,8 +375,8 @@ impl<'a> Tokenizer<'a> {
                         .take(stored_closing_tag.len())
                         .eq(stored_closing_tag.chars()) =>
                     {
-                        if let Some((s, r)) = raw_text.map(|v| v.into()) {
-                            return Some(Token::Text { value: s, range: r });
+                        if let Some(s) = raw_text {
+                            return Some(Token::Text { value: s });
                         } else {
                             break;
                         }
@@ -494,12 +497,11 @@ impl<'a> Tokenizer<'a> {
             }
             // Text
             _ => {
-                let mut text = self.chars.next()?;
+                let mut value = self.chars.next()?;
                 while let Some(ch) = self.chars.next_if(|s| s.ch != '{' && s.ch != '<') {
-                    text = text.extend(ch);
+                    value = value.extend(ch);
                 }
-                let (value, range) = text.into();
-                Some(Token::Text { value, range })
+                Some(Token::Text { value })
             }
         }
     }

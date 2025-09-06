@@ -263,7 +263,7 @@ fn construct_node(
             range,
         },
         Token::Text { value, .. } => HopNode::Text {
-            value,
+            value: value.to_string(),
             range: tree.range,
         },
         Token::Expression {
