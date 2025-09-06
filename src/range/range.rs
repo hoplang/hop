@@ -61,14 +61,6 @@ impl fmt::Debug for Range {
     }
 }
 
-impl From<Range> for tower_lsp::lsp_types::Range {
-    fn from(range: Range) -> Self {
-        tower_lsp::lsp_types::Range {
-            start: range.start().into(),
-            end: range.end().into(),
-        }
-    }
-}
 
 pub trait Ranged {
     fn range(&self) -> Range;

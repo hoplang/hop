@@ -10,7 +10,7 @@ pub struct Position {
 }
 
 impl Position {
-    pub(super) fn new(line: usize, column: usize) -> Self {
+    pub fn new(line: usize, column: usize) -> Self {
         Position { line, column }
     }
 
@@ -33,17 +33,3 @@ impl fmt::Display for Position {
     }
 }
 
-impl From<tower_lsp::lsp_types::Position> for Position {
-    fn from(position: tower_lsp::lsp_types::Position) -> Self {
-        Self::new(position.line as usize + 1, position.character as usize + 1)
-    }
-}
-
-impl From<Position> for tower_lsp::lsp_types::Position {
-    fn from(position: Position) -> Self {
-        tower_lsp::lsp_types::Position {
-            line: (position.line() - 1) as u32,
-            character: (position.column() - 1) as u32,
-        }
-    }
-}

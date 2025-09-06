@@ -1,10 +1,36 @@
 use crate::filesystem::files::{self as files, ProjectRoot};
 use crate::hop::program::{DefinitionLocation, Program, RenameLocation};
+use crate::range::{Position, Range};
 use std::path::Path;
 use tokio::sync::{OnceCell, RwLock};
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server as LspServer};
+
+// These conversions assume that a UTF-8 PositionEncodingKind has been negotiated
+impl From<tower_lsp::lsp_types::Position> for Position {
+    fn from(position: tower_lsp::lsp_types::Position) -> Self {
+        Position::new(position.line as usize + 1, position.character as usize + 1)
+    }
+}
+
+impl From<Position> for tower_lsp::lsp_types::Position {
+    fn from(position: Position) -> Self {
+        tower_lsp::lsp_types::Position {
+            line: (position.line() - 1) as u32,
+            character: (position.column() - 1) as u32,
+        }
+    }
+}
+
+impl From<Range> for tower_lsp::lsp_types::Range {
+    fn from(range: Range) -> Self {
+        tower_lsp::lsp_types::Range {
+            start: range.start().into(),
+            end: range.end().into(),
+        }
+    }
+}
 
 pub struct HopLanguageServer {
     client: Client,
