@@ -41,7 +41,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
             Token::Comment { .. } => {}
             Token::Doctype { .. } => {}
             Token::OpeningTag {
-                tag_name: (tag_name, tag_name_range),
+                tag_name,
                 attributes,
                 expression,
                 range,
@@ -89,14 +89,16 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         (component, from) => {
                             if component.is_none() {
                                 errors.push(ParseError::missing_required_attribute(
-                                    &tag_name,
+                                    tag_name.as_str(),
                                     "component",
                                     range,
                                 ));
                             }
                             if from.is_none() {
                                 errors.push(ParseError::missing_required_attribute(
-                                    &tag_name, "from", range,
+                                    tag_name.as_str(),
+                                    "from",
+                                    range,
                                 ));
                             }
                         }
@@ -126,14 +128,16 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                             });
                         }
                         None => errors.push(ParseError::missing_required_attribute(
-                            &tag_name, "file", range,
+                            tag_name.as_str(),
+                            "file",
+                            range,
                         )),
                     }
                 }
                 // Treat as ComponentDefinition
                 name => {
                     if !is_valid_component_name(name) {
-                        errors.push(ParseError::invalid_component_name(name, tag_name_range));
+                        errors.push(ParseError::invalid_component_name(name, tag_name.range()));
                     } else {
                         let params = expression.as_ref().and_then(|(expr_string, expr_range)| {
                             let span = StringSpan::new(expr_string.clone(), *expr_range);
@@ -173,7 +177,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         {
                             errors.push(ParseError::component_is_already_defined(
                                 name,
-                                tag_name_range,
+                                tag_name.range(),
                             ));
                         } else {
                             defined_components.insert(name.to_string());
@@ -202,7 +206,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
 
                         components.push(ComponentDefinition {
                             tag_name: name.to_string(),
-                            opening_tag_name_range: tag_name_range,
+                            opening_tag_name_range: tag_name.range(),
                             closing_tag_name_range: tree.closing_tag_name_range,
                             params,
                             is_entrypoint,
@@ -291,7 +295,7 @@ fn construct_node(
             }
         }
         Token::OpeningTag {
-            tag_name: (tag_name, tag_name_range),
+            tag_name,
             expression,
             attributes,
             range: opening_tag_range,
@@ -376,7 +380,7 @@ fn construct_node(
                     }
                 },
                 "slot-default" => HopNode::SlotDefinition { range: tree.range },
-                tag_name if tag_name.starts_with("hop-") => match tag_name {
+                name if name.starts_with("hop-") => match tag_name.as_str() {
                     "hop-x-exec" => {
                         let mut cmd_attr = None;
 
@@ -400,7 +404,7 @@ fn construct_node(
                             },
                             None => {
                                 errors.push(ParseError::missing_required_attribute(
-                                    tag_name,
+                                    tag_name.as_str(),
                                     "cmd",
                                     opening_tag_range,
                                 ));
@@ -417,16 +421,22 @@ fn construct_node(
                         children,
                     },
                     _ => {
-                        errors.push(ParseError::unrecognized_hop_tag(tag_name, tag_name_range));
+                        errors.push(ParseError::unrecognized_hop_tag(
+                            tag_name.as_str(),
+                            tag_name.range(),
+                        ));
                         HopNode::Error {
                             range: tree.range,
                             children: vec![],
                         }
                     }
                 },
-                tag_name if tag_name.contains('-') => {
-                    if !is_valid_component_name(tag_name) {
-                        errors.push(ParseError::invalid_component_name(tag_name, tag_name_range));
+                name if name.contains('-') => {
+                    if !is_valid_component_name(tag_name.as_str()) {
+                        errors.push(ParseError::invalid_component_name(
+                            tag_name.as_str(),
+                            tag_name.range(),
+                        ));
                     }
                     let args = match &expression {
                         Some((expr_string, expr_range)) => {
@@ -455,15 +465,15 @@ fn construct_node(
                         None => None,
                     };
 
-                    let definition_module = if defined_components.contains(tag_name) {
+                    let definition_module = if defined_components.contains(tag_name.as_str()) {
                         Some(module_name.to_string())
                     } else {
-                        imported_components.get(tag_name).cloned()
+                        imported_components.get(tag_name.as_str()).cloned()
                     };
 
                     HopNode::ComponentReference {
                         component: tag_name.to_string(),
-                        opening_name_range: tag_name_range,
+                        opening_name_range: tag_name.range(),
                         closing_name_range: tree.closing_tag_name_range,
                         definition_module,
                         args,
@@ -505,8 +515,8 @@ fn construct_node(
                     }
 
                     HopNode::Html {
-                        tag_name,
-                        opening_name_range: tag_name_range,
+                        tag_name: tag_name.to_string(),
+                        opening_name_range: tag_name.range(),
                         closing_name_range: tree.closing_tag_name_range,
                         attributes: attributes.clone(),
                         range: tree.range,

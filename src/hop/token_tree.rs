@@ -85,11 +85,11 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
                         }
                     }
                     Token::OpeningTag {
-                        tag_name: (ref tag_name_value, _),
+                        ref tag_name,
                         self_closing,
                         ..
                     } => {
-                        if is_void_element(tag_name_value) || self_closing {
+                        if is_void_element(tag_name.as_str()) || self_closing {
                             if let Some(parent) = stack.last_mut() {
                                 parent.tree.append_node(token);
                             } else {
@@ -99,7 +99,7 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
                         } else {
                             stack.push(StackElement {
                                 tree: TokenTree::new(token.clone()),
-                                tag_name: tag_name_value.clone(),
+                                tag_name: tag_name.to_string(),
                             });
                         }
                     }
@@ -175,10 +175,15 @@ mod tests {
                 [
                     TokenTree {
                         token: OpeningTag {
-                            tag_name: (
-                                "div",
-                                1:2-1:5,
-                            ),
+                            tag_name: StringSpan {
+                                source: "<div>Hello</div>",
+                                ch: 'd',
+                                offset: (
+                                    1,
+                                    4,
+                                ),
+                                range: 1:2-1:5,
+                            },
                             attributes: {},
                             expression: None,
                             self_closing: false,
@@ -212,10 +217,15 @@ mod tests {
                 [
                     TokenTree {
                         token: OpeningTag {
-                            tag_name: (
-                                "div",
-                                1:2-1:5,
-                            ),
+                            tag_name: StringSpan {
+                                source: "<div><br><hr/></div>",
+                                ch: 'd',
+                                offset: (
+                                    1,
+                                    4,
+                                ),
+                                range: 1:2-1:5,
+                            },
                             attributes: {},
                             expression: None,
                             self_closing: false,
@@ -227,10 +237,15 @@ mod tests {
                         children: [
                             TokenTree {
                                 token: OpeningTag {
-                                    tag_name: (
-                                        "br",
-                                        1:7-1:9,
-                                    ),
+                                    tag_name: StringSpan {
+                                        source: "<div><br><hr/></div>",
+                                        ch: 'b',
+                                        offset: (
+                                            6,
+                                            8,
+                                        ),
+                                        range: 1:7-1:9,
+                                    },
                                     attributes: {},
                                     expression: None,
                                     self_closing: false,
@@ -242,10 +257,15 @@ mod tests {
                             },
                             TokenTree {
                                 token: OpeningTag {
-                                    tag_name: (
-                                        "hr",
-                                        1:11-1:13,
-                                    ),
+                                    tag_name: StringSpan {
+                                        source: "<div><br><hr/></div>",
+                                        ch: 'h',
+                                        offset: (
+                                            10,
+                                            12,
+                                        ),
+                                        range: 1:11-1:13,
+                                    },
                                     attributes: {},
                                     expression: None,
                                     self_closing: true,
@@ -270,10 +290,15 @@ mod tests {
                 [
                     TokenTree {
                         token: OpeningTag {
-                            tag_name: (
-                                "div",
-                                1:2-1:5,
-                            ),
+                            tag_name: StringSpan {
+                                source: "<div><p>Hello</p><span>World</span></div>",
+                                ch: 'd',
+                                offset: (
+                                    1,
+                                    4,
+                                ),
+                                range: 1:2-1:5,
+                            },
                             attributes: {},
                             expression: None,
                             self_closing: false,
@@ -285,10 +310,15 @@ mod tests {
                         children: [
                             TokenTree {
                                 token: OpeningTag {
-                                    tag_name: (
-                                        "p",
-                                        1:7-1:8,
-                                    ),
+                                    tag_name: StringSpan {
+                                        source: "<div><p>Hello</p><span>World</span></div>",
+                                        ch: 'p',
+                                        offset: (
+                                            6,
+                                            7,
+                                        ),
+                                        range: 1:7-1:8,
+                                    },
                                     attributes: {},
                                     expression: None,
                                     self_closing: false,
@@ -312,10 +342,15 @@ mod tests {
                             },
                             TokenTree {
                                 token: OpeningTag {
-                                    tag_name: (
-                                        "span",
-                                        1:19-1:23,
-                                    ),
+                                    tag_name: StringSpan {
+                                        source: "<div><p>Hello</p><span>World</span></div>",
+                                        ch: 's',
+                                        offset: (
+                                            18,
+                                            22,
+                                        ),
+                                        range: 1:19-1:23,
+                                    },
                                     attributes: {},
                                     expression: None,
                                     self_closing: false,

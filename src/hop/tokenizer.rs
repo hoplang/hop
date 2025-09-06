@@ -12,7 +12,7 @@ use crate::range::{Range, Ranged};
 
 type Attributes = BTreeMap<String, Attribute>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Token {
     Doctype {
         range: Range,
@@ -25,7 +25,7 @@ pub enum Token {
         range: Range,
     },
     OpeningTag {
-        tag_name: (String, Range),
+        tag_name: StringSpan,
         attributes: Attributes,
         expression: Option<(String, Range)>,
         self_closing: bool,
@@ -70,14 +70,14 @@ impl Annotated for Token {
                 format!("ClosingTag </{}>", tag_name)
             }
             Token::OpeningTag {
-                tag_name: (tag_name, _),
+                tag_name,
                 attributes,
                 expression,
                 self_closing,
                 range: _,
             } => {
                 let mut result = String::new();
-                result.push_str(&format!("OpeningTag <{}", tag_name));
+                result.push_str(&format!("OpeningTag <{}", tag_name.as_str()));
 
                 if !attributes.is_empty() {
                     result.push(' ');
@@ -447,7 +447,7 @@ impl<'a> Tokenizer<'a> {
                                 }
                                 Some(Token::OpeningTag {
                                     self_closing,
-                                    tag_name: tag_name.into(),
+                                    tag_name,
                                     attributes,
                                     expression: expression.map(|s| s.into()),
                                     range: left_angle.range().spanning(right_angle.range()),
