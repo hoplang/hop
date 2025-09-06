@@ -17,10 +17,10 @@ type Attributes = BTreeMap<String, Attribute>;
 #[derive(Debug, Clone)]
 pub enum Token {
     Doctype {
-        range: Range,
+        span: StringSpan,
     },
     Comment {
-        range: Range,
+        span: StringSpan,
     },
     Expression {
         expression: StringSpan,
@@ -45,8 +45,8 @@ pub enum Token {
 impl Ranged for Token {
     fn range(&self) -> Range {
         match self {
-            Token::Doctype { range } => *range,
-            Token::Comment { range } => *range,
+            Token::Doctype { span } => span.range(),
+            Token::Comment { span } => span.range(),
             Token::Expression { range, .. } => *range,
             Token::OpeningTag { range, .. } => *range,
             Token::ClosingTag { range, .. } => *range,
@@ -309,7 +309,7 @@ impl Tokenizer {
                         s if s.ch() == '>' => {
                             if count >= 2 {
                                 return Some(Token::Comment {
-                                    range: first_token_span.range().to(s.range()),
+                                    span: first_token_span.to(s),
                                 });
                             } else {
                                 count = 0;
@@ -336,7 +336,7 @@ impl Tokenizer {
                 while self.iter.next_if(|s| s.ch() != '>').is_some() {}
                 let ch = self.iter.next()?;
                 Some(Token::Doctype {
-                    range: first_token_span.range().to(ch.range()),
+                    span: first_token_span.to(ch),
                 })
             }
             // Invalid
@@ -347,7 +347,7 @@ impl Tokenizer {
                 ));
 
                 Some(Token::Doctype {
-                    range: first_token_span.range().to(ch.range()),
+                    span: first_token_span.to(ch),
                 })
             }
         }

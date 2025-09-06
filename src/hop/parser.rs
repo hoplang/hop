@@ -248,7 +248,7 @@ fn construct_node(
     let t = tree.token;
 
     match t {
-        Token::Doctype { range } => HopNode::Doctype { range },
+        Token::Doctype { span } => HopNode::Doctype { range: span.range() },
         Token::Text { value, .. } => HopNode::Text { value },
         Token::Expression {
             expression: expr, ..
