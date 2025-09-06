@@ -8,27 +8,30 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server as LspServer};
 
-// These conversions assume that a UTF-8 PositionEncodingKind has been negotiated
+// LSP uses UTF-16 encoding by default for position character offsets.
 impl From<tower_lsp::lsp_types::Position> for Position {
-    fn from(position: tower_lsp::lsp_types::Position) -> Self {
-        Position::new(position.line as usize, position.character as usize)
-    }
-}
-
-impl From<Position> for tower_lsp::lsp_types::Position {
-    fn from(position: Position) -> Self {
-        tower_lsp::lsp_types::Position {
-            line: position.line() as u32,
-            character: position.column() as u32,
+    fn from(lsp_pos: tower_lsp::lsp_types::Position) -> Self {
+        Position::Utf16 {
+            line: lsp_pos.line as usize,
+            column: lsp_pos.character as usize,
         }
     }
 }
 
 impl From<StringSpan> for tower_lsp::lsp_types::Range {
     fn from(span: StringSpan) -> Self {
+        let start_pos = span.start_utf16();
+        let end_pos = span.end_utf16();
+
         tower_lsp::lsp_types::Range {
-            start: span.start().into(),
-            end: span.end().into(),
+            start: tower_lsp::lsp_types::Position {
+                line: start_pos.line() as u32,
+                character: start_pos.column() as u32,
+            },
+            end: tower_lsp::lsp_types::Position {
+                line: end_pos.line() as u32,
+                character: end_pos.column() as u32,
+            },
         }
     }
 }

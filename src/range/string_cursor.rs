@@ -56,19 +56,22 @@ impl Iterator for StringCursor {
 
 #[derive(Debug, Clone)]
 pub struct StringSpan {
-    /// The source info containing text and line starts.
+    /// The source info containing the document text and line starts.
     source: Arc<SourceInfo>,
-    /// the start offset for this string span in the document (in bytes).
+    /// the start byte offset for this string span in the document (inclusive).
     start: usize,
-    /// the end offset for this string span in the document (in bytes).
+    /// the end byte offset for this string span in the document (exclusive).
     end: usize,
 }
 
 impl StringSpan {
+    // Get the first character from the string span.
     pub fn ch(&self) -> char {
         self.source.text[self.start..].chars().next().unwrap()
     }
 
+    // Extend a string span to encompass another string span that occurs
+    // later in the document.
     pub fn to(self, other: StringSpan) -> Self {
         StringSpan {
             source: self.source,
@@ -84,10 +87,12 @@ impl StringSpan {
         iter.into_iter().fold(self, |acc, span| acc.to(span))
     }
 
+    // Get the underlying string slice for this string span.
     pub fn as_str(&self) -> &str {
         &self.source.text[self.start..self.end]
     }
 
+    // Get a string cursor for this string slice.
     pub fn cursor(&self) -> StringCursor {
         StringCursor {
             source: self.source.clone(),
@@ -96,12 +101,28 @@ impl StringSpan {
         }
     }
 
-    pub fn start(&self) -> Position {
-        self.source.offset_to_position(self.start)
+    pub fn start(&self) -> usize {
+        self.start
     }
 
-    pub fn end(&self) -> Position {
-        self.source.offset_to_position(self.end)
+    pub fn end(&self) -> usize {
+        self.end
+    }
+
+    pub fn start_utf16(&self) -> Position {
+        self.source.offset_to_utf16_position(self.start)
+    }
+
+    pub fn end_utf16(&self) -> Position {
+        self.source.offset_to_utf16_position(self.end)
+    }
+
+    pub fn start_utf32(&self) -> Position {
+        self.source.offset_to_utf32_position(self.start)
+    }
+
+    pub fn end_utf32(&self) -> Position {
+        self.source.offset_to_utf32_position(self.end)
     }
 
     pub fn contains(&self, other: &StringSpan) -> bool {
@@ -141,21 +162,36 @@ pub trait Spanned {
     /// Returns a reference to the StringSpan for this item.
     fn span(&self) -> &StringSpan;
 
-    /// Returns the start position of this spanned item.
-    fn start(&self) -> Position {
-        self.span().start()
+    fn start_utf16(&self) -> Position {
+        self.span().start_utf16()
     }
 
-    /// Returns the end position of this spanned item.
-    fn end(&self) -> Position {
-        self.span().end()
+    fn end_utf16(&self) -> Position {
+        self.span().end_utf16()
+    }
+
+    fn start_utf32(&self) -> Position {
+        self.span().start_utf32()
+    }
+
+    fn end_utf32(&self) -> Position {
+        self.span().end_utf32()
     }
 
     /// Returns true if this spanned item contains the given Position.
     fn contains_position(&self, position: Position) -> bool {
-        let start = self.start();
-        let end = self.end();
-        start <= position && position < end
+        match position {
+            Position::Utf16 { .. } => {
+                let start = self.start_utf16();
+                let end = self.end_utf16();
+                start <= position && position < end
+            }
+            Position::Utf32 { .. } => {
+                let start = self.start_utf32();
+                let end = self.end_utf32();
+                start <= position && position < end
+            }
+        }
     }
 }
 
@@ -182,24 +218,41 @@ impl SourceInfo {
         Self { text, line_starts }
     }
 
-    /// Convert a byte offset to a Position (line, column) using binary search.
-    fn offset_to_position(&self, offset: usize) -> Position {
-        // Binary search to find the line containing this offset
+    /// Convert a byte offset to a UTF-16 position (line, column).
+    fn offset_to_utf16_position(&self, offset: usize) -> Position {
         let line_idx = match self.line_starts.binary_search(&offset) {
             Ok(idx) => idx,
             Err(idx) => idx.saturating_sub(1),
         };
 
-        let line = line_idx; // Lines are 0-indexed
-        let line_start = self.line_starts[line_idx];
+        // Calculate UTF-16 column offset from the start of the line
+        let line_start_byte = self.line_starts[line_idx];
+        let line_text = &self.text[line_start_byte..offset];
+        let utf16_column: usize = line_text.chars().map(|ch| ch.len_utf16()).sum();
 
-        // Calculate column by counting UTF-8 characters from line start to offset
-        let column = self.text[line_start..offset]
-            .chars()
-            .map(|ch| ch.len_utf8())
-            .sum::<usize>(); // Columns are 0-indexed
+        Position::Utf16 {
+            line: line_idx,
+            column: utf16_column,
+        }
+    }
 
-        Position::new(line, column)
+    /// Convert a byte offset to a UTF-32 position (line, column).
+    /// UTF-32 column is the character count from the start of the line.
+    fn offset_to_utf32_position(&self, offset: usize) -> Position {
+        let line_idx = match self.line_starts.binary_search(&offset) {
+            Ok(idx) => idx,
+            Err(idx) => idx.saturating_sub(1),
+        };
+
+        // Calculate UTF-32 column offset (character count) from the start of the line
+        let line_start_byte = self.line_starts[line_idx];
+        let line_text = &self.text[line_start_byte..offset];
+        let utf32_column = line_text.chars().count();
+
+        Position::Utf32 {
+            line: line_idx,
+            column: utf32_column,
+        }
     }
 }
 
@@ -220,18 +273,18 @@ mod tests {
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), 'a');
-        assert_eq!(span1.start(), Position::new(0, 0));
-        assert_eq!(span1.end(), Position::new(0, 1));
+        assert_eq!(span1.start_utf32(), Position::Utf32 { line: 0, column: 0 });
+        assert_eq!(span1.end_utf32(), Position::Utf32 { line: 0, column: 1 });
 
         let span2 = cursor.next().unwrap();
         assert_eq!(span2.ch(), 'b');
-        assert_eq!(span2.start(), Position::new(0, 1));
-        assert_eq!(span2.end(), Position::new(0, 2));
+        assert_eq!(span2.start_utf32(), Position::Utf32 { line: 0, column: 1 });
+        assert_eq!(span2.end_utf32(), Position::Utf32 { line: 0, column: 2 });
 
         let span3 = cursor.next().unwrap();
         assert_eq!(span3.ch(), 'c');
-        assert_eq!(span3.start(), Position::new(0, 2));
-        assert_eq!(span3.end(), Position::new(0, 3));
+        assert_eq!(span3.start_utf32(), Position::Utf32 { line: 0, column: 2 });
+        assert_eq!(span3.end_utf32(), Position::Utf32 { line: 0, column: 3 });
 
         assert!(cursor.next().is_none());
     }
@@ -242,49 +295,30 @@ mod tests {
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), 'a');
-        assert_eq!(span1.start(), Position::new(0, 0));
-        assert_eq!(span1.end(), Position::new(0, 1));
+        assert_eq!(span1.start_utf32(), Position::Utf32 { line: 0, column: 0 });
+        assert_eq!(span1.end_utf32(), Position::Utf32 { line: 0, column: 1 });
 
         let span2 = cursor.next().unwrap();
         assert_eq!(span2.ch(), '\n');
-        assert_eq!(span2.start(), Position::new(0, 1));
-        assert_eq!(span2.end(), Position::new(1, 0));
+        assert_eq!(span2.start_utf32(), Position::Utf32 { line: 0, column: 1 });
+        assert_eq!(span2.end_utf32(), Position::Utf32 { line: 1, column: 0 });
 
         let span3 = cursor.next().unwrap();
         assert_eq!(span3.ch(), 'b');
-        assert_eq!(span3.start(), Position::new(1, 0));
-        assert_eq!(span3.end(), Position::new(1, 1));
+        assert_eq!(span3.start_utf32(), Position::Utf32 { line: 1, column: 0 });
+        assert_eq!(span3.end_utf32(), Position::Utf32 { line: 1, column: 1 });
 
         let span4 = cursor.next().unwrap();
         assert_eq!(span4.ch(), '\n');
-        assert_eq!(span4.start(), Position::new(1, 1));
-        assert_eq!(span4.end(), Position::new(2, 0));
+        assert_eq!(span4.start_utf32(), Position::Utf32 { line: 1, column: 1 });
+        assert_eq!(span4.end_utf32(), Position::Utf32 { line: 2, column: 0 });
 
         let span5 = cursor.next().unwrap();
         assert_eq!(span5.ch(), 'c');
-        assert_eq!(span5.start(), Position::new(2, 0));
-        assert_eq!(span5.end(), Position::new(2, 1));
+        assert_eq!(span5.start_utf32(), Position::Utf32 { line: 2, column: 0 });
+        assert_eq!(span5.end_utf32(), Position::Utf32 { line: 2, column: 1 });
 
         assert!(cursor.next().is_none());
-    }
-
-    #[test]
-    fn test_string_cursor_utf8() {
-        let mut cursor = StringCursor::new("a€b");
-
-        let span1 = cursor.next().unwrap();
-        assert_eq!(span1.ch(), 'a');
-        assert_eq!(span1.end().column(), 1);
-
-        let span2 = cursor.next().unwrap();
-        assert_eq!(span2.ch(), '€');
-        assert_eq!(span2.start().column(), 1);
-        assert_eq!(span2.end().column(), 4); // € is 3 bytes in UTF-8
-
-        let span3 = cursor.next().unwrap();
-        assert_eq!(span3.ch(), 'b');
-        assert_eq!(span3.start().column(), 4);
-        assert_eq!(span3.end().column(), 5);
     }
 
     #[test]
@@ -297,8 +331,11 @@ mod tests {
         let extended = span1.clone().to(span3);
         assert_eq!(extended.ch(), 'a');
         assert_eq!(extended.to_string(), "abc");
-        assert_eq!(extended.start(), Position::new(0, 0));
-        assert_eq!(extended.end(), Position::new(0, 3));
+        assert_eq!(
+            extended.start_utf32(),
+            Position::Utf32 { line: 0, column: 0 }
+        );
+        assert_eq!(extended.end_utf32(), Position::Utf32 { line: 0, column: 3 });
     }
 
     #[test]
@@ -339,8 +376,8 @@ mod tests {
 
         let span = result.unwrap();
         assert_eq!(span.as_str(), "   ");
-        assert_eq!(span.start(), Position::new(0, 0));
-        assert_eq!(span.end(), Position::new(0, 3));
+        assert_eq!(span.start_utf32(), Position::Utf32 { line: 0, column: 0 });
+        assert_eq!(span.end_utf32(), Position::Utf32 { line: 0, column: 3 });
     }
 
     #[test]
@@ -360,8 +397,8 @@ mod tests {
 
         let span = result.unwrap();
         assert_eq!(span.as_str(), "aaa");
-        assert_eq!(span.start(), Position::new(0, 0));
-        assert_eq!(span.end(), Position::new(0, 3));
+        assert_eq!(span.start_utf32(), Position::Utf32 { line: 0, column: 0 });
+        assert_eq!(span.end_utf32(), Position::Utf32 { line: 0, column: 3 });
     }
 
     #[test]
@@ -373,7 +410,186 @@ mod tests {
 
         let span = result.unwrap();
         assert_eq!(span.as_str(), "hello");
-        assert_eq!(span.start(), Position::new(0, 3));
-        assert_eq!(span.end(), Position::new(0, 8));
+        assert_eq!(span.start_utf32(), Position::Utf32 { line: 0, column: 3 });
+        assert_eq!(span.end_utf32(), Position::Utf32 { line: 0, column: 8 });
+    }
+
+    #[test]
+    fn test_string_cursor_utf16_single_line() {
+        // "a\u{20AC}b" - \u{20AC} is € (Euro sign)
+        // UTF-8 bytes:  a(1) €(3) b(1) = positions 0,1,4,5
+        // UTF-16 units: a(1) €(1) b(1) = positions 0,1,2,3
+        let mut cursor = StringCursor::new("a\u{20AC}b");
+
+        let span1 = cursor.next().unwrap();
+        assert_eq!(span1.ch(), 'a');
+        assert_eq!(span1.start_utf16(), Position::Utf16 { line: 0, column: 0 });
+        assert_eq!(span1.end_utf16(), Position::Utf16 { line: 0, column: 1 });
+
+        let span2 = cursor.next().unwrap();
+        assert_eq!(span2.ch(), '\u{20AC}');
+        assert_eq!(span2.start_utf16(), Position::Utf16 { line: 0, column: 1 });
+        assert_eq!(span2.end_utf16(), Position::Utf16 { line: 0, column: 2 }); // Euro sign is 1 code unit in UTF-16
+
+        let span3 = cursor.next().unwrap();
+        assert_eq!(span3.ch(), 'b');
+        assert_eq!(span3.start_utf16(), Position::Utf16 { line: 0, column: 2 });
+        assert_eq!(span3.end_utf16(), Position::Utf16 { line: 0, column: 3 });
+    }
+
+    #[test]
+    fn test_string_cursor_utf16_multiline() {
+        // "\u{20AC}\n\u{1F3A8}\nc" - Testing multi-line with different UTF-16 widths
+        // \u{20AC} = € (1 UTF-16 code unit, in BMP)
+        // \u{1F3A8} = 🎨 (2 UTF-16 code units, surrogate pair)
+        // Line 0: €(1) \n(1)
+        // Line 1: 🎨(2) \n(1)
+        // Line 2: c(1)
+        let mut cursor = StringCursor::new("\u{20AC}\n\u{1F3A8}\nc");
+
+        let span1 = cursor.next().unwrap();
+        assert_eq!(span1.ch(), '\u{20AC}');
+        assert_eq!(span1.start_utf16(), Position::Utf16 { line: 0, column: 0 });
+        assert_eq!(span1.end_utf16(), Position::Utf16 { line: 0, column: 1 });
+
+        let span2 = cursor.next().unwrap();
+        assert_eq!(span2.ch(), '\n');
+        assert_eq!(span2.start_utf16(), Position::Utf16 { line: 0, column: 1 });
+        assert_eq!(span2.end_utf16(), Position::Utf16 { line: 1, column: 0 });
+
+        let span3 = cursor.next().unwrap();
+        assert_eq!(span3.ch(), '\u{1F3A8}');
+        assert_eq!(span3.start_utf16(), Position::Utf16 { line: 1, column: 0 });
+        assert_eq!(span3.end_utf16(), Position::Utf16 { line: 1, column: 2 }); // Emoji is 2 code units in UTF-16
+
+        let span4 = cursor.next().unwrap();
+        assert_eq!(span4.ch(), '\n');
+        assert_eq!(span4.start_utf16(), Position::Utf16 { line: 1, column: 2 });
+        assert_eq!(span4.end_utf16(), Position::Utf16 { line: 2, column: 0 });
+
+        let span5 = cursor.next().unwrap();
+        assert_eq!(span5.ch(), 'c');
+        assert_eq!(span5.start_utf16(), Position::Utf16 { line: 2, column: 0 });
+        assert_eq!(span5.end_utf16(), Position::Utf16 { line: 2, column: 1 });
+    }
+
+    #[test]
+    fn test_contains_position_utf16() {
+        // "hello\nworld" - ASCII text for simple position testing
+        let cursor = StringCursor::new("hello\nworld");
+        let spans: Vec<_> = cursor.collect();
+
+        // "hello" spans
+        let hello_span = spans[0].clone().to(spans[4].clone());
+
+        // Test UTF-16 position containment
+        assert!(hello_span.contains_position(Position::Utf16 { line: 0, column: 0 }));
+        assert!(hello_span.contains_position(Position::Utf16 { line: 0, column: 4 }));
+        assert!(!hello_span.contains_position(Position::Utf16 { line: 0, column: 5 }));
+        assert!(!hello_span.contains_position(Position::Utf16 { line: 1, column: 0 }));
+    }
+
+    #[test]
+    fn test_string_cursor_utf32_single_line() {
+        // "a\u{20AC}b\u{1F3A8}c" - Testing UTF-32 (character count)
+        // a = 1 char, \u{20AC} (€) = 1 char, b = 1 char, \u{1F3A8} (🎨) = 1 char, c = 1 char
+        // UTF-8:  a(1) €(3) b(1) 🎨(4) c(1) = byte positions
+        // UTF-16: a(1) €(1) b(1) 🎨(2) c(1) = code unit positions
+        // UTF-32: a(1) €(1) b(1) 🎨(1) c(1) = character positions 0,1,2,3,4,5
+        let mut cursor = StringCursor::new("a\u{20AC}b\u{1F3A8}c");
+
+        let span1 = cursor.next().unwrap();
+        assert_eq!(span1.ch(), 'a');
+        assert_eq!(span1.start_utf32(), Position::Utf32 { line: 0, column: 0 });
+        assert_eq!(span1.end_utf32(), Position::Utf32 { line: 0, column: 1 });
+
+        let span2 = cursor.next().unwrap();
+        assert_eq!(span2.ch(), '\u{20AC}');
+        assert_eq!(span2.start_utf32(), Position::Utf32 { line: 0, column: 1 });
+        assert_eq!(span2.end_utf32(), Position::Utf32 { line: 0, column: 2 });
+
+        let span3 = cursor.next().unwrap();
+        assert_eq!(span3.ch(), 'b');
+        assert_eq!(span3.start_utf32(), Position::Utf32 { line: 0, column: 2 });
+        assert_eq!(span3.end_utf32(), Position::Utf32 { line: 0, column: 3 });
+
+        let span4 = cursor.next().unwrap();
+        assert_eq!(span4.ch(), '\u{1F3A8}');
+        assert_eq!(span4.start_utf32(), Position::Utf32 { line: 0, column: 3 });
+        assert_eq!(span4.end_utf32(), Position::Utf32 { line: 0, column: 4 });
+
+        let span5 = cursor.next().unwrap();
+        assert_eq!(span5.ch(), 'c');
+        assert_eq!(span5.start_utf32(), Position::Utf32 { line: 0, column: 4 });
+        assert_eq!(span5.end_utf32(), Position::Utf32 { line: 0, column: 5 });
+    }
+
+    #[test]
+    fn test_string_cursor_utf32_multiline() {
+        // "\u{1F3A8}\n\u{20AC}x" - Testing UTF-32 with newlines
+        // Line 0: 🎨(1 char) \n(1 char)
+        // Line 1: €(1 char) x(1 char)
+        let mut cursor = StringCursor::new("\u{1F3A8}\n\u{20AC}x");
+
+        let span1 = cursor.next().unwrap();
+        assert_eq!(span1.ch(), '\u{1F3A8}');
+        assert_eq!(span1.start_utf32(), Position::Utf32 { line: 0, column: 0 });
+        assert_eq!(span1.end_utf32(), Position::Utf32 { line: 0, column: 1 });
+
+        let span2 = cursor.next().unwrap();
+        assert_eq!(span2.ch(), '\n');
+        assert_eq!(span2.start_utf32(), Position::Utf32 { line: 0, column: 1 });
+        assert_eq!(span2.end_utf32(), Position::Utf32 { line: 1, column: 0 });
+
+        let span3 = cursor.next().unwrap();
+        assert_eq!(span3.ch(), '\u{20AC}');
+        assert_eq!(span3.start_utf32(), Position::Utf32 { line: 1, column: 0 });
+        assert_eq!(span3.end_utf32(), Position::Utf32 { line: 1, column: 1 });
+
+        let span4 = cursor.next().unwrap();
+        assert_eq!(span4.ch(), 'x');
+        assert_eq!(span4.start_utf32(), Position::Utf32 { line: 1, column: 1 });
+        assert_eq!(span4.end_utf32(), Position::Utf32 { line: 1, column: 2 });
+    }
+
+    #[test]
+    fn test_contains_position_utf32() {
+        // "\u{1F3A8}hello" - Emoji followed by ASCII
+        let cursor = StringCursor::new("\u{1F3A8}hello");
+        let spans: Vec<_> = cursor.collect();
+
+        // Create span for "hello" (skipping the emoji)
+        let hello_span = spans[1].clone().to(spans[5].clone());
+
+        // Test UTF-32 position containment
+        assert!(hello_span.contains_position(Position::Utf32 { line: 0, column: 1 }));
+        assert!(hello_span.contains_position(Position::Utf32 { line: 0, column: 5 }));
+        assert!(!hello_span.contains_position(Position::Utf32 { line: 0, column: 0 }));
+        assert!(!hello_span.contains_position(Position::Utf32 { line: 0, column: 6 }));
+    }
+
+    #[test]
+    fn test_compare_utf_encodings() {
+        // "\u{1F3A8}ab" - Compare UTF-16 and UTF-32 encodings
+        // 🎨 = U+1F3A8: 2 code units UTF-16, 1 char UTF-32
+        let mut cursor = StringCursor::new("\u{1F3A8}ab");
+
+        let emoji = cursor.next().unwrap();
+        let a = cursor.next().unwrap();
+        let b = cursor.next().unwrap();
+
+        // Emoji positions
+        assert_eq!(emoji.start_utf16(), Position::Utf16 { line: 0, column: 0 });
+        assert_eq!(emoji.end_utf16(), Position::Utf16 { line: 0, column: 2 });
+        assert_eq!(emoji.start_utf32(), Position::Utf32 { line: 0, column: 0 });
+        assert_eq!(emoji.end_utf32(), Position::Utf32 { line: 0, column: 1 });
+
+        // 'a' positions - notice different column values
+        assert_eq!(a.start_utf16(), Position::Utf16 { line: 0, column: 2 });
+        assert_eq!(a.start_utf32(), Position::Utf32 { line: 0, column: 1 });
+
+        // 'b' positions
+        assert_eq!(b.start_utf16(), Position::Utf16 { line: 0, column: 3 });
+        assert_eq!(b.start_utf32(), Position::Utf32 { line: 0, column: 2 });
     }
 }

@@ -94,7 +94,7 @@ impl SourceAnnotator {
     {
         let mut output = String::new();
         let lines: Vec<Option<StringSpan>> = StringCursor::new(source)
-            .chunk_by(|span| span.start().line())
+            .chunk_by(|span| span.start_utf32().line())
             .into_iter()
             .map(|(_, group)| group.filter(|s| s.ch() != '\n').collect())
             .collect();
@@ -115,14 +115,14 @@ impl SourceAnnotator {
                     output.push_str(&format!(
                         "  --> {} (line {}, col {})\n",
                         filename,
-                        annotation.start().line() + 1,
-                        annotation.start().column() + 1
+                        annotation.start_utf32().line() + 1,
+                        annotation.start_utf32().column() + 1
                     ));
                 } else {
                     output.push_str(&format!(
                         "  --> (line {}, col {})\n",
-                        annotation.start().line() + 1,
-                        annotation.start().column() + 1
+                        annotation.start_utf32().line() + 1,
+                        annotation.start_utf32().column() + 1
                     ));
                 }
             }
@@ -141,8 +141,8 @@ impl SourceAnnotator {
     ) {
         let max_line_col_width = lines.len().to_string().len();
 
-        let first_line = span.start().line().saturating_sub(self.lines_before);
-        let last_line = cmp::min(lines.len() - 1, span.end().line() + self.lines_after);
+        let first_line = span.start_utf32().line().saturating_sub(self.lines_before);
+        let last_line = cmp::min(lines.len() - 1, span.end_utf32().line() + self.lines_after);
 
         for (i, line) in lines.iter().enumerate() {
             if i < first_line || i > last_line {
@@ -406,7 +406,7 @@ mod tests {
               | ^^
 
             code
-              --> (line 1, col 6)
+              --> (line 1, col 3)
             1 | 😀 code
               |    ^^^^
         "#]]

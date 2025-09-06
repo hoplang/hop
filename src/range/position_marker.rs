@@ -14,11 +14,14 @@ pub fn extract_position(input: &str) -> Option<(String, Position)> {
         .filter(|span| span.ch() == '^')
         .map(|span| {
             // Check if marker is on the first line (line 0)
-            if span.start().line() == 0 {
+            if span.start_utf32().line() == 0 {
                 panic!("Marker does not point to a valid position");
             }
-            // Get position at line above 
-            Position::new(span.start().line() - 1, span.start().column())
+            // Get position at line above
+            Position::Utf32 {
+                line: span.start_utf32().line() - 1,
+                column: span.start_utf32().column(),
+            }
         })
         .collect::<Vec<_>>();
     assert!(
@@ -27,7 +30,7 @@ pub fn extract_position(input: &str) -> Option<(String, Position)> {
     );
     markers.first().map(|marker| {
         let char_starts = StringCursor::new(input)
-            .map(|span| span.start())
+            .map(|span| span.start_utf32())
             .collect::<HashSet<_>>();
         assert!(
             char_starts.contains(marker),
@@ -66,7 +69,7 @@ mod tests {
 
         assert_eq!(
             extract_position(input),
-            Some((output.to_string(), Position::new(0, 0)))
+            Some((output.to_string(), Position::Utf32 { line: 0, column: 0 }))
         );
     }
 
@@ -86,7 +89,7 @@ mod tests {
 
         assert_eq!(
             extract_position(input),
-            Some((output.to_string(), Position::new(0, 8)))
+            Some((output.to_string(), Position::Utf32 { line: 0, column: 8 }))
         );
     }
 
@@ -106,7 +109,7 @@ mod tests {
 
         assert_eq!(
             extract_position(input),
-            Some((output.to_string(), Position::new(0, 12)))
+            Some((output.to_string(), Position::Utf32 { line: 0, column: 12 }))
         );
     }
 
@@ -126,7 +129,7 @@ mod tests {
 
         assert_eq!(
             extract_position(input),
-            Some((output.to_string(), Position::new(2, 12)))
+            Some((output.to_string(), Position::Utf32 { line: 2, column: 12 }))
         );
     }
 
@@ -203,7 +206,7 @@ mod tests {
 
         assert_eq!(
             extract_position(input),
-            Some((output.to_string(), Position::new(0, 8)))
+            Some((output.to_string(), Position::Utf32 { line: 0, column: 8 }))
         );
     }
 }
