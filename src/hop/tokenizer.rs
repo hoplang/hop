@@ -162,16 +162,15 @@ impl Tokenizer {
     fn parse_attribute(&mut self) -> Option<(StringSpan, Attribute)> {
         let initial = self.iter.next()?; // consume initial name char
         let attr_name = self.parse_tag_name(initial);
-        let attr_name_range = attr_name.range();
 
         self.skip_whitespace();
 
         if self.iter.peek()?.ch() != '=' {
             return Some((
-                attr_name,
+                attr_name.clone(),
                 Attribute {
                     value: None,
-                    range: attr_name_range,
+                    span: attr_name,
                 },
             ));
         }
@@ -193,10 +192,10 @@ impl Tokenizer {
         if self.iter.peek()?.ch() == open_quote.ch() {
             let close_quote = self.iter.next()?;
             return Some((
-                attr_name,
+                attr_name.clone(),
                 Attribute {
                     value: None,
-                    range: attr_name_range.to(close_quote.range()),
+                    span: attr_name.to(close_quote),
                 },
             ));
         }
@@ -209,10 +208,10 @@ impl Tokenizer {
         let close_quote = self.iter.next()?;
 
         Some((
-            attr_name,
+            attr_name.clone(),
             Attribute {
                 value: Some(attr_value),
-                range: attr_name_range.to(close_quote.range()),
+                span: attr_name.to(close_quote),
             },
         ))
     }

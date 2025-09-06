@@ -12,7 +12,7 @@ pub struct PresentAttribute {
 #[derive(Debug, Clone)]
 pub struct Attribute {
     pub value: Option<StringSpan>,
-    pub range: Range,
+    pub span: StringSpan,
 }
 
 #[derive(Debug, Clone)]

@@ -465,7 +465,7 @@ fn construct_node(
                         if name.starts_with("set-") {
                             let attr_val = match &attr.value {
                                 None => {
-                                    errors.push(ParseError::missing_attribute_value(attr.range));
+                                    errors.push(ParseError::missing_attribute_value(attr.span.range()));
                                     continue;
                                 }
                                 Some(val) => val,
@@ -475,7 +475,7 @@ fn construct_node(
                                 Ok(expression) => set_attributes.push(DopExprAttribute {
                                     name: name.to_string(),
                                     expression,
-                                    range: attr.range,
+                                    range: attr.span.range(),
                                 }),
                                 Err(dop::errors::ParseError::UnexpectedEof) => {
                                     errors.push(ParseError::unexpected_end_of_expression(
