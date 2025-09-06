@@ -1,7 +1,7 @@
 use super::Position;
 use std::{cmp, fmt};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Range {
     start: Position,
     end: Position,
@@ -54,13 +54,6 @@ impl fmt::Display for Range {
         write!(f, "{}-{}", self.start, self.end)
     }
 }
-
-impl fmt::Debug for Range {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(self, f)
-    }
-}
-
 
 pub trait Ranged {
     fn range(&self) -> Range;
