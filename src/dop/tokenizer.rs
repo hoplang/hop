@@ -1,4 +1,4 @@
-use crate::range::{Position, Range, Ranged as _, RangedChars, RangedString};
+use crate::range::{Range, Ranged as _, RangedChars, RangedString};
 use std::{fmt, iter::Peekable, str::FromStr};
 
 use super::parser::ParseError;
@@ -61,10 +61,10 @@ pub struct DopTokenizer<'a> {
     chars: Peekable<RangedChars<'a>>,
 }
 
-impl<'a> DopTokenizer<'a> {
-    pub fn with_position(input: &'a str, start_pos: Position) -> Self {
+impl<'a> From<RangedChars<'a>> for DopTokenizer<'a> {
+    fn from(iter: RangedChars<'a>) -> Self {
         Self {
-            chars: RangedChars::with_position(input, start_pos).peekable(),
+            chars: iter.peekable(),
         }
     }
 }
