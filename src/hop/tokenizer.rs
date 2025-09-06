@@ -218,7 +218,7 @@ impl<'a> Tokenizer<'a> {
     //
     // Returns None if we reached EOF before finding the closing '}'.
     fn find_expression_end(&mut self) -> Option<Range> {
-        let mut dop_tokenizer = DopTokenizer::new_from_chars(self.chars.clone());
+        let mut dop_tokenizer = DopTokenizer::from(self.chars.clone());
         assert!(
             dop_tokenizer
                 .next()

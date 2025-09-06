@@ -67,9 +67,11 @@ impl<'a> DopTokenizer<'a> {
             chars: RangedChars::with_position(input, start_pos).peekable(),
         }
     }
+}
 
-    pub fn new_from_chars(chars: Peekable<RangedChars<'a>>) -> Self {
-        Self { chars }
+impl<'a> From<Peekable<RangedChars<'a>>> for DopTokenizer<'a> {
+    fn from(iter: Peekable<RangedChars<'a>>) -> Self {
+        Self { chars: iter }
     }
 }
 
