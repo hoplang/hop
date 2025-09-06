@@ -4,7 +4,7 @@ use crate::range::{
 };
 use std::{fmt, iter::Peekable, str::FromStr};
 
-use super::parser::ParseError;
+use super::errors::ParseError;
 
 #[derive(Debug, Clone)]
 pub enum DopToken {

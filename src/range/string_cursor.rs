@@ -96,7 +96,7 @@ impl StringSpan {
 
 impl fmt::Display for StringSpan {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.as_str())
+        f.write_str(self.as_str())
     }
 }
 
