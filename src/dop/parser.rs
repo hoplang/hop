@@ -97,14 +97,11 @@ pub enum UnaryOp {
 #[derive(Debug, Clone)]
 pub enum DopExpr {
     Variable {
-        name: StringSpan,
-        range: Range,
+        value: StringSpan,
     },
     PropertyAccess {
         object: Box<DopExpr>,
-        // TODO: Use StringSpan
-        property: String,
-        property_range: Range,
+        property: StringSpan,
         range: Range,
     },
     StringLiteral {
@@ -145,7 +142,7 @@ impl Ranged for DopExpr {
     /// Returns the range of this expression in the source code
     fn range(&self) -> Range {
         match self {
-            DopExpr::Variable { range, .. } => *range,
+            DopExpr::Variable { value, .. } => value.range(),
             DopExpr::PropertyAccess { range, .. } => *range,
             DopExpr::StringLiteral { range, .. } => *range,
             DopExpr::BooleanLiteral { range, .. } => *range,
@@ -456,8 +453,8 @@ fn parse_unary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, ParseE
 //         | "(" equality ")"
 fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, ParseError> {
     match tokenizer.next().ok_or(ParseError::UnexpectedEof)?? {
-        (DopToken::Identifier(name), range) => {
-            let mut expr = DopExpr::Variable { name, range };
+        (DopToken::Identifier(name), _) => {
+            let mut expr = DopExpr::Variable { value: name };
 
             // Handle property access
             while advance_if(tokenizer, DopToken::Dot).is_some() {
@@ -466,8 +463,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                         expr = DopExpr::PropertyAccess {
                             range: expr.range().spanning(property_range),
                             object: Box::new(expr),
-                            property: prop.to_string(),
-                            property_range,
+                            property: prop,
                         };
                     }
                     (_, range) => {

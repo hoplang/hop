@@ -82,7 +82,7 @@ pub fn typecheck_expr(
     errors: &mut Vec<TypeError>,
 ) -> Result<DopType, TypeError> {
     match expr {
-        DopExpr::Variable { name, .. } => {
+        DopExpr::Variable { value: name, .. } => {
             if let Some(var_type) = env.lookup(name.as_str()) {
                 annotations.push(TypeAnnotation {
                     range: expr.range(),
@@ -100,19 +100,18 @@ pub fn typecheck_expr(
         DopExpr::PropertyAccess {
             object: base_expr,
             property,
-            property_range,
             ..
         } => {
             let base_type = typecheck_expr(base_expr, env, annotations, errors)?;
 
             match &base_type {
                 DopType::Object(props) => {
-                    if let Some(prop_type) = props.get(property) {
+                    if let Some(prop_type) = props.get(property.as_str()) {
                         Ok(prop_type.clone())
                     } else {
                         Err(TypeError::property_not_found_in_object(
-                            property,
-                            *property_range,
+                            property.as_str(),
+                            property.range(),
                         ))
                     }
                 }

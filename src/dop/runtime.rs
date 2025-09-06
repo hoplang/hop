@@ -7,7 +7,7 @@ pub fn evaluate_expr(
     env: &mut Environment<serde_json::Value>,
 ) -> Result<serde_json::Value> {
     match expr {
-        DopExpr::Variable { name, .. } => {
+        DopExpr::Variable { value: name, .. } => {
             if let Some(val) = env.lookup(name.as_str()) {
                 Ok(val.clone())
             } else {
@@ -48,7 +48,7 @@ pub fn evaluate_expr(
             }
 
             base_value
-                .get(property)
+                .get(property.as_str())
                 .ok_or_else(|| anyhow::anyhow!("Property '{}' not found", property))
                 .cloned()
         }
