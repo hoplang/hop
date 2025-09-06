@@ -49,22 +49,3 @@ impl fmt::Display for Range {
         write!(f, "{}-{}", self.start, self.end)
     }
 }
-
-pub trait Ranged {
-    fn range(&self) -> Range;
-    fn contains(&self, position: Position) -> bool {
-        self.range().contains(position)
-    }
-}
-
-impl Ranged for Range {
-    fn range(&self) -> Range {
-        *self
-    }
-}
-
-impl<T: Ranged> Ranged for &T {
-    fn range(&self) -> Range {
-        (*self).range()
-    }
-}
