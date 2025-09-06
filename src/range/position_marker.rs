@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use super::{RangedChars, range::Position};
+use super::{Position, string_cursor::StringCursor};
 
 /// Extracts a single position marked with `^` from the source.
 ///
@@ -10,17 +10,17 @@ use super::{RangedChars, range::Position};
 /// Panics if multiple position markers are found or if marker does not point to a valid character
 /// on the above line.
 pub fn extract_position(input: &str) -> Option<(String, Position)> {
-    let markers = RangedChars::from(input)
-        .filter(|(ch, _)| *ch == '^')
-        .map(|(_, range)| Position::new(range.start().line() - 1, range.start().column()))
+    let markers = StringCursor::new(input)
+        .filter(|span| span.ch == '^')
+        .map(|span| Position::new(span.range().start.line - 1, span.range().start.column))
         .collect::<Vec<_>>();
     assert!(
         markers.len() < 2,
         "Multiple position markers (^) found in source"
     );
     markers.first().map(|marker| {
-        let char_starts = RangedChars::from(input)
-            .map(|(_, range)| range.start())
+        let char_starts = StringCursor::new(input)
+            .map(|span| span.range().start)
             .collect::<HashSet<_>>();
         assert!(
             char_starts.contains(marker),
