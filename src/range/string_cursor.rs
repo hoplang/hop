@@ -225,17 +225,17 @@ mod tests {
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), 'a');
-        assert_eq!(span1.range().end().column, 2);
+        assert_eq!(span1.range().end().column(), 2);
 
         let span2 = cursor.next().unwrap();
         assert_eq!(span2.ch(), '€');
-        assert_eq!(span2.range().start().column, 2);
-        assert_eq!(span2.range().end().column, 5); // € is 3 bytes in UTF-8
+        assert_eq!(span2.range().start().column(), 2);
+        assert_eq!(span2.range().end().column(), 5); // € is 3 bytes in UTF-8
 
         let span3 = cursor.next().unwrap();
         assert_eq!(span3.ch(), 'b');
-        assert_eq!(span3.range().start().column, 5);
-        assert_eq!(span3.range().end().column, 6);
+        assert_eq!(span3.range().start().column(), 5);
+        assert_eq!(span3.range().end().column(), 6);
     }
 
     #[test]

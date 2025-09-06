@@ -104,7 +104,7 @@ impl SourceAnnotator {
     ) -> String {
         let mut output = String::new();
         let lines: Vec<Option<StringSpan>> = StringCursor::new(source)
-            .chunk_by(|span| span.range().start().line)
+            .chunk_by(|span| span.range().start().line())
             .into_iter()
             .map(|(_, group)| group.filter(|s| s.ch() != '\n').collect())
             .collect();
