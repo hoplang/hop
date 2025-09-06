@@ -138,7 +138,7 @@ impl<'a> Tokenizer<'a> {
     }
 
     // Parse a tag name given an initial char
-    fn parse_tag_name(&mut self, initial_char: char, initial_range: Range) -> (String, Range) {
+    fn parse_tag_name(&mut self, initial_char: char, initial_range: Range) -> RangedString {
         let mut result = RangedString::from((initial_char, initial_range));
         while let Some(ch) = self
             .chars
@@ -146,19 +146,20 @@ impl<'a> Tokenizer<'a> {
         {
             result.push(ch);
         }
-        result.into()
+        result
     }
 
     // Parse an attribute, e.g. foo="bar"
-    fn parse_attribute(&mut self) -> Option<((String, Range), Attribute)> {
+    fn parse_attribute(&mut self) -> Option<(RangedString, Attribute)> {
         let (ch, ch_range) = self.chars.next()?; // consume initial name char
-        let (attr_name, attr_name_range) = self.parse_tag_name(ch, ch_range);
+        let attr_name = self.parse_tag_name(ch, ch_range);
+        let attr_name_range = attr_name.range();
 
         self.skip_whitespace();
 
         if self.chars.peek()?.0 != '=' {
             return Some((
-                (attr_name, attr_name_range),
+                attr_name,
                 Attribute {
                     value: None,
                     range: attr_name_range,
@@ -183,7 +184,7 @@ impl<'a> Tokenizer<'a> {
         if self.chars.peek()?.0 == quote_ch {
             let (_, closing_quote_range) = self.chars.next()?;
             return Some((
-                (attr_name, attr_name_range),
+                attr_name,
                 Attribute {
                     value: None,
                     range: attr_name_range.spanning(closing_quote_range),
@@ -200,7 +201,7 @@ impl<'a> Tokenizer<'a> {
         let (_, closing_quote_range) = self.chars.next()?;
 
         Some((
-            (attr_name, attr_name_range),
+            attr_name,
             Attribute {
                 value: Some(attr_value.into()),
                 range: attr_name_range.spanning(closing_quote_range),
@@ -275,14 +276,14 @@ impl<'a> Tokenizer<'a> {
                 }
                 // Parse attribute
                 (ch, _) if ch.is_ascii_alphabetic() => {
-                    let ((attr_name, attr_name_range), attr_value) = self.parse_attribute()?;
-                    if attributes.contains_key(&attr_name) {
+                    let (attr_name, attr_value) = self.parse_attribute()?;
+                    if attributes.contains_key(attr_name.value()) {
                         self.errors.push_back(ParseError::duplicate_attribute(
-                            &attr_name,
-                            attr_name_range,
+                            attr_name.value(),
+                            attr_name.range(),
                         ));
                     }
-                    attributes.insert(attr_name.to_string(), attr_value);
+                    attributes.insert(attr_name.value().to_string(), attr_value);
                 }
                 // Return
                 (ch, _) if *ch == '/' || *ch == '>' => {
@@ -411,12 +412,12 @@ impl<'a> Tokenizer<'a> {
                                     ch_range,
                                 ));
                                 return Some(Token::ClosingTag {
-                                    tag_name,
+                                    tag_name: tag_name.into(),
                                     range: left_angle_range.spanning(right_angle_range),
                                 });
                             }
                             Some(Token::ClosingTag {
-                                tag_name,
+                                tag_name: tag_name.into(),
                                 range: left_angle_range.spanning(right_angle_range),
                             })
                         } else {
@@ -444,14 +445,13 @@ impl<'a> Tokenizer<'a> {
 
                         match self.chars.next()? {
                             ('>', ch_range) => {
-                                let (tag_name_clone, _) = tag_name.clone();
-                                if is_tag_name_with_raw_content(&tag_name_clone) {
+                                if is_tag_name_with_raw_content(tag_name.value()) {
                                     self.raw_text_closing_tag =
-                                        Some(format!("</{}>", tag_name_clone));
+                                        Some(format!("</{}>", tag_name.value()));
                                 }
                                 Some(Token::OpeningTag {
                                     self_closing,
-                                    tag_name,
+                                    tag_name: tag_name.into(),
                                     attributes,
                                     expression,
                                     range: left_angle_range.spanning(ch_range),
