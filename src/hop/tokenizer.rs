@@ -2,6 +2,8 @@ use std::collections::{BTreeMap, VecDeque};
 use std::iter::Peekable;
 use std::mem;
 
+use itertools::Itertools as _;
+
 use crate::common::ParseError;
 use crate::dop::DopTokenizer;
 use crate::dop::tokenizer::DopToken;
@@ -135,19 +137,17 @@ impl<'a> Tokenizer<'a> {
 
     // Skip whitespace
     fn skip_whitespace(&mut self) {
-        while self.chars.next_if(|s| s.ch.is_whitespace()).is_some() {}
+        while self.chars.peek().is_some_and(|s| s.ch.is_whitespace()) {
+            self.chars.next();
+        }
     }
 
     // Parse a tag name given an initial char
     fn parse_tag_name(&mut self, initial: StringSpan) -> StringSpan {
-        let mut result = initial;
-        while let Some(ch) = self
-            .chars
-            .next_if(|s| s.ch == '-' || s.ch.is_ascii_alphanumeric())
-        {
-            result = result.merge(ch);
-        }
-        result
+        initial.extend(
+            self.chars
+                .peeking_take_while(|s| s.ch == '-' || s.ch.is_ascii_alphanumeric()),
+        )
     }
 
     // Parse an attribute, e.g. foo="bar"
@@ -193,11 +193,10 @@ impl<'a> Tokenizer<'a> {
             ));
         }
 
-        let mut attr_value = self.chars.next()?;
-
-        while let Some(ch) = self.chars.next_if(|s| s.ch != open_quote.ch) {
-            attr_value = attr_value.merge(ch);
-        }
+        let attr_value = self
+            .chars
+            .next()?
+            .extend(self.chars.peeking_take_while(|s| s.ch != open_quote.ch));
 
         let close_quote = self.chars.next()?;
 
@@ -266,7 +265,7 @@ impl<'a> Tokenizer<'a> {
                     }
                     let mut expr = self.chars.next()?;
                     while self.chars.peek()?.range() != right_brace_range {
-                        expr = expr.merge(self.chars.next()?);
+                        expr = expr.span(self.chars.next()?);
                     }
                     self.chars.next()?; // skip right brace
                     expression = Some(expr);
@@ -383,7 +382,7 @@ impl<'a> Tokenizer<'a> {
                     }
                     _ => match raw_text.take() {
                         Some(v) => {
-                            raw_text = Some(v.merge(self.chars.next()?));
+                            raw_text = Some(v.span(self.chars.next()?));
                         }
                         None => raw_text = Some(self.chars.next()?),
                     },
@@ -487,7 +486,7 @@ impl<'a> Tokenizer<'a> {
                 }
                 let mut expr = self.chars.next()?;
                 while self.chars.peek()?.range() != right_brace_range {
-                    expr = expr.merge(self.chars.next()?);
+                    expr = expr.span(self.chars.next()?);
                 }
                 self.chars.next()?; // skip right brace
                 Some(Token::Expression {
@@ -499,7 +498,7 @@ impl<'a> Tokenizer<'a> {
             _ => {
                 let mut value = self.chars.next()?;
                 while let Some(ch) = self.chars.next_if(|s| s.ch != '{' && s.ch != '<') {
-                    value = value.merge(ch);
+                    value = value.span(ch);
                 }
                 Some(Token::Text { value })
             }

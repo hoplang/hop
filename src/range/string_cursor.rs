@@ -53,13 +53,21 @@ pub struct StringSpan {
 }
 
 impl StringSpan {
-    pub fn merge(self, other: StringSpan) -> Self {
+    /// Extend the string span to also include another string span
+    /// and all characters between them.
+    pub fn span(self, other: StringSpan) -> Self {
         StringSpan {
             source: self.source,
             ch: self.ch,
             offset: (self.offset.0, other.offset.1),
             range: self.range.spanning(other.range),
         }
+    }
+    pub fn extend<I>(self, iter: I) -> Self
+    where
+        I: IntoIterator<Item = StringSpan>,
+    {
+        iter.into_iter().fold(self, |acc, span| acc.span(span))
     }
     pub fn as_str(&self) -> &str {
         &self.source[self.offset.0..self.offset.1]
@@ -85,7 +93,7 @@ impl fmt::Display for StringSpan {
 
 impl FromIterator<StringSpan> for Option<StringSpan> {
     fn from_iter<I: IntoIterator<Item = StringSpan>>(iter: I) -> Self {
-        iter.into_iter().reduce(|acc, span| acc.merge(span))
+        iter.into_iter().reduce(|acc, span| acc.span(span))
     }
 }
 
@@ -192,7 +200,7 @@ mod tests {
         let _span2 = cursor.next().unwrap();
         let span3 = cursor.next().unwrap();
 
-        let extended = span1.clone().merge(span3);
+        let extended = span1.clone().span(span3);
         assert_eq!(extended.ch, 'a');
         assert_eq!(extended.to_string(), "abc");
         assert_eq!(extended.range.start, Position::new(1, 1));
@@ -210,7 +218,7 @@ mod tests {
         assert_eq!(spans[3].to_string(), "l");
         assert_eq!(spans[4].to_string(), "o");
 
-        let extended = spans[0].clone().merge(spans[4].clone());
+        let extended = spans[0].clone().span(spans[4].clone());
         assert_eq!(extended.to_string(), "hello");
     }
 

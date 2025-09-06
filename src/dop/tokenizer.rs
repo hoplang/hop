@@ -136,7 +136,7 @@ impl Iterator for DopTokenizer<'_> {
                         .chars
                         .next_if(|s| matches!(s.ch, 'A'..='Z' | 'a'..='z' | '0'..='9' | '_'))
                     {
-                        identifier = identifier.merge(s);
+                        identifier = identifier.span(s);
                     }
 
                     let t = match identifier.as_str() {
@@ -156,17 +156,17 @@ impl Iterator for DopTokenizer<'_> {
                 ch if ch.is_ascii_digit() => {
                     let mut number_string = start;
                     while let Some(digit) = self.chars.next_if(|s| s.ch.is_ascii_digit()) {
-                        number_string = number_string.merge(digit);
+                        number_string = number_string.span(digit);
                     }
                     if let Some(dot) = self.chars.next_if(|s| s.ch == '.') {
-                        number_string = number_string.merge(dot);
+                        number_string = number_string.span(dot);
                         if !self.chars.peek().is_some_and(|s| s.ch.is_ascii_digit()) {
                             return Err(ParseError::expected_digit_after_decimal_point(
                                 number_string.range(),
                             ));
                         }
                         while let Some(digit) = self.chars.next_if(|s| s.ch.is_ascii_digit()) {
-                            number_string = number_string.merge(digit);
+                            number_string = number_string.span(digit);
                         }
                     }
                     match serde_json::Number::from_str(number_string.as_str()) {
