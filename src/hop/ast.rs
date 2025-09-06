@@ -128,7 +128,6 @@ impl HopAst {
 pub struct Import {
     pub component_attr: PresentAttribute,
     pub from_attr: PresentAttribute,
-    pub range: Range,
 }
 
 impl Import {
@@ -237,14 +236,14 @@ pub enum HopNode {
     },
 
     /// A Doctype node represents a doctype, e.g. a <!DOCTYPE html>
-    Doctype { value: String, range: Range },
+    Doctype { range: Range },
 
     /// An HTML node represents a plain HTML node.
     /// E.g. <div>...</div>
     ///      ^^^^^^^^^^^^^^
     Html {
         tag_name: StringSpan,
-        closing_name_range: Option<Range>,
+        closing_name: Option<StringSpan>,
         attributes: BTreeMap<String, Attribute>,
         range: Range,
         children: Vec<HopNode>,
@@ -336,9 +335,7 @@ impl HopNode {
             HopNode::ComponentReference {
                 closing_name_range, ..
             } => *closing_name_range,
-            HopNode::Html {
-                closing_name_range, ..
-            } => *closing_name_range,
+            HopNode::Html { closing_name, .. } => closing_name.as_ref().map(|s| s.range()),
             _ => None,
         }
     }

@@ -95,7 +95,7 @@ pub fn evaluate_component(
         Ok(())
     } else {
         let tag_name = match &component.as_attr {
-            Some(as_attr) => &as_attr.value.as_str(),
+            Some(as_attr) => as_attr.value.as_str(),
             _ => "div",
         };
 

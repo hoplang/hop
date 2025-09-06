@@ -77,7 +77,6 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                             imports.push(Import {
                                 component_attr: PresentAttribute { value: cmp_attr },
                                 from_attr: PresentAttribute { value: from_attr },
-                                range: tree.range,
                             });
                         }
                         (component, from) => {
@@ -248,10 +247,7 @@ fn construct_node(
     let t = tree.token;
 
     match t {
-        Token::Doctype { range } => HopNode::Doctype {
-            value: "".to_string(),
-            range,
-        },
+        Token::Doctype { range } => HopNode::Doctype { range },
         Token::Text { value, .. } => HopNode::Text {
             value: value.to_string(),
             range: tree.range,
@@ -496,7 +492,7 @@ fn construct_node(
 
                     HopNode::Html {
                         tag_name,
-                        closing_name_range: tree.closing_tag_name.map(|s| s.range()),
+                        closing_name: tree.closing_tag_name,
                         attributes: attributes.clone(),
                         range: tree.range,
                         children,
