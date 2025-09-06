@@ -114,7 +114,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         Some(file_attr) => {
                             renders.push(Render {
                                 file_attr: PresentAttribute { value: file_attr },
-                                range: tree.span.range(),
+                                span: tree.span.clone(),
                                 children,
                             });
                         }
@@ -153,9 +153,9 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         let mut has_slot = false;
                         for child in &children {
                             for node in child.iter_depth_first() {
-                                if let HopNode::SlotDefinition { range, .. } = node {
+                                if let HopNode::SlotDefinition { span, .. } = node {
                                     if has_slot {
-                                        errors.push(ParseError::slot_is_already_defined(*range));
+                                        errors.push(ParseError::slot_is_already_defined(span.range()));
                                     }
                                     has_slot = true;
                                 }
@@ -201,7 +201,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                             is_entrypoint,
                             as_attr: as_attr.map(|v| PresentAttribute { value: v }),
                             attributes: unhandled_attributes,
-                            range: tree.span.range(),
+                            span: tree.span.clone(),
                             children,
                             has_slot,
                         });
@@ -259,19 +259,19 @@ fn construct_node(
             match dop::parse_expr(&mut tokenizer) {
                 Ok(expression) => HopNode::TextExpression {
                     expression,
-                    range: tree.span.range(),
+                    span: tree.span.clone(),
                 },
                 Err(dop::errors::ParseError::UnexpectedEof) => {
                     errors.push(ParseError::unexpected_end_of_expression(expr.range()));
                     HopNode::Error {
-                        range: tree.span.range(),
+                        span: tree.span.clone(),
                         children: vec![],
                     }
                 }
                 Err(dop::errors::ParseError::Ranged { message, range }) => {
                     errors.push(ParseError::new(message, range));
                     HopNode::Error {
-                        range: tree.span.range(),
+                        span: tree.span.clone(),
                         children: vec![],
                     }
                 }
@@ -292,20 +292,20 @@ fn construct_node(
                         match dop::parse_expr(&mut tokenizer) {
                             Ok(condition) => HopNode::If {
                                 condition,
-                                range: tree.span.range(),
+                                span: tree.span.clone(),
                                 children,
                             },
                             Err(dop::errors::ParseError::UnexpectedEof) => {
                                 errors.push(ParseError::unexpected_end_of_expression(expr.range()));
                                 HopNode::Error {
-                                    range: tree.span.range(),
+                                    span: tree.span.clone(),
                                     children,
                                 }
                             }
                             Err(dop::errors::ParseError::Ranged { message, range }) => {
                                 errors.push(ParseError::new(message, range));
                                 HopNode::Error {
-                                    range: tree.span.range(),
+                                    span: tree.span.clone(),
                                     children,
                                 }
                             }
@@ -317,7 +317,7 @@ fn construct_node(
                             opening_tag_span.range(),
                         ));
                         HopNode::Error {
-                            range: tree.span.range(),
+                            span: tree.span.clone(),
                             children,
                         }
                     }
@@ -330,20 +330,20 @@ fn construct_node(
                             Ok((var_name, array_expr)) => HopNode::For {
                                 var_name,
                                 array_expr,
-                                range: tree.span.range(),
+                                span: tree.span.clone(),
                                 children,
                             },
                             Err(dop::errors::ParseError::UnexpectedEof) => {
                                 errors.push(ParseError::unexpected_end_of_expression(expr.range()));
                                 HopNode::Error {
-                                    range: tree.span.range(),
+                                    span: tree.span.clone(),
                                     children,
                                 }
                             }
                             Err(dop::errors::ParseError::Ranged { message, range }) => {
                                 errors.push(ParseError::new(message, range));
                                 HopNode::Error {
-                                    range: tree.span.range(),
+                                    span: tree.span.clone(),
                                     children,
                                 }
                             }
@@ -355,12 +355,12 @@ fn construct_node(
                             opening_tag_span.range(),
                         ));
                         HopNode::Error {
-                            range: tree.span.range(),
+                            span: tree.span.clone(),
                             children,
                         }
                     }
                 },
-                "slot-default" => HopNode::SlotDefinition { range: tree.span.range() },
+                "slot-default" => HopNode::SlotDefinition { span: tree.span.clone() },
                 name if name.starts_with("hop-") => match tag_name.as_str() {
                     "hop-x-exec" => {
                         let mut cmd_attr = None;
@@ -377,7 +377,7 @@ fn construct_node(
                         match cmd_attr.and_then(|attr| attr.value) {
                             Some(cmd_attr) => HopNode::XExec {
                                 cmd_attr: PresentAttribute { value: cmd_attr },
-                                range: tree.span.range(),
+                                span: tree.span.clone(),
                                 children,
                             },
                             None => {
@@ -387,7 +387,7 @@ fn construct_node(
                                     opening_tag_span.range(),
                                 ));
                                 HopNode::Error {
-                                    range: tree.span.range(),
+                                    span: tree.span.clone(),
                                     children,
                                 }
                             }
@@ -395,7 +395,7 @@ fn construct_node(
                     }
                     "hop-x-raw" => HopNode::XRaw {
                         trim: attributes.contains_key("trim"),
-                        range: tree.span.range(),
+                        span: tree.span.clone(),
                         children,
                     },
                     _ => {
@@ -404,7 +404,7 @@ fn construct_node(
                             tag_name.range(),
                         ));
                         HopNode::Error {
-                            range: tree.span.range(),
+                            span: tree.span.clone(),
                             children: vec![],
                         }
                     }
@@ -426,14 +426,14 @@ fn construct_node(
                                         expr.range(),
                                     ));
                                     return HopNode::Error {
-                                        range: tree.span.range(),
+                                        span: tree.span.clone(),
                                         children: vec![],
                                     };
                                 }
                                 Err(dop::errors::ParseError::Ranged { message, range }) => {
                                     errors.push(ParseError::new(message, range));
                                     return HopNode::Error {
-                                        range: tree.span.range(),
+                                        span: tree.span.clone(),
                                         children: vec![],
                                     };
                                 }
@@ -454,7 +454,7 @@ fn construct_node(
                         definition_module,
                         args,
                         attributes,
-                        range: tree.span.range(),
+                        span: tree.span.clone(),
                         children,
                     }
                 }
@@ -493,7 +493,7 @@ fn construct_node(
                         tag_name,
                         closing_tag_name: tree.closing_tag_name,
                         attributes: attributes.clone(),
-                        range: tree.span.range(),
+                        span: tree.span.clone(),
                         children,
                         set_attributes,
                     }

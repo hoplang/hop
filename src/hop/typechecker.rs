@@ -420,7 +420,7 @@ fn typecheck_node(
             }
         }
 
-        HopNode::TextExpression { expression, range } => {
+        HopNode::TextExpression { expression, span } => {
             let expr_type = match typecheck_expr(expression, env, annotations, errors) {
                 Ok(t) => t,
                 Err(err) => {
@@ -431,7 +431,7 @@ fn typecheck_node(
             if !is_subtype(&expr_type, &DopType::String) {
                 errors.push(TypeError::expected_string_expression(
                     &expr_type.to_string(),
-                    *range,
+                    span.range(),
                 ));
             }
         }

@@ -139,13 +139,13 @@ impl Import {
 #[derive(Debug, Clone)]
 pub struct Render {
     pub file_attr: PresentAttribute,
-    pub range: Range,
+    pub span: StringSpan,
     pub children: Vec<HopNode>,
 }
 
 impl Ranged for Render {
     fn range(&self) -> Range {
-        self.range
+        self.span.range()
     }
 }
 
@@ -156,7 +156,7 @@ pub struct ComponentDefinition {
     pub params: Option<(BTreeMap<String, DopParameter>, Range)>,
     pub as_attr: Option<PresentAttribute>,
     pub attributes: BTreeMap<String, Attribute>,
-    pub range: Range,
+    pub span: StringSpan,
     pub children: Vec<HopNode>,
     pub is_entrypoint: bool,
     pub has_slot: bool,
@@ -164,7 +164,7 @@ pub struct ComponentDefinition {
 
 impl Ranged for ComponentDefinition {
     fn range(&self) -> Range {
-        self.range
+        self.span.range()
     }
 }
 
@@ -187,7 +187,7 @@ pub enum HopNode {
     /// A TextExpression represents an expression that occurs in a text position.
     /// E.g. <div>hello {world}</div>
     ///                 ^^^^^^^
-    TextExpression { expression: DopExpr, range: Range },
+    TextExpression { expression: DopExpr, span: StringSpan },
 
     /// A ComponentReference represents a reference to a component.
     /// E.g.
@@ -201,7 +201,7 @@ pub enum HopNode {
         closing_tag_name: Option<StringSpan>,
         args: Option<(BTreeMap<String, DopArgument>, Range)>,
         attributes: BTreeMap<String, Attribute>,
-        range: Range,
+        span: StringSpan,
         children: Vec<HopNode>,
     },
 
@@ -211,13 +211,13 @@ pub enum HopNode {
     /// <my-component>
     ///   <slot-default/>
     /// </my-component>
-    SlotDefinition { range: Range },
+    SlotDefinition { span: StringSpan },
 
     /// An If node contains content that is only evaluated when its condition
     /// expression evaluates to true.
     If {
         condition: DopExpr,
-        range: Range,
+        span: StringSpan,
         children: Vec<HopNode>,
     },
 
@@ -226,7 +226,7 @@ pub enum HopNode {
     For {
         var_name: DopVarName,
         array_expr: DopExpr,
-        range: Range,
+        span: StringSpan,
         children: Vec<HopNode>,
     },
 
@@ -240,13 +240,13 @@ pub enum HopNode {
         tag_name: StringSpan,
         closing_tag_name: Option<StringSpan>,
         attributes: BTreeMap<String, Attribute>,
-        range: Range,
+        span: StringSpan,
         children: Vec<HopNode>,
         set_attributes: Vec<DopExprAttribute>,
     },
     XExec {
         cmd_attr: PresentAttribute,
-        range: Range,
+        span: StringSpan,
         children: Vec<HopNode>,
     },
 
@@ -256,7 +256,7 @@ pub enum HopNode {
     /// The children vec should always contain a single Text node.
     XRaw {
         trim: bool,
-        range: Range,
+        span: StringSpan,
         children: Vec<HopNode>,
     },
 
@@ -266,7 +266,7 @@ pub enum HopNode {
     /// We use Error nodes to be able to construct the child nodes of the node that could not be
     /// constructed. This is useful for e.g. go-to-definition in the language server.
     Error {
-        range: Range,
+        span: StringSpan,
         children: Vec<HopNode>,
     },
 }
@@ -362,15 +362,15 @@ impl Ranged for HopNode {
         match self {
             HopNode::Doctype { range, .. } => *range,
             HopNode::Text { span: value, .. } => value.range(),
-            HopNode::TextExpression { range, .. } => *range,
-            HopNode::ComponentReference { range, .. } => *range,
-            HopNode::SlotDefinition { range, .. } => *range,
-            HopNode::If { range, .. } => *range,
-            HopNode::For { range, .. } => *range,
-            HopNode::Html { range, .. } => *range,
-            HopNode::Error { range, .. } => *range,
-            HopNode::XExec { range, .. } => *range,
-            HopNode::XRaw { range, .. } => *range,
+            HopNode::TextExpression { span, .. } => span.range(),
+            HopNode::ComponentReference { span, .. } => span.range(),
+            HopNode::SlotDefinition { span, .. } => span.range(),
+            HopNode::If { span, .. } => span.range(),
+            HopNode::For { span, .. } => span.range(),
+            HopNode::Html { span, .. } => span.range(),
+            HopNode::Error { span, .. } => span.range(),
+            HopNode::XExec { span, .. } => span.range(),
+            HopNode::XRaw { span, .. } => span.range(),
         }
     }
 }
