@@ -109,6 +109,21 @@ impl StringSpan {
     pub fn contains(&self, other: &StringSpan) -> bool {
         self.start <= other.start && other.end <= self.end
     }
+
+    pub fn intersection(&self, other: &StringSpan) -> Option<StringSpan> {
+        let start = self.start.max(other.start);
+        let end = self.end.min(other.end);
+        
+        if start < end {
+            Some(StringSpan {
+                source: self.source.clone(),
+                start,
+                end,
+            })
+        } else {
+            None
+        }
+    }
 }
 
 impl fmt::Display for StringSpan {

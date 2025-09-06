@@ -4,7 +4,6 @@ use std::fmt::Display;
 use itertools::Itertools as _;
 
 use super::{
-    range::Range,
     string_cursor::{Spanned, StringCursor, StringSpan},
 };
 
@@ -95,20 +94,6 @@ impl SourceAnnotator {
     where
         A: Display + Spanned,
     {
-        self.annotate_impl(filename, source, annotations, |a| a.span().range())
-    }
-
-    fn annotate_impl<A, F>(
-        &self,
-        filename: Option<&str>,
-        source: &str,
-        annotations: impl IntoIterator<Item = A>,
-        get_range: F,
-    ) -> String
-    where
-        A: Display,
-        F: Fn(&A) -> Range,
-    {
         let mut output = String::new();
         let lines: Vec<Option<StringSpan>> = StringCursor::new(source)
             .chunk_by(|span| span.start().line())
@@ -121,7 +106,7 @@ impl SourceAnnotator {
                 output.push('\n');
             }
 
-            let range = get_range(&annotation);
+            let range = annotation.span().range();
 
             if let Some(ref label) = self.label {
                 output.push_str(&format!("{}: {}\n", label, annotation));
@@ -146,17 +131,17 @@ impl SourceAnnotator {
                 }
             }
 
-            self.format_annotation(&mut output, &lines, range);
+            self.format_annotation(&mut output, &lines, annotation.span());
         }
 
         output
     }
 
-    fn format_annotation(&self, output: &mut String, lines: &[Option<StringSpan>], range: Range) {
+    fn format_annotation(&self, output: &mut String, lines: &[Option<StringSpan>], span: &StringSpan) {
         let max_line_col_width = lines.len().to_string().len();
 
-        let first_line = cmp::max(1, range.start().line().saturating_sub(self.lines_before));
-        let last_line = cmp::min(lines.len(), range.end().line() + self.lines_after);
+        let first_line = cmp::max(1, span.start().line().saturating_sub(self.lines_before));
+        let last_line = cmp::min(lines.len(), span.end().line() + self.lines_after);
 
         for (i, line) in lines.iter().enumerate() {
             if i < first_line - 1 || i > last_line - 1 {
@@ -173,13 +158,13 @@ impl SourceAnnotator {
             output.push('\n');
             // Write annotation line
             if let Some(line) = line {
-                if let Some(intersection) = line.range().intersection(range) {
+                if let Some(intersection) = line.intersection(span) {
                     let mut has_written_annotation = false;
                     if self.show_line_numbers {
                         output.push_str(&format!("{:width$} | ", "", width = max_line_col_width));
                     }
                     for span in line.cursor() {
-                        if intersection.contains_range(span.range()) {
+                        if intersection.contains(&span) {
                             has_written_annotation = true;
                             output.push_str(
                                 &self
