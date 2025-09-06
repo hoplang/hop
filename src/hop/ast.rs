@@ -414,7 +414,7 @@ mod tests {
     use super::*;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
-    use crate::range::RangedAnnotation;
+    use crate::range::SimpleAnnotation;
     use crate::range::SourceAnnotator;
     use crate::range::position_marker::extract_position;
     use expect_test::{Expect, expect};
@@ -431,11 +431,11 @@ mod tests {
 
         let output = if let Some(node) = found_node {
             let annotator = SourceAnnotator::new().without_location();
-            annotator.annotate_ranged(
+            annotator.annotate(
                 None,
                 &source,
-                [RangedAnnotation {
-                    range: node.span().range(),
+                [SimpleAnnotation {
+                    span: node.span().clone(),
                     message: "range".to_string(),
                 }],
             )
