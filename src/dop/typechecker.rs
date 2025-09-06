@@ -92,7 +92,7 @@ pub fn typecheck_expr(
                 });
                 Ok(var_type.clone())
             } else {
-                Err(TypeError::undefined_variable(name.as_str(), expr.range()))
+                Err(TypeError::undefined_variable(name.as_str(), expr.span()))
             }
         }
         DopExpr::BooleanLiteral { .. } => Ok(DopType::Bool),
@@ -112,13 +112,13 @@ pub fn typecheck_expr(
                     } else {
                         Err(TypeError::property_not_found_in_object(
                             property.as_str(),
-                            property.range(),
+                            property.clone(),
                         ))
                     }
                 }
                 _ => Err(TypeError::cannot_use_as_object(
                     &base_type.to_string(),
-                    base_expr.range(),
+                    base_expr.span(),
                 )),
             }
         }
@@ -136,7 +136,7 @@ pub fn typecheck_expr(
                 return Err(TypeError::cannot_compare_types(
                     &left_type.to_string(),
                     &right_type.to_string(),
-                    expr.range(),
+                    expr.span(),
                 ));
             }
 
@@ -152,7 +152,7 @@ pub fn typecheck_expr(
 
             // Negation only works on boolean expressions
             if !is_subtype(&expr_type, &DopType::Bool) {
-                return Err(TypeError::negation_requires_boolean(expr.range()));
+                return Err(TypeError::negation_requires_boolean(expr.span()));
             }
 
             // The result of ! is always boolean
@@ -173,7 +173,7 @@ pub fn typecheck_expr(
                         return Err(TypeError::array_type_mismatch(
                             &first_type.to_string(),
                             &element_type.to_string(),
-                            expr.range(),
+                            expr.span(),
                         ));
                     }
                 }

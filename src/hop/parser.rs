@@ -5,6 +5,7 @@ use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
 use crate::range::Ranged as _;
+use crate::range::string_cursor::StringSpan;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::ast::PresentAttribute;
@@ -69,7 +70,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                             if imported_components.contains_key(cmp_attr.as_str()) {
                                 errors.push(ParseError::component_is_already_defined(
                                     cmp_attr.as_str(),
-                                    cmp_attr.range(),
+                                    cmp_attr.clone(),
                                 ));
                             } else {
                                 imported_components
@@ -85,14 +86,14 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                                 errors.push(ParseError::missing_required_attribute(
                                     tag_name.as_str(),
                                     "component",
-                                    span.range(),
+                                    span.clone(),
                                 ));
                             }
                             if from.is_none() {
                                 errors.push(ParseError::missing_required_attribute(
                                     tag_name.as_str(),
                                     "from",
-                                    span.range(),
+                                    span.clone(),
                                 ));
                             }
                         }
@@ -121,14 +122,14 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         None => errors.push(ParseError::missing_required_attribute(
                             tag_name.as_str(),
                             "file",
-                            span.range(),
+                            span.clone(),
                         )),
                     }
                 }
                 // Treat as ComponentDefinition
                 name => {
                     if !is_valid_component_name(name) {
-                        errors.push(ParseError::invalid_component_name(name, tag_name.range()));
+                        errors.push(ParseError::invalid_component_name(name, tag_name.clone()));
                     } else {
                         let params = expression.as_ref().and_then(|expr| {
                             let mut tokenizer = DopTokenizer::from(expr.cursor()).peekable();
@@ -136,12 +137,12 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                                 Ok(params) => Some((params, expr.clone())),
                                 Err(dop::errors::ParseError::UnexpectedEof) => {
                                     errors.push(ParseError::unexpected_end_of_expression(
-                                        expr.range(),
+                                        expr.clone(),
                                     ));
                                     None
                                 }
                                 Err(dop::errors::ParseError::Spanned { message, span }) => {
-                                    errors.push(ParseError::new(message, span.range()));
+                                    errors.push(ParseError::new(message, span));
                                     None
                                 }
                             }
@@ -156,7 +157,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                                 if let HopNode::SlotDefinition { span, .. } = node {
                                     if has_slot {
                                         errors.push(ParseError::slot_is_already_defined(
-                                            span.range(),
+                                            span.clone(),
                                         ));
                                     }
                                     has_slot = true;
@@ -169,7 +170,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         {
                             errors.push(ParseError::component_is_already_defined(
                                 name,
-                                tag_name.range(),
+                                tag_name.clone(),
                             ));
                         } else {
                             defined_components.insert(name.to_string());
@@ -262,14 +263,14 @@ fn construct_node(
                     span: tree.span.clone(),
                 },
                 Err(dop::errors::ParseError::UnexpectedEof) => {
-                    errors.push(ParseError::unexpected_end_of_expression(expr.range()));
+                    errors.push(ParseError::unexpected_end_of_expression(expr.clone()));
                     HopNode::Error {
                         span: tree.span.clone(),
                         children: vec![],
                     }
                 }
                 Err(dop::errors::ParseError::Spanned { message, span }) => {
-                    errors.push(ParseError::new(message, span.range()));
+                    errors.push(ParseError::new(message, span));
                     HopNode::Error {
                         span: tree.span.clone(),
                         children: vec![],
@@ -296,14 +297,14 @@ fn construct_node(
                                 children,
                             },
                             Err(dop::errors::ParseError::UnexpectedEof) => {
-                                errors.push(ParseError::unexpected_end_of_expression(expr.range()));
+                                errors.push(ParseError::unexpected_end_of_expression(expr.clone()));
                                 HopNode::Error {
                                     span: tree.span.clone(),
                                     children,
                                 }
                             }
                             Err(dop::errors::ParseError::Spanned { message, span }) => {
-                                errors.push(ParseError::new(message, span.range()));
+                                errors.push(ParseError::new(message, span));
                                 HopNode::Error {
                                     span: tree.span.clone(),
                                     children,
@@ -314,7 +315,7 @@ fn construct_node(
                     None => {
                         errors.push(ParseError::new(
                             "Missing expression in <if> tag".to_string(),
-                            opening_tag_span.range(),
+                            opening_tag_span.clone(),
                         ));
                         HopNode::Error {
                             span: tree.span.clone(),
@@ -334,14 +335,14 @@ fn construct_node(
                                 children,
                             },
                             Err(dop::errors::ParseError::UnexpectedEof) => {
-                                errors.push(ParseError::unexpected_end_of_expression(expr.range()));
+                                errors.push(ParseError::unexpected_end_of_expression(expr.clone()));
                                 HopNode::Error {
                                     span: tree.span.clone(),
                                     children,
                                 }
                             }
                             Err(dop::errors::ParseError::Spanned { message, span }) => {
-                                errors.push(ParseError::new(message, span.range()));
+                                errors.push(ParseError::new(message, span));
                                 HopNode::Error {
                                     span: tree.span.clone(),
                                     children,
@@ -352,7 +353,7 @@ fn construct_node(
                     None => {
                         errors.push(ParseError::new(
                             "Missing loop generator expression in <for> tag".to_string(),
-                            opening_tag_span.range(),
+                            opening_tag_span.clone(),
                         ));
                         HopNode::Error {
                             span: tree.span.clone(),
@@ -386,7 +387,7 @@ fn construct_node(
                                 errors.push(ParseError::missing_required_attribute(
                                     tag_name.as_str(),
                                     "cmd",
-                                    opening_tag_span.range(),
+                                    opening_tag_span.clone(),
                                 ));
                                 HopNode::Error {
                                     span: tree.span.clone(),
@@ -403,7 +404,7 @@ fn construct_node(
                     _ => {
                         errors.push(ParseError::unrecognized_hop_tag(
                             tag_name.as_str(),
-                            tag_name.range(),
+                            tag_name.clone(),
                         ));
                         HopNode::Error {
                             span: tree.span.clone(),
@@ -415,7 +416,7 @@ fn construct_node(
                     if !is_valid_component_name(tag_name.as_str()) {
                         errors.push(ParseError::invalid_component_name(
                             tag_name.as_str(),
-                            tag_name.range(),
+                            tag_name.clone(),
                         ));
                     }
                     let args = match &expression {
@@ -425,7 +426,7 @@ fn construct_node(
                                 Ok(named_args) => Some((named_args, expr.clone())),
                                 Err(dop::errors::ParseError::UnexpectedEof) => {
                                     errors.push(ParseError::unexpected_end_of_expression(
-                                        expr.range(),
+                                        expr.clone(),
                                     ));
                                     return HopNode::Error {
                                         span: tree.span.clone(),
@@ -433,7 +434,7 @@ fn construct_node(
                                     };
                                 }
                                 Err(dop::errors::ParseError::Spanned { message, span }) => {
-                                    errors.push(ParseError::new(message, span.range()));
+                                    errors.push(ParseError::new(message, span));
                                     return HopNode::Error {
                                         span: tree.span.clone(),
                                         children: vec![],
@@ -468,7 +469,7 @@ fn construct_node(
                             let attr_val = match &attr.value {
                                 None => {
                                     errors.push(ParseError::missing_attribute_value(
-                                        attr.span.range(),
+                                        attr.span.clone(),
                                     ));
                                     continue;
                                 }
@@ -483,11 +484,11 @@ fn construct_node(
                                 }),
                                 Err(dop::errors::ParseError::UnexpectedEof) => {
                                     errors.push(ParseError::unexpected_end_of_expression(
-                                        attr_val.range(),
+                                        attr_val.clone(),
                                     ));
                                 }
                                 Err(dop::errors::ParseError::Spanned { message, span }) => {
-                                    errors.push(ParseError::new(message, span.range()));
+                                    errors.push(ParseError::new(message, span));
                                 }
                             };
                         }

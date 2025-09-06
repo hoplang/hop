@@ -136,19 +136,19 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
                         if is_void_element(tag_name.as_str()) {
                             errors.push(ParseError::closed_void_tag(
                                 tag_name.as_str(),
-                                token.range(),
+                                token.span().clone(),
                             ));
                         } else if !stack.iter().any(|el| el.tag_name == tag_name.as_str()) {
                             errors.push(ParseError::unmatched_closing_tag(
                                 tag_name.as_str(),
-                                token.range(),
+                                token.span().clone(),
                             ));
                         } else {
                             while stack.last().unwrap().tag_name != tag_name.as_str() {
                                 let unclosed = stack.pop().unwrap();
                                 errors.push(ParseError::unclosed_tag(
                                     &unclosed.tag_name,
-                                    unclosed.tree.token.range(),
+                                    unclosed.tree.token.span().clone(),
                                 ));
                                 stack.last_mut().unwrap().tree.append_tree(unclosed.tree);
                             }
@@ -171,7 +171,7 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
     for unclosed in stack {
         errors.push(ParseError::unclosed_tag(
             &unclosed.tag_name,
-            unclosed.tree.token.range(),
+            unclosed.tree.token.span().clone(),
         ));
     }
 

@@ -1,50 +1,51 @@
 use crate::dop::DopParameter;
 use crate::range::{Range, Ranged};
+use crate::range::string_cursor::StringSpan;
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 
 #[derive(Debug, Clone)]
 pub struct TypeError {
     pub message: String,
-    pub range: Range,
+    pub span: StringSpan,
 }
 
 impl TypeError {
-    pub fn new(message: String, range: Range) -> Self {
-        TypeError { message, range }
+    pub fn new(message: String, span: StringSpan) -> Self {
+        TypeError { message, span }
     }
 
-    pub fn undefined_component(component: &str, range: Range) -> Self {
-        Self::new(format!("Component {component} is not defined"), range)
+    pub fn undefined_component(component: &str, span: StringSpan) -> Self {
+        Self::new(format!("Component {component} is not defined"), span)
     }
 
-    pub fn undeclared_component(module: &str, component: &str, range: Range) -> Self {
+    pub fn undeclared_component(module: &str, component: &str, span: StringSpan) -> Self {
         Self::new(
             format!("Module {module} does not declare a component named {component}"),
-            range,
+            span,
         )
     }
 
-    pub fn import_from_undefined_module(module: &str, range: Range) -> Self {
-        Self::new(format!("Module {module} is not defined"), range)
+    pub fn import_from_undefined_module(module: &str, span: StringSpan) -> Self {
+        Self::new(format!("Module {module} is not defined"), span)
     }
 
-    pub fn unused_variable(var: &str, range: Range) -> Self {
-        Self::new(format!("Unused variable {var}"), range)
+    pub fn unused_variable(var: &str, span: StringSpan) -> Self {
+        Self::new(format!("Unused variable {var}"), span)
     }
 
-    pub fn variable_is_already_defined(var: &str, range: Range) -> Self {
-        Self::new(format!("Variable {var} is already defined"), range)
+    pub fn variable_is_already_defined(var: &str, span: StringSpan) -> Self {
+        Self::new(format!("Variable {var} is already defined"), span)
     }
 
-    pub fn undefined_slot(component: &str, range: Range) -> Self {
+    pub fn undefined_slot(component: &str, span: StringSpan) -> Self {
         Self::new(
             format!("Component {component} does not have a slot-default"),
-            range,
+            span,
         )
     }
 
-    pub fn import_cycle(importer: &str, imported: &str, cycle: &[String], range: Range) -> Self {
+    pub fn import_cycle(importer: &str, imported: &str, cycle: &[String], span: StringSpan) -> Self {
         let cycle_display = if let Some(first) = cycle.first() {
             format!("{} → {}", cycle.join(" → "), first)
         } else {
@@ -56,19 +57,19 @@ impl TypeError {
                 "Import cycle: {} imports from {} which creates a dependency cycle: {}",
                 importer, imported, cycle_display
             ),
-            range,
+            span,
         )
     }
 
-    pub fn expected_boolean_condition(found: &str, range: Range) -> Self {
-        Self::new(format!("Expected boolean condition, got {}", found), range)
+    pub fn expected_boolean_condition(found: &str, span: StringSpan) -> Self {
+        Self::new(format!("Expected boolean condition, got {}", found), span)
     }
 
-    pub fn missing_required_parameter(param: &str, range: Range) -> Self {
-        Self::new(format!("Missing required parameter '{}'", param), range)
+    pub fn missing_required_parameter(param: &str, span: StringSpan) -> Self {
+        Self::new(format!("Missing required parameter '{}'", param), span)
     }
 
-    pub fn missing_arguments(params: &BTreeMap<String, DopParameter>, range: Range) -> Self {
+    pub fn missing_arguments(params: &BTreeMap<String, DopParameter>, span: StringSpan) -> Self {
         Self::new(
             format!(
                 "Component requires arguments: {}",
@@ -78,92 +79,92 @@ impl TypeError {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
-            range,
+            span,
         )
     }
 
-    pub fn unexpected_arguments(range: Range) -> Self {
-        Self::new("Component does not accept arguments".to_string(), range)
+    pub fn unexpected_arguments(span: StringSpan) -> Self {
+        Self::new("Component does not accept arguments".to_string(), span)
     }
 
-    pub fn unexpected_argument(arg: &str, range: Range) -> Self {
-        Self::new(format!("Unexpected argument '{}'", arg), range)
+    pub fn unexpected_argument(arg: &str, span: StringSpan) -> Self {
+        Self::new(format!("Unexpected argument '{}'", arg), span)
     }
 
     pub fn argument_is_incompatible(
         expected: &str,
         found: &str,
         arg_name: &str,
-        range: Range,
+        span: StringSpan,
     ) -> Self {
         Self::new(
             format!(
                 "Argument '{}' of type {} is incompatible with expected type {}",
                 arg_name, found, expected
             ),
-            range,
+            span,
         )
     }
 
-    pub fn expected_string_attribute(found: &str, range: Range) -> Self {
-        Self::new(format!("Expected string attribute, got {}", found), range)
+    pub fn expected_string_attribute(found: &str, span: StringSpan) -> Self {
+        Self::new(format!("Expected string attribute, got {}", found), span)
     }
 
-    pub fn cannot_iterate_empty_array(range: Range) -> Self {
+    pub fn cannot_iterate_empty_array(span: StringSpan) -> Self {
         Self::new(
             "Cannot iterate over an empty array with unknown element type".to_string(),
-            range,
+            span,
         )
     }
 
-    pub fn cannot_iterate_over(typ: &str, range: Range) -> Self {
-        Self::new(format!("Can not iterate over {}", typ), range)
+    pub fn cannot_iterate_over(typ: &str, span: StringSpan) -> Self {
+        Self::new(format!("Can not iterate over {}", typ), span)
     }
 
-    pub fn expected_string_expression(found: &str, range: Range) -> Self {
+    pub fn expected_string_expression(found: &str, span: StringSpan) -> Self {
         Self::new(
             format!("Expected string for text expression, got {}", found),
-            range,
+            span,
         )
     }
 
-    pub fn undefined_variable(name: &str, range: Range) -> Self {
-        Self::new(format!("Undefined variable: {}", name), range)
+    pub fn undefined_variable(name: &str, span: StringSpan) -> Self {
+        Self::new(format!("Undefined variable: {}", name), span)
     }
 
-    pub fn property_not_found_in_object(property: &str, range: Range) -> Self {
-        Self::new(format!("Property {} not found in object", property), range)
+    pub fn property_not_found_in_object(property: &str, span: StringSpan) -> Self {
+        Self::new(format!("Property {} not found in object", property), span)
     }
 
-    pub fn cannot_use_as_object(typ: &str, range: Range) -> Self {
-        Self::new(format!("{} can not be used as an object", typ), range)
+    pub fn cannot_use_as_object(typ: &str, span: StringSpan) -> Self {
+        Self::new(format!("{} can not be used as an object", typ), span)
     }
 
-    pub fn cannot_compare_types(left: &str, right: &str, range: Range) -> Self {
-        Self::new(format!("Can not compare {} to {}", left, right), range)
+    pub fn cannot_compare_types(left: &str, right: &str, span: StringSpan) -> Self {
+        Self::new(format!("Can not compare {} to {}", left, right), span)
     }
 
-    pub fn negation_requires_boolean(range: Range) -> Self {
+    pub fn negation_requires_boolean(span: StringSpan) -> Self {
         Self::new(
             "Negation operator can only be applied to boolean values".to_string(),
-            range,
+            span,
         )
     }
 
-    pub fn array_type_mismatch(expected: &str, found: &str, range: Range) -> Self {
+    pub fn array_type_mismatch(expected: &str, found: &str, span: StringSpan) -> Self {
         Self::new(
             format!(
                 "Array elements must all have the same type, found {} and {}",
                 expected, found
             ),
-            range,
+            span,
         )
     }
 }
 
 impl Ranged for TypeError {
     fn range(&self) -> Range {
-        self.range
+        self.span.range()
     }
 }
 
@@ -176,73 +177,73 @@ impl Display for TypeError {
 #[derive(Debug, Clone)]
 pub struct ParseError {
     pub message: String,
-    pub range: Range,
+    pub span: StringSpan,
 }
 
 impl ParseError {
-    pub fn new(message: String, range: Range) -> Self {
-        ParseError { message, range }
+    pub fn new(message: String, span: StringSpan) -> Self {
+        ParseError { message, span }
     }
 
-    pub fn slot_is_already_defined(range: Range) -> Self {
-        Self::new("slot-default is already defined".to_string(), range)
+    pub fn slot_is_already_defined(span: StringSpan) -> Self {
+        Self::new("slot-default is already defined".to_string(), span)
     }
 
-    pub fn unmatched_closing_tag(tag: &str, range: Range) -> Self {
-        Self::new(format!("Unmatched </{tag}>"), range)
+    pub fn unmatched_closing_tag(tag: &str, span: StringSpan) -> Self {
+        Self::new(format!("Unmatched </{tag}>"), span)
     }
 
-    pub fn unexpected_end_of_expression(range: Range) -> Self {
-        Self::new("Unexpected end of expression".to_string(), range)
+    pub fn unexpected_end_of_expression(span: StringSpan) -> Self {
+        Self::new("Unexpected end of expression".to_string(), span)
     }
 
-    pub fn missing_attribute_value(range: Range) -> Self {
-        Self::new("Missing attribute value".to_string(), range)
+    pub fn missing_attribute_value(span: StringSpan) -> Self {
+        Self::new("Missing attribute value".to_string(), span)
     }
 
-    pub fn unclosed_tag(tag: &str, range: Range) -> Self {
-        Self::new(format!("Unclosed <{tag}>"), range)
+    pub fn unclosed_tag(tag: &str, span: StringSpan) -> Self {
+        Self::new(format!("Unclosed <{tag}>"), span)
     }
 
-    pub fn closed_void_tag(tag: &str, range: Range) -> Self {
+    pub fn closed_void_tag(tag: &str, span: StringSpan) -> Self {
         Self::new(
             format!("<{tag}> should not be closed using a closing tag"),
-            range,
+            span,
         )
     }
 
-    pub fn unrecognized_hop_tag(tag: &str, range: Range) -> Self {
-        Self::new(format!("Unrecognized hop tag: <{tag}>"), range)
+    pub fn unrecognized_hop_tag(tag: &str, span: StringSpan) -> Self {
+        Self::new(format!("Unrecognized hop tag: <{tag}>"), span)
     }
 
-    pub fn missing_required_attribute(tag: &str, attr: &str, range: Range) -> Self {
+    pub fn missing_required_attribute(tag: &str, attr: &str, span: StringSpan) -> Self {
         Self::new(
             format!("<{tag}> is missing required attribute {attr}"),
-            range,
+            span,
         )
     }
 
-    pub fn invalid_component_name(name: &str, range: Range) -> Self {
+    pub fn invalid_component_name(name: &str, span: StringSpan) -> Self {
         Self::new(
             format!(
                 "Invalid component name '{name}'. Component names must contain a dash and not start or end with one"
             ),
-            range,
+            span,
         )
     }
 
-    pub fn component_is_already_defined(name: &str, range: Range) -> Self {
-        Self::new(format!("Component {name} is already defined"), range)
+    pub fn component_is_already_defined(name: &str, span: StringSpan) -> Self {
+        Self::new(format!("Component {name} is already defined"), span)
     }
 
-    pub fn duplicate_attribute(name: &str, range: Range) -> Self {
-        Self::new(format!("Duplicate attribute '{name}'"), range)
+    pub fn duplicate_attribute(name: &str, span: StringSpan) -> Self {
+        Self::new(format!("Duplicate attribute '{name}'"), span)
     }
 }
 
 impl Ranged for ParseError {
     fn range(&self) -> Range {
-        self.range
+        self.span.range()
     }
 }
 

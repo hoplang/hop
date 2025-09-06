@@ -181,7 +181,7 @@ impl Tokenizer {
         if !matches!(self.iter.peek()?.ch(), '"' | '\'') {
             self.errors.push_back(ParseError::new(
                 "Expected quoted attribute value".to_string(),
-                self.iter.peek()?.range(),
+                self.iter.peek()?.clone(),
             ));
             return None;
         }
@@ -266,7 +266,7 @@ impl Tokenizer {
                         self.next(); // skip right brace
                         self.errors.push_back(ParseError::new(
                             "Empty expression".to_string(),
-                            left_brace.range().to(right_brace.range()),
+                            left_brace.to(right_brace),
                         ));
                         continue;
                     }
@@ -283,7 +283,7 @@ impl Tokenizer {
                     if attributes.contains_key(attr_name.as_str()) {
                         self.errors.push_back(ParseError::duplicate_attribute(
                             attr_name.as_str(),
-                            attr_name.range(),
+                            attr_name.clone(),
                         ));
                     }
                     attributes.insert(attr_name.to_string(), attr_value);
@@ -296,7 +296,7 @@ impl Tokenizer {
                     let ch = self.iter.next()?;
                     self.errors.push_back(ParseError::new(
                         "Invalid character inside tag".to_string(),
-                        ch.range(),
+                        ch,
                     ));
                     continue;
                 }
@@ -355,7 +355,7 @@ impl Tokenizer {
             ch => {
                 self.errors.push_back(ParseError::new(
                     "Invalid character in markup declaration".to_string(),
-                    ch.range(),
+                    ch.clone(),
                 ));
 
                 Some(Token::Doctype {
@@ -411,7 +411,7 @@ impl Tokenizer {
                             if right_angle.ch() != '>' {
                                 self.errors.push_back(ParseError::new(
                                     "Invalid character after closing tag name".to_string(),
-                                    right_angle.range(),
+                                    right_angle.clone(),
                                 ));
                                 return Some(Token::ClosingTag {
                                     tag_name,
@@ -425,7 +425,7 @@ impl Tokenizer {
                         } else {
                             self.errors.push_back(ParseError::new(
                                 "Invalid character after </".to_string(),
-                                initial.range(),
+                                initial,
                             ));
                             // TODO: Recursive
                             self.step()
@@ -471,7 +471,7 @@ impl Tokenizer {
                     s => {
                         self.errors.push_back(ParseError::new(
                             "Invalid character after '<'".to_string(),
-                            s.range(),
+                            s,
                         ));
                         // TODO: Recursive
                         self.step()
@@ -486,7 +486,7 @@ impl Tokenizer {
                     let right_brace = self.iter.next()?; // skip right brace
                     self.errors.push_back(ParseError::new(
                         "Empty expression".to_string(),
-                        left_brace.range().to(right_brace.range()),
+                        left_brace.to(right_brace),
                     ));
                     // TODO: Recursive
                     return self.step();

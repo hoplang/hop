@@ -111,7 +111,7 @@ impl TypeChecker {
                             .iter()
                             .map(|m| m.name.to_string())
                             .collect::<Vec<_>>(),
-                        import_node.from_attr.value.range(),
+                        import_node.from_attr.value.clone(),
                     ));
                 }
             }
@@ -137,13 +137,13 @@ fn typecheck_module(
         if !state.module_is_declared(from_module.as_str()) {
             errors.push(TypeError::import_from_undefined_module(
                 from_module.as_str(),
-                from_module.range(),
+                from_module.clone(),
             ));
         } else if !state.component_is_declared(from_module.as_str(), component_name.as_str()) {
             errors.push(TypeError::undeclared_component(
                 from_module.as_str(),
                 component_name.as_str(),
-                component_name.range(),
+                component_name.clone(),
             ));
         }
     }
@@ -181,7 +181,7 @@ fn typecheck_module(
                     let param = params.get(&key).unwrap();
                     errors.push(TypeError::unused_variable(
                         param.var_name.as_str(),
-                        param.var_name.range(),
+                        param.var_name.span().clone(),
                     ))
                 }
             }
@@ -231,7 +231,7 @@ fn typecheck_node(
             if !is_subtype(&condition_type, &DopType::Bool) {
                 errors.push(TypeError::expected_boolean_condition(
                     &condition_type.to_string(),
-                    condition.range(),
+                    condition.span(),
                 ));
             }
         }
@@ -252,13 +252,13 @@ fn typecheck_node(
             let element_type = match &array_type {
                 DopType::Array(Some(inner)) => *inner.clone(),
                 DopType::Array(None) => {
-                    errors.push(TypeError::cannot_iterate_empty_array(array_expr.range()));
+                    errors.push(TypeError::cannot_iterate_empty_array(array_expr.span()));
                     return;
                 }
                 _ => {
                     errors.push(TypeError::cannot_iterate_over(
                         &array_type.to_string(),
-                        array_expr.range(),
+                        array_expr.span(),
                     ));
                     return;
                 }
@@ -278,7 +278,7 @@ fn typecheck_node(
                 Err(_) => {
                     errors.push(TypeError::variable_is_already_defined(
                         var_name.as_str(),
-                        var_name.range(),
+                        var_name.span().clone(),
                     ));
                 }
             }
@@ -292,7 +292,7 @@ fn typecheck_node(
                 if !accessed {
                     errors.push(TypeError::unused_variable(
                         var_name.as_str(),
-                        var_name.range(),
+                        var_name.span().clone(),
                     ))
                 }
             }
@@ -314,7 +314,7 @@ fn typecheck_node(
                 None => {
                     errors.push(TypeError::undefined_component(
                         tag_name.as_str(),
-                        tag_name.range(),
+                        tag_name.clone(),
                     ));
                     return;
                 }
@@ -324,7 +324,7 @@ fn typecheck_node(
             if !children.is_empty() && !state.component_has_slot(module_name, tag_name.as_str()) {
                 errors.push(TypeError::undefined_slot(
                     tag_name.as_str(),
-                    tag_name.range(),
+                    tag_name.clone(),
                 ));
             }
 
@@ -335,17 +335,17 @@ fn typecheck_node(
             ) {
                 (None, None) => {}
                 (None, Some((_, args_range))) => {
-                    errors.push(TypeError::unexpected_arguments(args_range.range()));
+                    errors.push(TypeError::unexpected_arguments(args_range.clone()));
                 }
                 (Some(params), None) => {
-                    errors.push(TypeError::missing_arguments(params, tag_name.range()));
+                    errors.push(TypeError::missing_arguments(params, tag_name.clone()));
                 }
                 (Some(params), Some((args, args_range))) => {
                     for param in params.values() {
                         if !args.contains_key(param.var_name.as_str()) {
                             errors.push(TypeError::missing_required_parameter(
                                 param.var_name.as_str(),
-                                args_range.range(),
+                                args_range.clone(),
                             ));
                         }
                     }
@@ -355,7 +355,7 @@ fn typecheck_node(
                             None => {
                                 errors.push(TypeError::unexpected_argument(
                                     arg.var_name.as_str(),
-                                    arg.var_name.range(),
+                                    arg.var_name.span().clone(),
                                 ));
                                 continue;
                             }
@@ -376,7 +376,7 @@ fn typecheck_node(
                                 &param.type_annotation.to_string(),
                                 &evaluated_arg_type.to_string(),
                                 arg.var_name.as_str(),
-                                arg.expression.range(),
+                                arg.expression.span(),
                             ));
                             continue;
                         }
@@ -409,7 +409,7 @@ fn typecheck_node(
                 if !is_subtype(&expr_type, &DopType::String) {
                     errors.push(TypeError::expected_string_attribute(
                         &expr_type.to_string(),
-                        set_attr.span.range(),
+                        set_attr.span.clone(),
                     ));
                     continue;
                 }
@@ -431,7 +431,7 @@ fn typecheck_node(
             if !is_subtype(&expr_type, &DopType::String) {
                 errors.push(TypeError::expected_string_expression(
                     &expr_type.to_string(),
-                    span.range(),
+                    span.clone(),
                 ));
             }
         }

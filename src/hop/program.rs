@@ -426,7 +426,7 @@ impl Program {
         for error in self.parse_errors.get(module_name).into_iter().flatten() {
             diagnostics.push(Diagnostic {
                 message: error.message.clone(),
-                range: error.range,
+                range: error.range(),
             });
             found_parse_errors = true;
         }
@@ -443,7 +443,7 @@ impl Program {
             {
                 diagnostics.push(Diagnostic {
                     message: error.message.clone(),
-                    range: error.range,
+                    range: error.range(),
                 });
             }
         }
