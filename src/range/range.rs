@@ -55,8 +55,8 @@ impl From<Position> for tower_lsp::lsp_types::Position {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Range {
-    pub start: Position,
-    pub end: Position,
+    start: Position,
+    end: Position,
 }
 
 impl Range {

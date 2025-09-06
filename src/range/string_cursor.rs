@@ -171,18 +171,18 @@ mod tests {
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), 'a');
-        assert_eq!(span1.range().start, Position::new(1, 1));
-        assert_eq!(span1.range().end, Position::new(1, 2));
+        assert_eq!(span1.range().start(), Position::new(1, 1));
+        assert_eq!(span1.range().end(), Position::new(1, 2));
 
         let span2 = cursor.next().unwrap();
         assert_eq!(span2.ch(), 'b');
-        assert_eq!(span2.range().start, Position::new(1, 2));
-        assert_eq!(span2.range().end, Position::new(1, 3));
+        assert_eq!(span2.range().start(), Position::new(1, 2));
+        assert_eq!(span2.range().end(), Position::new(1, 3));
 
         let span3 = cursor.next().unwrap();
         assert_eq!(span3.ch(), 'c');
-        assert_eq!(span3.range().start, Position::new(1, 3));
-        assert_eq!(span3.range().end, Position::new(1, 4));
+        assert_eq!(span3.range().start(), Position::new(1, 3));
+        assert_eq!(span3.range().end(), Position::new(1, 4));
 
         assert!(cursor.next().is_none());
     }
@@ -193,28 +193,28 @@ mod tests {
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), 'a');
-        assert_eq!(span1.range().start, Position::new(1, 1));
-        assert_eq!(span1.range().end, Position::new(1, 2));
+        assert_eq!(span1.range().start(), Position::new(1, 1));
+        assert_eq!(span1.range().end(), Position::new(1, 2));
 
         let span2 = cursor.next().unwrap();
         assert_eq!(span2.ch(), '\n');
-        assert_eq!(span2.range().start, Position::new(1, 2));
-        assert_eq!(span2.range().end, Position::new(2, 1));
+        assert_eq!(span2.range().start(), Position::new(1, 2));
+        assert_eq!(span2.range().end(), Position::new(2, 1));
 
         let span3 = cursor.next().unwrap();
         assert_eq!(span3.ch(), 'b');
-        assert_eq!(span3.range().start, Position::new(2, 1));
-        assert_eq!(span3.range().end, Position::new(2, 2));
+        assert_eq!(span3.range().start(), Position::new(2, 1));
+        assert_eq!(span3.range().end(), Position::new(2, 2));
 
         let span4 = cursor.next().unwrap();
         assert_eq!(span4.ch(), '\n');
-        assert_eq!(span4.range().start, Position::new(2, 2));
-        assert_eq!(span4.range().end, Position::new(3, 1));
+        assert_eq!(span4.range().start(), Position::new(2, 2));
+        assert_eq!(span4.range().end(), Position::new(3, 1));
 
         let span5 = cursor.next().unwrap();
         assert_eq!(span5.ch(), 'c');
-        assert_eq!(span5.range().start, Position::new(3, 1));
-        assert_eq!(span5.range().end, Position::new(3, 2));
+        assert_eq!(span5.range().start(), Position::new(3, 1));
+        assert_eq!(span5.range().end(), Position::new(3, 2));
 
         assert!(cursor.next().is_none());
     }
@@ -225,17 +225,17 @@ mod tests {
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), 'a');
-        assert_eq!(span1.range().end.column, 2);
+        assert_eq!(span1.range().end().column, 2);
 
         let span2 = cursor.next().unwrap();
         assert_eq!(span2.ch(), '€');
-        assert_eq!(span2.range().start.column, 2);
-        assert_eq!(span2.range().end.column, 5); // € is 3 bytes in UTF-8
+        assert_eq!(span2.range().start().column, 2);
+        assert_eq!(span2.range().end().column, 5); // € is 3 bytes in UTF-8
 
         let span3 = cursor.next().unwrap();
         assert_eq!(span3.ch(), 'b');
-        assert_eq!(span3.range().start.column, 5);
-        assert_eq!(span3.range().end.column, 6);
+        assert_eq!(span3.range().start().column, 5);
+        assert_eq!(span3.range().end().column, 6);
     }
 
     #[test]
@@ -248,8 +248,8 @@ mod tests {
         let extended = span1.clone().span(span3);
         assert_eq!(extended.ch(), 'a');
         assert_eq!(extended.to_string(), "abc");
-        assert_eq!(extended.range().start, Position::new(1, 1));
-        assert_eq!(extended.range().end, Position::new(1, 4));
+        assert_eq!(extended.range().start(), Position::new(1, 1));
+        assert_eq!(extended.range().end(), Position::new(1, 4));
     }
 
     #[test]
@@ -290,8 +290,8 @@ mod tests {
 
         let span = result.unwrap();
         assert_eq!(span.as_str(), "   ");
-        assert_eq!(span.range().start, Position::new(1, 1));
-        assert_eq!(span.range().end, Position::new(1, 4));
+        assert_eq!(span.range().start(), Position::new(1, 1));
+        assert_eq!(span.range().end(), Position::new(1, 4));
     }
 
     #[test]
@@ -311,8 +311,8 @@ mod tests {
 
         let span = result.unwrap();
         assert_eq!(span.as_str(), "aaa");
-        assert_eq!(span.range().start, Position::new(1, 1));
-        assert_eq!(span.range().end, Position::new(1, 4));
+        assert_eq!(span.range().start(), Position::new(1, 1));
+        assert_eq!(span.range().end(), Position::new(1, 4));
     }
 
     #[test]
@@ -324,7 +324,7 @@ mod tests {
 
         let span = result.unwrap();
         assert_eq!(span.as_str(), "hello");
-        assert_eq!(span.range().start, Position::new(1, 4));
-        assert_eq!(span.range().end, Position::new(1, 9));
+        assert_eq!(span.range().start(), Position::new(1, 4));
+        assert_eq!(span.range().end(), Position::new(1, 9));
     }
 }
