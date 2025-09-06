@@ -3,6 +3,32 @@ use std::{fmt, iter::Peekable, str::FromStr};
 
 use super::errors::ParseError;
 
+pub struct DopTokenizer {
+    iter: Peekable<StringCursor>,
+}
+
+impl From<StringCursor> for DopTokenizer {
+    fn from(iter: StringCursor) -> Self {
+        Self {
+            iter: iter.peekable(),
+        }
+    }
+}
+
+impl From<Peekable<StringCursor>> for DopTokenizer {
+    fn from(iter: Peekable<StringCursor>) -> Self {
+        Self { iter }
+    }
+}
+
+impl From<&str> for DopTokenizer {
+    fn from(input: &str) -> Self {
+        Self {
+            iter: StringCursor::new(input).peekable(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum DopToken {
     Identifier(StringSpan),
@@ -82,32 +108,6 @@ impl fmt::Display for DopToken {
             DopToken::TypeBoolean => write!(f, "boolean"),
             DopToken::TypeVoid => write!(f, "void"),
             DopToken::TypeArray => write!(f, "array"),
-        }
-    }
-}
-
-pub struct DopTokenizer {
-    iter: Peekable<StringCursor>,
-}
-
-impl From<StringCursor> for DopTokenizer {
-    fn from(iter: StringCursor) -> Self {
-        Self {
-            iter: iter.peekable(),
-        }
-    }
-}
-
-impl From<Peekable<StringCursor>> for DopTokenizer {
-    fn from(iter: Peekable<StringCursor>) -> Self {
-        Self { iter }
-    }
-}
-
-impl From<&str> for DopTokenizer {
-    fn from(input: &str) -> Self {
-        Self {
-            iter: StringCursor::new(input).peekable(),
         }
     }
 }
@@ -239,11 +239,11 @@ mod tests {
                 }
             }
         }
-        expected.assert_eq(
-            &SourceAnnotator::new()
-                .without_line_numbers()
-                .annotate(None, input, &annotations),
-        );
+        expected.assert_eq(&SourceAnnotator::new().without_line_numbers().annotate(
+            None,
+            input,
+            &annotations,
+        ));
     }
 
     #[test]
