@@ -71,13 +71,9 @@ impl HopAst {
     pub fn iter_all_nodes(&self) -> impl Iterator<Item = &HopNode> {
         self.renders
             .iter()
-            .flat_map(|def| &def.children)
-            .chain(
-                self.component_definitions
-                    .iter()
-                    .flat_map(|render| &render.children),
-            )
-            .flat_map(|child| child.iter_depth_first())
+            .flat_map(|n| &n.children)
+            .chain(self.component_definitions.iter().flat_map(|n| &n.children))
+            .flat_map(|n| n.iter_depth_first())
     }
 
     /// Finds the deepest AST node that contains the given position.
