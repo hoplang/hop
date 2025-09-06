@@ -1,6 +1,6 @@
 use std::{fmt, iter::FromIterator, sync::Arc};
 
-use super::{Position, Range};
+use super::Position;
 
 /// Holds source text and precomputed line start offsets for
 /// efficient position lookups.
