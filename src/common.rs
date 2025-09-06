@@ -3,7 +3,7 @@ use crate::range::{Range, Ranged};
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct TypeError {
     pub message: String,
     pub range: Range,
@@ -173,7 +173,7 @@ impl Display for TypeError {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct ParseError {
     pub message: String,
     pub range: Range,

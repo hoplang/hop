@@ -68,7 +68,7 @@ impl Display for Diagnostic {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct RenameLocation {
     pub module: String,
     pub range: Range,
@@ -85,6 +85,16 @@ impl Display for RenameLocation {
         write!(f, "Rename")
     }
 }
+
+impl PartialEq for RenameLocation {
+    fn eq(&self, other: &Self) -> bool {
+        self.module == other.module 
+            && self.range.start() == other.range.start() 
+            && self.range.end() == other.range.end()
+    }
+}
+
+impl Eq for RenameLocation {}
 
 impl PartialOrd for RenameLocation {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {

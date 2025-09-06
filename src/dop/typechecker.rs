@@ -15,7 +15,7 @@ pub enum DopType {
     Number,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct RangeDopType {
     pub dop_type: DopType,
     pub range: Range,

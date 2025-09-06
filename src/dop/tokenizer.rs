@@ -152,9 +152,7 @@ impl Iterator for DopTokenizer {
                         end_span = s;
                     }
                     match self.iter.next() {
-                        None => Err(ParseError::unterminated_string_literal(
-                            start.to(end_span),
-                        )),
+                        None => Err(ParseError::unterminated_string_literal(start.to(end_span))),
                         Some(end) => Ok((DopToken::StringLiteral(result), start.to(end))),
                     }
                 }

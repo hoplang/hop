@@ -1,7 +1,7 @@
 use super::Position;
 use std::{cmp, fmt};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy)]
 pub struct Range {
     start: Position,
     end: Position,
