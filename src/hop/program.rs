@@ -127,18 +127,6 @@ pub struct RenameableSymbol {
     pub span: StringSpan,
 }
 
-impl Spanned for RenameableSymbol {
-    fn span(&self) -> &StringSpan {
-        &self.span
-    }
-}
-
-impl Display for RenameableSymbol {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Renameable symbol: {}", self.span.as_str())
-    }
-}
-
 #[derive(Default, Debug)]
 pub struct Program {
     topo_sorter: TopoSorter,
@@ -668,7 +656,7 @@ mod tests {
         let output = SourceAnnotator::new().with_location().annotate(
             Some(&file.name),
             &file.content,
-            &[symbol],
+            &[symbol.span],
         );
 
         expected.assert_eq(&output);
@@ -1006,7 +994,7 @@ mod tests {
                 </hello-world>
             "#},
             expect![[r#"
-                Renameable symbol: hello-world
+                hello-world
                   --> main.hop (line 1, col 2)
                 1 | <hello-world>
                   |  ^^^^^^^^^^^
@@ -1025,7 +1013,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                Renameable symbol: div
+                div
                   --> main.hop (line 2, col 6)
                 2 |     <div>Content</div>
                   |      ^^^

@@ -2,15 +2,16 @@ use crate::filesystem::files::{self as files, ProjectRoot};
 use crate::hop::program::{DefinitionLocation, Program, RenameLocation};
 use crate::span::Position;
 use crate::span::string_cursor::StringSpan;
+use std::collections::HashMap;
 use std::path::Path;
 use tokio::sync::{OnceCell, RwLock};
 use tower_lsp::jsonrpc::Result;
-use tower_lsp::lsp_types::*;
+use tower_lsp::lsp_types::{self, *};
 use tower_lsp::{Client, LanguageServer, LspService, Server as LspServer};
 
 // LSP uses UTF-16 encoding by default for position character offsets.
-impl From<tower_lsp::lsp_types::Position> for Position {
-    fn from(lsp_pos: tower_lsp::lsp_types::Position) -> Self {
+impl From<lsp_types::Position> for Position {
+    fn from(lsp_pos: lsp_types::Position) -> Self {
         Position::Utf16 {
             line: lsp_pos.line as usize,
             column: lsp_pos.character as usize,
@@ -18,17 +19,17 @@ impl From<tower_lsp::lsp_types::Position> for Position {
     }
 }
 
-impl From<StringSpan> for tower_lsp::lsp_types::Range {
+impl From<StringSpan> for lsp_types::Range {
     fn from(span: StringSpan) -> Self {
         let start_pos = span.start_utf16();
         let end_pos = span.end_utf16();
 
-        tower_lsp::lsp_types::Range {
-            start: tower_lsp::lsp_types::Position {
+        lsp_types::Range {
+            start: lsp_types::Position {
                 line: start_pos.line() as u32,
                 character: start_pos.column() as u32,
             },
-            end: tower_lsp::lsp_types::Position {
+            end: lsp_types::Position {
                 line: end_pos.line() as u32,
                 character: end_pos.column() as u32,
             },
@@ -245,8 +246,7 @@ impl LanguageServer for HopLanguageServer {
             if let Some(rename_locations) =
                 server.get_rename_locations(&module_name, position.into())
             {
-                let mut changes: std::collections::HashMap<Url, Vec<TextEdit>> =
-                    std::collections::HashMap::new();
+                let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
 
                 for RenameLocation { module, span } in rename_locations {
                     let file_uri = Self::module_name_to_uri(&module, root);
