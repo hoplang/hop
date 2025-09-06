@@ -9,8 +9,8 @@ use crate::common::ParseError;
 use crate::dop::DopTokenizer;
 use crate::dop::tokenizer::DopToken;
 use crate::hop::ast::Attribute;
+use crate::range::Ranged;
 use crate::range::string_cursor::{StringCursor, StringSpan};
-use crate::range::{Range, Ranged};
 
 type Attributes = BTreeMap<String, Attribute>;
 
@@ -51,19 +51,6 @@ impl Token {
             Token::OpeningTag { span, .. } => span,
             Token::ClosingTag { span, .. } => span,
             Token::Text { span } => span,
-        }
-    }
-}
-
-impl Ranged for Token {
-    fn range(&self) -> Range {
-        match self {
-            Token::Doctype { span } => span.range(),
-            Token::Comment { span } => span.range(),
-            Token::Expression { span, .. } => span.range(),
-            Token::OpeningTag { span, .. } => span.range(),
-            Token::ClosingTag { span, .. } => span.range(),
-            Token::Text { span, .. } => span.range(),
         }
     }
 }
@@ -550,8 +537,8 @@ mod tests {
         let mut iter = result.iter().peekable();
         while let Some(token_result) = iter.next() {
             if let (Ok(current_token), Some(Ok(next_token))) = (token_result, iter.peek()) {
-                let current_range = current_token.range();
-                let next_range = next_token.range();
+                let current_range = current_token.span().range();
+                let next_range = next_token.span().range();
                 if current_range.end() != next_range.start() {
                     panic!(
                         "Non-contiguous ranges detected: token ends at {:?}, but next token starts at {:?}. \
@@ -577,7 +564,7 @@ mod tests {
                 Ok(ok) => {
                     annotations.push(RangedAnnotation {
                         message: ok.to_string(),
-                        range: ok.range(),
+                        range: ok.span().range(),
                     });
                 }
             }

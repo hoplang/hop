@@ -86,7 +86,7 @@ pub fn typecheck_expr(
         DopExpr::Variable { value: name, .. } => {
             if let Some(var_type) = env.lookup(name.as_str()) {
                 annotations.push(TypeAnnotation {
-                    range: expr.range(),
+                    range: expr.span().range(),
                     typ: var_type.clone(),
                     name: name.to_string(),
                 });

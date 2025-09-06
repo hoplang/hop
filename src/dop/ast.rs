@@ -3,7 +3,6 @@ use std::fmt::{self, Display};
 
 use crate::dop::parser::DopVarName;
 use crate::range::string_cursor::StringSpan;
-use crate::range::{Range, Ranged};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
@@ -92,20 +91,15 @@ impl DopExpr {
     }
 }
 
-impl Ranged for DopExpr {
-    /// Returns the range of this expression in the source code
-    fn range(&self) -> Range {
-        self.span().range()
-    }
-}
-
 impl Display for DopExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fn fmt_expr(expr: &DopExpr, f: &mut fmt::Formatter<'_>, indent: usize) -> fmt::Result {
             let indent_str = "  ".repeat(indent);
             match expr {
                 DopExpr::Variable { value } => write!(f, "{}", value),
-                DopExpr::PropertyAccess { object, property, .. } => {
+                DopExpr::PropertyAccess {
+                    object, property, ..
+                } => {
                     fmt_expr(object, f, indent)?;
                     write!(f, ".{}", property)
                 }
@@ -119,7 +113,8 @@ impl Display for DopExpr {
                         write!(f, "[")?;
                         fmt_expr(&elements[0], f, indent)?;
                         write!(f, "]")
-                    } else if elements.iter().all(|e| !needs_indentation(e)) && elements.len() <= 3 {
+                    } else if elements.iter().all(|e| !needs_indentation(e)) && elements.len() <= 3
+                    {
                         // Simple elements on one line
                         write!(f, "[")?;
                         for (i, elem) in elements.iter().enumerate() {
@@ -155,7 +150,9 @@ impl Display for DopExpr {
                         } else {
                             // Single property with nested value - use inline format if it's a simple nested object
                             match value {
-                                DopExpr::ObjectLiteral { properties, .. } if properties.len() == 1 => {
+                                DopExpr::ObjectLiteral { properties, .. }
+                                    if properties.len() == 1 =>
+                                {
                                     write!(f, "{{{}: ", key)?;
                                     fmt_expr(value, f, indent)?;
                                     write!(f, "}}")
@@ -183,21 +180,28 @@ impl Display for DopExpr {
                         write!(f, "{}}}", indent_str)
                     }
                 }
-                DopExpr::BinaryOp { left, operator, right, .. } => {
+                DopExpr::BinaryOp {
+                    left,
+                    operator,
+                    right,
+                    ..
+                } => {
                     write!(f, "(")?;
                     fmt_expr(left, f, indent)?;
                     write!(f, " {} ", operator)?;
                     fmt_expr(right, f, indent)?;
                     write!(f, ")")
                 }
-                DopExpr::UnaryOp { operator, operand, .. } => {
-                    write!(f, "({}",  operator)?;
+                DopExpr::UnaryOp {
+                    operator, operand, ..
+                } => {
+                    write!(f, "({}", operator)?;
                     fmt_expr(operand, f, indent)?;
                     write!(f, ")")
                 }
             }
         }
-        
+
         fn needs_indentation(expr: &DopExpr) -> bool {
             match expr {
                 DopExpr::ArrayLiteral { elements, .. } => !elements.is_empty(),
@@ -205,7 +209,8 @@ impl Display for DopExpr {
                 _ => false,
             }
         }
-        
+
         fmt_expr(self, f, 0)
     }
 }
+

@@ -382,7 +382,7 @@ fn typecheck_node(
                         }
 
                         annotations.push(TypeAnnotation {
-                            range: arg.expression.range(),
+                            range: arg.expression.span().range(),
                             typ: evaluated_arg_type,
                             name: arg.var_name.to_string(),
                         });

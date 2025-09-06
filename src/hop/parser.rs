@@ -4,7 +4,6 @@ use crate::hop::ast::{ComponentDefinition, DopExprAttribute, HopAst, HopNode, Im
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
-use crate::range::Ranged as _;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::ast::PresentAttribute;
