@@ -84,8 +84,8 @@ impl Annotated for Token {
                     let attr_strs: Vec<String> = attributes
                         .iter()
                         .map(|(name, attr)| {
-                            if let Some((value, _)) = &attr.value {
-                                format!("{}={:#?}", name, value)
+                            if let Some(val) = &attr.value {
+                                format!("{}={:#?}", name, val.to_string())
                             } else {
                                 name.clone()
                             }
@@ -204,7 +204,7 @@ impl<'a> Tokenizer<'a> {
         Some((
             attr_name,
             Attribute {
-                value: Some(attr_value.into()),
+                value: Some(attr_value),
                 range: attr_name_range.spanning(close_quote.range()),
             },
         ))

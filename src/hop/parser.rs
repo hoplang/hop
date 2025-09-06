@@ -4,7 +4,6 @@ use crate::hop::ast::{ComponentDefinition, DopExprAttribute, HopAst, HopNode, Im
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
-use crate::range::string_cursor::StringSpan;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::ast::PresentAttribute;
@@ -65,23 +64,24 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         component_attr.and_then(|attr| attr.value),
                         from_attr.and_then(|attr| attr.value),
                     ) {
-                        (Some((cmp_attr, cmp_attr_range)), Some((from_attr, from_attr_range))) => {
-                            if imported_components.contains_key(&cmp_attr) {
+                        (Some(cmp_attr), Some(from_attr)) => {
+                            if imported_components.contains_key(cmp_attr.as_str()) {
                                 errors.push(ParseError::component_is_already_defined(
-                                    &cmp_attr,
-                                    cmp_attr_range,
+                                    cmp_attr.as_str(),
+                                    cmp_attr.range(),
                                 ));
                             } else {
-                                imported_components.insert(cmp_attr.clone(), from_attr.clone());
+                                imported_components
+                                    .insert(cmp_attr.to_string(), from_attr.to_string());
                             }
                             imports.push(Import {
                                 component_attr: PresentAttribute {
-                                    value: cmp_attr,
-                                    range: cmp_attr_range,
+                                    value: cmp_attr.to_string(),
+                                    range: cmp_attr.range(),
                                 },
                                 from_attr: PresentAttribute {
-                                    value: from_attr,
-                                    range: from_attr_range,
+                                    value: from_attr.to_string(),
+                                    range: from_attr.range(),
                                 },
                                 range: tree.range,
                             });
@@ -117,11 +117,11 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                     }
 
                     match file_attr.and_then(|attr| attr.value) {
-                        Some((file_attr, file_attr_range)) => {
+                        Some(file_attr) => {
                             renders.push(Render {
                                 file_attr: PresentAttribute {
-                                    value: file_attr,
-                                    range: file_attr_range,
+                                    value: file_attr.to_string(),
+                                    range: file_attr.range(),
                                 },
                                 range: tree.range,
                                 children,
@@ -209,7 +209,10 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                             closing_tag_name_range: tree.closing_tag_name_range,
                             params,
                             is_entrypoint,
-                            as_attr: as_attr.map(|(v, r)| PresentAttribute { value: v, range: r }),
+                            as_attr: as_attr.map(|v| PresentAttribute {
+                                value: v.to_string(),
+                                range: v.range(),
+                            }),
                             attributes: unhandled_attributes,
                             range: tree.range,
                             children,
@@ -389,10 +392,10 @@ fn construct_node(
                         }
 
                         match cmd_attr.and_then(|attr| attr.value) {
-                            Some((cmd_attr, cmd_attr_range)) => HopNode::XExec {
+                            Some(cmd_attr) => HopNode::XExec {
                                 cmd_attr: PresentAttribute {
-                                    value: cmd_attr,
-                                    range: cmd_attr_range,
+                                    value: cmd_attr.to_string(),
+                                    range: cmd_attr.range(),
                                 },
                                 range: tree.range,
                                 children,
@@ -481,15 +484,14 @@ fn construct_node(
                     let mut set_attributes = Vec::new();
                     for (name, attr) in &attributes {
                         if name.starts_with("set-") {
-                            let (attr_val, attr_val_range) = match &attr.value {
+                            let attr_val = match &attr.value {
                                 None => {
                                     errors.push(ParseError::missing_attribute_value(attr.range));
                                     continue;
                                 }
                                 Some(val) => val,
                             };
-                            let span = StringSpan::new(attr_val.clone(), *attr_val_range);
-                            let mut tokenizer = DopTokenizer::from(span.cursor()).peekable();
+                            let mut tokenizer = DopTokenizer::from(attr_val.cursor()).peekable();
                             match dop::parse_expr(&mut tokenizer) {
                                 Ok(expression) => set_attributes.push(DopExprAttribute {
                                     name: name.to_string(),
@@ -498,7 +500,7 @@ fn construct_node(
                                 }),
                                 Err(dop::parser::ParseError::UnexpectedEof) => {
                                     errors.push(ParseError::unexpected_end_of_expression(
-                                        *attr_val_range,
+                                        attr_val.range(),
                                     ));
                                 }
                                 Err(dop::parser::ParseError::Ranged { message, range }) => {

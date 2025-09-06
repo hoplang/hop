@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
+use crate::range::string_cursor::StringSpan;
 use crate::range::{Position, Range, Ranged};
 
 #[derive(Debug, Clone)]
@@ -11,7 +12,7 @@ pub struct PresentAttribute {
 
 #[derive(Debug, Clone)]
 pub struct Attribute {
-    pub value: Option<(String, Range)>,
+    pub value: Option<StringSpan>,
     pub range: Range,
 }
 

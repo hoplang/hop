@@ -113,9 +113,9 @@ pub fn evaluate_component(
                     None => {
                         output.push(' ');
                         output.push_str(name);
-                        if let Some((val, _)) = &attr.value {
+                        if let Some(val) = &attr.value {
                             output.push_str("=\"");
-                            output.push_str(val);
+                            output.push_str(val.as_str());
                             output.push('"');
                         }
                     }
@@ -123,8 +123,8 @@ pub fn evaluate_component(
                         output.push(' ');
                         output.push_str(name);
                         output.push_str("=\"");
-                        if let Some((val, _)) = &attr.value {
-                            output.push_str(val);
+                        if let Some(val) = &attr.value {
+                            output.push_str(val.as_str());
                         }
                         output.push(' ');
                         output.push_str(cls);
@@ -134,9 +134,9 @@ pub fn evaluate_component(
             } else {
                 output.push(' ');
                 output.push_str(name);
-                if let Some((val, _)) = &attr.value {
+                if let Some(val) = &attr.value {
                     output.push_str("=\"");
-                    output.push_str(val);
+                    output.push_str(val.as_str());
                     output.push('"');
                 }
             }
@@ -298,7 +298,7 @@ fn evaluate_node(
             let additional_classes = attributes
                 .get("class")
                 .and_then(|attr| attr.value.clone())
-                .map(|(val, _)| val);
+                .map(|val| val.to_string());
 
             evaluate_component(
                 asts,
@@ -343,9 +343,9 @@ fn evaluate_node(
                 if !name.starts_with("set-") {
                     output.push(' ');
                     output.push_str(name);
-                    if let Some((val, _)) = &attr.value {
+                    if let Some(val) = &attr.value {
                         output.push_str("=\"");
-                        output.push_str(val);
+                        output.push_str(val.as_str());
                         output.push('"');
                     }
                 }
@@ -487,9 +487,9 @@ fn evaluate_node_entrypoint(
                 if !name.starts_with("set-") {
                     output.push(' ');
                     output.push_str(name);
-                    if let Some((attr_val, _)) = &attr.value {
+                    if let Some(val) = &attr.value {
                         output.push_str("=\"");
-                        output.push_str(attr_val);
+                        output.push_str(val.as_str());
                         output.push('"');
                     }
                 }
