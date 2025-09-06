@@ -4,17 +4,25 @@ use super::{Position, Range, range::Ranged, source_annotator::Annotated};
 
 #[derive(Clone)]
 pub struct StringCursor {
+    /// The source string being iterated over.
     source: Arc<String>,
+    /// The current byte offset in the source string.
     offset: usize,
+    /// The byte offset where iteration should stop (exclusive).
+    end: usize,
+    /// The current position (line and column) in the source text.
     position: Position,
 }
 
 impl StringCursor {
     pub fn new(source: &str) -> Self {
+        let source = Arc::new(source.to_string());
+        let end = source.len();
         Self {
             offset: 0,
+            end,
             position: Position::new(1, 1),
-            source: Arc::new(source.to_string()),
+            source,
         }
     }
 }
@@ -22,9 +30,12 @@ impl StringCursor {
 impl Iterator for StringCursor {
     type Item = StringSpan;
     fn next(&mut self) -> Option<Self::Item> {
+        if self.offset >= self.end {
+            return None;
+        }
         let start_position = self.position;
         let start_offset = self.offset;
-        self.source[self.offset..].chars().next().map(|ch| {
+        self.source[self.offset..self.end].chars().next().map(|ch| {
             self.offset += ch.len_utf8();
             if ch == '\n' {
                 self.position.line += 1;
@@ -82,8 +93,9 @@ impl StringSpan {
     }
     pub fn cursor(&self) -> StringCursor {
         StringCursor {
-            source: Arc::new(self.to_string()),
-            offset: 0,
+            source: self.source.clone(),
+            offset: self.start,
+            end: self.end,
             position: self.range.start,
         }
     }
