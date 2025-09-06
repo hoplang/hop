@@ -115,14 +115,14 @@ impl SourceAnnotator {
                     output.push_str(&format!(
                         "  --> {} (line {}, col {})\n",
                         filename,
-                        annotation.start().line(),
-                        annotation.start().column()
+                        annotation.start().line() + 1,
+                        annotation.start().column() + 1
                     ));
                 } else {
                     output.push_str(&format!(
                         "  --> (line {}, col {})\n",
-                        annotation.start().line(),
-                        annotation.start().column()
+                        annotation.start().line() + 1,
+                        annotation.start().column() + 1
                     ));
                 }
             }
@@ -141,11 +141,11 @@ impl SourceAnnotator {
     ) {
         let max_line_col_width = lines.len().to_string().len();
 
-        let first_line = cmp::max(1, span.start().line().saturating_sub(self.lines_before));
-        let last_line = cmp::min(lines.len(), span.end().line() + self.lines_after);
+        let first_line = span.start().line().saturating_sub(self.lines_before);
+        let last_line = cmp::min(lines.len() - 1, span.end().line() + self.lines_after);
 
         for (i, line) in lines.iter().enumerate() {
-            if i < first_line - 1 || i > last_line - 1 {
+            if i < first_line || i > last_line {
                 continue;
             }
 

@@ -13,7 +13,11 @@ pub fn extract_position(input: &str) -> Option<(String, Position)> {
     let markers = StringCursor::new(input)
         .filter(|span| span.ch() == '^')
         .map(|span| {
-            // Subtract 1 to get position at line above
+            // Check if marker is on the first line (line 0)
+            if span.start().line() == 0 {
+                panic!("Marker does not point to a valid position");
+            }
+            // Get position at line above 
             Position::new(span.start().line() - 1, span.start().column())
         })
         .collect::<Vec<_>>();
@@ -62,7 +66,7 @@ mod tests {
 
         assert_eq!(
             extract_position(input),
-            Some((output.to_string(), Position::new(1, 1)))
+            Some((output.to_string(), Position::new(0, 0)))
         );
     }
 
@@ -82,7 +86,7 @@ mod tests {
 
         assert_eq!(
             extract_position(input),
-            Some((output.to_string(), Position::new(1, 9)))
+            Some((output.to_string(), Position::new(0, 8)))
         );
     }
 
@@ -102,7 +106,7 @@ mod tests {
 
         assert_eq!(
             extract_position(input),
-            Some((output.to_string(), Position::new(1, 13)))
+            Some((output.to_string(), Position::new(0, 12)))
         );
     }
 
@@ -122,7 +126,7 @@ mod tests {
 
         assert_eq!(
             extract_position(input),
-            Some((output.to_string(), Position::new(3, 13)))
+            Some((output.to_string(), Position::new(2, 12)))
         );
     }
 
@@ -199,7 +203,7 @@ mod tests {
 
         assert_eq!(
             extract_position(input),
-            Some((output.to_string(), Position::new(1, 9)))
+            Some((output.to_string(), Position::new(0, 8)))
         );
     }
 }

@@ -1,6 +1,6 @@
 use std::fmt;
 
-/// Represents a position in source code
+/// Represents a position in source code with 0-based line and column numbers
 #[derive(Debug, Clone, Hash, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Position {
     line: usize,

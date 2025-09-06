@@ -11,15 +11,15 @@ use tower_lsp::{Client, LanguageServer, LspService, Server as LspServer};
 // These conversions assume that a UTF-8 PositionEncodingKind has been negotiated
 impl From<tower_lsp::lsp_types::Position> for Position {
     fn from(position: tower_lsp::lsp_types::Position) -> Self {
-        Position::new(position.line as usize + 1, position.character as usize + 1)
+        Position::new(position.line as usize, position.character as usize)
     }
 }
 
 impl From<Position> for tower_lsp::lsp_types::Position {
     fn from(position: Position) -> Self {
         tower_lsp::lsp_types::Position {
-            line: (position.line() - 1) as u32,
-            character: (position.column() - 1) as u32,
+            line: position.line() as u32,
+            character: position.column() as u32,
         }
     }
 }

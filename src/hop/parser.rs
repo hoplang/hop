@@ -673,9 +673,9 @@ mod tests {
                 <foo-comp/>
             "#},
             expect![[r#"
-                hr                                                3:5-3:10
-                br                                                4:5-4:10
-                input                                             5:5-5:13
+                hr                                                2:4-2:9
+                br                                                3:4-3:9
+                input                                             4:4-4:12
             "#]],
         );
     }
@@ -816,7 +816,7 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                div                                               2:5-2:16
+                div                                               1:4-1:15
             "#]],
         );
     }
@@ -954,14 +954,14 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                div                                               2:5-11:11
-                    for                                           3:9-10:15
-                        div                                       4:13-9:19
-                            h2                                    5:17-5:41
-                                text_expression                   5:21-5:36
-                            for                                   6:17-8:23
-                                p                                 7:21-7:34
-                                    text_expression               7:24-7:30
+                div                                               1:4-10:10
+                    for                                           2:8-9:14
+                        div                                       3:12-8:18
+                            h2                                    4:16-4:40
+                                text_expression                   4:20-4:35
+                            for                                   5:16-7:22
+                                p                                 6:20-6:33
+                                    text_expression               6:23-6:29
             "#]],
         );
     }
@@ -980,10 +980,10 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                doctype                                           2:5-2:20
-                html                                              3:5-7:12
-                    body                                          4:9-6:16
-                        div                                       5:13-5:35
+                doctype                                           1:4-1:19
+                html                                              2:4-6:11
+                    body                                          3:8-5:15
+                        div                                       4:12-4:34
             "#]],
         );
     }
@@ -1004,8 +1004,8 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                script                                            2:5-6:14
-                style                                             7:5-9:13
+                script                                            1:4-5:13
+                style                                             6:4-8:12
             "#]],
         );
     }
@@ -1020,9 +1020,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                h1                                                2:5-2:25
-                p                                                 3:5-3:26
-                    text_expression                               3:8-3:22
+                h1                                                1:4-1:24
+                p                                                 2:4-2:25
+                    text_expression                               2:7-2:21
             "#]],
         );
     }
@@ -1044,12 +1044,12 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                if                                                2:5-4:10
-                    div                                           3:9-3:29
-                if                                                5:5-7:10
-                    div                                           6:9-6:36
-                if                                                8:5-10:10
-                    div                                           9:9-9:36
+                if                                                1:4-3:9
+                    div                                           2:8-2:28
+                if                                                4:4-6:9
+                    div                                           5:8-5:35
+                if                                                7:4-9:9
+                    div                                           8:8-8:35
             "#]],
         );
     }
@@ -1065,8 +1065,8 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                if                                                2:5-4:10
-                    div                                           3:9-3:25
+                if                                                1:4-3:9
+                    div                                           2:8-2:24
             "#]],
         );
     }
@@ -1091,12 +1091,12 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                for                                               2:5-7:11
-                    for                                           3:9-6:15
-                        if                                        4:13-5:18
-                for                                               8:5-13:11
-                    for                                           9:9-12:15
-                        for                                       10:13-11:19
+                for                                               1:4-6:10
+                    for                                           2:8-5:14
+                        if                                        3:12-4:17
+                for                                               7:4-12:10
+                    for                                           8:8-11:14
+                        for                                       9:12-10:18
             "#]],
         );
     }
@@ -1113,8 +1113,8 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                if                                                2:2-5:7
-                    for                                           3:3-4:9
+                if                                                1:1-4:6
+                    for                                           2:2-3:8
             "#]],
         );
     }
@@ -1130,8 +1130,8 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                for                                               2:5-4:11
-                    div                                           3:9-3:20
+                for                                               1:4-3:10
+                    div                                           2:8-2:19
             "#]],
         );
     }
@@ -1146,8 +1146,8 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                component_reference                               2:5-2:26
-                component_reference                               3:5-3:26
+                component_reference                               1:4-1:25
+                component_reference                               2:4-2:25
             "#]],
         );
     }
@@ -1162,8 +1162,8 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                component_reference                               2:5-2:26
-                component_reference                               3:5-3:31
+                component_reference                               1:4-1:25
+                component_reference                               2:4-2:30
             "#]],
         );
     }
@@ -1179,9 +1179,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                for                                               2:5-4:11
-                    div                                           3:9-3:23
-                        text_expression                           3:14-3:17
+                for                                               1:4-3:10
+                    div                                           2:8-2:22
+                        text_expression                           2:13-2:16
             "#]],
         );
     }
@@ -1197,7 +1197,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                script                                            2:5-4:14
+                script                                            1:4-3:13
             "#]],
         );
     }
@@ -1211,7 +1211,7 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                a                                                 2:5-2:59
+                a                                                 1:4-1:58
             "#]],
         );
     }
@@ -1226,8 +1226,8 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                slot-definition                                   2:5-2:20
-                component_reference                               3:5-3:45
+                slot-definition                                   1:4-1:19
+                component_reference                               2:4-2:44
             "#]],
         );
     }
@@ -1325,15 +1325,15 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                div                                               2:5-13:11
-                    svg                                           3:9-9:15
-                        g                                         4:13-8:17
-                            path                                  5:17-5:66
-                            path                                  6:17-6:64
-                            path                                  7:17-7:74
-                    ul                                            10:9-12:14
-                        li                                        11:13-11:42
-                            a                                     11:17-11:37
+                div                                               1:4-12:10
+                    svg                                           2:8-8:14
+                        g                                         3:12-7:16
+                            path                                  4:16-4:65
+                            path                                  5:16-5:63
+                            path                                  6:16-6:73
+                    ul                                            9:8-11:13
+                        li                                        10:12-10:41
+                            a                                     10:16-10:36
             "#]],
         );
     }
@@ -1350,9 +1350,9 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                form                                              2:5-5:12
-                    input                                         3:9-3:37
-                    button                                        4:9-4:44
+                form                                              1:4-4:11
+                    input                                         2:8-2:36
+                    button                                        3:8-3:43
             "#]],
         );
     }
@@ -1369,8 +1369,8 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                if                                                2:5-4:10
-                    div                                           3:9-3:35
+                if                                                1:4-3:9
+                    div                                           2:8-2:34
             "#]],
         );
     }
@@ -1388,9 +1388,9 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                if                                                2:5-5:10
-                    div                                           3:9-3:31
-                    button                                        4:9-4:34
+                if                                                1:4-4:9
+                    div                                           2:8-2:30
+                    button                                        3:8-3:33
             "#]],
         );
     }
@@ -1407,8 +1407,8 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                for                                               2:5-4:11
-                    div                                           3:9-3:32
+                for                                               1:4-3:10
+                    div                                           2:8-2:31
             "#]],
         );
     }
@@ -1426,11 +1426,11 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                for                                               2:5-5:11
-                    div                                           3:9-3:37
-                        text_expression                           3:20-3:31
-                    p                                             4:9-4:33
-                        text_expression                           4:18-4:29
+                for                                               1:4-4:10
+                    div                                           2:8-2:36
+                        text_expression                           2:19-2:30
+                    p                                             3:8-3:32
+                        text_expression                           3:17-3:28
             "#]],
         );
     }
@@ -1445,8 +1445,8 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                div                                               2:5-2:22
-                    text_expression                               2:10-2:16
+                div                                               1:4-1:21
+                    text_expression                               1:9-1:15
             "#]],
         );
     }
@@ -1463,9 +1463,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                for                                               2:5-4:11
-                    div                                           3:9-3:26
-                        text_expression                           3:14-3:20
+                for                                               1:4-3:10
+                    div                                           2:8-2:25
+                        text_expression                           2:13-2:19
             "#]],
         );
     }
@@ -1480,9 +1480,9 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                div                                               2:5-2:51
-                    text_expression                               2:10-2:21
-                    text_expression                               2:25-2:35
+                div                                               1:4-1:50
+                    text_expression                               1:9-1:20
+                    text_expression                               1:24-1:34
             "#]],
         );
     }
@@ -1502,12 +1502,12 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                for                                               2:5-7:11
-                    h1                                            3:9-3:33
-                        text_expression                           3:13-3:28
-                    for                                           4:9-6:15
-                        div                                       5:13-5:30
-                            text_expression                       5:18-5:24
+                for                                               1:4-6:10
+                    h1                                            2:8-2:32
+                        text_expression                           2:12-2:27
+                    for                                           3:8-5:14
+                        div                                       4:12-4:29
+                            text_expression                       4:17-4:23
             "#]],
         );
     }
