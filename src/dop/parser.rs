@@ -7,7 +7,7 @@ use crate::dop::ast::{BinaryOp, DopExpr, UnaryOp};
 use crate::dop::errors::ParseError;
 use crate::dop::tokenizer::{DopToken, DopTokenizer};
 use crate::dop::typechecker::SpannedDopType;
-use crate::range::string_cursor::StringSpan;
+use crate::span::string_cursor::StringSpan;
 
 /// A DopVarName represents a validated variable name in dop.
 #[derive(Debug, Clone)]
@@ -490,7 +490,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::range::{SimpleAnnotation, SourceAnnotator};
+    use crate::span::{SimpleAnnotation, SourceAnnotator};
     use expect_test::{Expect, expect};
 
     fn annotate_error(input: &str, error: ParseError) -> String {

@@ -512,7 +512,7 @@ fn construct_node(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::range::{SourceAnnotator, string_cursor::Spanned};
+    use crate::span::{SourceAnnotator, string_cursor::Spanned};
     use expect_test::{Expect, expect};
     use indoc::indoc;
 

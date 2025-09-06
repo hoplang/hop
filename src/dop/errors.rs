@@ -1,5 +1,5 @@
 use crate::dop::tokenizer::DopToken;
-use crate::range::string_cursor::StringSpan;
+use crate::span::string_cursor::StringSpan;
 
 #[derive(Debug, Clone)]
 pub enum ParseError {

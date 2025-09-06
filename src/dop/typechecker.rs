@@ -2,7 +2,7 @@ use super::ast::{BinaryOp, DopExpr, UnaryOp};
 use crate::common::TypeError;
 use crate::hop::environment::Environment;
 use crate::hop::typechecker::TypeAnnotation;
-use crate::range::string_cursor::StringSpan;
+use crate::span::string_cursor::StringSpan;
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -199,7 +199,7 @@ mod tests {
     use crate::dop::DopTokenizer;
     use crate::dop::parse_parameters;
     use crate::dop::parser::parse_expr;
-    use crate::range::SourceAnnotator;
+    use crate::span::SourceAnnotator;
     use expect_test::{Expect, expect};
 
     fn check(env_str: &str, expr_str: &str, expected: Expect) {

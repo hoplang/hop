@@ -9,7 +9,7 @@ use crate::common::ParseError;
 use crate::dop::DopTokenizer;
 use crate::dop::tokenizer::DopToken;
 use crate::hop::ast::Attribute;
-use crate::range::string_cursor::{Spanned, StringCursor, StringSpan};
+use crate::span::string_cursor::{Spanned, StringCursor, StringSpan};
 
 type Attributes = BTreeMap<String, Attribute>;
 
@@ -522,7 +522,7 @@ fn is_tag_name_with_raw_content(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::range::{SimpleAnnotation, SourceAnnotator};
+    use crate::span::{SimpleAnnotation, SourceAnnotator};
 
     use super::*;
     use expect_test::{Expect, expect};
@@ -536,12 +536,12 @@ mod tests {
         let mut iter = result.iter().peekable();
         while let Some(token_result) = iter.next() {
             if let (Ok(current_token), Some(Ok(next_token))) = (token_result, iter.peek()) {
-                if current_token.end() != next_token.start() {
+                if current_token.span().end() != next_token.span().start() {
                     panic!(
                         "Non-contiguous ranges detected: token ends at {:?}, but next token starts at {:?}. \
                          Current token: {:?}, Next token: {:?}",
-                        current_token.end(),
-                        next_token.start(),
+                        current_token.span().end(),
+                        next_token.span().start(),
                         current_token,
                         next_token
                     );

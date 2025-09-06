@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 
 use crate::dop::parser::DopVarName;
-use crate::range::string_cursor::StringSpan;
+use crate::span::string_cursor::StringSpan;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {

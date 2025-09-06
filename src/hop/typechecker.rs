@@ -3,7 +3,7 @@ use crate::dop::{DopParameter, DopType, is_subtype, typecheck_expr};
 use crate::hop::ast::HopAst;
 use crate::hop::ast::{ComponentDefinition, HopNode, Import, Render};
 use crate::hop::environment::Environment;
-use crate::range::string_cursor::{Spanned, StringSpan};
+use crate::span::string_cursor::{Spanned, StringSpan};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
@@ -454,7 +454,7 @@ mod tests {
     use super::*;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
-    use crate::range::SourceAnnotator;
+    use crate::span::SourceAnnotator;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use simple_txtar::Archive;

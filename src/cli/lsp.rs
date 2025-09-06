@@ -1,7 +1,7 @@
 use crate::filesystem::files::{self as files, ProjectRoot};
 use crate::hop::program::{DefinitionLocation, Program, RenameLocation};
-use crate::range::Position;
-use crate::range::string_cursor::StringSpan;
+use crate::span::Position;
+use crate::span::string_cursor::StringSpan;
 use std::path::Path;
 use tokio::sync::{OnceCell, RwLock};
 use tower_lsp::jsonrpc::Result;

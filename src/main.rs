@@ -3,7 +3,7 @@ mod common;
 mod dop;
 mod filesystem;
 mod hop;
-mod range;
+mod span;
 mod test_utils;
 mod tui;
 

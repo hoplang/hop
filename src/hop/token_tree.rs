@@ -1,7 +1,7 @@
 use crate::common::{ParseError, is_void_element};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
-use crate::range::string_cursor::{Spanned as _, StringSpan};
+use crate::span::string_cursor::{Spanned as _, StringSpan};
 use std::fmt::{self, Display};
 
 /// A TokenTree represents a tree of tokens.

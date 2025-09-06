@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
-use crate::range::Position;
-use crate::range::string_cursor::{Spanned, StringSpan};
+use crate::span::Position;
+use crate::span::string_cursor::{Spanned, StringSpan};
 
 #[derive(Debug, Clone)]
 pub struct PresentAttribute {
@@ -414,9 +414,9 @@ mod tests {
     use super::*;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
-    use crate::range::SimpleAnnotation;
-    use crate::range::SourceAnnotator;
-    use crate::range::position_marker::extract_position;
+    use crate::span::SimpleAnnotation;
+    use crate::span::SourceAnnotator;
+    use crate::span::position_marker::extract_position;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 

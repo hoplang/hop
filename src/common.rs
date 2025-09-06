@@ -1,5 +1,5 @@
 use crate::dop::DopParameter;
-use crate::range::string_cursor::{Spanned, StringSpan};
+use crate::span::string_cursor::{Spanned, StringSpan};
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 

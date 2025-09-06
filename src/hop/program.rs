@@ -5,8 +5,8 @@ use crate::hop::parser::parse;
 use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
-use crate::range::Position;
-use crate::range::string_cursor::{Spanned, StringSpan};
+use crate::span::Position;
+use crate::span::string_cursor::{Spanned, StringSpan};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Display};
@@ -513,7 +513,7 @@ impl Program {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::range::SourceAnnotator;
+    use crate::span::SourceAnnotator;
     use crate::test_utils::archive::extract_markers_from_archive;
     use expect_test::{Expect, expect};
     use indoc::indoc;
