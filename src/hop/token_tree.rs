@@ -176,10 +176,8 @@ mod tests {
                             tag_name: StringSpan {
                                 source: "<div>Hello</div>",
                                 ch: 'd',
-                                offset: (
-                                    1,
-                                    4,
-                                ),
+                                start: 1,
+                                end: 4,
                                 range: 1:2-1:5,
                             },
                             attributes: {},
@@ -191,10 +189,8 @@ mod tests {
                             StringSpan {
                                 source: "<div>Hello</div>",
                                 ch: 'd',
-                                offset: (
-                                    12,
-                                    15,
-                                ),
+                                start: 12,
+                                end: 15,
                                 range: 1:13-1:16,
                             },
                         ),
@@ -204,10 +200,8 @@ mod tests {
                                     value: StringSpan {
                                         source: "<div>Hello</div>",
                                         ch: 'H',
-                                        offset: (
-                                            5,
-                                            10,
-                                        ),
+                                        start: 5,
+                                        end: 10,
                                         range: 1:6-1:11,
                                     },
                                 },
@@ -233,10 +227,8 @@ mod tests {
                             tag_name: StringSpan {
                                 source: "<div><br><hr/></div>",
                                 ch: 'd',
-                                offset: (
-                                    1,
-                                    4,
-                                ),
+                                start: 1,
+                                end: 4,
                                 range: 1:2-1:5,
                             },
                             attributes: {},
@@ -248,10 +240,8 @@ mod tests {
                             StringSpan {
                                 source: "<div><br><hr/></div>",
                                 ch: 'd',
-                                offset: (
-                                    16,
-                                    19,
-                                ),
+                                start: 16,
+                                end: 19,
                                 range: 1:17-1:20,
                             },
                         ),
@@ -261,10 +251,8 @@ mod tests {
                                     tag_name: StringSpan {
                                         source: "<div><br><hr/></div>",
                                         ch: 'b',
-                                        offset: (
-                                            6,
-                                            8,
-                                        ),
+                                        start: 6,
+                                        end: 8,
                                         range: 1:7-1:9,
                                     },
                                     attributes: {},
@@ -281,10 +269,8 @@ mod tests {
                                     tag_name: StringSpan {
                                         source: "<div><br><hr/></div>",
                                         ch: 'h',
-                                        offset: (
-                                            10,
-                                            12,
-                                        ),
+                                        start: 10,
+                                        end: 12,
                                         range: 1:11-1:13,
                                     },
                                     attributes: {},
@@ -314,10 +300,8 @@ mod tests {
                             tag_name: StringSpan {
                                 source: "<div><p>Hello</p><span>World</span></div>",
                                 ch: 'd',
-                                offset: (
-                                    1,
-                                    4,
-                                ),
+                                start: 1,
+                                end: 4,
                                 range: 1:2-1:5,
                             },
                             attributes: {},
@@ -329,10 +313,8 @@ mod tests {
                             StringSpan {
                                 source: "<div><p>Hello</p><span>World</span></div>",
                                 ch: 'd',
-                                offset: (
-                                    37,
-                                    40,
-                                ),
+                                start: 37,
+                                end: 40,
                                 range: 1:38-1:41,
                             },
                         ),
@@ -342,10 +324,8 @@ mod tests {
                                     tag_name: StringSpan {
                                         source: "<div><p>Hello</p><span>World</span></div>",
                                         ch: 'p',
-                                        offset: (
-                                            6,
-                                            7,
-                                        ),
+                                        start: 6,
+                                        end: 7,
                                         range: 1:7-1:8,
                                     },
                                     attributes: {},
@@ -357,10 +337,8 @@ mod tests {
                                     StringSpan {
                                         source: "<div><p>Hello</p><span>World</span></div>",
                                         ch: 'p',
-                                        offset: (
-                                            15,
-                                            16,
-                                        ),
+                                        start: 15,
+                                        end: 16,
                                         range: 1:16-1:17,
                                     },
                                 ),
@@ -370,10 +348,8 @@ mod tests {
                                             value: StringSpan {
                                                 source: "<div><p>Hello</p><span>World</span></div>",
                                                 ch: 'H',
-                                                offset: (
-                                                    8,
-                                                    13,
-                                                ),
+                                                start: 8,
+                                                end: 13,
                                                 range: 1:9-1:14,
                                             },
                                         },
@@ -389,10 +365,8 @@ mod tests {
                                     tag_name: StringSpan {
                                         source: "<div><p>Hello</p><span>World</span></div>",
                                         ch: 's',
-                                        offset: (
-                                            18,
-                                            22,
-                                        ),
+                                        start: 18,
+                                        end: 22,
                                         range: 1:19-1:23,
                                     },
                                     attributes: {},
@@ -404,10 +378,8 @@ mod tests {
                                     StringSpan {
                                         source: "<div><p>Hello</p><span>World</span></div>",
                                         ch: 's',
-                                        offset: (
-                                            30,
-                                            34,
-                                        ),
+                                        start: 30,
+                                        end: 34,
                                         range: 1:31-1:35,
                                     },
                                 ),
@@ -417,10 +389,8 @@ mod tests {
                                             value: StringSpan {
                                                 source: "<div><p>Hello</p><span>World</span></div>",
                                                 ch: 'W',
-                                                offset: (
-                                                    23,
-                                                    28,
-                                                ),
+                                                start: 23,
+                                                end: 28,
                                                 range: 1:24-1:29,
                                             },
                                         },

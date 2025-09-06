@@ -35,7 +35,8 @@ impl Iterator for StringCursor {
             StringSpan {
                 ch,
                 source: self.source.clone(),
-                offset: (start_offset, self.offset),
+                start: start_offset,
+                end: self.offset,
                 range: Range::new(start_position, self.position),
             }
         })
@@ -50,9 +51,11 @@ pub struct StringSpan {
     /// ch is the first character of the string span.
     /// This value is used during tokenization.
     pub ch: char,
-    /// offset is the start offset and end offset for this string span
-    /// in the document (in bytes).
-    offset: (usize, usize),
+    /// the start offset for this string span in the document (in bytes).
+    start: usize,
+    /// the end offset for this string span in the document (in bytes).
+    end: usize,
+    /// the position information (line, col).
     range: Range,
 }
 
@@ -61,7 +64,8 @@ impl StringSpan {
         StringSpan {
             source: self.source,
             ch: self.ch,
-            offset: (self.offset.0, other.offset.1),
+            start: self.start,
+            end: other.end,
             range: self.range.spanning(other.range),
         }
     }
@@ -72,7 +76,7 @@ impl StringSpan {
         iter.into_iter().fold(self, |acc, span| acc.span(span))
     }
     pub fn as_str(&self) -> &str {
-        &self.source[self.offset.0..self.offset.1]
+        &self.source[self.start..self.end]
     }
     pub fn range(&self) -> Range {
         self.range
@@ -88,7 +92,7 @@ impl StringSpan {
 
 impl fmt::Display for StringSpan {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", &self.source[self.offset.0..self.offset.1])
+        write!(f, "{}", &self.source[self.start..self.end])
     }
 }
 

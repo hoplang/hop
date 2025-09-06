@@ -880,10 +880,8 @@ mod tests {
                             value: StringSpan {
                                 source: "a == b == c",
                                 ch: 'a',
-                                offset: (
-                                    0,
-                                    1,
-                                ),
+                                start: 0,
+                                end: 1,
                                 range: 1:1-1:2,
                             },
                         },
@@ -892,10 +890,8 @@ mod tests {
                             value: StringSpan {
                                 source: "a == b == c",
                                 ch: 'b',
-                                offset: (
-                                    5,
-                                    6,
-                                ),
+                                start: 5,
+                                end: 6,
                                 range: 1:6-1:7,
                             },
                         },
@@ -906,10 +902,8 @@ mod tests {
                         value: StringSpan {
                             source: "a == b == c",
                             ch: 'c',
-                            offset: (
-                                10,
-                                11,
-                            ),
+                            start: 10,
+                            end: 11,
                             range: 1:11-1:12,
                         },
                     },
@@ -930,20 +924,16 @@ mod tests {
                             value: StringSpan {
                                 source: "user.name == admin.name",
                                 ch: 'u',
-                                offset: (
-                                    0,
-                                    4,
-                                ),
+                                start: 0,
+                                end: 4,
                                 range: 1:1-1:5,
                             },
                         },
                         property: StringSpan {
                             source: "user.name == admin.name",
                             ch: 'n',
-                            offset: (
-                                5,
-                                9,
-                            ),
+                            start: 5,
+                            end: 9,
                             range: 1:6-1:10,
                         },
                         range: 1:1-1:10,
@@ -954,20 +944,16 @@ mod tests {
                             value: StringSpan {
                                 source: "user.name == admin.name",
                                 ch: 'a',
-                                offset: (
-                                    13,
-                                    18,
-                                ),
+                                start: 13,
+                                end: 18,
                                 range: 1:14-1:19,
                             },
                         },
                         property: StringSpan {
                             source: "user.name == admin.name",
                             ch: 'n',
-                            offset: (
-                                19,
-                                23,
-                            ),
+                            start: 19,
+                            end: 23,
                             range: 1:20-1:24,
                         },
                         range: 1:14-1:24,
@@ -991,20 +977,16 @@ mod tests {
                                     value: StringSpan {
                                         source: "app.user.profile.settings.theme",
                                         ch: 'a',
-                                        offset: (
-                                            0,
-                                            3,
-                                        ),
+                                        start: 0,
+                                        end: 3,
                                         range: 1:1-1:4,
                                     },
                                 },
                                 property: StringSpan {
                                     source: "app.user.profile.settings.theme",
                                     ch: 'u',
-                                    offset: (
-                                        4,
-                                        8,
-                                    ),
+                                    start: 4,
+                                    end: 8,
                                     range: 1:5-1:9,
                                 },
                                 range: 1:1-1:9,
@@ -1012,10 +994,8 @@ mod tests {
                             property: StringSpan {
                                 source: "app.user.profile.settings.theme",
                                 ch: 'p',
-                                offset: (
-                                    9,
-                                    16,
-                                ),
+                                start: 9,
+                                end: 16,
                                 range: 1:10-1:17,
                             },
                             range: 1:1-1:17,
@@ -1023,10 +1003,8 @@ mod tests {
                         property: StringSpan {
                             source: "app.user.profile.settings.theme",
                             ch: 's',
-                            offset: (
-                                17,
-                                25,
-                            ),
+                            start: 17,
+                            end: 25,
                             range: 1:18-1:26,
                         },
                         range: 1:1-1:26,
@@ -1034,10 +1012,8 @@ mod tests {
                     property: StringSpan {
                         source: "app.user.profile.settings.theme",
                         ch: 't',
-                        offset: (
-                            26,
-                            31,
-                        ),
+                        start: 26,
+                        end: 31,
                         range: 1:27-1:32,
                     },
                     range: 1:1-1:32,
@@ -1095,10 +1071,8 @@ mod tests {
                         value: StringSpan {
                             source: "(x == y)",
                             ch: 'x',
-                            offset: (
-                                1,
-                                2,
-                            ),
+                            start: 1,
+                            end: 2,
                             range: 1:2-1:3,
                         },
                     },
@@ -1107,10 +1081,8 @@ mod tests {
                         value: StringSpan {
                             source: "(x == y)",
                             ch: 'y',
-                            offset: (
-                                6,
-                                7,
-                            ),
+                            start: 6,
+                            end: 7,
                             range: 1:7-1:8,
                         },
                     },
@@ -1130,20 +1102,16 @@ mod tests {
                         value: StringSpan {
                             source: "user.name",
                             ch: 'u',
-                            offset: (
-                                0,
-                                4,
-                            ),
+                            start: 0,
+                            end: 4,
                             range: 1:1-1:5,
                         },
                     },
                     property: StringSpan {
                         source: "user.name",
                         ch: 'n',
-                        offset: (
-                            5,
-                            9,
-                        ),
+                        start: 5,
+                        end: 9,
                         range: 1:6-1:10,
                     },
                     range: 1:1-1:10,
@@ -1168,20 +1136,16 @@ mod tests {
                             value: StringSpan {
                                 source: "'guest' == user.role",
                                 ch: 'u',
-                                offset: (
-                                    11,
-                                    15,
-                                ),
+                                start: 11,
+                                end: 15,
                                 range: 1:12-1:16,
                             },
                         },
                         property: StringSpan {
                             source: "'guest' == user.role",
                             ch: 'r',
-                            offset: (
-                                16,
-                                20,
-                            ),
+                            start: 16,
+                            end: 20,
                             range: 1:17-1:21,
                         },
                         range: 1:12-1:21,
@@ -1202,10 +1166,8 @@ mod tests {
                         value: StringSpan {
                             source: "x == y",
                             ch: 'x',
-                            offset: (
-                                0,
-                                1,
-                            ),
+                            start: 0,
+                            end: 1,
                             range: 1:1-1:2,
                         },
                     },
@@ -1214,10 +1176,8 @@ mod tests {
                         value: StringSpan {
                             source: "x == y",
                             ch: 'y',
-                            offset: (
-                                5,
-                                6,
-                            ),
+                            start: 5,
+                            end: 6,
                             range: 1:6-1:7,
                         },
                     },
@@ -1249,10 +1209,8 @@ mod tests {
                     value: StringSpan {
                         source: "x",
                         ch: 'x',
-                        offset: (
-                            0,
-                            1,
-                        ),
+                        start: 0,
+                        end: 1,
                         range: 1:1-1:2,
                     },
                 }
@@ -1292,20 +1250,16 @@ mod tests {
                             value: StringSpan {
                                 source: "user.name == 'admin'",
                                 ch: 'u',
-                                offset: (
-                                    0,
-                                    4,
-                                ),
+                                start: 0,
+                                end: 4,
                                 range: 1:1-1:5,
                             },
                         },
                         property: StringSpan {
                             source: "user.name == 'admin'",
                             ch: 'n',
-                            offset: (
-                                5,
-                                9,
-                            ),
+                            start: 5,
+                            end: 9,
                             range: 1:6-1:10,
                         },
                         range: 1:1-1:10,
@@ -1345,20 +1299,16 @@ mod tests {
                             value: StringSpan {
                                 source: "  user . name   ==   admin . name  ",
                                 ch: 'u',
-                                offset: (
-                                    2,
-                                    6,
-                                ),
+                                start: 2,
+                                end: 6,
                                 range: 1:3-1:7,
                             },
                         },
                         property: StringSpan {
                             source: "  user . name   ==   admin . name  ",
                             ch: 'n',
-                            offset: (
-                                9,
-                                13,
-                            ),
+                            start: 9,
+                            end: 13,
                             range: 1:10-1:14,
                         },
                         range: 1:3-1:14,
@@ -1369,20 +1319,16 @@ mod tests {
                             value: StringSpan {
                                 source: "  user . name   ==   admin . name  ",
                                 ch: 'a',
-                                offset: (
-                                    21,
-                                    26,
-                                ),
+                                start: 21,
+                                end: 26,
                                 range: 1:22-1:27,
                             },
                         },
                         property: StringSpan {
                             source: "  user . name   ==   admin . name  ",
                             ch: 'n',
-                            offset: (
-                                29,
-                                33,
-                            ),
+                            start: 29,
+                            end: 33,
                             range: 1:30-1:34,
                         },
                         range: 1:22-1:34,
@@ -1509,10 +1455,8 @@ mod tests {
                             value: StringSpan {
                                 source: "[x, user.name]",
                                 ch: 'x',
-                                offset: (
-                                    1,
-                                    2,
-                                ),
+                                start: 1,
+                                end: 2,
                                 range: 1:2-1:3,
                             },
                         },
@@ -1521,20 +1465,16 @@ mod tests {
                                 value: StringSpan {
                                     source: "[x, user.name]",
                                     ch: 'u',
-                                    offset: (
-                                        4,
-                                        8,
-                                    ),
+                                    start: 4,
+                                    end: 8,
                                     range: 1:5-1:9,
                                 },
                             },
                             property: StringSpan {
                                 source: "[x, user.name]",
                                 ch: 'n',
-                                offset: (
-                                    9,
-                                    13,
-                                ),
+                                start: 9,
+                                end: 13,
                                 range: 1:10-1:14,
                             },
                             range: 1:5-1:14,
@@ -1613,20 +1553,16 @@ mod tests {
                                     value: StringSpan {
                                         source: "{user: user.name, active: !user.disabled}",
                                         ch: 'u',
-                                        offset: (
-                                            27,
-                                            31,
-                                        ),
+                                        start: 27,
+                                        end: 31,
                                         range: 1:28-1:32,
                                     },
                                 },
                                 property: StringSpan {
                                     source: "{user: user.name, active: !user.disabled}",
                                     ch: 'd',
-                                    offset: (
-                                        32,
-                                        40,
-                                    ),
+                                    start: 32,
+                                    end: 40,
                                     range: 1:33-1:41,
                                 },
                                 range: 1:28-1:41,
@@ -1638,20 +1574,16 @@ mod tests {
                                 value: StringSpan {
                                     source: "{user: user.name, active: !user.disabled}",
                                     ch: 'u',
-                                    offset: (
-                                        7,
-                                        11,
-                                    ),
+                                    start: 7,
+                                    end: 11,
                                     range: 1:8-1:12,
                                 },
                             },
                             property: StringSpan {
                                 source: "{user: user.name, active: !user.disabled}",
                                 ch: 'n',
-                                offset: (
-                                    12,
-                                    16,
-                                ),
+                                start: 12,
+                                end: 16,
                                 range: 1:13-1:17,
                             },
                             range: 1:8-1:17,
@@ -1742,20 +1674,16 @@ mod tests {
                                 value: StringSpan {
                                     source: "[\n\tuser.name,\n\t!user.disabled,\n]",
                                     ch: 'u',
-                                    offset: (
-                                        3,
-                                        7,
-                                    ),
+                                    start: 3,
+                                    end: 7,
                                     range: 2:2-2:6,
                                 },
                             },
                             property: StringSpan {
                                 source: "[\n\tuser.name,\n\t!user.disabled,\n]",
                                 ch: 'n',
-                                offset: (
-                                    8,
-                                    12,
-                                ),
+                                start: 8,
+                                end: 12,
                                 range: 2:7-2:11,
                             },
                             range: 2:2-2:11,
@@ -1767,20 +1695,16 @@ mod tests {
                                     value: StringSpan {
                                         source: "[\n\tuser.name,\n\t!user.disabled,\n]",
                                         ch: 'u',
-                                        offset: (
-                                            16,
-                                            20,
-                                        ),
+                                        start: 16,
+                                        end: 20,
                                         range: 3:3-3:7,
                                     },
                                 },
                                 property: StringSpan {
                                     source: "[\n\tuser.name,\n\t!user.disabled,\n]",
                                     ch: 'd',
-                                    offset: (
-                                        21,
-                                        29,
-                                    ),
+                                    start: 21,
+                                    end: 29,
                                     range: 3:8-3:16,
                                 },
                                 range: 3:3-3:16,
@@ -1848,20 +1772,16 @@ mod tests {
                                     value: StringSpan {
                                         source: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
                                         ch: 'u',
-                                        offset: (
-                                            30,
-                                            34,
-                                        ),
+                                        start: 30,
+                                        end: 34,
                                         range: 3:11-3:15,
                                     },
                                 },
                                 property: StringSpan {
                                     source: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
                                     ch: 'd',
-                                    offset: (
-                                        35,
-                                        43,
-                                    ),
+                                    start: 35,
+                                    end: 43,
                                     range: 3:16-3:24,
                                 },
                                 range: 3:11-3:24,
@@ -1873,20 +1793,16 @@ mod tests {
                                 value: StringSpan {
                                     source: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
                                     ch: 'u',
-                                    offset: (
-                                        9,
-                                        13,
-                                    ),
+                                    start: 9,
+                                    end: 13,
                                     range: 2:8-2:12,
                                 },
                             },
                             property: StringSpan {
                                 source: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
                                 ch: 'n',
-                                offset: (
-                                    14,
-                                    18,
-                                ),
+                                start: 14,
+                                end: 18,
                                 range: 2:13-2:17,
                             },
                             range: 2:8-2:17,
@@ -1909,10 +1825,8 @@ mod tests {
                             value: StringSpan {
                                 source: "name: 'John'",
                                 ch: 'n',
-                                offset: (
-                                    0,
-                                    4,
-                                ),
+                                start: 0,
+                                end: 4,
                                 range: 1:1-1:5,
                             },
                         },
@@ -1937,10 +1851,8 @@ mod tests {
                             value: StringSpan {
                                 source: "name: 'John', age: 25, active: true",
                                 ch: 'a',
-                                offset: (
-                                    23,
-                                    29,
-                                ),
+                                start: 23,
+                                end: 29,
                                 range: 1:24-1:30,
                             },
                         },
@@ -1954,10 +1866,8 @@ mod tests {
                             value: StringSpan {
                                 source: "name: 'John', age: 25, active: true",
                                 ch: 'a',
-                                offset: (
-                                    14,
-                                    17,
-                                ),
+                                start: 14,
+                                end: 17,
                                 range: 1:15-1:18,
                             },
                         },
@@ -1971,10 +1881,8 @@ mod tests {
                             value: StringSpan {
                                 source: "name: 'John', age: 25, active: true",
                                 ch: 'n',
-                                offset: (
-                                    0,
-                                    4,
-                                ),
+                                start: 0,
+                                end: 4,
                                 range: 1:1-1:5,
                             },
                         },
@@ -1999,10 +1907,8 @@ mod tests {
                             value: StringSpan {
                                 source: "user: user.name, enabled: !user.disabled",
                                 ch: 'e',
-                                offset: (
-                                    17,
-                                    24,
-                                ),
+                                start: 17,
+                                end: 24,
                                 range: 1:18-1:25,
                             },
                         },
@@ -2013,20 +1919,16 @@ mod tests {
                                     value: StringSpan {
                                         source: "user: user.name, enabled: !user.disabled",
                                         ch: 'u',
-                                        offset: (
-                                            27,
-                                            31,
-                                        ),
+                                        start: 27,
+                                        end: 31,
                                         range: 1:28-1:32,
                                     },
                                 },
                                 property: StringSpan {
                                     source: "user: user.name, enabled: !user.disabled",
                                     ch: 'd',
-                                    offset: (
-                                        32,
-                                        40,
-                                    ),
+                                    start: 32,
+                                    end: 40,
                                     range: 1:33-1:41,
                                 },
                                 range: 1:28-1:41,
@@ -2039,10 +1941,8 @@ mod tests {
                             value: StringSpan {
                                 source: "user: user.name, enabled: !user.disabled",
                                 ch: 'u',
-                                offset: (
-                                    0,
-                                    4,
-                                ),
+                                start: 0,
+                                end: 4,
                                 range: 1:1-1:5,
                             },
                         },
@@ -2051,20 +1951,16 @@ mod tests {
                                 value: StringSpan {
                                     source: "user: user.name, enabled: !user.disabled",
                                     ch: 'u',
-                                    offset: (
-                                        6,
-                                        10,
-                                    ),
+                                    start: 6,
+                                    end: 10,
                                     range: 1:7-1:11,
                                 },
                             },
                             property: StringSpan {
                                 source: "user: user.name, enabled: !user.disabled",
                                 ch: 'n',
-                                offset: (
-                                    11,
-                                    15,
-                                ),
+                                start: 11,
+                                end: 15,
                                 range: 1:12-1:16,
                             },
                             range: 1:7-1:16,
@@ -2086,10 +1982,8 @@ mod tests {
                             value: StringSpan {
                                 source: "name: 'John', age: 25,",
                                 ch: 'a',
-                                offset: (
-                                    14,
-                                    17,
-                                ),
+                                start: 14,
+                                end: 17,
                                 range: 1:15-1:18,
                             },
                         },
@@ -2103,10 +1997,8 @@ mod tests {
                             value: StringSpan {
                                 source: "name: 'John', age: 25,",
                                 ch: 'n',
-                                offset: (
-                                    0,
-                                    4,
-                                ),
+                                start: 0,
+                                end: 4,
                                 range: 1:1-1:5,
                             },
                         },
