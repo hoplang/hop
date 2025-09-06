@@ -174,41 +174,112 @@ impl Ranged for DopExpr {
 
 impl Display for DopExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            DopExpr::Variable { value } => write!(f, "{}", value),
-            DopExpr::PropertyAccess { object, property, .. } => {
-                write!(f, "{}.{}", object, property)
-            }
-            DopExpr::StringLiteral { value, .. } => write!(f, "\"{}\"", value),
-            DopExpr::BooleanLiteral { value, .. } => write!(f, "{}", value),
-            DopExpr::NumberLiteral { value, .. } => write!(f, "{}", value),
-            DopExpr::ArrayLiteral { elements, .. } => {
-                write!(f, "[")?;
-                for (i, elem) in elements.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", elem)?;
+        fn fmt_expr(expr: &DopExpr, f: &mut fmt::Formatter<'_>, indent: usize) -> fmt::Result {
+            let indent_str = "  ".repeat(indent);
+            match expr {
+                DopExpr::Variable { value } => write!(f, "{}", value),
+                DopExpr::PropertyAccess { object, property, .. } => {
+                    fmt_expr(object, f, indent)?;
+                    write!(f, ".{}", property)
                 }
-                write!(f, "]")
-            }
-            DopExpr::ObjectLiteral { properties, .. } => {
-                write!(f, "{{")?;
-                for (i, (key, value)) in properties.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
+                DopExpr::StringLiteral { value, .. } => write!(f, "\"{}\"", value),
+                DopExpr::BooleanLiteral { value, .. } => write!(f, "{}", value),
+                DopExpr::NumberLiteral { value, .. } => write!(f, "{}", value),
+                DopExpr::ArrayLiteral { elements, .. } => {
+                    if elements.is_empty() {
+                        write!(f, "[]")
+                    } else if elements.len() == 1 && !needs_indentation(&elements[0]) {
+                        write!(f, "[")?;
+                        fmt_expr(&elements[0], f, indent)?;
+                        write!(f, "]")
+                    } else if elements.iter().all(|e| !needs_indentation(e)) && elements.len() <= 3 {
+                        // Simple elements on one line
+                        write!(f, "[")?;
+                        for (i, elem) in elements.iter().enumerate() {
+                            if i > 0 {
+                                write!(f, ", ")?;
+                            }
+                            fmt_expr(elem, f, indent)?;
+                        }
+                        write!(f, "]")
+                    } else {
+                        // Multi-line format
+                        writeln!(f, "[")?;
+                        for (i, elem) in elements.iter().enumerate() {
+                            write!(f, "{}  ", indent_str)?;
+                            fmt_expr(elem, f, indent + 1)?;
+                            if i < elements.len() - 1 {
+                                write!(f, ",")?;
+                            }
+                            writeln!(f)?;
+                        }
+                        write!(f, "{}]", indent_str)
                     }
-                    write!(f, "{}: {}", key, value)?;
                 }
-                write!(f, "}}")
-            }
-            DopExpr::BinaryOp { left, operator, right, .. } => {
-                write!(f, "({} {} {})", left, operator, right)
-            }
-            DopExpr::UnaryOp { operator, operand, .. } => {
-                write!(f, "({}{})", operator, operand)
+                DopExpr::ObjectLiteral { properties, .. } => {
+                    if properties.is_empty() {
+                        write!(f, "{{}}")
+                    } else if properties.len() == 1 {
+                        let (key, value) = properties.iter().next().unwrap();
+                        if !needs_indentation(value) {
+                            write!(f, "{{{}: ", key)?;
+                            fmt_expr(value, f, indent)?;
+                            write!(f, "}}")
+                        } else {
+                            // Single property with nested value - use inline format if it's a simple nested object
+                            match value {
+                                DopExpr::ObjectLiteral { properties, .. } if properties.len() == 1 => {
+                                    write!(f, "{{{}: ", key)?;
+                                    fmt_expr(value, f, indent)?;
+                                    write!(f, "}}")
+                                }
+                                _ => {
+                                    writeln!(f, "{{")?;
+                                    write!(f, "{}  {}: ", indent_str, key)?;
+                                    fmt_expr(value, f, indent + 1)?;
+                                    writeln!(f)?;
+                                    write!(f, "{}}}", indent_str)
+                                }
+                            }
+                        }
+                    } else {
+                        // Multi-line format for multiple properties
+                        writeln!(f, "{{")?;
+                        for (i, (key, value)) in properties.iter().enumerate() {
+                            write!(f, "{}  {}: ", indent_str, key)?;
+                            fmt_expr(value, f, indent + 1)?;
+                            if i < properties.len() - 1 {
+                                write!(f, ",")?;
+                            }
+                            writeln!(f)?;
+                        }
+                        write!(f, "{}}}", indent_str)
+                    }
+                }
+                DopExpr::BinaryOp { left, operator, right, .. } => {
+                    write!(f, "(")?;
+                    fmt_expr(left, f, indent)?;
+                    write!(f, " {} ", operator)?;
+                    fmt_expr(right, f, indent)?;
+                    write!(f, ")")
+                }
+                DopExpr::UnaryOp { operator, operand, .. } => {
+                    write!(f, "({}",  operator)?;
+                    fmt_expr(operand, f, indent)?;
+                    write!(f, ")")
+                }
             }
         }
+        
+        fn needs_indentation(expr: &DopExpr) -> bool {
+            match expr {
+                DopExpr::ArrayLiteral { elements, .. } => !elements.is_empty(),
+                DopExpr::ObjectLiteral { properties, .. } => !properties.is_empty(),
+                _ => false,
+            }
+        }
+        
+        fmt_expr(self, f, 0)
     }
 }
 
@@ -1160,7 +1231,10 @@ mod tests {
         check_parse_expr(
             "[[1, 2], [3, 4]]",
             expect![[r#"
-                [[1, 2], [3, 4]]
+                [
+                  [1, 2],
+                  [3, 4]
+                ]
             "#]],
         );
     }
@@ -1200,7 +1274,10 @@ mod tests {
         check_parse_expr(
             "{a: 'foo', b: 1}",
             expect![[r#"
-                {a: "foo", b: 1}
+                {
+                  a: "foo",
+                  b: 1
+                }
             "#]],
         );
     }
@@ -1210,7 +1287,10 @@ mod tests {
         check_parse_expr(
             "{user: user.name, active: !user.disabled}",
             expect![[r#"
-                {active: (!user.disabled), user: user.name}
+                {
+                  active: (!user.disabled),
+                  user: user.name
+                }
             "#]],
         );
     }
@@ -1221,6 +1301,55 @@ mod tests {
             "{nested: {inner: 'value'}}",
             expect![[r#"
                 {nested: {inner: "value"}}
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_object_deeply_nested() {
+        check_parse_expr(
+            "{user: {profile: {settings: {theme: 'dark', notifications: {email: true, push: false}}, name: 'Alice'}}, status: 'active'}",
+            expect![[r#"
+                {
+                  status: "active",
+                  user: {
+                    profile: {
+                      name: "Alice",
+                      settings: {
+                        notifications: {
+                          email: true,
+                          push: false
+                        },
+                        theme: "dark"
+                      }
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_mixed_arrays_and_objects() {
+        check_parse_expr(
+            "{users: [{name: 'Alice', tags: ['admin', 'user']}, {name: 'Bob', tags: ['user']}], config: {features: ['auth', 'api'], version: 2}}",
+            expect![[r#"
+                {
+                  config: {
+                    features: ["auth", "api"],
+                    version: 2
+                  },
+                  users: [
+                    {
+                      name: "Alice",
+                      tags: ["admin", "user"]
+                    },
+                    {
+                      name: "Bob",
+                      tags: ["user"]
+                    }
+                  ]
+                }
             "#]],
         );
     }
@@ -1260,7 +1389,10 @@ mod tests {
         check_parse_expr(
             "{\n\ta: 'foo',\n\tb: 1,\n}",
             expect![[r#"
-                {a: "foo", b: 1}
+                {
+                  a: "foo",
+                  b: 1
+                }
             "#]],
         );
     }
@@ -1280,7 +1412,10 @@ mod tests {
         check_parse_expr(
             "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
             expect![[r#"
-                {active: (!user.disabled), user: user.name}
+                {
+                  active: (!user.disabled),
+                  user: user.name
+                }
             "#]],
         );
     }
