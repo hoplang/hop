@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
+use crate::range::Position;
 use crate::range::string_cursor::{Spanned, StringSpan};
-use crate::range::{Position, Range, Ranged};
 
 #[derive(Debug, Clone)]
 pub struct PresentAttribute {
@@ -13,12 +13,6 @@ pub struct PresentAttribute {
 pub struct Attribute {
     pub value: Option<StringSpan>,
     pub span: StringSpan,
-}
-
-impl Ranged for Attribute {
-    fn range(&self) -> Range {
-        self.span.range()
-    }
 }
 
 impl Spanned for Attribute {
@@ -108,7 +102,7 @@ impl HopAst {
     ///
     pub fn find_node_at_position(&self, position: Position) -> Option<&HopNode> {
         for n in &self.renders {
-            if n.contains(position) {
+            if n.span.range().contains(position) {
                 for child in &n.children {
                     if let Some(node) = child.find_node_at_position(position) {
                         return Some(node);
@@ -118,7 +112,7 @@ impl HopAst {
             }
         }
         for n in &self.component_definitions {
-            if n.contains(position) {
+            if n.span.range().contains(position) {
                 for child in &n.children {
                     if let Some(node) = child.find_node_at_position(position) {
                         return Some(node);
@@ -155,12 +149,6 @@ pub struct Render {
     pub children: Vec<HopNode>,
 }
 
-impl Ranged for Render {
-    fn range(&self) -> Range {
-        self.span.range()
-    }
-}
-
 impl Spanned for Render {
     fn span(&self) -> &StringSpan {
         &self.span
@@ -178,12 +166,6 @@ pub struct ComponentDefinition {
     pub children: Vec<HopNode>,
     pub is_entrypoint: bool,
     pub has_slot: bool,
-}
-
-impl Ranged for ComponentDefinition {
-    fn range(&self) -> Range {
-        self.span.range()
-    }
 }
 
 impl Spanned for ComponentDefinition {

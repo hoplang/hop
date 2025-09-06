@@ -1,6 +1,6 @@
 use std::{fmt, iter::FromIterator, sync::Arc};
 
-use super::{Position, Range, range::Ranged};
+use super::{Position, Range};
 
 /// Holds source text and precomputed line start offsets for
 /// efficient position lookups.
@@ -136,7 +136,6 @@ impl<T: Spanned> Spanned for &T {
         (*self).span()
     }
 }
-
 
 impl SourceInfo {
     fn new(text: String) -> Self {

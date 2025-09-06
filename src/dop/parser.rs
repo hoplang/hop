@@ -7,7 +7,6 @@ use crate::dop::ast::{BinaryOp, DopExpr, UnaryOp};
 use crate::dop::errors::ParseError;
 use crate::dop::tokenizer::{DopToken, DopTokenizer};
 use crate::dop::typechecker::SpannedDopType;
-use crate::range::Range;
 use crate::range::string_cursor::StringSpan;
 
 /// A DopVarName represents a validated variable name in dop.
@@ -40,9 +39,6 @@ impl DopVarName {
     }
     pub fn span(&self) -> &StringSpan {
         &self.value
-    }
-    pub fn range(&self) -> Range {
-        self.value.range()
     }
 }
 
