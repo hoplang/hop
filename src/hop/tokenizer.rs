@@ -209,11 +209,11 @@ impl Tokenizer {
     // Expects the current char iterator be on the first '{' that marks the
     // start of a dop expression.
     //
-    // The returned range will be the range for the closing
+    // The returned span will be the span for the closing
     // '}' of the dop expression.
     //
     // Returns None if we reached EOF before finding the closing '}'.
-    fn find_expression_end(&mut self) -> Option<Range> {
+    fn find_expression_end(&mut self) -> Option<StringSpan> {
         let mut dop_tokenizer = DopTokenizer::from(self.iter.clone());
         assert!(
             dop_tokenizer
@@ -230,7 +230,7 @@ impl Tokenizer {
                 Ok((DopToken::RightBrace, span)) => {
                     open_braces -= 1;
                     if open_braces == 0 {
-                        return Some(span.range());
+                        return Some(span);
                     }
                 }
                 _ => {}
@@ -248,18 +248,18 @@ impl Tokenizer {
             match self.iter.peek()?.ch() {
                 // Parse expression
                 '{' => {
-                    let right_brace_range = self.find_expression_end()?;
+                    let right_brace_span = self.find_expression_end()?;
                     let left_brace = self.iter.next()?;
-                    if left_brace.end() == right_brace_range.start() {
+                    if left_brace.end() == right_brace_span.start() {
                         self.next(); // skip right brace
                         self.errors.push_back(ParseError::new(
                             "Empty expression".to_string(),
-                            left_brace.range().to(right_brace_range),
+                            left_brace.range().to(right_brace_span.range()),
                         ));
                         continue;
                     }
                     let mut expr = self.iter.next()?;
-                    while self.iter.peek()?.range() != right_brace_range {
+                    while self.iter.peek()?.range() != right_brace_span.range() {
                         expr = expr.to(self.iter.next()?);
                     }
                     self.iter.next()?; // skip right brace
@@ -468,9 +468,9 @@ impl Tokenizer {
             }
             // TextExpression
             '{' => {
-                let right_brace_range = self.find_expression_end()?;
+                let right_brace_span = self.find_expression_end()?;
                 let left_brace = self.iter.next()?;
-                if left_brace.end() == right_brace_range.start() {
+                if left_brace.end() == right_brace_span.start() {
                     let right_brace = self.iter.next()?; // skip right brace
                     self.errors.push_back(ParseError::new(
                         "Empty expression".to_string(),
@@ -480,13 +480,13 @@ impl Tokenizer {
                     return self.step();
                 }
                 let mut expr = self.iter.next()?;
-                while self.iter.peek()?.range() != right_brace_range {
+                while self.iter.peek()?.range() != right_brace_span.range() {
                     expr = expr.to(self.iter.next()?);
                 }
                 self.iter.next()?; // skip right brace
                 Some(Token::Expression {
                     expression: expr,
-                    range: left_brace.range().to(right_brace_range),
+                    range: left_brace.range().to(right_brace_span.range()),
                 })
             }
             // Text
