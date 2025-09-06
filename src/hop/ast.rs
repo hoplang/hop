@@ -308,42 +308,32 @@ impl HopNode {
         Some(self)
     }
 
-    /// Get the name range for the opening tag of a node.
+    /// Get the span for the opening tag of a node.
     ///
     /// Example:
     /// <div>hello world</div>
     ///  ^^^
-    pub fn opening_tag_name_span(&self) -> Option<StringSpan> {
+    pub fn tag_name(&self) -> Option<&StringSpan> {
         match self {
-            HopNode::ComponentReference { tag_name, .. } => Some(tag_name.clone()),
-            HopNode::Html { tag_name, .. } => Some(tag_name.clone()),
+            HopNode::ComponentReference { tag_name, .. } => Some(tag_name),
+            HopNode::Html { tag_name, .. } => Some(tag_name),
             _ => None,
         }
     }
 
-    /// Get the name range for the closing tag of a node.
+    /// Get the span for the closing tag of a node.
     ///
     /// Example:
     /// <div>hello world</div>
     ///                   ^^^
-    pub fn closing_tag_name_span(&self) -> Option<StringSpan> {
+    pub fn closing_tag_name(&self) -> Option<&StringSpan> {
         match self {
             HopNode::ComponentReference {
                 closing_tag_name, ..
-            } => closing_tag_name.as_ref().cloned(),
+            } => closing_tag_name.as_ref(),
             HopNode::Html {
-                closing_tag_name: closing_name,
-                ..
-            } => closing_name.as_ref().cloned(),
-            _ => None,
-        }
-    }
-
-    /// Get the tag_name for a node. E.g. "div" for <div>...</div>.
-    pub fn tag_name(&self) -> Option<&str> {
-        match self {
-            HopNode::ComponentReference { tag_name, .. } => Some(tag_name.as_str()),
-            HopNode::Html { tag_name, .. } => Some(tag_name.as_str()),
+                closing_tag_name, ..
+            } => closing_tag_name.as_ref(),
             _ => None,
         }
     }
@@ -353,10 +343,8 @@ impl HopNode {
     /// Example:
     /// <div>hello world</div>
     ///  ^^^              ^^^
-    pub fn tag_name_ranges(&self) -> impl Iterator<Item = StringSpan> {
-        self.opening_tag_name_span()
-            .into_iter()
-            .chain(self.closing_tag_name_span())
+    pub fn tag_names(&self) -> impl Iterator<Item = &StringSpan> {
+        self.tag_name().into_iter().chain(self.closing_tag_name())
     }
 }
 

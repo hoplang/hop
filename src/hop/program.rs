@@ -124,7 +124,6 @@ impl Ord for RenameLocation {
 
 #[derive(Debug, Clone)]
 pub struct RenameableSymbol {
-    pub current_name: String,
     pub span: StringSpan,
 }
 
@@ -136,7 +135,7 @@ impl Spanned for RenameableSymbol {
 
 impl Display for RenameableSymbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Renameable symbol: {}", self.current_name)
+        write!(f, "Renameable symbol: {}", self.span.as_str())
     }
 }
 
@@ -237,9 +236,7 @@ impl Program {
 
         let node = ast.find_node_at_position(position)?;
 
-        let is_on_tag_name = node
-            .tag_name_ranges()
-            .any(|r| r.contains_position(position));
+        let is_on_tag_name = node.tag_names().any(|r| r.contains_position(position));
 
         if !is_on_tag_name {
             return None;
@@ -289,9 +286,7 @@ impl Program {
 
         let node = ast.find_node_at_position(position)?;
 
-        let is_on_tag_name = node
-            .tag_name_ranges()
-            .any(|r| r.contains_position(position));
+        let is_on_tag_name = node.tag_names().any(|r| r.contains_position(position));
 
         if !is_on_tag_name {
             return None;
@@ -306,10 +301,10 @@ impl Program {
                 self.collect_component_rename_locations(tag_name.as_str(), target_module)
             }),
             n @ HopNode::Html { .. } => Some(
-                n.tag_name_ranges()
-                    .map(|range| RenameLocation {
+                n.tag_names()
+                    .map(|span| RenameLocation {
                         module: module_name.to_string(),
-                        span: range,
+                        span: span.clone(),
                     })
                     .collect(),
             ),
@@ -333,23 +328,15 @@ impl Program {
                 .tag_name_ranges()
                 .find(|r| r.contains_position(position))
             {
-                return Some(RenameableSymbol {
-                    current_name: component_node.tag_name.to_string(),
-                    span: range,
-                });
+                return Some(RenameableSymbol { span: range });
             }
         }
 
         let node = ast.find_node_at_position(position)?;
 
-        let tag_name = node.tag_name()?;
-
-        node.tag_name_ranges()
+        node.tag_names()
             .find(|r| r.contains_position(position))
-            .map(|range| RenameableSymbol {
-                current_name: tag_name.to_string(),
-                span: range,
-            })
+            .map(|span| RenameableSymbol { span: span.clone() })
     }
 
     /// Collects all locations where a component should be renamed, including:
@@ -415,10 +402,10 @@ impl Program {
                         }
                         _ => false,
                     })
-                    .flat_map(|node| node.tag_name_ranges())
-                    .map(|range| RenameLocation {
+                    .flat_map(|node| node.tag_names())
+                    .map(|span| RenameLocation {
                         module: module_name.clone(),
-                        span: range,
+                        span: span.clone(),
                     }),
             );
         }
