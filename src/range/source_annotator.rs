@@ -4,7 +4,7 @@ use std::fmt::Display;
 use itertools::Itertools as _;
 
 use super::{
-    range::{Range, Ranged},
+    range::Range,
     string_cursor::{Spanned, StringCursor, StringSpan},
 };
 
@@ -14,33 +14,9 @@ pub struct SimpleAnnotation {
     pub message: String,
 }
 
-/// Simple annotation implementation that works with Range for tests
-pub struct RangedAnnotation {
-    pub range: Range,
-    pub message: String,
-}
-
-impl Display for RangedAnnotation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
-impl Ranged for RangedAnnotation {
-    fn range(&self) -> Range {
-        self.range
-    }
-}
-
 impl Spanned for SimpleAnnotation {
     fn span(&self) -> &StringSpan {
         &self.span
-    }
-}
-
-impl Ranged for SimpleAnnotation {
-    fn range(&self) -> Range {
-        self.span.range()
     }
 }
 
@@ -120,18 +96,6 @@ impl SourceAnnotator {
         A: Display + Spanned,
     {
         self.annotate_impl(filename, source, annotations, |a| a.span().range())
-    }
-
-    pub fn annotate_ranged<A>(
-        &self,
-        filename: Option<&str>,
-        source: &str,
-        annotations: impl IntoIterator<Item = A>,
-    ) -> String
-    where
-        A: Display + Ranged,
-    {
-        self.annotate_impl(filename, source, annotations, |a| a.range())
     }
 
     fn annotate_impl<A, F>(

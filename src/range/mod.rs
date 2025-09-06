@@ -7,7 +7,7 @@ pub mod string_cursor;
 pub mod position_marker;
 
 pub use position::Position;
-pub use range::{Range, Ranged};
+pub use range::Range;
 pub use source_annotator::SourceAnnotator;
 
 #[cfg(test)]
