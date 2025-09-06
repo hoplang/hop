@@ -12,7 +12,7 @@ impl RangedString {
     pub fn value(&self) -> &str {
         &self.0
     }
-    
+
     pub fn chars(&self) -> impl Iterator<Item = (char, Range)> + '_ {
         super::range::RangedChars::with_position(&self.0, self.1.start())
     }

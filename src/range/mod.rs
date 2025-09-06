@@ -1,6 +1,7 @@
 pub mod range;
 pub mod ranged_string;
 pub mod source_annotator;
+pub mod string_cursor;
 
 #[cfg(test)]
 pub mod position_marker;

@@ -4,13 +4,12 @@ use std::{cmp, fmt, str::Chars};
 #[derive(Debug, Clone, Hash, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Position {
     /// Line number (0-based)
-    line: usize,
+    pub(super) line: usize,
     /// Byte column within the line (1-based)
-    column: usize,
+    pub(super) column: usize,
 }
 
 impl Position {
-    #[cfg(test)]
     pub(super) fn new(line: usize, column: usize) -> Self {
         Position { line, column }
     }
@@ -56,11 +55,15 @@ impl From<Position> for tower_lsp::lsp_types::Position {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Range {
-    start: Position,
-    end: Position,
+    pub start: Position,
+    pub end: Position,
 }
 
 impl Range {
+    pub(super) fn new(start: Position, end: Position) -> Self {
+        Self { start, end }
+    }
+
     pub fn start(&self) -> Position {
         self.start
     }

@@ -7,7 +7,8 @@ use crate::dop::DopTokenizer;
 use crate::dop::tokenizer::DopToken;
 use crate::hop::ast::Attribute;
 use crate::range::Annotated;
-use crate::range::{Range, Ranged, RangedChars, RangedString};
+use crate::range::string_cursor::{StringCursor, StringSpan};
+use crate::range::{Range, Ranged};
 
 type Attributes = BTreeMap<String, Attribute>;
 
@@ -118,7 +119,7 @@ impl Annotated for Token {
 }
 
 pub struct Tokenizer<'a> {
-    chars: Peekable<RangedChars<'a>>,
+    chars: Peekable<StringCursor<'a>>,
     errors: VecDeque<ParseError>,
     raw_text_closing_tag: Option<String>,
 }
@@ -126,7 +127,7 @@ pub struct Tokenizer<'a> {
 impl<'a> Tokenizer<'a> {
     pub fn new(input: &'a str) -> Self {
         Self {
-            chars: RangedChars::from(input).peekable(),
+            chars: StringCursor::new(input).peekable(),
             errors: VecDeque::new(),
             raw_text_closing_tag: None,
         }
@@ -134,30 +135,30 @@ impl<'a> Tokenizer<'a> {
 
     // Skip whitespace
     fn skip_whitespace(&mut self) {
-        while self.chars.next_if(|(ch, _)| ch.is_whitespace()).is_some() {}
+        while self.chars.next_if(|s| s.ch.is_whitespace()).is_some() {}
     }
 
     // Parse a tag name given an initial char
-    fn parse_tag_name(&mut self, initial_char: char, initial_range: Range) -> RangedString {
-        let mut result = RangedString::from((initial_char, initial_range));
+    fn parse_tag_name(&mut self, initial: StringSpan) -> StringSpan {
+        let mut result = initial;
         while let Some(ch) = self
             .chars
-            .next_if(|(ch, _)| *ch == '-' || ch.is_ascii_alphanumeric())
+            .next_if(|s| s.ch == '-' || s.ch.is_ascii_alphanumeric())
         {
-            result.push(ch);
+            result = result.extend(ch);
         }
         result
     }
 
     // Parse an attribute, e.g. foo="bar"
-    fn parse_attribute(&mut self) -> Option<(RangedString, Attribute)> {
-        let (ch, ch_range) = self.chars.next()?; // consume initial name char
-        let attr_name = self.parse_tag_name(ch, ch_range);
+    fn parse_attribute(&mut self) -> Option<(StringSpan, Attribute)> {
+        let initial = self.chars.next()?; // consume initial name char
+        let attr_name = self.parse_tag_name(initial);
         let attr_name_range = attr_name.range();
 
         self.skip_whitespace();
 
-        if self.chars.peek()?.0 != '=' {
+        if self.chars.peek()?.ch != '=' {
             return Some((
                 attr_name,
                 Attribute {
@@ -170,41 +171,41 @@ impl<'a> Tokenizer<'a> {
         self.chars.next(); // consume '='
         self.skip_whitespace();
 
-        if !matches!(self.chars.peek()?, ('"' | '\'', _)) {
+        if !matches!(self.chars.peek()?.ch, '"' | '\'') {
             self.errors.push_back(ParseError::new(
                 "Expected quoted attribute value".to_string(),
-                ch_range,
+                self.chars.peek()?.range(),
             ));
             return None;
         }
 
-        let (quote_ch, _) = self.chars.next()?;
+        let open_quote = self.chars.next()?;
 
         // handle empty attribute
-        if self.chars.peek()?.0 == quote_ch {
-            let (_, closing_quote_range) = self.chars.next()?;
+        if self.chars.peek()?.ch == open_quote.ch {
+            let close_quote = self.chars.next()?;
             return Some((
                 attr_name,
                 Attribute {
                     value: None,
-                    range: attr_name_range.spanning(closing_quote_range),
+                    range: attr_name_range.spanning(close_quote.range()),
                 },
             ));
         }
 
-        let mut attr_value = RangedString::from(self.chars.next()?);
+        let mut attr_value = self.chars.next()?;
 
-        while let Some(ch) = self.chars.next_if(|(ch, _)| *ch != quote_ch) {
-            attr_value.push(ch);
+        while let Some(ch) = self.chars.next_if(|s| s.ch != open_quote.ch) {
+            attr_value = attr_value.extend(ch);
         }
 
-        let (_, closing_quote_range) = self.chars.next()?;
+        let close_quote = self.chars.next()?;
 
         Some((
             attr_name,
             Attribute {
                 value: Some(attr_value.into()),
-                range: attr_name_range.spanning(closing_quote_range),
+                range: attr_name_range.spanning(close_quote.range()),
             },
         ))
     }
@@ -244,56 +245,52 @@ impl<'a> Tokenizer<'a> {
     }
 
     // Parse tag content, e.g. 'foo="bar" {x: string}'
-    fn parse_tag_content(&mut self) -> Option<(Attributes, Option<(String, Range)>)> {
+    fn parse_tag_content(&mut self) -> Option<(Attributes, Option<StringSpan>)> {
         let mut attributes = Attributes::new();
-        let mut expression: Option<(String, Range)> = None;
+        let mut expression: Option<StringSpan> = None;
         loop {
             self.skip_whitespace();
 
-            match self.chars.peek()? {
+            match self.chars.peek()?.ch {
                 // Parse expression
-                ('{', _) => {
+                '{' => {
                     let right_brace_range = self.find_expression_end()?;
-                    let (_, left_brace_range) = self.chars.next()?;
-                    if left_brace_range.end() == right_brace_range.start() {
+                    let left_brace = self.chars.next()?;
+                    if left_brace.range().end() == right_brace_range.start() {
                         self.next(); // skip right brace
                         self.errors.push_back(ParseError::new(
                             "Empty expression".to_string(),
-                            left_brace_range.spanning(right_brace_range),
+                            left_brace.range().spanning(right_brace_range),
                         ));
                         continue;
                     }
-                    let mut expr = RangedString::from(self.chars.next()?);
-                    loop {
-                        let (ch, ch_range) = self.chars.next()?;
-                        if ch_range == right_brace_range {
-                            break;
-                        } else {
-                            expr.push((ch, ch_range));
-                        }
+                    let mut expr = self.chars.next()?;
+                    while self.chars.peek()?.range() != right_brace_range {
+                        expr = expr.extend(self.chars.next()?);
                     }
-                    expression = Some(expr.into());
+                    self.chars.next()?; // skip right brace
+                    expression = Some(expr);
                 }
                 // Parse attribute
-                (ch, _) if ch.is_ascii_alphabetic() => {
+                ch if ch.is_ascii_alphabetic() => {
                     let (attr_name, attr_value) = self.parse_attribute()?;
-                    if attributes.contains_key(attr_name.value()) {
+                    if attributes.contains_key(attr_name.as_str()) {
                         self.errors.push_back(ParseError::duplicate_attribute(
-                            attr_name.value(),
+                            attr_name.as_str(),
                             attr_name.range(),
                         ));
                     }
-                    attributes.insert(attr_name.value().to_string(), attr_value);
+                    attributes.insert(attr_name.to_string(), attr_value);
                 }
                 // Return
-                (ch, _) if *ch == '/' || *ch == '>' => {
+                ch if ch == '/' || ch == '>' => {
                     return Some((attributes, expression));
                 }
                 _ => {
-                    let (_, ch_range) = self.chars.next()?;
+                    let ch = self.chars.next()?;
                     self.errors.push_back(ParseError::new(
                         "Invalid character inside tag".to_string(),
-                        ch_range,
+                        ch.range(),
                     ));
                     continue;
                 }
@@ -307,18 +304,18 @@ impl<'a> Tokenizer<'a> {
     fn parse_markup_declaration(&mut self, first_token_range: Range) -> Option<Token> {
         match self.chars.next()? {
             // Comment
-            ('-', _) if self.chars.peek()?.0 == '-' => {
+            s if s.ch == '-' && self.chars.peek()?.ch == '-' => {
                 self.chars.next();
                 let mut count = 0;
                 loop {
                     match self.chars.next()? {
-                        ('-', _) => {
+                        s if s.ch == '-' => {
                             count += 1;
                         }
-                        ('>', ch_range) => {
+                        s if s.ch == '>' => {
                             if count >= 2 {
                                 return Some(Token::Comment {
-                                    range: first_token_range.spanning(ch_range),
+                                    range: first_token_range.spanning(s.range()),
                                 });
                             } else {
                                 count = 0;
@@ -331,32 +328,32 @@ impl<'a> Tokenizer<'a> {
                 }
             }
             // Doctype
-            ('D' | 'd', _)
-                if self
+            s if (s.ch == 'D' || s.ch == 'd')
+                && self
                     .chars
                     .clone()
-                    .flat_map(|(ch, _)| ch.to_lowercase())
+                    .flat_map(|s| s.ch.to_lowercase())
                     .take(6)
                     .eq("octype".chars()) =>
             {
                 for _ in 0..6 {
                     self.chars.next();
                 }
-                while self.chars.next_if(|(ch, _)| *ch != '>').is_some() {}
-                let (_, ch_range) = self.chars.next()?;
+                while self.chars.next_if(|s| s.ch != '>').is_some() {}
+                let ch = self.chars.next()?;
                 Some(Token::Doctype {
-                    range: first_token_range.spanning(ch_range),
+                    range: first_token_range.spanning(ch.range()),
                 })
             }
             // Invalid
-            (_, ch_range) => {
+            ch => {
                 self.errors.push_back(ParseError::new(
                     "Invalid character in markup declaration".to_string(),
-                    ch_range,
+                    ch.range(),
                 ));
 
                 Some(Token::Doctype {
-                    range: first_token_range.spanning(ch_range),
+                    range: first_token_range.spanning(ch.range()),
                 })
             }
         }
@@ -366,18 +363,17 @@ impl<'a> Tokenizer<'a> {
         // If we have a stored raw_text_closing_tag we need to parse all content
         // as raw text until we find the tag.
         if let Some(stored_closing_tag) = mem::take(&mut self.raw_text_closing_tag) {
-            let mut raw_text: Option<RangedString> = None;
+            let mut raw_text: Option<StringSpan> = None;
             loop {
-                let peeked = *self.chars.peek()?;
+                let peeked = self.chars.peek()?.ch;
                 match peeked {
-                    ('<', _)
-                        if self
-                            .chars
-                            .clone()
-                            .map(|(ch, _)| ch)
-                            .filter(|ch| !ch.is_whitespace())
-                            .take(stored_closing_tag.len())
-                            .eq(stored_closing_tag.chars()) =>
+                    '<' if self
+                        .chars
+                        .clone()
+                        .map(|s| s.ch)
+                        .filter(|ch| !ch.is_whitespace())
+                        .take(stored_closing_tag.len())
+                        .eq(stored_closing_tag.chars()) =>
                     {
                         if let Some((s, r)) = raw_text.map(|v| v.into()) {
                             return Some(Token::Text { value: s, range: r });
@@ -385,76 +381,76 @@ impl<'a> Tokenizer<'a> {
                             break;
                         }
                     }
-                    _ => match &mut raw_text {
+                    _ => match raw_text.take() {
                         Some(v) => {
-                            v.push(self.chars.next()?);
+                            raw_text = Some(v.extend(self.chars.next()?));
                         }
-                        None => raw_text = Some(RangedString::from(self.chars.next()?)),
+                        None => raw_text = Some(self.chars.next()?),
                     },
                 }
             }
         }
-        match self.chars.peek()? {
-            ('<', _) => {
-                let (_, left_angle_range) = self.chars.next()?;
+        match self.chars.peek()?.ch {
+            '<' => {
+                let left_angle = self.chars.next()?;
                 match self.chars.next()? {
                     // ClosingTag
-                    ('/', _) => {
+                    s if s.ch == '/' => {
                         self.skip_whitespace();
-                        let (ch, ch_range) = self.chars.next()?;
-                        if ch.is_ascii_alphabetic() {
-                            let tag_name = self.parse_tag_name(ch, ch_range);
+                        let initial = self.chars.next()?;
+                        if initial.ch.is_ascii_alphabetic() {
+                            let tag_name = self.parse_tag_name(initial);
                             self.skip_whitespace();
-                            let (right_angle, right_angle_range) = self.chars.next()?;
-                            if right_angle != '>' {
+                            let right_angle = self.chars.next()?;
+                            if right_angle.ch != '>' {
                                 self.errors.push_back(ParseError::new(
                                     "Invalid character after closing tag name".to_string(),
-                                    ch_range,
+                                    right_angle.range(),
                                 ));
                                 return Some(Token::ClosingTag {
                                     tag_name: tag_name.into(),
-                                    range: left_angle_range.spanning(right_angle_range),
+                                    range: left_angle.range().spanning(right_angle.range()),
                                 });
                             }
                             Some(Token::ClosingTag {
                                 tag_name: tag_name.into(),
-                                range: left_angle_range.spanning(right_angle_range),
+                                range: left_angle.range().spanning(right_angle.range()),
                             })
                         } else {
                             self.errors.push_back(ParseError::new(
                                 "Invalid character after </".to_string(),
-                                ch_range,
+                                initial.range(),
                             ));
                             // TODO: Recursive
                             self.step()
                         }
                     }
                     // OpeningTag
-                    (ch, ch_range) if ch.is_ascii_alphabetic() => {
-                        let tag_name = self.parse_tag_name(ch, ch_range);
+                    s if s.ch.is_ascii_alphabetic() => {
+                        let tag_name = self.parse_tag_name(s);
                         let (attributes, expression) = self.parse_tag_content()?;
 
                         self.skip_whitespace();
 
                         let mut self_closing = false;
 
-                        if self.chars.peek()?.0 == '/' {
+                        if self.chars.peek()?.ch == '/' {
                             self_closing = true;
                             self.chars.next();
                         }
 
                         match self.chars.next()? {
-                            ('>', ch_range) => {
-                                if is_tag_name_with_raw_content(tag_name.value()) {
+                            right_angle if right_angle.ch == '>' => {
+                                if is_tag_name_with_raw_content(tag_name.as_str()) {
                                     self.raw_text_closing_tag =
-                                        Some(format!("</{}>", tag_name.value()));
+                                        Some(format!("</{}>", tag_name.as_str()));
                                 }
                                 Some(Token::OpeningTag {
                                     self_closing,
                                     tag_name: tag_name.into(),
                                     attributes,
-                                    expression,
-                                    range: left_angle_range.spanning(ch_range),
+                                    expression: expression.map(|s| s.into()),
+                                    range: left_angle.range().spanning(right_angle.range()),
                                 })
                             }
                             _ => {
@@ -464,12 +460,12 @@ impl<'a> Tokenizer<'a> {
                         }
                     }
                     // Doctype/Comment
-                    ('!', _) => self.parse_markup_declaration(left_angle_range),
+                    s if s.ch == '!' => self.parse_markup_declaration(left_angle.range()),
                     // Invalid
-                    (_, ch_range) => {
+                    s => {
                         self.errors.push_back(ParseError::new(
                             "Invalid character after '<'".to_string(),
-                            ch_range,
+                            s.range(),
                         ));
                         // TODO: Recursive
                         self.step()
@@ -477,37 +473,33 @@ impl<'a> Tokenizer<'a> {
                 }
             }
             // TextExpression
-            ('{', _) => {
+            '{' => {
                 let right_brace_range = self.find_expression_end()?;
-                let (_, left_brace_range) = self.chars.next()?;
-                if left_brace_range.end() == right_brace_range.start() {
-                    self.next(); // skip right brace
+                let left_brace = self.chars.next()?;
+                if left_brace.range().end() == right_brace_range.start() {
+                    let right_brace = self.chars.next()?; // skip right brace
                     self.errors.push_back(ParseError::new(
                         "Empty expression".to_string(),
-                        left_brace_range.spanning(right_brace_range),
+                        left_brace.range().spanning(right_brace.range()),
                     ));
                     // TODO: Recursive
                     return self.step();
                 }
-                let mut expr = RangedString::from(self.chars.next()?);
-                loop {
-                    let (ch, ch_range) = self.chars.next()?;
-                    if ch_range == right_brace_range {
-                        break;
-                    } else {
-                        expr.push((ch, ch_range));
-                    }
+                let mut expr = self.chars.next()?;
+                while self.chars.peek()?.range() != right_brace_range {
+                    expr = expr.extend(self.chars.next()?);
                 }
+                self.chars.next()?; // skip right brace
                 Some(Token::Expression {
                     expression: expr.into(),
-                    range: left_brace_range.spanning(right_brace_range),
+                    range: left_brace.range().spanning(right_brace_range),
                 })
             }
             // Text
             _ => {
-                let mut text = RangedString::from(self.chars.next()?);
-                while let Some(ch) = self.chars.next_if(|(ch, _)| *ch != '{' && *ch != '<') {
-                    text.push(ch);
+                let mut text = self.chars.next()?;
+                while let Some(ch) = self.chars.next_if(|s| s.ch != '{' && s.ch != '<') {
+                    text = text.extend(ch);
                 }
                 let (value, range) = text.into();
                 Some(Token::Text { value, range })
