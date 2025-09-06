@@ -25,17 +25,6 @@ impl From<StringSpan> for (String, Range) {
 }
 
 impl StringSpan {
-    // TODO: Remove this later
-    pub fn new(s: String, r: Range) -> Self {
-        let ch = s.chars().next().unwrap();
-        let len = s.len();
-        StringSpan {
-            source: Arc::new(s),
-            ch,
-            offset: (0, len),
-            range: r,
-        }
-    }
     pub fn extend(self, other: StringSpan) -> Self {
         StringSpan {
             source: self.source,
@@ -185,17 +174,6 @@ mod tests {
     }
 
     #[test]
-    fn test_string_span_new() {
-        let span = StringSpan::new(
-            "test".to_string(),
-            Range::new(Position::new(1, 1), Position::new(1, 5)),
-        );
-        assert_eq!(span.ch, 't');
-        assert_eq!(span.to_string(), "test");
-        assert_eq!(span.as_str(), "test");
-    }
-
-    #[test]
     fn test_string_span_extend() {
         let mut cursor = StringCursor::new("abc");
         let span1 = cursor.next().unwrap();
@@ -222,32 +200,6 @@ mod tests {
 
         let extended = spans[0].clone().extend(spans[4].clone());
         assert_eq!(extended.to_string(), "hello");
-    }
-
-    #[test]
-    fn test_string_span_cursor() {
-        let span = StringSpan::new(
-            "test".to_string(),
-            Range::new(Position::new(2, 3), Position::new(2, 7)),
-        );
-        let mut cursor = span.cursor();
-
-        let first = cursor.next().unwrap();
-        assert_eq!(first.ch, 't');
-        assert_eq!(first.range.start, Position::new(2, 3));
-    }
-
-    #[test]
-    fn test_string_span_from_conversion() {
-        let span = StringSpan::new(
-            "hello".to_string(),
-            Range::new(Position::new(1, 1), Position::new(1, 6)),
-        );
-        let (text, range): (String, Range) = span.into();
-
-        assert_eq!(text, "hello");
-        assert_eq!(range.start, Position::new(1, 1));
-        assert_eq!(range.end, Position::new(1, 6));
     }
 
     #[test]
