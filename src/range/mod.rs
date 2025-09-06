@@ -8,7 +8,7 @@ pub mod position_marker;
 
 pub use position::Position;
 pub use range::{Range, Ranged};
-pub use source_annotator::{Annotated, SourceAnnotator};
+pub use source_annotator::SourceAnnotator;
 
 #[cfg(test)]
 pub use source_annotator::SimpleAnnotation;

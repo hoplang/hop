@@ -5,10 +5,10 @@ use crate::hop::parser::parse;
 use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
-use crate::range::Annotated;
 use crate::range::{Position, Range, Ranged};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
+use std::fmt::{self, Display};
 
 use super::ast::HopNode;
 use super::evaluator::HopMode;
@@ -26,9 +26,9 @@ impl Ranged for HoverInfo {
     }
 }
 
-impl Annotated for HoverInfo {
-    fn message(&self) -> String {
-        self.type_str.clone()
+impl Display for HoverInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.type_str)
     }
 }
 
@@ -44,9 +44,9 @@ impl Ranged for DefinitionLocation {
     }
 }
 
-impl Annotated for DefinitionLocation {
-    fn message(&self) -> String {
-        "Definition".to_string()
+impl Display for DefinitionLocation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Definition")
     }
 }
 
@@ -62,9 +62,9 @@ impl Ranged for Diagnostic {
     }
 }
 
-impl Annotated for Diagnostic {
-    fn message(&self) -> String {
-        self.message.clone()
+impl Display for Diagnostic {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.message)
     }
 }
 
@@ -80,9 +80,9 @@ impl Ranged for RenameLocation {
     }
 }
 
-impl Annotated for RenameLocation {
-    fn message(&self) -> String {
-        "Rename".to_string()
+impl Display for RenameLocation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Rename")
     }
 }
 
@@ -123,9 +123,9 @@ impl Ranged for RenameableSymbol {
     }
 }
 
-impl Annotated for RenameableSymbol {
-    fn message(&self) -> String {
-        format!("Renameable symbol: {}", self.current_name)
+impl Display for RenameableSymbol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Renameable symbol: {}", self.current_name)
     }
 }
 

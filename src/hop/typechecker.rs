@@ -3,9 +3,9 @@ use crate::dop::{DopParameter, DopType, is_subtype, typecheck_expr};
 use crate::hop::ast::HopAst;
 use crate::hop::ast::{ComponentDefinition, HopNode, Import, Render};
 use crate::hop::environment::Environment;
-use crate::range::Annotated;
 use crate::range::{Range, Ranged};
 use std::collections::{BTreeMap, HashMap};
+use std::fmt::{self, Display};
 
 #[derive(Debug, Clone)]
 pub struct TypeAnnotation {
@@ -21,9 +21,9 @@ impl Ranged for TypeAnnotation {
     }
 }
 
-impl Annotated for TypeAnnotation {
-    fn message(&self) -> String {
-        format!("{}: {}", self.name, self.typ)
+impl Display for TypeAnnotation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.name, self.typ)
     }
 }
 

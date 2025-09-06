@@ -1,6 +1,6 @@
 use std::{fmt, iter::FromIterator, sync::Arc};
 
-use super::{Position, Range, range::Ranged, source_annotator::Annotated};
+use super::{Position, Range, range::Ranged};
 
 /// Holds source text and precomputed line start offsets for
 /// efficient position lookups.
@@ -96,7 +96,7 @@ impl StringSpan {
 
 impl fmt::Display for StringSpan {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", &self.source.text[self.start..self.end])
+        write!(f, "{}", self.as_str())
     }
 }
 
@@ -112,12 +112,6 @@ impl Ranged for StringSpan {
             self.source.offset_to_position(self.start),
             self.source.offset_to_position(self.end),
         )
-    }
-}
-
-impl Annotated for StringSpan {
-    fn message(&self) -> String {
-        format!("{:?}", self.as_str())
     }
 }
 

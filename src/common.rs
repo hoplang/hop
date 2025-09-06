@@ -1,6 +1,7 @@
 use crate::dop::DopParameter;
-use crate::range::{Annotated, Range, Ranged};
+use crate::range::{Range, Ranged};
 use std::collections::BTreeMap;
+use std::fmt::{self, Display};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeError {
@@ -166,9 +167,9 @@ impl Ranged for TypeError {
     }
 }
 
-impl Annotated for TypeError {
-    fn message(&self) -> String {
-        self.message.clone()
+impl Display for TypeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.message)
     }
 }
 
@@ -245,9 +246,9 @@ impl Ranged for ParseError {
     }
 }
 
-impl Annotated for ParseError {
-    fn message(&self) -> String {
-        self.message.clone()
+impl Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.message)
     }
 }
 

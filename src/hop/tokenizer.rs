@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, VecDeque};
+use std::fmt::{self, Display};
 use std::iter::Peekable;
 use std::mem;
 
@@ -8,7 +9,6 @@ use crate::common::ParseError;
 use crate::dop::DopTokenizer;
 use crate::dop::tokenizer::DopToken;
 use crate::hop::ast::Attribute;
-use crate::range::Annotated;
 use crate::range::string_cursor::{StringCursor, StringSpan};
 use crate::range::{Range, Ranged};
 
@@ -55,34 +55,34 @@ impl Ranged for Token {
     }
 }
 
-impl Annotated for Token {
-    fn message(&self) -> String {
+impl Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Token::Text { value } => {
-                format!(
+                write!(
+                    f,
                     "Text [{} byte, {:#?}]",
                     value.as_str().len(),
                     value.to_string()
                 )
             }
-            Token::Doctype { range: _ } => {
-                format!("Doctype")
+            Token::Doctype { .. } => {
+                write!(f, "Doctype")
             }
-            Token::ClosingTag { tag_name, range: _ } => {
-                format!("ClosingTag </{}>", tag_name)
+            Token::ClosingTag { tag_name, .. } => {
+                write!(f, "ClosingTag </{}>", tag_name)
             }
             Token::OpeningTag {
                 tag_name,
                 attributes,
                 expression,
                 self_closing,
-                range: _,
+                ..
             } => {
-                let mut result = String::new();
-                result.push_str(&format!("OpeningTag <{}", tag_name));
+                write!(f, "OpeningTag <{}", tag_name)?;
 
                 if !attributes.is_empty() {
-                    result.push(' ');
+                    write!(f, " ")?;
                     let attr_strs: Vec<String> = attributes
                         .iter()
                         .map(|(name, attr)| {
@@ -93,32 +93,28 @@ impl Annotated for Token {
                             }
                         })
                         .collect();
-                    result.push_str(&attr_strs.join(" "));
+                    write!(f, "{}", attr_strs.join(" "))?;
                 }
 
                 if let Some(expr) = expression {
-                    result.push_str(&format!(" expr={:#?}", expr.to_string()));
+                    write!(f, " expr={:#?}", expr.to_string())?;
                 }
 
                 if *self_closing {
-                    result.push('/');
+                    write!(f, "/")?;
                 }
-                result.push('>');
-
-                result
+                write!(f, ">")
             }
-            Token::Comment { range: _ } => {
-                format!("Comment")
+            Token::Comment { .. } => {
+                write!(f, "Comment")
             }
-            Token::Expression {
-                expression,
-                range: _,
-            } => {
-                format!("Expression {:#?}", expression.to_string())
+            Token::Expression { expression, .. } => {
+                write!(f, "Expression {:#?}", expression.to_string())
             }
         }
     }
 }
+
 
 pub struct Tokenizer {
     iter: Peekable<StringCursor>,
@@ -563,13 +559,13 @@ mod tests {
             match r {
                 Err(err) => {
                     annotations.push(SimpleAnnotation {
-                        message: err.message(),
+                        message: err.to_string(),
                         range: err.range(),
                     });
                 }
                 Ok(ok) => {
                     annotations.push(SimpleAnnotation {
-                        message: ok.message(),
+                        message: ok.to_string(),
                         range: ok.range(),
                     });
                 }

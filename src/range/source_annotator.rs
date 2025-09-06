@@ -1,4 +1,5 @@
 use std::cmp;
+use std::fmt::Display;
 
 use itertools::Itertools as _;
 
@@ -7,16 +8,6 @@ use super::{
     string_cursor::{StringCursor, StringSpan},
 };
 
-/// Trait for any annotation that can be displayed on source code
-pub trait Annotated: Ranged {
-    fn message(&self) -> String;
-}
-
-impl<T: Annotated> Annotated for &T {
-    fn message(&self) -> String {
-        (*self).message()
-    }
-}
 
 /// Simple annotation implementation for basic use cases
 pub struct SimpleAnnotation {
@@ -30,9 +21,9 @@ impl Ranged for SimpleAnnotation {
     }
 }
 
-impl Annotated for SimpleAnnotation {
-    fn message(&self) -> String {
-        self.message.clone()
+impl Display for SimpleAnnotation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
     }
 }
 
@@ -96,12 +87,15 @@ impl SourceAnnotator {
         self
     }
 
-    pub fn annotate(
+    pub fn annotate<A>(
         &self,
         filename: Option<&str>,
         source: &str,
-        annotations: impl IntoIterator<Item = impl Annotated>,
-    ) -> String {
+        annotations: impl IntoIterator<Item = A>,
+    ) -> String
+    where
+        A: Display + Ranged,
+    {
         let mut output = String::new();
         let lines: Vec<Option<StringSpan>> = StringCursor::new(source)
             .chunk_by(|span| span.range().start().line())
@@ -117,9 +111,9 @@ impl SourceAnnotator {
             let range = annotation.range();
 
             if let Some(ref label) = self.label {
-                output.push_str(&format!("{}: {}\n", label, annotation.message()));
+                output.push_str(&format!("{}: {}\n", label, annotation));
             } else {
-                output.push_str(&format!("{}\n", annotation.message()));
+                output.push_str(&format!("{}\n", annotation));
             }
 
             if self.show_location {
@@ -242,19 +236,19 @@ mod tests {
             .annotate(None, source, annotations);
 
         expect![[r#"
-            error: "line one"
+            error: line one
             1 | line one
               | ^^^^^^^^
 
-            error: "line two"
+            error: line two
             2 | line two
               | ^^^^^^^^
 
-            error: "line three"
+            error: line three
             3 | line three
               | ^^^^^^^^^^
 
-            error: "line four"
+            error: line four
             4 | line four
               | ^^^^^^^^^
         "#]]
@@ -273,22 +267,22 @@ mod tests {
                 .annotate(Some("main.rs"), source, annotations);
 
         expect![[r#"
-            "line one"
+            line one
               --> main.rs (line 1, col 1)
             1 | line one
               | ^^^^^^^^
 
-            "line two"
+            line two
               --> main.rs (line 2, col 1)
             2 | line two
               | ^^^^^^^^
 
-            "line three"
+            line three
               --> main.rs (line 3, col 1)
             3 | line three
               | ^^^^^^^^^^
 
-            "line four"
+            line four
               --> main.rs (line 4, col 1)
             4 | line four
               | ^^^^^^^^^
@@ -308,22 +302,22 @@ mod tests {
                 .annotate(None, source, annotations);
 
         expect![[r#"
-            "line one"
+            line one
             1 | line one
               | ^^^^^^^^
 
-            "line two"
+            line two
             1 | line one
             2 | line two
               | ^^^^^^^^
 
-            "line three"
+            line three
             1 | line one
             2 | line two
             3 | line three
               | ^^^^^^^^^^
 
-            "line four"
+            line four
             2 | line two
             3 | line three
             4 | line four
@@ -343,24 +337,24 @@ mod tests {
             .annotate(None, source, annotations);
 
         expect![[r#"
-            "line one"
+            line one
             1 | line one
               | ^^^^^^^^
             2 | line two
             3 | line three
 
-            "line two"
+            line two
             2 | line two
               | ^^^^^^^^
             3 | line three
             4 | line four
 
-            "line three"
+            line three
             3 | line three
               | ^^^^^^^^^^
             4 | line four
 
-            "line four"
+            line four
             4 | line four
               | ^^^^^^^^^
         "#]]
@@ -378,17 +372,17 @@ mod tests {
             .annotate(None, source, annotations);
 
         expect![[r#"
-            "code"
+            code
               --> (line 1, col 1)
             1 | code
               | ^^^^
 
-            "code"
+            code
               --> (line 2, col 3)
             2 |         code
               |         ^^^^
 
-            "code"
+            code
               --> (line 3, col 2)
             3 |     code
               |     ^^^^
@@ -407,12 +401,12 @@ mod tests {
             .annotate(None, source, annotations);
 
         expect![[r#"
-            "😀"
+            😀
               --> (line 1, col 1)
             1 | 😀 code
               | ^^
 
-            "code"
+            code
               --> (line 1, col 6)
             1 | 😀 code
               |    ^^^^
@@ -431,12 +425,12 @@ mod tests {
             .annotate(None, source, annotations);
 
         expect![[r#"
-            "some"
+            some
               --> (line 1, col 1)
             1 | some code
               | ^^^^
 
-            "code"
+            code
               --> (line 1, col 6)
             1 | some code
               |      ^^^^
@@ -456,29 +450,29 @@ mod tests {
                 .annotate(None, source, annotations);
 
         expect![[r#"
-            "line one"
+            line one
             1 | line one
               | ^^^^^^^^
 
-            "line two"
+            line two
             1 | line one
             2 | line two
               | ^^^^^^^^
 
-            "line three"
+            line three
             1 | line one
             2 | line two
             3 | line three
               | ^^^^^^^^^^
 
-            "line four"
+            line four
             1 | line one
             2 | line two
             3 | line three
             4 | line four
               | ^^^^^^^^^
 
-            "line five"
+            line five
             1 | line one
             2 | line two
             3 | line three
@@ -486,7 +480,7 @@ mod tests {
             5 | line five
               | ^^^^^^^^^
 
-            "line six"
+            line six
             1 | line one
             2 | line two
             3 | line three
@@ -507,39 +501,43 @@ mod tests {
         let actual = SourceAnnotator::new().annotate(None, source, annotations);
 
         expect![[r#"
-            "li"
+            li
             1 | line one
               | ^^
 
-            "e o"
+            e o
             1 | line one
               |    ^^^
 
-            "e\nli"
+            e
+            li
             1 | line one
               |        ^
             2 | line two
               | ^^
 
-            "e two\nli"
+            e two
+            li
             2 | line two
               |    ^^^^^
             3 | line three
               | ^^
 
-            "e three\nli"
+            e three
+            li
             3 | line three
               |    ^^^^^^^
             4 | line four
               | ^^
 
-            "e four\nli"
+            e four
+            li
             4 | line four
               |    ^^^^^^
             5 | line five
               | ^^
 
-            "e five"
+            e five
             5 | line five
               |    ^^^^^^
         "#]]
