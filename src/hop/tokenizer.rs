@@ -145,7 +145,7 @@ impl<'a> Tokenizer<'a> {
             .chars
             .next_if(|s| s.ch == '-' || s.ch.is_ascii_alphanumeric())
         {
-            result = result.extend(ch);
+            result = result.merge(ch);
         }
         result
     }
@@ -196,7 +196,7 @@ impl<'a> Tokenizer<'a> {
         let mut attr_value = self.chars.next()?;
 
         while let Some(ch) = self.chars.next_if(|s| s.ch != open_quote.ch) {
-            attr_value = attr_value.extend(ch);
+            attr_value = attr_value.merge(ch);
         }
 
         let close_quote = self.chars.next()?;
@@ -266,7 +266,7 @@ impl<'a> Tokenizer<'a> {
                     }
                     let mut expr = self.chars.next()?;
                     while self.chars.peek()?.range() != right_brace_range {
-                        expr = expr.extend(self.chars.next()?);
+                        expr = expr.merge(self.chars.next()?);
                     }
                     self.chars.next()?; // skip right brace
                     expression = Some(expr);
@@ -383,7 +383,7 @@ impl<'a> Tokenizer<'a> {
                     }
                     _ => match raw_text.take() {
                         Some(v) => {
-                            raw_text = Some(v.extend(self.chars.next()?));
+                            raw_text = Some(v.merge(self.chars.next()?));
                         }
                         None => raw_text = Some(self.chars.next()?),
                     },
@@ -487,7 +487,7 @@ impl<'a> Tokenizer<'a> {
                 }
                 let mut expr = self.chars.next()?;
                 while self.chars.peek()?.range() != right_brace_range {
-                    expr = expr.extend(self.chars.next()?);
+                    expr = expr.merge(self.chars.next()?);
                 }
                 self.chars.next()?; // skip right brace
                 Some(Token::Expression {
@@ -499,7 +499,7 @@ impl<'a> Tokenizer<'a> {
             _ => {
                 let mut value = self.chars.next()?;
                 while let Some(ch) = self.chars.next_if(|s| s.ch != '{' && s.ch != '<') {
-                    value = value.extend(ch);
+                    value = value.merge(ch);
                 }
                 Some(Token::Text { value })
             }

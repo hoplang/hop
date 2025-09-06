@@ -25,7 +25,7 @@ impl From<StringSpan> for (String, Range) {
 }
 
 impl StringSpan {
-    pub fn extend(self, other: StringSpan) -> Self {
+    pub fn merge(self, other: StringSpan) -> Self {
         StringSpan {
             source: self.source,
             ch: self.ch,
@@ -91,9 +91,7 @@ impl Iterator for StringCursor<'_> {
 
 impl FromIterator<StringSpan> for Option<StringSpan> {
     fn from_iter<I: IntoIterator<Item = StringSpan>>(iter: I) -> Self {
-        let mut spans = iter.into_iter();
-        let first = spans.next()?;
-        spans.fold(Some(first), |acc, span| acc.map(|a| a.extend(span)))
+        iter.into_iter().reduce(|acc, span| acc.merge(span))
     }
 }
 
@@ -200,7 +198,7 @@ mod tests {
         let _span2 = cursor.next().unwrap();
         let span3 = cursor.next().unwrap();
 
-        let extended = span1.clone().extend(span3);
+        let extended = span1.clone().merge(span3);
         assert_eq!(extended.ch, 'a');
         assert_eq!(extended.to_string(), "abc");
         assert_eq!(extended.range.start, Position::new(1, 1));
@@ -218,7 +216,7 @@ mod tests {
         assert_eq!(spans[3].to_string(), "l");
         assert_eq!(spans[4].to_string(), "o");
 
-        let extended = spans[0].clone().extend(spans[4].clone());
+        let extended = spans[0].clone().merge(spans[4].clone());
         assert_eq!(extended.to_string(), "hello");
     }
 
