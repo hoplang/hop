@@ -27,8 +27,8 @@ impl From<Position> for tower_lsp::lsp_types::Position {
 impl From<StringSpan> for tower_lsp::lsp_types::Range {
     fn from(span: StringSpan) -> Self {
         tower_lsp::lsp_types::Range {
-            start: span.range().start().into(),
-            end: span.range().end().into(),
+            start: span.start().into(),
+            end: span.end().into(),
         }
     }
 }

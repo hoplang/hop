@@ -123,6 +123,22 @@ impl FromIterator<StringSpan> for Option<StringSpan> {
 pub trait Spanned {
     /// Returns a reference to the StringSpan for this item.
     fn span(&self) -> &StringSpan;
+
+    /// Returns the start position of this spanned item.
+    fn start(&self) -> Position {
+        self.span().start()
+    }
+
+    /// Returns the end position of this spanned item.
+    fn end(&self) -> Position {
+        self.span().end()
+    }
+
+    /// Returns true if this spanned item contains the given StringSpan.
+    fn contains(&self, other: &StringSpan) -> bool {
+        let self_span = self.span();
+        self_span.start <= other.start && other.end <= self_span.end
+    }
 }
 
 impl Spanned for StringSpan {

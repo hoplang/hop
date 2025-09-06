@@ -257,7 +257,7 @@ impl Tokenizer {
                         continue;
                     }
                     let mut expr = self.iter.next()?;
-                    while self.iter.peek()?.range().start() != right_brace.range().start() {
+                    while self.iter.peek()?.start() != right_brace.start() {
                         expr = expr.to(self.iter.next()?);
                     }
                     self.iter.next()?; // skip right brace
@@ -478,7 +478,7 @@ impl Tokenizer {
                     return self.step();
                 }
                 let mut expr = self.iter.next()?;
-                while self.iter.peek()?.range().start() != right_brace.range().start() {
+                while self.iter.peek()?.start() != right_brace.start() {
                     expr = expr.to(self.iter.next()?);
                 }
                 self.iter.next()?; // skip right brace
