@@ -335,7 +335,7 @@ fn typecheck_node(
             ) {
                 (None, None) => {}
                 (None, Some((_, args_range))) => {
-                    errors.push(TypeError::unexpected_arguments(*args_range));
+                    errors.push(TypeError::unexpected_arguments(args_range.range()));
                 }
                 (Some(params), None) => {
                     errors.push(TypeError::missing_arguments(params, tag_name.range()));
@@ -345,7 +345,7 @@ fn typecheck_node(
                         if !args.contains_key(param.var_name.as_str()) {
                             errors.push(TypeError::missing_required_parameter(
                                 param.var_name.as_str(),
-                                *args_range,
+                                args_range.range(),
                             ));
                         }
                     }
@@ -409,7 +409,7 @@ fn typecheck_node(
                 if !is_subtype(&expr_type, &DopType::String) {
                     errors.push(TypeError::expected_string_attribute(
                         &expr_type.to_string(),
-                        set_attr.range,
+                        set_attr.span.range(),
                     ));
                     continue;
                 }

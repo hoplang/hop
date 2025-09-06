@@ -133,7 +133,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         let params = expression.as_ref().and_then(|expr| {
                             let mut tokenizer = DopTokenizer::from(expr.cursor()).peekable();
                             match dop::parse_parameters(&mut tokenizer) {
-                                Ok(params) => Some((params, expr.range())),
+                                Ok(params) => Some((params, expr.clone())),
                                 Err(dop::errors::ParseError::UnexpectedEof) => {
                                     errors.push(ParseError::unexpected_end_of_expression(
                                         expr.range(),
@@ -420,7 +420,7 @@ fn construct_node(
                         Some(expr) => {
                             let mut tokenizer = DopTokenizer::from(expr.cursor()).peekable();
                             match dop::parse_arguments(&mut tokenizer) {
-                                Ok(named_args) => Some((named_args, expr.range())),
+                                Ok(named_args) => Some((named_args, expr.clone())),
                                 Err(dop::errors::ParseError::UnexpectedEof) => {
                                     errors.push(ParseError::unexpected_end_of_expression(
                                         expr.range(),
@@ -475,7 +475,7 @@ fn construct_node(
                                 Ok(expression) => set_attributes.push(DopExprAttribute {
                                     name: name.to_string(),
                                     expression,
-                                    range: attr.span.range(),
+                                    span: attr.span.clone(),
                                 }),
                                 Err(dop::errors::ParseError::UnexpectedEof) => {
                                     errors.push(ParseError::unexpected_end_of_expression(

@@ -31,7 +31,7 @@ impl Spanned for Attribute {
 pub struct DopExprAttribute {
     pub name: String,
     pub expression: DopExpr,
-    pub range: Range,
+    pub span: StringSpan,
 }
 
 #[derive(Debug, Clone)]
@@ -171,7 +171,7 @@ impl Spanned for Render {
 pub struct ComponentDefinition {
     pub tag_name: StringSpan,
     pub closing_tag_name: Option<StringSpan>,
-    pub params: Option<(BTreeMap<String, DopParameter>, Range)>,
+    pub params: Option<(BTreeMap<String, DopParameter>, StringSpan)>,
     pub as_attr: Option<PresentAttribute>,
     pub attributes: BTreeMap<String, Attribute>,
     pub span: StringSpan,
@@ -223,7 +223,7 @@ pub enum HopNode {
         tag_name: StringSpan,
         definition_module: Option<String>,
         closing_tag_name: Option<StringSpan>,
-        args: Option<(BTreeMap<String, DopArgument>, Range)>,
+        args: Option<(BTreeMap<String, DopArgument>, StringSpan)>,
         attributes: BTreeMap<String, Attribute>,
         span: StringSpan,
         children: Vec<HopNode>,
