@@ -877,7 +877,7 @@ mod tests {
                 BinaryOp {
                     left: BinaryOp {
                         left: Variable {
-                            name: StringSpan {
+                            value: StringSpan {
                                 source: "a == b == c",
                                 ch: 'a',
                                 offset: (
@@ -886,11 +886,10 @@ mod tests {
                                 ),
                                 range: 1:1-1:2,
                             },
-                            range: 1:1-1:2,
                         },
                         operator: Equal,
                         right: Variable {
-                            name: StringSpan {
+                            value: StringSpan {
                                 source: "a == b == c",
                                 ch: 'b',
                                 offset: (
@@ -899,13 +898,12 @@ mod tests {
                                 ),
                                 range: 1:6-1:7,
                             },
-                            range: 1:6-1:7,
                         },
                         range: 1:1-1:7,
                     },
                     operator: Equal,
                     right: Variable {
-                        name: StringSpan {
+                        value: StringSpan {
                             source: "a == b == c",
                             ch: 'c',
                             offset: (
@@ -914,7 +912,6 @@ mod tests {
                             ),
                             range: 1:11-1:12,
                         },
-                        range: 1:11-1:12,
                     },
                     range: 1:1-1:12,
                 }
@@ -930,7 +927,7 @@ mod tests {
                 BinaryOp {
                     left: PropertyAccess {
                         object: Variable {
-                            name: StringSpan {
+                            value: StringSpan {
                                 source: "user.name == admin.name",
                                 ch: 'u',
                                 offset: (
@@ -939,16 +936,22 @@ mod tests {
                                 ),
                                 range: 1:1-1:5,
                             },
-                            range: 1:1-1:5,
                         },
-                        property: "name",
-                        property_range: 1:6-1:10,
+                        property: StringSpan {
+                            source: "user.name == admin.name",
+                            ch: 'n',
+                            offset: (
+                                5,
+                                9,
+                            ),
+                            range: 1:6-1:10,
+                        },
                         range: 1:1-1:10,
                     },
                     operator: Equal,
                     right: PropertyAccess {
                         object: Variable {
-                            name: StringSpan {
+                            value: StringSpan {
                                 source: "user.name == admin.name",
                                 ch: 'a',
                                 offset: (
@@ -957,10 +960,16 @@ mod tests {
                                 ),
                                 range: 1:14-1:19,
                             },
-                            range: 1:14-1:19,
                         },
-                        property: "name",
-                        property_range: 1:20-1:24,
+                        property: StringSpan {
+                            source: "user.name == admin.name",
+                            ch: 'n',
+                            offset: (
+                                19,
+                                23,
+                            ),
+                            range: 1:20-1:24,
+                        },
                         range: 1:14-1:24,
                     },
                     range: 1:1-1:24,
@@ -979,7 +988,7 @@ mod tests {
                         object: PropertyAccess {
                             object: PropertyAccess {
                                 object: Variable {
-                                    name: StringSpan {
+                                    value: StringSpan {
                                         source: "app.user.profile.settings.theme",
                                         ch: 'a',
                                         offset: (
@@ -988,22 +997,49 @@ mod tests {
                                         ),
                                         range: 1:1-1:4,
                                     },
-                                    range: 1:1-1:4,
                                 },
-                                property: "user",
-                                property_range: 1:5-1:9,
+                                property: StringSpan {
+                                    source: "app.user.profile.settings.theme",
+                                    ch: 'u',
+                                    offset: (
+                                        4,
+                                        8,
+                                    ),
+                                    range: 1:5-1:9,
+                                },
                                 range: 1:1-1:9,
                             },
-                            property: "profile",
-                            property_range: 1:10-1:17,
+                            property: StringSpan {
+                                source: "app.user.profile.settings.theme",
+                                ch: 'p',
+                                offset: (
+                                    9,
+                                    16,
+                                ),
+                                range: 1:10-1:17,
+                            },
                             range: 1:1-1:17,
                         },
-                        property: "settings",
-                        property_range: 1:18-1:26,
+                        property: StringSpan {
+                            source: "app.user.profile.settings.theme",
+                            ch: 's',
+                            offset: (
+                                17,
+                                25,
+                            ),
+                            range: 1:18-1:26,
+                        },
                         range: 1:1-1:26,
                     },
-                    property: "theme",
-                    property_range: 1:27-1:32,
+                    property: StringSpan {
+                        source: "app.user.profile.settings.theme",
+                        ch: 't',
+                        offset: (
+                            26,
+                            31,
+                        ),
+                        range: 1:27-1:32,
+                    },
                     range: 1:1-1:32,
                 }
             "#]],
@@ -1056,7 +1092,7 @@ mod tests {
             expect![[r#"
                 BinaryOp {
                     left: Variable {
-                        name: StringSpan {
+                        value: StringSpan {
                             source: "(x == y)",
                             ch: 'x',
                             offset: (
@@ -1065,11 +1101,10 @@ mod tests {
                             ),
                             range: 1:2-1:3,
                         },
-                        range: 1:2-1:3,
                     },
                     operator: Equal,
                     right: Variable {
-                        name: StringSpan {
+                        value: StringSpan {
                             source: "(x == y)",
                             ch: 'y',
                             offset: (
@@ -1078,7 +1113,6 @@ mod tests {
                             ),
                             range: 1:7-1:8,
                         },
-                        range: 1:7-1:8,
                     },
                     range: 1:2-1:8,
                 }
@@ -1093,7 +1127,7 @@ mod tests {
             expect![[r#"
                 PropertyAccess {
                     object: Variable {
-                        name: StringSpan {
+                        value: StringSpan {
                             source: "user.name",
                             ch: 'u',
                             offset: (
@@ -1102,10 +1136,16 @@ mod tests {
                             ),
                             range: 1:1-1:5,
                         },
-                        range: 1:1-1:5,
                     },
-                    property: "name",
-                    property_range: 1:6-1:10,
+                    property: StringSpan {
+                        source: "user.name",
+                        ch: 'n',
+                        offset: (
+                            5,
+                            9,
+                        ),
+                        range: 1:6-1:10,
+                    },
                     range: 1:1-1:10,
                 }
             "#]],
@@ -1125,7 +1165,7 @@ mod tests {
                     operator: Equal,
                     right: PropertyAccess {
                         object: Variable {
-                            name: StringSpan {
+                            value: StringSpan {
                                 source: "'guest' == user.role",
                                 ch: 'u',
                                 offset: (
@@ -1134,10 +1174,16 @@ mod tests {
                                 ),
                                 range: 1:12-1:16,
                             },
-                            range: 1:12-1:16,
                         },
-                        property: "role",
-                        property_range: 1:17-1:21,
+                        property: StringSpan {
+                            source: "'guest' == user.role",
+                            ch: 'r',
+                            offset: (
+                                16,
+                                20,
+                            ),
+                            range: 1:17-1:21,
+                        },
                         range: 1:12-1:21,
                     },
                     range: 1:1-1:21,
@@ -1153,7 +1199,7 @@ mod tests {
             expect![[r#"
                 BinaryOp {
                     left: Variable {
-                        name: StringSpan {
+                        value: StringSpan {
                             source: "x == y",
                             ch: 'x',
                             offset: (
@@ -1162,11 +1208,10 @@ mod tests {
                             ),
                             range: 1:1-1:2,
                         },
-                        range: 1:1-1:2,
                     },
                     operator: Equal,
                     right: Variable {
-                        name: StringSpan {
+                        value: StringSpan {
                             source: "x == y",
                             ch: 'y',
                             offset: (
@@ -1175,7 +1220,6 @@ mod tests {
                             ),
                             range: 1:6-1:7,
                         },
-                        range: 1:6-1:7,
                     },
                     range: 1:1-1:7,
                 }
@@ -1202,7 +1246,7 @@ mod tests {
             "x",
             expect![[r#"
                 Variable {
-                    name: StringSpan {
+                    value: StringSpan {
                         source: "x",
                         ch: 'x',
                         offset: (
@@ -1211,7 +1255,6 @@ mod tests {
                         ),
                         range: 1:1-1:2,
                     },
-                    range: 1:1-1:2,
                 }
             "#]],
         );
@@ -1246,7 +1289,7 @@ mod tests {
                 BinaryOp {
                     left: PropertyAccess {
                         object: Variable {
-                            name: StringSpan {
+                            value: StringSpan {
                                 source: "user.name == 'admin'",
                                 ch: 'u',
                                 offset: (
@@ -1255,10 +1298,16 @@ mod tests {
                                 ),
                                 range: 1:1-1:5,
                             },
-                            range: 1:1-1:5,
                         },
-                        property: "name",
-                        property_range: 1:6-1:10,
+                        property: StringSpan {
+                            source: "user.name == 'admin'",
+                            ch: 'n',
+                            offset: (
+                                5,
+                                9,
+                            ),
+                            range: 1:6-1:10,
+                        },
                         range: 1:1-1:10,
                     },
                     operator: Equal,
@@ -1293,7 +1342,7 @@ mod tests {
                 BinaryOp {
                     left: PropertyAccess {
                         object: Variable {
-                            name: StringSpan {
+                            value: StringSpan {
                                 source: "  user . name   ==   admin . name  ",
                                 ch: 'u',
                                 offset: (
@@ -1302,16 +1351,22 @@ mod tests {
                                 ),
                                 range: 1:3-1:7,
                             },
-                            range: 1:3-1:7,
                         },
-                        property: "name",
-                        property_range: 1:10-1:14,
+                        property: StringSpan {
+                            source: "  user . name   ==   admin . name  ",
+                            ch: 'n',
+                            offset: (
+                                9,
+                                13,
+                            ),
+                            range: 1:10-1:14,
+                        },
                         range: 1:3-1:14,
                     },
                     operator: Equal,
                     right: PropertyAccess {
                         object: Variable {
-                            name: StringSpan {
+                            value: StringSpan {
                                 source: "  user . name   ==   admin . name  ",
                                 ch: 'a',
                                 offset: (
@@ -1320,10 +1375,16 @@ mod tests {
                                 ),
                                 range: 1:22-1:27,
                             },
-                            range: 1:22-1:27,
                         },
-                        property: "name",
-                        property_range: 1:30-1:34,
+                        property: StringSpan {
+                            source: "  user . name   ==   admin . name  ",
+                            ch: 'n',
+                            offset: (
+                                29,
+                                33,
+                            ),
+                            range: 1:30-1:34,
+                        },
                         range: 1:22-1:34,
                     },
                     range: 1:3-1:34,
@@ -1445,7 +1506,7 @@ mod tests {
                 ArrayLiteral {
                     elements: [
                         Variable {
-                            name: StringSpan {
+                            value: StringSpan {
                                 source: "[x, user.name]",
                                 ch: 'x',
                                 offset: (
@@ -1454,11 +1515,10 @@ mod tests {
                                 ),
                                 range: 1:2-1:3,
                             },
-                            range: 1:2-1:3,
                         },
                         PropertyAccess {
                             object: Variable {
-                                name: StringSpan {
+                                value: StringSpan {
                                     source: "[x, user.name]",
                                     ch: 'u',
                                     offset: (
@@ -1467,10 +1527,16 @@ mod tests {
                                     ),
                                     range: 1:5-1:9,
                                 },
-                                range: 1:5-1:9,
                             },
-                            property: "name",
-                            property_range: 1:10-1:14,
+                            property: StringSpan {
+                                source: "[x, user.name]",
+                                ch: 'n',
+                                offset: (
+                                    9,
+                                    13,
+                                ),
+                                range: 1:10-1:14,
+                            },
                             range: 1:5-1:14,
                         },
                     ],
@@ -1544,7 +1610,7 @@ mod tests {
                             operator: Not,
                             operand: PropertyAccess {
                                 object: Variable {
-                                    name: StringSpan {
+                                    value: StringSpan {
                                         source: "{user: user.name, active: !user.disabled}",
                                         ch: 'u',
                                         offset: (
@@ -1553,17 +1619,23 @@ mod tests {
                                         ),
                                         range: 1:28-1:32,
                                     },
-                                    range: 1:28-1:32,
                                 },
-                                property: "disabled",
-                                property_range: 1:33-1:41,
+                                property: StringSpan {
+                                    source: "{user: user.name, active: !user.disabled}",
+                                    ch: 'd',
+                                    offset: (
+                                        32,
+                                        40,
+                                    ),
+                                    range: 1:33-1:41,
+                                },
                                 range: 1:28-1:41,
                             },
                             range: 1:27-1:41,
                         },
                         "user": PropertyAccess {
                             object: Variable {
-                                name: StringSpan {
+                                value: StringSpan {
                                     source: "{user: user.name, active: !user.disabled}",
                                     ch: 'u',
                                     offset: (
@@ -1572,10 +1644,16 @@ mod tests {
                                     ),
                                     range: 1:8-1:12,
                                 },
-                                range: 1:8-1:12,
                             },
-                            property: "name",
-                            property_range: 1:13-1:17,
+                            property: StringSpan {
+                                source: "{user: user.name, active: !user.disabled}",
+                                ch: 'n',
+                                offset: (
+                                    12,
+                                    16,
+                                ),
+                                range: 1:13-1:17,
+                            },
                             range: 1:8-1:17,
                         },
                     },
@@ -1661,7 +1739,7 @@ mod tests {
                     elements: [
                         PropertyAccess {
                             object: Variable {
-                                name: StringSpan {
+                                value: StringSpan {
                                     source: "[\n\tuser.name,\n\t!user.disabled,\n]",
                                     ch: 'u',
                                     offset: (
@@ -1670,17 +1748,23 @@ mod tests {
                                     ),
                                     range: 2:2-2:6,
                                 },
-                                range: 2:2-2:6,
                             },
-                            property: "name",
-                            property_range: 2:7-2:11,
+                            property: StringSpan {
+                                source: "[\n\tuser.name,\n\t!user.disabled,\n]",
+                                ch: 'n',
+                                offset: (
+                                    8,
+                                    12,
+                                ),
+                                range: 2:7-2:11,
+                            },
                             range: 2:2-2:11,
                         },
                         UnaryOp {
                             operator: Not,
                             operand: PropertyAccess {
                                 object: Variable {
-                                    name: StringSpan {
+                                    value: StringSpan {
                                         source: "[\n\tuser.name,\n\t!user.disabled,\n]",
                                         ch: 'u',
                                         offset: (
@@ -1689,10 +1773,16 @@ mod tests {
                                         ),
                                         range: 3:3-3:7,
                                     },
-                                    range: 3:3-3:7,
                                 },
-                                property: "disabled",
-                                property_range: 3:8-3:16,
+                                property: StringSpan {
+                                    source: "[\n\tuser.name,\n\t!user.disabled,\n]",
+                                    ch: 'd',
+                                    offset: (
+                                        21,
+                                        29,
+                                    ),
+                                    range: 3:8-3:16,
+                                },
                                 range: 3:3-3:16,
                             },
                             range: 3:2-3:16,
@@ -1755,7 +1845,7 @@ mod tests {
                             operator: Not,
                             operand: PropertyAccess {
                                 object: Variable {
-                                    name: StringSpan {
+                                    value: StringSpan {
                                         source: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
                                         ch: 'u',
                                         offset: (
@@ -1764,17 +1854,23 @@ mod tests {
                                         ),
                                         range: 3:11-3:15,
                                     },
-                                    range: 3:11-3:15,
                                 },
-                                property: "disabled",
-                                property_range: 3:16-3:24,
+                                property: StringSpan {
+                                    source: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
+                                    ch: 'd',
+                                    offset: (
+                                        35,
+                                        43,
+                                    ),
+                                    range: 3:16-3:24,
+                                },
                                 range: 3:11-3:24,
                             },
                             range: 3:10-3:24,
                         },
                         "user": PropertyAccess {
                             object: Variable {
-                                name: StringSpan {
+                                value: StringSpan {
                                     source: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
                                     ch: 'u',
                                     offset: (
@@ -1783,10 +1879,16 @@ mod tests {
                                     ),
                                     range: 2:8-2:12,
                                 },
-                                range: 2:8-2:12,
                             },
-                            property: "name",
-                            property_range: 2:13-2:17,
+                            property: StringSpan {
+                                source: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
+                                ch: 'n',
+                                offset: (
+                                    14,
+                                    18,
+                                ),
+                                range: 2:13-2:17,
+                            },
                             range: 2:8-2:17,
                         },
                     },
@@ -1908,7 +2010,7 @@ mod tests {
                             operator: Not,
                             operand: PropertyAccess {
                                 object: Variable {
-                                    name: StringSpan {
+                                    value: StringSpan {
                                         source: "user: user.name, enabled: !user.disabled",
                                         ch: 'u',
                                         offset: (
@@ -1917,10 +2019,16 @@ mod tests {
                                         ),
                                         range: 1:28-1:32,
                                     },
-                                    range: 1:28-1:32,
                                 },
-                                property: "disabled",
-                                property_range: 1:33-1:41,
+                                property: StringSpan {
+                                    source: "user: user.name, enabled: !user.disabled",
+                                    ch: 'd',
+                                    offset: (
+                                        32,
+                                        40,
+                                    ),
+                                    range: 1:33-1:41,
+                                },
                                 range: 1:28-1:41,
                             },
                             range: 1:27-1:41,
@@ -1940,7 +2048,7 @@ mod tests {
                         },
                         expression: PropertyAccess {
                             object: Variable {
-                                name: StringSpan {
+                                value: StringSpan {
                                     source: "user: user.name, enabled: !user.disabled",
                                     ch: 'u',
                                     offset: (
@@ -1949,10 +2057,16 @@ mod tests {
                                     ),
                                     range: 1:7-1:11,
                                 },
-                                range: 1:7-1:11,
                             },
-                            property: "name",
-                            property_range: 1:12-1:16,
+                            property: StringSpan {
+                                source: "user: user.name, enabled: !user.disabled",
+                                ch: 'n',
+                                offset: (
+                                    11,
+                                    15,
+                                ),
+                                range: 1:12-1:16,
+                            },
                             range: 1:7-1:16,
                         },
                     },
