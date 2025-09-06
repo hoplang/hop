@@ -7,7 +7,7 @@ use crate::range::Annotated;
 use crate::range::{Range, Ranged};
 use std::collections::{BTreeMap, HashMap};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct TypeAnnotation {
     pub range: Range,
     pub typ: DopType,
@@ -26,7 +26,7 @@ impl Annotated for TypeAnnotation {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct ComponentTypeInformation {
     // Track the parameter types for the component.
     parameter_types: Option<BTreeMap<String, DopParameter>>,

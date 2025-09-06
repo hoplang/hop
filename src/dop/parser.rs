@@ -6,7 +6,7 @@ use crate::dop::tokenizer::{DopToken, DopTokenizer};
 use crate::dop::typechecker::RangeDopType;
 use crate::range::{Range, Ranged};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum ParseError {
     UnexpectedEof,
     Ranged { message: String, range: Range },
@@ -93,7 +93,7 @@ pub enum UnaryOp {
     Not,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum DopExpr {
     Variable {
         name: String,
@@ -159,7 +159,7 @@ impl Ranged for DopExpr {
 }
 
 /// A DopVarName represents a validated variable name in dop.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct DopVarName {
     pub value: String,
     pub range: Range,
@@ -178,7 +178,7 @@ impl DopVarName {
 }
 
 /// A DopParameter represents a parsed parameter with type annotation.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct DopParameter {
     pub var_name: DopVarName,
     pub type_annotation: DopType,
@@ -187,7 +187,7 @@ pub struct DopParameter {
 /// A DopArgument represents a parsed argument with a name and expression.
 /// E.g. <my-comp {x: [1,2], y: 2}>
 ///                ^^^^^^^^
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct DopArgument {
     pub var_name: DopVarName,
     pub expression: DopExpr,
