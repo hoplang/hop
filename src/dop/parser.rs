@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fmt::{self, Display};
 use std::iter::Peekable;
 
 use crate::dop::DopType;
@@ -89,9 +90,25 @@ pub enum BinaryOp {
     Equal,
 }
 
+impl Display for BinaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BinaryOp::Equal => write!(f, "=="),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOp {
     Not,
+}
+
+impl Display for UnaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UnaryOp::Not => write!(f, "!"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -155,10 +172,56 @@ impl Ranged for DopExpr {
     }
 }
 
+impl Display for DopExpr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DopExpr::Variable { value } => write!(f, "{}", value),
+            DopExpr::PropertyAccess { object, property, .. } => {
+                write!(f, "{}.{}", object, property)
+            }
+            DopExpr::StringLiteral { value, .. } => write!(f, "\"{}\"", value),
+            DopExpr::BooleanLiteral { value, .. } => write!(f, "{}", value),
+            DopExpr::NumberLiteral { value, .. } => write!(f, "{}", value),
+            DopExpr::ArrayLiteral { elements, .. } => {
+                write!(f, "[")?;
+                for (i, elem) in elements.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", elem)?;
+                }
+                write!(f, "]")
+            }
+            DopExpr::ObjectLiteral { properties, .. } => {
+                write!(f, "{{")?;
+                for (i, (key, value)) in properties.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}: {}", key, value)?;
+                }
+                write!(f, "}}")
+            }
+            DopExpr::BinaryOp { left, operator, right, .. } => {
+                write!(f, "({} {} {})", left, operator, right)
+            }
+            DopExpr::UnaryOp { operator, operand, .. } => {
+                write!(f, "({}{})", operator, operand)
+            }
+        }
+    }
+}
+
 /// A DopVarName represents a validated variable name in dop.
 #[derive(Debug, Clone)]
 pub struct DopVarName {
     value: StringSpan,
+}
+
+impl Display for DopVarName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.value)
+    }
 }
 
 impl DopVarName {
@@ -192,6 +255,12 @@ pub struct DopParameter {
     pub type_annotation: DopType,
 }
 
+impl Display for DopParameter {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.var_name, self.type_annotation)
+    }
+}
+
 /// A DopArgument represents a parsed argument with a name and expression.
 /// E.g. <my-comp {x: [1,2], y: 2}>
 ///                ^^^^^^^^
@@ -199,6 +268,12 @@ pub struct DopParameter {
 pub struct DopArgument {
     pub var_name: DopVarName,
     pub expression: DopExpr,
+}
+
+impl Display for DopArgument {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.var_name, self.expression)
+    }
 }
 
 fn advance_if(tokenizer: &mut Peekable<DopTokenizer>, token: DopToken) -> Option<Range> {
@@ -631,7 +706,7 @@ mod tests {
     fn check_parse_expr(input: &str, expected: Expect) {
         let mut tokenizer = DopTokenizer::from(input).peekable();
         let actual = match parse_expr(&mut tokenizer) {
-            Ok(result) => format!("{:#?}\n", result),
+            Ok(result) => format!("{}\n", result),
             Err(err) => annotate_error(input, err),
         };
         expected.assert_eq(&actual);
@@ -641,7 +716,13 @@ mod tests {
         let mut tokenizer = DopTokenizer::from(input).peekable();
 
         let actual = match parse_parameters(&mut tokenizer) {
-            Ok(result) => format!("{:#?}\n", result),
+            Ok(result) => {
+                let params: Vec<String> = result
+                    .iter()
+                    .map(|(_, param)| param.to_string())
+                    .collect();
+                format!("[{}]\n", params.join(", "))
+            },
             Err(err) => annotate_error(input, err),
         };
 
@@ -652,7 +733,13 @@ mod tests {
         let mut tokenizer = DopTokenizer::from(input).peekable();
 
         let actual = match parse_arguments(&mut tokenizer) {
-            Ok(result) => format!("{:#?}\n", result),
+            Ok(result) => {
+                let args: Vec<String> = result
+                    .iter()
+                    .map(|(_, arg)| arg.to_string())
+                    .collect();
+                format!("[{}]\n", args.join(", "))
+            },
             Err(err) => annotate_error(input, err),
         };
 
@@ -883,50 +970,7 @@ mod tests {
         check_parse_expr(
             "a == b == c",
             expect![[r#"
-                BinaryOp {
-                    left: BinaryOp {
-                        left: Variable {
-                            value: StringSpan {
-                                source: SourceInfo {
-                                    text: "a == b == c",
-                                    line_starts: [
-                                        0,
-                                    ],
-                                },
-                                start: 0,
-                                end: 1,
-                            },
-                        },
-                        operator: Equal,
-                        right: Variable {
-                            value: StringSpan {
-                                source: SourceInfo {
-                                    text: "a == b == c",
-                                    line_starts: [
-                                        0,
-                                    ],
-                                },
-                                start: 5,
-                                end: 6,
-                            },
-                        },
-                        range: 1:1-1:7,
-                    },
-                    operator: Equal,
-                    right: Variable {
-                        value: StringSpan {
-                            source: SourceInfo {
-                                text: "a == b == c",
-                                line_starts: [
-                                    0,
-                                ],
-                            },
-                            start: 10,
-                            end: 11,
-                        },
-                    },
-                    range: 1:1-1:12,
-                }
+                ((a == b) == c)
             "#]],
         );
     }
@@ -936,60 +980,7 @@ mod tests {
         check_parse_expr(
             "user.name == admin.name",
             expect![[r#"
-                BinaryOp {
-                    left: PropertyAccess {
-                        object: Variable {
-                            value: StringSpan {
-                                source: SourceInfo {
-                                    text: "user.name == admin.name",
-                                    line_starts: [
-                                        0,
-                                    ],
-                                },
-                                start: 0,
-                                end: 4,
-                            },
-                        },
-                        property: StringSpan {
-                            source: SourceInfo {
-                                text: "user.name == admin.name",
-                                line_starts: [
-                                    0,
-                                ],
-                            },
-                            start: 5,
-                            end: 9,
-                        },
-                        range: 1:1-1:10,
-                    },
-                    operator: Equal,
-                    right: PropertyAccess {
-                        object: Variable {
-                            value: StringSpan {
-                                source: SourceInfo {
-                                    text: "user.name == admin.name",
-                                    line_starts: [
-                                        0,
-                                    ],
-                                },
-                                start: 13,
-                                end: 18,
-                            },
-                        },
-                        property: StringSpan {
-                            source: SourceInfo {
-                                text: "user.name == admin.name",
-                                line_starts: [
-                                    0,
-                                ],
-                            },
-                            start: 19,
-                            end: 23,
-                        },
-                        range: 1:14-1:24,
-                    },
-                    range: 1:1-1:24,
-                }
+                (user.name == admin.name)
             "#]],
         );
     }
@@ -999,70 +990,7 @@ mod tests {
         check_parse_expr(
             "app.user.profile.settings.theme",
             expect![[r#"
-                PropertyAccess {
-                    object: PropertyAccess {
-                        object: PropertyAccess {
-                            object: PropertyAccess {
-                                object: Variable {
-                                    value: StringSpan {
-                                        source: SourceInfo {
-                                            text: "app.user.profile.settings.theme",
-                                            line_starts: [
-                                                0,
-                                            ],
-                                        },
-                                        start: 0,
-                                        end: 3,
-                                    },
-                                },
-                                property: StringSpan {
-                                    source: SourceInfo {
-                                        text: "app.user.profile.settings.theme",
-                                        line_starts: [
-                                            0,
-                                        ],
-                                    },
-                                    start: 4,
-                                    end: 8,
-                                },
-                                range: 1:1-1:9,
-                            },
-                            property: StringSpan {
-                                source: SourceInfo {
-                                    text: "app.user.profile.settings.theme",
-                                    line_starts: [
-                                        0,
-                                    ],
-                                },
-                                start: 9,
-                                end: 16,
-                            },
-                            range: 1:1-1:17,
-                        },
-                        property: StringSpan {
-                            source: SourceInfo {
-                                text: "app.user.profile.settings.theme",
-                                line_starts: [
-                                    0,
-                                ],
-                            },
-                            start: 17,
-                            end: 25,
-                        },
-                        range: 1:1-1:26,
-                    },
-                    property: StringSpan {
-                        source: SourceInfo {
-                            text: "app.user.profile.settings.theme",
-                            line_starts: [
-                                0,
-                            ],
-                        },
-                        start: 26,
-                        end: 31,
-                    },
-                    range: 1:1-1:32,
-                }
+                app.user.profile.settings.theme
             "#]],
         );
     }
@@ -1072,10 +1000,7 @@ mod tests {
         check_parse_expr(
             "''",
             expect![[r#"
-                StringLiteral {
-                    value: "",
-                    range: 1:1-1:3,
-                }
+                ""
             "#]],
         );
     }
@@ -1085,10 +1010,7 @@ mod tests {
         check_parse_expr(
             "99",
             expect![[r#"
-                NumberLiteral {
-                    value: Number(99),
-                    range: 1:1-1:3,
-                }
+                99
             "#]],
         );
     }
@@ -1098,10 +1020,7 @@ mod tests {
         check_parse_expr(
             "3.14",
             expect![[r#"
-                NumberLiteral {
-                    value: Number(3.14),
-                    range: 1:1-1:5,
-                }
+                3.14
             "#]],
         );
     }
@@ -1111,34 +1030,7 @@ mod tests {
         check_parse_expr(
             "(x == y)",
             expect![[r#"
-                BinaryOp {
-                    left: Variable {
-                        value: StringSpan {
-                            source: SourceInfo {
-                                text: "(x == y)",
-                                line_starts: [
-                                    0,
-                                ],
-                            },
-                            start: 1,
-                            end: 2,
-                        },
-                    },
-                    operator: Equal,
-                    right: Variable {
-                        value: StringSpan {
-                            source: SourceInfo {
-                                text: "(x == y)",
-                                line_starts: [
-                                    0,
-                                ],
-                            },
-                            start: 6,
-                            end: 7,
-                        },
-                    },
-                    range: 1:2-1:8,
-                }
+                (x == y)
             "#]],
         );
     }
@@ -1148,31 +1040,7 @@ mod tests {
         check_parse_expr(
             "user.name",
             expect![[r#"
-                PropertyAccess {
-                    object: Variable {
-                        value: StringSpan {
-                            source: SourceInfo {
-                                text: "user.name",
-                                line_starts: [
-                                    0,
-                                ],
-                            },
-                            start: 0,
-                            end: 4,
-                        },
-                    },
-                    property: StringSpan {
-                        source: SourceInfo {
-                            text: "user.name",
-                            line_starts: [
-                                0,
-                            ],
-                        },
-                        start: 5,
-                        end: 9,
-                    },
-                    range: 1:1-1:10,
-                }
+                user.name
             "#]],
         );
     }
@@ -1182,39 +1050,7 @@ mod tests {
         check_parse_expr(
             "'guest' == user.role",
             expect![[r#"
-                BinaryOp {
-                    left: StringLiteral {
-                        value: "guest",
-                        range: 1:1-1:8,
-                    },
-                    operator: Equal,
-                    right: PropertyAccess {
-                        object: Variable {
-                            value: StringSpan {
-                                source: SourceInfo {
-                                    text: "'guest' == user.role",
-                                    line_starts: [
-                                        0,
-                                    ],
-                                },
-                                start: 11,
-                                end: 15,
-                            },
-                        },
-                        property: StringSpan {
-                            source: SourceInfo {
-                                text: "'guest' == user.role",
-                                line_starts: [
-                                    0,
-                                ],
-                            },
-                            start: 16,
-                            end: 20,
-                        },
-                        range: 1:12-1:21,
-                    },
-                    range: 1:1-1:21,
-                }
+                ("guest" == user.role)
             "#]],
         );
     }
@@ -1224,34 +1060,7 @@ mod tests {
         check_parse_expr(
             "x == y",
             expect![[r#"
-                BinaryOp {
-                    left: Variable {
-                        value: StringSpan {
-                            source: SourceInfo {
-                                text: "x == y",
-                                line_starts: [
-                                    0,
-                                ],
-                            },
-                            start: 0,
-                            end: 1,
-                        },
-                    },
-                    operator: Equal,
-                    right: Variable {
-                        value: StringSpan {
-                            source: SourceInfo {
-                                text: "x == y",
-                                line_starts: [
-                                    0,
-                                ],
-                            },
-                            start: 5,
-                            end: 6,
-                        },
-                    },
-                    range: 1:1-1:7,
-                }
+                (x == y)
             "#]],
         );
     }
@@ -1261,10 +1070,7 @@ mod tests {
         check_parse_expr(
             "'hello'",
             expect![[r#"
-                StringLiteral {
-                    value: "hello",
-                    range: 1:1-1:8,
-                }
+                "hello"
             "#]],
         );
     }
@@ -1274,18 +1080,7 @@ mod tests {
         check_parse_expr(
             "x",
             expect![[r#"
-                Variable {
-                    value: StringSpan {
-                        source: SourceInfo {
-                            text: "x",
-                            line_starts: [
-                                0,
-                            ],
-                        },
-                        start: 0,
-                        end: 1,
-                    },
-                }
+                x
             "#]],
         );
     }
@@ -1295,18 +1090,7 @@ mod tests {
         check_parse_expr(
             "'apple' == 'orange'",
             expect![[r#"
-                BinaryOp {
-                    left: StringLiteral {
-                        value: "apple",
-                        range: 1:1-1:8,
-                    },
-                    operator: Equal,
-                    right: StringLiteral {
-                        value: "orange",
-                        range: 1:12-1:20,
-                    },
-                    range: 1:1-1:20,
-                }
+                ("apple" == "orange")
             "#]],
         );
     }
@@ -1316,39 +1100,7 @@ mod tests {
         check_parse_expr(
             "user.name == 'admin'",
             expect![[r#"
-                BinaryOp {
-                    left: PropertyAccess {
-                        object: Variable {
-                            value: StringSpan {
-                                source: SourceInfo {
-                                    text: "user.name == 'admin'",
-                                    line_starts: [
-                                        0,
-                                    ],
-                                },
-                                start: 0,
-                                end: 4,
-                            },
-                        },
-                        property: StringSpan {
-                            source: SourceInfo {
-                                text: "user.name == 'admin'",
-                                line_starts: [
-                                    0,
-                                ],
-                            },
-                            start: 5,
-                            end: 9,
-                        },
-                        range: 1:1-1:10,
-                    },
-                    operator: Equal,
-                    right: StringLiteral {
-                        value: "admin",
-                        range: 1:14-1:21,
-                    },
-                    range: 1:1-1:21,
-                }
+                (user.name == "admin")
             "#]],
         );
     }
@@ -1358,10 +1110,7 @@ mod tests {
         check_parse_expr(
             "'hello world'",
             expect![[r#"
-                StringLiteral {
-                    value: "hello world",
-                    range: 1:1-1:14,
-                }
+                "hello world"
             "#]],
         );
     }
@@ -1371,60 +1120,7 @@ mod tests {
         check_parse_expr(
             "  user . name   ==   admin . name  ",
             expect![[r#"
-                BinaryOp {
-                    left: PropertyAccess {
-                        object: Variable {
-                            value: StringSpan {
-                                source: SourceInfo {
-                                    text: "  user . name   ==   admin . name  ",
-                                    line_starts: [
-                                        0,
-                                    ],
-                                },
-                                start: 2,
-                                end: 6,
-                            },
-                        },
-                        property: StringSpan {
-                            source: SourceInfo {
-                                text: "  user . name   ==   admin . name  ",
-                                line_starts: [
-                                    0,
-                                ],
-                            },
-                            start: 9,
-                            end: 13,
-                        },
-                        range: 1:3-1:14,
-                    },
-                    operator: Equal,
-                    right: PropertyAccess {
-                        object: Variable {
-                            value: StringSpan {
-                                source: SourceInfo {
-                                    text: "  user . name   ==   admin . name  ",
-                                    line_starts: [
-                                        0,
-                                    ],
-                                },
-                                start: 21,
-                                end: 26,
-                            },
-                        },
-                        property: StringSpan {
-                            source: SourceInfo {
-                                text: "  user . name   ==   admin . name  ",
-                                line_starts: [
-                                    0,
-                                ],
-                            },
-                            start: 29,
-                            end: 33,
-                        },
-                        range: 1:22-1:34,
-                    },
-                    range: 1:3-1:34,
-                }
+                (user.name == admin.name)
             "#]],
         );
     }
@@ -1434,10 +1130,7 @@ mod tests {
         check_parse_expr(
             "[]",
             expect![[r#"
-                ArrayLiteral {
-                    elements: [],
-                    range: 1:1-1:3,
-                }
+                []
             "#]],
         );
     }
@@ -1447,23 +1140,7 @@ mod tests {
         check_parse_expr(
             "[1, 2, 3]",
             expect![[r#"
-                ArrayLiteral {
-                    elements: [
-                        NumberLiteral {
-                            value: Number(1),
-                            range: 1:2-1:3,
-                        },
-                        NumberLiteral {
-                            value: Number(2),
-                            range: 1:5-1:6,
-                        },
-                        NumberLiteral {
-                            value: Number(3),
-                            range: 1:8-1:9,
-                        },
-                    ],
-                    range: 1:1-1:10,
-                }
+                [1, 2, 3]
             "#]],
         );
     }
@@ -1473,23 +1150,7 @@ mod tests {
         check_parse_expr(
             "[1, 'hello', true]",
             expect![[r#"
-                ArrayLiteral {
-                    elements: [
-                        NumberLiteral {
-                            value: Number(1),
-                            range: 1:2-1:3,
-                        },
-                        StringLiteral {
-                            value: "hello",
-                            range: 1:5-1:12,
-                        },
-                        BooleanLiteral {
-                            value: true,
-                            range: 1:14-1:18,
-                        },
-                    ],
-                    range: 1:1-1:19,
-                }
+                [1, "hello", true]
             "#]],
         );
     }
@@ -1499,37 +1160,7 @@ mod tests {
         check_parse_expr(
             "[[1, 2], [3, 4]]",
             expect![[r#"
-                ArrayLiteral {
-                    elements: [
-                        ArrayLiteral {
-                            elements: [
-                                NumberLiteral {
-                                    value: Number(1),
-                                    range: 1:3-1:4,
-                                },
-                                NumberLiteral {
-                                    value: Number(2),
-                                    range: 1:6-1:7,
-                                },
-                            ],
-                            range: 1:2-1:8,
-                        },
-                        ArrayLiteral {
-                            elements: [
-                                NumberLiteral {
-                                    value: Number(3),
-                                    range: 1:11-1:12,
-                                },
-                                NumberLiteral {
-                                    value: Number(4),
-                                    range: 1:14-1:15,
-                                },
-                            ],
-                            range: 1:10-1:16,
-                        },
-                    ],
-                    range: 1:1-1:17,
-                }
+                [[1, 2], [3, 4]]
             "#]],
         );
     }
@@ -1539,48 +1170,7 @@ mod tests {
         check_parse_expr(
             "[x, user.name]",
             expect![[r#"
-                ArrayLiteral {
-                    elements: [
-                        Variable {
-                            value: StringSpan {
-                                source: SourceInfo {
-                                    text: "[x, user.name]",
-                                    line_starts: [
-                                        0,
-                                    ],
-                                },
-                                start: 1,
-                                end: 2,
-                            },
-                        },
-                        PropertyAccess {
-                            object: Variable {
-                                value: StringSpan {
-                                    source: SourceInfo {
-                                        text: "[x, user.name]",
-                                        line_starts: [
-                                            0,
-                                        ],
-                                    },
-                                    start: 4,
-                                    end: 8,
-                                },
-                            },
-                            property: StringSpan {
-                                source: SourceInfo {
-                                    text: "[x, user.name]",
-                                    line_starts: [
-                                        0,
-                                    ],
-                                },
-                                start: 9,
-                                end: 13,
-                            },
-                            range: 1:5-1:14,
-                        },
-                    ],
-                    range: 1:1-1:15,
-                }
+                [x, user.name]
             "#]],
         );
     }
@@ -1590,10 +1180,7 @@ mod tests {
         check_parse_expr(
             "{}",
             expect![[r#"
-                ObjectLiteral {
-                    properties: {},
-                    range: 1:1-1:3,
-                }
+                {}
             "#]],
         );
     }
@@ -1603,15 +1190,7 @@ mod tests {
         check_parse_expr(
             "{name: 'John'}",
             expect![[r#"
-                ObjectLiteral {
-                    properties: {
-                        "name": StringLiteral {
-                            value: "John",
-                            range: 1:8-1:14,
-                        },
-                    },
-                    range: 1:1-1:15,
-                }
+                {name: "John"}
             "#]],
         );
     }
@@ -1621,19 +1200,7 @@ mod tests {
         check_parse_expr(
             "{a: 'foo', b: 1}",
             expect![[r#"
-                ObjectLiteral {
-                    properties: {
-                        "a": StringLiteral {
-                            value: "foo",
-                            range: 1:5-1:10,
-                        },
-                        "b": NumberLiteral {
-                            value: Number(1),
-                            range: 1:15-1:16,
-                        },
-                    },
-                    range: 1:1-1:17,
-                }
+                {a: "foo", b: 1}
             "#]],
         );
     }
@@ -1643,65 +1210,7 @@ mod tests {
         check_parse_expr(
             "{user: user.name, active: !user.disabled}",
             expect![[r#"
-                ObjectLiteral {
-                    properties: {
-                        "active": UnaryOp {
-                            operator: Not,
-                            operand: PropertyAccess {
-                                object: Variable {
-                                    value: StringSpan {
-                                        source: SourceInfo {
-                                            text: "{user: user.name, active: !user.disabled}",
-                                            line_starts: [
-                                                0,
-                                            ],
-                                        },
-                                        start: 27,
-                                        end: 31,
-                                    },
-                                },
-                                property: StringSpan {
-                                    source: SourceInfo {
-                                        text: "{user: user.name, active: !user.disabled}",
-                                        line_starts: [
-                                            0,
-                                        ],
-                                    },
-                                    start: 32,
-                                    end: 40,
-                                },
-                                range: 1:28-1:41,
-                            },
-                            range: 1:27-1:41,
-                        },
-                        "user": PropertyAccess {
-                            object: Variable {
-                                value: StringSpan {
-                                    source: SourceInfo {
-                                        text: "{user: user.name, active: !user.disabled}",
-                                        line_starts: [
-                                            0,
-                                        ],
-                                    },
-                                    start: 7,
-                                    end: 11,
-                                },
-                            },
-                            property: StringSpan {
-                                source: SourceInfo {
-                                    text: "{user: user.name, active: !user.disabled}",
-                                    line_starts: [
-                                        0,
-                                    ],
-                                },
-                                start: 12,
-                                end: 16,
-                            },
-                            range: 1:8-1:17,
-                        },
-                    },
-                    range: 1:1-1:42,
-                }
+                {active: (!user.disabled), user: user.name}
             "#]],
         );
     }
@@ -1711,20 +1220,7 @@ mod tests {
         check_parse_expr(
             "{nested: {inner: 'value'}}",
             expect![[r#"
-                ObjectLiteral {
-                    properties: {
-                        "nested": ObjectLiteral {
-                            properties: {
-                                "inner": StringLiteral {
-                                    value: "value",
-                                    range: 1:18-1:25,
-                                },
-                            },
-                            range: 1:10-1:26,
-                        },
-                    },
-                    range: 1:1-1:27,
-                }
+                {nested: {inner: "value"}}
             "#]],
         );
     }
@@ -1734,23 +1230,7 @@ mod tests {
         check_parse_expr(
             "[\n\t1,\n\t2,\n\t3,\n]",
             expect![[r#"
-                ArrayLiteral {
-                    elements: [
-                        NumberLiteral {
-                            value: Number(1),
-                            range: 2:2-2:3,
-                        },
-                        NumberLiteral {
-                            value: Number(2),
-                            range: 3:2-3:3,
-                        },
-                        NumberLiteral {
-                            value: Number(3),
-                            range: 4:2-4:3,
-                        },
-                    ],
-                    range: 1:1-5:2,
-                }
+                [1, 2, 3]
             "#]],
         );
     }
@@ -1760,15 +1240,7 @@ mod tests {
         check_parse_expr(
             "[\n\t1,\n]",
             expect![[r#"
-                ArrayLiteral {
-                    elements: [
-                        NumberLiteral {
-                            value: Number(1),
-                            range: 2:2-2:3,
-                        },
-                    ],
-                    range: 1:1-3:2,
-                }
+                [1]
             "#]],
         );
     }
@@ -1778,77 +1250,7 @@ mod tests {
         check_parse_expr(
             "[\n\tuser.name,\n\t!user.disabled,\n]",
             expect![[r#"
-                ArrayLiteral {
-                    elements: [
-                        PropertyAccess {
-                            object: Variable {
-                                value: StringSpan {
-                                    source: SourceInfo {
-                                        text: "[\n\tuser.name,\n\t!user.disabled,\n]",
-                                        line_starts: [
-                                            0,
-                                            2,
-                                            14,
-                                            31,
-                                        ],
-                                    },
-                                    start: 3,
-                                    end: 7,
-                                },
-                            },
-                            property: StringSpan {
-                                source: SourceInfo {
-                                    text: "[\n\tuser.name,\n\t!user.disabled,\n]",
-                                    line_starts: [
-                                        0,
-                                        2,
-                                        14,
-                                        31,
-                                    ],
-                                },
-                                start: 8,
-                                end: 12,
-                            },
-                            range: 2:2-2:11,
-                        },
-                        UnaryOp {
-                            operator: Not,
-                            operand: PropertyAccess {
-                                object: Variable {
-                                    value: StringSpan {
-                                        source: SourceInfo {
-                                            text: "[\n\tuser.name,\n\t!user.disabled,\n]",
-                                            line_starts: [
-                                                0,
-                                                2,
-                                                14,
-                                                31,
-                                            ],
-                                        },
-                                        start: 16,
-                                        end: 20,
-                                    },
-                                },
-                                property: StringSpan {
-                                    source: SourceInfo {
-                                        text: "[\n\tuser.name,\n\t!user.disabled,\n]",
-                                        line_starts: [
-                                            0,
-                                            2,
-                                            14,
-                                            31,
-                                        ],
-                                    },
-                                    start: 21,
-                                    end: 29,
-                                },
-                                range: 3:3-3:16,
-                            },
-                            range: 3:2-3:16,
-                        },
-                    ],
-                    range: 1:1-4:2,
-                }
+                [user.name, (!user.disabled)]
             "#]],
         );
     }
@@ -1858,19 +1260,7 @@ mod tests {
         check_parse_expr(
             "{\n\ta: 'foo',\n\tb: 1,\n}",
             expect![[r#"
-                ObjectLiteral {
-                    properties: {
-                        "a": StringLiteral {
-                            value: "foo",
-                            range: 2:5-2:10,
-                        },
-                        "b": NumberLiteral {
-                            value: Number(1),
-                            range: 3:5-3:6,
-                        },
-                    },
-                    range: 1:1-4:2,
-                }
+                {a: "foo", b: 1}
             "#]],
         );
     }
@@ -1880,15 +1270,7 @@ mod tests {
         check_parse_expr(
             "{\n\tname: 'John',\n}",
             expect![[r#"
-                ObjectLiteral {
-                    properties: {
-                        "name": StringLiteral {
-                            value: "John",
-                            range: 2:8-2:14,
-                        },
-                    },
-                    range: 1:1-3:2,
-                }
+                {name: "John"}
             "#]],
         );
     }
@@ -1898,77 +1280,7 @@ mod tests {
         check_parse_expr(
             "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
             expect![[r#"
-                ObjectLiteral {
-                    properties: {
-                        "active": UnaryOp {
-                            operator: Not,
-                            operand: PropertyAccess {
-                                object: Variable {
-                                    value: StringSpan {
-                                        source: SourceInfo {
-                                            text: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
-                                            line_starts: [
-                                                0,
-                                                2,
-                                                20,
-                                                45,
-                                            ],
-                                        },
-                                        start: 30,
-                                        end: 34,
-                                    },
-                                },
-                                property: StringSpan {
-                                    source: SourceInfo {
-                                        text: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
-                                        line_starts: [
-                                            0,
-                                            2,
-                                            20,
-                                            45,
-                                        ],
-                                    },
-                                    start: 35,
-                                    end: 43,
-                                },
-                                range: 3:11-3:24,
-                            },
-                            range: 3:10-3:24,
-                        },
-                        "user": PropertyAccess {
-                            object: Variable {
-                                value: StringSpan {
-                                    source: SourceInfo {
-                                        text: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
-                                        line_starts: [
-                                            0,
-                                            2,
-                                            20,
-                                            45,
-                                        ],
-                                    },
-                                    start: 9,
-                                    end: 13,
-                                },
-                            },
-                            property: StringSpan {
-                                source: SourceInfo {
-                                    text: "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
-                                    line_starts: [
-                                        0,
-                                        2,
-                                        20,
-                                        45,
-                                    ],
-                                },
-                                start: 14,
-                                end: 18,
-                            },
-                            range: 2:8-2:17,
-                        },
-                    },
-                    range: 1:1-4:2,
-                }
+                {active: (!user.disabled), user: user.name}
             "#]],
         );
     }
@@ -1978,26 +1290,7 @@ mod tests {
         check_parse_arguments(
             "name: 'John'",
             expect![[r#"
-                {
-                    "name": DopArgument {
-                        var_name: DopVarName {
-                            value: StringSpan {
-                                source: SourceInfo {
-                                    text: "name: 'John'",
-                                    line_starts: [
-                                        0,
-                                    ],
-                                },
-                                start: 0,
-                                end: 4,
-                            },
-                        },
-                        expression: StringLiteral {
-                            value: "John",
-                            range: 1:7-1:13,
-                        },
-                    },
-                }
+                [name: "John"]
             "#]],
         );
     }
@@ -2007,62 +1300,7 @@ mod tests {
         check_parse_arguments(
             "name: 'John', age: 25, active: true",
             expect![[r#"
-                {
-                    "active": DopArgument {
-                        var_name: DopVarName {
-                            value: StringSpan {
-                                source: SourceInfo {
-                                    text: "name: 'John', age: 25, active: true",
-                                    line_starts: [
-                                        0,
-                                    ],
-                                },
-                                start: 23,
-                                end: 29,
-                            },
-                        },
-                        expression: BooleanLiteral {
-                            value: true,
-                            range: 1:32-1:36,
-                        },
-                    },
-                    "age": DopArgument {
-                        var_name: DopVarName {
-                            value: StringSpan {
-                                source: SourceInfo {
-                                    text: "name: 'John', age: 25, active: true",
-                                    line_starts: [
-                                        0,
-                                    ],
-                                },
-                                start: 14,
-                                end: 17,
-                            },
-                        },
-                        expression: NumberLiteral {
-                            value: Number(25),
-                            range: 1:20-1:22,
-                        },
-                    },
-                    "name": DopArgument {
-                        var_name: DopVarName {
-                            value: StringSpan {
-                                source: SourceInfo {
-                                    text: "name: 'John', age: 25, active: true",
-                                    line_starts: [
-                                        0,
-                                    ],
-                                },
-                                start: 0,
-                                end: 4,
-                            },
-                        },
-                        expression: StringLiteral {
-                            value: "John",
-                            range: 1:7-1:13,
-                        },
-                    },
-                }
+                [active: true, age: 25, name: "John"]
             "#]],
         );
     }
@@ -2072,90 +1310,7 @@ mod tests {
         check_parse_arguments(
             "user: user.name, enabled: !user.disabled",
             expect![[r#"
-                {
-                    "enabled": DopArgument {
-                        var_name: DopVarName {
-                            value: StringSpan {
-                                source: SourceInfo {
-                                    text: "user: user.name, enabled: !user.disabled",
-                                    line_starts: [
-                                        0,
-                                    ],
-                                },
-                                start: 17,
-                                end: 24,
-                            },
-                        },
-                        expression: UnaryOp {
-                            operator: Not,
-                            operand: PropertyAccess {
-                                object: Variable {
-                                    value: StringSpan {
-                                        source: SourceInfo {
-                                            text: "user: user.name, enabled: !user.disabled",
-                                            line_starts: [
-                                                0,
-                                            ],
-                                        },
-                                        start: 27,
-                                        end: 31,
-                                    },
-                                },
-                                property: StringSpan {
-                                    source: SourceInfo {
-                                        text: "user: user.name, enabled: !user.disabled",
-                                        line_starts: [
-                                            0,
-                                        ],
-                                    },
-                                    start: 32,
-                                    end: 40,
-                                },
-                                range: 1:28-1:41,
-                            },
-                            range: 1:27-1:41,
-                        },
-                    },
-                    "user": DopArgument {
-                        var_name: DopVarName {
-                            value: StringSpan {
-                                source: SourceInfo {
-                                    text: "user: user.name, enabled: !user.disabled",
-                                    line_starts: [
-                                        0,
-                                    ],
-                                },
-                                start: 0,
-                                end: 4,
-                            },
-                        },
-                        expression: PropertyAccess {
-                            object: Variable {
-                                value: StringSpan {
-                                    source: SourceInfo {
-                                        text: "user: user.name, enabled: !user.disabled",
-                                        line_starts: [
-                                            0,
-                                        ],
-                                    },
-                                    start: 6,
-                                    end: 10,
-                                },
-                            },
-                            property: StringSpan {
-                                source: SourceInfo {
-                                    text: "user: user.name, enabled: !user.disabled",
-                                    line_starts: [
-                                        0,
-                                    ],
-                                },
-                                start: 11,
-                                end: 15,
-                            },
-                            range: 1:7-1:16,
-                        },
-                    },
-                }
+                [enabled: (!user.disabled), user: user.name]
             "#]],
         );
     }
@@ -2165,44 +1320,7 @@ mod tests {
         check_parse_arguments(
             "name: 'John', age: 25,",
             expect![[r#"
-                {
-                    "age": DopArgument {
-                        var_name: DopVarName {
-                            value: StringSpan {
-                                source: SourceInfo {
-                                    text: "name: 'John', age: 25,",
-                                    line_starts: [
-                                        0,
-                                    ],
-                                },
-                                start: 14,
-                                end: 17,
-                            },
-                        },
-                        expression: NumberLiteral {
-                            value: Number(25),
-                            range: 1:20-1:22,
-                        },
-                    },
-                    "name": DopArgument {
-                        var_name: DopVarName {
-                            value: StringSpan {
-                                source: SourceInfo {
-                                    text: "name: 'John', age: 25,",
-                                    line_starts: [
-                                        0,
-                                    ],
-                                },
-                                start: 0,
-                                end: 4,
-                            },
-                        },
-                        expression: StringLiteral {
-                            value: "John",
-                            range: 1:7-1:13,
-                        },
-                    },
-                }
+                [age: 25, name: "John"]
             "#]],
         );
     }
