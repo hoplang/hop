@@ -38,7 +38,7 @@ pub enum Token {
         span: StringSpan,
     },
     Text {
-        value: StringSpan,
+        span: StringSpan,
     },
 }
 
@@ -50,7 +50,7 @@ impl Ranged for Token {
             Token::Expression { span, .. } => span.range(),
             Token::OpeningTag { span, .. } => span.range(),
             Token::ClosingTag { span, .. } => span.range(),
-            Token::Text { value, .. } => value.range(),
+            Token::Text { span, .. } => span.range(),
         }
     }
 }
@@ -58,7 +58,7 @@ impl Ranged for Token {
 impl Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Token::Text { value } => {
+            Token::Text { span: value } => {
                 write!(
                     f,
                     "Text [{} byte, {:#?}]",
@@ -370,7 +370,7 @@ impl Tokenizer {
                         .eq(stored_closing_tag.chars()) =>
                     {
                         if let Some(s) = raw_text {
-                            return Some(Token::Text { value: s });
+                            return Some(Token::Text { span: s });
                         } else {
                             break;
                         }
@@ -495,7 +495,7 @@ impl Tokenizer {
                 while let Some(ch) = self.iter.next_if(|s| s.ch() != '{' && s.ch() != '<') {
                     value = value.to(ch);
                 }
-                Some(Token::Text { value })
+                Some(Token::Text { span: value })
             }
         }
     }

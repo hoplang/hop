@@ -182,7 +182,7 @@ pub enum HopNode {
     /// A Text node represents text in the document.
     /// E.g. <div>hello world</div>
     ///           ^^^^^^^^^^^
-    Text { value: StringSpan },
+    Text { span: StringSpan },
 
     /// A TextExpression represents an expression that occurs in a text position.
     /// E.g. <div>hello {world}</div>
@@ -361,7 +361,7 @@ impl Ranged for HopNode {
     fn range(&self) -> Range {
         match self {
             HopNode::Doctype { range, .. } => *range,
-            HopNode::Text { value, .. } => value.range(),
+            HopNode::Text { span: value, .. } => value.range(),
             HopNode::TextExpression { range, .. } => *range,
             HopNode::ComponentReference { range, .. } => *range,
             HopNode::SlotDefinition { range, .. } => *range,
