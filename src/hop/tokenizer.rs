@@ -503,11 +503,11 @@ impl Tokenizer {
             }
             // Text
             _ => {
-                let mut value = self.iter.next()?;
-                while let Some(ch) = self.iter.next_if(|s| s.ch() != '{' && s.ch() != '<') {
-                    value = value.to(ch);
-                }
-                Some(Token::Text { span: value })
+                let text = self
+                    .iter
+                    .peeking_take_while(|s| s.ch() != '{' && s.ch() != '<')
+                    .collect::<Option<StringSpan>>()?;
+                Some(Token::Text { span: text })
             }
         }
     }
