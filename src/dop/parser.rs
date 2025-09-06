@@ -26,8 +26,8 @@ impl Display for DopVarName {
 impl DopVarName {
     pub fn new(value: StringSpan) -> Result<Self, ParseError> {
         let mut chars = value.as_str().chars();
-        if !chars.next().is_some_and(|c| c.is_ascii_lowercase())
-            || !chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        if !chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+            || !chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
         {
             return Err(ParseError::invalid_variable_name(
                 value.as_str(),

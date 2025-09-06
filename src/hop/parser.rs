@@ -803,7 +803,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_invalid_variable_name() {
+    fn test_parser_uppercase_variable_name() {
         check(
             indoc! {"
                 <main-comp {Data: string}>
@@ -811,9 +811,7 @@ mod tests {
                 </main-comp>
             "},
             expect![[r#"
-                error: Invalid variable name 'Data'. Variable names must match [a-z][a-z0-9_]*
-                1 | <main-comp {Data: string}>
-                  |             ^^^^
+                div                                               2:5-2:16
             "#]],
         );
     }
