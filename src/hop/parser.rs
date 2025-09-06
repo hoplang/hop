@@ -248,10 +248,7 @@ fn construct_node(
 
     match t {
         Token::Doctype { range } => HopNode::Doctype { range },
-        Token::Text { value, .. } => HopNode::Text {
-            value: value.to_string(),
-            range: tree.range,
-        },
+        Token::Text { value, .. } => HopNode::Text { value },
         Token::Expression {
             expression: expr, ..
         } => {

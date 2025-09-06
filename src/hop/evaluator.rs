@@ -387,7 +387,7 @@ fn evaluate_node(
         HopNode::Error { .. } => Ok(()),
 
         HopNode::Text { value, .. } => {
-            output.push_str(value);
+            output.push_str(value.as_str());
             Ok(())
         }
 
