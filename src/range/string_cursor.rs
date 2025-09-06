@@ -18,12 +18,6 @@ pub struct StringSpan {
     range: Range,
 }
 
-impl From<StringSpan> for (String, Range) {
-    fn from(val: StringSpan) -> Self {
-        (val.to_string(), val.range)
-    }
-}
-
 impl StringSpan {
     pub fn merge(self, other: StringSpan) -> Self {
         StringSpan {
