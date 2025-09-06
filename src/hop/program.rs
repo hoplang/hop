@@ -5,7 +5,8 @@ use crate::hop::parser::parse;
 use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
-use crate::range::{Position, Range, Ranged};
+use crate::range::Position;
+use crate::range::string_cursor::{StringSpan, Spanned};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Display};
@@ -17,12 +18,12 @@ use super::typechecker::TypeChecker;
 #[derive(Debug, Clone)]
 pub struct HoverInfo {
     pub type_str: String,
-    pub range: Range,
+    pub range: StringSpan,
 }
 
-impl Ranged for HoverInfo {
-    fn range(&self) -> Range {
-        self.range
+impl Spanned for HoverInfo {
+    fn span(&self) -> &StringSpan {
+        &self.range
     }
 }
 
@@ -35,12 +36,12 @@ impl Display for HoverInfo {
 #[derive(Debug, Clone)]
 pub struct DefinitionLocation {
     pub module: String,
-    pub range: Range,
+    pub range: StringSpan,
 }
 
-impl Ranged for DefinitionLocation {
-    fn range(&self) -> Range {
-        self.range
+impl Spanned for DefinitionLocation {
+    fn span(&self) -> &StringSpan {
+        &self.range
     }
 }
 
@@ -53,12 +54,12 @@ impl Display for DefinitionLocation {
 #[derive(Debug, Clone)]
 pub struct Diagnostic {
     pub message: String,
-    pub range: Range,
+    pub range: StringSpan,
 }
 
-impl Ranged for Diagnostic {
-    fn range(&self) -> Range {
-        self.range
+impl Spanned for Diagnostic {
+    fn span(&self) -> &StringSpan {
+        &self.range
     }
 }
 
@@ -71,12 +72,12 @@ impl Display for Diagnostic {
 #[derive(Debug, Clone)]
 pub struct RenameLocation {
     pub module: String,
-    pub range: Range,
+    pub range: StringSpan,
 }
 
-impl Ranged for RenameLocation {
-    fn range(&self) -> Range {
-        self.range
+impl Spanned for RenameLocation {
+    fn span(&self) -> &StringSpan {
+        &self.range
     }
 }
 
@@ -124,12 +125,12 @@ impl Ord for RenameLocation {
 #[derive(Debug, Clone)]
 pub struct RenameableSymbol {
     pub current_name: String,
-    pub range: Range,
+    pub range: StringSpan,
 }
 
-impl Ranged for RenameableSymbol {
-    fn range(&self) -> Range {
-        self.range
+impl Spanned for RenameableSymbol {
+    fn span(&self) -> &StringSpan {
+        &self.range
     }
 }
 
@@ -220,10 +221,10 @@ impl Program {
             .type_annotations
             .get(module_name)?
             .iter()
-            .find(|a| a.contains(position))
+            .find(|a| a.range.range().contains(position))
             .map(|annotation| HoverInfo {
                 type_str: format!("`{}`: `{}`", annotation.name, annotation.typ),
-                range: annotation.range,
+                range: annotation.range.clone(),
             })
     }
 
@@ -236,7 +237,7 @@ impl Program {
 
         let node = ast.find_node_at_position(position)?;
 
-        let is_on_tag_name = node.tag_name_ranges().any(|r| r.contains(position));
+        let is_on_tag_name = node.tag_name_ranges().any(|r| r.range().contains(position));
 
         if !is_on_tag_name {
             return None;
@@ -256,7 +257,7 @@ impl Program {
                 let component_def = module.get_component_definition(tag_name.as_str())?;
                 Some(DefinitionLocation {
                     module: m.to_string(),
-                    range: component_def.tag_name.range(),
+                    range: component_def.tag_name.clone(),
                 })
             }
             HopNode::Html { .. } => {
@@ -274,7 +275,7 @@ impl Program {
     ) -> Option<Vec<RenameLocation>> {
         let ast = self.asts.get(module_name)?;
         for node in ast.get_component_definitions() {
-            if node.tag_name_ranges().any(|r| r.contains(position)) {
+            if node.tag_name_ranges().any(|r| r.range().contains(position)) {
                 return Some(
                     self.collect_component_rename_locations(node.tag_name.as_str(), module_name),
                 );
@@ -283,7 +284,7 @@ impl Program {
 
         let node = ast.find_node_at_position(position)?;
 
-        let is_on_tag_name = node.tag_name_ranges().any(|r| r.contains(position));
+        let is_on_tag_name = node.tag_name_ranges().any(|r| r.range().contains(position));
 
         if !is_on_tag_name {
             return None;
@@ -323,7 +324,7 @@ impl Program {
         for component_node in ast.get_component_definitions() {
             if let Some(range) = component_node
                 .tag_name_ranges()
-                .find(|r| r.contains(position))
+                .find(|r| r.range().contains(position))
             {
                 return Some(RenameableSymbol {
                     current_name: component_node.tag_name.to_string(),
@@ -337,7 +338,7 @@ impl Program {
         let tag_name = node.tag_name()?;
 
         node.tag_name_ranges()
-            .find(|r| r.contains(position))
+            .find(|r| r.range().contains(position))
             .map(|range| RenameableSymbol {
                 current_name: tag_name.to_string(),
                 range,
@@ -364,14 +365,14 @@ impl Program {
                 // Add the definition's opening tag name
                 locations.push(RenameLocation {
                     module: definition_module.to_string(),
-                    range: component_node.tag_name.range(),
+                    range: component_node.tag_name.clone(),
                 });
 
                 // Add the definition's closing tag name if it exists
                 if let Some(span) = component_node.closing_tag_name.as_ref() {
                     locations.push(RenameLocation {
                         module: definition_module.to_string(),
-                        range: span.range(),
+                        range: span.clone(),
                     });
                 }
             }
@@ -387,7 +388,7 @@ impl Program {
                     })
                     .map(|n| RenameLocation {
                         module: module_name.clone(),
-                        range: n.component_attr.value.range(),
+                        range: n.component_attr.value.clone(),
                     }),
             );
 
@@ -426,7 +427,7 @@ impl Program {
         for error in self.parse_errors.get(module_name).into_iter().flatten() {
             diagnostics.push(Diagnostic {
                 message: error.message.clone(),
-                range: error.span.range(),
+                range: error.span.clone(),
             });
             found_parse_errors = true;
         }
@@ -443,7 +444,7 @@ impl Program {
             {
                 diagnostics.push(Diagnostic {
                     message: error.message.clone(),
-                    range: error.span.range(),
+                    range: error.span.clone(),
                 });
             }
         }
@@ -561,7 +562,7 @@ mod tests {
                 .collect();
 
             if !module_locs.is_empty() {
-                output.push(annotator.annotate_ranged(
+                output.push(annotator.annotate(
                     Some(&file.name),
                     &file.content,
                     &module_locs,
@@ -596,7 +597,7 @@ mod tests {
             .get(&loc.module)
             .expect("Could not get source code");
 
-        let output = SourceAnnotator::new().with_location().annotate_ranged(
+        let output = SourceAnnotator::new().with_location().annotate(
             Some(&loc.module.clone()),
             source_code,
             [loc],
@@ -619,7 +620,7 @@ mod tests {
             .get(module)
             .expect("Source code not found");
 
-        let output = SourceAnnotator::new().with_location().annotate_ranged(
+        let output = SourceAnnotator::new().with_location().annotate(
             Some(module),
             source_code,
             &diagnostics,
@@ -674,7 +675,7 @@ mod tests {
             .find(|f| f.name.replace(".hop", "") == module)
             .expect("Could not find file in archive");
 
-        let output = SourceAnnotator::new().with_location().annotate_ranged(
+        let output = SourceAnnotator::new().with_location().annotate(
             Some(&file.name),
             &file.content,
             &[symbol],
@@ -705,7 +706,7 @@ mod tests {
             .find(|f| f.name.replace(".hop", "") == module)
             .expect("Could not find file in archive");
 
-        let output = SourceAnnotator::new().with_location().annotate_ranged(
+        let output = SourceAnnotator::new().with_location().annotate(
             Some(&file.name),
             &file.content,
             &[hover_info],

@@ -3,21 +3,20 @@ use crate::dop::{DopParameter, DopType, is_subtype, typecheck_expr};
 use crate::hop::ast::HopAst;
 use crate::hop::ast::{ComponentDefinition, HopNode, Import, Render};
 use crate::hop::environment::Environment;
-use crate::range::{Range, Ranged};
+use crate::range::string_cursor::{StringSpan, Spanned};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
 #[derive(Debug, Clone)]
 pub struct TypeAnnotation {
-    pub range: Range,
+    pub range: StringSpan,
     pub typ: DopType,
-    // TODO: Use StringSpan?
     pub name: String,
 }
 
-impl Ranged for TypeAnnotation {
-    fn range(&self) -> Range {
-        self.range
+impl Spanned for TypeAnnotation {
+    fn span(&self) -> &StringSpan {
+        &self.range
     }
 }
 
@@ -162,7 +161,7 @@ fn typecheck_module(
         if let Some((params, _)) = params {
             for param in params.values() {
                 annotations.push(TypeAnnotation {
-                    range: param.var_name.range(),
+                    range: param.var_name.span().clone(),
                     typ: param.type_annotation.clone(),
                     name: param.var_name.to_string(),
                 });
@@ -270,7 +269,7 @@ fn typecheck_node(
                 Ok(_) => {
                     pushed = true;
                     annotations.push(TypeAnnotation {
-                        range: var_name.range(),
+                        range: var_name.span().clone(),
                         typ: element_type.clone(),
                         name: var_name.to_string(),
                     });
@@ -382,7 +381,7 @@ fn typecheck_node(
                         }
 
                         annotations.push(TypeAnnotation {
-                            range: arg.expression.span().range(),
+                            range: arg.expression.span().clone(),
                             typ: evaluated_arg_type,
                             name: arg.var_name.to_string(),
                         });
@@ -500,7 +499,7 @@ mod tests {
                     typechecker.type_errors.get(&module.name).unwrap(),
                 ));
             } else if type_annotations.is_some_and(|ann| !ann.is_empty()) {
-                let formatted_errors = type_annotator.annotate_ranged(
+                let formatted_errors = type_annotator.annotate(
                     Some(&file.name),
                     source_code,
                     typechecker.type_annotations.get(&module.name).unwrap(),

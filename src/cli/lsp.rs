@@ -70,7 +70,7 @@ impl HopLanguageServer {
         let lsp_diagnostics: Vec<tower_lsp::lsp_types::Diagnostic> = diagnostics
             .into_iter()
             .map(|d| tower_lsp::lsp_types::Diagnostic {
-                range: d.range.into(),
+                range: d.range.range().into(),
                 severity: Some(DiagnosticSeverity::ERROR),
                 code: None,
                 code_description: None,
@@ -172,7 +172,7 @@ impl LanguageServer for HopLanguageServer {
                 .get_hover_info(&module_name, position.into())
                 .map(|hover_info| Hover {
                     contents: HoverContents::Scalar(MarkedString::String(hover_info.type_str)),
-                    range: Some(hover_info.range.into()),
+                    range: Some(hover_info.range.range().into()),
                 }))
         } else {
             Ok(None)
@@ -195,7 +195,7 @@ impl LanguageServer for HopLanguageServer {
                 .map(|DefinitionLocation { module, range }| {
                     GotoDefinitionResponse::Scalar(Location {
                         uri: Self::module_name_to_uri(&module, root),
-                        range: range.into(),
+                        range: range.range().into(),
                     })
                 }))
         } else {
@@ -218,7 +218,7 @@ impl LanguageServer for HopLanguageServer {
                 program.get_renameable_symbol(&module_name, position.into())
             {
                 Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
-                    range: renameable_symbol.range.into(),
+                    range: renameable_symbol.range.range().into(),
                     placeholder: renameable_symbol.current_name,
                 }))
             } else {
@@ -247,7 +247,7 @@ impl LanguageServer for HopLanguageServer {
                 for RenameLocation { module, range } in rename_locations {
                     let file_uri = Self::module_name_to_uri(&module, root);
                     let edit = TextEdit {
-                        range: range.into(),
+                        range: range.range().into(),
                         new_text: new_name.clone(),
                     };
 

@@ -172,11 +172,6 @@ impl Spanned for TypeError {
     }
 }
 
-impl Spanned for &TypeError {
-    fn span(&self) -> &StringSpan {
-        &self.span
-    }
-}
 
 impl Display for TypeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -257,11 +252,6 @@ impl Spanned for ParseError {
     }
 }
 
-impl Spanned for &ParseError {
-    fn span(&self) -> &StringSpan {
-        &self.span
-    }
-}
 
 impl Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

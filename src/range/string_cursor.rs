@@ -131,6 +131,13 @@ impl Spanned for StringSpan {
     }
 }
 
+impl<T: Spanned> Spanned for &T {
+    fn span(&self) -> &StringSpan {
+        (*self).span()
+    }
+}
+
+
 impl SourceInfo {
     fn new(text: String) -> Self {
         let mut line_starts = vec![0];

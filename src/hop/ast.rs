@@ -193,11 +193,11 @@ impl Spanned for ComponentDefinition {
 }
 
 impl ComponentDefinition {
-    pub fn tag_name_ranges(&self) -> impl Iterator<Item = Range> {
+    pub fn tag_name_ranges(&self) -> impl Iterator<Item = StringSpan> {
         self.closing_tag_name
             .iter()
-            .map(|s| s.range())
-            .chain(Some(self.tag_name.range()))
+            .cloned()
+            .chain(Some(self.tag_name.clone()))
     }
 }
 
@@ -334,10 +334,10 @@ impl HopNode {
     /// Example:
     /// <div>hello world</div>
     ///  ^^^
-    pub fn opening_tag_name_range(&self) -> Option<Range> {
+    pub fn opening_tag_name_span(&self) -> Option<StringSpan> {
         match self {
-            HopNode::ComponentReference { tag_name, .. } => Some(tag_name.range()),
-            HopNode::Html { tag_name, .. } => Some(tag_name.range()),
+            HopNode::ComponentReference { tag_name, .. } => Some(tag_name.clone()),
+            HopNode::Html { tag_name, .. } => Some(tag_name.clone()),
             _ => None,
         }
     }
@@ -347,15 +347,15 @@ impl HopNode {
     /// Example:
     /// <div>hello world</div>
     ///                   ^^^
-    pub fn closing_tag_name_range(&self) -> Option<Range> {
+    pub fn closing_tag_name_span(&self) -> Option<StringSpan> {
         match self {
             HopNode::ComponentReference {
                 closing_tag_name, ..
-            } => closing_tag_name.as_ref().map(|s| s.range()),
+            } => closing_tag_name.as_ref().cloned(),
             HopNode::Html {
                 closing_tag_name: closing_name,
                 ..
-            } => closing_name.as_ref().map(|s| s.range()),
+            } => closing_name.as_ref().cloned(),
             _ => None,
         }
     }
@@ -374,10 +374,10 @@ impl HopNode {
     /// Example:
     /// <div>hello world</div>
     ///  ^^^              ^^^
-    pub fn tag_name_ranges(&self) -> impl Iterator<Item = Range> {
-        self.opening_tag_name_range()
+    pub fn tag_name_ranges(&self) -> impl Iterator<Item = StringSpan> {
+        self.opening_tag_name_span()
             .into_iter()
-            .chain(self.closing_tag_name_range())
+            .chain(self.closing_tag_name_span())
     }
 }
 
