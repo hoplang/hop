@@ -3,9 +3,7 @@ use std::fmt::Display;
 
 use itertools::Itertools as _;
 
-use super::{
-    string_cursor::{Spanned, StringCursor, StringSpan},
-};
+use super::string_cursor::{Spanned, StringCursor, StringSpan};
 
 /// Simple annotation implementation for basic use cases
 pub struct SimpleAnnotation {
@@ -106,8 +104,6 @@ impl SourceAnnotator {
                 output.push('\n');
             }
 
-            let range = annotation.span().range();
-
             if let Some(ref label) = self.label {
                 output.push_str(&format!("{}: {}\n", label, annotation));
             } else {
@@ -119,14 +115,14 @@ impl SourceAnnotator {
                     output.push_str(&format!(
                         "  --> {} (line {}, col {})\n",
                         filename,
-                        range.start().line(),
-                        range.start().column()
+                        annotation.start().line(),
+                        annotation.start().column()
                     ));
                 } else {
                     output.push_str(&format!(
                         "  --> (line {}, col {})\n",
-                        range.start().line(),
-                        range.start().column()
+                        annotation.start().line(),
+                        annotation.start().column()
                     ));
                 }
             }
@@ -137,7 +133,12 @@ impl SourceAnnotator {
         output
     }
 
-    fn format_annotation(&self, output: &mut String, lines: &[Option<StringSpan>], span: &StringSpan) {
+    fn format_annotation(
+        &self,
+        output: &mut String,
+        lines: &[Option<StringSpan>],
+        span: &StringSpan,
+    ) {
         let max_line_col_width = lines.len().to_string().len();
 
         let first_line = cmp::max(1, span.start().line().saturating_sub(self.lines_before));
