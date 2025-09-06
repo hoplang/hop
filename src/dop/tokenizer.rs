@@ -1,5 +1,5 @@
 use crate::range::{
-    Range, Ranged as _,
+    Ranged as _,
     string_cursor::{StringCursor, StringSpan},
 };
 use std::{fmt, iter::Peekable, str::FromStr};
@@ -116,7 +116,7 @@ impl From<&str> for DopTokenizer {
 }
 
 impl Iterator for DopTokenizer {
-    type Item = Result<(DopToken, Range), ParseError>;
+    type Item = Result<(DopToken, StringSpan), ParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
@@ -125,19 +125,19 @@ impl Iterator for DopTokenizer {
 
         self.iter.next().map(|start| {
             match start.ch() {
-                '.' => Ok((DopToken::Dot, start.range())),
-                '(' => Ok((DopToken::LeftParen, start.range())),
-                ')' => Ok((DopToken::RightParen, start.range())),
-                '[' => Ok((DopToken::LeftBracket, start.range())),
-                ']' => Ok((DopToken::RightBracket, start.range())),
-                '{' => Ok((DopToken::LeftBrace, start.range())),
-                '}' => Ok((DopToken::RightBrace, start.range())),
-                ':' => Ok((DopToken::Colon, start.range())),
-                ',' => Ok((DopToken::Comma, start.range())),
-                '!' => Ok((DopToken::Not, start.range())),
+                '.' => Ok((DopToken::Dot, start)),
+                '(' => Ok((DopToken::LeftParen, start)),
+                ')' => Ok((DopToken::RightParen, start)),
+                '[' => Ok((DopToken::LeftBracket, start)),
+                ']' => Ok((DopToken::RightBracket, start)),
+                '{' => Ok((DopToken::LeftBrace, start)),
+                '}' => Ok((DopToken::RightBrace, start)),
+                ':' => Ok((DopToken::Colon, start)),
+                ',' => Ok((DopToken::Comma, start)),
+                '!' => Ok((DopToken::Not, start)),
                 '=' => {
                     if let Some(end) = self.iter.next_if(|s| s.ch() == '=') {
-                        return Ok((DopToken::Equal, start.range().to(end.range())));
+                        return Ok((DopToken::Equal, start.to(end)));
                     }
                     Err(ParseError::new(
                         "Expected '==' but found single '='".to_string(),
@@ -145,20 +145,17 @@ impl Iterator for DopTokenizer {
                     ))
                 }
                 '\'' => {
-                    let mut end_range = start.range();
+                    let mut end_span = start.clone();
                     let mut result = String::new();
                     while let Some(s) = self.iter.next_if(|s| s.ch() != '\'') {
-                        end_range = s.range();
                         result.push(s.ch());
+                        end_span = s;
                     }
                     match self.iter.next() {
                         None => Err(ParseError::unterminated_string_literal(
-                            start.range().to(end_range),
+                            start.to(end_span).range(),
                         )),
-                        Some(end) => Ok((
-                            DopToken::StringLiteral(result),
-                            start.range().to(end.range()),
-                        )),
+                        Some(end) => Ok((DopToken::StringLiteral(result), start.to(end))),
                     }
                 }
                 'A'..='Z' | 'a'..='z' | '_' => {
@@ -171,8 +168,6 @@ impl Iterator for DopTokenizer {
                         identifier = identifier.to(s);
                     }
 
-                    let range = identifier.range();
-
                     let t = match identifier.as_str() {
                         "in" => DopToken::In,
                         "true" => DopToken::BooleanLiteral(true),
@@ -183,9 +178,9 @@ impl Iterator for DopTokenizer {
                         "boolean" => DopToken::TypeBoolean,
                         "void" => DopToken::TypeVoid,
                         "array" => DopToken::TypeArray,
-                        _ => DopToken::Identifier(identifier),
+                        _ => DopToken::Identifier(identifier.clone()),
                     };
-                    Ok((t, range))
+                    Ok((t, identifier))
                 }
                 ch if ch.is_ascii_digit() => {
                     let mut number_string = start;
@@ -204,7 +199,7 @@ impl Iterator for DopTokenizer {
                         }
                     }
                     match serde_json::Number::from_str(number_string.as_str()) {
-                        Ok(n) => Ok((DopToken::NumberLiteral(n), number_string.range())),
+                        Ok(n) => Ok((DopToken::NumberLiteral(n), number_string)),
                         Err(_) => Err(ParseError::new(
                             format!("Invalid number format: {}", number_string.as_str()),
                             number_string.range(),
@@ -232,10 +227,10 @@ mod tests {
         let mut annotations = Vec::new();
         for t in tokenizer {
             match t {
-                Ok((tok, range)) => {
+                Ok((tok, span)) => {
                     annotations.push(SimpleAnnotation {
                         message: format!("token: {}", tok),
-                        range,
+                        range: span.range(),
                     });
                 }
                 Err(ParseError::Ranged { message, range }) => {

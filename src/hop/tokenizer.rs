@@ -227,10 +227,10 @@ impl Tokenizer {
                 Ok((DopToken::LeftBrace, _)) => {
                     open_braces += 1;
                 }
-                Ok((DopToken::RightBrace, range)) => {
+                Ok((DopToken::RightBrace, span)) => {
                     open_braces -= 1;
                     if open_braces == 0 {
-                        return Some(range);
+                        return Some(span.range());
                     }
                 }
                 _ => {}
