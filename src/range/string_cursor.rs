@@ -76,15 +76,18 @@ impl StringSpan {
             end: other.end,
         }
     }
+
     pub fn extend<I>(self, iter: I) -> Self
     where
         I: IntoIterator<Item = StringSpan>,
     {
         iter.into_iter().fold(self, |acc, span| acc.to(span))
     }
+
     pub fn as_str(&self) -> &str {
         &self.source.text[self.start..self.end]
     }
+
     pub fn cursor(&self) -> StringCursor {
         StringCursor {
             source: self.source.clone(),
@@ -92,9 +95,11 @@ impl StringSpan {
             end: self.end,
         }
     }
+
     pub fn start(&self) -> Position {
         self.source.offset_to_position(self.start)
     }
+
     pub fn end(&self) -> Position {
         self.source.offset_to_position(self.end)
     }
@@ -144,11 +149,6 @@ pub trait Spanned {
     /// Returns the end position of this spanned item.
     fn end(&self) -> Position {
         self.span().end()
-    }
-
-    /// Returns true if this spanned item contains the given StringSpan.
-    fn contains(&self, other: &Self) -> bool {
-        self.span().contains(other.span())
     }
 
     /// Returns true if this spanned item contains the given Position.
