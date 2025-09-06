@@ -512,7 +512,7 @@ fn construct_node(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::range::{Ranged, SourceAnnotator};
+    use crate::range::{SourceAnnotator, string_cursor::Spanned as _};
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
@@ -537,7 +537,7 @@ mod tests {
             return;
         }
         let left = format!("{}{}", "    ".repeat(depth).as_str(), node_name(node));
-        let right = format!("{}", node.range());
+        let right = format!("{}", node.span().range());
         lines.push(format!("{:<50}{}", left, right));
         for child in node.children() {
             write_node(child, depth + 1, lines);

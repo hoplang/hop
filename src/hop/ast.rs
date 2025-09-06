@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
-use crate::range::string_cursor::{StringSpan, Spanned};
+use crate::range::string_cursor::{Spanned, StringSpan};
 use crate::range::{Position, Range, Ranged};
 
 #[derive(Debug, Clone)]
@@ -211,7 +211,10 @@ pub enum HopNode {
     /// A TextExpression represents an expression that occurs in a text position.
     /// E.g. <div>hello {world}</div>
     ///                 ^^^^^^^
-    TextExpression { expression: DopExpr, span: StringSpan },
+    TextExpression {
+        expression: DopExpr,
+        span: StringSpan,
+    },
 
     /// A ComponentReference represents a reference to a component.
     /// E.g.
@@ -318,7 +321,7 @@ impl HopNode {
     }
 
     pub fn find_node_at_position(&self, position: Position) -> Option<&HopNode> {
-        if !self.contains(position) {
+        if !self.span().range().contains(position) {
             return None;
         }
         for child in self.children() {
@@ -378,24 +381,6 @@ impl HopNode {
         self.opening_tag_name_span()
             .into_iter()
             .chain(self.closing_tag_name_span())
-    }
-}
-
-impl Ranged for HopNode {
-    fn range(&self) -> Range {
-        match self {
-            HopNode::Doctype { span, .. } => span.range(),
-            HopNode::Text { span: value, .. } => value.range(),
-            HopNode::TextExpression { span, .. } => span.range(),
-            HopNode::ComponentReference { span, .. } => span.range(),
-            HopNode::SlotDefinition { span, .. } => span.range(),
-            HopNode::If { span, .. } => span.range(),
-            HopNode::For { span, .. } => span.range(),
-            HopNode::Html { span, .. } => span.range(),
-            HopNode::Error { span, .. } => span.range(),
-            HopNode::XExec { span, .. } => span.range(),
-            HopNode::XRaw { span, .. } => span.range(),
-        }
     }
 }
 
@@ -468,7 +453,7 @@ mod tests {
                 None,
                 &source,
                 [RangedAnnotation {
-                    range: node.range(),
+                    range: node.span().range(),
                     message: "range".to_string(),
                 }],
             )
