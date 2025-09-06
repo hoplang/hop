@@ -10,6 +10,40 @@ pub struct StringCursor<'a> {
     position: Position,
 }
 
+impl<'a> StringCursor<'a> {
+    pub fn new(source: &'a str) -> Self {
+        Self {
+            chars: source.chars(),
+            offset: 0,
+            position: Position::new(1, 1),
+            source: Arc::new(source.to_string()),
+        }
+    }
+}
+
+impl Iterator for StringCursor<'_> {
+    type Item = StringSpan;
+    fn next(&mut self) -> Option<Self::Item> {
+        let start_position = self.position;
+        let start_offset = self.offset;
+        self.chars.next().map(|ch| {
+            self.offset += ch.len_utf8();
+            if ch == '\n' {
+                self.position.line += 1;
+                self.position.column = 1;
+            } else {
+                self.position.column += ch.len_utf8();
+            }
+            StringSpan {
+                ch,
+                source: self.source.clone(),
+                offset: (start_offset, self.offset),
+                range: Range::new(start_position, self.position),
+            }
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct StringSpan {
     source: Arc<String>,
@@ -46,40 +80,6 @@ impl StringSpan {
 impl fmt::Display for StringSpan {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", &self.source[self.offset.0..self.offset.1])
-    }
-}
-
-impl<'a> StringCursor<'a> {
-    pub fn new(source: &'a str) -> Self {
-        Self {
-            chars: source.chars(),
-            offset: 0,
-            position: Position::new(1, 1),
-            source: Arc::new(source.to_string()),
-        }
-    }
-}
-
-impl Iterator for StringCursor<'_> {
-    type Item = StringSpan;
-    fn next(&mut self) -> Option<Self::Item> {
-        let start_position = self.position;
-        let start_offset = self.offset;
-        self.chars.next().map(|ch| {
-            self.offset += ch.len_utf8();
-            if ch == '\n' {
-                self.position.line += 1;
-                self.position.column = 1;
-            } else {
-                self.position.column += ch.len_utf8();
-            }
-            StringSpan {
-                ch,
-                source: self.source.clone(),
-                offset: (start_offset, self.offset),
-                range: Range::new(start_position, self.position),
-            }
-        })
     }
 }
 
