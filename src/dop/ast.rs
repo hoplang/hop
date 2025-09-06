@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 
+use crate::dop::parser::DopVarName;
 use crate::range::string_cursor::StringSpan;
 use crate::range::{Range, Ranged};
 
@@ -33,7 +34,7 @@ impl Display for UnaryOp {
 #[derive(Debug, Clone)]
 pub enum DopExpr {
     Variable {
-        value: StringSpan,
+        value: DopVarName,
     },
     PropertyAccess {
         object: Box<DopExpr>,

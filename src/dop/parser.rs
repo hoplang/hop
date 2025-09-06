@@ -334,7 +334,8 @@ fn parse_unary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, ParseE
 fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, ParseError> {
     match tokenizer.next().ok_or(ParseError::UnexpectedEof)?? {
         (DopToken::Identifier(name), _) => {
-            let mut expr = DopExpr::Variable { value: name };
+            let var_name = DopVarName::new(name)?;
+            let mut expr = DopExpr::Variable { value: var_name };
 
             // Handle property access
             while advance_if(tokenizer, DopToken::Dot).is_some() {
