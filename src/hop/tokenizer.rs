@@ -120,14 +120,14 @@ impl Annotated for Token {
     }
 }
 
-pub struct Tokenizer<'a> {
-    chars: Peekable<StringCursor<'a>>,
+pub struct Tokenizer {
+    chars: Peekable<StringCursor>,
     errors: VecDeque<ParseError>,
     raw_text_closing_tag: Option<String>,
 }
 
-impl<'a> Tokenizer<'a> {
-    pub fn new(input: &'a str) -> Self {
+impl Tokenizer {
+    pub fn new(input: &str) -> Self {
         Self {
             chars: StringCursor::new(input).peekable(),
             errors: VecDeque::new(),
@@ -506,7 +506,7 @@ impl<'a> Tokenizer<'a> {
     }
 }
 
-impl Iterator for Tokenizer<'_> {
+impl Iterator for Tokenizer {
     type Item = Result<Token, ParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {

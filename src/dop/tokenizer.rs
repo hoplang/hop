@@ -57,33 +57,33 @@ impl fmt::Display for DopToken {
     }
 }
 
-pub struct DopTokenizer<'a> {
-    chars: Peekable<StringCursor<'a>>,
+pub struct DopTokenizer {
+    chars: Peekable<StringCursor>,
 }
 
-impl<'a> From<StringCursor<'a>> for DopTokenizer<'a> {
-    fn from(iter: StringCursor<'a>) -> Self {
+impl From<StringCursor> for DopTokenizer {
+    fn from(iter: StringCursor) -> Self {
         Self {
             chars: iter.peekable(),
         }
     }
 }
 
-impl<'a> From<Peekable<StringCursor<'a>>> for DopTokenizer<'a> {
-    fn from(iter: Peekable<StringCursor<'a>>) -> Self {
+impl From<Peekable<StringCursor>> for DopTokenizer {
+    fn from(iter: Peekable<StringCursor>) -> Self {
         Self { chars: iter }
     }
 }
 
-impl<'a> From<&'a str> for DopTokenizer<'a> {
-    fn from(input: &'a str) -> Self {
+impl From<&str> for DopTokenizer {
+    fn from(input: &str) -> Self {
         Self {
             chars: StringCursor::new(input).peekable(),
         }
     }
 }
 
-impl Iterator for DopTokenizer<'_> {
+impl Iterator for DopTokenizer {
     type Item = Result<(DopToken, Range), ParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {

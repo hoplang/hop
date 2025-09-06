@@ -1,19 +1,17 @@
-use std::{fmt, iter::FromIterator, str::Chars, sync::Arc};
+use std::{fmt, iter::FromIterator, sync::Arc};
 
 use super::{Position, Range, range::Ranged, source_annotator::Annotated};
 
 #[derive(Clone)]
-pub struct StringCursor<'a> {
+pub struct StringCursor {
     source: Arc<String>,
-    chars: Chars<'a>,
     offset: usize,
     position: Position,
 }
 
-impl<'a> StringCursor<'a> {
-    pub fn new(source: &'a str) -> Self {
+impl StringCursor {
+    pub fn new(source: &str) -> Self {
         Self {
-            chars: source.chars(),
             offset: 0,
             position: Position::new(1, 1),
             source: Arc::new(source.to_string()),
@@ -21,12 +19,12 @@ impl<'a> StringCursor<'a> {
     }
 }
 
-impl Iterator for StringCursor<'_> {
+impl Iterator for StringCursor {
     type Item = StringSpan;
     fn next(&mut self) -> Option<Self::Item> {
         let start_position = self.position;
         let start_offset = self.offset;
-        self.chars.next().map(|ch| {
+        self.source[self.offset..].chars().next().map(|ch| {
             self.offset += ch.len_utf8();
             if ch == '\n' {
                 self.position.line += 1;
@@ -77,9 +75,8 @@ impl StringSpan {
     }
     pub fn cursor(&self) -> StringCursor {
         StringCursor {
-            chars: self.as_str().chars(),
-            source: self.source.clone(),
-            offset: self.offset.0,
+            source: Arc::new(self.to_string()),
+            offset: 0,
             position: self.range.start,
         }
     }
