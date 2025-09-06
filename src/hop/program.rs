@@ -324,11 +324,11 @@ impl Program {
         let ast = self.asts.get(module_name)?;
 
         for component_node in ast.get_component_definitions() {
-            if let Some(range) = component_node
+            if let Some(span) = component_node
                 .tag_name_ranges()
                 .find(|r| r.contains_position(position))
             {
-                return Some(RenameableSymbol { span: range });
+                return Some(RenameableSymbol { span: span.clone() });
             }
         }
 

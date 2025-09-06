@@ -169,11 +169,8 @@ impl Spanned for ComponentDefinition {
 }
 
 impl ComponentDefinition {
-    pub fn tag_name_ranges(&self) -> impl Iterator<Item = StringSpan> {
-        self.closing_tag_name
-            .iter()
-            .cloned()
-            .chain(Some(self.tag_name.clone()))
+    pub fn tag_name_ranges(&self) -> impl Iterator<Item = &StringSpan> {
+        self.closing_tag_name.iter().chain(Some(&self.tag_name))
     }
 }
 
