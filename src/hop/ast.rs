@@ -49,7 +49,7 @@ impl HopAst {
     pub fn get_component_definition(&self, name: &str) -> Option<&ComponentDefinition> {
         self.component_definitions
             .iter()
-            .find(|&n| n.tag_name == name)
+            .find(|&n| n.tag_name.as_str() == name)
     }
 
     /// Returns a reference to all component definition nodes in the AST.
@@ -157,7 +157,7 @@ impl Ranged for Render {
 
 #[derive(Debug, Clone)]
 pub struct ComponentDefinition {
-    pub tag_name: String,
+    pub tag_name: StringSpan,
     pub opening_tag_name_range: Range,
     pub closing_tag_name_range: Option<Range>,
     pub params: Option<(BTreeMap<String, DopParameter>, Range)>,

@@ -265,7 +265,9 @@ impl Program {
         let ast = self.asts.get(module_name)?;
         for node in ast.get_component_definitions() {
             if node.tag_name_ranges().any(|r| r.contains(position)) {
-                return Some(self.collect_component_rename_locations(&node.tag_name, module_name));
+                return Some(
+                    self.collect_component_rename_locations(node.tag_name.as_str(), module_name),
+                );
             }
         }
 
@@ -347,7 +349,7 @@ impl Program {
             if let Some(component_node) = ast
                 .get_component_definitions()
                 .iter()
-                .find(|node| node.tag_name == component_name)
+                .find(|node| node.tag_name.as_str() == component_name)
             {
                 // Add the definition's opening tag name
                 locations.push(RenameLocation {

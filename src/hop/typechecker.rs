@@ -188,7 +188,7 @@ fn typecheck_module(
 
         state.set_type_info(
             &module.name,
-            name,
+            name.as_str(),
             ComponentTypeInformation {
                 parameter_types: params.clone().map(|(params, _)| params),
                 has_slot: *has_slot,

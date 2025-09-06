@@ -204,8 +204,8 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         }
 
                         components.push(ComponentDefinition {
-                            tag_name: name.to_string(),
                             opening_tag_name_range: tag_name.range(),
+                            tag_name,
                             closing_tag_name_range: tree.closing_tag_name_range,
                             params,
                             is_entrypoint,
@@ -582,7 +582,7 @@ mod tests {
                 .annotate(None, input, errors)
         } else {
             for component in module.get_component_definitions() {
-                if component.tag_name == "main-comp" {
+                if component.tag_name.as_str() == "main-comp" {
                     return expected.assert_eq(&format_component_definition(component));
                 }
             }
