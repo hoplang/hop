@@ -9,7 +9,7 @@ use crate::common::ParseError;
 use crate::dop::DopTokenizer;
 use crate::dop::tokenizer::DopToken;
 use crate::hop::ast::Attribute;
-use crate::range::string_cursor::{StringCursor, StringSpan};
+use crate::range::string_cursor::{Spanned, StringCursor, StringSpan};
 
 type Attributes = BTreeMap<String, Attribute>;
 
@@ -41,8 +41,8 @@ pub enum Token {
     },
 }
 
-impl Token {
-    pub fn span(&self) -> &StringSpan {
+impl Spanned for Token {
+    fn span(&self) -> &StringSpan {
         match self {
             Token::Doctype { span } => span,
             Token::Comment { span } => span,
@@ -536,14 +536,12 @@ mod tests {
         let mut iter = result.iter().peekable();
         while let Some(token_result) = iter.next() {
             if let (Ok(current_token), Some(Ok(next_token))) = (token_result, iter.peek()) {
-                let current_range = current_token.span().range();
-                let next_range = next_token.span().range();
-                if current_range.end() != next_range.start() {
+                if current_token.end() != next_token.start() {
                     panic!(
                         "Non-contiguous ranges detected: token ends at {:?}, but next token starts at {:?}. \
                          Current token: {:?}, Next token: {:?}",
-                        current_range.end(),
-                        next_range.start(),
+                        current_token.end(),
+                        next_token.start(),
                         current_token,
                         next_token
                     );

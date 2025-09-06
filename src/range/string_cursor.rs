@@ -99,13 +99,6 @@ impl StringSpan {
         self.source.offset_to_position(self.end)
     }
 
-    pub fn range(&self) -> Range {
-        Range::new(
-            self.source.offset_to_position(self.start),
-            self.source.offset_to_position(self.end),
-        )
-    }
-
     pub fn contains(&self, other: &StringSpan) -> bool {
         self.start <= other.start && other.end <= self.end
     }
@@ -113,7 +106,7 @@ impl StringSpan {
     pub fn intersection(&self, other: &StringSpan) -> Option<StringSpan> {
         let start = self.start.max(other.start);
         let end = self.end.min(other.end);
-        
+
         if start < end {
             Some(StringSpan {
                 source: self.source.clone(),

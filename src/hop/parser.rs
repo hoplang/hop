@@ -537,7 +537,7 @@ mod tests {
             return;
         }
         let left = format!("{}{}", "    ".repeat(depth).as_str(), node_name(node));
-        let right = format!("{}", node.span().range());
+        let right = format!("{}-{}", node.start(), node.end());
         lines.push(format!("{:<50}{}", left, right));
         for child in node.children() {
             write_node(child, depth + 1, lines);

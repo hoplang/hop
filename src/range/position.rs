@@ -1,7 +1,5 @@
 use std::fmt;
 
-use super::Range;
-
 /// Represents a position in source code
 #[derive(Debug, Clone, Hash, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Position {
@@ -20,10 +18,6 @@ impl Position {
 
     pub fn column(self) -> usize {
         self.column
-    }
-
-    pub fn to(self, end: Position) -> super::Range {
-        Range::new(self, end)
     }
 }
 
