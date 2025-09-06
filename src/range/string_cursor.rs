@@ -50,7 +50,7 @@ pub struct StringSpan {
     source: Arc<String>,
     /// ch is the first character of the string span.
     /// This value is used during tokenization.
-    pub ch: char,
+    ch: char,
     /// the start offset for this string span in the document (in bytes).
     start: usize,
     /// the end offset for this string span in the document (in bytes).
@@ -60,6 +60,10 @@ pub struct StringSpan {
 }
 
 impl StringSpan {
+    pub fn ch(&self) -> char {
+        self.ch
+    }
+    
     pub fn span(self, other: StringSpan) -> Self {
         StringSpan {
             source: self.source,
@@ -130,17 +134,17 @@ mod tests {
         let mut cursor = StringCursor::new("abc");
 
         let span1 = cursor.next().unwrap();
-        assert_eq!(span1.ch, 'a');
+        assert_eq!(span1.ch(), 'a');
         assert_eq!(span1.range.start, Position::new(1, 1));
         assert_eq!(span1.range.end, Position::new(1, 2));
 
         let span2 = cursor.next().unwrap();
-        assert_eq!(span2.ch, 'b');
+        assert_eq!(span2.ch(), 'b');
         assert_eq!(span2.range.start, Position::new(1, 2));
         assert_eq!(span2.range.end, Position::new(1, 3));
 
         let span3 = cursor.next().unwrap();
-        assert_eq!(span3.ch, 'c');
+        assert_eq!(span3.ch(), 'c');
         assert_eq!(span3.range.start, Position::new(1, 3));
         assert_eq!(span3.range.end, Position::new(1, 4));
 
@@ -152,27 +156,27 @@ mod tests {
         let mut cursor = StringCursor::new("a\nb\nc");
 
         let span1 = cursor.next().unwrap();
-        assert_eq!(span1.ch, 'a');
+        assert_eq!(span1.ch(), 'a');
         assert_eq!(span1.range.start, Position::new(1, 1));
         assert_eq!(span1.range.end, Position::new(1, 2));
 
         let span2 = cursor.next().unwrap();
-        assert_eq!(span2.ch, '\n');
+        assert_eq!(span2.ch(), '\n');
         assert_eq!(span2.range.start, Position::new(1, 2));
         assert_eq!(span2.range.end, Position::new(2, 1));
 
         let span3 = cursor.next().unwrap();
-        assert_eq!(span3.ch, 'b');
+        assert_eq!(span3.ch(), 'b');
         assert_eq!(span3.range.start, Position::new(2, 1));
         assert_eq!(span3.range.end, Position::new(2, 2));
 
         let span4 = cursor.next().unwrap();
-        assert_eq!(span4.ch, '\n');
+        assert_eq!(span4.ch(), '\n');
         assert_eq!(span4.range.start, Position::new(2, 2));
         assert_eq!(span4.range.end, Position::new(3, 1));
 
         let span5 = cursor.next().unwrap();
-        assert_eq!(span5.ch, 'c');
+        assert_eq!(span5.ch(), 'c');
         assert_eq!(span5.range.start, Position::new(3, 1));
         assert_eq!(span5.range.end, Position::new(3, 2));
 
@@ -184,16 +188,16 @@ mod tests {
         let mut cursor = StringCursor::new("a€b");
 
         let span1 = cursor.next().unwrap();
-        assert_eq!(span1.ch, 'a');
+        assert_eq!(span1.ch(), 'a');
         assert_eq!(span1.range.end.column, 2);
 
         let span2 = cursor.next().unwrap();
-        assert_eq!(span2.ch, '€');
+        assert_eq!(span2.ch(), '€');
         assert_eq!(span2.range.start.column, 2);
         assert_eq!(span2.range.end.column, 5); // € is 3 bytes in UTF-8
 
         let span3 = cursor.next().unwrap();
-        assert_eq!(span3.ch, 'b');
+        assert_eq!(span3.ch(), 'b');
         assert_eq!(span3.range.start.column, 5);
         assert_eq!(span3.range.end.column, 6);
     }
@@ -206,7 +210,7 @@ mod tests {
         let span3 = cursor.next().unwrap();
 
         let extended = span1.clone().span(span3);
-        assert_eq!(extended.ch, 'a');
+        assert_eq!(extended.ch(), 'a');
         assert_eq!(extended.to_string(), "abc");
         assert_eq!(extended.range.start, Position::new(1, 1));
         assert_eq!(extended.range.end, Position::new(1, 4));
@@ -239,13 +243,13 @@ mod tests {
         let mut cursor2 = cursor1.clone();
 
         let span = cursor2.next().unwrap();
-        assert_eq!(span.ch, 't');
+        assert_eq!(span.ch(), 't');
     }
 
     #[test]
     fn test_collect_string_spans() {
         let result: Option<StringSpan> = StringCursor::new("   hello")
-            .take_while(|s| s.ch == ' ')
+            .take_while(|s| s.ch() == ' ')
             .collect();
 
         let span = result.unwrap();
@@ -257,7 +261,7 @@ mod tests {
     #[test]
     fn test_collect_empty_spans() {
         let result: Option<StringSpan> = StringCursor::new("hello")
-            .take_while(|s| s.ch == ' ')
+            .take_while(|s| s.ch() == ' ')
             .collect();
 
         assert!(result.is_none());
@@ -266,7 +270,7 @@ mod tests {
     #[test]
     fn test_collect_multiline_spans() {
         let result: Option<StringSpan> = StringCursor::new("aaa\nbbb")
-            .take_while(|s| s.ch == 'a')
+            .take_while(|s| s.ch() == 'a')
             .collect();
 
         let span = result.unwrap();
@@ -279,7 +283,7 @@ mod tests {
     fn test_collect_with_skip() {
         let result: Option<StringSpan> = StringCursor::new("   hello   ")
             .skip(3)
-            .take_while(|s| s.ch.is_alphabetic())
+            .take_while(|s| s.ch().is_alphabetic())
             .collect();
 
         let span = result.unwrap();

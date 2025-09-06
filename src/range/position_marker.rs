@@ -11,7 +11,7 @@ use super::{Position, string_cursor::StringCursor};
 /// on the above line.
 pub fn extract_position(input: &str) -> Option<(String, Position)> {
     let markers = StringCursor::new(input)
-        .filter(|span| span.ch == '^')
+        .filter(|span| span.ch() == '^')
         .map(|span| Position::new(span.range().start.line - 1, span.range().start.column))
         .collect::<Vec<_>>();
     assert!(

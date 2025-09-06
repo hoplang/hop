@@ -137,7 +137,7 @@ impl Tokenizer {
 
     // Skip whitespace
     fn skip_whitespace(&mut self) {
-        while self.chars.peek().is_some_and(|s| s.ch.is_whitespace()) {
+        while self.chars.peek().is_some_and(|s| s.ch().is_whitespace()) {
             self.chars.next();
         }
     }
@@ -146,7 +146,7 @@ impl Tokenizer {
     fn parse_tag_name(&mut self, initial: StringSpan) -> StringSpan {
         initial.extend(
             self.chars
-                .peeking_take_while(|s| s.ch == '-' || s.ch.is_ascii_alphanumeric()),
+                .peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()),
         )
     }
 
@@ -158,7 +158,7 @@ impl Tokenizer {
 
         self.skip_whitespace();
 
-        if self.chars.peek()?.ch != '=' {
+        if self.chars.peek()?.ch() != '=' {
             return Some((
                 attr_name,
                 Attribute {
@@ -171,7 +171,7 @@ impl Tokenizer {
         self.chars.next(); // consume '='
         self.skip_whitespace();
 
-        if !matches!(self.chars.peek()?.ch, '"' | '\'') {
+        if !matches!(self.chars.peek()?.ch(), '"' | '\'') {
             self.errors.push_back(ParseError::new(
                 "Expected quoted attribute value".to_string(),
                 self.chars.peek()?.range(),
@@ -182,7 +182,7 @@ impl Tokenizer {
         let open_quote = self.chars.next()?;
 
         // handle empty attribute
-        if self.chars.peek()?.ch == open_quote.ch {
+        if self.chars.peek()?.ch() == open_quote.ch() {
             let close_quote = self.chars.next()?;
             return Some((
                 attr_name,
@@ -196,7 +196,7 @@ impl Tokenizer {
         let attr_value = self
             .chars
             .next()?
-            .extend(self.chars.peeking_take_while(|s| s.ch != open_quote.ch));
+            .extend(self.chars.peeking_take_while(|s| s.ch() != open_quote.ch()));
 
         let close_quote = self.chars.next()?;
 
@@ -250,7 +250,7 @@ impl Tokenizer {
         loop {
             self.skip_whitespace();
 
-            match self.chars.peek()?.ch {
+            match self.chars.peek()?.ch() {
                 // Parse expression
                 '{' => {
                     let right_brace_range = self.find_expression_end()?;
@@ -303,15 +303,15 @@ impl Tokenizer {
     fn parse_markup_declaration(&mut self, first_token_range: Range) -> Option<Token> {
         match self.chars.next()? {
             // Comment
-            s if s.ch == '-' && self.chars.peek()?.ch == '-' => {
+            s if s.ch() == '-' && self.chars.peek()?.ch() == '-' => {
                 self.chars.next();
                 let mut count = 0;
                 loop {
                     match self.chars.next()? {
-                        s if s.ch == '-' => {
+                        s if s.ch() == '-' => {
                             count += 1;
                         }
-                        s if s.ch == '>' => {
+                        s if s.ch() == '>' => {
                             if count >= 2 {
                                 return Some(Token::Comment {
                                     range: first_token_range.spanning(s.range()),
@@ -327,18 +327,18 @@ impl Tokenizer {
                 }
             }
             // Doctype
-            s if (s.ch == 'D' || s.ch == 'd')
+            s if (s.ch() == 'D' || s.ch() == 'd')
                 && self
                     .chars
                     .clone()
-                    .flat_map(|s| s.ch.to_lowercase())
+                    .flat_map(|s| s.ch().to_lowercase())
                     .take(6)
                     .eq("octype".chars()) =>
             {
                 for _ in 0..6 {
                     self.chars.next();
                 }
-                while self.chars.next_if(|s| s.ch != '>').is_some() {}
+                while self.chars.next_if(|s| s.ch() != '>').is_some() {}
                 let ch = self.chars.next()?;
                 Some(Token::Doctype {
                     range: first_token_range.spanning(ch.range()),
@@ -364,12 +364,12 @@ impl Tokenizer {
         if let Some(stored_closing_tag) = mem::take(&mut self.raw_text_closing_tag) {
             let mut raw_text: Option<StringSpan> = None;
             loop {
-                let peeked = self.chars.peek()?.ch;
+                let peeked = self.chars.peek()?.ch();
                 match peeked {
                     '<' if self
                         .chars
                         .clone()
-                        .map(|s| s.ch)
+                        .map(|s| s.ch())
                         .filter(|ch| !ch.is_whitespace())
                         .take(stored_closing_tag.len())
                         .eq(stored_closing_tag.chars()) =>
@@ -389,19 +389,19 @@ impl Tokenizer {
                 }
             }
         }
-        match self.chars.peek()?.ch {
+        match self.chars.peek()?.ch() {
             '<' => {
                 let left_angle = self.chars.next()?;
                 match self.chars.next()? {
                     // ClosingTag
-                    s if s.ch == '/' => {
+                    s if s.ch() == '/' => {
                         self.skip_whitespace();
                         let initial = self.chars.next()?;
-                        if initial.ch.is_ascii_alphabetic() {
+                        if initial.ch().is_ascii_alphabetic() {
                             let tag_name = self.parse_tag_name(initial);
                             self.skip_whitespace();
                             let right_angle = self.chars.next()?;
-                            if right_angle.ch != '>' {
+                            if right_angle.ch() != '>' {
                                 self.errors.push_back(ParseError::new(
                                     "Invalid character after closing tag name".to_string(),
                                     right_angle.range(),
@@ -425,7 +425,7 @@ impl Tokenizer {
                         }
                     }
                     // OpeningTag
-                    s if s.ch.is_ascii_alphabetic() => {
+                    s if s.ch().is_ascii_alphabetic() => {
                         let tag_name = self.parse_tag_name(s);
                         let (attributes, expression) = self.parse_tag_content()?;
 
@@ -433,13 +433,13 @@ impl Tokenizer {
 
                         let mut self_closing = false;
 
-                        if self.chars.peek()?.ch == '/' {
+                        if self.chars.peek()?.ch() == '/' {
                             self_closing = true;
                             self.chars.next();
                         }
 
                         match self.chars.next()? {
-                            right_angle if right_angle.ch == '>' => {
+                            right_angle if right_angle.ch() == '>' => {
                                 if is_tag_name_with_raw_content(tag_name.as_str()) {
                                     self.raw_text_closing_tag =
                                         Some(format!("</{}>", tag_name.as_str()));
@@ -459,7 +459,7 @@ impl Tokenizer {
                         }
                     }
                     // Doctype/Comment
-                    s if s.ch == '!' => self.parse_markup_declaration(left_angle.range()),
+                    s if s.ch() == '!' => self.parse_markup_declaration(left_angle.range()),
                     // Invalid
                     s => {
                         self.errors.push_back(ParseError::new(
@@ -497,7 +497,7 @@ impl Tokenizer {
             // Text
             _ => {
                 let mut value = self.chars.next()?;
-                while let Some(ch) = self.chars.next_if(|s| s.ch != '{' && s.ch != '<') {
+                while let Some(ch) = self.chars.next_if(|s| s.ch() != '{' && s.ch() != '<') {
                     value = value.span(ch);
                 }
                 Some(Token::Text { value })

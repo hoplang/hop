@@ -119,12 +119,12 @@ impl Iterator for DopTokenizer {
     type Item = Result<(DopToken, Range), ParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while self.chars.peek().is_some_and(|s| s.ch.is_whitespace()) {
+        while self.chars.peek().is_some_and(|s| s.ch().is_whitespace()) {
             self.chars.next();
         }
 
         self.chars.next().map(|start| {
-            match start.ch {
+            match start.ch() {
                 '.' => Ok((DopToken::Dot, start.range())),
                 '(' => Ok((DopToken::LeftParen, start.range())),
                 ')' => Ok((DopToken::RightParen, start.range())),
@@ -136,7 +136,7 @@ impl Iterator for DopTokenizer {
                 ',' => Ok((DopToken::Comma, start.range())),
                 '!' => Ok((DopToken::Not, start.range())),
                 '=' => {
-                    if let Some(end) = self.chars.next_if(|s| s.ch == '=') {
+                    if let Some(end) = self.chars.next_if(|s| s.ch() == '=') {
                         return Ok((DopToken::Equal, start.range().spanning(end.range())));
                     }
                     Err(ParseError::new(
@@ -147,9 +147,9 @@ impl Iterator for DopTokenizer {
                 '\'' => {
                     let mut end_range = start.range();
                     let mut result = String::new();
-                    while let Some(s) = self.chars.next_if(|s| s.ch != '\'') {
+                    while let Some(s) = self.chars.next_if(|s| s.ch() != '\'') {
                         end_range = s.range();
-                        result.push(s.ch);
+                        result.push(s.ch());
                     }
                     match self.chars.next() {
                         None => Err(ParseError::unterminated_string_literal(
@@ -166,7 +166,7 @@ impl Iterator for DopTokenizer {
 
                     while let Some(s) = self
                         .chars
-                        .next_if(|s| matches!(s.ch, 'A'..='Z' | 'a'..='z' | '0'..='9' | '_'))
+                        .next_if(|s| matches!(s.ch(), 'A'..='Z' | 'a'..='z' | '0'..='9' | '_'))
                     {
                         identifier = identifier.span(s);
                     }
@@ -189,17 +189,17 @@ impl Iterator for DopTokenizer {
                 }
                 ch if ch.is_ascii_digit() => {
                     let mut number_string = start;
-                    while let Some(digit) = self.chars.next_if(|s| s.ch.is_ascii_digit()) {
+                    while let Some(digit) = self.chars.next_if(|s| s.ch().is_ascii_digit()) {
                         number_string = number_string.span(digit);
                     }
-                    if let Some(dot) = self.chars.next_if(|s| s.ch == '.') {
+                    if let Some(dot) = self.chars.next_if(|s| s.ch() == '.') {
                         number_string = number_string.span(dot);
-                        if !self.chars.peek().is_some_and(|s| s.ch.is_ascii_digit()) {
+                        if !self.chars.peek().is_some_and(|s| s.ch().is_ascii_digit()) {
                             return Err(ParseError::expected_digit_after_decimal_point(
                                 number_string.range(),
                             ));
                         }
-                        while let Some(digit) = self.chars.next_if(|s| s.ch.is_ascii_digit()) {
+                        while let Some(digit) = self.chars.next_if(|s| s.ch().is_ascii_digit()) {
                             number_string = number_string.span(digit);
                         }
                     }

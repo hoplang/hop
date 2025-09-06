@@ -106,7 +106,7 @@ impl SourceAnnotator {
         let lines: Vec<Option<StringSpan>> = StringCursor::new(source)
             .chunk_by(|span| span.range().start.line)
             .into_iter()
-            .map(|(_, group)| group.filter(|s| s.ch != '\n').collect())
+            .map(|(_, group)| group.filter(|s| s.ch() != '\n').collect())
             .collect();
 
         for (i, annotation) in annotations.into_iter().enumerate() {
@@ -178,10 +178,10 @@ impl SourceAnnotator {
                                 &self
                                     .underline_char
                                     .to_string()
-                                    .repeat(self.char_display_width(span.ch)),
+                                    .repeat(self.char_display_width(span.ch())),
                             );
                         } else if !has_written_annotation {
-                            output.push_str(&" ".repeat(self.char_display_width(span.ch)));
+                            output.push_str(&" ".repeat(self.char_display_width(span.ch())));
                         }
                     }
                     output.push('\n');
@@ -221,7 +221,7 @@ mod tests {
         predicate: impl Fn(char) -> bool,
     ) -> Vec<StringSpan> {
         StringCursor::new(source)
-            .chunk_by(|span| predicate(span.ch))
+            .chunk_by(|span| predicate(span.ch()))
             .into_iter()
             .filter_map(
                 |(is_separator, group)| {
