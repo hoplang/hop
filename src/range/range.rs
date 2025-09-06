@@ -94,7 +94,7 @@ impl Range {
         self.start <= range.start && range.end <= self.end
     }
 
-    pub fn intersection(&self, other: &Range) -> Option<Range> {
+    pub fn intersection(&self, other: Range) -> Option<Range> {
         let start = cmp::max(self.start, other.start);
         let end = cmp::min(self.end, other.end);
 

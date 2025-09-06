@@ -51,8 +51,6 @@ pub struct StringSpan {
 }
 
 impl StringSpan {
-    /// Extend the string span to also include another string span
-    /// and all characters between them.
     pub fn span(self, other: StringSpan) -> Self {
         StringSpan {
             source: self.source,

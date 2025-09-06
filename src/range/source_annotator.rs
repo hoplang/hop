@@ -166,7 +166,7 @@ impl SourceAnnotator {
             output.push('\n');
             // Write annotation line
             if let Some(line) = line {
-                if let Some(intersection) = line.range().intersection(&range) {
+                if let Some(intersection) = line.range().intersection(range) {
                     let mut has_written_annotation = false;
                     if self.show_line_numbers {
                         output.push_str(&format!("{:width$} | ", "", width = max_line_col_width));
