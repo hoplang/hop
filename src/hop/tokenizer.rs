@@ -251,7 +251,7 @@ impl Tokenizer {
                 '{' => {
                     let right_brace_range = self.find_expression_end()?;
                     let left_brace = self.iter.next()?;
-                    if left_brace.range().end() == right_brace_range.start() {
+                    if left_brace.end() == right_brace_range.start() {
                         self.next(); // skip right brace
                         self.errors.push_back(ParseError::new(
                             "Empty expression".to_string(),
@@ -471,7 +471,7 @@ impl Tokenizer {
             '{' => {
                 let right_brace_range = self.find_expression_end()?;
                 let left_brace = self.iter.next()?;
-                if left_brace.range().end() == right_brace_range.start() {
+                if left_brace.end() == right_brace_range.start() {
                     let right_brace = self.iter.next()?; // skip right brace
                     self.errors.push_back(ParseError::new(
                         "Empty expression".to_string(),

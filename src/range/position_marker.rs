@@ -14,7 +14,7 @@ use super::{Position, string_cursor::StringCursor};
 pub fn extract_position(input: &str) -> Option<(String, Position)> {
     let markers = StringCursor::new(input)
         .filter(|span| span.ch() == '^')
-        .map(|span| Position::new(span.range().start().line() - 1, span.range().start().column()))
+        .map(|span| Position::new(span.start().line() - 1, span.start().column()))
         .collect::<Vec<_>>();
     assert!(
         markers.len() < 2,
@@ -22,7 +22,7 @@ pub fn extract_position(input: &str) -> Option<(String, Position)> {
     );
     markers.first().map(|marker| {
         let char_starts = StringCursor::new(input)
-            .map(|span| span.range().start())
+            .map(|span| span.start())
             .collect::<HashSet<_>>();
         assert!(
             char_starts.contains(marker),
