@@ -14,7 +14,7 @@ use super::ast::HopNode;
 use super::evaluator::HopMode;
 use super::typechecker::TypeChecker;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct HoverInfo {
     pub type_str: String,
     pub range: Range,
@@ -32,7 +32,7 @@ impl Display for HoverInfo {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct DefinitionLocation {
     pub module: String,
     pub range: Range,
@@ -50,7 +50,7 @@ impl Display for DefinitionLocation {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Diagnostic {
     pub message: String,
     pub range: Range,
@@ -111,7 +111,7 @@ impl Ord for RenameLocation {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct RenameableSymbol {
     pub current_name: String,
     pub range: Range,
