@@ -88,8 +88,8 @@ impl Display for RenameLocation {
 
 impl PartialEq for RenameLocation {
     fn eq(&self, other: &Self) -> bool {
-        self.module == other.module 
-            && self.range.start() == other.range.start() 
+        self.module == other.module
+            && self.range.start() == other.range.start()
             && self.range.end() == other.range.end()
     }
 }
@@ -426,7 +426,7 @@ impl Program {
         for error in self.parse_errors.get(module_name).into_iter().flatten() {
             diagnostics.push(Diagnostic {
                 message: error.message.clone(),
-                range: error.range(),
+                range: error.span.range(),
             });
             found_parse_errors = true;
         }
@@ -443,7 +443,7 @@ impl Program {
             {
                 diagnostics.push(Diagnostic {
                     message: error.message.clone(),
-                    range: error.range(),
+                    range: error.span.range(),
                 });
             }
         }
@@ -561,7 +561,11 @@ mod tests {
                 .collect();
 
             if !module_locs.is_empty() {
-                output.push(annotator.annotate_ranged(Some(&file.name), &file.content, &module_locs));
+                output.push(annotator.annotate_ranged(
+                    Some(&file.name),
+                    &file.content,
+                    &module_locs,
+                ));
             }
         }
 

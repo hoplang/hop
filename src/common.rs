@@ -1,5 +1,4 @@
 use crate::dop::DopParameter;
-use crate::range::{Range, Ranged};
 use crate::range::string_cursor::{Spanned, StringSpan};
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
@@ -45,7 +44,12 @@ impl TypeError {
         )
     }
 
-    pub fn import_cycle(importer: &str, imported: &str, cycle: &[String], span: StringSpan) -> Self {
+    pub fn import_cycle(
+        importer: &str,
+        imported: &str,
+        cycle: &[String],
+        span: StringSpan,
+    ) -> Self {
         let cycle_display = if let Some(first) = cycle.first() {
             format!("{} → {}", cycle.join(" → "), first)
         } else {
@@ -162,12 +166,6 @@ impl TypeError {
     }
 }
 
-impl Ranged for TypeError {
-    fn range(&self) -> Range {
-        self.span.range()
-    }
-}
-
 impl Spanned for TypeError {
     fn span(&self) -> &StringSpan {
         &self.span
@@ -250,12 +248,6 @@ impl ParseError {
 
     pub fn duplicate_attribute(name: &str, span: StringSpan) -> Self {
         Self::new(format!("Duplicate attribute '{name}'"), span)
-    }
-}
-
-impl Ranged for ParseError {
-    fn range(&self) -> Range {
-        self.span.range()
     }
 }
 
