@@ -295,7 +295,7 @@ impl Tokenizer {
     // Parse a markup declaration and return the token.
     //
     // Expects that '<!' have been read from the chars.
-    fn parse_markup_declaration(&mut self, first_token_range: Range) -> Option<Token> {
+    fn parse_markup_declaration(&mut self, first_token_span: StringSpan) -> Option<Token> {
         match self.iter.next()? {
             // Comment
             s if s.ch() == '-' && self.iter.peek()?.ch() == '-' => {
@@ -309,7 +309,7 @@ impl Tokenizer {
                         s if s.ch() == '>' => {
                             if count >= 2 {
                                 return Some(Token::Comment {
-                                    range: first_token_range.to(s.range()),
+                                    range: first_token_span.range().to(s.range()),
                                 });
                             } else {
                                 count = 0;
@@ -336,7 +336,7 @@ impl Tokenizer {
                 while self.iter.next_if(|s| s.ch() != '>').is_some() {}
                 let ch = self.iter.next()?;
                 Some(Token::Doctype {
-                    range: first_token_range.to(ch.range()),
+                    range: first_token_span.range().to(ch.range()),
                 })
             }
             // Invalid
@@ -347,7 +347,7 @@ impl Tokenizer {
                 ));
 
                 Some(Token::Doctype {
-                    range: first_token_range.to(ch.range()),
+                    range: first_token_span.range().to(ch.range()),
                 })
             }
         }
@@ -454,7 +454,7 @@ impl Tokenizer {
                         }
                     }
                     // Doctype/Comment
-                    s if s.ch() == '!' => self.parse_markup_declaration(left_angle.range()),
+                    s if s.ch() == '!' => self.parse_markup_declaration(left_angle),
                     // Invalid
                     s => {
                         self.errors.push_back(ParseError::new(
