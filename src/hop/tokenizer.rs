@@ -148,11 +148,6 @@ impl Tokenizer {
     // Returns None if we reached EOF before finding the closing '}'.
     fn find_expression_end(iter: Peekable<StringCursor>) -> Option<StringSpan> {
         let mut dop_tokenizer = DopTokenizer::from(iter);
-        assert!(
-            dop_tokenizer
-                .next()
-                .is_some_and(|t| matches!(t, Ok((DopToken::LeftBrace, _))))
-        );
         let mut open_braces = 1;
         loop {
             let token = dop_tokenizer.next()?;
@@ -259,12 +254,8 @@ impl Tokenizer {
     /// Returns Some(Ok((expr,span))) if we managed to parse the expression
     /// where expr is the inner span for the expression and span is the outer (containing the
     /// braces).
-    fn parse_expression(&mut self) -> Option<(StringSpan, StringSpan)> {
+    fn parse_expression(&mut self, left_brace: StringSpan) -> Option<(StringSpan, StringSpan)> {
         let clone = self.iter.clone();
-        // consume '{'
-        let Some(left_brace) = self.iter.next_if(|s| s.ch() == '{') else {
-            panic!("Expected opening brace");
-        };
         let Some(right_brace) = Self::find_expression_end(clone) else {
             self.errors
                 .push(ParseError::new(format!("Unmatched {{"), left_brace));
@@ -321,7 +312,8 @@ impl Tokenizer {
             match self.iter.peek().map(|s| s.ch()) {
                 // parse expression
                 Some('{') => {
-                    if let Some((expr, _)) = self.parse_expression() {
+                    let left_brace = self.iter.next().unwrap();
+                    if let Some((expr, _)) = self.parse_expression(left_brace) {
                         expression = Some(expr);
                     }
                 }
@@ -487,52 +479,46 @@ impl Tokenizer {
                 }
             }
         }
-        loop {
-            // parse tag or markup declaration
-            if let Some(left_angle) = self.iter.next_if(|s| s.ch() == '<') {
-                // parse markup declaration
-                if let Some(_bang) = self.iter.next_if(|s| s.ch() == '!') {
-                    return self.parse_markup_declaration(left_angle);
-                }
-                // parse closing tag
-                if let Some(slash) = self.iter.next_if(|s| s.ch() == '/') {
-                    return self.parse_closing_tag(left_angle.to(slash));
-                }
-                // parse opening tag
-                if let Some(initial) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) {
-                    let tag_name =
-                        initial.extend(self.iter.peeking_take_while(|s| {
-                            s.ch() == '-' || s.ch().is_ascii_alphanumeric()
-                        }));
-                    return self.parse_opening_tag(left_angle, tag_name);
-                }
-                self.errors.push(ParseError::new(
-                    "Unterminated tag start".to_string(),
-                    left_angle,
-                ));
-                return None;
+        // parse tag or markup declaration
+        if let Some(left_angle) = self.iter.next_if(|s| s.ch() == '<') {
+            // parse markup declaration
+            if let Some(_bang) = self.iter.next_if(|s| s.ch() == '!') {
+                return self.parse_markup_declaration(left_angle);
             }
+            // parse closing tag
+            if let Some(slash) = self.iter.next_if(|s| s.ch() == '/') {
+                return self.parse_closing_tag(left_angle.to(slash));
+            }
+            // parse opening tag
+            if let Some(initial) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) {
+                let tag_name = initial.extend(
+                    self.iter
+                        .peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()),
+                );
+                return self.parse_opening_tag(left_angle, tag_name);
+            }
+            self.errors.push(ParseError::new(
+                "Unterminated tag start".to_string(),
+                left_angle,
+            ));
+            return None;
+        }
 
-            match self.iter.peek()?.ch() {
-                // TextExpression
-                '{' => {
-                    if let Some((expr, span)) = self.parse_expression() {
-                        return Some(Token::Expression {
-                            expression: expr,
-                            span,
-                        });
-                    }
-                }
-                // Text
-                _ => {
-                    let text = self
-                        .iter
-                        .peeking_take_while(|s| s.ch() != '{' && s.ch() != '<')
-                        .collect::<Option<StringSpan>>()?;
-                    return Some(Token::Text { span: text });
-                }
+        if let Some(left_brace) = self.iter.next_if(|s| s.ch() == '{') {
+            if let Some((expr, span)) = self.parse_expression(left_brace) {
+                return Some(Token::Expression {
+                    expression: expr,
+                    span,
+                });
             }
         }
+
+        let text = self
+            .iter
+            .peeking_take_while(|s| s.ch() != '{' && s.ch() != '<')
+            .collect::<Option<StringSpan>>()?;
+
+        Some(Token::Text { span: text })
     }
 }
 
