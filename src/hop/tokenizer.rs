@@ -135,8 +135,14 @@ impl Tokenizer {
     }
 
     // Parse a tag name from the iterator.
+    // E.g. <h1 class="foo bar">
+    //       ^^
     fn parse_tag_name(&mut self) -> StringSpan {
-        let initial = self.iter.next().unwrap();
+        // consume [a-zA-Z]
+        let Some(initial) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
+            panic!("Invalid attribute name")
+        };
+        // consume ('-' | [a-zA-Z0-9])*
         initial.extend(
             self.iter
                 .peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()),
@@ -265,10 +271,12 @@ impl Tokenizer {
         let mut attributes: Vec<Attribute> = Vec::new();
         let mut expression: Option<StringSpan> = None;
         loop {
+            // skip whitespace
             self.skip_whitespace();
 
+            // parse expression or attribute
             match self.iter.peek().map(|s| s.ch()) {
-                // Parse expression
+                // parse expression
                 Some('{') => match self.parse_expression()? {
                     Err(err) => {
                         self.errors.push_back(err);
@@ -277,7 +285,7 @@ impl Tokenizer {
                         expression = Some(expr);
                     }
                 },
-                // Parse attribute
+                // parse attribute
                 Some(ch) if ch.is_ascii_alphabetic() => {
                     if let Some(attr) = self.parse_attribute() {
                         if attributes
