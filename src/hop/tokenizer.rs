@@ -1,4 +1,3 @@
-use std::collections::VecDeque;
 use std::fmt::{self, Display};
 use std::iter::Peekable;
 use std::mem;
@@ -113,8 +112,13 @@ impl Display for Token {
 }
 
 pub struct Tokenizer {
+    /// The string cursor for the document we're tokenizing.
     iter: Peekable<StringCursor>,
-    errors: VecDeque<ParseError>,
+    /// The error vector contains the errors that occured during tokenization
+    /// of the current token. It is returned together for the iterator.
+    errors: Vec<ParseError>,
+    /// The current raw text closing tag we're looking for, if any.
+    /// E.g. </script>
     raw_text_closing_tag: Option<String>,
 }
 
@@ -122,7 +126,7 @@ impl Tokenizer {
     pub fn new(input: String) -> Self {
         Self {
             iter: StringCursor::new(input).peekable(),
-            errors: VecDeque::new(),
+            errors: Vec::new(),
             raw_text_closing_tag: None,
         }
     }
@@ -217,7 +221,7 @@ impl Tokenizer {
 
         // consume " or '
         let Some(open_quote) = self.iter.next_if(|s| s.ch() == '"' || s.ch() == '\'') else {
-            self.errors.push_back(ParseError::new(
+            self.errors.push(ParseError::new(
                 "Expected quoted attribute value".to_string(),
                 attr_name.to(eq),
             ));
@@ -232,7 +236,7 @@ impl Tokenizer {
 
         // consume " or '
         let Some(close_quote) = self.iter.next_if(|s| s.ch() == open_quote.ch()) else {
-            self.errors.push_back(ParseError::new(
+            self.errors.push(ParseError::new(
                 format!("Unmatched {}", open_quote.ch()),
                 open_quote,
             ));
@@ -267,12 +271,12 @@ impl Tokenizer {
         };
         let Some(right_brace) = Self::find_expression_end(clone) else {
             self.errors
-                .push_back(ParseError::new(format!("Unmatched {{"), left_brace));
+                .push(ParseError::new(format!("Unmatched {{"), left_brace));
             return None;
         };
         if left_brace.end() == right_brace.start() {
             self.next(); // skip right brace
-            self.errors.push_back(ParseError::new(
+            self.errors.push(ParseError::new(
                 "Empty expression".to_string(),
                 left_brace.to(right_brace),
             ));
@@ -311,7 +315,7 @@ impl Tokenizer {
                             .iter()
                             .any(|a| a.name.as_str() == attr.name.as_str());
                         if exists {
-                            self.errors.push_back(ParseError::duplicate_attribute(
+                            self.errors.push(ParseError::duplicate_attribute(
                                 attr.name.as_str(),
                                 attr.name.clone(),
                             ));
@@ -376,7 +380,7 @@ impl Tokenizer {
             }
             // Invalid
             ch => {
-                self.errors.push_back(ParseError::new(
+                self.errors.push(ParseError::new(
                     "Invalid character in markup declaration".to_string(),
                     ch.clone(),
                 ));
@@ -467,7 +471,7 @@ impl Tokenizer {
                                 self.skip_whitespace();
                                 let right_angle = self.iter.next()?;
                                 if right_angle.ch() != '>' {
-                                    self.errors.push_back(ParseError::new(
+                                    self.errors.push(ParseError::new(
                                         "Invalid character after closing tag name".to_string(),
                                         right_angle.clone(),
                                     ));
@@ -482,7 +486,7 @@ impl Tokenizer {
                                 });
                             } else {
                                 let ch = self.iter.next()?;
-                                self.errors.push_back(ParseError::new(
+                                self.errors.push(ParseError::new(
                                     "Invalid character after </".to_string(),
                                     ch,
                                 ));
@@ -496,7 +500,7 @@ impl Tokenizer {
                                     return Some(token);
                                 }
                                 Err(err) => {
-                                    self.errors.push_back(err);
+                                    self.errors.push(err);
                                     continue;
                                 }
                             }
@@ -509,7 +513,7 @@ impl Tokenizer {
                         // Invalid
                         _ => {
                             let ch = self.iter.next()?;
-                            self.errors.push_back(ParseError::new(
+                            self.errors.push(ParseError::new(
                                 "Invalid character after '<'".to_string(),
                                 ch,
                             ));
@@ -540,19 +544,16 @@ impl Tokenizer {
 }
 
 impl Iterator for Tokenizer {
-    type Item = Result<Token, ParseError>;
+    type Item = (Option<Token>, Vec<ParseError>);
 
     fn next(&mut self) -> Option<Self::Item> {
-        if !self.errors.is_empty() {
-            return Some(Err(self.errors.pop_front()?));
+        let token = self.step();
+        let errors = mem::take(&mut self.errors);
+        if token.is_none() && errors.is_empty() {
+            None
+        } else {
+            Some((token, errors))
         }
-        if let Some(token) = self.step() {
-            return Some(Ok(token));
-        }
-        if !self.errors.is_empty() {
-            return Some(Err(self.errors.pop_front()?));
-        }
-        None
     }
 }
 
@@ -573,9 +574,13 @@ mod tests {
         let result: Vec<_> = tokenizer.collect();
 
         // Validate that ranges are contiguous
-        let mut iter = result.iter().peekable();
-        while let Some(token_result) = iter.next() {
-            if let (Ok(current_token), Some(Ok(next_token))) = (token_result, iter.peek()) {
+        let tokens_only: Vec<_> = result
+            .iter()
+            .filter_map(|(token, _)| token.as_ref())
+            .collect();
+        let mut iter = tokens_only.iter().peekable();
+        while let Some(current_token) = iter.next() {
+            if let Some(next_token) = iter.peek() {
                 if current_token.span().end() != next_token.span().start() {
                     panic!(
                         "Non-contiguous ranges detected: token ends at {:?}, but next token starts at {:?}. \
@@ -590,20 +595,20 @@ mod tests {
         }
 
         let mut annotations = Vec::new();
-        for r in result {
-            match r {
-                Err(err) => {
-                    annotations.push(SimpleAnnotation {
-                        message: err.to_string(),
-                        span: err.span.clone(),
-                    });
-                }
-                Ok(ok) => {
-                    annotations.push(SimpleAnnotation {
-                        message: ok.to_string(),
-                        span: ok.span().clone(),
-                    });
-                }
+        for (token, errors) in result {
+            // Add token first
+            if let Some(t) = token {
+                annotations.push(SimpleAnnotation {
+                    message: t.to_string(),
+                    span: t.span().clone(),
+                });
+            }
+            // Then add errors
+            for err in errors {
+                annotations.push(SimpleAnnotation {
+                    message: err.to_string(),
+                    span: err.span.clone(),
+                });
             }
         }
 
@@ -2393,12 +2398,17 @@ mod tests {
 
     #[test]
     fn test_tokenize_unterminated_expression() {
-        check(r#"{"#, expect![[r#"
+        check(
+            r#"{"#,
+            expect![[r#"
             Unmatched {
             1 | {
               | ^
-        "#]]);
-        check(r#"hello {"#, expect![[r#"
+        "#]],
+        );
+        check(
+            r#"hello {"#,
+            expect![[r#"
             Text [6 byte, "hello "]
             1 | hello {
               | ^^^^^^
@@ -2406,7 +2416,8 @@ mod tests {
             Unmatched {
             1 | hello {
               |       ^
-        "#]]);
+        "#]],
+        );
     }
 
     #[test]

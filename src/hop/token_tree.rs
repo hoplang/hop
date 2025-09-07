@@ -95,71 +95,72 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
     let mut stack: Vec<StackElement> = Vec::new();
     let mut top_level_trees: Vec<TokenTree> = Vec::new();
 
-    for t in tokenizer {
-        match t {
-            Err(err) => errors.push(err),
-            Ok(token) => {
-                match token {
-                    Token::Comment { .. } => {
-                        // skip comments
-                        continue;
+    for (token, err) in tokenizer {
+        errors.extend(err);
+
+        let Some(token) = token else {
+            continue;
+        };
+
+        match token {
+            Token::Comment { .. } => {
+                // skip comments
+                continue;
+            }
+            Token::Doctype { .. } | Token::Text { .. } | Token::Expression { .. } => {
+                if let Some(parent) = stack.last_mut() {
+                    parent.tree.append_node(token);
+                } else {
+                    // Top-level text/expression/doctype
+                    top_level_trees.push(TokenTree::new(token));
+                }
+            }
+            Token::OpeningTag {
+                ref tag_name,
+                self_closing,
+                ..
+            } => {
+                if is_void_element(tag_name.as_str()) || self_closing {
+                    if let Some(parent) = stack.last_mut() {
+                        parent.tree.append_node(token);
+                    } else {
+                        // Top-level void/self-closing tag
+                        top_level_trees.push(TokenTree::new(token));
                     }
-                    Token::Doctype { .. } | Token::Text { .. } | Token::Expression { .. } => {
-                        if let Some(parent) = stack.last_mut() {
-                            parent.tree.append_node(token);
-                        } else {
-                            // Top-level text/expression/doctype
-                            top_level_trees.push(TokenTree::new(token));
-                        }
+                } else {
+                    stack.push(StackElement {
+                        tree: TokenTree::new(token.clone()),
+                        tag_name: tag_name.to_string(),
+                    });
+                }
+            }
+            Token::ClosingTag { ref tag_name, .. } => {
+                if is_void_element(tag_name.as_str()) {
+                    errors.push(ParseError::closed_void_tag(
+                        tag_name.as_str(),
+                        token.span().clone(),
+                    ));
+                } else if !stack.iter().any(|el| el.tag_name == tag_name.as_str()) {
+                    errors.push(ParseError::unmatched_closing_tag(
+                        tag_name.as_str(),
+                        token.span().clone(),
+                    ));
+                } else {
+                    while stack.last().unwrap().tag_name != tag_name.as_str() {
+                        let unclosed = stack.pop().unwrap();
+                        errors.push(ParseError::unclosed_tag(
+                            &unclosed.tag_name,
+                            unclosed.tree.token.span().clone(),
+                        ));
+                        stack.last_mut().unwrap().tree.append_tree(unclosed.tree);
                     }
-                    Token::OpeningTag {
-                        ref tag_name,
-                        self_closing,
-                        ..
-                    } => {
-                        if is_void_element(tag_name.as_str()) || self_closing {
-                            if let Some(parent) = stack.last_mut() {
-                                parent.tree.append_node(token);
-                            } else {
-                                // Top-level void/self-closing tag
-                                top_level_trees.push(TokenTree::new(token));
-                            }
-                        } else {
-                            stack.push(StackElement {
-                                tree: TokenTree::new(token.clone()),
-                                tag_name: tag_name.to_string(),
-                            });
-                        }
-                    }
-                    Token::ClosingTag { ref tag_name, .. } => {
-                        if is_void_element(tag_name.as_str()) {
-                            errors.push(ParseError::closed_void_tag(
-                                tag_name.as_str(),
-                                token.span().clone(),
-                            ));
-                        } else if !stack.iter().any(|el| el.tag_name == tag_name.as_str()) {
-                            errors.push(ParseError::unmatched_closing_tag(
-                                tag_name.as_str(),
-                                token.span().clone(),
-                            ));
-                        } else {
-                            while stack.last().unwrap().tag_name != tag_name.as_str() {
-                                let unclosed = stack.pop().unwrap();
-                                errors.push(ParseError::unclosed_tag(
-                                    &unclosed.tag_name,
-                                    unclosed.tree.token.span().clone(),
-                                ));
-                                stack.last_mut().unwrap().tree.append_tree(unclosed.tree);
-                            }
-                            let mut completed = stack.pop().unwrap();
-                            completed.tree.set_closing_tag(token);
-                            if let Some(parent) = stack.last_mut() {
-                                parent.tree.append_tree(completed.tree);
-                            } else {
-                                // This was a top-level element
-                                top_level_trees.push(completed.tree);
-                            }
-                        }
+                    let mut completed = stack.pop().unwrap();
+                    completed.tree.set_closing_tag(token);
+                    if let Some(parent) = stack.last_mut() {
+                        parent.tree.append_tree(completed.tree);
+                    } else {
+                        // This was a top-level element
+                        top_level_trees.push(completed.tree);
                     }
                 }
             }
