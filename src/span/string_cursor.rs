@@ -145,7 +145,7 @@ impl StringSpan {
         self.start <= other.start && other.end <= self.end
     }
 
-    /// Returns true if this spanned item contains the given Position.
+    /// Returns true if the span contains the given Position.
     pub fn contains_position(&self, position: Position) -> bool {
         match position {
             Position::Utf16 { .. } => {
