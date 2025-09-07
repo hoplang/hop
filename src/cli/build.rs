@@ -57,7 +57,7 @@ pub fn execute(
     let modules = files::load_all_hop_modules(root)?;
 
     timer.start_phase("compiling");
-    let program = Program::from(modules);
+    let program = Program::new(modules);
 
     // Check for any compilation errors
     let source_code = program.get_source_code();

@@ -47,7 +47,7 @@ impl HopLanguageServer {
     pub fn new(client: Client) -> Self {
         Self {
             client,
-            program: RwLock::new(Program::new()),
+            program: RwLock::new(Program::default()),
             root: OnceCell::new(),
         }
     }

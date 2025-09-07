@@ -14,16 +14,22 @@ use super::ast::HopNode;
 use super::evaluator::HopMode;
 use super::typechecker::TypeChecker;
 
+/// HoverInfo is a message that should be displayed when the user hovers
+/// a specific span in the source code.
 pub struct HoverInfo {
     pub type_str: String,
     pub span: StringSpan,
 }
 
+/// A DefinitionLocation is the definition of a certain symbol in the source
+/// code. This is the response for a go to definition-query.
 pub struct DefinitionLocation {
     pub module: String,
     pub span: StringSpan,
 }
 
+/// A diagnostic is an error, warning or information that should be displayed
+/// for a specific span in the source code.
 pub struct Diagnostic {
     pub message: String,
     pub span: StringSpan,
@@ -49,19 +55,13 @@ pub struct Program {
     type_checker: TypeChecker,
 }
 
-impl From<HashMap<String, String>> for Program {
-    fn from(modules: HashMap<String, String>) -> Self {
-        let mut program = Self::new();
+impl Program {
+    pub fn new(modules: HashMap<String, String>) -> Self {
+        let mut program = Self::default();
         for (module_name, source_code) in modules {
             program.update_module(&module_name, source_code);
         }
         program
-    }
-}
-
-impl Program {
-    pub fn new() -> Self {
-        Self::default()
     }
 
     pub fn update_module(&mut self, module_name: &str, source_code: String) -> Vec<String> {
@@ -413,7 +413,7 @@ mod tests {
             let module_name = file.name.replace(".hop", "");
             map.insert(module_name, file.content.clone());
         }
-        Program::from(map)
+        Program::new(map)
     }
 
     fn program_from_archive(archive: &Archive) -> Program {
@@ -422,7 +422,7 @@ mod tests {
             let module_name = file.name.replace(".hop", "");
             map.insert(module_name, file.content.clone());
         }
-        Program::from(map)
+        Program::new(map)
     }
 
     fn check_rename_locations(input: &str, expected: Expect) {
