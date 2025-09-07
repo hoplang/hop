@@ -228,6 +228,35 @@ impl Tokenizer {
         }
     }
 
+    /// Parse an expression.
+    /// Assumes that the iterator is at the opening brace '{'.
+    ///
+    /// When it returns the iterator will be past the closing brace '}'
+    /// if it managed to parse the expression.
+    ///
+    /// Returns None if we reached EOF.
+    /// Returns Some(Err(...)) if the expression was empty
+    /// Returns Some(Ok((expr,span))) if we managed to parse the expression
+    /// where expr is the inner span for the expression and span is the outer (containing the
+    /// braces).
+    fn parse_expression(&mut self) -> Option<Result<(StringSpan, StringSpan), ParseError>> {
+        let right_brace = self.find_expression_end()?;
+        let left_brace = self.iter.next()?;
+        if left_brace.end() == right_brace.start() {
+            self.next(); // skip right brace
+            return Some(Err(ParseError::new(
+                "Empty expression".to_string(),
+                left_brace.to(right_brace),
+            )));
+        }
+        let mut expr = self.iter.next()?;
+        while self.iter.peek()?.start() != right_brace.start() {
+            expr = expr.to(self.iter.next()?);
+        }
+        self.iter.next()?; // skip right brace
+        Some(Ok((expr, left_brace.to(right_brace))))
+    }
+
     // Parse tag content, e.g. 'foo="bar" {x: string}'
     fn parse_tag_content(&mut self) -> Option<(Vec<Attribute>, Option<StringSpan>)> {
         let mut attributes: Vec<Attribute> = Vec::new();
@@ -237,24 +266,14 @@ impl Tokenizer {
 
             match self.iter.peek()?.ch() {
                 // Parse expression
-                '{' => {
-                    let right_brace = self.find_expression_end()?;
-                    let left_brace = self.iter.next()?;
-                    if left_brace.end() == right_brace.start() {
-                        self.next(); // skip right brace
-                        self.errors.push_back(ParseError::new(
-                            "Empty expression".to_string(),
-                            left_brace.to(right_brace),
-                        ));
-                        continue;
+                '{' => match self.parse_expression()? {
+                    Err(err) => {
+                        self.errors.push_back(err);
                     }
-                    let mut expr = self.iter.next()?;
-                    while self.iter.peek()?.start() != right_brace.start() {
-                        expr = expr.to(self.iter.next()?);
+                    Ok((expr, _)) => {
+                        expression = Some(expr);
                     }
-                    self.iter.next()?; // skip right brace
-                    expression = Some(expr);
-                }
+                },
                 // Parse attribute
                 ch if ch.is_ascii_alphabetic() => {
                     let attr = self.parse_attribute()?;
@@ -461,28 +480,17 @@ impl Tokenizer {
                 }
             }
             // TextExpression
-            '{' => {
-                let right_brace = self.find_expression_end()?;
-                let left_brace = self.iter.next()?;
-                if left_brace.end() == right_brace.start() {
-                    let right_brace = self.iter.next()?; // skip right brace
-                    self.errors.push_back(ParseError::new(
-                        "Empty expression".to_string(),
-                        left_brace.to(right_brace),
-                    ));
-                    // TODO: Recursive
-                    return self.step();
-                }
-                let mut expr = self.iter.next()?;
-                while self.iter.peek()?.start() != right_brace.start() {
-                    expr = expr.to(self.iter.next()?);
-                }
-                self.iter.next()?; // skip right brace
-                Some(Token::Expression {
+            '{' => match self.parse_expression()? {
+                Ok((expr, span)) => Some(Token::Expression {
                     expression: expr,
-                    span: left_brace.to(right_brace),
-                })
-            }
+                    span,
+                }),
+                Err(err) => {
+                    self.errors.push_back(err);
+                    // TODO: Recursive
+                    self.step()
+                }
+            },
             // Text
             _ => {
                 let text = self
