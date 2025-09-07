@@ -426,6 +426,39 @@ impl Tokenizer {
         }))
     }
 
+    fn parse_closing_tag(&mut self, left_angle: StringSpan) -> Option<Token> {
+        // consume '/'
+        self.iter.next();
+        // skip whitespace
+        self.skip_whitespace();
+        if self.iter.peek()?.ch().is_ascii_alphabetic() {
+            let tag_name = self.parse_tag_name();
+            self.skip_whitespace();
+            let right_angle = self.iter.next()?;
+            if right_angle.ch() != '>' {
+                self.errors.push(ParseError::new(
+                    "Invalid character after closing tag name".to_string(),
+                    right_angle.clone(),
+                ));
+                return Some(Token::ClosingTag {
+                    tag_name,
+                    span: left_angle.to(right_angle),
+                });
+            }
+            Some(Token::ClosingTag {
+                tag_name,
+                span: left_angle.to(right_angle),
+            })
+        } else {
+            let ch = self.iter.next()?;
+            self.errors.push(ParseError::new(
+                "Invalid character after </".to_string(),
+                ch,
+            ));
+            None
+        }
+    }
+
     fn step(&mut self) -> Option<Token> {
         // If we have a stored raw_text_closing_tag we need to parse all content
         // as raw text until we find the tag.
@@ -463,36 +496,14 @@ impl Tokenizer {
                     let left_angle = self.iter.next()?;
                     match self.iter.peek()? {
                         // ClosingTag
-                        s if s.ch() == '/' => {
-                            self.iter.next();
-                            self.skip_whitespace();
-                            if self.iter.peek()?.ch().is_ascii_alphabetic() {
-                                let tag_name = self.parse_tag_name();
-                                self.skip_whitespace();
-                                let right_angle = self.iter.next()?;
-                                if right_angle.ch() != '>' {
-                                    self.errors.push(ParseError::new(
-                                        "Invalid character after closing tag name".to_string(),
-                                        right_angle.clone(),
-                                    ));
-                                    return Some(Token::ClosingTag {
-                                        tag_name,
-                                        span: left_angle.to(right_angle),
-                                    });
-                                }
-                                return Some(Token::ClosingTag {
-                                    tag_name,
-                                    span: left_angle.to(right_angle),
-                                });
-                            } else {
-                                let ch = self.iter.next()?;
-                                self.errors.push(ParseError::new(
-                                    "Invalid character after </".to_string(),
-                                    ch,
-                                ));
+                        s if s.ch() == '/' => match self.parse_closing_tag(left_angle) {
+                            Some(token) => {
+                                return Some(token);
+                            }
+                            None => {
                                 continue;
                             }
-                        }
+                        },
                         // OpeningTag
                         s if s.ch().is_ascii_alphabetic() => {
                             match self.parse_opening_tag(left_angle)? {
