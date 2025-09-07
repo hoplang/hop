@@ -199,12 +199,7 @@ impl Tokenizer {
     //           ^^^^^^^^^
     //
     // Returns None if a valid attribute could not be parsed from the iterator.
-    fn parse_attribute(&mut self) -> Option<Attribute> {
-        // consume attribute name
-        let Some(attr_name) = self.parse_tag_name() else {
-            panic!("Expected tag name");
-        };
-
+    fn parse_attribute(&mut self, attr_name: StringSpan) -> Option<Attribute> {
         // skip whitespace
         self.skip_whitespace();
 
@@ -302,27 +297,32 @@ impl Tokenizer {
             // skip whitespace
             self.skip_whitespace();
 
+            if let Some(initial) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) {
+                let tag_name = initial.extend(
+                    self.iter
+                        .peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()),
+                );
+                if let Some(attr) = self.parse_attribute(tag_name) {
+                    let exists = attributes
+                        .iter()
+                        .any(|a| a.name.as_str() == attr.name.as_str());
+                    if exists {
+                        self.errors.push(ParseError::duplicate_attribute(
+                            attr.name.as_str(),
+                            attr.name.clone(),
+                        ));
+                    } else {
+                        attributes.push(attr);
+                    }
+                }
+                continue;
+            }
+
             match self.iter.peek().map(|s| s.ch()) {
                 // parse expression
                 Some('{') => {
                     if let Some((expr, _)) = self.parse_expression() {
                         expression = Some(expr);
-                    }
-                }
-                // parse attribute
-                Some(ch) if ch.is_ascii_alphabetic() => {
-                    if let Some(attr) = self.parse_attribute() {
-                        let exists = attributes
-                            .iter()
-                            .any(|a| a.name.as_str() == attr.name.as_str());
-                        if exists {
-                            self.errors.push(ParseError::duplicate_attribute(
-                                attr.name.as_str(),
-                                attr.name.clone(),
-                            ));
-                        } else {
-                            attributes.push(attr);
-                        }
                     }
                 }
                 _ => {
