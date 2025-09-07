@@ -429,11 +429,8 @@ impl Tokenizer {
         }))
     }
 
-    fn parse_closing_tag(&mut self, left_angle: StringSpan) -> Option<Token> {
-        // consume '/'
-        let Some(slash) = self.iter.next_if(|s| s.ch() == '/') else {
-            panic!("Expected slash");
-        };
+    // Expects that the slash has been consumed
+    fn parse_closing_tag(&mut self, left_angle_slash: StringSpan) -> Option<Token> {
         // skip whitespace
         self.skip_whitespace();
 
@@ -441,7 +438,7 @@ impl Tokenizer {
         let Some(tag_name) = self.parse_tag_name() else {
             self.errors.push(ParseError::new(
                 "Unterminated closing tag".to_string(),
-                left_angle.to(slash),
+                left_angle_slash,
             ));
             return None;
         };
@@ -459,7 +456,7 @@ impl Tokenizer {
         };
         Some(Token::ClosingTag {
             tag_name,
-            span: left_angle.to(right_angle),
+            span: left_angle_slash.to(right_angle),
         })
     }
 
@@ -495,47 +492,42 @@ impl Tokenizer {
             }
         }
         loop {
-            match self.iter.peek()?.ch() {
-                '<' => {
-                    let left_angle = self.iter.next()?;
-                    match self.iter.peek()? {
-                        // ClosingTag
-                        s if s.ch() == '/' => match self.parse_closing_tag(left_angle) {
-                            Some(token) => {
+            // parse tag or markup declaration
+            if let Some(left_angle) = self.iter.next_if(|s| s.ch() == '<') {
+                // parse markup declaration
+                if self.iter.next_if(|s| s.ch() == '!').is_some() {
+                    return self.parse_markup_declaration(left_angle);
+                }
+                // parse closing tag
+                if let Some(slash) = self.iter.next_if(|s| s.ch() == '/') {
+                    return self.parse_closing_tag(left_angle.to(slash));
+                }
+                match self.iter.peek()? {
+                    // OpeningTag
+                    s if s.ch().is_ascii_alphabetic() => {
+                        match self.parse_opening_tag(left_angle)? {
+                            Ok(token) => {
                                 return Some(token);
                             }
-                            None => {
+                            Err(err) => {
+                                self.errors.push(err);
                                 continue;
                             }
-                        },
-                        // OpeningTag
-                        s if s.ch().is_ascii_alphabetic() => {
-                            match self.parse_opening_tag(left_angle)? {
-                                Ok(token) => {
-                                    return Some(token);
-                                }
-                                Err(err) => {
-                                    self.errors.push(err);
-                                    continue;
-                                }
-                            }
-                        }
-                        // Doctype/Comment
-                        s if s.ch() == '!' => {
-                            self.iter.next();
-                            return self.parse_markup_declaration(left_angle);
-                        }
-                        // Invalid
-                        _ => {
-                            let ch = self.iter.next()?;
-                            self.errors.push(ParseError::new(
-                                "Invalid character after '<'".to_string(),
-                                ch,
-                            ));
-                            continue;
                         }
                     }
+                    // Invalid
+                    _ => {
+                        let ch = self.iter.next()?;
+                        self.errors.push(ParseError::new(
+                            "Invalid character after '<'".to_string(),
+                            ch,
+                        ));
+                        continue;
+                    }
                 }
+            }
+
+            match self.iter.peek()?.ch() {
                 // TextExpression
                 '{' => {
                     if let Some((expr, span)) = self.parse_expression() {
