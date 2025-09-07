@@ -6,7 +6,7 @@ use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
 use crate::span::Position;
-use crate::span::string_cursor::{Spanned, StringSpan};
+use crate::span::string_cursor::StringSpan;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
@@ -110,7 +110,6 @@ impl Program {
     pub fn get_type_errors(&self) -> &HashMap<String, Vec<TypeError>> {
         &self.type_checker.type_errors
     }
-
 
     pub fn get_hover_info(&self, module_name: &str, position: Position) -> Option<HoverInfo> {
         self.type_checker
@@ -552,10 +551,9 @@ mod tests {
             .find(|f| f.name.replace(".hop", "") == module)
             .expect("Could not find file in archive");
 
-        let output = SourceAnnotator::new().with_location().annotate(
-            Some(&file.name),
-            &[symbol.span],
-        );
+        let output = SourceAnnotator::new()
+            .with_location()
+            .annotate(Some(&file.name), &[symbol.span]);
 
         expected.assert_eq(&output);
     }

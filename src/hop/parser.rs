@@ -537,7 +537,7 @@ mod tests {
             return;
         }
         let left = format!("{}{}", "    ".repeat(depth).as_str(), node_name(node));
-        let right = format!("{}-{}", node.start_utf32(), node.end_utf32());
+        let right = format!("{}-{}", node.span().start_utf32(), node.span().end_utf32());
         lines.push(format!("{:<50}{}", left, right));
         for child in node.children() {
             write_node(child, depth + 1, lines);
@@ -554,7 +554,11 @@ mod tests {
 
     fn check(input: &str, expected: Expect) {
         let mut errors = Vec::new();
-        let module = parse("test".to_string(), Tokenizer::new(input.to_string()), &mut errors);
+        let module = parse(
+            "test".to_string(),
+            Tokenizer::new(input.to_string()),
+            &mut errors,
+        );
 
         let actual = if !errors.is_empty() {
             SourceAnnotator::new()

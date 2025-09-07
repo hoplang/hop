@@ -30,7 +30,8 @@ impl PartialOrd for SimpleAnnotation {
 
 impl Ord for SimpleAnnotation {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.span.start()
+        self.span
+            .start()
             .cmp(&other.span.start())
             .then_with(|| self.span.end().cmp(&other.span.end()))
             .then_with(|| self.message.cmp(&other.message))
@@ -118,13 +119,13 @@ impl SourceAnnotator {
         A: Display + Spanned,
     {
         let annotations: Vec<A> = annotations.into_iter().collect();
-        
+
         // Extract source from the first annotation's span
         let source = match annotations.first() {
             Some(first) => first.span().full_source(),
             None => return String::new(),
         };
-        
+
         // Debug assert that all annotations are from the same source
         for annotation in &annotations {
             debug_assert!(
@@ -132,7 +133,7 @@ impl SourceAnnotator {
                 "All annotations must be from the same source document"
             );
         }
-        
+
         let mut output = String::new();
         let lines: Vec<Option<StringSpan>> = StringCursor::new(source.to_string())
             .chunk_by(|span| span.start_utf32().line())
@@ -156,14 +157,14 @@ impl SourceAnnotator {
                     output.push_str(&format!(
                         "  --> {} (line {}, col {})\n",
                         filename,
-                        annotation.start_utf32().line() + 1,
-                        annotation.start_utf32().column() + 1
+                        annotation.span().start_utf32().line() + 1,
+                        annotation.span().start_utf32().column() + 1
                     ));
                 } else {
                     output.push_str(&format!(
                         "  --> (line {}, col {})\n",
-                        annotation.start_utf32().line() + 1,
-                        annotation.start_utf32().column() + 1
+                        annotation.span().start_utf32().line() + 1,
+                        annotation.span().start_utf32().column() + 1
                     ));
                 }
             }
@@ -301,10 +302,9 @@ mod tests {
 
         let annotations = create_annotations_from_chunks(source, |ch| ch == '\n');
 
-        let actual =
-            SourceAnnotator::new()
-                .with_location()
-                .annotate(Some("main.rs"), annotations);
+        let actual = SourceAnnotator::new()
+            .with_location()
+            .annotate(Some("main.rs"), annotations);
 
         expect![[r#"
             line one
@@ -336,10 +336,9 @@ mod tests {
 
         let annotations = create_annotations_from_chunks(source, |ch| ch == '\n');
 
-        let actual =
-            SourceAnnotator::new()
-                .with_lines_before(2)
-                .annotate(None, annotations);
+        let actual = SourceAnnotator::new()
+            .with_lines_before(2)
+            .annotate(None, annotations);
 
         expect![[r#"
             line one
@@ -484,10 +483,9 @@ mod tests {
 
         let annotations = create_annotations_from_chunks(source, |ch| ch == '\n');
 
-        let actual =
-            SourceAnnotator::new()
-                .with_lines_before(1000)
-                .annotate(None, annotations);
+        let actual = SourceAnnotator::new()
+            .with_lines_before(1000)
+            .annotate(None, annotations);
 
         expect![[r#"
             line one

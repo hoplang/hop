@@ -145,6 +145,22 @@ impl StringSpan {
         self.start <= other.start && other.end <= self.end
     }
 
+    /// Returns true if this spanned item contains the given Position.
+    pub fn contains_position(&self, position: Position) -> bool {
+        match position {
+            Position::Utf16 { .. } => {
+                let start = self.start_utf16();
+                let end = self.end_utf16();
+                start <= position && position < end
+            }
+            Position::Utf32 { .. } => {
+                let start = self.start_utf32();
+                let end = self.end_utf32();
+                start <= position && position < end
+            }
+        }
+    }
+
     pub fn intersection(&self, other: &StringSpan) -> Option<StringSpan> {
         let start = self.start.max(other.start);
         let end = self.end.min(other.end);
@@ -179,38 +195,6 @@ impl FromIterator<StringSpan> for Option<StringSpan> {
 
 pub trait Spanned {
     fn span(&self) -> &StringSpan;
-
-    fn start_utf16(&self) -> Position {
-        self.span().start_utf16()
-    }
-
-    fn end_utf16(&self) -> Position {
-        self.span().end_utf16()
-    }
-
-    fn start_utf32(&self) -> Position {
-        self.span().start_utf32()
-    }
-
-    fn end_utf32(&self) -> Position {
-        self.span().end_utf32()
-    }
-
-    /// Returns true if this spanned item contains the given Position.
-    fn contains_position(&self, position: Position) -> bool {
-        match position {
-            Position::Utf16 { .. } => {
-                let start = self.start_utf16();
-                let end = self.end_utf16();
-                start <= position && position < end
-            }
-            Position::Utf32 { .. } => {
-                let start = self.start_utf32();
-                let end = self.end_utf32();
-                start <= position && position < end
-            }
-        }
-    }
 }
 
 impl Spanned for StringSpan {
