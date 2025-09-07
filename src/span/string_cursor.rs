@@ -24,11 +24,12 @@ pub struct StringCursor {
 }
 
 impl StringCursor {
-    pub fn new(source: &str) -> Self {
+    pub fn new(source: String) -> Self {
+        let end = source.len();
         Self {
             offset: 0,
-            end: source.len(),
-            source: Arc::new(SourceInfo::new(source.to_string())),
+            end,
+            source: Arc::new(SourceInfo::new(source)),
         }
     }
 }
@@ -100,6 +101,11 @@ impl StringSpan {
     /// Get the underlying string slice for this string span.
     pub fn as_str(&self) -> &str {
         &self.source.text[self.start..self.end]
+    }
+
+    /// Get the full source text that this span is a part of.
+    pub(super) fn full_source(&self) -> &str {
+        &self.source.text
     }
 
     /// Get a string cursor for this string slice.
@@ -274,14 +280,14 @@ mod tests {
 
     #[test]
     fn test_string_cursor_new() {
-        let cursor = StringCursor::new("hello");
+        let cursor = StringCursor::new("hello".to_string());
         assert_eq!(cursor.offset, 0);
         assert_eq!(cursor.end, 5);
     }
 
     #[test]
     fn test_string_cursor_single_line() {
-        let mut cursor = StringCursor::new("abc");
+        let mut cursor = StringCursor::new("abc".to_string());
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), 'a');
@@ -303,7 +309,7 @@ mod tests {
 
     #[test]
     fn test_string_cursor_multiline() {
-        let mut cursor = StringCursor::new("a\nb\nc");
+        let mut cursor = StringCursor::new("a\nb\nc".to_string());
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), 'a');
@@ -335,7 +341,7 @@ mod tests {
 
     #[test]
     fn test_string_span_extend() {
-        let mut cursor = StringCursor::new("abc");
+        let mut cursor = StringCursor::new("abc".to_string());
         let span1 = cursor.next().unwrap();
         let _span2 = cursor.next().unwrap();
         let span3 = cursor.next().unwrap();
@@ -352,7 +358,7 @@ mod tests {
 
     #[test]
     fn test_string_span_to_string() {
-        let mut cursor = StringCursor::new("hello world");
+        let mut cursor = StringCursor::new("hello world".to_string());
         let spans: Vec<_> = cursor.by_ref().take(5).collect();
 
         assert_eq!(spans[0].to_string(), "h");
@@ -367,13 +373,13 @@ mod tests {
 
     #[test]
     fn test_empty_string_cursor() {
-        let mut cursor = StringCursor::new("");
+        let mut cursor = StringCursor::new("".to_string());
         assert!(cursor.next().is_none());
     }
 
     #[test]
     fn test_string_cursor_clone() {
-        let cursor1 = StringCursor::new("test");
+        let cursor1 = StringCursor::new("test".to_string());
         let mut cursor2 = cursor1.clone();
 
         let span = cursor2.next().unwrap();
@@ -382,7 +388,7 @@ mod tests {
 
     #[test]
     fn test_collect_string_spans() {
-        let result: Option<StringSpan> = StringCursor::new("   hello")
+        let result: Option<StringSpan> = StringCursor::new("   hello".to_string())
             .take_while(|s| s.ch() == ' ')
             .collect();
 
@@ -394,7 +400,7 @@ mod tests {
 
     #[test]
     fn test_collect_empty_spans() {
-        let result: Option<StringSpan> = StringCursor::new("hello")
+        let result: Option<StringSpan> = StringCursor::new("hello".to_string())
             .take_while(|s| s.ch() == ' ')
             .collect();
 
@@ -403,7 +409,7 @@ mod tests {
 
     #[test]
     fn test_collect_multiline_spans() {
-        let result: Option<StringSpan> = StringCursor::new("aaa\nbbb")
+        let result: Option<StringSpan> = StringCursor::new("aaa\nbbb".to_string())
             .take_while(|s| s.ch() == 'a')
             .collect();
 
@@ -415,7 +421,7 @@ mod tests {
 
     #[test]
     fn test_collect_with_skip() {
-        let result: Option<StringSpan> = StringCursor::new("   hello   ")
+        let result: Option<StringSpan> = StringCursor::new("   hello   ".to_string())
             .skip(3)
             .take_while(|s| s.ch().is_alphabetic())
             .collect();
@@ -431,7 +437,7 @@ mod tests {
         // "a\u{20AC}b" - \u{20AC} is € (Euro sign)
         // UTF-8 bytes:  a(1) €(3) b(1) = positions 0,1,4,5
         // UTF-16 units: a(1) €(1) b(1) = positions 0,1,2,3
-        let mut cursor = StringCursor::new("a\u{20AC}b");
+        let mut cursor = StringCursor::new("a\u{20AC}b".to_string());
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), 'a');
@@ -457,7 +463,7 @@ mod tests {
         // Line 0: €(1) \n(1)
         // Line 1: 🎨(2) \n(1)
         // Line 2: c(1)
-        let mut cursor = StringCursor::new("\u{20AC}\n\u{1F3A8}\nc");
+        let mut cursor = StringCursor::new("\u{20AC}\n\u{1F3A8}\nc".to_string());
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), '\u{20AC}');
@@ -488,7 +494,7 @@ mod tests {
     #[test]
     fn test_contains_position_utf16() {
         // "hello\nworld" - ASCII text for simple position testing
-        let cursor = StringCursor::new("hello\nworld");
+        let cursor = StringCursor::new("hello\nworld".to_string());
         let spans: Vec<_> = cursor.collect();
 
         // "hello" spans
@@ -508,7 +514,7 @@ mod tests {
         // UTF-8:  a(1) €(3) b(1) 🎨(4) c(1) = byte positions
         // UTF-16: a(1) €(1) b(1) 🎨(2) c(1) = code unit positions
         // UTF-32: a(1) €(1) b(1) 🎨(1) c(1) = character positions 0,1,2,3,4,5
-        let mut cursor = StringCursor::new("a\u{20AC}b\u{1F3A8}c");
+        let mut cursor = StringCursor::new("a\u{20AC}b\u{1F3A8}c".to_string());
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), 'a');
@@ -541,7 +547,7 @@ mod tests {
         // "\u{1F3A8}\n\u{20AC}x" - Testing UTF-32 with newlines
         // Line 0: 🎨(1 char) \n(1 char)
         // Line 1: €(1 char) x(1 char)
-        let mut cursor = StringCursor::new("\u{1F3A8}\n\u{20AC}x");
+        let mut cursor = StringCursor::new("\u{1F3A8}\n\u{20AC}x".to_string());
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), '\u{1F3A8}');
@@ -567,7 +573,7 @@ mod tests {
     #[test]
     fn test_contains_position_utf32() {
         // "\u{1F3A8}hello" - Emoji followed by ASCII
-        let cursor = StringCursor::new("\u{1F3A8}hello");
+        let cursor = StringCursor::new("\u{1F3A8}hello".to_string());
         let spans: Vec<_> = cursor.collect();
 
         // Create span for "hello" (skipping the emoji)
@@ -584,7 +590,7 @@ mod tests {
     fn test_compare_utf_encodings() {
         // "\u{1F3A8}ab" - Compare UTF-16 and UTF-32 encodings
         // 🎨 = U+1F3A8: 2 code units UTF-16, 1 char UTF-32
-        let mut cursor = StringCursor::new("\u{1F3A8}ab");
+        let mut cursor = StringCursor::new("\u{1F3A8}ab".to_string());
 
         let emoji = cursor.next().unwrap();
         let a = cursor.next().unwrap();

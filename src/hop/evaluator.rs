@@ -648,7 +648,7 @@ mod tests {
         for file in archive.iter() {
             let module_name = file.name.replace(".hop", "");
             let mut errors = Vec::new();
-            let tokenizer = Tokenizer::new(&file.content);
+            let tokenizer = Tokenizer::new(file.content.clone());
             let ast = parse(module_name.clone(), tokenizer, &mut errors);
 
             if !errors.is_empty() {

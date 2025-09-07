@@ -119,7 +119,7 @@ pub struct Tokenizer {
 }
 
 impl Tokenizer {
-    pub fn new(input: &str) -> Self {
+    pub fn new(input: String) -> Self {
         Self {
             iter: StringCursor::new(input).peekable(),
             errors: VecDeque::new(),
@@ -525,7 +525,7 @@ mod tests {
     use indoc::indoc;
 
     fn check(input: &str, expected: Expect) {
-        let tokenizer = Tokenizer::new(input);
+        let tokenizer = Tokenizer::new(input.to_string());
         let result: Vec<_> = tokenizer.collect();
 
         // Validate that ranges are contiguous
@@ -563,7 +563,7 @@ mod tests {
             }
         }
 
-        expected.assert_eq(&SourceAnnotator::new().annotate(None, input, annotations));
+        expected.assert_eq(&SourceAnnotator::new().annotate(None, annotations));
     }
 
     #[test]

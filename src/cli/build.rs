@@ -60,7 +60,6 @@ pub fn execute(
     let program = Program::new(modules);
 
     // Check for any compilation errors
-    let source_code = program.get_source_code();
     let mut error_output_parts = Vec::new();
     let annotator = SourceAnnotator::new()
         .with_label("error")
@@ -73,7 +72,6 @@ pub fn execute(
             let filename = format!("{}.hop", module_name);
             error_output_parts.push(annotator.annotate(
                 Some(&filename),
-                source_code.get(module_name).unwrap(),
                 errors,
             ));
         }
@@ -85,7 +83,6 @@ pub fn execute(
             let filename = format!("{}.hop", module_name);
             error_output_parts.push(annotator.annotate(
                 Some(&filename),
-                source_code.get(module_name).unwrap(),
                 errors,
             ));
         }

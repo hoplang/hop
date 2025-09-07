@@ -10,7 +10,7 @@ use super::{Position, string_cursor::StringCursor};
 /// Panics if multiple position markers are found or if marker does not point to a valid character
 /// on the above line.
 pub fn extract_position(input: &str) -> Option<(String, Position)> {
-    let markers = StringCursor::new(input)
+    let markers = StringCursor::new(input.to_string())
         .filter(|span| span.ch() == '^')
         .map(|span| {
             // Check if marker is on the first line (line 0)
@@ -29,7 +29,7 @@ pub fn extract_position(input: &str) -> Option<(String, Position)> {
         "Multiple position markers (^) found in source"
     );
     markers.first().map(|marker| {
-        let char_starts = StringCursor::new(input)
+        let char_starts = StringCursor::new(input.to_string())
             .map(|span| span.start_utf32())
             .collect::<HashSet<_>>();
         assert!(

@@ -408,7 +408,7 @@ mod tests {
     fn check_find_node_at_position(input: &str, expected: Expect) {
         let (source, position) = extract_position(input).expect("Position marker not found");
         let mut errors = Vec::new();
-        let ast = parse("test".to_string(), Tokenizer::new(&source), &mut errors);
+        let ast = parse("test".to_string(), Tokenizer::new(source), &mut errors);
 
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
 
@@ -418,7 +418,6 @@ mod tests {
             let annotator = SourceAnnotator::new().without_location();
             annotator.annotate(
                 None,
-                &source,
                 [SimpleAnnotation {
                     span: node.span().clone(),
                     message: "range".to_string(),

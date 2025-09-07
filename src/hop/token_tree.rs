@@ -186,7 +186,7 @@ mod tests {
 
     fn check(input: &str, expected: Expect) {
         let mut errors = Vec::new();
-        let trees = build_tree(Tokenizer::new(input), &mut errors);
+        let trees = build_tree(Tokenizer::new(input.to_string()), &mut errors);
         if !errors.is_empty() {
             panic!("Expected errors to be empty");
         }

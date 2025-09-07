@@ -494,7 +494,7 @@ mod tests {
     use crate::span::{SimpleAnnotation, SourceAnnotator};
     use expect_test::{Expect, expect};
 
-    fn annotate_error(input: &str, error: ParseError) -> String {
+    fn annotate_error(error: ParseError) -> String {
         let annotator = SourceAnnotator::new()
             .with_label("error")
             .without_location()
@@ -502,7 +502,7 @@ mod tests {
         match error {
             ParseError::UnexpectedEof => "Unexpected end of expression".to_string(),
             ParseError::Spanned { message, span } => {
-                annotator.annotate(None, input, [SimpleAnnotation { message, span }])
+                annotator.annotate(None, [SimpleAnnotation { message, span }])
             }
         }
     }
@@ -511,7 +511,7 @@ mod tests {
         let mut tokenizer = DopTokenizer::from(input).peekable();
         let actual = match parse_expr(&mut tokenizer) {
             Ok(result) => format!("{}\n", result),
-            Err(err) => annotate_error(input, err),
+            Err(err) => annotate_error(err),
         };
         expected.assert_eq(&actual);
     }
@@ -524,7 +524,7 @@ mod tests {
                 let params: Vec<String> = result.values().map(|param| param.to_string()).collect();
                 format!("[{}]\n", params.join(", "))
             }
-            Err(err) => annotate_error(input, err),
+            Err(err) => annotate_error(err),
         };
 
         expected.assert_eq(&actual);
@@ -538,7 +538,7 @@ mod tests {
                 let args: Vec<String> = result.values().map(|arg| arg.to_string()).collect();
                 format!("[{}]\n", args.join(", "))
             }
-            Err(err) => annotate_error(input, err),
+            Err(err) => annotate_error(err),
         };
 
         expected.assert_eq(&actual);

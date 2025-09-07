@@ -475,7 +475,7 @@ mod tests {
             }
             let source_code = file.content.trim();
             let mut parse_errors = Vec::new();
-            let tokenizer = Tokenizer::new(source_code);
+            let tokenizer = Tokenizer::new(source_code.to_string());
             let module_name = file.name.trim_end_matches(".hop");
             let module = parse(module_name.to_string(), tokenizer, &mut parse_errors);
 
@@ -491,13 +491,11 @@ mod tests {
             if type_errors.is_some_and(|err| !err.is_empty()) {
                 error_output.push(error_annotator.annotate(
                     Some(&file.name),
-                    source_code,
                     typechecker.type_errors.get(&module.name).unwrap(),
                 ));
             } else if type_annotations.is_some_and(|ann| !ann.is_empty()) {
                 let formatted_errors = type_annotator.annotate(
                     Some(&file.name),
-                    source_code,
                     typechecker.type_annotations.get(&module.name).unwrap(),
                 );
                 type_output.push(formatted_errors);

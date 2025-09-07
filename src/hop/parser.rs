@@ -554,13 +554,13 @@ mod tests {
 
     fn check(input: &str, expected: Expect) {
         let mut errors = Vec::new();
-        let module = parse("test".to_string(), Tokenizer::new(input), &mut errors);
+        let module = parse("test".to_string(), Tokenizer::new(input.to_string()), &mut errors);
 
         let actual = if !errors.is_empty() {
             SourceAnnotator::new()
                 .with_label("error")
                 .with_lines_before(1)
-                .annotate(None, input, errors)
+                .annotate(None, errors)
         } else {
             for component in module.get_component_definitions() {
                 if component.tag_name.as_str() == "main-comp" {

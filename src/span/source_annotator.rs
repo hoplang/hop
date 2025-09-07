@@ -112,14 +112,29 @@ impl SourceAnnotator {
     pub fn annotate<A>(
         &self,
         filename: Option<&str>,
-        source: &str,
         annotations: impl IntoIterator<Item = A>,
     ) -> String
     where
         A: Display + Spanned,
     {
+        let annotations: Vec<A> = annotations.into_iter().collect();
+        
+        // Extract source from the first annotation's span
+        let source = match annotations.first() {
+            Some(first) => first.span().full_source(),
+            None => return String::new(),
+        };
+        
+        // Debug assert that all annotations are from the same source
+        for annotation in &annotations {
+            debug_assert!(
+                std::ptr::eq(annotation.span().full_source(), source),
+                "All annotations must be from the same source document"
+            );
+        }
+        
         let mut output = String::new();
-        let lines: Vec<Option<StringSpan>> = StringCursor::new(source)
+        let lines: Vec<Option<StringSpan>> = StringCursor::new(source.to_string())
             .chunk_by(|span| span.start_utf32().line())
             .into_iter()
             .map(|(_, group)| group.filter(|s| s.ch() != '\n').collect())
@@ -239,7 +254,7 @@ mod tests {
         source: &str,
         predicate: impl Fn(char) -> bool,
     ) -> Vec<StringSpan> {
-        StringCursor::new(source)
+        StringCursor::new(source.to_string())
             .chunk_by(|span| predicate(span.ch()))
             .into_iter()
             .filter_map(
@@ -258,7 +273,7 @@ mod tests {
 
         let actual = SourceAnnotator::new()
             .with_label("error")
-            .annotate(None, source, annotations);
+            .annotate(None, annotations);
 
         expect![[r#"
             error: line one
@@ -289,7 +304,7 @@ mod tests {
         let actual =
             SourceAnnotator::new()
                 .with_location()
-                .annotate(Some("main.rs"), source, annotations);
+                .annotate(Some("main.rs"), annotations);
 
         expect![[r#"
             line one
@@ -324,7 +339,7 @@ mod tests {
         let actual =
             SourceAnnotator::new()
                 .with_lines_before(2)
-                .annotate(None, source, annotations);
+                .annotate(None, annotations);
 
         expect![[r#"
             line one
@@ -359,7 +374,7 @@ mod tests {
 
         let actual = SourceAnnotator::new()
             .with_lines_after(2)
-            .annotate(None, source, annotations);
+            .annotate(None, annotations);
 
         expect![[r#"
             line one
@@ -394,7 +409,7 @@ mod tests {
 
         let actual = SourceAnnotator::new()
             .with_location()
-            .annotate(None, source, annotations);
+            .annotate(None, annotations);
 
         expect![[r#"
             code
@@ -423,7 +438,7 @@ mod tests {
 
         let actual = SourceAnnotator::new()
             .with_location()
-            .annotate(None, source, annotations);
+            .annotate(None, annotations);
 
         expect![[r#"
             😀
@@ -447,7 +462,7 @@ mod tests {
 
         let actual = SourceAnnotator::new()
             .with_location()
-            .annotate(None, source, annotations);
+            .annotate(None, annotations);
 
         expect![[r#"
             some
@@ -472,7 +487,7 @@ mod tests {
         let actual =
             SourceAnnotator::new()
                 .with_lines_before(1000)
-                .annotate(None, source, annotations);
+                .annotate(None, annotations);
 
         expect![[r#"
             line one
@@ -523,7 +538,7 @@ mod tests {
 
         let annotations = create_annotations_from_chunks(source, |ch| ch == 'n');
 
-        let actual = SourceAnnotator::new().annotate(None, source, annotations);
+        let actual = SourceAnnotator::new().annotate(None, annotations);
 
         expect![[r#"
             li

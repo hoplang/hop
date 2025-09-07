@@ -21,11 +21,17 @@ impl From<Peekable<StringCursor>> for DopTokenizer {
     }
 }
 
-impl From<&str> for DopTokenizer {
-    fn from(input: &str) -> Self {
+impl From<String> for DopTokenizer {
+    fn from(input: String) -> Self {
         Self {
             iter: StringCursor::new(input).peekable(),
         }
+    }
+}
+
+impl From<&str> for DopTokenizer {
+    fn from(input: &str) -> Self {
+        Self::from(input.to_string())
     }
 }
 
@@ -241,7 +247,6 @@ mod tests {
         }
         expected.assert_eq(&SourceAnnotator::new().without_line_numbers().annotate(
             None,
-            input,
             &annotations,
         ));
     }

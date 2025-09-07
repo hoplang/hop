@@ -49,7 +49,6 @@ pub struct RenameableSymbol {
 #[derive(Debug, Default)]
 pub struct Program {
     topo_sorter: TopoSorter,
-    source_code: HashMap<String, String>,
     parse_errors: HashMap<String, Vec<ParseError>>,
     modules: HashMap<String, HopAst>,
     type_checker: TypeChecker,
@@ -73,7 +72,7 @@ impl Program {
         parse_errors.clear();
         let module = parse(
             module_name.to_string(),
-            Tokenizer::new(&source_code),
+            Tokenizer::new(source_code),
             parse_errors,
         );
 
@@ -84,10 +83,8 @@ impl Program {
             .map(|import_node| import_node.imported_module().to_string())
             .collect::<HashSet<String>>();
 
-        // Store the AST and source code
+        // Store the AST
         self.modules.insert(module_name.to_string(), module);
-        self.source_code
-            .insert(module_name.to_string(), source_code);
 
         // Typecheck the module along with all dependent modules (grouped
         // into strongly connected components).
@@ -114,9 +111,6 @@ impl Program {
         &self.type_checker.type_errors
     }
 
-    pub fn get_source_code(&self) -> &HashMap<String, String> {
-        &self.source_code
-    }
 
     pub fn get_hover_info(&self, module_name: &str, position: Position) -> Option<HoverInfo> {
         self.type_checker
@@ -457,7 +451,7 @@ mod tests {
             annotations.sort();
 
             if !annotations.is_empty() {
-                output.push(annotator.annotate(Some(&file.name), &file.content, &annotations));
+                output.push(annotator.annotate(Some(&file.name), &annotations));
             }
         }
 
@@ -483,14 +477,8 @@ mod tests {
             .get_definition_location(&module, marker.position)
             .expect("Expected definition location to be defined");
 
-        let source_code = program
-            .source_code
-            .get(&loc.module)
-            .expect("Could not get source code");
-
         let output = SourceAnnotator::new().with_location().annotate(
             Some(&loc.module.clone()),
-            source_code,
             [SimpleAnnotation {
                 message: "Definition".to_string(),
                 span: loc.span,
@@ -509,14 +497,8 @@ mod tests {
             panic!("Expected diagnostics to be non-empty");
         }
 
-        let source_code = program
-            .source_code
-            .get(module)
-            .expect("Source code not found");
-
         let output = SourceAnnotator::new().with_location().annotate(
             Some(module),
-            source_code,
             diagnostics.into_iter().map(|d| SimpleAnnotation {
                 message: d.message,
                 span: d.span,
@@ -541,9 +523,7 @@ mod tests {
         modules_with_errors.sort_by_key(|(module_name, _)| module_name.as_str());
 
         for (module_name, errors) in modules_with_errors {
-            let source_code = program.source_code.get(module_name).unwrap();
-
-            let annotated = annotator.annotate(Some(module_name), source_code, errors);
+            let annotated = annotator.annotate(Some(module_name), errors);
 
             output.push(annotated);
         }
@@ -574,7 +554,6 @@ mod tests {
 
         let output = SourceAnnotator::new().with_location().annotate(
             Some(&file.name),
-            &file.content,
             &[symbol.span],
         );
 
@@ -605,7 +584,6 @@ mod tests {
 
         let output = SourceAnnotator::new().with_location().annotate(
             Some(&file.name),
-            &file.content,
             &[SimpleAnnotation {
                 span: hover_info.span,
                 message: hover_info.type_str,
