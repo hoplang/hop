@@ -393,12 +393,7 @@ impl Tokenizer {
         }
     }
 
-    fn parse_opening_tag(&mut self, left_angle: StringSpan) -> Option<Result<Token, ParseError>> {
-        // consume tag name
-        let Some(tag_name) = self.parse_tag_name() else {
-            panic!("Expected tag name");
-        };
-
+    fn parse_opening_tag(&mut self, left_angle: StringSpan, tag_name: StringSpan) -> Option<Token> {
         // consume tag content
         let (attributes, expression) = self.parse_tag_content()?;
 
@@ -410,23 +405,24 @@ impl Tokenizer {
 
         // consume '>'
         let Some(right_angle) = self.iter.next_if(|s| s.ch() == '>') else {
-            return Some(Err(ParseError::new(
+            self.errors.push(ParseError::new(
                 "Unterminated opening tag".to_string(),
                 tag_name.clone(),
-            )));
+            ));
+            return None;
         };
 
         if is_tag_name_with_raw_content(tag_name.as_str()) {
             self.raw_text_closing_tag = Some(format!("</{}>", tag_name.as_str()));
         }
 
-        Some(Ok(Token::OpeningTag {
+        Some(Token::OpeningTag {
             self_closing,
             tag_name,
             attributes,
             expression,
             span: left_angle.to(right_angle),
-        }))
+        })
     }
 
     // Expects that the slash has been consumed
@@ -495,36 +491,26 @@ impl Tokenizer {
             // parse tag or markup declaration
             if let Some(left_angle) = self.iter.next_if(|s| s.ch() == '<') {
                 // parse markup declaration
-                if self.iter.next_if(|s| s.ch() == '!').is_some() {
+                if let Some(_bang) = self.iter.next_if(|s| s.ch() == '!') {
                     return self.parse_markup_declaration(left_angle);
                 }
                 // parse closing tag
                 if let Some(slash) = self.iter.next_if(|s| s.ch() == '/') {
                     return self.parse_closing_tag(left_angle.to(slash));
                 }
-                match self.iter.peek()? {
-                    // OpeningTag
-                    s if s.ch().is_ascii_alphabetic() => {
-                        match self.parse_opening_tag(left_angle)? {
-                            Ok(token) => {
-                                return Some(token);
-                            }
-                            Err(err) => {
-                                self.errors.push(err);
-                                continue;
-                            }
-                        }
-                    }
-                    // Invalid
-                    _ => {
-                        let ch = self.iter.next()?;
-                        self.errors.push(ParseError::new(
-                            "Invalid character after '<'".to_string(),
-                            ch,
-                        ));
-                        continue;
-                    }
+                // parse opening tag
+                if let Some(initial) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) {
+                    let tag_name =
+                        initial.extend(self.iter.peeking_take_while(|s| {
+                            s.ch() == '-' || s.ch().is_ascii_alphanumeric()
+                        }));
+                    return self.parse_opening_tag(left_angle, tag_name);
                 }
+                self.errors.push(ParseError::new(
+                    "Unterminated tag start".to_string(),
+                    left_angle,
+                ));
+                return None;
             }
 
             match self.iter.peek()?.ch() {
@@ -913,13 +899,13 @@ mod tests {
         check(
             "<div!>",
             expect![[r#"
-                Text [2 byte, "!>"]
-                1 | <div!>
-                  |     ^^
-
                 Unterminated opening tag
                 1 | <div!>
                   |  ^^^
+
+                Text [2 byte, "!>"]
+                1 | <div!>
+                  |     ^^
             "#]],
         );
     }
@@ -2432,25 +2418,25 @@ mod tests {
         check(
             r#"<div <div>"#,
             expect![[r#"
-                OpeningTag <div>
-                1 | <div <div>
-                  |      ^^^^^
-
                 Unterminated opening tag
                 1 | <div <div>
                   |  ^^^
+
+                OpeningTag <div>
+                1 | <div <div>
+                  |      ^^^^^
             "#]],
         );
         check(
             r#"<div class="foo" <div>"#,
             expect![[r#"
-                OpeningTag <div>
-                1 | <div class="foo" <div>
-                  |                  ^^^^^
-
                 Unterminated opening tag
                 1 | <div class="foo" <div>
                   |  ^^^
+
+                OpeningTag <div>
+                1 | <div class="foo" <div>
+                  |                  ^^^^^
             "#]],
         );
         check(
@@ -2520,13 +2506,13 @@ mod tests {
         check(
             r#"</div </div>"#,
             expect![[r#"
-                ClosingTag </div>
-                1 | </div </div>
-                  |       ^^^^^^
-
                 Unterminated closing tag
                 1 | </div </div>
                   |   ^^^
+
+                ClosingTag </div>
+                1 | </div </div>
+                  |       ^^^^^^
             "#]],
         );
         check(
@@ -2548,13 +2534,13 @@ mod tests {
         check(
             r#"</di<div>"#,
             expect![[r#"
-                OpeningTag <div>
-                1 | </di<div>
-                  |     ^^^^^
-
                 Unterminated closing tag
                 1 | </di<div>
                   |   ^^
+
+                OpeningTag <div>
+                1 | </di<div>
+                  |     ^^^^^
             "#]],
         );
         check(
