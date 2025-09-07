@@ -147,51 +147,45 @@ impl Tokenizer {
     // E.g. <div foo="bar">
     //           ^^^^^^^^^
     fn parse_attribute(&mut self) -> Option<Attribute> {
+        // consume attribute name
         let attr_name = self.parse_tag_name();
 
         self.skip_whitespace();
 
         // consume '='
-        let eq = match self.iter.next_if(|s| s.ch() == '=') {
-            Some(eq) => eq,
-            None => {
-                return Some(Attribute {
-                    name: attr_name.clone(),
-                    value: None,
-                    span: attr_name,
-                });
-            }
+        let Some(eq) = self.iter.next_if(|s| s.ch() == '=') else {
+            return Some(Attribute {
+                name: attr_name.clone(),
+                value: None,
+                span: attr_name,
+            });
         };
 
         self.skip_whitespace();
 
         // consume " or '
-        let open_quote = match self.iter.next_if(|s| s.ch() == '"' || s.ch() == '\'') {
-            Some(open_quote) => open_quote,
-            None => {
-                self.errors.push_back(ParseError::new(
-                    "Expected quoted attribute value".to_string(),
-                    attr_name.to(eq),
-                ));
-                return None;
-            }
+        let Some(open_quote) = self.iter.next_if(|s| s.ch() == '"' || s.ch() == '\'') else {
+            self.errors.push_back(ParseError::new(
+                "Expected quoted attribute value".to_string(),
+                attr_name.to(eq),
+            ));
+            return None;
         };
 
+        // consume attribute value
         let attr_value = self
             .iter
             .peeking_take_while(|s| s.ch() != open_quote.ch())
             .collect();
 
-        // expect closing quote
-        if self.iter.peek().is_none() {
+        // consume " or '
+        let Some(close_quote) = self.iter.next_if(|s| s.ch() == open_quote.ch()) else {
             self.errors.push_back(ParseError::new(
                 format!("Unmatched {}", open_quote.ch()),
                 open_quote,
             ));
             return None;
-        }
-
-        let close_quote = self.iter.next().unwrap(); // consume " or '
+        };
 
         Some(Attribute {
             name: attr_name.clone(),
