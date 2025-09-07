@@ -394,32 +394,32 @@ impl Tokenizer {
     }
 
     fn parse_opening_tag(&mut self, left_angle: StringSpan) -> Option<Result<Token, ParseError>> {
+        // consume tag name
         let Some(tag_name) = self.parse_tag_name() else {
             panic!("Expected tag name");
         };
+
+        // consume tag content
         let (attributes, expression) = self.parse_tag_content()?;
 
+        // consume whitespace
         self.skip_whitespace();
 
-        let mut self_closing = false;
+        // consume '/'
+        let self_closing = self.iter.next_if(|s| s.ch() == '/').is_some();
 
-        if self.iter.peek().is_some_and(|s| s.ch() == '/') {
-            self_closing = true;
-            self.iter.next(); // consume '/'
-        }
-
-        if self.iter.peek().is_none_or(|s| s.ch() != '>') {
+        // consume '>'
+        let Some(right_angle) = self.iter.next_if(|s| s.ch() == '>') else {
             return Some(Err(ParseError::new(
                 "Unterminated opening tag".to_string(),
                 tag_name.clone(),
             )));
-        }
-
-        let right_angle = self.iter.next().unwrap();
+        };
 
         if is_tag_name_with_raw_content(tag_name.as_str()) {
             self.raw_text_closing_tag = Some(format!("</{}>", tag_name.as_str()));
         }
+
         Some(Ok(Token::OpeningTag {
             self_closing,
             tag_name,
@@ -431,7 +431,9 @@ impl Tokenizer {
 
     fn parse_closing_tag(&mut self, left_angle: StringSpan) -> Option<Token> {
         // consume '/'
-        let slash = self.iter.next().unwrap();
+        let Some(slash) = self.iter.next_if(|s| s.ch() == '/') else {
+            panic!("Expected slash");
+        };
         // skip whitespace
         self.skip_whitespace();
 
