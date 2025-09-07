@@ -415,7 +415,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
         }
         (DopToken::LeftBrace, left_brace_span) => {
             // Parse {key1: value1, key2: value2, ...}
-            let mut properties = BTreeMap::new();
+            let mut properties = Vec::new();
 
             // Handle empty object
             if let Some(right_brace_span) = advance_if(tokenizer, DopToken::RightBrace) {
@@ -428,7 +428,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
             // Parse object properties
             loop {
                 let prop_name = expect_property_name(tokenizer)?;
-                if properties.contains_key(prop_name.as_str()) {
+                if properties.iter().any(|(name, _)| name.as_str() == prop_name.as_str()) {
                     return Err(ParseError::duplicate_property(
                         prop_name.as_str(),
                         prop_name.clone(),
@@ -437,7 +437,8 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
 
                 expect_token(tokenizer, DopToken::Colon)?;
 
-                properties.insert(prop_name.to_string(), parse_equality(tokenizer)?);
+                let value = parse_equality(tokenizer)?;
+                properties.push((prop_name, value));
 
                 // Expect comma or right brace
                 match tokenizer.next().ok_or_else(|| {
@@ -1014,8 +1015,8 @@ mod tests {
             "{user: user.name, active: !user.disabled}",
             expect![[r#"
                 {
-                  active: (!user.disabled),
-                  user: user.name
+                  user: user.name,
+                  active: (!user.disabled)
                 }
             "#]],
         );
@@ -1037,19 +1038,19 @@ mod tests {
             "{user: {profile: {settings: {theme: 'dark', notifications: {email: true, push: false}}, name: 'Alice'}}, status: 'active'}",
             expect![[r#"
                 {
-                  status: "active",
                   user: {
                     profile: {
-                      name: "Alice",
                       settings: {
+                        theme: "dark",
                         notifications: {
                           email: true,
                           push: false
-                        },
-                        theme: "dark"
-                      }
+                        }
+                      },
+                      name: "Alice"
                     }
-                  }
+                  },
+                  status: "active"
                 }
             "#]],
         );
@@ -1061,10 +1062,6 @@ mod tests {
             "{users: [{name: 'Alice', tags: ['admin', 'user']}, {name: 'Bob', tags: ['user']}], config: {features: ['auth', 'api'], version: 2}}",
             expect![[r#"
                 {
-                  config: {
-                    features: ["auth", "api"],
-                    version: 2
-                  },
                   users: [
                     {
                       name: "Alice",
@@ -1074,7 +1071,11 @@ mod tests {
                       name: "Bob",
                       tags: ["user"]
                     }
-                  ]
+                  ],
+                  config: {
+                    features: ["auth", "api"],
+                    version: 2
+                  }
                 }
             "#]],
         );
@@ -1139,8 +1140,8 @@ mod tests {
             "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
             expect![[r#"
                 {
-                  active: (!user.disabled),
-                  user: user.name
+                  user: user.name,
+                  active: (!user.disabled)
                 }
             "#]],
         );

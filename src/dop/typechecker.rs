@@ -185,7 +185,7 @@ pub fn typecheck_expr(
 
             for (key, value_expr) in properties {
                 let value_type = typecheck_expr(value_expr, env, annotations, errors)?;
-                object_properties.insert(key.clone(), value_type);
+                object_properties.insert(key.to_string(), value_type);
             }
 
             Ok(DopType::Object(object_properties))

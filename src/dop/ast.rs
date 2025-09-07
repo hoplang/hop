@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 
 use crate::dop::parser::DopVarName;
@@ -58,7 +57,7 @@ pub enum DopExpr {
         span: StringSpan,
     },
     ObjectLiteral {
-        properties: BTreeMap<String, DopExpr>,
+        properties: Vec<(StringSpan, DopExpr)>,
         span: StringSpan,
     },
     BinaryOp {
