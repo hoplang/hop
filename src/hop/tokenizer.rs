@@ -182,16 +182,15 @@ impl Tokenizer {
     //
     // E.g. <h1 class="foo bar">
     //       ^^
-    fn parse_tag_name(&mut self) -> StringSpan {
+    fn parse_tag_name(&mut self) -> Option<StringSpan> {
         // consume [a-zA-Z]
-        let Some(initial) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
-            panic!("Invalid attribute name")
-        };
+        let initial = self.iter.next_if(|s| s.ch().is_ascii_alphabetic())?;
         // consume ('-' | [a-zA-Z0-9])*
-        initial.extend(
+        let tag_name = initial.extend(
             self.iter
                 .peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()),
-        )
+        );
+        Some(tag_name)
     }
 
     // Parse an attribute from the iterator.
@@ -202,7 +201,9 @@ impl Tokenizer {
     // Returns None if a valid attribute could not be parsed from the iterator.
     fn parse_attribute(&mut self) -> Option<Attribute> {
         // consume attribute name
-        let attr_name = self.parse_tag_name();
+        let Some(attr_name) = self.parse_tag_name() else {
+            panic!("Expected tag name");
+        };
 
         // skip whitespace
         self.skip_whitespace();
@@ -393,7 +394,9 @@ impl Tokenizer {
     }
 
     fn parse_opening_tag(&mut self, left_angle: StringSpan) -> Option<Result<Token, ParseError>> {
-        let tag_name = self.parse_tag_name();
+        let Some(tag_name) = self.parse_tag_name() else {
+            panic!("Expected tag name");
+        };
         let (attributes, expression) = self.parse_tag_content()?;
 
         self.skip_whitespace();
@@ -432,21 +435,19 @@ impl Tokenizer {
         // skip whitespace
         self.skip_whitespace();
 
-        if !self
-            .iter
-            .peek()
-            .is_some_and(|s| s.ch().is_ascii_alphabetic())
-        {
+        // consume tag name
+        let Some(tag_name) = self.parse_tag_name() else {
             self.errors.push(ParseError::new(
                 "Unterminated closing tag".to_string(),
                 left_angle.to(slash),
             ));
             return None;
-        }
+        };
 
-        // parse tag name
-        let tag_name = self.parse_tag_name();
+        // skip whitespace
         self.skip_whitespace();
+
+        // consume '>'
         let Some(right_angle) = self.iter.next_if(|s| s.ch() == '>') else {
             self.errors.push(ParseError::new(
                 "Unterminated closing tag".to_string(),
