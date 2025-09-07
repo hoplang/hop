@@ -134,8 +134,9 @@ impl Tokenizer {
         }
     }
 
-    // Parse a tag name given an initial char
-    fn parse_tag_name(&mut self, initial: StringSpan) -> StringSpan {
+    // Parse a tag name from the iterator.
+    fn parse_tag_name(&mut self) -> StringSpan {
+        let initial = self.iter.next().unwrap();
         initial.extend(
             self.iter
                 .peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()),
@@ -144,8 +145,7 @@ impl Tokenizer {
 
     // Parse an attribute, e.g. foo="bar"
     fn parse_attribute(&mut self) -> Option<Attribute> {
-        let initial = self.iter.next()?; // consume initial name char
-        let attr_name = self.parse_tag_name(initial);
+        let attr_name = self.parse_tag_name();
 
         self.skip_whitespace();
 
@@ -401,13 +401,13 @@ impl Tokenizer {
             match self.iter.peek()?.ch() {
                 '<' => {
                     let left_angle = self.iter.next()?;
-                    match self.iter.next()? {
+                    match self.iter.peek()? {
                         // ClosingTag
                         s if s.ch() == '/' => {
+                            self.iter.next();
                             self.skip_whitespace();
-                            let initial = self.iter.next()?;
-                            if initial.ch().is_ascii_alphabetic() {
-                                let tag_name = self.parse_tag_name(initial);
+                            if self.iter.peek()?.ch().is_ascii_alphabetic() {
+                                let tag_name = self.parse_tag_name();
                                 self.skip_whitespace();
                                 let right_angle = self.iter.next()?;
                                 if right_angle.ch() != '>' {
@@ -425,16 +425,17 @@ impl Tokenizer {
                                     span: left_angle.to(right_angle),
                                 });
                             } else {
+                                let ch = self.iter.next()?;
                                 self.errors.push_back(ParseError::new(
                                     "Invalid character after </".to_string(),
-                                    initial,
+                                    ch,
                                 ));
                                 continue;
                             }
                         }
                         // OpeningTag
                         s if s.ch().is_ascii_alphabetic() => {
-                            let tag_name = self.parse_tag_name(s);
+                            let tag_name = self.parse_tag_name();
                             let (attributes, expression) = self.parse_tag_content()?;
 
                             self.skip_whitespace();
@@ -468,13 +469,15 @@ impl Tokenizer {
                         }
                         // Doctype/Comment
                         s if s.ch() == '!' => {
+                            self.iter.next();
                             return self.parse_markup_declaration(left_angle);
                         }
                         // Invalid
-                        s => {
+                        _ => {
+                            let ch = self.iter.next()?;
                             self.errors.push_back(ParseError::new(
                                 "Invalid character after '<'".to_string(),
-                                s,
+                                ch,
                             ));
                             continue;
                         }
