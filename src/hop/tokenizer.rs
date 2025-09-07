@@ -194,6 +194,8 @@ impl Tokenizer {
     //
     // E.g. <div foo="bar">
     //           ^^^^^^^^^
+    //
+    // Returns None if a valid attribute could not be parsed from the iterator.
     fn parse_attribute(&mut self) -> Option<Attribute> {
         // consume attribute name
         let attr_name = self.parse_tag_name();
@@ -298,10 +300,10 @@ impl Tokenizer {
                 // parse attribute
                 Some(ch) if ch.is_ascii_alphabetic() => {
                     if let Some(attr) = self.parse_attribute() {
-                        if attributes
+                        let exists = attributes
                             .iter()
-                            .any(|a| a.name.as_str() == attr.name.as_str())
-                        {
+                            .any(|a| a.name.as_str() == attr.name.as_str());
+                        if exists {
                             self.errors.push_back(ParseError::duplicate_attribute(
                                 attr.name.as_str(),
                                 attr.name.clone(),
