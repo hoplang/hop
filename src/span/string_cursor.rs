@@ -1,17 +1,6 @@
 use std::{fmt, iter::FromIterator, sync::Arc};
 
-use super::Position;
-
-/// Holds source text and precomputed line start offsets for
-/// efficient position lookups.
-#[derive(Debug, Clone)]
-struct SourceInfo {
-    /// The source text.
-    text: String,
-    /// Byte offsets where each line starts.
-    /// First line always starts at 0.
-    line_starts: Vec<usize>,
-}
+use super::{Position, source_info::SourceInfo};
 
 #[derive(Clone)]
 pub struct StringCursor {
@@ -177,12 +166,6 @@ impl StringSpan {
     }
 }
 
-impl fmt::Display for StringSpan {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
 /// Turn an iterator of StringSpans into a single Option<StringSpan>
 ///
 /// Returns None if the iterator contains no elements.
@@ -191,6 +174,12 @@ impl fmt::Display for StringSpan {
 impl FromIterator<StringSpan> for Option<StringSpan> {
     fn from_iter<I: IntoIterator<Item = StringSpan>>(iter: I) -> Self {
         iter.into_iter().reduce(|acc, span| acc.to(span))
+    }
+}
+
+impl fmt::Display for StringSpan {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(self.as_str())
     }
 }
 
@@ -207,55 +196,6 @@ impl<T: Spanned> Spanned for &T {
 impl Spanned for StringSpan {
     fn span(&self) -> &StringSpan {
         self
-    }
-}
-
-impl SourceInfo {
-    fn new(text: String) -> Self {
-        let mut line_starts = vec![0];
-        for (i, ch) in text.char_indices() {
-            if ch == '\n' {
-                line_starts.push(i + ch.len_utf8());
-            }
-        }
-        Self { text, line_starts }
-    }
-
-    /// Convert a byte offset to a UTF-16 position (line, column).
-    fn offset_to_utf16_position(&self, offset: usize) -> Position {
-        let line_idx = match self.line_starts.binary_search(&offset) {
-            Ok(idx) => idx,
-            Err(idx) => idx.saturating_sub(1),
-        };
-
-        // Calculate UTF-16 column offset from the start of the line
-        let line_start_byte = self.line_starts[line_idx];
-        let line_text = &self.text[line_start_byte..offset];
-        let utf16_column: usize = line_text.chars().map(|ch| ch.len_utf16()).sum();
-
-        Position::Utf16 {
-            line: line_idx,
-            column: utf16_column,
-        }
-    }
-
-    /// Convert a byte offset to a UTF-32 position (line, column).
-    /// UTF-32 column is the character count from the start of the line.
-    fn offset_to_utf32_position(&self, offset: usize) -> Position {
-        let line_idx = match self.line_starts.binary_search(&offset) {
-            Ok(idx) => idx,
-            Err(idx) => idx.saturating_sub(1),
-        };
-
-        // Calculate UTF-32 column offset (character count) from the start of the line
-        let line_start_byte = self.line_starts[line_idx];
-        let line_text = &self.text[line_start_byte..offset];
-        let utf32_column = line_text.chars().count();
-
-        Position::Utf32 {
-            line: line_idx,
-            column: utf32_column,
-        }
     }
 }
 

@@ -1,5 +1,6 @@
 pub mod position;
 pub mod source_annotator;
+pub mod source_info;
 pub mod string_cursor;
 
 #[cfg(test)]
