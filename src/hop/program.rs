@@ -15,58 +15,19 @@ use super::ast::HopNode;
 use super::evaluator::HopMode;
 use super::typechecker::TypeChecker;
 
-#[derive(Debug, Clone)]
 pub struct HoverInfo {
     pub type_str: String,
     pub span: StringSpan,
 }
 
-impl Spanned for HoverInfo {
-    fn span(&self) -> &StringSpan {
-        &self.span
-    }
-}
-
-impl Display for HoverInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.type_str)
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct DefinitionLocation {
     pub module: String,
     pub span: StringSpan,
 }
 
-impl Spanned for DefinitionLocation {
-    fn span(&self) -> &StringSpan {
-        &self.span
-    }
-}
-
-impl Display for DefinitionLocation {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Definition")
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct Diagnostic {
     pub message: String,
     pub span: StringSpan,
-}
-
-impl Spanned for Diagnostic {
-    fn span(&self) -> &StringSpan {
-        &self.span
-    }
-}
-
-impl Display for Diagnostic {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.message)
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -122,12 +83,11 @@ impl Ord for RenameLocation {
     }
 }
 
-#[derive(Debug, Clone)]
 pub struct RenameableSymbol {
     pub span: StringSpan,
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug, Default)]
 pub struct Program {
     topo_sorter: TopoSorter,
     source_code: HashMap<String, String>,
@@ -236,14 +196,13 @@ impl Program {
                 definition_module,
                 ..
             } => {
-                let m = match definition_module {
-                    Some(m) => m,
-                    None => return None,
-                };
-                let module = self.asts.get(m)?;
-                let component_def = module.get_component_definition(tag_name.as_str())?;
+                let module_name = definition_module.as_ref()?;
+                let component_def = self
+                    .asts
+                    .get(module_name)?
+                    .get_component_definition(tag_name.as_str())?;
                 Some(DefinitionLocation {
-                    module: m.to_string(),
+                    module: module_name.to_string(),
                     span: component_def.tag_name.clone(),
                 })
             }
@@ -488,7 +447,7 @@ impl Program {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::span::SourceAnnotator;
+    use crate::span::{SimpleAnnotation, SourceAnnotator};
     use crate::test_utils::archive::extract_markers_from_archive;
     use expect_test::{Expect, expect};
     use indoc::indoc;
@@ -578,7 +537,10 @@ mod tests {
         let output = SourceAnnotator::new().with_location().annotate(
             Some(&loc.module.clone()),
             source_code,
-            [loc],
+            [SimpleAnnotation {
+                message: "Definition".to_string(),
+                span: loc.span,
+            }],
         );
 
         expected.assert_eq(&output);
@@ -601,7 +563,10 @@ mod tests {
         let output = SourceAnnotator::new().with_location().annotate(
             Some(module),
             source_code,
-            &diagnostics,
+            diagnostics.into_iter().map(|d| SimpleAnnotation {
+                message: d.message,
+                span: d.span,
+            }),
         );
 
         expected.assert_eq(&output);
@@ -687,7 +652,10 @@ mod tests {
         let output = SourceAnnotator::new().with_location().annotate(
             Some(&file.name),
             &file.content,
-            &[hover_info],
+            &[SimpleAnnotation {
+                span: hover_info.span,
+                message: hover_info.type_str,
+            }],
         );
 
         expected.assert_eq(&output);
