@@ -258,22 +258,23 @@ impl Tokenizer {
     /// Returns Some(Ok((expr,span))) if we managed to parse the expression
     /// where expr is the inner span for the expression and span is the outer (containing the
     /// braces).
-    fn parse_expression(&mut self) -> Option<Result<(StringSpan, StringSpan), ParseError>> {
+    fn parse_expression(&mut self) -> Option<(StringSpan, StringSpan)> {
         let right_brace = self.find_expression_end()?;
         let left_brace = self.iter.next()?;
         if left_brace.end() == right_brace.start() {
             self.next(); // skip right brace
-            return Some(Err(ParseError::new(
+            self.errors.push_back(ParseError::new(
                 "Empty expression".to_string(),
                 left_brace.to(right_brace),
-            )));
+            ));
+            return None;
         }
         let mut expr = self.iter.next()?;
         while self.iter.peek()?.start() != right_brace.start() {
             expr = expr.to(self.iter.next()?);
         }
         self.iter.next()?; // skip right brace
-        Some(Ok((expr, left_brace.to(right_brace))))
+        Some((expr, left_brace.to(right_brace)))
     }
 
     // Parse tag content (attributes and expressions).
@@ -289,14 +290,11 @@ impl Tokenizer {
 
             match self.iter.peek().map(|s| s.ch()) {
                 // parse expression
-                Some('{') => match self.parse_expression()? {
-                    Err(err) => {
-                        self.errors.push_back(err);
-                    }
-                    Ok((expr, _)) => {
+                Some('{') => {
+                    if let Some((expr, _)) = self.parse_expression() {
                         expression = Some(expr);
                     }
-                },
+                }
                 // parse attribute
                 Some(ch) if ch.is_ascii_alphabetic() => {
                     if let Some(attr) = self.parse_attribute() {
@@ -511,18 +509,14 @@ impl Tokenizer {
                     }
                 }
                 // TextExpression
-                '{' => match self.parse_expression()? {
-                    Ok((expr, span)) => {
+                '{' => {
+                    if let Some((expr, span)) = self.parse_expression() {
                         return Some(Token::Expression {
                             expression: expr,
                             span,
                         });
                     }
-                    Err(err) => {
-                        self.errors.push_back(err);
-                        continue;
-                    }
-                },
+                }
                 // Text
                 _ => {
                     let text = self
