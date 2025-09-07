@@ -183,8 +183,9 @@ impl fmt::Display for StringSpan {
     }
 }
 
-/// Turn an iterator of StringSpans into a single
-/// Some(StringSpan) or None if the iterator is empty.
+/// Turn an iterator of StringSpans into a single Option<StringSpan>
+///
+/// Returns None if the iterator contains no elements.
 ///
 /// The string spans must occur sequentially in the document.
 impl FromIterator<StringSpan> for Option<StringSpan> {
@@ -197,15 +198,15 @@ pub trait Spanned {
     fn span(&self) -> &StringSpan;
 }
 
-impl Spanned for StringSpan {
-    fn span(&self) -> &StringSpan {
-        self
-    }
-}
-
 impl<T: Spanned> Spanned for &T {
     fn span(&self) -> &StringSpan {
         (*self).span()
+    }
+}
+
+impl Spanned for StringSpan {
+    fn span(&self) -> &StringSpan {
+        self
     }
 }
 
