@@ -142,8 +142,8 @@ impl Tokenizer {
     //            ^
     //
     // Returns None if we reached EOF before finding the closing '}'.
-    fn find_expression_end(&mut self) -> Option<StringSpan> {
-        let mut dop_tokenizer = DopTokenizer::from(self.iter.clone());
+    fn find_expression_end(iter: Peekable<StringCursor>) -> Option<StringSpan> {
+        let mut dop_tokenizer = DopTokenizer::from(iter);
         assert!(
             dop_tokenizer
                 .next()
@@ -248,7 +248,8 @@ impl Tokenizer {
 
     /// Parse an expression.
     ///
-    /// Assumes that the iterator is at the opening brace '{'.
+    /// E.g. <div foo="bar" {x: string}>
+    ///                     ^^^^^^^^^^^
     ///
     /// When it returns the iterator will be past the closing brace '}'
     /// if it managed to parse the expression.
@@ -259,8 +260,12 @@ impl Tokenizer {
     /// where expr is the inner span for the expression and span is the outer (containing the
     /// braces).
     fn parse_expression(&mut self) -> Option<(StringSpan, StringSpan)> {
-        let right_brace = self.find_expression_end()?;
-        let left_brace = self.iter.next()?;
+        let clone = self.iter.clone();
+        // consume '{'
+        let Some(left_brace) = self.iter.next_if(|s| s.ch() == '{') else {
+            panic!("Expected opening brace");
+        };
+        let right_brace = Self::find_expression_end(clone)?;
         if left_brace.end() == right_brace.start() {
             self.next(); // skip right brace
             self.errors.push_back(ParseError::new(
@@ -277,10 +282,10 @@ impl Tokenizer {
         Some((expr, left_brace.to(right_brace)))
     }
 
-    // Parse tag content (attributes and expressions).
-    //
-    // E.g. <div foo="bar" {x: string}>
-    //           ^^^^^^^^^^^^^^^^^^^^^
+    /// Parse tag content (attributes and expressions).
+    ///
+    /// E.g. <div foo="bar" {x: string}>
+    ///           ^^^^^^^^^^^^^^^^^^^^^
     fn parse_tag_content(&mut self) -> Option<(Vec<Attribute>, Option<StringSpan>)> {
         let mut attributes: Vec<Attribute> = Vec::new();
         let mut expression: Option<StringSpan> = None;
