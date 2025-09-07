@@ -397,107 +397,110 @@ impl Tokenizer {
                 }
             }
         }
-        match self.iter.peek()?.ch() {
-            '<' => {
-                let left_angle = self.iter.next()?;
-                match self.iter.next()? {
-                    // ClosingTag
-                    s if s.ch() == '/' => {
-                        self.skip_whitespace();
-                        let initial = self.iter.next()?;
-                        if initial.ch().is_ascii_alphabetic() {
-                            let tag_name = self.parse_tag_name(initial);
+        loop {
+            match self.iter.peek()?.ch() {
+                '<' => {
+                    let left_angle = self.iter.next()?;
+                    match self.iter.next()? {
+                        // ClosingTag
+                        s if s.ch() == '/' => {
                             self.skip_whitespace();
-                            let right_angle = self.iter.next()?;
-                            if right_angle.ch() != '>' {
-                                self.errors.push_back(ParseError::new(
-                                    "Invalid character after closing tag name".to_string(),
-                                    right_angle.clone(),
-                                ));
+                            let initial = self.iter.next()?;
+                            if initial.ch().is_ascii_alphabetic() {
+                                let tag_name = self.parse_tag_name(initial);
+                                self.skip_whitespace();
+                                let right_angle = self.iter.next()?;
+                                if right_angle.ch() != '>' {
+                                    self.errors.push_back(ParseError::new(
+                                        "Invalid character after closing tag name".to_string(),
+                                        right_angle.clone(),
+                                    ));
+                                    return Some(Token::ClosingTag {
+                                        tag_name,
+                                        span: left_angle.to(right_angle),
+                                    });
+                                }
                                 return Some(Token::ClosingTag {
                                     tag_name,
                                     span: left_angle.to(right_angle),
                                 });
+                            } else {
+                                self.errors.push_back(ParseError::new(
+                                    "Invalid character after </".to_string(),
+                                    initial,
+                                ));
+                                continue;
                             }
-                            Some(Token::ClosingTag {
-                                tag_name,
-                                span: left_angle.to(right_angle),
-                            })
-                        } else {
-                            self.errors.push_back(ParseError::new(
-                                "Invalid character after </".to_string(),
-                                initial,
-                            ));
-                            // TODO: Recursive
-                            self.step()
                         }
-                    }
-                    // OpeningTag
-                    s if s.ch().is_ascii_alphabetic() => {
-                        let tag_name = self.parse_tag_name(s);
-                        let (attributes, expression) = self.parse_tag_content()?;
+                        // OpeningTag
+                        s if s.ch().is_ascii_alphabetic() => {
+                            let tag_name = self.parse_tag_name(s);
+                            let (attributes, expression) = self.parse_tag_content()?;
 
-                        self.skip_whitespace();
+                            self.skip_whitespace();
 
-                        let mut self_closing = false;
+                            let mut self_closing = false;
 
-                        if self.iter.peek()?.ch() == '/' {
-                            self_closing = true;
-                            self.iter.next();
-                        }
+                            if self.iter.peek()?.ch() == '/' {
+                                self_closing = true;
+                                self.iter.next();
+                            }
 
-                        match self.iter.next()? {
-                            right_angle if right_angle.ch() == '>' => {
-                                if is_tag_name_with_raw_content(tag_name.as_str()) {
-                                    self.raw_text_closing_tag =
-                                        Some(format!("</{}>", tag_name.as_str()));
+                            match self.iter.next()? {
+                                right_angle if right_angle.ch() == '>' => {
+                                    if is_tag_name_with_raw_content(tag_name.as_str()) {
+                                        self.raw_text_closing_tag =
+                                            Some(format!("</{}>", tag_name.as_str()));
+                                    }
+                                    return Some(Token::OpeningTag {
+                                        self_closing,
+                                        tag_name,
+                                        attributes,
+                                        expression,
+                                        span: left_angle.to(right_angle),
+                                    });
                                 }
-                                Some(Token::OpeningTag {
-                                    self_closing,
-                                    tag_name,
-                                    attributes,
-                                    expression,
-                                    span: left_angle.to(right_angle),
-                                })
-                            }
-                            _ => {
-                                // TODO: Handle
-                                panic!()
+                                _ => {
+                                    // TODO: Handle
+                                    panic!()
+                                }
                             }
                         }
-                    }
-                    // Doctype/Comment
-                    s if s.ch() == '!' => self.parse_markup_declaration(left_angle),
-                    // Invalid
-                    s => {
-                        self.errors.push_back(ParseError::new(
-                            "Invalid character after '<'".to_string(),
-                            s,
-                        ));
-                        // TODO: Recursive
-                        self.step()
+                        // Doctype/Comment
+                        s if s.ch() == '!' => {
+                            return self.parse_markup_declaration(left_angle);
+                        }
+                        // Invalid
+                        s => {
+                            self.errors.push_back(ParseError::new(
+                                "Invalid character after '<'".to_string(),
+                                s,
+                            ));
+                            continue;
+                        }
                     }
                 }
-            }
-            // TextExpression
-            '{' => match self.parse_expression()? {
-                Ok((expr, span)) => Some(Token::Expression {
-                    expression: expr,
-                    span,
-                }),
-                Err(err) => {
-                    self.errors.push_back(err);
-                    // TODO: Recursive
-                    self.step()
+                // TextExpression
+                '{' => match self.parse_expression()? {
+                    Ok((expr, span)) => {
+                        return Some(Token::Expression {
+                            expression: expr,
+                            span,
+                        });
+                    }
+                    Err(err) => {
+                        self.errors.push_back(err);
+                        continue;
+                    }
+                },
+                // Text
+                _ => {
+                    let text = self
+                        .iter
+                        .peeking_take_while(|s| s.ch() != '{' && s.ch() != '<')
+                        .collect::<Option<StringSpan>>()?;
+                    return Some(Token::Text { span: text });
                 }
-            },
-            // Text
-            _ => {
-                let text = self
-                    .iter
-                    .peeking_take_while(|s| s.ch() != '{' && s.ch() != '<')
-                    .collect::<Option<StringSpan>>()?;
-                Some(Token::Text { span: text })
             }
         }
     }
