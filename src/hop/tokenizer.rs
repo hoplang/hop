@@ -265,7 +265,11 @@ impl Tokenizer {
         let Some(left_brace) = self.iter.next_if(|s| s.ch() == '{') else {
             panic!("Expected opening brace");
         };
-        let right_brace = Self::find_expression_end(clone)?;
+        let Some(right_brace) = Self::find_expression_end(clone) else {
+            self.errors
+                .push_back(ParseError::new(format!("Unmatched {{"), left_brace));
+            return None;
+        };
         if left_brace.end() == right_brace.start() {
             self.next(); // skip right brace
             self.errors.push_back(ParseError::new(
@@ -2385,6 +2389,24 @@ mod tests {
                   | ^^
             "#]],
         );
+    }
+
+    #[test]
+    fn test_tokenize_unterminated_expression() {
+        check(r#"{"#, expect![[r#"
+            Unmatched {
+            1 | {
+              | ^
+        "#]]);
+        check(r#"hello {"#, expect![[r#"
+            Text [6 byte, "hello "]
+            1 | hello {
+              | ^^^^^^
+
+            Unmatched {
+            1 | hello {
+              |       ^
+        "#]]);
     }
 
     #[test]
