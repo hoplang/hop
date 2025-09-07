@@ -9,7 +9,6 @@ use crate::span::Position;
 use crate::span::string_cursor::{Spanned, StringSpan};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
-use std::fmt::{self, Display};
 
 use super::ast::HopNode;
 use super::evaluator::HopMode;
@@ -30,59 +29,13 @@ pub struct Diagnostic {
     pub span: StringSpan,
 }
 
-#[derive(Debug, Clone)]
 pub struct RenameLocation {
     pub module: String,
     pub span: StringSpan,
 }
 
-impl Spanned for RenameLocation {
-    fn span(&self) -> &StringSpan {
-        &self.span
-    }
-}
-
-impl Display for RenameLocation {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Rename")
-    }
-}
-
-impl PartialEq for RenameLocation {
-    fn eq(&self, other: &Self) -> bool {
-        self.module == other.module
-            && self.span.start() == other.span.start()
-            && self.span.end() == other.span.end()
-    }
-}
-
-impl Eq for RenameLocation {}
-
-impl PartialOrd for RenameLocation {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for RenameLocation {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        // First compare by module name
-        match self.module.cmp(&other.module) {
-            std::cmp::Ordering::Equal => {
-                // Then by range start
-                match self.span.start().cmp(&other.span.start()) {
-                    std::cmp::Ordering::Equal => {
-                        // Finally by range end
-                        self.span.end().cmp(&other.span.end())
-                    }
-                    other => other,
-                }
-            }
-            other => other,
-        }
-    }
-}
-
+/// A RenameableSymbol is a span in the source code that is renameable.
+/// The string contents of the span is the current name.
 pub struct RenameableSymbol {
     pub span: StringSpan,
 }
@@ -484,11 +437,9 @@ mod tests {
         let marker = &markers[0];
         let module = marker.filename.replace(".hop", "");
 
-        let mut locs = program_from_archive(&archive)
+        let locs = program_from_archive(&archive)
             .get_rename_locations(&module, marker.position)
             .expect("Expected locations to be defined");
-
-        locs.sort();
 
         let mut output = Vec::new();
         let annotator = SourceAnnotator::new().with_location();
@@ -496,14 +447,19 @@ mod tests {
         for file in archive.iter() {
             let module_name = file.name.replace(".hop", "");
 
-            let module_locs: Vec<RenameLocation> = locs
+            let mut annotations: Vec<SimpleAnnotation> = locs
                 .iter()
                 .filter(|l| l.module == module_name)
-                .cloned()
+                .map(|l| SimpleAnnotation {
+                    message: "Rename".to_string(),
+                    span: l.span.clone(),
+                })
                 .collect();
 
-            if !module_locs.is_empty() {
-                output.push(annotator.annotate(Some(&file.name), &file.content, &module_locs));
+            annotations.sort();
+
+            if !annotations.is_empty() {
+                output.push(annotator.annotate(Some(&file.name), &file.content, &annotations));
             }
         }
 

@@ -1,4 +1,4 @@
-use std::cmp;
+use std::cmp::{self, Ordering};
 use std::fmt::Display;
 
 use itertools::Itertools as _;
@@ -6,9 +6,35 @@ use itertools::Itertools as _;
 use super::string_cursor::{Spanned, StringCursor, StringSpan};
 
 /// Simple annotation implementation for basic use cases
+#[derive(Clone, Debug)]
 pub struct SimpleAnnotation {
     pub span: StringSpan,
     pub message: String,
+}
+
+impl PartialEq for SimpleAnnotation {
+    fn eq(&self, other: &Self) -> bool {
+        self.span.start() == other.span.start()
+            && self.span.end() == other.span.end()
+            && self.message == other.message
+    }
+}
+
+impl Eq for SimpleAnnotation {}
+
+impl PartialOrd for SimpleAnnotation {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for SimpleAnnotation {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.span.start()
+            .cmp(&other.span.start())
+            .then_with(|| self.span.end().cmp(&other.span.end()))
+            .then_with(|| self.message.cmp(&other.message))
+    }
 }
 
 impl Spanned for SimpleAnnotation {
