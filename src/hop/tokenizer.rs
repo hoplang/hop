@@ -505,12 +505,9 @@ impl Tokenizer {
         }
 
         if let Some(left_brace) = self.iter.next_if(|s| s.ch() == '{') {
-            if let Some((expr, span)) = self.parse_expression(left_brace) {
-                return Some(Token::Expression {
-                    expression: expr,
-                    span,
-                });
-            }
+            return self
+                .parse_expression(left_brace)
+                .map(|(expression, span)| Token::Expression { expression, span });
         }
 
         let text = self
