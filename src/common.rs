@@ -45,8 +45,8 @@ impl TypeError {
     }
 
     pub fn import_cycle(
-        importer: &str,
-        imported: &str,
+        importer_module: &str,
+        imported_component: &str,
         cycle: &[String],
         span: StringSpan,
     ) -> Self {
@@ -59,7 +59,7 @@ impl TypeError {
         Self::new(
             format!(
                 "Import cycle: {} imports from {} which creates a dependency cycle: {}",
-                importer, imported, cycle_display
+                importer_module, imported_component, cycle_display
             ),
             span,
         )
@@ -172,7 +172,6 @@ impl Spanned for TypeError {
     }
 }
 
-
 impl Display for TypeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.message)
@@ -251,7 +250,6 @@ impl Spanned for ParseError {
         &self.span
     }
 }
-
 
 impl Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

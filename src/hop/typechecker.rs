@@ -1,7 +1,7 @@
 use crate::common::TypeError;
 use crate::dop::{DopParameter, DopType, is_subtype, typecheck_expr};
 use crate::hop::ast::HopAst;
-use crate::hop::ast::{ComponentDefinition, HopNode, Import, Render};
+use crate::hop::ast::{ComponentDefinition, HopNode, Render};
 use crate::hop::environment::Environment;
 use crate::span::string_cursor::{Spanned, StringSpan};
 use std::collections::{BTreeMap, HashMap};
@@ -67,8 +67,8 @@ impl State {
             .get(module_name)
             .is_some_and(|m| m.get(component_name).is_some_and(|c| c.has_slot))
     }
-    fn module_is_declared(&self, m: &str) -> bool {
-        self.component_type_information.contains_key(m)
+    fn module_is_declared(&self, module_name: &str) -> bool {
+        self.component_type_information.contains_key(module_name)
     }
     fn component_is_declared(&self, module_name: &str, component_name: &str) -> bool {
         self.component_type_information
@@ -105,12 +105,12 @@ impl TypeChecker {
                 for import_node in module.get_imports() {
                     type_errors.push(TypeError::import_cycle(
                         &module.name,
-                        import_node.from_attr.value.as_str(),
+                        import_node.imported_module().as_str(),
                         &modules
                             .iter()
                             .map(|m| m.name.to_string())
                             .collect::<Vec<_>>(),
-                        import_node.from_attr.value.clone(),
+                        import_node.imported_module().clone(),
                     ));
                 }
             }
@@ -124,25 +124,21 @@ fn typecheck_module(
     errors: &mut Vec<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
 ) {
-    for Import {
-        from_attr,
-        component_attr,
-        ..
-    } in module.get_imports()
-    {
-        let from_module = &from_attr.value;
-        let component_name = &component_attr.value;
-
-        if !state.module_is_declared(from_module.as_str()) {
+    for import in module.get_imports() {
+        let imported_module = import.imported_module();
+        let imported_component = import.imported_component();
+        if !state.module_is_declared(imported_module.as_str()) {
             errors.push(TypeError::import_from_undefined_module(
-                from_module.as_str(),
-                from_module.clone(),
+                imported_module.as_str(),
+                imported_module.clone(),
             ));
-        } else if !state.component_is_declared(from_module.as_str(), component_name.as_str()) {
+        } else if !state
+            .component_is_declared(imported_module.as_str(), imported_component.as_str())
+        {
             errors.push(TypeError::undeclared_component(
-                from_module.as_str(),
-                component_name.as_str(),
-                component_name.clone(),
+                imported_module.as_str(),
+                imported_component.as_str(),
+                imported_component.clone(),
             ));
         }
     }

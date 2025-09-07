@@ -121,23 +121,22 @@ impl HopAst {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Import {
     pub component_attr: PresentAttribute,
     pub from_attr: PresentAttribute,
 }
 
 impl Import {
-    pub fn imported_module(&self) -> &str {
-        self.from_attr.value.as_str()
+    pub fn imported_module(&self) -> &StringSpan {
+        &self.from_attr.value
     }
-    pub fn imported_component(&self) -> &str {
-        self.component_attr.value.as_str()
+    pub fn imported_component(&self) -> &StringSpan {
+        &self.component_attr.value
     }
     pub fn imports_component(&self, component_name: &str) -> bool {
         self.component_attr.value.as_str() == component_name
     }
-
     pub fn imports_from(&self, from_path: &str) -> bool {
         self.from_attr.value.as_str() == from_path
     }

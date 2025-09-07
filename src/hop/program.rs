@@ -280,7 +280,7 @@ impl Program {
                     })
                     .map(|n| RenameLocation {
                         module: module_name.clone(),
-                        span: n.component_attr.value.clone(),
+                        span: n.imported_component().clone(),
                     }),
             );
 
