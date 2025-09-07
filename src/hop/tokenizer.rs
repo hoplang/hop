@@ -143,53 +143,59 @@ impl Tokenizer {
         )
     }
 
-    // Parse an attribute, e.g. foo="bar"
+    // Parse an attribute
+    // E.g. <div foo="bar">
+    //           ^^^^^^^^^
     fn parse_attribute(&mut self) -> Option<Attribute> {
         let attr_name = self.parse_tag_name();
 
         self.skip_whitespace();
 
-        if self.iter.peek()?.ch() != '=' {
-            return Some(Attribute {
-                name: attr_name.clone(),
-                value: None,
-                span: attr_name,
-            });
-        }
+        // consume '='
+        let eq = match self.iter.next_if(|s| s.ch() == '=') {
+            Some(eq) => eq,
+            None => {
+                return Some(Attribute {
+                    name: attr_name.clone(),
+                    value: None,
+                    span: attr_name,
+                });
+            }
+        };
 
-        self.iter.next(); // consume '='
         self.skip_whitespace();
 
-        if !matches!(self.iter.peek()?.ch(), '"' | '\'') {
+        // consume " or '
+        let open_quote = match self.iter.next_if(|s| s.ch() == '"' || s.ch() == '\'') {
+            Some(open_quote) => open_quote,
+            None => {
+                self.errors.push_back(ParseError::new(
+                    "Expected quoted attribute value".to_string(),
+                    attr_name.to(eq),
+                ));
+                return None;
+            }
+        };
+
+        let attr_value = self
+            .iter
+            .peeking_take_while(|s| s.ch() != open_quote.ch())
+            .collect();
+
+        // expect closing quote
+        if self.iter.peek().is_none() {
             self.errors.push_back(ParseError::new(
-                "Expected quoted attribute value".to_string(),
-                self.iter.peek()?.clone(),
+                format!("Unmatched {}", open_quote.ch()),
+                open_quote,
             ));
             return None;
         }
 
-        let open_quote = self.iter.next()?;
-
-        // handle empty attribute
-        if self.iter.peek()?.ch() == open_quote.ch() {
-            let close_quote = self.iter.next()?;
-            return Some(Attribute {
-                name: attr_name.clone(),
-                value: None,
-                span: attr_name.to(close_quote),
-            });
-        }
-
-        let attr_value = self
-            .iter
-            .next()?
-            .extend(self.iter.peeking_take_while(|s| s.ch() != open_quote.ch()));
-
-        let close_quote = self.iter.next()?;
+        let close_quote = self.iter.next().unwrap(); // consume " or '
 
         Some(Attribute {
             name: attr_name.clone(),
-            value: Some(attr_value),
+            value: attr_value,
             span: attr_name.to(close_quote),
         })
     }
@@ -257,16 +263,19 @@ impl Tokenizer {
         Some(Ok((expr, left_brace.to(right_brace))))
     }
 
-    // Parse tag content, e.g. 'foo="bar" {x: string}'
+    // Parse tag content.
+    //
+    // E.g. <div foo="bar" {x: string}>
+    //           ^^^^^^^^^^^^^^^^^^^^^
     fn parse_tag_content(&mut self) -> Option<(Vec<Attribute>, Option<StringSpan>)> {
         let mut attributes: Vec<Attribute> = Vec::new();
         let mut expression: Option<StringSpan> = None;
         loop {
             self.skip_whitespace();
 
-            match self.iter.peek()?.ch() {
+            match self.iter.peek().map(|s| s.ch()) {
                 // Parse expression
-                '{' => match self.parse_expression()? {
+                Some('{') => match self.parse_expression()? {
                     Err(err) => {
                         self.errors.push_back(err);
                     }
@@ -275,31 +284,23 @@ impl Tokenizer {
                     }
                 },
                 // Parse attribute
-                ch if ch.is_ascii_alphabetic() => {
-                    let attr = self.parse_attribute()?;
-                    if attributes
-                        .iter()
-                        .any(|a| a.name.as_str() == attr.name.as_str())
-                    {
-                        self.errors.push_back(ParseError::duplicate_attribute(
-                            attr.name.as_str(),
-                            attr.name.clone(),
-                        ));
-                    } else {
-                        attributes.push(attr);
+                Some(ch) if ch.is_ascii_alphabetic() => {
+                    if let Some(attr) = self.parse_attribute() {
+                        if attributes
+                            .iter()
+                            .any(|a| a.name.as_str() == attr.name.as_str())
+                        {
+                            self.errors.push_back(ParseError::duplicate_attribute(
+                                attr.name.as_str(),
+                                attr.name.clone(),
+                            ));
+                        } else {
+                            attributes.push(attr);
+                        }
                     }
                 }
-                // Return
-                ch if ch == '/' || ch == '>' => {
-                    return Some((attributes, expression));
-                }
                 _ => {
-                    let ch = self.iter.next()?;
-                    self.errors.push_back(ParseError::new(
-                        "Invalid character inside tag".to_string(),
-                        ch,
-                    ));
-                    continue;
+                    return Some((attributes, expression));
                 }
             };
         }
@@ -364,6 +365,40 @@ impl Tokenizer {
                 })
             }
         }
+    }
+
+    fn parse_opening_tag(&mut self, left_angle: StringSpan) -> Option<Result<Token, ParseError>> {
+        let tag_name = self.parse_tag_name();
+        let (attributes, expression) = self.parse_tag_content()?;
+
+        self.skip_whitespace();
+
+        let mut self_closing = false;
+
+        if self.iter.peek().is_some_and(|s| s.ch() == '/') {
+            self_closing = true;
+            self.iter.next(); // consume '/'
+        }
+
+        if self.iter.peek().is_none_or(|s| s.ch() != '>') {
+            return Some(Err(ParseError::new(
+                "Unterminated opening tag".to_string(),
+                tag_name.clone(),
+            )));
+        }
+
+        let right_angle = self.iter.next().unwrap();
+
+        if is_tag_name_with_raw_content(tag_name.as_str()) {
+            self.raw_text_closing_tag = Some(format!("</{}>", tag_name.as_str()));
+        }
+        Some(Ok(Token::OpeningTag {
+            self_closing,
+            tag_name,
+            attributes,
+            expression,
+            span: left_angle.to(right_angle),
+        }))
     }
 
     fn step(&mut self) -> Option<Token> {
@@ -435,35 +470,13 @@ impl Tokenizer {
                         }
                         // OpeningTag
                         s if s.ch().is_ascii_alphabetic() => {
-                            let tag_name = self.parse_tag_name();
-                            let (attributes, expression) = self.parse_tag_content()?;
-
-                            self.skip_whitespace();
-
-                            let mut self_closing = false;
-
-                            if self.iter.peek()?.ch() == '/' {
-                                self_closing = true;
-                                self.iter.next();
-                            }
-
-                            match self.iter.next()? {
-                                right_angle if right_angle.ch() == '>' => {
-                                    if is_tag_name_with_raw_content(tag_name.as_str()) {
-                                        self.raw_text_closing_tag =
-                                            Some(format!("</{}>", tag_name.as_str()));
-                                    }
-                                    return Some(Token::OpeningTag {
-                                        self_closing,
-                                        tag_name,
-                                        attributes,
-                                        expression,
-                                        span: left_angle.to(right_angle),
-                                    });
+                            match self.parse_opening_tag(left_angle)? {
+                                Ok(token) => {
+                                    return Some(token);
                                 }
-                                _ => {
-                                    // TODO: Handle
-                                    panic!()
+                                Err(err) => {
+                                    self.errors.push_back(err);
+                                    continue;
                                 }
                             }
                         }
@@ -871,13 +884,13 @@ mod tests {
         check(
             "<div!>",
             expect![[r#"
-                OpeningTag <div>
+                Text [2 byte, "!>"]
                 1 | <div!>
-                  | ^^^^^^
+                  |     ^^
 
-                Invalid character inside tag
+                Unterminated opening tag
                 1 | <div!>
-                  |     ^
+                  |  ^^^
             "#]],
         );
     }
@@ -2357,6 +2370,94 @@ mod tests {
                 Empty expression
                 1 | {}
                   | ^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_unterminated_opening_tags() {
+        check(
+            r#"<div <div>"#,
+            expect![[r#"
+                OpeningTag <div>
+                1 | <div <div>
+                  |      ^^^^^
+
+                Unterminated opening tag
+                1 | <div <div>
+                  |  ^^^
+            "#]],
+        );
+        check(
+            r#"<div class="foo" <div>"#,
+            expect![[r#"
+                OpeningTag <div>
+                1 | <div class="foo" <div>
+                  |                  ^^^^^
+
+                Unterminated opening tag
+                1 | <div class="foo" <div>
+                  |  ^^^
+            "#]],
+        );
+        check(
+            r#"<div"#,
+            expect![[r#"
+            Unterminated opening tag
+            1 | <div
+              |  ^^^
+        "#]],
+        );
+        check(
+            r#"<div foo"#,
+            expect![[r#"
+            Unterminated opening tag
+            1 | <div foo
+              |  ^^^
+        "#]],
+        );
+        check(
+            r#"<div foo="#,
+            expect![[r#"
+                Expected quoted attribute value
+                1 | <div foo=
+                  |      ^^^^
+
+                Unterminated opening tag
+                1 | <div foo=
+                  |  ^^^
+            "#]],
+        );
+        check(
+            r#"<div foo="""#,
+            expect![[r#"
+                Unterminated opening tag
+                1 | <div foo=""
+                  |  ^^^
+            "#]],
+        );
+        check(
+            r#"<div foo=""#,
+            expect![[r#"
+                Unmatched "
+                1 | <div foo="
+                  |          ^
+
+                Unterminated opening tag
+                1 | <div foo="
+                  |  ^^^
+            "#]],
+        );
+        check(
+            r#"<div foo="bar"#,
+            expect![[r#"
+                Unmatched "
+                1 | <div foo="bar
+                  |          ^
+
+                Unterminated opening tag
+                1 | <div foo="bar
+                  |  ^^^
             "#]],
         );
     }
