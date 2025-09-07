@@ -51,7 +51,7 @@ pub struct Program {
     topo_sorter: TopoSorter,
     source_code: HashMap<String, String>,
     parse_errors: HashMap<String, Vec<ParseError>>,
-    asts: HashMap<String, HopAst>,
+    modules: HashMap<String, HopAst>,
     type_checker: TypeChecker,
 }
 
@@ -71,37 +71,39 @@ impl Program {
             .entry(module_name.to_string())
             .or_default();
         parse_errors.clear();
-        let ast = parse(
+        let module = parse(
             module_name.to_string(),
             Tokenizer::new(&source_code),
             parse_errors,
         );
 
-        // Get all dependencies from the module
-        let dependencies = ast
+        // Get all modules that this module depends on
+        let module_dependencies = module
             .get_imports()
             .iter()
-            .map(|import_node| import_node.from_attr.value.to_string())
+            .map(|import_node| import_node.imported_module().to_string())
             .collect::<HashSet<String>>();
 
         // Store the AST and source code
-        self.asts.insert(module_name.to_string(), ast);
+        self.modules.insert(module_name.to_string(), module);
         self.source_code
             .insert(module_name.to_string(), source_code);
 
         // Typecheck the module along with all dependent modules (grouped
         // into strongly connected components).
-        let dependent_modules = self.topo_sorter.update_node(module_name, dependencies);
-        for c in &dependent_modules {
-            let asts = c
+        let grouped_modules = self
+            .topo_sorter
+            .update_node(module_name, module_dependencies);
+        for names in &grouped_modules {
+            let modules = names
                 .iter()
-                .filter_map(|n| self.asts.get(n))
+                .filter_map(|name| self.modules.get(name))
                 .collect::<Vec<_>>();
-            self.type_checker.typecheck(&asts);
+            self.type_checker.typecheck(&modules);
         }
 
         // Return all modules that have been re-typechecked
-        dependent_modules.into_iter().flatten().collect()
+        grouped_modules.into_iter().flatten().collect()
     }
 
     pub fn get_parse_errors(&self) -> &HashMap<String, Vec<ParseError>> {
@@ -133,7 +135,7 @@ impl Program {
         module_name: &str,
         position: Position,
     ) -> Option<DefinitionLocation> {
-        let ast = self.asts.get(module_name)?;
+        let ast = self.modules.get(module_name)?;
 
         let node = ast.find_node_at_position(position)?;
 
@@ -151,7 +153,7 @@ impl Program {
             } => {
                 let module_name = definition_module.as_ref()?;
                 let component_def = self
-                    .asts
+                    .modules
                     .get(module_name)?
                     .get_component_definition(tag_name.as_str())?;
                 Some(DefinitionLocation {
@@ -172,7 +174,7 @@ impl Program {
         module_name: &str,
         position: Position,
     ) -> Option<Vec<RenameLocation>> {
-        let ast = self.asts.get(module_name)?;
+        let ast = self.modules.get(module_name)?;
         for node in ast.get_component_definitions() {
             if node
                 .tag_name_ranges()
@@ -221,7 +223,7 @@ impl Program {
         module_name: &str,
         position: Position,
     ) -> Option<RenameableSymbol> {
-        let ast = self.asts.get(module_name)?;
+        let ast = self.modules.get(module_name)?;
 
         for component_node in ast.get_component_definitions() {
             if let Some(span) = component_node
@@ -250,12 +252,8 @@ impl Program {
     ) -> Vec<RenameLocation> {
         let mut locations = Vec::new();
 
-        if let Some(ast) = self.asts.get(definition_module) {
-            if let Some(component_node) = ast
-                .get_component_definitions()
-                .iter()
-                .find(|node| node.tag_name.as_str() == component_name)
-            {
+        if let Some(module) = self.modules.get(definition_module) {
+            if let Some(component_node) = module.get_component_definition(component_name) {
                 // Add the definition's opening tag name
                 locations.push(RenameLocation {
                     module: definition_module.to_string(),
@@ -272,7 +270,7 @@ impl Program {
             }
         }
 
-        for (module_name, ast) in &self.asts {
+        for (module_name, ast) in &self.modules {
             // Find all import statements that import this component
             locations.extend(
                 ast.get_imports()
@@ -348,7 +346,7 @@ impl Program {
 
     pub fn get_scripts(&self) -> String {
         let mut script_collector = ScriptCollector::new();
-        for ast in self.asts.values() {
+        for ast in self.modules.values() {
             script_collector.process_module(ast);
         }
         script_collector.build()
@@ -356,9 +354,9 @@ impl Program {
 
     /// Get all file_attr values from render nodes across all modules
     /// I.e. files specified in <render file="index.html">
-    pub fn get_render_file_paths(&self) -> Vec<String> {
+    pub fn get_renderable_file_paths(&self) -> Vec<String> {
         let mut result = Vec::new();
-        for ast in self.asts.values() {
+        for ast in self.modules.values() {
             for node in ast.get_renders() {
                 result.push(node.file_attr.value.to_string())
             }
@@ -373,7 +371,7 @@ impl Program {
         hop_mode: HopMode,
         output: &mut String,
     ) -> Result<()> {
-        evaluator::render_file(&self.asts, hop_mode, file_path, output)
+        evaluator::render_file(&self.modules, hop_mode, file_path, output)
     }
 
     pub fn evaluate_component(
@@ -385,7 +383,7 @@ impl Program {
         output: &mut String,
     ) -> Result<()> {
         evaluator::evaluate_component(
-            &self.asts,
+            &self.modules,
             hop_mode,
             module_name,
             component_name,

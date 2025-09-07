@@ -100,7 +100,7 @@ pub fn execute(
 
     timer.start_phase("rendering");
     let rendered_files = program
-        .get_render_file_paths()
+        .get_renderable_file_paths()
         .into_par_iter()
         .map(|file_path| {
             let mut content = String::new();

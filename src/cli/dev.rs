@@ -134,7 +134,7 @@ async fn handle_request(
         Ok(()) => Ok(Html(inject_hot_reload_script(&content))),
         Err(_) => {
             let available_paths: Vec<String> = program
-                .get_render_file_paths()
+                .get_renderable_file_paths()
                 .iter()
                 .map(|file_path| {
                     if file_path == "index.html" {

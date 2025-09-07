@@ -128,6 +128,12 @@ pub struct Import {
 }
 
 impl Import {
+    pub fn imported_module(&self) -> &str {
+        self.from_attr.value.as_str()
+    }
+    pub fn imported_component(&self) -> &str {
+        self.component_attr.value.as_str()
+    }
     pub fn imports_component(&self, component_name: &str) -> bool {
         self.component_attr.value.as_str() == component_name
     }
