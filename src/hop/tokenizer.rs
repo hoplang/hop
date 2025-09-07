@@ -428,35 +428,36 @@ impl Tokenizer {
 
     fn parse_closing_tag(&mut self, left_angle: StringSpan) -> Option<Token> {
         // consume '/'
-        self.iter.next();
+        let slash = self.iter.next().unwrap();
         // skip whitespace
         self.skip_whitespace();
-        if self.iter.peek()?.ch().is_ascii_alphabetic() {
-            let tag_name = self.parse_tag_name();
-            self.skip_whitespace();
-            let right_angle = self.iter.next()?;
-            if right_angle.ch() != '>' {
-                self.errors.push(ParseError::new(
-                    "Invalid character after closing tag name".to_string(),
-                    right_angle.clone(),
-                ));
-                return Some(Token::ClosingTag {
-                    tag_name,
-                    span: left_angle.to(right_angle),
-                });
-            }
-            Some(Token::ClosingTag {
-                tag_name,
-                span: left_angle.to(right_angle),
-            })
-        } else {
-            let ch = self.iter.next()?;
+
+        if !self
+            .iter
+            .peek()
+            .is_some_and(|s| s.ch().is_ascii_alphabetic())
+        {
             self.errors.push(ParseError::new(
-                "Invalid character after </".to_string(),
-                ch,
+                "Unterminated closing tag".to_string(),
+                left_angle.to(slash),
             ));
-            None
+            return None;
         }
+
+        // parse tag name
+        let tag_name = self.parse_tag_name();
+        self.skip_whitespace();
+        let Some(right_angle) = self.iter.next_if(|s| s.ch() == '>') else {
+            self.errors.push(ParseError::new(
+                "Unterminated closing tag".to_string(),
+                tag_name,
+            ));
+            return None;
+        };
+        Some(Token::ClosingTag {
+            tag_name,
+            span: left_angle.to(right_angle),
+        })
     }
 
     fn step(&mut self) -> Option<Token> {
@@ -2472,6 +2473,106 @@ mod tests {
             1 | <div foo
               |  ^^^
         "#]],
+        );
+        check(
+            r#"<div foo="#,
+            expect![[r#"
+                Expected quoted attribute value
+                1 | <div foo=
+                  |      ^^^^
+
+                Unterminated opening tag
+                1 | <div foo=
+                  |  ^^^
+            "#]],
+        );
+        check(
+            r#"<div foo="""#,
+            expect![[r#"
+                Unterminated opening tag
+                1 | <div foo=""
+                  |  ^^^
+            "#]],
+        );
+        check(
+            r#"<div foo=""#,
+            expect![[r#"
+                Unmatched "
+                1 | <div foo="
+                  |          ^
+
+                Unterminated opening tag
+                1 | <div foo="
+                  |  ^^^
+            "#]],
+        );
+        check(
+            r#"<div foo="bar"#,
+            expect![[r#"
+                Unmatched "
+                1 | <div foo="bar
+                  |          ^
+
+                Unterminated opening tag
+                1 | <div foo="bar
+                  |  ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_unterminated_closing_tags() {
+        check(
+            r#"</div </div>"#,
+            expect![[r#"
+                ClosingTag </div>
+                1 | </div </div>
+                  |       ^^^^^^
+
+                Unterminated closing tag
+                1 | </div </div>
+                  |   ^^^
+            "#]],
+        );
+        check(
+            r#"</div> </div"#,
+            expect![[r#"
+                ClosingTag </div>
+                1 | </div> </div
+                  | ^^^^^^
+
+                Text [1 byte, " "]
+                1 | </div> </div
+                  |       ^
+
+                Unterminated closing tag
+                1 | </div> </div
+                  |          ^^^
+            "#]],
+        );
+        check(
+            r#"</di<div>"#,
+            expect![[r#"
+                OpeningTag <div>
+                1 | </di<div>
+                  |     ^^^^^
+
+                Unterminated closing tag
+                1 | </di<div>
+                  |   ^^
+            "#]],
+        );
+        check(
+            r#"</</div"#,
+            expect![[r#"
+                Unterminated closing tag
+                1 | </</div
+                  | ^^
+
+                Unterminated closing tag
+                1 | </</div
+                  |     ^^^
+            "#]],
         );
         check(
             r#"<div foo="#,
