@@ -127,6 +127,46 @@ impl Tokenizer {
         }
     }
 
+    // Find the end of an expression using the dop tokenizer.
+    //
+    // Expects the current char iterator be on the first start
+    // of a dop expression.
+    //
+    // E.g. {x + 2}
+    //      ^
+    //
+    // The returned span will be the span for the closing
+    // '}' of the dop expression.
+    //
+    // E.g. {x + 2}
+    //            ^
+    //
+    // Returns None if we reached EOF before finding the closing '}'.
+    fn find_expression_end(&mut self) -> Option<StringSpan> {
+        let mut dop_tokenizer = DopTokenizer::from(self.iter.clone());
+        assert!(
+            dop_tokenizer
+                .next()
+                .is_some_and(|t| matches!(t, Ok((DopToken::LeftBrace, _))))
+        );
+        let mut open_braces = 1;
+        loop {
+            let token = dop_tokenizer.next()?;
+            match token {
+                Ok((DopToken::LeftBrace, _)) => {
+                    open_braces += 1;
+                }
+                Ok((DopToken::RightBrace, span)) => {
+                    open_braces -= 1;
+                    if open_braces == 0 {
+                        return Some(span);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     // Skip whitespace
     fn skip_whitespace(&mut self) {
         while self.iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
@@ -135,6 +175,7 @@ impl Tokenizer {
     }
 
     // Parse a tag name from the iterator.
+    //
     // E.g. <h1 class="foo bar">
     //       ^^
     fn parse_tag_name(&mut self) -> StringSpan {
@@ -149,13 +190,15 @@ impl Tokenizer {
         )
     }
 
-    // Parse an attribute
+    // Parse an attribute from the iterator.
+    //
     // E.g. <div foo="bar">
     //           ^^^^^^^^^
     fn parse_attribute(&mut self) -> Option<Attribute> {
         // consume attribute name
         let attr_name = self.parse_tag_name();
 
+        // skip whitespace
         self.skip_whitespace();
 
         // consume '='
@@ -167,6 +210,7 @@ impl Tokenizer {
             });
         };
 
+        // skip whitespace
         self.skip_whitespace();
 
         // consume " or '
@@ -200,41 +244,8 @@ impl Tokenizer {
         })
     }
 
-    // Find the end of an expression using the dop tokenizer.
-    //
-    // Expects the current char iterator be on the first '{' that marks the
-    // start of a dop expression.
-    //
-    // The returned span will be the span for the closing
-    // '}' of the dop expression.
-    //
-    // Returns None if we reached EOF before finding the closing '}'.
-    fn find_expression_end(&mut self) -> Option<StringSpan> {
-        let mut dop_tokenizer = DopTokenizer::from(self.iter.clone());
-        assert!(
-            dop_tokenizer
-                .next()
-                .is_some_and(|t| matches!(t, Ok((DopToken::LeftBrace, _))))
-        );
-        let mut open_braces = 1;
-        loop {
-            let token = dop_tokenizer.next()?;
-            match token {
-                Ok((DopToken::LeftBrace, _)) => {
-                    open_braces += 1;
-                }
-                Ok((DopToken::RightBrace, span)) => {
-                    open_braces -= 1;
-                    if open_braces == 0 {
-                        return Some(span);
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-
     /// Parse an expression.
+    ///
     /// Assumes that the iterator is at the opening brace '{'.
     ///
     /// When it returns the iterator will be past the closing brace '}'
@@ -263,7 +274,7 @@ impl Tokenizer {
         Some(Ok((expr, left_brace.to(right_brace))))
     }
 
-    // Parse tag content.
+    // Parse tag content (attributes and expressions).
     //
     // E.g. <div foo="bar" {x: string}>
     //           ^^^^^^^^^^^^^^^^^^^^^
@@ -274,7 +285,6 @@ impl Tokenizer {
             // skip whitespace
             self.skip_whitespace();
 
-            // parse expression or attribute
             match self.iter.peek().map(|s| s.ch()) {
                 // parse expression
                 Some('{') => match self.parse_expression()? {
@@ -304,7 +314,7 @@ impl Tokenizer {
                 _ => {
                     return Some((attributes, expression));
                 }
-            };
+            }
         }
     }
 
