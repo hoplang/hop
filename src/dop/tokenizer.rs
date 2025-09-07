@@ -245,10 +245,11 @@ mod tests {
                 }
             }
         }
-        expected.assert_eq(&SourceAnnotator::new().without_line_numbers().annotate(
-            None,
-            &annotations,
-        ));
+        expected.assert_eq(
+            &SourceAnnotator::new()
+                .without_line_numbers()
+                .annotate(None, &annotations),
+        );
     }
 
     #[test]

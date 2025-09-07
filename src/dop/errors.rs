@@ -91,4 +91,3 @@ impl ParseError {
         Self::new(format!("Duplicate property '{name}'"), span)
     }
 }
-

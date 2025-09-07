@@ -4,7 +4,9 @@ use super::{Position, string_cursor::StringCursor};
 
 /// Extracts a single position marked with `^` from the source.
 ///
-/// If a marker is found, returns the cleaned source (without marker line) and the position.
+/// If a marker is found, returns the cleaned source (without marker line)
+/// and the position as an UTF32 (line, col) pair.
+///
 /// If no marker is found, returns None.
 ///
 /// Panics if multiple position markers are found or if marker does not point to a valid character
@@ -109,7 +111,13 @@ mod tests {
 
         assert_eq!(
             extract_position(input),
-            Some((output.to_string(), Position::Utf32 { line: 0, column: 12 }))
+            Some((
+                output.to_string(),
+                Position::Utf32 {
+                    line: 0,
+                    column: 12
+                }
+            ))
         );
     }
 
@@ -129,7 +137,13 @@ mod tests {
 
         assert_eq!(
             extract_position(input),
-            Some((output.to_string(), Position::Utf32 { line: 2, column: 12 }))
+            Some((
+                output.to_string(),
+                Position::Utf32 {
+                    line: 2,
+                    column: 12
+                }
+            ))
         );
     }
 

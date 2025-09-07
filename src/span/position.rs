@@ -5,7 +5,7 @@ use std::fmt;
 pub enum Position {
     /// Position using UTF-16 code unit offsets for columns
     Utf16 { line: usize, column: usize },
-    /// Position using UTF-32 code point offsets for columns (character count)
+    /// Position using UTF-32 code point offsets for columns
     Utf32 { line: usize, column: usize },
 }
 

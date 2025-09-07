@@ -428,7 +428,10 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
             // Parse object properties
             loop {
                 let prop_name = expect_property_name(tokenizer)?;
-                if properties.iter().any(|(name, _)| name.as_str() == prop_name.as_str()) {
+                if properties
+                    .iter()
+                    .any(|(name, _)| name.as_str() == prop_name.as_str())
+                {
                     return Err(ParseError::duplicate_property(
                         prop_name.as_str(),
                         prop_name.clone(),

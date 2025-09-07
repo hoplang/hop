@@ -143,7 +143,11 @@ pub fn evaluate_component(
         }
 
         // If component doesn't have a class attribute but the reference does, add it
-        if !component.attributes.iter().any(|attr| attr.name.as_str() == "class") {
+        if !component
+            .attributes
+            .iter()
+            .any(|attr| attr.name.as_str() == "class")
+        {
             if let Some(cls) = additional_classes {
                 output.push_str(" class=\"");
                 output.push_str(cls);
@@ -332,7 +336,9 @@ fn evaluate_node(
             }
 
             // Skip script nodes without a src attribute
-            if tag_name.as_str() == "script" && !attributes.iter().any(|attr| attr.name.as_str() == "src") {
+            if tag_name.as_str() == "script"
+                && !attributes.iter().any(|attr| attr.name.as_str() == "src")
+            {
                 return Ok(());
             }
 
