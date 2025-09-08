@@ -7,7 +7,7 @@ use crate::dop::ast::{BinaryOp, DopExpr, UnaryOp};
 use crate::dop::parse_error::ParseError;
 use crate::dop::tokenizer::{DopToken, DopTokenizer};
 use crate::dop::typechecker::SpannedDopType;
-use crate::span::string_cursor::{StringCursor, StringSpan};
+use crate::span::string_cursor::{Spanned, StringCursor, StringSpan};
 
 /// A DopVarName represents a validated variable name in dop.
 #[derive(Debug, Clone)]
@@ -556,17 +556,13 @@ mod tests {
             .with_label("error")
             .without_location()
             .without_line_numbers();
-        if let Some(span) = error.span() {
-            annotator.annotate(
-                None,
-                [SimpleAnnotation {
-                    message: error.to_string(),
-                    span,
+        annotator.annotate(
+            None,
+            [SimpleAnnotation {
+                message: error.to_string(),
+                span: error.span().clone(),
                 }],
             )
-        } else {
-            error.to_string()
-        }
     }
 
     fn check_parse_expr(input: &str, expected: Expect) {

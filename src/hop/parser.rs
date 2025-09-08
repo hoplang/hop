@@ -1,9 +1,10 @@
-use crate::dop::{self, DopParser};
+use crate::dop::DopParser;
 use crate::hop::ast::{ComponentDefinition, DopExprAttribute, HopAst, HopNode, Import, Render};
 use crate::hop::parse_error::ParseError;
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
+use crate::span::string_cursor::Spanned;
 use std::collections::{HashMap, HashSet};
 
 use super::ast::PresentAttribute;
@@ -148,23 +149,10 @@ pub fn parse(
                         continue;
                     }
                     let params = expression.as_ref().and_then(|expr| {
-                        let mut parser = DopParser::from(expr.clone());
-                        match parser.parse_parameters() {
+                        match DopParser::from(expr.clone()).parse_parameters() {
                             Ok(params) => Some((params, expr.clone())),
-                            Err(dop::parse_error::ParseError::UnexpectedEof { .. }) => {
-                                errors.push(ParseError::UnexpectedEndOfExpression {
-                                    span: expr.clone(),
-                                });
-                                None
-                            }
                             Err(err) => {
-                                if let Some(span) = err.span() {
-                                    errors.push(ParseError::new(err.to_string(), span));
-                                } else {
-                                    errors.push(ParseError::UnexpectedEndOfExpression {
-                                        span: expr.clone(),
-                                    });
-                                }
+                                errors.push(ParseError::new(err.to_string(), err.span().clone()));
                                 None
                             }
                         }
@@ -275,33 +263,19 @@ fn construct_node(
         Token::Text { span: value, .. } => HopNode::Text { span: value },
         Token::Expression {
             expression: expr, ..
-        } => {
-            let mut parser = DopParser::from(expr.clone());
-            match parser.parse_expr() {
-                Ok(expression) => HopNode::TextExpression {
-                    expression,
+        } => match DopParser::from(expr.clone()).parse_expr() {
+            Ok(expression) => HopNode::TextExpression {
+                expression,
+                span: tree.span.clone(),
+            },
+            Err(err) => {
+                errors.push(ParseError::new(err.to_string(), err.span().clone()));
+                HopNode::Error {
                     span: tree.span.clone(),
-                },
-                Err(dop::parse_error::ParseError::UnexpectedEof { .. }) => {
-                    errors.push(ParseError::UnexpectedEndOfExpression { span: expr.clone() });
-                    HopNode::Error {
-                        span: tree.span.clone(),
-                        children: vec![],
-                    }
-                }
-                Err(err) => {
-                    if let Some(span) = err.span() {
-                        errors.push(ParseError::new(err.to_string(), span));
-                    } else {
-                        errors.push(ParseError::UnexpectedEndOfExpression { span: expr.clone() });
-                    }
-                    HopNode::Error {
-                        span: tree.span.clone(),
-                        children: vec![],
-                    }
+                    children: vec![],
                 }
             }
-        }
+        },
         Token::OpeningTag {
             tag_name,
             expression,
@@ -312,38 +286,20 @@ fn construct_node(
             match tag_name.as_str() {
                 "if" => match expression {
                     // TODO: Check for unrecognized attributes
-                    Some(expr) => {
-                        let mut parser = DopParser::from(expr.clone());
-                        match parser.parse_expr() {
-                            Ok(condition) => HopNode::If {
-                                condition,
+                    Some(expr) => match DopParser::from(expr.clone()).parse_expr() {
+                        Ok(condition) => HopNode::If {
+                            condition,
+                            span: tree.span.clone(),
+                            children,
+                        },
+                        Err(err) => {
+                            errors.push(ParseError::new(err.to_string(), err.span().clone()));
+                            HopNode::Error {
                                 span: tree.span.clone(),
                                 children,
-                            },
-                            Err(dop::parse_error::ParseError::UnexpectedEof { .. }) => {
-                                errors.push(ParseError::UnexpectedEndOfExpression {
-                                    span: expr.clone(),
-                                });
-                                HopNode::Error {
-                                    span: tree.span.clone(),
-                                    children,
-                                }
-                            }
-                            Err(err) => {
-                                if let Some(span) = err.span() {
-                                    errors.push(ParseError::new(err.to_string(), span));
-                                } else {
-                                    errors.push(ParseError::UnexpectedEndOfExpression {
-                                        span: expr.clone(),
-                                    });
-                                }
-                                HopNode::Error {
-                                    span: tree.span.clone(),
-                                    children,
-                                }
                             }
                         }
-                    }
+                    },
                     None => {
                         errors.push(ParseError::new(
                             "Missing expression in <if> tag".to_string(),
@@ -357,39 +313,21 @@ fn construct_node(
                 },
                 "for" => match expression {
                     // TODO: Check for unrecognized attributes
-                    Some(expr) => {
-                        let mut parser = DopParser::from(expr.clone());
-                        match parser.parse_loop_header() {
-                            Ok((var_name, array_expr)) => HopNode::For {
-                                var_name,
-                                array_expr,
+                    Some(expr) => match DopParser::from(expr.clone()).parse_loop_header() {
+                        Ok((var_name, array_expr)) => HopNode::For {
+                            var_name,
+                            array_expr,
+                            span: tree.span.clone(),
+                            children,
+                        },
+                        Err(err) => {
+                            errors.push(ParseError::new(err.to_string(), err.span().clone()));
+                            HopNode::Error {
                                 span: tree.span.clone(),
                                 children,
-                            },
-                            Err(dop::parse_error::ParseError::UnexpectedEof { .. }) => {
-                                errors.push(ParseError::UnexpectedEndOfExpression {
-                                    span: expr.clone(),
-                                });
-                                HopNode::Error {
-                                    span: tree.span.clone(),
-                                    children,
-                                }
-                            }
-                            Err(err) => {
-                                if let Some(span) = err.span() {
-                                    errors.push(ParseError::new(err.to_string(), span));
-                                } else {
-                                    errors.push(ParseError::UnexpectedEndOfExpression {
-                                        span: expr.clone(),
-                                    });
-                                }
-                                HopNode::Error {
-                                    span: tree.span.clone(),
-                                    children,
-                                }
                             }
                         }
-                    }
+                    },
                     None => {
                         errors.push(ParseError::new(
                             "Missing loop generator expression in <for> tag".to_string(),
@@ -460,34 +398,16 @@ fn construct_node(
                         });
                     }
                     let args = match &expression {
-                        Some(expr) => {
-                            let mut parser = DopParser::from(expr.clone());
-                            match parser.parse_arguments() {
-                                Ok(named_args) => Some((named_args, expr.clone())),
-                                Err(dop::parse_error::ParseError::UnexpectedEof { .. }) => {
-                                    errors.push(ParseError::UnexpectedEndOfExpression {
-                                        span: expr.clone(),
-                                    });
-                                    return HopNode::Error {
-                                        span: tree.span.clone(),
-                                        children: vec![],
-                                    };
-                                }
-                                Err(err) => {
-                                    if let Some(span) = err.span() {
-                                        errors.push(ParseError::new(err.to_string(), span));
-                                    } else {
-                                        errors.push(ParseError::UnexpectedEndOfExpression {
-                                            span: expr.clone(),
-                                        });
-                                    }
-                                    return HopNode::Error {
-                                        span: tree.span.clone(),
-                                        children: vec![],
-                                    };
-                                }
+                        Some(expr) => match DopParser::from(expr.clone()).parse_arguments() {
+                            Ok(named_args) => Some((named_args, expr.clone())),
+                            Err(err) => {
+                                errors.push(ParseError::new(err.to_string(), err.span().clone()));
+                                return HopNode::Error {
+                                    span: tree.span.clone(),
+                                    children: vec![],
+                                };
                             }
-                        }
+                        },
                         None => None,
                     };
 
@@ -522,26 +442,15 @@ fn construct_node(
                                 }
                                 Some(val) => val,
                             };
-                            let mut parser = DopParser::from(attr_val.clone());
-                            match parser.parse_expr() {
+                            match DopParser::from(attr_val.clone()).parse_expr() {
                                 Ok(expression) => set_attributes.push(DopExprAttribute {
                                     name: attr.name.clone(),
                                     expression,
                                     span: attr.span.clone(),
                                 }),
-                                Err(dop::parse_error::ParseError::UnexpectedEof { .. }) => {
-                                    errors.push(ParseError::UnexpectedEndOfExpression {
-                                        span: attr_val.clone(),
-                                    });
-                                }
                                 Err(err) => {
-                                    if let Some(span) = err.span() {
-                                        errors.push(ParseError::new(err.to_string(), span));
-                                    } else {
-                                        errors.push(ParseError::UnexpectedEndOfExpression {
-                                            span: attr_val.clone(),
-                                        });
-                                    }
+                                    errors
+                                        .push(ParseError::new(err.to_string(), err.span().clone()));
                                 }
                             };
                         }

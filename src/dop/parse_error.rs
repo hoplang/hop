@@ -1,5 +1,5 @@
 use crate::dop::tokenizer::DopToken;
-use crate::span::string_cursor::StringSpan;
+use crate::span::string_cursor::{Spanned, StringSpan};
 use thiserror::Error;
 
 #[derive(Error, Debug, Clone)]
@@ -61,23 +61,25 @@ impl ParseError {
     pub fn new(message: String, span: StringSpan) -> Self {
         Self::Spanned { message, span }
     }
+}
 
-    pub fn span(&self) -> Option<StringSpan> {
+impl Spanned for ParseError {
+    fn span(&self) -> &StringSpan {
         match self {
-            ParseError::UnexpectedEof { span, .. } => Some(span.clone()),
-            ParseError::UnterminatedStringLiteral { span } => Some(span.clone()),
-            ParseError::UnmatchedToken { span, .. } => Some(span.clone()),
-            ParseError::InvalidVariableName { name } => Some(name.clone()),
-            ParseError::ExpectedTokensButGot { span, .. } => Some(span.clone()),
-            ParseError::ExpectedTokenButGot { span, .. } => Some(span.clone()),
-            ParseError::UnexpectedToken { span, .. } => Some(span.clone()),
-            ParseError::ExpectedVariableNameButGot { span, .. } => Some(span.clone()),
-            ParseError::ExpectedPropertyNameButGot { span, .. } => Some(span.clone()),
-            ParseError::ExpectedIdentifierAfterDot { span } => Some(span.clone()),
-            ParseError::DuplicateArgument { name } => Some(name.clone()),
-            ParseError::DuplicateParameter { name } => Some(name.clone()),
-            ParseError::DuplicateProperty { name } => Some(name.clone()),
-            ParseError::Spanned { span, .. } => Some(span.clone()),
+            ParseError::UnexpectedEof { span, .. }
+            | ParseError::UnterminatedStringLiteral { span }
+            | ParseError::UnmatchedToken { span, .. }
+            | ParseError::ExpectedTokensButGot { span, .. }
+            | ParseError::ExpectedTokenButGot { span, .. }
+            | ParseError::UnexpectedToken { span, .. }
+            | ParseError::ExpectedVariableNameButGot { span, .. }
+            | ParseError::ExpectedPropertyNameButGot { span, .. }
+            | ParseError::ExpectedIdentifierAfterDot { span }
+            | ParseError::Spanned { span, .. } => span,
+            ParseError::InvalidVariableName { name }
+            | ParseError::DuplicateArgument { name }
+            | ParseError::DuplicateParameter { name }
+            | ParseError::DuplicateProperty { name } => name,
         }
     }
 }
