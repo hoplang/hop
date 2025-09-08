@@ -119,7 +119,7 @@ pub struct Tokenizer {
     errors: Vec<ParseError>,
     /// The current raw text closing tag we're looking for, if any.
     /// E.g. </script>
-    raw_text_closing_tag: Option<String>,
+    raw_text_closing_tag: Option<StringSpan>,
 }
 
 impl Tokenizer {
@@ -281,7 +281,7 @@ impl Tokenizer {
     ///
     /// E.g. <div foo="bar" {x: string}>
     ///           ^^^^^^^^^^^^^^^^^^^^^
-    fn parse_tag_content(&mut self) -> Option<(Vec<Attribute>, Option<StringSpan>)> {
+    fn parse_tag_content(&mut self) -> (Vec<Attribute>, Option<StringSpan>) {
         let mut attributes: Vec<Attribute> = Vec::new();
         let mut expression: Option<StringSpan> = None;
         loop {
@@ -318,7 +318,7 @@ impl Tokenizer {
                     }
                 }
                 _ => {
-                    return Some((attributes, expression));
+                    return (attributes, expression);
                 }
             }
         }
@@ -387,7 +387,7 @@ impl Tokenizer {
 
     fn parse_opening_tag(&mut self, left_angle: StringSpan, tag_name: StringSpan) -> Option<Token> {
         // consume tag content
-        let (attributes, expression) = self.parse_tag_content()?;
+        let (attributes, expression) = self.parse_tag_content();
 
         // consume whitespace
         self.skip_whitespace();
@@ -405,7 +405,7 @@ impl Tokenizer {
         };
 
         if is_tag_name_with_raw_content(tag_name.as_str()) {
-            self.raw_text_closing_tag = Some(format!("</{}>", tag_name.as_str()));
+            self.raw_text_closing_tag = Some(tag_name.clone());
         }
 
         Some(Token::OpeningTag {
@@ -448,77 +448,111 @@ impl Tokenizer {
         })
     }
 
-    fn iter_holds_closing_tag(&self, tag_name: &str) -> bool {
-        self.iter
-            .clone()
-            .map(|s| s.ch())
-            .filter(|ch| !ch.is_whitespace())
-            .take(tag_name.len())
-            .eq(tag_name.chars())
-    }
-
-    fn parse_raw_text(&mut self, tag_name: &str) -> Option<Token> {
-        let mut raw_text: Option<StringSpan> = None;
-        loop {
-            if self.iter.peek().is_some_and(|s| s.ch() == '<')
-                && self.iter_holds_closing_tag(tag_name)
-            {
-                return raw_text.map(|s| Token::Text { span: s });
-            }
-            match self.iter.next() {
-                Some(ch) => {
-                    raw_text = raw_text.into_iter().chain(Some(ch)).collect();
-                }
-                None => return raw_text.map(|s| Token::Text { span: s }),
+    fn iter_peek_closing_tag(&self, tag_name: &StringSpan) -> bool {
+        let mut iter = self.iter.clone();
+        // consume '<'
+        if iter.next().is_none_or(|s| s.ch() != '<') {
+            return false;
+        }
+        // consume '/'
+        if iter.next().is_none_or(|s| s.ch() != '/') {
+            return false;
+        }
+        // skip whitespace
+        while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
+            iter.next();
+        }
+        // consume tag name
+        for ch in tag_name.as_str().chars() {
+            if iter.next().is_none_or(|s| s.ch() != ch) {
+                return false;
             }
         }
+        // skip whitespace
+        while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
+            iter.next();
+        }
+        // consume '>'
+        if iter.next().is_none_or(|s| s.ch() != '>') {
+            return false;
+        }
+        true
+    }
+
+    fn parse_raw_text(&mut self, tag_name: StringSpan) -> Option<Token> {
+        let mut raw_text: Option<StringSpan> = None;
+        loop {
+            if self.iter.peek().is_none() || self.iter_peek_closing_tag(&tag_name) {
+                return raw_text.map(|s| Token::Text { span: s });
+            }
+            if let Some(ch) = self.iter.next() {
+                raw_text = raw_text.into_iter().chain(Some(ch)).collect();
+            }
+        }
+    }
+
+    fn parse_tag(&mut self, left_angle: StringSpan) -> Option<Token> {
+        // case: parse markup declaration
+        if let Some(_bang) = self.iter.next_if(|s| s.ch() == '!') {
+            return self.parse_markup_declaration(left_angle);
+        }
+
+        // case: parse closing tag
+        if let Some(slash) = self.iter.next_if(|s| s.ch() == '/') {
+            return self.parse_closing_tag(left_angle.to(slash));
+        }
+
+        // case: parse opening tag
+        if let Some(initial) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) {
+            let tag_name = initial.extend(
+                self.iter
+                    .peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()),
+            );
+            return self.parse_opening_tag(left_angle, tag_name);
+        }
+
+        // case: otherwise
+        self.errors.push(ParseError::new(
+            "Unterminated tag start".to_string(),
+            left_angle,
+        ));
+
+        None
     }
 
     fn step(&mut self) -> Option<Token> {
-        // If we have a stored raw_text_closing_tag we need to parse all content
-        // as raw text until we find the tag.
+        // case: parse raw text
         if let Some(tag_name) = self.raw_text_closing_tag.take() {
-            if let Some(token) = self.parse_raw_text(&tag_name) {
+            // note that we should only return if parse_raw_text
+            // returns an actual token
+            if let Some(token) = self.parse_raw_text(tag_name) {
                 return Some(token);
             }
         }
-        // parse tag or markup declaration
+
+        // case: parse tag or markup declaration
         if let Some(left_angle) = self.iter.next_if(|s| s.ch() == '<') {
-            // parse markup declaration
-            if let Some(_bang) = self.iter.next_if(|s| s.ch() == '!') {
-                return self.parse_markup_declaration(left_angle);
-            }
-            // parse closing tag
-            if let Some(slash) = self.iter.next_if(|s| s.ch() == '/') {
-                return self.parse_closing_tag(left_angle.to(slash));
-            }
-            // parse opening tag
-            if let Some(initial) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) {
-                let tag_name = initial.extend(
-                    self.iter
-                        .peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()),
-                );
-                return self.parse_opening_tag(left_angle, tag_name);
-            }
-            self.errors.push(ParseError::new(
-                "Unterminated tag start".to_string(),
-                left_angle,
-            ));
-            return None;
+            return self.parse_tag(left_angle);
         }
 
+        // case: parse text expression
         if let Some(left_brace) = self.iter.next_if(|s| s.ch() == '{') {
             return self
                 .parse_expression(left_brace)
                 .map(|(expression, span)| Token::Expression { expression, span });
         }
 
-        let text = self
-            .iter
-            .peeking_take_while(|s| s.ch() != '{' && s.ch() != '<')
-            .collect::<Option<StringSpan>>()?;
+        // case: parse text
+        if let Some(ch) = self.iter.next() {
+            return Some(Token::Text {
+                span: ch.extend(
+                    self.iter
+                        .peeking_take_while(|s| s.ch() != '{' && s.ch() != '<'),
+                ),
+            });
+        }
 
-        Some(Token::Text { span: text })
+        None
     }
 }
 
