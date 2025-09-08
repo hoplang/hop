@@ -168,7 +168,7 @@ mod tests {
               <p>This content comes from a build.hop file.</p>
             </hello-world>
             -- build.hop --
-            <import component="hello-world" from="src/components" />
+            <import component="hello-world" from="@/src/components" />
 
             <render file="foo/bar/index.html">
               <hello-world />

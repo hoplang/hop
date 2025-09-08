@@ -128,8 +128,12 @@ pub struct Import {
 }
 
 impl Import {
-    pub fn imported_module(&self) -> &StringSpan {
-        &self.from_attr.value
+    pub fn imported_module(&self) -> String {
+        // Strip @/ prefix for internal module resolution
+        self.from_attr.value.as_str()
+            .strip_prefix("@/")
+            .expect("Import path should start with @/")
+            .to_string()
     }
     pub fn imported_component(&self) -> &StringSpan {
         &self.component_attr.value
@@ -138,7 +142,11 @@ impl Import {
         self.component_attr.value.as_str() == component_name
     }
     pub fn imports_from(&self, from_path: &str) -> bool {
-        self.from_attr.value.as_str() == from_path
+        // All imports now have @/ prefix, so we strip it for comparison
+        let normalized_from = self.from_attr.value.as_str()
+            .strip_prefix("@/")
+            .expect("Import path should start with @/");
+        normalized_from == from_path
     }
 }
 

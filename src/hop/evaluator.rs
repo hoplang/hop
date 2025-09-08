@@ -844,7 +844,7 @@ mod tests {
                 	<span>button</span>
                 </button-comp>
                 -- main.hop --
-                <import from="test" component="button-comp">
+                <import from="@/test" component="button-comp">
 
                 <main-comp>
                   <button-comp></button-comp>

@@ -362,7 +362,7 @@ mod tests {
               message is bar
             </bar-comp>
             -- build.hop --
-            <import component="foo-comp" from="src/test" />
+            <import component="foo-comp" from="@/src/test" />
 
             <render file="index.html">
               <foo-comp />
@@ -390,7 +390,7 @@ mod tests {
         fs::write(
             dir.join("build.hop"),
             indoc! {r#"
-                <import component="bar-comp" from="src/test" />
+                <import component="bar-comp" from="@/src/test" />
 
                 <render file="index.html">
                   <bar-comp />

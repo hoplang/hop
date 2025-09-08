@@ -246,6 +246,13 @@ impl ParseError {
     pub fn duplicate_attribute(name: &str, span: StringSpan) -> Self {
         Self::new(format!("Duplicate attribute '{name}'"), span)
     }
+
+    pub fn invalid_import_path(span: StringSpan) -> Self {
+        Self::new(
+            format!("Import paths must start with '@/' where '@' indicates the root directory"),
+            span,
+        )
+    }
 }
 
 impl Spanned for ParseError {

@@ -71,11 +71,19 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         continue;
                     };
 
+                    // Validate that the import path starts with @/
+                    if !from_attr.as_str().starts_with("@/") {
+                        errors.push(ParseError::invalid_import_path(from_attr.clone()));
+                        continue;
+                    }
+
                     if imported_components.contains_key(cmp_attr.as_str()) {
                         errors.push(ParseError::component_is_already_defined(cmp_attr.clone()));
                         continue;
                     }
-                    imported_components.insert(cmp_attr.to_string(), from_attr.to_string());
+                    // Strip the @/ prefix for internal module resolution
+                    let module_path = from_attr.as_str().strip_prefix("@/").unwrap();
+                    imported_components.insert(cmp_attr.to_string(), module_path.to_string());
                     imports.push(Import {
                         component_attr: PresentAttribute { value: cmp_attr },
                         from_attr: PresentAttribute { value: from_attr },
@@ -622,12 +630,12 @@ mod tests {
     fn test_parser_import_self_closing() {
         check(
             indoc! {r#"
-                <import component="foo" from="bar"></import>
+                <import component="foo" from="@/bar"></import>
             "#},
             expect![[r#"
                 error: <import> should not be closed using a closing tag
-                1 | <import component="foo" from="bar"></import>
-                  |                                    ^^^^^^^^^
+                1 | <import component="foo" from="@/bar"></import>
+                  |                                      ^^^^^^^^^
             "#]],
         );
     }
@@ -637,7 +645,7 @@ mod tests {
     fn test_parser_void_tag_may_be_self_closing() {
         check(
             indoc! {r#"
-                <import component="foo" from="bar">
+                <import component="foo" from="@/bar">
                 <main-comp>
                     <hr/>
                     <br/>
@@ -1210,8 +1218,8 @@ mod tests {
     fn test_parser_component_imported_twice() {
         check(
             indoc! {r#"
-                <import component="foo-comp" from="other">
-                <import component="foo-comp" from="other">
+                <import component="foo-comp" from="@/other">
+                <import component="foo-comp" from="@/other">
 
                 <main-comp>
                 	<foo-comp></foo-comp>
@@ -1219,8 +1227,8 @@ mod tests {
             "#},
             expect![[r#"
                 error: Component foo-comp is already defined
-                1 | <import component="foo-comp" from="other">
-                2 | <import component="foo-comp" from="other">
+                1 | <import component="foo-comp" from="@/other">
+                2 | <import component="foo-comp" from="@/other">
                   |                    ^^^^^^^^
             "#]],
         );
@@ -1260,7 +1268,7 @@ mod tests {
     fn test_component_name_conflicts_with_import() {
         check(
             indoc! {r#"
-                <import component="foo-comp" from="other">
+                <import component="foo-comp" from="@/other">
 
                 <foo-comp>
                 </foo-comp>
@@ -1274,6 +1282,24 @@ mod tests {
                 2 | 
                 3 | <foo-comp>
                   |  ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_import_without_at_prefix_is_rejected() {
+        check(
+            indoc! {r#"
+                <import component="foo-comp" from="other">
+
+                <main-comp>
+                	<foo-comp/>
+                </main-comp>
+            "#},
+            expect![[r#"
+                error: Import paths must start with '@/' where '@' indicates the root directory
+                1 | <import component="foo-comp" from="other">
+                  |                                    ^^^^^
             "#]],
         );
     }

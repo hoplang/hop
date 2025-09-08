@@ -80,7 +80,7 @@ impl Program {
         let module_dependencies = module
             .get_imports()
             .iter()
-            .map(|import_node| import_node.imported_module().to_string())
+            .map(|import_node| import_node.imported_module())
             .collect::<HashSet<String>>();
 
         // Store the AST
@@ -605,7 +605,7 @@ mod tests {
                 </hello-world>
 
                 -- main.hop --
-                <import component="hello-world" from="hop/components" />
+                <import component="hello-world" from="@/hop/components" />
 
                 <main-comp>
                   <hello-world />
@@ -631,7 +631,7 @@ mod tests {
                 </hello-world>
 
                 -- main.hop --
-                <import component="hello-world" from="hop/components" />
+                <import component="hello-world" from="@/hop/components" />
 
                 <main-comp>
                   <hello-world>
@@ -662,7 +662,7 @@ mod tests {
                 </hello-world>
 
                 -- main.hop --
-                <import component="hello-world" from="components" />
+                <import component="hello-world" from="@/components" />
 
                 <main-comp>
                   <hello-world />
@@ -682,7 +682,7 @@ mod tests {
 
                 Rename
                   --> main.hop (line 1, col 20)
-                1 | <import component="hello-world" from="components" />
+                1 | <import component="hello-world" from="@/components" />
                   |                    ^^^^^^^^^^^
 
                 Rename
@@ -737,7 +737,7 @@ mod tests {
                 </hello-world>
 
                 -- main.hop --
-                <import component="hello-world" from="components" />
+                <import component="hello-world" from="@/components" />
 
                 <main-comp>
                   <hello-world />
@@ -756,7 +756,7 @@ mod tests {
 
                 Rename
                   --> main.hop (line 1, col 20)
-                1 | <import component="hello-world" from="components" />
+                1 | <import component="hello-world" from="@/components" />
                   |                    ^^^^^^^^^^^
 
                 Rename
@@ -785,7 +785,7 @@ mod tests {
                 </main-comp>
 
                 -- main.hop --
-                <import component="hello-world" from="components" />
+                <import component="hello-world" from="@/components" />
 
                 <main-comp>
                   <hello-world />
@@ -1037,19 +1037,19 @@ mod tests {
     fn test_cycle_error_reporting() {
         let mut program = program_from_txtar(indoc! {r#"
             -- a.hop --
-            <import component="b-comp" from="b" />
+            <import component="b-comp" from="@/b" />
             <a-comp>
               <b-comp />
             </a-comp>
 
             -- b.hop --
-            <import component="a-comp" from="a" />
+            <import component="a-comp" from="@/a" />
             <b-comp>
               <a-comp />
             </b-comp>
 
             -- c.hop --
-            <import component="a-comp" from="a" />
+            <import component="a-comp" from="@/a" />
             <c-comp>
               <a-comp />
             </c-comp>
@@ -1059,13 +1059,13 @@ mod tests {
             expect![[r#"
                 Import cycle: a imports from b which creates a dependency cycle: a → b → a
                   --> a (line 1, col 34)
-                1 | <import component="b-comp" from="b" />
-                  |                                  ^
+                1 | <import component="b-comp" from="@/b" />
+                  |                                  ^^^
 
                 Import cycle: b imports from a which creates a dependency cycle: a → b → a
                   --> b (line 1, col 34)
-                1 | <import component="a-comp" from="a" />
-                  |                                  ^
+                1 | <import component="a-comp" from="@/a" />
+                  |                                  ^^^
             "#]],
         );
         // Resolve cycle
@@ -1085,25 +1085,25 @@ mod tests {
     fn test_cycle_error_reporting_large() {
         let mut program = program_from_txtar(indoc! {r#"
             -- a.hop --
-            <import component="b-comp" from="b" />
+            <import component="b-comp" from="@/b" />
             <a-comp>
               <b-comp />
             </a-comp>
 
             -- b.hop --
-            <import component="c-comp" from="c" />
+            <import component="c-comp" from="@/c" />
             <b-comp>
               <c-comp />
             </b-comp>
 
             -- c.hop --
-            <import component="d-comp" from="d" />
+            <import component="d-comp" from="@/d" />
             <c-comp>
               <d-comp />
             </c-comp>
 
             -- d.hop --
-            <import component="a-comp" from="a" />
+            <import component="a-comp" from="@/a" />
             <d-comp>
               <a-comp />
             </d-comp>
@@ -1113,23 +1113,23 @@ mod tests {
             expect![[r#"
                 Import cycle: a imports from b which creates a dependency cycle: a → b → c → d → a
                   --> a (line 1, col 34)
-                1 | <import component="b-comp" from="b" />
-                  |                                  ^
+                1 | <import component="b-comp" from="@/b" />
+                  |                                  ^^^
 
                 Import cycle: b imports from c which creates a dependency cycle: a → b → c → d → a
                   --> b (line 1, col 34)
-                1 | <import component="c-comp" from="c" />
-                  |                                  ^
+                1 | <import component="c-comp" from="@/c" />
+                  |                                  ^^^
 
                 Import cycle: c imports from d which creates a dependency cycle: a → b → c → d → a
                   --> c (line 1, col 34)
-                1 | <import component="d-comp" from="d" />
-                  |                                  ^
+                1 | <import component="d-comp" from="@/d" />
+                  |                                  ^^^
 
                 Import cycle: d imports from a which creates a dependency cycle: a → b → c → d → a
                   --> d (line 1, col 34)
-                1 | <import component="a-comp" from="a" />
-                  |                                  ^
+                1 | <import component="a-comp" from="@/a" />
+                  |                                  ^^^
             "#]],
         );
         // Resolve cycle
@@ -1147,7 +1147,7 @@ mod tests {
         program.update_module(
             "b",
             indoc! {r#"
-                <import component="a-comp" from="a" />
+                <import component="a-comp" from="@/a" />
                 <b-comp>
                   <a-comp />
                 </b-comp>
@@ -1159,13 +1159,13 @@ mod tests {
             expect![[r#"
                 Import cycle: a imports from b which creates a dependency cycle: a → b → a
                   --> a (line 1, col 34)
-                1 | <import component="b-comp" from="b" />
-                  |                                  ^
+                1 | <import component="b-comp" from="@/b" />
+                  |                                  ^^^
 
                 Import cycle: b imports from a which creates a dependency cycle: a → b → a
                   --> b (line 1, col 34)
-                1 | <import component="a-comp" from="a" />
-                  |                                  ^
+                1 | <import component="a-comp" from="@/a" />
+                  |                                  ^^^
             "#]],
         );
         // Resolve cycle

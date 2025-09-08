@@ -1,5 +1,5 @@
-<import component="heading-box" from="hop/ui">
-<import component="page-container" from="hop/ui">
+<import component="heading-box" from="@/hop/ui">
+<import component="page-container" from="@/hop/ui">
 
 <code-text as="span">
 	<code class="italic"><slot-default /></code>

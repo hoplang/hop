@@ -103,14 +103,15 @@ impl TypeChecker {
             if modules.len() > 1 {
                 type_errors.clear();
                 for import_node in module.get_imports() {
+                    let imported_module = import_node.imported_module();
                     type_errors.push(TypeError::import_cycle(
                         &module.name,
-                        import_node.imported_module().as_str(),
+                        &imported_module,
                         &modules
                             .iter()
                             .map(|m| m.name.to_string())
                             .collect::<Vec<_>>(),
-                        import_node.imported_module().clone(),
+                        import_node.from_attr.value.clone(),
                     ));
                 }
             }
@@ -127,16 +128,16 @@ fn typecheck_module(
     for import in module.get_imports() {
         let imported_module = import.imported_module();
         let imported_component = import.imported_component();
-        if !state.module_is_declared(imported_module.as_str()) {
+        if !state.module_is_declared(&imported_module) {
             errors.push(TypeError::import_from_undefined_module(
-                imported_module.as_str(),
-                imported_module.clone(),
+                &imported_module,
+                import.from_attr.value.clone(),
             ));
         } else if !state
-            .component_is_declared(imported_module.as_str(), imported_component.as_str())
+            .component_is_declared(&imported_module, imported_component.as_str())
         {
             errors.push(TypeError::undeclared_component(
-                imported_module.as_str(),
+                &imported_module,
                 imported_component.as_str(),
                 imported_component.clone(),
             ));
@@ -586,7 +587,7 @@ mod tests {
         check(
             indoc! {r#"
                 -- main.hop --
-                <import component="foo-comp" from="other">
+                <import component="foo-comp" from="@/other">
 
                 <main-comp>
                 </main-comp>
@@ -594,8 +595,8 @@ mod tests {
             expect![[r#"
                 error: Module other is not defined
                   --> main.hop (line 1, col 36)
-                1 | <import component="foo-comp" from="other">
-                  |                                    ^^^^^
+                1 | <import component="foo-comp" from="@/other">
+                  |                                    ^^^^^^^
             "#]],
         );
     }
@@ -607,7 +608,7 @@ mod tests {
             indoc! {r#"
                 -- other.hop --
                 -- main.hop --
-                <import component="foo-comp" from="other">
+                <import component="foo-comp" from="@/other">
 
                 <main-comp>
                 </main-comp>
@@ -615,8 +616,8 @@ mod tests {
             expect![[r#"
                 error: Module other is not defined
                   --> main.hop (line 1, col 36)
-                1 | <import component="foo-comp" from="other">
-                  |                                    ^^^^^
+                1 | <import component="foo-comp" from="@/other">
+                  |                                    ^^^^^^^
             "#]],
         );
     }
@@ -631,7 +632,7 @@ mod tests {
                 </foo-comp>
 
                 -- main.hop --
-                <import component="foo-comp" from="other">
+                <import component="foo-comp" from="@/other">
 
                 <main-comp>
                 </main-comp>
@@ -720,7 +721,7 @@ mod tests {
                     <strong>No slot here</strong>
                 </foo-comp>
                 -- main.hop --
-                <import component="foo-comp" from="other">
+                <import component="foo-comp" from="@/other">
 
                 <bar-comp>
                     <foo-comp>
@@ -1713,7 +1714,7 @@ mod tests {
                 </button-comp>
 
                 -- main.hop --
-                <import component="button-comp" from="utils">
+                <import component="button-comp" from="@/utils">
 
                 <main-comp {label: string}>
                   <button-comp {text: label}/>
@@ -1764,7 +1765,7 @@ mod tests {
                 </widget-comp>
 
                 -- foo.hop --
-                <import component="widget-comp" from="bar">
+                <import component="widget-comp" from="@/bar">
 
                 <panel-comp {data: {items: array[{enabled: boolean, title: string}]}}>
                   <for {item in data.items}>
@@ -1773,7 +1774,7 @@ mod tests {
                 </panel-comp>
 
                 -- main.hop --
-                <import component="panel-comp" from="foo">
+                <import component="panel-comp" from="@/foo">
 
                 <main-comp {settings: {dashboard: {items: array[{enabled: boolean, title: string}]}}}>
                   <panel-comp {data: settings.dashboard}/>
@@ -3592,14 +3593,14 @@ mod tests {
                 	</if>
                 </item-display>
                 -- data-list.hop --
-                <import component="item-display" from="item-display">
+                <import component="item-display" from="@/item-display">
                 <data-list {items: array[{id: number, name: string, active: boolean}]}>
                 	<for {item in items}>
                 		<item-display {item: item}/>
                 	</for>
                 </data-list>
                 -- main.hop --
-                <import component="data-list" from="data-list">
+                <import component="data-list" from="@/data-list">
                 <main-comp {items: array[{id: number, name: string, active: boolean}]}>
                 	<data-list {items: items}/>
                 </main-comp>
@@ -3630,7 +3631,7 @@ mod tests {
 
                 items: array[{active: boolean, id: number, name: string}]
                   --> data-list.hop (line 2, col 13)
-                1 | <import component="item-display" from="item-display">
+                1 | <import component="item-display" from="@/item-display">
                 2 | <data-list {items: array[{id: number, name: string, active: boolean}]}>
                   |             ^^^^^
 
@@ -3660,7 +3661,7 @@ mod tests {
 
                 items: array[{active: boolean, id: number, name: string}]
                   --> main.hop (line 2, col 13)
-                1 | <import component="data-list" from="data-list">
+                1 | <import component="data-list" from="@/data-list">
                 2 | <main-comp {items: array[{id: number, name: string, active: boolean}]}>
                   |             ^^^^^
 
