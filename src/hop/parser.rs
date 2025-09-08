@@ -153,8 +153,12 @@ pub fn parse(
                                 errors.push(ParseError::UnexpectedEndOfExpression { span: expr.clone() });
                                 None
                             }
-                            Err(dop::parse_error::ParseError::Spanned { message, span }) => {
-                                errors.push(ParseError::new(message, span));
+                            Err(err) => {
+                                if let Some(span) = err.span() {
+                                    errors.push(ParseError::new(err.to_string(), span));
+                                } else {
+                                    errors.push(ParseError::UnexpectedEndOfExpression { span: expr.clone() });
+                                }
                                 None
                             }
                         }
@@ -277,8 +281,12 @@ fn construct_node(
                         children: vec![],
                     }
                 }
-                Err(dop::parse_error::ParseError::Spanned { message, span }) => {
-                    errors.push(ParseError::new(message, span));
+                Err(err) => {
+                    if let Some(span) = err.span() {
+                        errors.push(ParseError::new(err.to_string(), span));
+                    } else {
+                        errors.push(ParseError::UnexpectedEndOfExpression { span: expr.clone() });
+                    }
                     HopNode::Error {
                         span: tree.span.clone(),
                         children: vec![],
@@ -311,8 +319,12 @@ fn construct_node(
                                     children,
                                 }
                             }
-                            Err(dop::parse_error::ParseError::Spanned { message, span }) => {
-                                errors.push(ParseError::new(message, span));
+                            Err(err) => {
+                                if let Some(span) = err.span() {
+                                    errors.push(ParseError::new(err.to_string(), span));
+                                } else {
+                                    errors.push(ParseError::UnexpectedEndOfExpression { span: expr.clone() });
+                                }
                                 HopNode::Error {
                                     span: tree.span.clone(),
                                     children,
@@ -349,8 +361,12 @@ fn construct_node(
                                     children,
                                 }
                             }
-                            Err(dop::parse_error::ParseError::Spanned { message, span }) => {
-                                errors.push(ParseError::new(message, span));
+                            Err(err) => {
+                                if let Some(span) = err.span() {
+                                    errors.push(ParseError::new(err.to_string(), span));
+                                } else {
+                                    errors.push(ParseError::UnexpectedEndOfExpression { span: expr.clone() });
+                                }
                                 HopNode::Error {
                                     span: tree.span.clone(),
                                     children,
@@ -439,8 +455,12 @@ fn construct_node(
                                         children: vec![],
                                     };
                                 }
-                                Err(dop::parse_error::ParseError::Spanned { message, span }) => {
-                                    errors.push(ParseError::new(message, span));
+                                Err(err) => {
+                                    if let Some(span) = err.span() {
+                                        errors.push(ParseError::new(err.to_string(), span));
+                                    } else {
+                                        errors.push(ParseError::UnexpectedEndOfExpression { span: expr.clone() });
+                                    }
                                     return HopNode::Error {
                                         span: tree.span.clone(),
                                         children: vec![],
@@ -490,8 +510,12 @@ fn construct_node(
                                 Err(dop::parse_error::ParseError::UnexpectedEof) => {
                                     errors.push(ParseError::UnexpectedEndOfExpression { span: attr_val.clone() });
                                 }
-                                Err(dop::parse_error::ParseError::Spanned { message, span }) => {
-                                    errors.push(ParseError::new(message, span));
+                                Err(err) => {
+                                    if let Some(span) = err.span() {
+                                        errors.push(ParseError::new(err.to_string(), span));
+                                    } else {
+                                        errors.push(ParseError::UnexpectedEndOfExpression { span: attr_val.clone() });
+                                    }
                                 }
                             };
                         }
