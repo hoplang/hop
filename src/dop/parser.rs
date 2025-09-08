@@ -9,10 +9,6 @@ use crate::dop::tokenizer::{DopToken, DopTokenizer};
 use crate::dop::typechecker::SpannedDopType;
 use crate::span::string_cursor::{StringCursor, StringSpan};
 
-pub struct DopParser {
-    iter: Peekable<DopTokenizer>,
-}
-
 /// A DopVarName represents a validated variable name in dop.
 #[derive(Debug, Clone)]
 pub struct DopVarName {
@@ -75,21 +71,30 @@ impl Display for DopArgument {
     }
 }
 
-impl DopParser {
-    pub fn new(tokenizer: Peekable<DopTokenizer>) -> Self {
-        Self { iter: tokenizer }
-    }
+pub struct DopParser {
+    iter: Peekable<DopTokenizer>,
+    span: StringSpan,
 }
 
-impl From<StringCursor> for DopParser {
-    fn from(cursor: StringCursor) -> Self {
-        Self::new(DopTokenizer::from(cursor).peekable())
+impl DopParser {}
+
+impl From<StringSpan> for DopParser {
+    fn from(span: StringSpan) -> Self {
+        Self {
+            iter: DopTokenizer::from(span.cursor()).peekable(),
+            span: span.clone(),
+        }
     }
 }
 
 impl From<&str> for DopParser {
     fn from(input: &str) -> Self {
-        Self::new(DopTokenizer::from(input).peekable())
+        let cursor = StringCursor::new(input.to_string());
+        let span = cursor.span();
+        Self {
+            iter: DopTokenizer::from(cursor).peekable(),
+            span,
+        }
     }
 }
 
@@ -106,7 +111,9 @@ impl DopParser {
     }
 
     fn expect_token(&mut self, expected: DopToken) -> Result<StringSpan, ParseError> {
-        match self.iter.next().ok_or(ParseError::UnexpectedEof)?? {
+        match self.iter.next().ok_or_else(|| ParseError::UnexpectedEof {
+            span: self.span.clone(),
+        })?? {
             (token, span) if token == expected => Ok(span),
             (actual, span) => Err(ParseError::ExpectedTokenButGot {
                 expected: expected.clone(),
@@ -117,7 +124,9 @@ impl DopParser {
     }
 
     fn expect_variable_name(&mut self) -> Result<DopVarName, ParseError> {
-        match self.iter.next().ok_or(ParseError::UnexpectedEof)?? {
+        match self.iter.next().ok_or_else(|| ParseError::UnexpectedEof {
+            span: self.span.clone(),
+        })?? {
             (DopToken::Identifier(name), _) => DopVarName::new(name),
             (actual, span) => Err(ParseError::ExpectedVariableNameButGot {
                 actual,
@@ -127,7 +136,9 @@ impl DopParser {
     }
 
     fn expect_property_name(&mut self) -> Result<StringSpan, ParseError> {
-        match self.iter.next().ok_or(ParseError::UnexpectedEof)?? {
+        match self.iter.next().ok_or_else(|| ParseError::UnexpectedEof {
+            span: self.span.clone(),
+        })?? {
             (DopToken::Identifier(name), _) => Ok(name),
             (token, span) => Err(ParseError::ExpectedPropertyNameButGot {
                 actual: token,
@@ -244,7 +255,9 @@ impl DopParser {
         use crate::dop::DopType;
         use std::collections::BTreeMap;
 
-        match self.iter.next().ok_or(ParseError::UnexpectedEof)?? {
+        match self.iter.next().ok_or_else(|| ParseError::UnexpectedEof {
+            span: self.span.clone(),
+        })?? {
             (DopToken::TypeString, span) => Ok(SpannedDopType {
                 dop_type: DopType::String,
                 span,
@@ -362,14 +375,18 @@ impl DopParser {
     //         | "{" ( Identifier ":" equality ("," Identifier ":" equality)* )? "}"
     //         | "(" equality ")"
     fn parse_primary(&mut self) -> Result<DopExpr, ParseError> {
-        match self.iter.next().ok_or(ParseError::UnexpectedEof)?? {
+        match self.iter.next().ok_or_else(|| ParseError::UnexpectedEof {
+            span: self.span.clone(),
+        })?? {
             (DopToken::Identifier(name), _) => {
                 let var_name = DopVarName::new(name)?;
                 let mut expr = DopExpr::Variable { value: var_name };
 
                 // Handle property access
                 while self.advance_if(DopToken::Dot).is_some() {
-                    match self.iter.next().ok_or(ParseError::UnexpectedEof)?? {
+                    match self.iter.next().ok_or_else(|| ParseError::UnexpectedEof {
+                        span: self.span.clone(),
+                    })?? {
                         (DopToken::Identifier(prop), property_span) => {
                             expr = DopExpr::PropertyAccess {
                                 span: expr.span().to(property_span.clone()),
@@ -687,7 +704,11 @@ mod tests {
 
     #[test]
     fn test_parse_expr_error_dot_no_identifier() {
-        check_parse_expr("user.", expect!["Unexpected end of expression"]);
+        check_parse_expr("user.", expect![[r#"
+            error: Unexpected end of expression
+            user.
+            ^^^^^
+        "#]]);
     }
 
     #[test]
@@ -788,12 +809,20 @@ mod tests {
 
     #[test]
     fn test_parse_expr_error_operator_at_end() {
-        check_parse_expr("x ==", expect!["Unexpected end of expression"]);
+        check_parse_expr("x ==", expect![[r#"
+            error: Unexpected end of expression
+            x ==
+            ^^^^
+        "#]]);
     }
 
     #[test]
     fn test_parse_expr_error_not_without_operand() {
-        check_parse_expr("!", expect!["Unexpected end of expression"]);
+        check_parse_expr("!", expect![[r#"
+            error: Unexpected end of expression
+            !
+            ^
+        "#]]);
     }
 
     #[test]
@@ -1258,7 +1287,11 @@ mod tests {
 
     #[test]
     fn test_parse_named_arguments_missing_value_error() {
-        check_parse_arguments("name:", expect!["Unexpected end of expression"]);
+        check_parse_arguments("name:", expect![[r#"
+            error: Unexpected end of expression
+            name:
+            ^^^^^
+        "#]]);
     }
 
     #[test]

@@ -21,6 +21,13 @@ impl StringCursor {
             source: Arc::new(SourceInfo::new(source)),
         }
     }
+    pub fn span(&self) -> StringSpan {
+        StringSpan {
+            source: self.source.clone(),
+            start: self.offset,
+            end: self.end,
+        }
+    }
 }
 
 impl Iterator for StringCursor {

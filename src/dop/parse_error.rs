@@ -5,7 +5,7 @@ use thiserror::Error;
 #[derive(Error, Debug, Clone)]
 pub enum ParseError {
     #[error("Unexpected end of expression")]
-    UnexpectedEof,
+    UnexpectedEof { span: StringSpan },
 
     #[error("Unterminated string literal")]
     UnterminatedStringLiteral { span: StringSpan },
@@ -64,7 +64,7 @@ impl ParseError {
 
     pub fn span(&self) -> Option<StringSpan> {
         match self {
-            ParseError::UnexpectedEof => None,
+            ParseError::UnexpectedEof { span, .. } => Some(span.clone()),
             ParseError::UnterminatedStringLiteral { span } => Some(span.clone()),
             ParseError::UnmatchedToken { span, .. } => Some(span.clone()),
             ParseError::InvalidVariableName { name } => Some(name.clone()),
