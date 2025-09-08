@@ -2,7 +2,7 @@ use crate::dop::{self, DopParameter, DopType, is_subtype};
 use crate::hop::ast::HopAst;
 use crate::hop::ast::{ComponentDefinition, HopNode, Render};
 use crate::hop::environment::Environment;
-use crate::hop::errors::TypeError;
+use crate::hop::type_error::TypeError;
 use crate::span::string_cursor::{Spanned, StringSpan};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};

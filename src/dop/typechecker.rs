@@ -1,6 +1,6 @@
 use super::ast::{BinaryOp, DopExpr, UnaryOp};
 use crate::hop::environment::Environment;
-use crate::hop::errors::TypeError;
+use crate::hop::type_error::TypeError;
 use crate::hop::typechecker::TypeAnnotation;
 use crate::span::string_cursor::StringSpan;
 use std::collections::BTreeMap;
