@@ -32,3 +32,6 @@ axum-test = "17.0"
 rand = "0.9"
 expect-test = "1.5"
 indoc = "2.0"
+
+[lints.clippy]
+too_many_arguments = "allow"

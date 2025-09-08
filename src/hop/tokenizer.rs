@@ -4,10 +4,10 @@ use std::mem;
 
 use itertools::Itertools as _;
 
-use crate::hop::parse_error::ParseError;
 use crate::dop::DopTokenizer;
 use crate::dop::tokenizer::DopToken;
 use crate::hop::ast::Attribute;
+use crate::hop::parse_error::ParseError;
 use crate::span::string_cursor::{Spanned, StringCursor, StringSpan};
 
 #[derive(Debug)]
@@ -336,10 +336,8 @@ impl Tokenizer {
 
         // consume: " or '
         let Some(close_quote) = self.iter.next_if(|s| s.ch() == open_quote.ch()) else {
-            self.errors.push(ParseError::new(
-                format!("Unmatched {}", open_quote.ch()),
-                open_quote,
-            ));
+            self.errors
+                .push(ParseError::UnmatchedCharacter { ch: open_quote });
             return None;
         };
 
@@ -371,7 +369,7 @@ impl Tokenizer {
         let clone = self.iter.clone();
         let Some(found_right_brace) = Self::find_expression_end(clone) else {
             self.errors
-                .push(ParseError::new(format!("Unmatched {{"), left_brace));
+                .push(ParseError::UnmatchedCharacter { ch: left_brace });
             return None;
         };
         // handle empty expression

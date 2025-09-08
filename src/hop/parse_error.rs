@@ -54,6 +54,9 @@ pub enum ParseError {
         span: StringSpan,
     },
 
+    #[error("Unmatched {ch}")]
+    UnmatchedCharacter { ch: StringSpan },
+
     #[error("{message}")]
     GenericError { message: String, span: StringSpan },
 }
@@ -69,6 +72,7 @@ impl Spanned for ParseError {
         match self {
             ParseError::SlotIsAlreadyDefined { span }
             | ParseError::UnmatchedClosingTag { span, .. }
+            | ParseError::UnmatchedCharacter { ch: span, .. }
             | ParseError::UnexpectedEndOfExpression { span }
             | ParseError::MissingAttributeValue { span }
             | ParseError::UnclosedTag { span, .. }

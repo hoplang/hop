@@ -42,14 +42,7 @@ pub fn render_file(
         Some(node) => {
             let mut env = init_environment(hop_mode);
             for child in &node.children {
-                evaluate_node_entrypoint(
-                    asts,
-                    hop_mode,
-                    child,
-                    &mut env,
-                    &ModuleName::new("build".to_string()).unwrap(),
-                    output,
-                )?;
+                evaluate_node_entrypoint(asts, hop_mode, child, &mut env, output)?;
             }
             Ok(())
         }
@@ -99,7 +92,7 @@ pub fn evaluate_component(
     if component.is_entrypoint {
         // For entrypoints, don't wrap in a div, just execute children directly
         for child in &component.children {
-            evaluate_node_entrypoint(asts, hop_mode, child, &mut env, module_name, output)?;
+            evaluate_node_entrypoint(asts, hop_mode, child, &mut env, output)?;
         }
         Ok(())
     } else {
@@ -165,15 +158,7 @@ pub fn evaluate_component(
         }
         output.push('>');
         for child in &component.children {
-            evaluate_node(
-                asts,
-                hop_mode,
-                child,
-                slot_content,
-                &mut env,
-                module_name,
-                output,
-            )?;
+            evaluate_node(asts, hop_mode, child, slot_content, &mut env, output)?;
         }
         output.push_str("</");
         output.push_str(tag_name);
@@ -199,7 +184,6 @@ fn evaluate_node(
     node: &HopNode,
     slot_content: Option<&str>,
     env: &mut Environment<serde_json::Value>,
-    current_module: &ModuleName,
     output: &mut String,
 ) -> anyhow::Result<()> {
     match node {
@@ -211,15 +195,7 @@ fn evaluate_node(
             Some(cond) => {
                 if cond {
                     for child in children {
-                        evaluate_node(
-                            asts,
-                            hop_mode,
-                            child,
-                            slot_content,
-                            env,
-                            current_module,
-                            output,
-                        )?;
+                        evaluate_node(asts, hop_mode, child, slot_content, env, output)?;
                     }
                 }
                 Ok(())
@@ -242,15 +218,7 @@ fn evaluate_node(
             for item in array {
                 _ = env.push(var_name.to_string(), item.clone());
                 for child in children {
-                    evaluate_node(
-                        asts,
-                        hop_mode,
-                        child,
-                        slot_content,
-                        env,
-                        current_module,
-                        output,
-                    )?;
+                    evaluate_node(asts, hop_mode, child, slot_content, env, output)?;
                 }
                 _ = env.pop();
             }
@@ -290,15 +258,7 @@ fn evaluate_node(
             let slot_html = if target_component.has_slot && !children.is_empty() {
                 let mut default_html = String::new();
                 for child in children {
-                    evaluate_node(
-                        asts,
-                        hop_mode,
-                        child,
-                        slot_content,
-                        env,
-                        current_module,
-                        &mut default_html,
-                    )?;
+                    evaluate_node(asts, hop_mode, child, slot_content, env, &mut default_html)?;
                 }
                 Some(default_html)
             } else {
@@ -380,15 +340,7 @@ fn evaluate_node(
 
             if !is_void_element(tag_name.as_str()) {
                 for child in children {
-                    evaluate_node(
-                        asts,
-                        hop_mode,
-                        child,
-                        slot_content,
-                        env,
-                        current_module,
-                        output,
-                    )?;
+                    evaluate_node(asts, hop_mode, child, slot_content, env, output)?;
                 }
                 output.push_str("</");
                 output.push_str(tag_name.as_str());
@@ -426,15 +378,7 @@ fn evaluate_node(
             // Collect child content as stdin
             let mut stdin_content = String::new();
             for child in children {
-                evaluate_node(
-                    asts,
-                    hop_mode,
-                    child,
-                    slot_content,
-                    env,
-                    current_module,
-                    &mut stdin_content,
-                )?;
+                evaluate_node(asts, hop_mode, child, slot_content, env, &mut stdin_content)?;
             }
 
             // Execute the command with stdin
@@ -449,28 +393,12 @@ fn evaluate_node(
             if *trim {
                 let mut temp = String::new();
                 for child in children {
-                    evaluate_node(
-                        asts,
-                        hop_mode,
-                        child,
-                        slot_content,
-                        env,
-                        current_module,
-                        &mut temp,
-                    )?;
+                    evaluate_node(asts, hop_mode, child, slot_content, env, &mut temp)?;
                 }
                 output.push_str(&trim_raw_string(&temp));
             } else {
                 for child in children {
-                    evaluate_node(
-                        asts,
-                        hop_mode,
-                        child,
-                        slot_content,
-                        env,
-                        current_module,
-                        output,
-                    )?;
+                    evaluate_node(asts, hop_mode, child, slot_content, env, output)?;
                 }
             }
             Ok(())
@@ -483,7 +411,6 @@ fn evaluate_node_entrypoint(
     hop_mode: HopMode,
     node: &HopNode,
     env: &mut Environment<serde_json::Value>,
-    current_module: &ModuleName,
     output: &mut String,
 ) -> Result<()> {
     match node {
@@ -524,7 +451,7 @@ fn evaluate_node_entrypoint(
 
             if !is_void_element(tag_name.as_str()) {
                 for child in children {
-                    evaluate_node_entrypoint(asts, hop_mode, child, env, current_module, output)?;
+                    evaluate_node_entrypoint(asts, hop_mode, child, env, output)?;
                 }
                 output.push_str("</");
                 output.push_str(tag_name.as_str());
@@ -535,7 +462,7 @@ fn evaluate_node_entrypoint(
         }
         _ => {
             // For all other node types, use the existing evaluation logic (no slots in entrypoints)
-            evaluate_node(asts, hop_mode, node, None, env, current_module, output)
+            evaluate_node(asts, hop_mode, node, None, env, output)
         }
     }
 }
