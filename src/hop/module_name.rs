@@ -1,37 +1,36 @@
 use std::fmt;
-use std::error::Error;
+use thiserror::Error;
 
 /// Error type for invalid module names
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum InvalidModuleNameError {
+    #[error("Module name cannot be empty")]
     Empty,
+
+    #[error("Module name cannot start with '/'")]
     StartsWithSlash,
+
+    #[error("Module name cannot end with '/'")]
     EndsWithSlash,
+
+    #[error("Module name cannot contain '//'")]
     ContainsDoubleSlash,
+
+    #[error("Module name cannot contain '..'")]
     ContainsParentDirectory,
+
+    #[error("Module name cannot contain path component '.'")]
     ContainsCurrentDirectory,
+
+    #[error("Module name cannot contain '@'")]
     ContainsAtSymbol,
+
+    #[error("Module name contains invalid character: '{0}'")]
     InvalidCharacter(char),
+
+    #[error("Module name contains empty path component")]
     EmptyComponent,
 }
-
-impl fmt::Display for InvalidModuleNameError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Empty => write!(f, "Module name cannot be empty"),
-            Self::StartsWithSlash => write!(f, "Module name cannot start with '/'"),
-            Self::EndsWithSlash => write!(f, "Module name cannot end with '/'"),
-            Self::ContainsDoubleSlash => write!(f, "Module name cannot contain '//'"),
-            Self::ContainsParentDirectory => write!(f, "Module name cannot contain '..'"),
-            Self::ContainsCurrentDirectory => write!(f, "Module name cannot contain path component '.'"),
-            Self::ContainsAtSymbol => write!(f, "Module name cannot contain '@'"),
-            Self::InvalidCharacter(c) => write!(f, "Module name contains invalid character: '{}'", c),
-            Self::EmptyComponent => write!(f, "Module name contains empty path component"),
-        }
-    }
-}
-
-impl Error for InvalidModuleNameError {}
 
 /// A type-safe wrapper for module names in the hop system.
 /// Module names represent the path to a module relative to the project root,
@@ -116,7 +115,6 @@ impl fmt::Display for ModuleName {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,15 +131,45 @@ mod tests {
 
     #[test]
     fn test_invalid_module_names() {
-        assert_eq!(ModuleName::new("".to_string()), Err(InvalidModuleNameError::Empty));
-        assert_eq!(ModuleName::new("/utils".to_string()), Err(InvalidModuleNameError::StartsWithSlash));
-        assert_eq!(ModuleName::new("utils/".to_string()), Err(InvalidModuleNameError::EndsWithSlash));
-        assert_eq!(ModuleName::new("utils//components".to_string()), Err(InvalidModuleNameError::ContainsDoubleSlash));
-        assert_eq!(ModuleName::new("../parent".to_string()), Err(InvalidModuleNameError::ContainsParentDirectory));
-        assert_eq!(ModuleName::new("./current".to_string()), Err(InvalidModuleNameError::ContainsCurrentDirectory));
-        assert_eq!(ModuleName::new("@/utils".to_string()), Err(InvalidModuleNameError::ContainsAtSymbol));
-        assert_eq!(ModuleName::new("utils/./current".to_string()), Err(InvalidModuleNameError::ContainsCurrentDirectory));
-        assert_eq!(ModuleName::new("my component".to_string()), Err(InvalidModuleNameError::InvalidCharacter(' ')));
-        assert_eq!(ModuleName::new("my!component".to_string()), Err(InvalidModuleNameError::InvalidCharacter('!')));
+        assert_eq!(
+            ModuleName::new("".to_string()),
+            Err(InvalidModuleNameError::Empty)
+        );
+        assert_eq!(
+            ModuleName::new("/utils".to_string()),
+            Err(InvalidModuleNameError::StartsWithSlash)
+        );
+        assert_eq!(
+            ModuleName::new("utils/".to_string()),
+            Err(InvalidModuleNameError::EndsWithSlash)
+        );
+        assert_eq!(
+            ModuleName::new("utils//components".to_string()),
+            Err(InvalidModuleNameError::ContainsDoubleSlash)
+        );
+        assert_eq!(
+            ModuleName::new("../parent".to_string()),
+            Err(InvalidModuleNameError::ContainsParentDirectory)
+        );
+        assert_eq!(
+            ModuleName::new("./current".to_string()),
+            Err(InvalidModuleNameError::ContainsCurrentDirectory)
+        );
+        assert_eq!(
+            ModuleName::new("@/utils".to_string()),
+            Err(InvalidModuleNameError::ContainsAtSymbol)
+        );
+        assert_eq!(
+            ModuleName::new("utils/./current".to_string()),
+            Err(InvalidModuleNameError::ContainsCurrentDirectory)
+        );
+        assert_eq!(
+            ModuleName::new("my component".to_string()),
+            Err(InvalidModuleNameError::InvalidCharacter(' '))
+        );
+        assert_eq!(
+            ModuleName::new("my!component".to_string()),
+            Err(InvalidModuleNameError::InvalidCharacter('!'))
+        );
     }
 }

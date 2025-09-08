@@ -637,6 +637,7 @@ dependencies = [
  "serde",
  "serde_json",
  "simple_txtar",
+ "thiserror",
  "tokio",
  "tokio-stream",
  "tower 0.5.2",
