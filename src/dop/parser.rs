@@ -27,7 +27,9 @@ impl DopVarName {
         if !chars.next().is_some_and(|c| c.is_ascii_alphabetic())
             || !chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
         {
-            return Err(ParseError::InvalidVariableName { name: value.clone() });
+            return Err(ParseError::InvalidVariableName {
+                name: value.clone(),
+            });
         }
         Ok(DopVarName { value })
     }
@@ -116,7 +118,10 @@ fn expect_property_name(tokenizer: &mut Peekable<DopTokenizer>) -> Result<String
 fn expect_eof(tokenizer: &mut Peekable<DopTokenizer>) -> Result<(), ParseError> {
     match tokenizer.next().transpose()? {
         None => Ok(()),
-        Some((token, span)) => Err(ParseError::UnexpectedToken { token, span: span.clone() }),
+        Some((token, span)) => Err(ParseError::UnexpectedToken {
+            token,
+            span: span.clone(),
+        }),
     }
 }
 
@@ -202,7 +207,9 @@ pub fn parse_arguments(
         }
         let arg = parse_argument(tokenizer)?;
         if args.contains_key(arg.var_name.value.as_str()) {
-            return Err(ParseError::DuplicateArgument { name: arg.var_name.value.clone() });
+            return Err(ParseError::DuplicateArgument {
+                name: arg.var_name.value.clone(),
+            });
         }
         args.insert(arg.var_name.value.to_string(), arg);
     }
@@ -235,6 +242,7 @@ fn parse_type(tokenizer: &mut Peekable<DopTokenizer>) -> Result<SpannedDopType, 
             dop_type: DopType::Bool,
             span,
         }),
+        // Array type
         (DopToken::TypeArray, type_array_span) => {
             expect_token(tokenizer, DopToken::LeftBracket)?;
             let inner_type = parse_type(tokenizer)?;
@@ -245,6 +253,7 @@ fn parse_type(tokenizer: &mut Peekable<DopTokenizer>) -> Result<SpannedDopType, 
                 span: type_array_span.to(right_bracket_span),
             })
         }
+        // Object type
         (DopToken::LeftBrace, left_brace_span) => {
             let mut properties = BTreeMap::new();
 
@@ -253,13 +262,18 @@ fn parse_type(tokenizer: &mut Peekable<DopTokenizer>) -> Result<SpannedDopType, 
                 expect_token(tokenizer, DopToken::Colon)?;
                 let typ = parse_type(tokenizer)?;
                 if properties.contains_key(prop_name.as_str()) {
-                    return Err(ParseError::DuplicateProperty { name: prop_name.clone() });
+                    return Err(ParseError::DuplicateProperty {
+                        name: prop_name.clone(),
+                    });
                 }
                 properties.insert(prop_name.to_string(), typ.dop_type);
 
-                match tokenizer.next().ok_or_else(|| {
-                    ParseError::UnmatchedToken { token: DopToken::LeftBrace, span: left_brace_span.clone() }
-                })?? {
+                match tokenizer
+                    .next()
+                    .ok_or_else(|| ParseError::UnmatchedToken {
+                        token: DopToken::LeftBrace,
+                        span: left_brace_span.clone(),
+                    })?? {
                     (DopToken::Comma, _) => {
                         // Check for trailing comma (closing brace after comma)
                         if let Some(right_brace_span) = advance_if(tokenizer, DopToken::RightBrace)
@@ -374,9 +388,12 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
             loop {
                 elements.push(parse_equality(tokenizer)?);
 
-                match tokenizer.next().ok_or_else(|| {
-                    ParseError::UnmatchedToken { token: DopToken::LeftBracket, span: left_bracket_span.clone() }
-                })?? {
+                match tokenizer
+                    .next()
+                    .ok_or_else(|| ParseError::UnmatchedToken {
+                        token: DopToken::LeftBracket,
+                        span: left_bracket_span.clone(),
+                    })?? {
                     (DopToken::Comma, _) => {
                         // Handle trailing comma
                         if let Some(right_bracket_span) =
@@ -424,7 +441,9 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                     .iter()
                     .any(|(name, _)| name.as_str() == prop_name.as_str())
                 {
-                    return Err(ParseError::DuplicateProperty { name: prop_name.clone() });
+                    return Err(ParseError::DuplicateProperty {
+                        name: prop_name.clone(),
+                    });
                 }
 
                 expect_token(tokenizer, DopToken::Colon)?;
@@ -433,9 +452,12 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                 properties.push((prop_name, value));
 
                 // Expect comma or right brace
-                match tokenizer.next().ok_or_else(|| {
-                    ParseError::UnmatchedToken { token: DopToken::LeftBrace, span: left_brace_span.clone() }
-                })?? {
+                match tokenizer
+                    .next()
+                    .ok_or_else(|| ParseError::UnmatchedToken {
+                        token: DopToken::LeftBrace,
+                        span: left_brace_span.clone(),
+                    })?? {
                     (DopToken::Comma, _) => {
                         // Check for trailing comma (closing brace after comma)
                         if let Some(right_brace_span) = advance_if(tokenizer, DopToken::RightBrace)
@@ -465,9 +487,12 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
         }
         (DopToken::LeftParen, left_paren_span) => {
             let expr = parse_equality(tokenizer)?;
-            match tokenizer.next().ok_or_else(|| {
-                ParseError::UnmatchedToken { token: DopToken::LeftParen, span: left_paren_span.clone() }
-            })?? {
+            match tokenizer
+                .next()
+                .ok_or_else(|| ParseError::UnmatchedToken {
+                    token: DopToken::LeftParen,
+                    span: left_paren_span.clone(),
+                })?? {
                 (DopToken::RightParen, _) => Ok(expr),
                 (t, span) => Err(ParseError::ExpectedTokenButGot {
                     expected: DopToken::RightParen,
@@ -476,7 +501,10 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                 }),
             }
         }
-        (token, span) => Err(ParseError::UnexpectedToken { token, span: span.clone() }),
+        (token, span) => Err(ParseError::UnexpectedToken {
+            token,
+            span: span.clone(),
+        }),
     }
 }
 
