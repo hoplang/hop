@@ -7,6 +7,9 @@ pub enum ParseError {
     #[error("Unexpected end of expression")]
     UnexpectedEof { span: StringSpan },
 
+    #[error("Unexpected end of property access")]
+    UnexpectedEndOfPropertyAccess { span: StringSpan },
+
     #[error("Unterminated string literal")]
     UnterminatedStringLiteral { span: StringSpan },
 
@@ -74,6 +77,7 @@ impl Spanned for ParseError {
             | ParseError::UnexpectedToken { span, .. }
             | ParseError::ExpectedVariableNameButGot { span, .. }
             | ParseError::ExpectedPropertyNameButGot { span, .. }
+            | ParseError::UnexpectedEndOfPropertyAccess { span, .. }
             | ParseError::ExpectedIdentifierAfterDot { span }
             | ParseError::Spanned { span, .. } => span,
             ParseError::InvalidVariableName { name }

@@ -383,7 +383,7 @@ impl DopParser {
                 let mut expr = DopExpr::Variable { value: var_name };
 
                 // Handle property access
-                while self.advance_if(DopToken::Dot).is_some() {
+                while let Some(dot_span) = self.advance_if(DopToken::Dot) {
                     match self.iter.next().transpose()? {
                         Some((DopToken::Identifier(prop), prop_span)) => {
                             expr = DopExpr::PropertyAccess {
@@ -398,8 +398,8 @@ impl DopParser {
                             });
                         }
                         None => {
-                            return Err(ParseError::UnexpectedEof {
-                                span: self.span.clone(),
+                            return Err(ParseError::UnexpectedEndOfPropertyAccess {
+                                span: expr.span().to(dot_span),
                             });
                         }
                     }
@@ -702,12 +702,12 @@ mod tests {
     #[test]
     fn test_parse_expr_error_dot_no_identifier() {
         check_parse_expr(
-            "user.",
+            "user == user.",
             expect![[r#"
-            error: Unexpected end of expression
-            user.
-            ^^^^^
-        "#]],
+                error: Unexpected end of property access
+                user == user.
+                        ^^^^^
+            "#]],
         );
     }
 
