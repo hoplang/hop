@@ -329,10 +329,7 @@ impl DopParser {
                     };
                 }
             }
-            (_, span) => Err(ParseError::new(
-                "Expected type name".to_string(),
-                span.clone(),
-            )),
+            (_, span) => Err(ParseError::ExpectedTypeName { span }),
         }
     }
 
@@ -671,6 +668,42 @@ mod tests {
                 error: Unexpected token 'y'
                 x y
                   ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_invalid_token_in_array_literal() {
+        check_parse_expr(
+            "[foo, bar == [foo, bar]",
+            expect![[r#"
+                error: Unmatched '['
+                [foo, bar == [foo, bar]
+                ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_repeated_key_in_array_literal() {
+        check_parse_expr(
+            "{k: 2, k: 2}",
+            expect![[r#"
+                error: Duplicate property 'k'
+                {k: 2, k: 2}
+                       ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_error_invalid_token_in_array_literal_after_comma() {
+        check_parse_expr(
+            "[foo, bar, == [foo, bar]",
+            expect![[r#"
+                error: Unexpected token '=='
+                [foo, bar, == [foo, bar]
+                           ^^
             "#]],
         );
     }
@@ -1040,6 +1073,19 @@ mod tests {
             expect![[r#"
                 [
                   [1, 2],
+                  [3, 4]
+                ]
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_parse_expr_nested_array_with_expressions() {
+        check_parse_expr(
+            "[[1 == [1 == 2], [] == []], [3, 4]]",
+            expect![[r#"
+                [
+                  [(1 == [(1 == 2)]), ([] == [])],
                   [3, 4]
                 ]
             "#]],

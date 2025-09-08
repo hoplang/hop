@@ -217,6 +217,23 @@ mod tests {
     }
 
     #[test]
+    fn test_equality_with_array_literal() {
+        check(json!({}), "[] == []", expect![["true"]]);
+        check(json!({}), "[[],[]] == [[],[]]", expect![["true"]]);
+        check(json!({}), "[[],[],[]] == [[],[]]", expect![["false"]]);
+        check(json!({}), "[1,2,3] == [1,2,3]", expect![["true"]]);
+    }
+
+    #[test]
+    fn test_equality_with_object_literal() {
+        check(json!({}), "{} == {}", expect![["true"]]);
+        check(json!({}), "{k: 2} == {k: 2}", expect![["true"]]);
+        check(json!({}), "{k: 2, f: 3} == {k: 2}", expect![["false"]]);
+        check(json!({}), "{k: 3} == {k: 2}", expect![["false"]]);
+        check(json!({}), "{k: []} == {k: []}", expect![["true"]]);
+    }
+
+    #[test]
     fn test_complex_equality() {
         check(
             json!({

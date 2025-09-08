@@ -38,6 +38,9 @@ pub enum ParseError {
     #[error("Unexpected token '{token}'")]
     UnexpectedToken { token: DopToken, span: StringSpan },
 
+    #[error("Unexpected character '{ch}'")]
+    UnexpectedCharacter { ch: char, span: StringSpan },
+
     #[error("Expected variable name but got {actual}")]
     ExpectedVariableNameButGot { actual: DopToken, span: StringSpan },
 
@@ -50,20 +53,20 @@ pub enum ParseError {
     #[error("Duplicate argument '{name}'")]
     DuplicateArgument { name: StringSpan },
 
+    #[error("Expected '==' but got '='")]
+    ExpectedDoubleEqButGotSingleEq { span: StringSpan },
+
     #[error("Duplicate parameter '{name}'")]
     DuplicateParameter { name: StringSpan },
 
     #[error("Duplicate property '{name}'")]
     DuplicateProperty { name: StringSpan },
 
-    #[error("{message}")]
-    Spanned { message: String, span: StringSpan },
-}
+    #[error("Expected type name")]
+    ExpectedTypeName { span: StringSpan },
 
-impl ParseError {
-    pub fn new(message: String, span: StringSpan) -> Self {
-        Self::Spanned { message, span }
-    }
+    #[error("Invalid number format")]
+    InvalidNumberFormat { span: StringSpan },
 }
 
 impl Spanned for ParseError {
@@ -72,14 +75,17 @@ impl Spanned for ParseError {
             ParseError::UnexpectedEof { span, .. }
             | ParseError::UnterminatedStringLiteral { span }
             | ParseError::UnmatchedToken { span, .. }
+            | ParseError::UnexpectedCharacter { span, .. }
+            | ParseError::InvalidNumberFormat { span, .. }
             | ParseError::ExpectedTokensButGot { span, .. }
             | ParseError::ExpectedTokenButGot { span, .. }
+            | ParseError::ExpectedDoubleEqButGotSingleEq { span, .. }
             | ParseError::UnexpectedToken { span, .. }
             | ParseError::ExpectedVariableNameButGot { span, .. }
             | ParseError::ExpectedPropertyNameButGot { span, .. }
+            | ParseError::ExpectedTypeName { span, .. }
             | ParseError::UnexpectedEndOfPropertyAccess { span, .. }
-            | ParseError::ExpectedIdentifierAfterDot { span }
-            | ParseError::Spanned { span, .. } => span,
+            | ParseError::ExpectedIdentifierAfterDot { span } => span,
             ParseError::InvalidVariableName { name }
             | ParseError::DuplicateArgument { name }
             | ParseError::DuplicateParameter { name }

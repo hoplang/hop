@@ -142,10 +142,9 @@ impl Iterator for DopTokenizer {
                 '!' => Ok((DopToken::Not, start)),
                 '=' => {
                     let Some(end) = self.iter.next_if(|s| s.ch() == '=') else {
-                        return Err(ParseError::new(
-                            "Expected '==' but found single '='".to_string(),
-                            start.clone(),
-                        ));
+                        return Err(ParseError::ExpectedDoubleEqButGotSingleEq {
+                            span: start.clone(),
+                        });
                     };
                     Ok((DopToken::Equal, start.to(end)))
                 }
@@ -192,16 +191,12 @@ impl Iterator for DopTokenizer {
                     }
                     match serde_json::Number::from_str(number_string.as_str()) {
                         Ok(n) => Ok((DopToken::NumberLiteral(n), number_string)),
-                        Err(_) => Err(ParseError::new(
-                            format!("Invalid number format: {}", number_string.as_str()),
-                            number_string.clone(),
-                        )),
+                        Err(_) => Err(ParseError::InvalidNumberFormat {
+                            span: number_string,
+                        }),
                     }
                 }
-                ch => Err(ParseError::new(
-                    format!("Unexpected character: '{}'", ch),
-                    start.clone(),
-                )),
+                ch => Err(ParseError::UnexpectedCharacter { ch, span: start }),
             }
         })
     }
@@ -209,7 +204,7 @@ impl Iterator for DopTokenizer {
 
 #[cfg(test)]
 mod tests {
-    use crate::span::{SimpleAnnotation, SourceAnnotator};
+    use crate::span::{SimpleAnnotation, SourceAnnotator, string_cursor::Spanned as _};
 
     use super::*;
     use expect_test::{Expect, expect};
@@ -225,14 +220,11 @@ mod tests {
                         span,
                     });
                 }
-                Err(ParseError::Spanned { message, span }) => {
+                Err(err) => {
                     annotations.push(SimpleAnnotation {
-                        message: format!("error: {}", message),
-                        span,
+                        message: format!("error: {err}"),
+                        span: err.span().clone(),
                     });
-                }
-                Err(_) => {
-                    unreachable!()
                 }
             }
         }
