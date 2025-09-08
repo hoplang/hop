@@ -92,7 +92,10 @@ pub fn typecheck_expr(
                 });
                 Ok(var_type.clone())
             } else {
-                Err(TypeError::undefined_variable(name.as_str(), expr.span()))
+                Err(TypeError::UndefinedVariable {
+                    name: name.as_str().to_string(),
+                    span: expr.span(),
+                })
             }
         }
         DopExpr::BooleanLiteral { .. } => Ok(DopType::Bool),
@@ -110,16 +113,16 @@ pub fn typecheck_expr(
                     if let Some(prop_type) = props.get(property.as_str()) {
                         Ok(prop_type.clone())
                     } else {
-                        Err(TypeError::property_not_found_in_object(
-                            property.as_str(),
-                            property.clone(),
-                        ))
+                        Err(TypeError::PropertyNotFoundInObject {
+                            property: property.as_str().to_string(),
+                            span: property.clone(),
+                        })
                     }
                 }
-                _ => Err(TypeError::cannot_use_as_object(
-                    &base_type.to_string(),
-                    base_expr.span(),
-                )),
+                _ => Err(TypeError::CannotUseAsObject {
+                    typ: base_type.to_string(),
+                    span: base_expr.span(),
+                }),
             }
         }
         DopExpr::BinaryOp {
@@ -133,11 +136,11 @@ pub fn typecheck_expr(
 
             // Both operands should have the same type for equality comparison
             if left_type != right_type {
-                return Err(TypeError::cannot_compare_types(
-                    &left_type.to_string(),
-                    &right_type.to_string(),
-                    expr.span(),
-                ));
+                return Err(TypeError::CannotCompareTypes {
+                    left: left_type.to_string(),
+                    right: right_type.to_string(),
+                    span: expr.span(),
+                });
             }
 
             // The result of == is always boolean
@@ -152,7 +155,7 @@ pub fn typecheck_expr(
 
             // Negation only works on boolean expressions
             if !is_subtype(&expr_type, &DopType::Bool) {
-                return Err(TypeError::negation_requires_boolean(expr.span()));
+                return Err(TypeError::NegationRequiresBoolean { span: expr.span() });
             }
 
             // The result of ! is always boolean
@@ -170,11 +173,11 @@ pub fn typecheck_expr(
                 for element in elements.iter().skip(1) {
                     let element_type = typecheck_expr(element, env, annotations, errors)?;
                     if element_type != first_type {
-                        return Err(TypeError::array_type_mismatch(
-                            &first_type.to_string(),
-                            &element_type.to_string(),
-                            expr.span(),
-                        ));
+                        return Err(TypeError::ArrayTypeMismatch {
+                            expected: first_type.to_string(),
+                            found: element_type.to_string(),
+                            span: expr.span(),
+                        });
                     }
                 }
 

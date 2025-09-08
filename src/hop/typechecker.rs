@@ -131,16 +131,16 @@ fn typecheck_module(
         let imported_module = import.imported_module();
         let imported_component = import.imported_component();
         if !state.module_is_declared(imported_module) {
-            errors.push(TypeError::import_from_undefined_module(
-                imported_module.as_str(),
-                import.from_attr_value_span.clone(),
-            ));
+            errors.push(TypeError::ImportFromUndefinedModule {
+                module: imported_module.as_str().to_string(),
+                span: import.from_attr_value_span.clone(),
+            });
         } else if !state.component_is_declared(imported_module, imported_component.as_str()) {
-            errors.push(TypeError::undeclared_component(
-                imported_module.as_str(),
-                imported_component.as_str(),
-                imported_component.clone(),
-            ));
+            errors.push(TypeError::UndeclaredComponent {
+                module: imported_module.as_str().to_string(),
+                component: imported_component.as_str().to_string(),
+                span: imported_component.clone(),
+            });
         }
     }
     let mut env = Environment::new();
@@ -175,10 +175,10 @@ fn typecheck_module(
                 let (key, _, accessed) = env.pop();
                 if !accessed {
                     let param = params.get(&key).unwrap();
-                    errors.push(TypeError::unused_variable(
-                        param.var_name.as_str(),
-                        param.var_name.span().clone(),
-                    ))
+                    errors.push(TypeError::UnusedVariable {
+                        var: param.var_name.as_str().to_string(),
+                        span: param.var_name.span().clone(),
+                    })
                 }
             }
         }
@@ -225,10 +225,10 @@ fn typecheck_node(
             };
 
             if !is_subtype(&condition_type, &DopType::Bool) {
-                errors.push(TypeError::expected_boolean_condition(
-                    &condition_type.to_string(),
-                    condition.span(),
-                ));
+                errors.push(TypeError::ExpectedBooleanCondition {
+                    found: condition_type.to_string(),
+                    span: condition.span(),
+                });
             }
         }
 
@@ -248,14 +248,14 @@ fn typecheck_node(
             let element_type = match &array_type {
                 DopType::Array(Some(inner)) => *inner.clone(),
                 DopType::Array(None) => {
-                    errors.push(TypeError::cannot_iterate_empty_array(array_expr.span()));
+                    errors.push(TypeError::CannotIterateEmptyArray { span: array_expr.span() });
                     return;
                 }
                 _ => {
-                    errors.push(TypeError::cannot_iterate_over(
-                        &array_type.to_string(),
-                        array_expr.span(),
-                    ));
+                    errors.push(TypeError::CannotIterateOver {
+                        typ: array_type.to_string(),
+                        span: array_expr.span(),
+                    });
                     return;
                 }
             };
@@ -272,10 +272,10 @@ fn typecheck_node(
                     });
                 }
                 Err(_) => {
-                    errors.push(TypeError::variable_is_already_defined(
-                        var_name.as_str(),
-                        var_name.span().clone(),
-                    ));
+                    errors.push(TypeError::VariableIsAlreadyDefined {
+                        var: var_name.as_str().to_string(),
+                        span: var_name.span().clone(),
+                    });
                 }
             }
 
@@ -286,10 +286,10 @@ fn typecheck_node(
             if pushed {
                 let (_, _, accessed) = env.pop();
                 if !accessed {
-                    errors.push(TypeError::unused_variable(
-                        var_name.as_str(),
-                        var_name.span().clone(),
-                    ))
+                    errors.push(TypeError::UnusedVariable {
+                        var: var_name.as_str().to_string(),
+                        span: var_name.span().clone(),
+                    })
                 }
             }
         }
@@ -308,20 +308,20 @@ fn typecheck_node(
             let module_name = match definition_module {
                 Some(module_name) => module_name,
                 None => {
-                    errors.push(TypeError::undefined_component(
-                        tag_name.as_str(),
-                        tag_name.clone(),
-                    ));
+                    errors.push(TypeError::UndefinedComponent {
+                        component: tag_name.as_str().to_string(),
+                        span: tag_name.clone(),
+                    });
                     return;
                 }
             };
 
             // Validate that content is only passed to components with slot-default
             if !children.is_empty() && !state.component_has_slot(module_name, tag_name.as_str()) {
-                errors.push(TypeError::undefined_slot(
-                    tag_name.as_str(),
-                    tag_name.clone(),
-                ));
+                errors.push(TypeError::UndefinedSlot {
+                    component: tag_name.as_str().to_string(),
+                    span: tag_name.clone(),
+                });
             }
 
             // Validate arguments
@@ -331,7 +331,7 @@ fn typecheck_node(
             ) {
                 (None, None) => {}
                 (None, Some((_, args_range))) => {
-                    errors.push(TypeError::unexpected_arguments(args_range.clone()));
+                    errors.push(TypeError::UnexpectedArguments { span: args_range.clone() });
                 }
                 (Some(params), None) => {
                     errors.push(TypeError::missing_arguments(params, tag_name.clone()));
@@ -339,20 +339,20 @@ fn typecheck_node(
                 (Some(params), Some((args, args_range))) => {
                     for param in params.values() {
                         if !args.contains_key(param.var_name.as_str()) {
-                            errors.push(TypeError::missing_required_parameter(
-                                param.var_name.as_str(),
-                                args_range.clone(),
-                            ));
+                            errors.push(TypeError::MissingRequiredParameter {
+                                param: param.var_name.as_str().to_string(),
+                                span: args_range.clone(),
+                            });
                         }
                     }
 
                     for arg in args.values() {
                         let param = match params.get(arg.var_name.as_str()) {
                             None => {
-                                errors.push(TypeError::unexpected_argument(
-                                    arg.var_name.as_str(),
-                                    arg.var_name.span().clone(),
-                                ));
+                                errors.push(TypeError::UnexpectedArgument {
+                                    arg: arg.var_name.as_str().to_string(),
+                                    span: arg.var_name.span().clone(),
+                                });
                                 continue;
                             }
                             Some(param) => param,
@@ -368,12 +368,12 @@ fn typecheck_node(
                             };
 
                         if !is_subtype(&evaluated_arg_type, &param.type_annotation) {
-                            errors.push(TypeError::argument_is_incompatible(
-                                &param.type_annotation.to_string(),
-                                &evaluated_arg_type.to_string(),
-                                arg.var_name.as_str(),
-                                arg.expression.span(),
-                            ));
+                            errors.push(TypeError::ArgumentIsIncompatible {
+                                expected: param.type_annotation.to_string(),
+                                found: evaluated_arg_type.to_string(),
+                                arg_name: arg.var_name.as_str().to_string(),
+                                span: arg.expression.span(),
+                            });
                             continue;
                         }
 
@@ -403,10 +403,10 @@ fn typecheck_node(
                     };
 
                 if !is_subtype(&expr_type, &DopType::String) {
-                    errors.push(TypeError::expected_string_attribute(
-                        &expr_type.to_string(),
-                        set_attr.span.clone(),
-                    ));
+                    errors.push(TypeError::ExpectedStringAttribute {
+                        found: expr_type.to_string(),
+                        span: set_attr.span.clone(),
+                    });
                     continue;
                 }
             }
@@ -425,10 +425,10 @@ fn typecheck_node(
                 }
             };
             if !is_subtype(&expr_type, &DopType::String) {
-                errors.push(TypeError::expected_string_expression(
-                    &expr_type.to_string(),
-                    span.clone(),
-                ));
+                errors.push(TypeError::ExpectedStringExpression {
+                    found: expr_type.to_string(),
+                    span: span.clone(),
+                });
             }
         }
 

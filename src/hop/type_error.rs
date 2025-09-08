@@ -76,49 +76,6 @@ pub enum TypeError {
 }
 
 impl TypeError {
-    pub fn undefined_component(component: &str, span: StringSpan) -> Self {
-        TypeError::UndefinedComponent {
-            component: component.to_string(),
-            span,
-        }
-    }
-
-    pub fn undeclared_component(module: &str, component: &str, span: StringSpan) -> Self {
-        TypeError::UndeclaredComponent {
-            module: module.to_string(),
-            component: component.to_string(),
-            span,
-        }
-    }
-
-    pub fn import_from_undefined_module(module: &str, span: StringSpan) -> Self {
-        TypeError::ImportFromUndefinedModule {
-            module: module.to_string(),
-            span,
-        }
-    }
-
-    pub fn unused_variable(var: &str, span: StringSpan) -> Self {
-        TypeError::UnusedVariable {
-            var: var.to_string(),
-            span,
-        }
-    }
-
-    pub fn variable_is_already_defined(var: &str, span: StringSpan) -> Self {
-        TypeError::VariableIsAlreadyDefined {
-            var: var.to_string(),
-            span,
-        }
-    }
-
-    pub fn undefined_slot(component: &str, span: StringSpan) -> Self {
-        TypeError::UndefinedSlot {
-            component: component.to_string(),
-            span,
-        }
-    }
-
     pub fn import_cycle(
         importer_module: &str,
         imported_component: &str,
@@ -139,20 +96,6 @@ impl TypeError {
         }
     }
 
-    pub fn expected_boolean_condition(found: &str, span: StringSpan) -> Self {
-        TypeError::ExpectedBooleanCondition {
-            found: found.to_string(),
-            span,
-        }
-    }
-
-    pub fn missing_required_parameter(param: &str, span: StringSpan) -> Self {
-        TypeError::MissingRequiredParameter {
-            param: param.to_string(),
-            span,
-        }
-    }
-
     pub fn missing_arguments(params: &BTreeMap<String, DopParameter>, span: StringSpan) -> Self {
         let args = params
             .iter()
@@ -162,96 +105,6 @@ impl TypeError {
         TypeError::MissingArguments { args, span }
     }
 
-    pub fn unexpected_arguments(span: StringSpan) -> Self {
-        TypeError::UnexpectedArguments { span }
-    }
-
-    pub fn unexpected_argument(arg: &str, span: StringSpan) -> Self {
-        TypeError::UnexpectedArgument {
-            arg: arg.to_string(),
-            span,
-        }
-    }
-
-    pub fn argument_is_incompatible(
-        expected: &str,
-        found: &str,
-        arg_name: &str,
-        span: StringSpan,
-    ) -> Self {
-        TypeError::ArgumentIsIncompatible {
-            expected: expected.to_string(),
-            found: found.to_string(),
-            arg_name: arg_name.to_string(),
-            span,
-        }
-    }
-
-    pub fn expected_string_attribute(found: &str, span: StringSpan) -> Self {
-        TypeError::ExpectedStringAttribute {
-            found: found.to_string(),
-            span,
-        }
-    }
-
-    pub fn cannot_iterate_empty_array(span: StringSpan) -> Self {
-        TypeError::CannotIterateEmptyArray { span }
-    }
-
-    pub fn cannot_iterate_over(typ: &str, span: StringSpan) -> Self {
-        TypeError::CannotIterateOver {
-            typ: typ.to_string(),
-            span,
-        }
-    }
-
-    pub fn expected_string_expression(found: &str, span: StringSpan) -> Self {
-        TypeError::ExpectedStringExpression {
-            found: found.to_string(),
-            span,
-        }
-    }
-
-    pub fn undefined_variable(name: &str, span: StringSpan) -> Self {
-        TypeError::UndefinedVariable {
-            name: name.to_string(),
-            span,
-        }
-    }
-
-    pub fn property_not_found_in_object(property: &str, span: StringSpan) -> Self {
-        TypeError::PropertyNotFoundInObject {
-            property: property.to_string(),
-            span,
-        }
-    }
-
-    pub fn cannot_use_as_object(typ: &str, span: StringSpan) -> Self {
-        TypeError::CannotUseAsObject {
-            typ: typ.to_string(),
-            span,
-        }
-    }
-
-    pub fn cannot_compare_types(left: &str, right: &str, span: StringSpan) -> Self {
-        TypeError::CannotCompareTypes {
-            left: left.to_string(),
-            right: right.to_string(),
-            span,
-        }
-    }
-
-    pub fn negation_requires_boolean(span: StringSpan) -> Self {
-        TypeError::NegationRequiresBoolean { span }
-    }
-
-    pub fn array_type_mismatch(expected: &str, found: &str, span: StringSpan) -> Self {
-        TypeError::ArrayTypeMismatch {
-            expected: expected.to_string(),
-            found: found.to_string(),
-            span,
-        }
-    }
 }
 
 impl Spanned for TypeError {
