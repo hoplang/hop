@@ -1,5 +1,5 @@
-use crate::hop::errors::{ParseError, TypeError};
 use crate::hop::ast::HopAst;
+use crate::hop::errors::{ParseError, TypeError};
 use crate::hop::evaluator;
 use crate::hop::parser::parse;
 use crate::hop::script_collector::ScriptCollector;
@@ -827,6 +827,34 @@ mod tests {
                 Rename
                   --> main.hop (line 4, col 7)
                 4 |     </div>
+                  |       ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_get_rename_locations_from_native_html_nested() {
+        check_rename_locations(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp>
+                  <div>
+                    <div>
+                     ^
+                        <div>Content</div>
+                    </div>
+                  </div>
+                </main-comp>
+            "#},
+            expect![[r#"
+                Rename
+                  --> main.hop (line 3, col 6)
+                3 |     <div>
+                  |      ^^^
+
+                Rename
+                  --> main.hop (line 5, col 7)
+                5 |     </div>
                   |       ^^^
             "#]],
         );
