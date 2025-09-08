@@ -407,7 +407,7 @@ mod tests {
         let archive = Archive::from(input);
         let mut map = HashMap::new();
         for file in archive.iter() {
-            let module_name = ModuleName::from(file.name.replace(".hop", ""));
+            let module_name = ModuleName::new(file.name.replace(".hop", "")).unwrap();
             map.insert(module_name, file.content.clone());
         }
         Program::new(map)
@@ -416,7 +416,7 @@ mod tests {
     fn program_from_archive(archive: &Archive) -> Program {
         let mut map = HashMap::new();
         for file in archive.iter() {
-            let module_name = ModuleName::from(file.name.replace(".hop", ""));
+            let module_name = ModuleName::new(file.name.replace(".hop", "")).unwrap();
             map.insert(module_name, file.content.clone());
         }
         Program::new(map)
@@ -432,7 +432,7 @@ mod tests {
         }
 
         let marker = &markers[0];
-        let module = ModuleName::from(marker.filename.replace(".hop", ""));
+        let module = ModuleName::new(marker.filename.replace(".hop", "")).unwrap();
 
         let locs = program_from_archive(&archive)
             .get_rename_locations(&module, marker.position)
@@ -442,7 +442,7 @@ mod tests {
         let annotator = SourceAnnotator::new().with_location();
 
         for file in archive.iter() {
-            let module_name = ModuleName::from(file.name.replace(".hop", ""));
+            let module_name = ModuleName::new(file.name.replace(".hop", "")).unwrap();
 
             let mut annotations: Vec<SimpleAnnotation> = locs
                 .iter()
@@ -474,7 +474,7 @@ mod tests {
         }
 
         let marker = &markers[0];
-        let module = ModuleName::from(marker.filename.replace(".hop", ""));
+        let module = ModuleName::new(marker.filename.replace(".hop", "")).unwrap();
 
         let program = program_from_archive(&archive);
 
@@ -496,7 +496,7 @@ mod tests {
     fn check_error_diagnostics(input: &str, module: &str, expected: Expect) {
         let program = program_from_txtar(input);
 
-        let diagnostics = program.get_error_diagnostics(ModuleName::from(module));
+        let diagnostics = program.get_error_diagnostics(ModuleName::new(module.to_string()).unwrap());
 
         if diagnostics.is_empty() {
             panic!("Expected diagnostics to be non-empty");
@@ -546,7 +546,7 @@ mod tests {
         }
 
         let marker = &markers[0];
-        let module = ModuleName::from(marker.filename.replace(".hop", ""));
+        let module = ModuleName::new(marker.filename.replace(".hop", "")).unwrap();
 
         let symbol = program_from_archive(&archive)
             .get_renameable_symbol(&module, marker.position)
@@ -575,7 +575,7 @@ mod tests {
         }
 
         let marker = &markers[0];
-        let module = ModuleName::from(marker.filename.replace(".hop", ""));
+        let module = ModuleName::new(marker.filename.replace(".hop", "")).unwrap();
 
         let hover_info = program_from_archive(&archive)
             .get_hover_info(&module, marker.position)
@@ -583,7 +583,7 @@ mod tests {
 
         let file = archive
             .iter()
-            .find(|f| ModuleName::from(f.name.replace(".hop", "")) == module)
+            .find(|f| ModuleName::new(f.name.replace(".hop", "")).unwrap() == module)
             .expect("Could not find file in archive");
 
         let output = SourceAnnotator::new().with_location().annotate(
@@ -1076,7 +1076,7 @@ mod tests {
         );
         // Resolve cycle
         program.update_module(
-            ModuleName::from("a"),
+            ModuleName::new("a".to_string()).unwrap(),
             indoc! {r#"
                 <a-comp>
                 </a-comp>
@@ -1140,7 +1140,7 @@ mod tests {
         );
         // Resolve cycle
         program.update_module(
-            ModuleName::from("c"),
+            ModuleName::new("c".to_string()).unwrap(),
             indoc! {r#"
                 <c-comp>
                 </c-comp>
@@ -1151,7 +1151,7 @@ mod tests {
         check_type_errors(&program, expect![""]);
         // Introduce new cycle a → b → a
         program.update_module(
-            ModuleName::from("b"),
+            ModuleName::new("b".to_string()).unwrap(),
             indoc! {r#"
                 <import component="a-comp" from="@/a" />
                 <b-comp>
@@ -1176,7 +1176,7 @@ mod tests {
         );
         // Resolve cycle
         program.update_module(
-            ModuleName::from("b"),
+            ModuleName::new("b".to_string()).unwrap(),
             indoc! {r#"
                 <b-comp>
                 </b-comp>

@@ -411,7 +411,7 @@ mod tests {
         let (source, position) = extract_position(input).expect("Position marker not found");
         let mut errors = Vec::new();
         let ast = parse(
-            ModuleName::from("test"),
+            ModuleName::new("test".to_string()).unwrap(),
             Tokenizer::new(source),
             &mut errors,
         );

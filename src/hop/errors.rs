@@ -253,6 +253,13 @@ impl ParseError {
             span,
         )
     }
+
+    pub fn invalid_module_name(
+        span: StringSpan,
+        error: crate::hop::module_name::InvalidModuleNameError,
+    ) -> Self {
+        Self::new(format!("{}", error), span)
+    }
 }
 
 impl Spanned for ParseError {

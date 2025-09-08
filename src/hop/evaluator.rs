@@ -47,7 +47,7 @@ pub fn render_file(
                     hop_mode,
                     child,
                     &mut env,
-                    &ModuleName::from("build"),
+                    &ModuleName::new("build".to_string()).unwrap(),
                     output,
                 )?;
             }
@@ -666,7 +666,7 @@ mod tests {
             let mut errors = Vec::new();
             let tokenizer = Tokenizer::new(file.content.clone());
             let ast = parse(
-                ModuleName::from(module_name.clone()),
+                ModuleName::new(module_name.clone()).unwrap(),
                 tokenizer,
                 &mut errors,
             );
@@ -675,13 +675,13 @@ mod tests {
                 panic!("Parse errors in {}: {:?}", module_name, errors);
             }
 
-            asts.insert(ModuleName::from(module_name), ast);
+            asts.insert(ModuleName::new(module_name).unwrap(), ast);
         }
 
         let mut typechecker = TypeChecker::default();
 
         for file in archive.iter() {
-            let module_name = ModuleName::from(file.name.replace(".hop", ""));
+            let module_name = ModuleName::new(file.name.replace(".hop", "")).unwrap();
             let ast = asts.get(&module_name).unwrap();
 
             typechecker.typecheck(&[ast]);
@@ -712,7 +712,7 @@ mod tests {
         evaluate_component(
             &asts,
             HopMode::Dev,
-            &ModuleName::from("main"),
+            &ModuleName::new("main".to_string()).unwrap(),
             "main-comp",
             args,
             None,

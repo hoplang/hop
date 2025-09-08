@@ -126,12 +126,13 @@ pub fn path_to_module_name(file_path: &Path, root: &ProjectRoot) -> anyhow::Resu
         .strip_prefix(dir)
         .with_context(|| format!("Failed to strip prefix from path {:?}", file_path))?;
 
-    Ok(ModuleName::from(
-        relative_path
-            .with_extension("")
-            .to_string_lossy()
-            .replace(std::path::MAIN_SEPARATOR, "/"),
-    ))
+    let module_str = relative_path
+        .with_extension("")
+        .to_string_lossy()
+        .replace(std::path::MAIN_SEPARATOR, "/");
+    
+    ModuleName::new(module_str)
+        .map_err(|e| anyhow::anyhow!("Invalid module name for path {:?}: {}", file_path, e))
 }
 
 /// Convert a module name with '/' separators back to a file path

@@ -29,11 +29,11 @@ fn get_ui_program() -> &'static Program {
         let mut program = Program::default();
 
         program.update_module(
-            ModuleName::from("hop/error_pages"),
+            ModuleName::new("hop/error_pages".to_string()).unwrap(),
             ERROR_TEMPLATES.to_string(),
         );
-        program.update_module(ModuleName::from("hop/ui"), UI_TEMPLATES.to_string());
-        program.update_module(ModuleName::from("hop/icons"), ICONS_TEMPLATES.to_string());
+        program.update_module(ModuleName::new("hop/ui".to_string()).unwrap(), UI_TEMPLATES.to_string());
+        program.update_module(ModuleName::new("hop/icons".to_string()).unwrap(), ICONS_TEMPLATES.to_string());
 
         // Check for any errors in the UI templates
         let parse_errors = program.get_parse_errors();
@@ -172,7 +172,7 @@ fn create_error_page(error: &anyhow::Error) -> String {
     );
     let mut html = String::new();
     match program.evaluate_component(
-        &ModuleName::from("hop/error_pages"),
+        &ModuleName::new("hop/error_pages".to_string()).unwrap(),
         "generic-error",
         args,
         HopMode::Dev,
@@ -194,7 +194,7 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
     );
     let mut html = String::new();
     match program.evaluate_component(
-        &ModuleName::from("hop/error_pages"),
+        &ModuleName::new("hop/error_pages".to_string()).unwrap(),
         "not-found-error",
         args,
         HopMode::Dev,

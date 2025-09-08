@@ -87,15 +87,21 @@ pub fn parse(
                         continue;
                     }
                     // Strip the @/ prefix for internal module resolution
-                    let module_path =
-                        ModuleName::new(from_attr.as_str().strip_prefix("@/").unwrap().to_string())
-                            .unwrap();
-                    imported_components.insert(cmp_attr.to_string(), module_path.clone());
-                    imports.push(Import {
-                        component_attr: PresentAttribute { value: cmp_attr },
-                        module_name: module_path.clone(),
-                        from_attr_value_span: from_attr,
-                    });
+                    let module_str = from_attr.as_str().strip_prefix("@/").unwrap();
+                    match ModuleName::new(module_str.to_string()) {
+                        Ok(module_path) => {
+                            imported_components.insert(cmp_attr.to_string(), module_path.clone());
+                            imports.push(Import {
+                                component_attr: PresentAttribute { value: cmp_attr },
+                                module_name: module_path.clone(),
+                                from_attr_value_span: from_attr,
+                            });
+                        }
+                        Err(e) => {
+                            errors.push(ParseError::invalid_module_name(from_attr.clone(), e));
+                            continue;
+                        }
+                    }
                 }
                 "render" => {
                     for attr in attributes {
@@ -541,7 +547,7 @@ mod tests {
     fn check(input: &str, expected: Expect) {
         let mut errors = Vec::new();
         let module = parse(
-            ModuleName::from("test"),
+            ModuleName::new("test".to_string()).unwrap(),
             Tokenizer::new(input.to_string()),
             &mut errors,
         );
@@ -1309,6 +1315,42 @@ mod tests {
                 error: Import paths must start with '@/' where '@' indicates the root directory
                 1 | <import component="foo-comp" from="other">
                   |                                    ^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_import_with_invalid_module_name() {
+        check(
+            indoc! {r#"
+                <import component="foo-comp" from="@/../foo">
+
+                <main-comp>
+                	<foo-comp/>
+                </main-comp>
+            "#},
+            expect![[r#"
+                error: Module name cannot contain '..'
+                1 | <import component="foo-comp" from="@/../foo">
+                  |                                    ^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_import_with_invalid_characters_in_module_name() {
+        check(
+            indoc! {r#"
+                <import component="bar-comp" from="@/foo/bar!baz">
+
+                <main-comp>
+                	<bar-comp/>
+                </main-comp>
+            "#},
+            expect![[r#"
+                error: Module name contains invalid character: '!'
+                1 | <import component="bar-comp" from="@/foo/bar!baz">
+                  |                                    ^^^^^^^^^^^^^
             "#]],
         );
     }

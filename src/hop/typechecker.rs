@@ -477,7 +477,7 @@ mod tests {
             let source_code = file.content.trim();
             let mut parse_errors = Vec::new();
             let tokenizer = Tokenizer::new(source_code.to_string());
-            let module_name = ModuleName::from(file.name.trim_end_matches(".hop"));
+            let module_name = ModuleName::new(file.name.trim_end_matches(".hop").to_string()).unwrap();
             let module = parse(module_name, tokenizer, &mut parse_errors);
 
             if !parse_errors.is_empty() {
