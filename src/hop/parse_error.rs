@@ -9,9 +9,6 @@ pub enum ParseError {
     #[error("Unmatched </{tag}>")]
     UnmatchedClosingTag { tag: String, span: StringSpan },
 
-    #[error("Unexpected end of expression")]
-    UnexpectedEndOfExpression { span: StringSpan },
-
     #[error("Missing attribute value")]
     MissingAttributeValue { span: StringSpan },
 
@@ -73,7 +70,6 @@ impl Spanned for ParseError {
             ParseError::SlotIsAlreadyDefined { span }
             | ParseError::UnmatchedClosingTag { span, .. }
             | ParseError::UnmatchedCharacter { ch: span, .. }
-            | ParseError::UnexpectedEndOfExpression { span }
             | ParseError::MissingAttributeValue { span }
             | ParseError::UnclosedTag { span, .. }
             | ParseError::ClosedVoidTag { span, .. }

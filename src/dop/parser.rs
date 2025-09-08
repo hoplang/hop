@@ -7,7 +7,7 @@ use crate::dop::ast::{BinaryOp, DopExpr, UnaryOp};
 use crate::dop::parse_error::ParseError;
 use crate::dop::tokenizer::{DopToken, DopTokenizer};
 use crate::dop::typechecker::SpannedDopType;
-use crate::span::string_cursor::{Spanned, StringCursor, StringSpan};
+use crate::span::string_cursor::{StringCursor, StringSpan};
 
 /// A DopVarName represents a validated variable name in dop.
 #[derive(Debug, Clone)]
@@ -548,7 +548,7 @@ impl DopParser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::span::{SimpleAnnotation, SourceAnnotator};
+    use crate::span::{SimpleAnnotation, SourceAnnotator, string_cursor::Spanned as _};
     use expect_test::{Expect, expect};
 
     fn annotate_error(error: ParseError) -> String {
@@ -561,8 +561,8 @@ mod tests {
             [SimpleAnnotation {
                 message: error.to_string(),
                 span: error.span().clone(),
-                }],
-            )
+            }],
+        )
     }
 
     fn check_parse_expr(input: &str, expected: Expect) {
@@ -700,11 +700,14 @@ mod tests {
 
     #[test]
     fn test_parse_expr_error_dot_no_identifier() {
-        check_parse_expr("user.", expect![[r#"
+        check_parse_expr(
+            "user.",
+            expect![[r#"
             error: Unexpected end of expression
             user.
             ^^^^^
-        "#]]);
+        "#]],
+        );
     }
 
     #[test]
@@ -805,20 +808,26 @@ mod tests {
 
     #[test]
     fn test_parse_expr_error_operator_at_end() {
-        check_parse_expr("x ==", expect![[r#"
+        check_parse_expr(
+            "x ==",
+            expect![[r#"
             error: Unexpected end of expression
             x ==
             ^^^^
-        "#]]);
+        "#]],
+        );
     }
 
     #[test]
     fn test_parse_expr_error_not_without_operand() {
-        check_parse_expr("!", expect![[r#"
+        check_parse_expr(
+            "!",
+            expect![[r#"
             error: Unexpected end of expression
             !
             ^
-        "#]]);
+        "#]],
+        );
     }
 
     #[test]
@@ -1283,11 +1292,14 @@ mod tests {
 
     #[test]
     fn test_parse_named_arguments_missing_value_error() {
-        check_parse_arguments("name:", expect![[r#"
+        check_parse_arguments(
+            "name:",
+            expect![[r#"
             error: Unexpected end of expression
             name:
             ^^^^^
-        "#]]);
+        "#]],
+        );
     }
 
     #[test]

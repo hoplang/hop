@@ -1,14 +1,14 @@
 use crate::filesystem::files::ProjectRoot;
 use crate::hop::evaluator::HopMode;
 use crate::hop::module_name::ModuleName;
-use std::collections::HashMap;
-use std::path::Path;
-use std::sync::{Arc, OnceLock, RwLock};
 use crate::hop::program::Program;
 use axum::body::Body;
 use axum::extract::{Request, State};
 use axum::http::StatusCode;
 use axum::response::{Html, Response};
+use std::collections::HashMap;
+use std::path::Path;
+use std::sync::{Arc, OnceLock, RwLock};
 
 #[derive(Clone)]
 struct AppState {
@@ -30,8 +30,14 @@ fn get_ui_program() -> &'static Program {
             ModuleName::new("hop/error_pages".to_string()).unwrap(),
             ERROR_TEMPLATES.to_string(),
         );
-        program.update_module(ModuleName::new("hop/ui".to_string()).unwrap(), UI_TEMPLATES.to_string());
-        program.update_module(ModuleName::new("hop/icons".to_string()).unwrap(), ICONS_TEMPLATES.to_string());
+        program.update_module(
+            ModuleName::new("hop/ui".to_string()).unwrap(),
+            UI_TEMPLATES.to_string(),
+        );
+        program.update_module(
+            ModuleName::new("hop/icons".to_string()).unwrap(),
+            ICONS_TEMPLATES.to_string(),
+        );
 
         // Check for any errors in the UI templates
         let parse_errors = program.get_parse_errors();

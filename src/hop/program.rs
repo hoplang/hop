@@ -1,13 +1,13 @@
 use crate::hop::ast::HopAst;
-use crate::hop::parse_error::ParseError;
 use crate::hop::evaluator;
-use crate::hop::type_error::TypeError;
+use crate::hop::parse_error::ParseError;
 use crate::hop::parser::parse;
 use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
+use crate::hop::type_error::TypeError;
 use crate::span::Position;
-use crate::span::string_cursor::{StringSpan, Spanned};
+use crate::span::string_cursor::{Spanned, StringSpan};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
@@ -497,7 +497,8 @@ mod tests {
     fn check_error_diagnostics(input: &str, module: &str, expected: Expect) {
         let program = program_from_txtar(input);
 
-        let diagnostics = program.get_error_diagnostics(ModuleName::new(module.to_string()).unwrap());
+        let diagnostics =
+            program.get_error_diagnostics(ModuleName::new(module.to_string()).unwrap());
 
         if diagnostics.is_empty() {
             panic!("Expected diagnostics to be non-empty");

@@ -212,7 +212,9 @@ mod tests {
 
         if !env_str.is_empty() {
             let mut parser = DopParser::from(env_str);
-            let params = parser.parse_parameters().expect("Failed to parse environment");
+            let params = parser
+                .parse_parameters()
+                .expect("Failed to parse environment");
             for (_, param) in params {
                 let _ = env.push(param.var_name.to_string(), param.var_type);
             }
