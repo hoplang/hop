@@ -1497,13 +1497,9 @@ mod tests {
             "#},
             // TODO: Make this a single error message
             expect![[r#"
-                error: <import> is missing required attribute component
-                1 | <import>
-                  | ^^^^^^^^
-
                 error: <import> is missing required attribute from
                 1 | <import>
-                  | ^^^^^^^^
+                  |  ^^^^^^
             "#]],
         );
     }
@@ -1520,7 +1516,7 @@ mod tests {
             expect![[r#"
                 error: <render> is missing required attribute file
                 1 | <render>
-                  | ^^^^^^^^
+                  |  ^^^^^^
             "#]],
         );
     }

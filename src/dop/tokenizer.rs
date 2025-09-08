@@ -1,3 +1,5 @@
+use itertools::Itertools as _;
+
 use crate::span::string_cursor::{StringCursor, StringSpan};
 use std::{fmt, iter::Peekable, str::FromStr};
 
@@ -139,13 +141,13 @@ impl Iterator for DopTokenizer {
                 ',' => Ok((DopToken::Comma, start)),
                 '!' => Ok((DopToken::Not, start)),
                 '=' => {
-                    if let Some(end) = self.iter.next_if(|s| s.ch() == '=') {
-                        return Ok((DopToken::Equal, start.to(end)));
-                    }
-                    Err(ParseError::new(
-                        "Expected '==' but found single '='".to_string(),
-                        start.clone(),
-                    ))
+                    let Some(end) = self.iter.next_if(|s| s.ch() == '=') else {
+                        return Err(ParseError::new(
+                            "Expected '==' but found single '='".to_string(),
+                            start.clone(),
+                        ));
+                    };
+                    Ok((DopToken::Equal, start.to(end)))
                 }
                 '\'' => {
                     let mut end_span = start.clone();
@@ -160,14 +162,9 @@ impl Iterator for DopTokenizer {
                     }
                 }
                 'A'..='Z' | 'a'..='z' | '_' => {
-                    let mut identifier = start;
-
-                    while let Some(s) = self
-                        .iter
-                        .next_if(|s| matches!(s.ch(), 'A'..='Z' | 'a'..='z' | '0'..='9' | '_'))
-                    {
-                        identifier = identifier.to(s);
-                    }
+                    let identifier = start.extend(self.iter.peeking_take_while(
+                        |s| matches!(s.ch(), 'A'..='Z' | 'a'..='z' | '0'..='9' | '_'),
+                    ));
 
                     let t = match identifier.as_str() {
                         "in" => DopToken::In,

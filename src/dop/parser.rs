@@ -55,7 +55,7 @@ impl Display for DopParameter {
     }
 }
 
-/// A DopArgument represents a parsed argument with a name and expression.
+/// A DopArgument represents a parsed argument with a name and a value.
 /// E.g. <my-comp {x: [1,2], y: 2}>
 ///                ^^^^^^^^
 #[derive(Debug, Clone)]
