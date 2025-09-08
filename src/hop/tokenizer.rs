@@ -131,21 +131,15 @@ impl Tokenizer {
         }
     }
 
-    // Find the end of an expression using the dop tokenizer.
-    //
-    // Expects the current char iterator be on the first start
-    // of a dop expression.
-    //
-    // E.g. {x + 2}
-    //      ^
-    //
-    // The returned span will be the span for the closing
-    // '}' of the dop expression.
-    //
-    // E.g. {x + 2}
-    //            ^
-    //
-    // Returns None if we reached EOF before finding the closing '}'.
+    /// Find the end of an expression using the dop tokenizer.
+    ///
+    /// Expects the current char iterator be on the first start
+    /// of a dop expression.
+    ///
+    /// E.g. {x + 2}
+    ///       ^
+    ///
+    /// Returns None if we reached EOF before finding the closing '}'.
     fn find_expression_end(iter: Peekable<StringCursor>) -> Option<StringSpan> {
         let mut dop_tokenizer = DopTokenizer::from(iter);
         let mut open_braces = 1;
@@ -347,6 +341,7 @@ impl Tokenizer {
     /// where expr is the inner span for the expression and span is th
     /// outer (containing the braces).
     fn parse_expression(&mut self) -> Option<(StringSpan, StringSpan)> {
+        // consume '{'
         let Some(left_brace) = self.iter.next_if(|s| s.ch() == '{') else {
             panic!(
                 "Expected '{{' in parse_expression but got {:?}",
@@ -359,6 +354,7 @@ impl Tokenizer {
                 .push(ParseError::new(format!("Unmatched {{"), left_brace));
             return None;
         };
+        // handle empty expression
         if left_brace.end() == found_right_brace.start() {
             let Some(right_brace) = self.iter.next_if(|s| s.ch() == '}') else {
                 panic!(
@@ -372,8 +368,8 @@ impl Tokenizer {
             ));
             return None;
         }
-        let mut expr = self.iter.next()?;
-        while self.iter.peek()?.start() != found_right_brace.start() {
+        let mut expr = self.iter.next().unwrap();
+        while self.iter.peek().unwrap().start() != found_right_brace.start() {
             expr = expr.to(self.iter.next()?);
         }
         // consume: '}'
@@ -2186,6 +2182,34 @@ mod tests {
     }
 
     #[test]
+    fn test_tokenize_text_with_unrecognized_expressions() {
+        check(
+            "{ ~ } {{ ~ }} {{{{   }}}{}{{}}}",
+            expect![[r#"
+                Expression " ~ "
+                1 | { ~ } {{ ~ }} {{{{   }}}{}{{}}}
+                  | ^^^^^
+
+                Text [1 byte, " "]
+                1 | { ~ } {{ ~ }} {{{{   }}}{}{{}}}
+                  |      ^
+
+                Expression "{ ~ }"
+                1 | { ~ } {{ ~ }} {{{{   }}}{}{{}}}
+                  |       ^^^^^^^
+
+                Text [1 byte, " "]
+                1 | { ~ } {{ ~ }} {{{{   }}}{}{{}}}
+                  |              ^
+
+                Expression "{{{   }}}{}{{}}"
+                1 | { ~ } {{ ~ }} {{{{   }}}{}{{}}}
+                  |               ^^^^^^^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
     fn test_tokenize_text_with_multiple_expressions() {
         check(
             "<p>User {user.name} has {user.count} items</p>",
@@ -2513,6 +2537,30 @@ mod tests {
                 Unmatched {
                 1 | <div {>
                   |      ^
+            "#]],
+        );
+        check(
+            r#"{{{}}{{{}}}{{{}}}{}"#,
+            expect![[r#"
+                Unmatched {
+                1 | {{{}}{{{}}}{{{}}}{}
+                  | ^
+
+                Expression "{}"
+                1 | {{{}}{{{}}}{{{}}}{}
+                  |  ^^^^
+
+                Expression "{{}}"
+                1 | {{{}}{{{}}}{{{}}}{}
+                  |      ^^^^^^
+
+                Expression "{{}}"
+                1 | {{{}}{{{}}}{{{}}}{}
+                  |            ^^^^^^
+
+                Empty expression
+                1 | {{{}}{{{}}}{{{}}}{}
+                  |                  ^^
             "#]],
         );
     }
