@@ -20,12 +20,12 @@ impl ParseError {
         Self::new(format!("Unmatched '{token}'"), span)
     }
 
-    pub fn invalid_variable_name(name: &str, span: StringSpan) -> Self {
+    pub fn invalid_variable_name(name: StringSpan) -> Self {
         Self::new(
             format!(
                 "Invalid variable name '{name}'. Variable names must start with a letter and contain only letters, digits, and underscores"
             ),
-            span,
+            name,
         )
     }
 
@@ -75,15 +75,15 @@ impl ParseError {
         Self::new("Expected identifier after '.'".to_string(), span)
     }
 
-    pub fn duplicate_argument(name: &str, span: StringSpan) -> Self {
-        Self::new(format!("Duplicate argument '{name}'"), span)
+    pub fn duplicate_argument(name: StringSpan) -> Self {
+        Self::new(format!("Duplicate argument '{name}'"), name)
     }
 
-    pub fn duplicate_parameter(name: &str, span: StringSpan) -> Self {
-        Self::new(format!("Duplicate parameter '{name}'"), span)
+    pub fn duplicate_parameter(name: StringSpan) -> Self {
+        Self::new(format!("Duplicate parameter '{name}'"), name)
     }
 
-    pub fn duplicate_property(name: &str, span: StringSpan) -> Self {
-        Self::new(format!("Duplicate property '{name}'"), span)
+    pub fn duplicate_property(name: StringSpan) -> Self {
+        Self::new(format!("Duplicate property '{name}'"), name)
     }
 }

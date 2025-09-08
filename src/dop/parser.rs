@@ -27,10 +27,7 @@ impl DopVarName {
         if !chars.next().is_some_and(|c| c.is_ascii_alphabetic())
             || !chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
         {
-            return Err(ParseError::invalid_variable_name(
-                value.as_str(),
-                value.clone(),
-            ));
+            return Err(ParseError::invalid_variable_name(value.clone()));
         }
         Ok(DopVarName { value })
     }
@@ -179,7 +176,6 @@ pub fn parse_parameters(
         let param = parse_parameter(tokenizer)?;
         if params.contains_key(param.var_name.value.as_str()) {
             return Err(ParseError::duplicate_parameter(
-                param.var_name.value.as_str(),
                 param.var_name.value.clone(),
             ));
         }
@@ -206,10 +202,7 @@ pub fn parse_arguments(
         }
         let arg = parse_argument(tokenizer)?;
         if args.contains_key(arg.var_name.value.as_str()) {
-            return Err(ParseError::duplicate_argument(
-                arg.var_name.value.as_str(),
-                arg.var_name.value.clone(),
-            ));
+            return Err(ParseError::duplicate_argument(arg.var_name.value.clone()));
         }
         args.insert(arg.var_name.value.to_string(), arg);
     }
@@ -260,10 +253,7 @@ fn parse_type(tokenizer: &mut Peekable<DopTokenizer>) -> Result<SpannedDopType, 
                 expect_token(tokenizer, DopToken::Colon)?;
                 let typ = parse_type(tokenizer)?;
                 if properties.contains_key(prop_name.as_str()) {
-                    return Err(ParseError::duplicate_property(
-                        prop_name.as_str(),
-                        prop_name.clone(),
-                    ));
+                    return Err(ParseError::duplicate_property(prop_name.clone()));
                 }
                 properties.insert(prop_name.to_string(), typ.dop_type);
 
@@ -434,10 +424,7 @@ fn parse_primary(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopExpr, Pars
                     .iter()
                     .any(|(name, _)| name.as_str() == prop_name.as_str())
                 {
-                    return Err(ParseError::duplicate_property(
-                        prop_name.as_str(),
-                        prop_name.clone(),
-                    ));
+                    return Err(ParseError::duplicate_property(prop_name.clone()));
                 }
 
                 expect_token(tokenizer, DopToken::Colon)?;
