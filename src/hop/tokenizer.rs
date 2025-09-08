@@ -172,80 +172,99 @@ impl Tokenizer {
         }
     }
 
-    // Parse a markup declaration and return the token.
-    //
-    // Expects that '<!' have been read from the chars.
-    fn parse_markup_declaration(&mut self, first_token: StringSpan) -> Option<Token> {
-        match self.iter.next()? {
-            // Comment
-            s if s.ch() == '-' && self.iter.peek()?.ch() == '-' => {
-                self.iter.next();
-                let mut count = 0;
-                loop {
-                    match self.iter.next()? {
-                        s if s.ch() == '-' => {
-                            count += 1;
-                        }
-                        s if s.ch() == '>' => {
-                            if count >= 2 {
-                                return Some(Token::Comment {
-                                    span: first_token.to(s),
-                                });
-                            } else {
-                                count = 0;
-                            }
-                        }
-                        _ => {
-                            count = 0;
-                        }
+    fn parse_comment(&mut self, left_angle_to_bang: StringSpan) -> Option<Token> {
+        let Some(first_dash) = self.iter.next_if(|s| s.ch() == '-') else {
+            panic!(
+                "Expected '-' in parse_comment but got {:?}",
+                self.iter.next().map(|s| s.ch())
+            );
+        };
+        let Some(second_dash) = self.iter.next_if(|s| s.ch() == '-') else {
+            self.errors.push(ParseError::new(
+                "Invalid markup declaration".to_string(),
+                left_angle_to_bang.to(first_dash),
+            ));
+            return None;
+        };
+        let mut count = 0;
+        loop {
+            match self.iter.next() {
+                Some(s) if s.ch() == '-' => {
+                    count += 1;
+                }
+                Some(s) if s.ch() == '>' => {
+                    if count >= 2 {
+                        return Some(Token::Comment {
+                            span: left_angle_to_bang.to(s),
+                        });
+                    } else {
+                        count = 0;
                     }
                 }
-            }
-            // Doctype
-            s if (s.ch() == 'D' || s.ch() == 'd')
-                && self
-                    .iter
-                    .clone()
-                    .flat_map(|s| s.ch().to_lowercase())
-                    .take(6)
-                    .eq("octype".chars()) =>
-            {
-                for _ in 0..6 {
-                    self.iter.next();
+                Some(_) => {
+                    count = 0;
                 }
-                while self.iter.next_if(|s| s.ch() != '>').is_some() {}
-                let ch = self.iter.next()?;
-                Some(Token::Doctype {
-                    span: first_token.to(ch),
-                })
-            }
-            // Invalid
-            ch => {
-                self.errors.push(ParseError::new(
-                    "Invalid character in markup declaration".to_string(),
-                    ch.clone(),
-                ));
-
-                Some(Token::Doctype {
-                    span: first_token.to(ch),
-                })
+                None => {
+                    self.errors.push(ParseError::new(
+                        "Unterminated comment".to_string(),
+                        left_angle_to_bang.to(second_dash),
+                    ));
+                    return None;
+                }
             }
         }
     }
 
-    // Parse a tag name from the iterator.
+    fn parse_doctype(&mut self, left_angle_to_bang: StringSpan) -> Option<Token> {
+        let doctype = self
+            .iter
+            .clone()
+            .map(|s| s.ch())
+            .take(7)
+            .collect::<String>()
+            .to_lowercase();
+        if doctype != "doctype" {
+            self.errors.push(ParseError::new(
+                "Invalid markup declaration".to_string(),
+                left_angle_to_bang,
+            ));
+            return None;
+        }
+        while self.iter.next_if(|s| s.ch() != '>').is_some() {}
+        let Some(right_angle) = self.iter.next_if(|s| s.ch() == '>') else {
+            self.errors.push(ParseError::new(
+                "Invalid markup declaration".to_string(),
+                left_angle_to_bang,
+            ));
+            return None;
+        };
+        Some(Token::Doctype {
+            span: left_angle_to_bang.to(right_angle),
+        })
+    }
+
+    // Parse a markup declaration from the iterator.
     //
-    // E.g. <h1 class="foo bar">
-    //       ^^
-    fn parse_tag_name(&mut self) -> Option<StringSpan> {
-        // consume: [a-zA-Z]
-        let initial = self.iter.next_if(|s| s.ch().is_ascii_alphabetic())?;
-        // consume: ('-' | [a-zA-Z0-9])*
-        let tag_name = initial.extend(
-            self.iter
-                .peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()),
-        );
-        Some(tag_name)
+    // E.g. <!-- hello -->
+    //       ^^^^^^^^^^^^^
+    fn parse_markup_declaration(&mut self, left_angle: StringSpan) -> Option<Token> {
+        let Some(bang) = self.iter.next_if(|s| s.ch() == '!') else {
+            panic!(
+                "Expected '!' in parse_markup_declaration but got {:?}",
+                self.iter.next().map(|s| s.ch())
+            );
+        };
+        match self.iter.peek().map(|s| s.ch()) {
+            Some('-') => self.parse_comment(left_angle.to(bang)),
+            Some('D' | 'd') => self.parse_doctype(left_angle.to(bang)),
+            _ => {
+                self.errors.push(ParseError::new(
+                    "Invalid markup declaration".to_string(),
+                    left_angle.to(bang),
+                ));
+                None
+            }
+        }
     }
 
     // Parse an attribute from the iterator.
@@ -254,7 +273,21 @@ impl Tokenizer {
     //           ^^^^^^^^^
     //
     // Returns None if a valid attribute could not be parsed from the iterator.
-    fn parse_attribute(&mut self, attr_name: StringSpan) -> Option<Attribute> {
+    fn parse_attribute(&mut self) -> Option<Attribute> {
+        // consume: [a-zA-Z]
+        let Some(initial) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
+            panic!(
+                "Expected [a-zA-Z] in parse_attribute but got {:?}",
+                self.iter.next().map(|s| s.ch())
+            );
+        };
+
+        // consume: ('-' | [a-zA-Z0-9])*
+        let attr_name = initial.extend(
+            self.iter
+                .peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()),
+        );
+
         // consume: whitespace
         self.skip_whitespace();
 
@@ -306,26 +339,33 @@ impl Tokenizer {
     /// E.g. <div foo="bar" {x: string}>
     ///                     ^^^^^^^^^^^
     ///
-    /// When it returns the iterator will be past the closing brace '}'
-    /// if it managed to parse the expression.
+    /// When this function returns the iterator will be past the
+    /// closing brace '}' if we did not reach EOF.
     ///
-    /// Returns None if we reached EOF.
-    /// Returns Some(Err(...)) if the expression was empty
-    /// Returns Some(Ok((expr,span))) if we managed to parse the expression
-    /// where expr is the inner span for the expression and span is the outer (containing the
-    /// braces).
+    /// Returns None if we reached EOF or if the expression was empty.
+    /// Returns Some((expr,span)) if we managed to parse the expression
+    /// where expr is the inner span for the expression and span is th
+    /// outer (containing the braces).
     fn parse_expression(&mut self) -> Option<(StringSpan, StringSpan)> {
-        let Some(left_brace) = self.iter.next() else {
-            panic!();
+        let Some(left_brace) = self.iter.next_if(|s| s.ch() == '{') else {
+            panic!(
+                "Expected '{{' in parse_expression but got {:?}",
+                self.iter.next().map(|s| s.ch())
+            );
         };
         let clone = self.iter.clone();
-        let Some(right_brace) = Self::find_expression_end(clone) else {
+        let Some(found_right_brace) = Self::find_expression_end(clone) else {
             self.errors
                 .push(ParseError::new(format!("Unmatched {{"), left_brace));
             return None;
         };
-        if left_brace.end() == right_brace.start() {
-            self.next(); // skip right brace
+        if left_brace.end() == found_right_brace.start() {
+            let Some(right_brace) = self.iter.next_if(|s| s.ch() == '}') else {
+                panic!(
+                    "Expected '}}' in parse_expression but got {:?}",
+                    self.iter.next().map(|s| s.ch())
+                );
+            };
             self.errors.push(ParseError::new(
                 "Empty expression".to_string(),
                 left_brace.to(right_brace),
@@ -333,10 +373,16 @@ impl Tokenizer {
             return None;
         }
         let mut expr = self.iter.next()?;
-        while self.iter.peek()?.start() != right_brace.start() {
+        while self.iter.peek()?.start() != found_right_brace.start() {
             expr = expr.to(self.iter.next()?);
         }
-        self.iter.next()?; // skip right brace
+        // consume: '}'
+        let Some(right_brace) = self.iter.next_if(|s| s.ch() == '}') else {
+            panic!(
+                "Expected '}}' in parse_expression but got {:?}",
+                self.iter.next().map(|s| s.ch())
+            );
+        };
         Some((expr, left_brace.to(right_brace)))
     }
 
@@ -348,39 +394,29 @@ impl Tokenizer {
         let mut attributes: Vec<Attribute> = Vec::new();
         let mut expression: Option<StringSpan> = None;
         loop {
-            // consume: whitespace
             self.skip_whitespace();
-
             match self.iter.peek().map(|s| s.ch()) {
                 Some('{') => {
-                    if let Some((expr, _)) = self.parse_expression() {
-                        expression = Some(expr);
-                    }
+                    let Some((expr, _)) = self.parse_expression() else {
+                        continue;
+                    };
+                    expression = Some(expr);
                 }
                 Some(ch) if ch.is_ascii_alphabetic() => {
-                    let Some(initial) = self.iter.next() else {
-                        panic!();
+                    let Some(attr) = self.parse_attribute() else {
+                        continue;
                     };
-                    // consume: [a-zA-Z0-9]*
-                    let tag_name =
-                        initial.extend(self.iter.peeking_take_while(|s| {
-                            s.ch() == '-' || s.ch().is_ascii_alphanumeric()
-                        }));
-                    // consume: attribute
-                    if let Some(attr) = self.parse_attribute(tag_name) {
-                        let exists = attributes
-                            .iter()
-                            .any(|a| a.name.as_str() == attr.name.as_str());
-                        if exists {
-                            self.errors.push(ParseError::duplicate_attribute(
-                                attr.name.as_str(),
-                                attr.name.clone(),
-                            ));
-                        } else {
-                            attributes.push(attr);
-                        }
+                    let exists = attributes
+                        .iter()
+                        .any(|a| a.name.as_str() == attr.name.as_str());
+                    if exists {
+                        self.errors.push(ParseError::duplicate_attribute(
+                            attr.name.as_str(),
+                            attr.name.clone(),
+                        ));
+                    } else {
+                        attributes.push(attr);
                     }
-                    continue;
                 }
                 _ => {
                     return (attributes, expression);
@@ -389,7 +425,20 @@ impl Tokenizer {
         }
     }
 
-    fn parse_opening_tag(&mut self, left_angle: StringSpan, tag_name: StringSpan) -> Option<Token> {
+    fn parse_opening_tag(&mut self, left_angle: StringSpan) -> Option<Token> {
+        // consume: [a-zA-Z]
+        let Some(initial) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
+            panic!(
+                "Expected [a-zA-Z] in parse_opening_tag but got {:?}",
+                self.iter.next().map(|s| s.ch())
+            );
+        };
+
+        // consume: ('-' | [a-zA-Z0-9])*
+        let tag_name = initial.extend(
+            self.iter
+                .peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()),
+        );
         // consume: tag content
         let (attributes, expression) = self.parse_tag_content();
 
@@ -421,21 +470,30 @@ impl Tokenizer {
         })
     }
 
-    // Expects that the slash has been consumed
-    fn parse_closing_tag(&mut self, left_angle_slash: StringSpan) -> Option<Token> {
-        // sequential
+    fn parse_closing_tag(&mut self, left_angle: StringSpan) -> Option<Token> {
+        let Some(slash) = self.iter.next_if(|s| s.ch() == '/') else {
+            panic!(
+                "Expected '/' in parse_closing_tag but got {:?}",
+                self.iter.next().map(|s| s.ch())
+            );
+        };
 
         // consume: whitespace
         self.skip_whitespace();
 
-        // consume: tag name
-        let Some(tag_name) = self.parse_tag_name() else {
+        // consume: [a-zA-Z]
+        let Some(initial) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
             self.errors.push(ParseError::new(
                 "Unterminated closing tag".to_string(),
-                left_angle_slash,
+                left_angle.to(slash),
             ));
             return None;
         };
+        // consume: ('-' | [a-zA-Z0-9])*
+        let tag_name = initial.extend(
+            self.iter
+                .peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()),
+        );
 
         // consume: whitespace
         self.skip_whitespace();
@@ -450,11 +508,11 @@ impl Tokenizer {
         };
         Some(Token::ClosingTag {
             tag_name,
-            span: left_angle_slash.to(right_angle),
+            span: left_angle.to(right_angle),
         })
     }
 
-    fn iter_peek_closing_tag(&self, tag_name: &StringSpan) -> bool {
+    fn iter_peek_rawtext_closing_tag(&self, tag_name: &StringSpan) -> bool {
         let mut iter = self.iter.clone();
         // consume: '<'
         if iter.next().is_none_or(|s| s.ch() != '<') {
@@ -490,10 +548,10 @@ impl Tokenizer {
         true
     }
 
-    fn parse_raw_text(&mut self, tag_name: StringSpan) -> Option<Token> {
+    fn parse_rawtext(&mut self, tag_name: StringSpan) -> Option<Token> {
         let mut raw_text: Option<StringSpan> = None;
         loop {
-            if self.iter.peek().is_none() || self.iter_peek_closing_tag(&tag_name) {
+            if self.iter.peek().is_none() || self.iter_peek_rawtext_closing_tag(&tag_name) {
                 return raw_text.map(|s| Token::Text { span: s });
             }
             if let Some(ch) = self.iter.next() {
@@ -502,36 +560,43 @@ impl Tokenizer {
         }
     }
 
+    fn parse_text_expression(&mut self) -> Option<Token> {
+        self.parse_expression()
+            .map(|(expression, span)| Token::Expression { expression, span })
+    }
+
+    fn parse_text(&mut self) -> Option<Token> {
+        let Some(initial) = self.iter.next() else {
+            panic!("Expected an initial char in parse_text but got None");
+        };
+        Some(Token::Text {
+            span: initial.extend(
+                self.iter
+                    .peeking_take_while(|s| s.ch() != '{' && s.ch() != '<'),
+            ),
+        })
+    }
+
     fn parse_tag(&mut self) -> Option<Token> {
         let Some(left_angle) = self.iter.next() else {
-            panic!();
+            panic!(
+                "Expected '<' in parse_tag but got {:?}",
+                self.iter.next().map(|s| s.ch())
+            );
         };
 
-        // case: '!'
-        if let Some(_bang) = self.iter.next_if(|s| s.ch() == '!') {
-            return self.parse_markup_declaration(left_angle);
+        match self.iter.peek().map(|s| s.ch()) {
+            Some('!') => self.parse_markup_declaration(left_angle),
+            Some('/') => self.parse_closing_tag(left_angle),
+            Some(ch) if ch.is_ascii_alphabetic() => self.parse_opening_tag(left_angle),
+            _ => {
+                self.errors.push(ParseError::new(
+                    "Unterminated tag start".to_string(),
+                    left_angle,
+                ));
+                None
+            }
         }
-
-        // case: '/'
-        if let Some(slash) = self.iter.next_if(|s| s.ch() == '/') {
-            return self.parse_closing_tag(left_angle.to(slash));
-        }
-
-        // case: [a-zA-Z]
-        if let Some(initial) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) {
-            let tag_name = initial.extend(
-                self.iter
-                    .peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()),
-            );
-            return self.parse_opening_tag(left_angle, tag_name);
-        }
-
-        // case: otherwise
-        self.errors.push(ParseError::new(
-            "Unterminated tag start".to_string(),
-            left_angle,
-        ));
-        None
     }
 
     fn step(&mut self) -> Option<Token> {
@@ -541,27 +606,15 @@ impl Tokenizer {
         if let Some(tag_name) = self.raw_text_closing_tag.take() {
             // note that we should only return if parse_raw_text
             // returns an actual token
-            if let Some(token) = self.parse_raw_text(tag_name) {
+            if let Some(token) = self.parse_rawtext(tag_name) {
                 return Some(token);
             }
         }
 
         match self.iter.peek().map(|s| s.ch()) {
             Some('<') => self.parse_tag(),
-            Some('{') => self
-                .parse_expression()
-                .map(|(expression, span)| Token::Expression { expression, span }),
-            Some(_) => {
-                let Some(initial) = self.iter.next() else {
-                    panic!();
-                };
-                Some(Token::Text {
-                    span: initial.extend(
-                        self.iter
-                            .peeking_take_while(|s| s.ch() != '{' && s.ch() != '<'),
-                    ),
-                })
-            }
+            Some('{') => self.parse_text_expression(),
+            Some(_) => self.parse_text(),
             None => None,
         }
     }
@@ -596,38 +649,14 @@ mod tests {
     fn check(input: &str, expected: Expect) {
         let tokenizer = Tokenizer::new(input.to_string());
         let result: Vec<_> = tokenizer.collect();
-
-        // Validate that ranges are contiguous
-        let tokens_only: Vec<_> = result
-            .iter()
-            .filter_map(|(token, _)| token.as_ref())
-            .collect();
-        let mut iter = tokens_only.iter().peekable();
-        while let Some(current_token) = iter.next() {
-            if let Some(next_token) = iter.peek() {
-                if current_token.span().end() != next_token.span().start() {
-                    panic!(
-                        "Non-contiguous ranges detected: token ends at {:?}, but next token starts at {:?}. \
-                         Current token: {:?}, Next token: {:?}",
-                        current_token.span().end(),
-                        next_token.span().start(),
-                        current_token,
-                        next_token
-                    );
-                }
-            }
-        }
-
         let mut annotations = Vec::new();
         for (token, errors) in result {
-            // Add token first
             if let Some(t) = token {
                 annotations.push(SimpleAnnotation {
                     message: t.to_string(),
                     span: t.span().clone(),
                 });
             }
-            // Then add errors
             for err in errors {
                 annotations.push(SimpleAnnotation {
                     message: err.to_string(),
@@ -2441,6 +2470,70 @@ mod tests {
             1 | hello {
               |       ^
         "#]],
+        );
+        check(
+            r#"hello {foo"#,
+            expect![[r#"
+                Text [6 byte, "hello "]
+                1 | hello {foo
+                  | ^^^^^^
+
+                Unmatched {
+                1 | hello {foo
+                  |       ^
+
+                Text [3 byte, "foo"]
+                1 | hello {foo
+                  |        ^^^
+            "#]],
+        );
+        check(
+            r#"hello {{{foo}}"#,
+            expect![[r#"
+                Text [6 byte, "hello "]
+                1 | hello {{{foo}}
+                  | ^^^^^^
+
+                Unmatched {
+                1 | hello {{{foo}}
+                  |       ^
+
+                Expression "{foo}"
+                1 | hello {{{foo}}
+                  |        ^^^^^^^
+            "#]],
+        );
+        check(
+            r#"<div {>"#,
+            expect![[r#"
+                OpeningTag <div>
+                1 | <div {>
+                  | ^^^^^^^
+
+                Unmatched {
+                1 | <div {>
+                  |      ^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_unterminated_comments() {
+        check(
+            r#"<!--"#,
+            expect![[r#"
+                Unterminated comment
+                1 | <!--
+                  | ^^^^
+            "#]],
+        );
+        check(
+            r#"<!-- foo bar"#,
+            expect![[r#"
+                Unterminated comment
+                1 | <!-- foo bar
+                  | ^^^^
+            "#]],
         );
     }
 
