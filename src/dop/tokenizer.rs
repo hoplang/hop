@@ -181,20 +181,12 @@ impl Iterator for DopTokenizer {
                     Ok((t, identifier))
                 }
                 ch if ch.is_ascii_digit() => {
-                    let mut number_string = start;
-                    while let Some(digit) = self.iter.next_if(|s| s.ch().is_ascii_digit()) {
-                        number_string = number_string.to(digit);
-                    }
+                    let mut number_string =
+                        start.extend(self.iter.peeking_take_while(|s| s.ch().is_ascii_digit()));
                     if let Some(dot) = self.iter.next_if(|s| s.ch() == '.') {
                         number_string = number_string.to(dot);
-                        if !self.iter.peek().is_some_and(|s| s.ch().is_ascii_digit()) {
-                            return Err(ParseError::expected_digit_after_decimal_point(
-                                number_string.clone(),
-                            ));
-                        }
-                        while let Some(digit) = self.iter.next_if(|s| s.ch().is_ascii_digit()) {
-                            number_string = number_string.to(digit);
-                        }
+                        number_string = number_string
+                            .extend(self.iter.peeking_take_while(|s| s.ch().is_ascii_digit()));
                     }
                     match serde_json::Number::from_str(number_string.as_str()) {
                         Ok(n) => Ok((DopToken::NumberLiteral(n), number_string)),
@@ -342,15 +334,15 @@ mod tests {
         check(
             "1. 1000. 1. 000 0. 0123 01010",
             expect![[r#"
-                error: Expected digit after decimal point
+                error: Invalid number format: 1.
                 1. 1000. 1. 000 0. 0123 01010
                 ^^
 
-                error: Expected digit after decimal point
+                error: Invalid number format: 1000.
                 1. 1000. 1. 000 0. 0123 01010
                    ^^^^^
 
-                error: Expected digit after decimal point
+                error: Invalid number format: 1.
                 1. 1000. 1. 000 0. 0123 01010
                          ^^
 
@@ -358,7 +350,7 @@ mod tests {
                 1. 1000. 1. 000 0. 0123 01010
                             ^^^
 
-                error: Expected digit after decimal point
+                error: Invalid number format: 0.
                 1. 1000. 1. 000 0. 0123 01010
                                 ^^
 
