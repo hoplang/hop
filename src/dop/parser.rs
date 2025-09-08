@@ -384,19 +384,22 @@ impl DopParser {
 
                 // Handle property access
                 while self.advance_if(DopToken::Dot).is_some() {
-                    match self.iter.next().ok_or_else(|| ParseError::UnexpectedEof {
-                        span: self.span.clone(),
-                    })?? {
-                        (DopToken::Identifier(prop), property_span) => {
+                    match self.iter.next().transpose()? {
+                        Some((DopToken::Identifier(prop), prop_span)) => {
                             expr = DopExpr::PropertyAccess {
-                                span: expr.span().to(property_span.clone()),
+                                span: expr.span().to(prop_span.clone()),
                                 object: Box::new(expr),
                                 property: prop,
                             };
                         }
-                        (_, span) => {
+                        Some((_, span)) => {
                             return Err(ParseError::ExpectedIdentifierAfterDot {
                                 span: span.clone(),
+                            });
+                        }
+                        None => {
+                            return Err(ParseError::UnexpectedEof {
+                                span: self.span.clone(),
                             });
                         }
                     }
@@ -407,14 +410,14 @@ impl DopParser {
             (DopToken::StringLiteral(value), span) => Ok(DopExpr::StringLiteral { value, span }),
             (DopToken::BooleanLiteral(value), span) => Ok(DopExpr::BooleanLiteral { value, span }),
             (DopToken::NumberLiteral(value), span) => Ok(DopExpr::NumberLiteral { value, span }),
-            (DopToken::LeftBracket, left_bracket_span) => {
+            (DopToken::LeftBracket, left_bracket) => {
                 let mut elements = Vec::new();
 
                 // Handle empty array
                 if let Some(right_bracket_span) = self.advance_if(DopToken::RightBracket) {
                     return Ok(DopExpr::ArrayLiteral {
                         elements,
-                        span: left_bracket_span.to(right_bracket_span),
+                        span: left_bracket.to(right_bracket_span),
                     });
                 }
 
@@ -422,36 +425,34 @@ impl DopParser {
                 loop {
                     elements.push(self.parse_equality()?);
 
-                    match self
-                        .iter
-                        .next()
-                        .ok_or_else(|| ParseError::UnmatchedToken {
-                            token: DopToken::LeftBracket,
-                            span: left_bracket_span.clone(),
-                        })?? {
-                        (DopToken::Comma, _) => {
+                    match self.iter.next().transpose()? {
+                        Some((DopToken::Comma, _)) => {
                             // Handle trailing comma
-                            if let Some(right_bracket_span) =
-                                self.advance_if(DopToken::RightBracket)
-                            {
+                            if let Some(right_bracket) = self.advance_if(DopToken::RightBracket) {
                                 return Ok(DopExpr::ArrayLiteral {
                                     elements,
-                                    span: left_bracket_span.to(right_bracket_span),
+                                    span: left_bracket.to(right_bracket),
                                 });
                             }
                             continue;
                         }
-                        (DopToken::RightBracket, right_bracket_span) => {
+                        Some((DopToken::RightBracket, right_bracket)) => {
                             return Ok(DopExpr::ArrayLiteral {
                                 elements,
-                                span: left_bracket_span.to(right_bracket_span),
+                                span: left_bracket.to(right_bracket),
                             });
                         }
-                        (t, span) => {
+                        Some((token, span)) => {
                             return Err(ParseError::ExpectedTokensButGot {
                                 expected: vec![DopToken::Comma, DopToken::RightBracket],
-                                actual: t,
+                                actual: token,
                                 span: span.clone(),
+                            });
+                        }
+                        None => {
+                            return Err(ParseError::UnmatchedToken {
+                                token: DopToken::LeftBracket,
+                                span: left_bracket.clone(),
                             });
                         }
                     }
