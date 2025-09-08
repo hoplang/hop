@@ -701,7 +701,7 @@ mod tests {
             for err in errors {
                 annotations.push(SimpleAnnotation {
                     message: err.to_string(),
-                    span: err.span.clone(),
+                    span: err.span().clone(),
                 });
             }
         }
