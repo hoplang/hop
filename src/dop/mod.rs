@@ -11,4 +11,4 @@ pub use parser::{
 };
 pub use runtime::evaluate_expr;
 pub use tokenizer::DopTokenizer;
-pub use typechecker::{DopType, is_subtype, typecheck_expr};
+pub use typechecker::{DopType, typecheck_expr};

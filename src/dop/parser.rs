@@ -45,12 +45,12 @@ impl DopVarName {
 #[derive(Debug, Clone)]
 pub struct DopParameter {
     pub var_name: DopVarName,
-    pub type_annotation: DopType,
+    pub var_type: DopType,
 }
 
 impl Display for DopParameter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.var_name, self.type_annotation)
+        write!(f, "{}: {}", self.var_name, self.var_type)
     }
 }
 
@@ -60,12 +60,12 @@ impl Display for DopParameter {
 #[derive(Debug, Clone)]
 pub struct DopArgument {
     pub var_name: DopVarName,
-    pub expression: DopExpr,
+    pub var_expr: DopExpr,
 }
 
 impl Display for DopArgument {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.var_name, self.expression)
+        write!(f, "{}: {}", self.var_name, self.var_expr)
     }
 }
 
@@ -145,7 +145,7 @@ fn parse_parameter(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopParamete
     let typ = parse_type(tokenizer)?;
     Ok(DopParameter {
         var_name,
-        type_annotation: typ.dop_type,
+        var_type: typ.dop_type,
     })
 }
 
@@ -156,7 +156,7 @@ fn parse_argument(tokenizer: &mut Peekable<DopTokenizer>) -> Result<DopArgument,
     let expression = parse_equality(tokenizer)?;
     Ok(DopArgument {
         var_name,
-        expression,
+        var_expr: expression,
     })
 }
 

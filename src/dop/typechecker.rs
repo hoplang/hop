@@ -15,6 +15,40 @@ pub enum DopType {
     Number,
 }
 
+impl DopType {
+    /// Check if `subtype` is a subtype of `supertype`
+    pub fn is_subtype(&self, supertype: &DopType) -> bool {
+        match (self, supertype) {
+            // Exact matches
+            (DopType::Bool, DopType::Bool) => true,
+            (DopType::String, DopType::String) => true,
+            (DopType::Number, DopType::Number) => true,
+
+            // Arrays are covariant in their element type
+            (DopType::Array(sub_elem), DopType::Array(super_elem)) => {
+                match (sub_elem, super_elem) {
+                    (Some(sub_type), Some(super_type)) => sub_type.is_subtype(super_type),
+                    (None, None) => true,
+                    (None, Some(_)) => true, // Empty array can be subtype of any array
+                    (Some(_), None) => false, // Typed array cannot be subtype of empty array
+                }
+            }
+
+            // Objects: subtype must have all properties of supertype with compatible types
+            (DopType::Object(sub_props), DopType::Object(super_props)) => {
+                super_props.iter().all(|(key, super_type)| {
+                    sub_props
+                        .get(key)
+                        .is_some_and(|sub_type| sub_type.is_subtype(super_type))
+                })
+            }
+
+            // Otherwise, not a subtype
+            _ => false,
+        }
+    }
+}
+
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SpannedDopType {
@@ -43,36 +77,6 @@ impl fmt::Display for DopType {
             DopType::String => write!(f, "string"),
             DopType::Number => write!(f, "number"),
         }
-    }
-}
-
-/// Check if `subtype` is a subtype of `supertype`
-pub fn is_subtype(subtype: &DopType, supertype: &DopType) -> bool {
-    match (subtype, supertype) {
-        // Exact matches
-        (DopType::Bool, DopType::Bool) => true,
-        (DopType::String, DopType::String) => true,
-        (DopType::Number, DopType::Number) => true,
-
-        // Arrays are covariant in their element type
-        (DopType::Array(sub_elem), DopType::Array(super_elem)) => match (sub_elem, super_elem) {
-            (Some(sub_type), Some(super_type)) => is_subtype(sub_type, super_type),
-            (None, None) => true,
-            (None, Some(_)) => true, // Empty array can be subtype of any array
-            (Some(_), None) => false, // Typed array cannot be subtype of empty array
-        },
-
-        // Objects: subtype must have all properties of supertype with compatible types
-        (DopType::Object(sub_props), DopType::Object(super_props)) => {
-            super_props.iter().all(|(key, super_type)| {
-                sub_props
-                    .get(key)
-                    .is_some_and(|sub_type| is_subtype(sub_type, super_type))
-            })
-        }
-
-        // Otherwise, not a subtype
-        _ => false,
     }
 }
 
@@ -153,7 +157,7 @@ pub fn typecheck_expr(
             let expr_type = typecheck_expr(expr, env, annotations)?;
 
             // Negation only works on boolean expressions
-            if !is_subtype(&expr_type, &DopType::Bool) {
+            if !expr_type.is_subtype(&DopType::Bool) {
                 return Err(TypeError::NegationRequiresBoolean { span: expr.span() });
             }
 
@@ -212,7 +216,7 @@ mod tests {
             let mut tokenizer = DopTokenizer::from(env_str).peekable();
             let params = parse_parameters(&mut tokenizer).expect("Failed to parse environment");
             for (_, param) in params {
-                let _ = env.push(param.var_name.to_string(), param.type_annotation);
+                let _ = env.push(param.var_name.to_string(), param.var_type);
             }
         }
 

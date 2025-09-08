@@ -248,7 +248,7 @@ fn evaluate_node(
                 None => {}
                 Some((args, _)) => {
                     for arg in args.values() {
-                        let value = evaluate_expr(&arg.expression, env)?;
+                        let value = evaluate_expr(&arg.var_expr, env)?;
                         arg_values.insert(arg.var_name.to_string(), value);
                     }
                 }

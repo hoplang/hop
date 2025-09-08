@@ -1,4 +1,4 @@
-use crate::dop::DopParameter;
+use crate::dop::{DopParameter, DopType};
 use crate::span::string_cursor::{Spanned, StringSpan};
 use std::collections::BTreeMap;
 use thiserror::Error;
@@ -53,10 +53,10 @@ pub enum TypeError {
 
     #[error("Argument '{arg_name}' of type {found} is incompatible with expected type {expected}")]
     ArgumentIsIncompatible {
-        expected: String,
-        found: String,
-        arg_name: String,
-        span: StringSpan,
+        expected: DopType,
+        found: DopType,
+        arg_name: StringSpan,
+        expr_span: StringSpan,
     },
 
     #[error("Expected string attribute, got {found}")]
@@ -69,7 +69,7 @@ pub enum TypeError {
     CannotIterateOver { typ: String, span: StringSpan },
 
     #[error("Expected string for text expression, got {found}")]
-    ExpectedStringExpression { found: String, span: StringSpan },
+    ExpectedStringExpression { found: DopType, span: StringSpan },
 
     #[error("Undefined variable: {name}")]
     UndefinedVariable { name: String, span: StringSpan },
@@ -144,7 +144,9 @@ impl Spanned for TypeError {
             | TypeError::MissingArguments { span, .. }
             | TypeError::UnexpectedArguments { span, .. }
             | TypeError::UnexpectedArgument { span, .. }
-            | TypeError::ArgumentIsIncompatible { span, .. }
+            | TypeError::ArgumentIsIncompatible {
+                expr_span: span, ..
+            }
             | TypeError::ExpectedStringAttribute { span, .. }
             | TypeError::CannotIterateEmptyArray { span, .. }
             | TypeError::CannotIterateOver { span, .. }
