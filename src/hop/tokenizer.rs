@@ -457,27 +457,29 @@ impl Tokenizer {
             .eq(tag_name.chars())
     }
 
+    fn parse_raw_text(&mut self, tag_name: &str) -> Option<Token> {
+        let mut raw_text: Option<StringSpan> = None;
+        loop {
+            if self.iter.peek().is_some_and(|s| s.ch() == '<')
+                && self.iter_holds_closing_tag(tag_name)
+            {
+                return raw_text.map(|s| Token::Text { span: s });
+            }
+            match self.iter.next() {
+                Some(ch) => {
+                    raw_text = raw_text.into_iter().chain(Some(ch)).collect();
+                }
+                None => return raw_text.map(|s| Token::Text { span: s }),
+            }
+        }
+    }
+
     fn step(&mut self) -> Option<Token> {
         // If we have a stored raw_text_closing_tag we need to parse all content
         // as raw text until we find the tag.
-        if let Some(tag_name) = mem::take(&mut self.raw_text_closing_tag) {
-            let mut raw_text: Option<StringSpan> = None;
-            loop {
-                match self.iter.peek().map(|s| s.ch()) {
-                    Some('<') if self.iter_holds_closing_tag(&tag_name) => {
-                        if let Some(s) = raw_text {
-                            return Some(Token::Text { span: s });
-                        } else {
-                            break;
-                        }
-                    }
-                    Some(_) => {
-                        let ch = self.iter.next().unwrap();
-                        raw_text = raw_text.into_iter().chain(Some(ch)).collect();
-                    }
-                    // EOF
-                    None => return raw_text.map(|s| Token::Text { span: s }),
-                }
+        if let Some(tag_name) = self.raw_text_closing_tag.take() {
+            if let Some(token) = self.parse_raw_text(&tag_name) {
+                return Some(token);
             }
         }
         // parse tag or markup declaration
