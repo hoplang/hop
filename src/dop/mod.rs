@@ -1,5 +1,5 @@
 pub mod ast;
-pub mod errors;
+pub mod parse_error;
 pub mod parser;
 pub mod runtime;
 pub mod tokenizer;

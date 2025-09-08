@@ -3,7 +3,7 @@ use itertools::Itertools as _;
 use crate::span::string_cursor::{StringCursor, StringSpan};
 use std::{fmt, iter::Peekable, str::FromStr};
 
-use super::errors::ParseError;
+use super::parse_error::ParseError;
 
 pub struct DopTokenizer {
     iter: Peekable<StringCursor>,

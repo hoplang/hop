@@ -4,7 +4,7 @@ use std::iter::Peekable;
 
 use crate::dop::DopType;
 use crate::dop::ast::{BinaryOp, DopExpr, UnaryOp};
-use crate::dop::errors::ParseError;
+use crate::dop::parse_error::ParseError;
 use crate::dop::tokenizer::{DopToken, DopTokenizer};
 use crate::dop::typechecker::SpannedDopType;
 use crate::span::string_cursor::StringSpan;
