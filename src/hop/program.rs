@@ -1,5 +1,5 @@
 use crate::hop::ast::HopAst;
-use crate::hop::errors::ParseError;
+use crate::hop::parse_error::ParseError;
 use crate::hop::evaluator;
 use crate::hop::type_error::TypeError;
 use crate::hop::parser::parse;

@@ -4,7 +4,7 @@ use std::mem;
 
 use itertools::Itertools as _;
 
-use crate::hop::errors::ParseError;
+use crate::hop::parse_error::ParseError;
 use crate::dop::DopTokenizer;
 use crate::dop::tokenizer::DopToken;
 use crate::hop::ast::Attribute;

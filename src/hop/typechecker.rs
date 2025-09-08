@@ -137,9 +137,8 @@ fn typecheck_module(
             });
         } else if !state.component_is_declared(imported_module, imported_component.as_str()) {
             errors.push(TypeError::UndeclaredComponent {
-                module: imported_module.as_str().to_string(),
-                component: imported_component.as_str().to_string(),
-                span: imported_component.clone(),
+                module_name: import.from_attr_value_span.clone(),
+                component_name: imported_component.clone(),
             });
         }
     }
@@ -176,8 +175,7 @@ fn typecheck_module(
                 if !accessed {
                     let param = params.get(&key).unwrap();
                     errors.push(TypeError::UnusedVariable {
-                        var: param.var_name.as_str().to_string(),
-                        span: param.var_name.span().clone(),
+                        var_name: param.var_name.span().clone(),
                     })
                 }
             }
@@ -248,7 +246,9 @@ fn typecheck_node(
             let element_type = match &array_type {
                 DopType::Array(Some(inner)) => *inner.clone(),
                 DopType::Array(None) => {
-                    errors.push(TypeError::CannotIterateEmptyArray { span: array_expr.span() });
+                    errors.push(TypeError::CannotIterateEmptyArray {
+                        span: array_expr.span(),
+                    });
                     return;
                 }
                 _ => {
@@ -287,8 +287,7 @@ fn typecheck_node(
                 let (_, _, accessed) = env.pop();
                 if !accessed {
                     errors.push(TypeError::UnusedVariable {
-                        var: var_name.as_str().to_string(),
-                        span: var_name.span().clone(),
+                        var_name: var_name.span().clone(),
                     })
                 }
             }
@@ -309,8 +308,7 @@ fn typecheck_node(
                 Some(module_name) => module_name,
                 None => {
                     errors.push(TypeError::UndefinedComponent {
-                        component: tag_name.as_str().to_string(),
-                        span: tag_name.clone(),
+                        tag_name: tag_name.clone(),
                     });
                     return;
                 }
@@ -331,7 +329,9 @@ fn typecheck_node(
             ) {
                 (None, None) => {}
                 (None, Some((_, args_range))) => {
-                    errors.push(TypeError::UnexpectedArguments { span: args_range.clone() });
+                    errors.push(TypeError::UnexpectedArguments {
+                        span: args_range.clone(),
+                    });
                 }
                 (Some(params), None) => {
                     errors.push(TypeError::missing_arguments(params, tag_name.clone()));
@@ -477,7 +477,8 @@ mod tests {
             let source_code = file.content.trim();
             let mut parse_errors = Vec::new();
             let tokenizer = Tokenizer::new(source_code.to_string());
-            let module_name = ModuleName::new(file.name.trim_end_matches(".hop").to_string()).unwrap();
+            let module_name =
+                ModuleName::new(file.name.trim_end_matches(".hop").to_string()).unwrap();
             let module = parse(module_name, tokenizer, &mut parse_errors);
 
             if !parse_errors.is_empty() {

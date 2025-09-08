@@ -5,17 +5,20 @@ use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
 pub enum TypeError {
-    #[error("Component {component} is not defined")]
-    UndefinedComponent { component: String, span: StringSpan },
+    #[error("Component {tag_name} is not defined")]
+    UndefinedComponent { tag_name: StringSpan },
 
-    #[error("Module {module} does not declare a component named {component}")]
-    UndeclaredComponent { module: String, component: String, span: StringSpan },
+    #[error("Module {module_name} does not declare a component named {component_name}")]
+    UndeclaredComponent {
+        module_name: StringSpan,
+        component_name: StringSpan,
+    },
 
     #[error("Module {module} is not defined")]
     ImportFromUndefinedModule { module: String, span: StringSpan },
 
-    #[error("Unused variable {var}")]
-    UnusedVariable { var: String, span: StringSpan },
+    #[error("Unused variable {var_name}")]
+    UnusedVariable { var_name: StringSpan },
 
     #[error("Variable {var} is already defined")]
     VariableIsAlreadyDefined { var: String, span: StringSpan },
@@ -23,8 +26,15 @@ pub enum TypeError {
     #[error("Component {component} does not have a slot-default")]
     UndefinedSlot { component: String, span: StringSpan },
 
-    #[error("Import cycle: {importer_module} imports from {imported_component} which creates a dependency cycle: {cycle_display}")]
-    ImportCycle { importer_module: String, imported_component: String, cycle_display: String, span: StringSpan },
+    #[error(
+        "Import cycle: {importer_module} imports from {imported_component} which creates a dependency cycle: {cycle_display}"
+    )]
+    ImportCycle {
+        importer_module: String,
+        imported_component: String,
+        cycle_display: String,
+        span: StringSpan,
+    },
 
     #[error("Expected boolean condition, got {found}")]
     ExpectedBooleanCondition { found: String, span: StringSpan },
@@ -42,7 +52,12 @@ pub enum TypeError {
     UnexpectedArgument { arg: String, span: StringSpan },
 
     #[error("Argument '{arg_name}' of type {found} is incompatible with expected type {expected}")]
-    ArgumentIsIncompatible { expected: String, found: String, arg_name: String, span: StringSpan },
+    ArgumentIsIncompatible {
+        expected: String,
+        found: String,
+        arg_name: String,
+        span: StringSpan,
+    },
 
     #[error("Expected string attribute, got {found}")]
     ExpectedStringAttribute { found: String, span: StringSpan },
@@ -66,13 +81,21 @@ pub enum TypeError {
     CannotUseAsObject { typ: String, span: StringSpan },
 
     #[error("Can not compare {left} to {right}")]
-    CannotCompareTypes { left: String, right: String, span: StringSpan },
+    CannotCompareTypes {
+        left: String,
+        right: String,
+        span: StringSpan,
+    },
 
     #[error("Negation operator can only be applied to boolean values")]
     NegationRequiresBoolean { span: StringSpan },
 
     #[error("Array elements must all have the same type, found {expected} and {found}")]
-    ArrayTypeMismatch { expected: String, found: String, span: StringSpan },
+    ArrayTypeMismatch {
+        expected: String,
+        found: String,
+        span: StringSpan,
+    },
 }
 
 impl TypeError {
@@ -104,16 +127,15 @@ impl TypeError {
             .join(", ");
         TypeError::MissingArguments { args, span }
     }
-
 }
 
 impl Spanned for TypeError {
     fn span(&self) -> &StringSpan {
         match self {
-            TypeError::UndefinedComponent { span, .. }
-            | TypeError::UndeclaredComponent { span, .. }
-            | TypeError::ImportFromUndefinedModule { span, .. }
-            | TypeError::UnusedVariable { span, .. }
+            TypeError::UndefinedComponent { tag_name } => tag_name,
+            TypeError::UndeclaredComponent { component_name, .. } => component_name,
+            TypeError::UnusedVariable { var_name } => var_name,
+            TypeError::ImportFromUndefinedModule { span, .. }
             | TypeError::VariableIsAlreadyDefined { span, .. }
             | TypeError::UndefinedSlot { span, .. }
             | TypeError::ImportCycle { span, .. }

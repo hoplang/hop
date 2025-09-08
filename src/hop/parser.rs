@@ -1,6 +1,6 @@
 use crate::dop::{self, DopTokenizer};
 use crate::hop::ast::{ComponentDefinition, DopExprAttribute, HopAst, HopNode, Import, Render};
-use crate::hop::errors::ParseError;
+use crate::hop::parse_error::ParseError;
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
