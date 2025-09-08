@@ -33,7 +33,7 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
             })
             .collect();
 
-        match tree.token {
+        match &tree.token {
             Token::Text { .. } => {}
             Token::ClosingTag { .. } => {}
             Token::Expression { .. } => {}
@@ -43,170 +43,143 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                 tag_name,
                 attributes,
                 expression,
-                span,
                 ..
             } => match tag_name.as_str() {
                 "import" => {
-                    let mut component_attr = None;
-                    let mut from_attr = None;
-
                     for attr in attributes {
                         match attr.name.as_str() {
-                            "component" => component_attr = Some(attr),
-                            "from" => from_attr = Some(attr),
+                            "component" | "from" => {}
                             _ => {
                                 // TODO: Check for unrecognized attributes
                             }
                         }
                     }
 
-                    match (
-                        component_attr.and_then(|attr| attr.value),
-                        from_attr.and_then(|attr| attr.value),
-                    ) {
-                        (Some(cmp_attr), Some(from_attr)) => {
-                            if imported_components.contains_key(cmp_attr.as_str()) {
-                                errors.push(ParseError::component_is_already_defined(
-                                    cmp_attr.as_str(),
-                                    cmp_attr.clone(),
-                                ));
-                            } else {
-                                imported_components
-                                    .insert(cmp_attr.to_string(), from_attr.to_string());
-                            }
-                            imports.push(Import {
-                                component_attr: PresentAttribute { value: cmp_attr },
-                                from_attr: PresentAttribute { value: from_attr },
-                            });
-                        }
-                        (component, from) => {
-                            if component.is_none() {
-                                errors.push(ParseError::missing_required_attribute(
-                                    tag_name.as_str(),
-                                    "component",
-                                    span.clone(),
-                                ));
-                            }
-                            if from.is_none() {
-                                errors.push(ParseError::missing_required_attribute(
-                                    tag_name.as_str(),
-                                    "from",
-                                    span.clone(),
-                                ));
-                            }
-                        }
+                    let Some(from_attr) = tree.token.get_attribute_value("from") else {
+                        errors.push(ParseError::missing_required_attribute(
+                            tag_name.clone(),
+                            "from",
+                        ));
+                        continue;
+                    };
+
+                    let Some(cmp_attr) = tree.token.get_attribute_value("component") else {
+                        errors.push(ParseError::missing_required_attribute(
+                            tag_name.clone(),
+                            "component",
+                        ));
+                        continue;
+                    };
+
+                    if imported_components.contains_key(cmp_attr.as_str()) {
+                        errors.push(ParseError::component_is_already_defined(cmp_attr.clone()));
+                        continue;
                     }
+                    imported_components.insert(cmp_attr.to_string(), from_attr.to_string());
+                    imports.push(Import {
+                        component_attr: PresentAttribute { value: cmp_attr },
+                        from_attr: PresentAttribute { value: from_attr },
+                    });
                 }
                 "render" => {
-                    let mut file_attr = None;
-
                     for attr in attributes {
                         match attr.name.as_str() {
-                            "file" => file_attr = Some(attr),
+                            "file" => {}
                             _ => {
                                 // TODO: Check for unrecognized attributes
                             }
                         }
                     }
 
-                    match file_attr.and_then(|attr| attr.value) {
-                        Some(file_attr) => {
-                            renders.push(Render {
-                                file_attr: PresentAttribute { value: file_attr },
-                                span: tree.span.clone(),
-                                children,
-                            });
-                        }
-                        None => errors.push(ParseError::missing_required_attribute(
-                            tag_name.as_str(),
+                    let Some(file_attr) = tree.token.get_attribute_value("file") else {
+                        errors.push(ParseError::missing_required_attribute(
+                            tag_name.clone(),
                             "file",
-                            span.clone(),
-                        )),
-                    }
+                        ));
+                        continue;
+                    };
+
+                    renders.push(Render {
+                        file_attr: PresentAttribute { value: file_attr },
+                        span: tree.span.clone(),
+                        children,
+                    });
                 }
                 // Treat as ComponentDefinition
                 name => {
                     if !is_valid_component_name(name) {
-                        errors.push(ParseError::invalid_component_name(name, tag_name.clone()));
-                    } else {
-                        let params = expression.as_ref().and_then(|expr| {
-                            let mut tokenizer = DopTokenizer::from(expr.cursor()).peekable();
-                            match dop::parse_parameters(&mut tokenizer) {
-                                Ok(params) => Some((params, expr.clone())),
-                                Err(dop::errors::ParseError::UnexpectedEof) => {
-                                    errors.push(ParseError::unexpected_end_of_expression(
-                                        expr.clone(),
-                                    ));
-                                    None
-                                }
-                                Err(dop::errors::ParseError::Spanned { message, span }) => {
-                                    errors.push(ParseError::new(message, span));
-                                    None
-                                }
-                            }
-                        });
-
-                        // TODO: Here we iterate over the whole subtree to check
-                        // if it contains a slot. There should be a better way
-                        // to do this.
-                        let mut has_slot = false;
-                        for child in &children {
-                            for node in child.iter_depth_first() {
-                                if let HopNode::SlotDefinition { span, .. } = node {
-                                    if has_slot {
-                                        errors.push(ParseError::slot_is_already_defined(
-                                            span.clone(),
-                                        ));
-                                    }
-                                    has_slot = true;
-                                }
-                            }
-                        }
-
-                        if defined_components.contains(name)
-                            || imported_components.contains_key(name)
-                        {
-                            errors.push(ParseError::component_is_already_defined(
-                                name,
-                                tag_name.clone(),
-                            ));
-                        } else {
-                            defined_components.insert(name.to_string());
-                        }
-
-                        let mut is_entrypoint = false;
-                        let mut as_attr = None;
-                        let mut unhandled_attributes = Vec::new();
-
-                        for attr in attributes.into_iter() {
-                            match attr.name.as_str() {
-                                "as" => {
-                                    as_attr = attr.value;
-                                }
-                                "entrypoint" => {
-                                    is_entrypoint = true;
-                                }
-                                _ => {
-                                    // Here we keep the unhandled attributes
-                                    // since they should be rendered in the
-                                    // resulting HTML.
-                                    unhandled_attributes.push(attr);
-                                }
-                            }
-                        }
-
-                        components.push(ComponentDefinition {
-                            tag_name,
-                            closing_tag_name: tree.closing_tag_name,
-                            params,
-                            is_entrypoint,
-                            as_attr: as_attr.map(|v| PresentAttribute { value: v }),
-                            attributes: unhandled_attributes,
-                            span: tree.span.clone(),
-                            children,
-                            has_slot,
-                        });
+                        errors.push(ParseError::invalid_component_name(tag_name.clone()));
+                        continue;
                     }
+                    let params = expression.as_ref().and_then(|expr| {
+                        let mut tokenizer = DopTokenizer::from(expr.cursor()).peekable();
+                        match dop::parse_parameters(&mut tokenizer) {
+                            Ok(params) => Some((params, expr.clone())),
+                            Err(dop::errors::ParseError::UnexpectedEof) => {
+                                errors.push(ParseError::unexpected_end_of_expression(expr.clone()));
+                                None
+                            }
+                            Err(dop::errors::ParseError::Spanned { message, span }) => {
+                                errors.push(ParseError::new(message, span));
+                                None
+                            }
+                        }
+                    });
+
+                    // TODO: Here we iterate over the whole subtree to check
+                    // if it contains a slot. There should be a better way
+                    // to do this.
+                    let mut has_slot = false;
+                    for child in &children {
+                        for node in child.iter_depth_first() {
+                            if let HopNode::SlotDefinition { span, .. } = node {
+                                if has_slot {
+                                    errors.push(ParseError::slot_is_already_defined(span.clone()));
+                                }
+                                has_slot = true;
+                            }
+                        }
+                    }
+
+                    if defined_components.contains(name) || imported_components.contains_key(name) {
+                        errors.push(ParseError::component_is_already_defined(tag_name.clone()));
+                        // fall-through
+                    } else {
+                        defined_components.insert(name.to_string());
+                    }
+
+                    let mut is_entrypoint = false;
+                    let mut as_attr = None;
+                    let mut unhandled_attributes = Vec::new();
+
+                    for attr in attributes {
+                        match attr.name.as_str() {
+                            "as" => {
+                                as_attr = attr.value.clone();
+                            }
+                            "entrypoint" => {
+                                is_entrypoint = true;
+                            }
+                            _ => {
+                                // Here we keep the unhandled attributes
+                                // since they should be rendered in the
+                                // resulting HTML.
+                                unhandled_attributes.push(attr.clone());
+                            }
+                        }
+                    }
+
+                    components.push(ComponentDefinition {
+                        tag_name: tag_name.clone(),
+                        closing_tag_name: tree.closing_tag_name,
+                        params,
+                        is_entrypoint,
+                        as_attr: as_attr.map(|v| PresentAttribute { value: v }),
+                        attributes: unhandled_attributes,
+                        span: tree.span.clone(),
+                        children,
+                        has_slot,
+                    });
                 }
             },
         }
@@ -383,9 +356,8 @@ fn construct_node(
                             },
                             None => {
                                 errors.push(ParseError::missing_required_attribute(
-                                    tag_name.as_str(),
+                                    tag_name.clone(),
                                     "cmd",
-                                    opening_tag_span.clone(),
                                 ));
                                 HopNode::Error {
                                     span: tree.span.clone(),
@@ -412,10 +384,7 @@ fn construct_node(
                 },
                 name if name.contains('-') => {
                     if !is_valid_component_name(tag_name.as_str()) {
-                        errors.push(ParseError::invalid_component_name(
-                            tag_name.as_str(),
-                            tag_name.clone(),
-                        ));
+                        errors.push(ParseError::invalid_component_name(tag_name.clone()));
                     }
                     let args = match &expression {
                         Some(expr) => {

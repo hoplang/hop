@@ -220,24 +220,27 @@ impl ParseError {
         Self::new(format!("Unrecognized hop tag: <{tag}>"), span)
     }
 
-    pub fn missing_required_attribute(tag: &str, attr: &str, span: StringSpan) -> Self {
+    pub fn missing_required_attribute(tag_name: StringSpan, attr: &str) -> Self {
         Self::new(
-            format!("<{tag}> is missing required attribute {attr}"),
-            span,
+            format!("<{tag_name}> is missing required attribute {attr}"),
+            tag_name,
         )
     }
 
-    pub fn invalid_component_name(name: &str, span: StringSpan) -> Self {
+    pub fn invalid_component_name(tag_name: StringSpan) -> Self {
         Self::new(
             format!(
-                "Invalid component name '{name}'. Component names must contain a dash and not start or end with one"
+                "Invalid component name '{tag_name}'. Component names must contain a dash and not start or end with one"
             ),
-            span,
+            tag_name,
         )
     }
 
-    pub fn component_is_already_defined(name: &str, span: StringSpan) -> Self {
-        Self::new(format!("Component {name} is already defined"), span)
+    pub fn component_is_already_defined(component_attr_value: StringSpan) -> Self {
+        Self::new(
+            format!("Component {component_attr_value} is already defined"),
+            component_attr_value,
+        )
     }
 
     pub fn duplicate_attribute(name: &str, span: StringSpan) -> Self {

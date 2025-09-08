@@ -38,6 +38,18 @@ pub enum Token {
     },
 }
 
+impl Token {
+    pub fn get_attribute_value(&self, name: &str) -> Option<StringSpan> {
+        match self {
+            Token::OpeningTag { attributes, .. } => attributes
+                .iter()
+                .find(|attr| attr.name.as_str() == name)
+                .and_then(|attr| attr.value.clone()),
+            _ => None,
+        }
+    }
+}
+
 impl Spanned for Token {
     fn span(&self) -> &StringSpan {
         match self {
