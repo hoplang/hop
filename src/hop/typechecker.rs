@@ -1,5 +1,5 @@
 use crate::common::TypeError;
-use crate::dop::{DopParameter, DopType, is_subtype, typecheck_expr};
+use crate::dop::{self, DopParameter, DopType, is_subtype};
 use crate::hop::ast::HopAst;
 use crate::hop::ast::{ComponentDefinition, HopNode, Render};
 use crate::hop::environment::Environment;
@@ -215,7 +215,7 @@ fn typecheck_node(
             for child in children {
                 typecheck_node(child, state, env, annotations, errors);
             }
-            let condition_type = match typecheck_expr(condition, env, annotations, errors) {
+            let condition_type = match dop::typecheck_expr(condition, env, annotations, errors) {
                 Ok(t) => t,
                 Err(err) => {
                     errors.push(err);
@@ -237,7 +237,7 @@ fn typecheck_node(
             children,
             ..
         } => {
-            let array_type = match typecheck_expr(array_expr, env, annotations, errors) {
+            let array_type = match dop::typecheck_expr(array_expr, env, annotations, errors) {
                 Ok(t) => t,
                 Err(err) => {
                     errors.push(err);
@@ -358,7 +358,7 @@ fn typecheck_node(
                         };
 
                         let evaluated_arg_type =
-                            match typecheck_expr(&arg.expression, env, annotations, errors) {
+                            match dop::typecheck_expr(&arg.expression, env, annotations, errors) {
                                 Ok(t) => t,
                                 Err(err) => {
                                     errors.push(err);
@@ -392,14 +392,14 @@ fn typecheck_node(
             ..
         } => {
             for set_attr in set_attributes {
-                let expr_type = match typecheck_expr(&set_attr.expression, env, annotations, errors)
-                {
-                    Ok(t) => t,
-                    Err(err) => {
-                        errors.push(err);
-                        continue; // Skip this attribute
-                    }
-                };
+                let expr_type =
+                    match dop::typecheck_expr(&set_attr.expression, env, annotations, errors) {
+                        Ok(t) => t,
+                        Err(err) => {
+                            errors.push(err);
+                            continue; // Skip this attribute
+                        }
+                    };
 
                 if !is_subtype(&expr_type, &DopType::String) {
                     errors.push(TypeError::expected_string_attribute(
@@ -416,7 +416,7 @@ fn typecheck_node(
         }
 
         HopNode::TextExpression { expression, span } => {
-            let expr_type = match typecheck_expr(expression, env, annotations, errors) {
+            let expr_type = match dop::typecheck_expr(expression, env, annotations, errors) {
                 Ok(t) => t,
                 Err(err) => {
                     errors.push(err);

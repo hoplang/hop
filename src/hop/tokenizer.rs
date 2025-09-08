@@ -10,7 +10,7 @@ use crate::dop::tokenizer::DopToken;
 use crate::hop::ast::Attribute;
 use crate::span::string_cursor::{Spanned, StringCursor, StringSpan};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Token {
     Doctype {
         span: StringSpan,

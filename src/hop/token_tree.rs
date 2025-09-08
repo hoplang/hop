@@ -9,7 +9,7 @@ use std::fmt::{self, Display};
 /// In a token tree the opening tags have been matched to their
 /// corresponding closing tag and the nodes in between have been
 /// collected as children.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct TokenTree {
     pub token: Token,
 
@@ -89,11 +89,11 @@ impl Display for TokenTree {
 pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<TokenTree> {
     struct StackElement {
         tree: TokenTree,
-        tag_name: String,
+        tag_name: StringSpan,
     }
 
     let mut stack: Vec<StackElement> = Vec::new();
-    let mut top_level_trees: Vec<TokenTree> = Vec::new();
+    let mut top_level_nodes: Vec<TokenTree> = Vec::new();
 
     for (token, err) in tokenizer {
         errors.extend(err);
@@ -104,15 +104,13 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
 
         match token {
             Token::Comment { .. } => {
-                // skip comments
                 continue;
             }
             Token::Doctype { .. } | Token::Text { .. } | Token::Expression { .. } => {
                 if let Some(parent) = stack.last_mut() {
                     parent.tree.append_node(token);
                 } else {
-                    // Top-level text/expression/doctype
-                    top_level_trees.push(TokenTree::new(token));
+                    top_level_nodes.push(TokenTree::new(token));
                 }
             }
             Token::OpeningTag {
@@ -124,13 +122,12 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
                     if let Some(parent) = stack.last_mut() {
                         parent.tree.append_node(token);
                     } else {
-                        // Top-level void/self-closing tag
-                        top_level_trees.push(TokenTree::new(token));
+                        top_level_nodes.push(TokenTree::new(token));
                     }
                 } else {
                     stack.push(StackElement {
-                        tree: TokenTree::new(token.clone()),
-                        tag_name: tag_name.to_string(),
+                        tag_name: tag_name.clone(),
+                        tree: TokenTree::new(token),
                     });
                 }
             }
@@ -140,16 +137,19 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
                         tag_name.as_str(),
                         token.span().clone(),
                     ));
-                } else if !stack.iter().any(|el| el.tag_name == tag_name.as_str()) {
+                } else if !stack
+                    .iter()
+                    .any(|el| el.tag_name.as_str() == tag_name.as_str())
+                {
                     errors.push(ParseError::unmatched_closing_tag(
                         tag_name.as_str(),
                         token.span().clone(),
                     ));
                 } else {
-                    while stack.last().unwrap().tag_name != tag_name.as_str() {
+                    while stack.last().unwrap().tag_name.as_str() != tag_name.as_str() {
                         let unclosed = stack.pop().unwrap();
                         errors.push(ParseError::unclosed_tag(
-                            &unclosed.tag_name,
+                            unclosed.tag_name.as_str(),
                             unclosed.tree.token.span().clone(),
                         ));
                         stack.last_mut().unwrap().tree.append_tree(unclosed.tree);
@@ -159,23 +159,21 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
                     if let Some(parent) = stack.last_mut() {
                         parent.tree.append_tree(completed.tree);
                     } else {
-                        // This was a top-level element
-                        top_level_trees.push(completed.tree);
+                        top_level_nodes.push(completed.tree);
                     }
                 }
             }
         }
     }
 
-    // Report errors for any unclosed tags
     for unclosed in stack {
         errors.push(ParseError::unclosed_tag(
-            &unclosed.tag_name,
+            unclosed.tag_name.as_str(),
             unclosed.tree.token.span().clone(),
         ));
     }
 
-    top_level_trees
+    top_level_nodes
 }
 
 #[cfg(test)]
