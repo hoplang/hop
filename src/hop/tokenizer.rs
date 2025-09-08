@@ -426,10 +426,10 @@ impl Tokenizer {
                         .iter()
                         .any(|a| a.name.as_str() == attr.name.as_str());
                     if exists {
-                        self.errors.push(ParseError::duplicate_attribute(
-                            attr.name.as_str(),
-                            attr.name.clone(),
-                        ));
+                        self.errors.push(ParseError::DuplicateAttribute {
+                            name: attr.name.to_string(),
+                            span: attr.name.clone(),
+                        });
                     } else {
                         attributes.push(attr);
                     }

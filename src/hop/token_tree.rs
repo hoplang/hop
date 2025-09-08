@@ -134,25 +134,25 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
             }
             Token::ClosingTag { ref tag_name, .. } => {
                 if is_void_element(tag_name.as_str()) {
-                    errors.push(ParseError::closed_void_tag(
-                        tag_name.as_str(),
-                        token.span().clone(),
-                    ));
+                    errors.push(ParseError::ClosedVoidTag {
+                        tag: tag_name.to_string(),
+                        span: token.span().clone(),
+                    });
                 } else if !stack
                     .iter()
                     .any(|el| el.tag_name.as_str() == tag_name.as_str())
                 {
-                    errors.push(ParseError::unmatched_closing_tag(
-                        tag_name.as_str(),
-                        token.span().clone(),
-                    ));
+                    errors.push(ParseError::UnmatchedClosingTag {
+                        tag: tag_name.to_string(),
+                        span: token.span().clone(),
+                    });
                 } else {
                     while stack.last().unwrap().tag_name.as_str() != tag_name.as_str() {
                         let unclosed = stack.pop().unwrap();
-                        errors.push(ParseError::unclosed_tag(
-                            unclosed.tag_name.as_str(),
-                            unclosed.tree.token.span().clone(),
-                        ));
+                        errors.push(ParseError::UnclosedTag {
+                            tag: unclosed.tag_name.to_string(),
+                            span: unclosed.tree.token.span().clone(),
+                        });
                         stack.last_mut().unwrap().tree.append_tree(unclosed.tree);
                     }
                     let mut completed = stack.pop().unwrap();
@@ -168,10 +168,10 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
     }
 
     for unclosed in stack {
-        errors.push(ParseError::unclosed_tag(
-            unclosed.tag_name.as_str(),
-            unclosed.tree.token.span().clone(),
-        ));
+        errors.push(ParseError::UnclosedTag {
+            tag: unclosed.tag_name.to_string(),
+            span: unclosed.tree.token.span().clone(),
+        });
     }
 
     top_level_nodes

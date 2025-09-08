@@ -61,29 +61,34 @@ pub fn parse(
                     }
 
                     let Some(from_attr) = tree.token.get_attribute_value("from") else {
-                        errors.push(ParseError::missing_required_attribute(
-                            tag_name.clone(),
-                            "from",
-                        ));
+                        errors.push(ParseError::MissingRequiredAttribute {
+                            tag_name: tag_name.to_string(),
+                            attr: "from".to_string(),
+                            span: tag_name.clone(),
+                        });
                         continue;
                     };
 
                     let Some(cmp_attr) = tree.token.get_attribute_value("component") else {
-                        errors.push(ParseError::missing_required_attribute(
-                            tag_name.clone(),
-                            "component",
-                        ));
+                        errors.push(ParseError::MissingRequiredAttribute {
+                            tag_name: tag_name.to_string(),
+                            attr: "component".to_string(),
+                            span: tag_name.clone(),
+                        });
                         continue;
                     };
 
                     // Validate that the import path starts with @/
                     if !from_attr.as_str().starts_with("@/") {
-                        errors.push(ParseError::invalid_import_path(from_attr.clone()));
+                        errors.push(ParseError::InvalidImportPath { span: from_attr.clone() });
                         continue;
                     }
 
                     if imported_components.contains_key(cmp_attr.as_str()) {
-                        errors.push(ParseError::component_is_already_defined(cmp_attr.clone()));
+                        errors.push(ParseError::ComponentIsAlreadyDefined {
+                            component_name: cmp_attr.to_string(),
+                            span: cmp_attr.clone(),
+                        });
                         continue;
                     }
                     // Strip the @/ prefix for internal module resolution
@@ -98,7 +103,10 @@ pub fn parse(
                             });
                         }
                         Err(e) => {
-                            errors.push(ParseError::invalid_module_name(from_attr.clone(), e));
+                            errors.push(ParseError::InvalidModuleName {
+                                error: e,
+                                span: from_attr.clone(),
+                            });
                             continue;
                         }
                     }
@@ -114,10 +122,11 @@ pub fn parse(
                     }
 
                     let Some(file_attr) = tree.token.get_attribute_value("file") else {
-                        errors.push(ParseError::missing_required_attribute(
-                            tag_name.clone(),
-                            "file",
-                        ));
+                        errors.push(ParseError::MissingRequiredAttribute {
+                            tag_name: tag_name.to_string(),
+                            attr: "file".to_string(),
+                            span: tag_name.clone(),
+                        });
                         continue;
                     };
 
@@ -130,7 +139,10 @@ pub fn parse(
                 // Treat as ComponentDefinition
                 name => {
                     if !is_valid_component_name(name) {
-                        errors.push(ParseError::invalid_component_name(tag_name.clone()));
+                        errors.push(ParseError::InvalidComponentName {
+                            tag_name: tag_name.to_string(),
+                            span: tag_name.clone(),
+                        });
                         continue;
                     }
                     let params = expression.as_ref().and_then(|expr| {
@@ -138,7 +150,7 @@ pub fn parse(
                         match dop::parse_parameters(&mut tokenizer) {
                             Ok(params) => Some((params, expr.clone())),
                             Err(dop::errors::ParseError::UnexpectedEof) => {
-                                errors.push(ParseError::unexpected_end_of_expression(expr.clone()));
+                                errors.push(ParseError::UnexpectedEndOfExpression { span: expr.clone() });
                                 None
                             }
                             Err(dop::errors::ParseError::Spanned { message, span }) => {
@@ -156,7 +168,7 @@ pub fn parse(
                         for node in child.iter_depth_first() {
                             if let HopNode::SlotDefinition { span, .. } = node {
                                 if has_slot {
-                                    errors.push(ParseError::slot_is_already_defined(span.clone()));
+                                    errors.push(ParseError::SlotIsAlreadyDefined { span: span.clone() });
                                 }
                                 has_slot = true;
                             }
@@ -164,7 +176,10 @@ pub fn parse(
                     }
 
                     if defined_components.contains(name) || imported_components.contains_key(name) {
-                        errors.push(ParseError::component_is_already_defined(tag_name.clone()));
+                        errors.push(ParseError::ComponentIsAlreadyDefined {
+                            component_name: tag_name.to_string(),
+                            span: tag_name.clone(),
+                        });
                         // fall-through
                     } else {
                         defined_components.insert(name.to_string());
@@ -256,7 +271,7 @@ fn construct_node(
                     span: tree.span.clone(),
                 },
                 Err(dop::errors::ParseError::UnexpectedEof) => {
-                    errors.push(ParseError::unexpected_end_of_expression(expr.clone()));
+                    errors.push(ParseError::UnexpectedEndOfExpression { span: expr.clone() });
                     HopNode::Error {
                         span: tree.span.clone(),
                         children: vec![],
@@ -290,7 +305,7 @@ fn construct_node(
                                 children,
                             },
                             Err(dop::errors::ParseError::UnexpectedEof) => {
-                                errors.push(ParseError::unexpected_end_of_expression(expr.clone()));
+                                errors.push(ParseError::UnexpectedEndOfExpression { span: expr.clone() });
                                 HopNode::Error {
                                     span: tree.span.clone(),
                                     children,
@@ -328,7 +343,7 @@ fn construct_node(
                                 children,
                             },
                             Err(dop::errors::ParseError::UnexpectedEof) => {
-                                errors.push(ParseError::unexpected_end_of_expression(expr.clone()));
+                                errors.push(ParseError::UnexpectedEndOfExpression { span: expr.clone() });
                                 HopNode::Error {
                                     span: tree.span.clone(),
                                     children,
@@ -377,10 +392,11 @@ fn construct_node(
                                 children,
                             },
                             None => {
-                                errors.push(ParseError::missing_required_attribute(
-                                    tag_name.clone(),
-                                    "cmd",
-                                ));
+                                errors.push(ParseError::MissingRequiredAttribute {
+                                    tag_name: tag_name.to_string(),
+                                    attr: "cmd".to_string(),
+                                    span: tag_name.clone(),
+                                });
                                 HopNode::Error {
                                     span: tree.span.clone(),
                                     children,
@@ -394,10 +410,10 @@ fn construct_node(
                         children,
                     },
                     _ => {
-                        errors.push(ParseError::unrecognized_hop_tag(
-                            tag_name.as_str(),
-                            tag_name.clone(),
-                        ));
+                        errors.push(ParseError::UnrecognizedHopTag {
+                            tag: tag_name.to_string(),
+                            span: tag_name.clone(),
+                        });
                         HopNode::Error {
                             span: tree.span.clone(),
                             children: vec![],
@@ -406,7 +422,10 @@ fn construct_node(
                 },
                 name if name.contains('-') => {
                     if !is_valid_component_name(tag_name.as_str()) {
-                        errors.push(ParseError::invalid_component_name(tag_name.clone()));
+                        errors.push(ParseError::InvalidComponentName {
+                            tag_name: tag_name.to_string(),
+                            span: tag_name.clone(),
+                        });
                     }
                     let args = match &expression {
                         Some(expr) => {
@@ -414,9 +433,7 @@ fn construct_node(
                             match dop::parse_arguments(&mut tokenizer) {
                                 Ok(named_args) => Some((named_args, expr.clone())),
                                 Err(dop::errors::ParseError::UnexpectedEof) => {
-                                    errors.push(ParseError::unexpected_end_of_expression(
-                                        expr.clone(),
-                                    ));
+                                    errors.push(ParseError::UnexpectedEndOfExpression { span: expr.clone() });
                                     return HopNode::Error {
                                         span: tree.span.clone(),
                                         children: vec![],
@@ -458,9 +475,7 @@ fn construct_node(
                         if attr.name.as_str().starts_with("set-") {
                             let attr_val = match &attr.value {
                                 None => {
-                                    errors.push(ParseError::missing_attribute_value(
-                                        attr.span.clone(),
-                                    ));
+                                    errors.push(ParseError::MissingAttributeValue { span: attr.span.clone() });
                                     continue;
                                 }
                                 Some(val) => val,
@@ -473,9 +488,7 @@ fn construct_node(
                                     span: attr.span.clone(),
                                 }),
                                 Err(dop::errors::ParseError::UnexpectedEof) => {
-                                    errors.push(ParseError::unexpected_end_of_expression(
-                                        attr_val.clone(),
-                                    ));
+                                    errors.push(ParseError::UnexpectedEndOfExpression { span: attr_val.clone() });
                                 }
                                 Err(dop::errors::ParseError::Spanned { message, span }) => {
                                     errors.push(ParseError::new(message, span));
