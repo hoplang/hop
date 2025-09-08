@@ -145,7 +145,7 @@ impl Tokenizer {
 
     /// Find the end of an expression using the dop tokenizer.
     ///
-    /// Expects the current char iterator be on the first start
+    /// Expects the current char iterator be on the first character
     /// of a dop expression.
     ///
     /// E.g. {x + 2}
@@ -178,6 +178,12 @@ impl Tokenizer {
         }
     }
 
+    // Parse a comment.
+    //
+    // E.g. <!-- hello -->
+    //        ^^^^^^^^^^^^
+    // Expects that the iterator points to the initial '-'.
+    //
     fn parse_comment(&mut self, left_angle_to_bang: StringSpan) -> Option<Token> {
         let Some(first_dash) = self.iter.next_if(|s| s.ch() == '-') else {
             panic!(
@@ -192,6 +198,7 @@ impl Tokenizer {
             ));
             return None;
         };
+        // Count the number of seen '-' to find the end of the comment
         let mut count = 0;
         loop {
             match self.iter.next() {
@@ -253,6 +260,8 @@ impl Tokenizer {
     //
     // E.g. <!-- hello -->
     //       ^^^^^^^^^^^^^
+    // Expects that the iterator points to the initial '!'.
+    //
     fn parse_markup_declaration(&mut self, left_angle: StringSpan) -> Option<Token> {
         let Some(bang) = self.iter.next_if(|s| s.ch() == '!') else {
             panic!(
@@ -277,6 +286,7 @@ impl Tokenizer {
     //
     // E.g. <div foo="bar">
     //           ^^^^^^^^^
+    // Expects that the iterator points to the initial alphabetic char.
     //
     // Returns None if a valid attribute could not be parsed from the iterator.
     fn parse_attribute(&mut self) -> Option<Attribute> {
@@ -344,9 +354,7 @@ impl Tokenizer {
     ///
     /// E.g. <div foo="bar" {x: string}>
     ///                     ^^^^^^^^^^^
-    ///
-    /// When this function returns the iterator will be past the
-    /// closing brace '}' if we did not reach EOF.
+    /// Expects that the iterator points to the initial '{'.
     ///
     /// Returns None if we reached EOF or if the expression was empty.
     /// Returns Some((expr,span)) if we managed to parse the expression
@@ -433,6 +441,12 @@ impl Tokenizer {
         }
     }
 
+    /// Parse an opening tag.
+    ///
+    /// E.g. <div foo="bar" {x: string}>
+    ///       ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    /// Expects that the iterator points to the initial alphabetic char.
+    ///
     fn parse_opening_tag(&mut self, left_angle: StringSpan) -> Option<Token> {
         // consume: [a-zA-Z]
         let Some(initial) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
@@ -478,6 +492,12 @@ impl Tokenizer {
         })
     }
 
+    /// Parse a closing tag.
+    ///
+    /// E.g. <div></div>
+    ///            ^^^^^
+    /// Expects that the iterator points to the initial '/'.
+    ///
     fn parse_closing_tag(&mut self, left_angle: StringSpan) -> Option<Token> {
         let Some(slash) = self.iter.next_if(|s| s.ch() == '/') else {
             panic!(
@@ -568,11 +588,24 @@ impl Tokenizer {
         }
     }
 
+    /// Parse a text expression.
+    ///
+    /// E.g.
+    /// hello {name}!
+    ///       ^^^^^^
+    /// Expects that the iterator points to the initial '{'.
+    ///
     fn parse_text_expression(&mut self) -> Option<Token> {
         self.parse_expression()
             .map(|(expression, span)| Token::Expression { expression, span })
     }
 
+    /// Parse a text token.
+    ///
+    /// E.g. <div>hello</div>
+    ///           ^^^^^
+    /// Expects that the iterator points to the initial char.
+    ///
     fn parse_text(&mut self) -> Option<Token> {
         let Some(initial) = self.iter.next() else {
             panic!("Expected an initial char in parse_text but got None");
