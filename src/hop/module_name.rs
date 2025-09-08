@@ -26,14 +26,6 @@ impl ModuleName {
         }
     }
 
-    /// Create a ModuleName from an import path (strips @/ prefix if present)
-    /// Returns None if the resulting module name is invalid
-    #[cfg(test)]
-    pub fn from_import_path(path: &str) -> Option<Self> {
-        let cleaned = path.strip_prefix("@/").unwrap_or(path);
-        Self::new(cleaned.to_string())
-    }
-
     /// Check if a module name is valid
     fn is_valid(name: &str) -> bool {
         // Must not be empty
@@ -98,12 +90,6 @@ impl From<&str> for ModuleName {
     }
 }
 
-impl AsRef<str> for ModuleName {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,24 +116,5 @@ mod tests {
         assert!(ModuleName::new("utils/./current".to_string()).is_none());
         assert!(ModuleName::new("my component".to_string()).is_none()); // spaces not allowed
         assert!(ModuleName::new("my!component".to_string()).is_none()); // special chars not allowed
-    }
-
-    #[test]
-    fn test_from_import_path() {
-        assert_eq!(
-            ModuleName::from_import_path("@/utils").unwrap().as_str(),
-            "utils"
-        );
-        assert_eq!(
-            ModuleName::from_import_path("@/components/button")
-                .unwrap()
-                .as_str(),
-            "components/button"
-        );
-        // Works without @/ prefix too
-        assert_eq!(
-            ModuleName::from_import_path("utils").unwrap().as_str(),
-            "utils"
-        );
     }
 }
