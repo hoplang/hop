@@ -43,6 +43,8 @@ impl DopVarName {
 }
 
 /// A DopParameter represents a parsed parameter with type annotation.
+/// E.g. <my-comp {x: string, y: string}>
+///                ^^^^^^^^^
 #[derive(Debug, Clone)]
 pub struct DopParameter {
     pub var_name: DopVarName,
