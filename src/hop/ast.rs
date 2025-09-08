@@ -4,7 +4,7 @@ use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
 use crate::span::Position;
 use crate::span::string_cursor::{Spanned, StringSpan};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PresentAttribute {
     pub value: StringSpan,
 }
@@ -16,7 +16,7 @@ pub struct Attribute {
     pub span: StringSpan,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct DopExprAttribute {
     pub name: StringSpan,
     pub expression: DopExpr,
@@ -142,7 +142,7 @@ impl Import {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Render {
     pub file_attr: PresentAttribute,
     pub span: StringSpan,
@@ -155,7 +155,7 @@ impl Spanned for Render {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ComponentDefinition {
     pub tag_name: StringSpan,
     pub closing_tag_name: Option<StringSpan>,
@@ -180,7 +180,7 @@ impl ComponentDefinition {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum HopNode {
     /// A Text node represents text in the document.
     /// E.g. <div>hello world</div>
