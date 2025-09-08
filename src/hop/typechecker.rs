@@ -214,7 +214,7 @@ fn typecheck_node(
             for child in children {
                 typecheck_node(child, state, env, annotations, errors);
             }
-            let condition_type = match dop::typecheck_expr(condition, env, annotations, errors) {
+            let condition_type = match dop::typecheck_expr(condition, env, annotations) {
                 Ok(t) => t,
                 Err(err) => {
                     errors.push(err);
@@ -236,7 +236,7 @@ fn typecheck_node(
             children,
             ..
         } => {
-            let array_type = match dop::typecheck_expr(array_expr, env, annotations, errors) {
+            let array_type = match dop::typecheck_expr(array_expr, env, annotations) {
                 Ok(t) => t,
                 Err(err) => {
                     errors.push(err);
@@ -359,7 +359,7 @@ fn typecheck_node(
                         };
 
                         let evaluated_arg_type =
-                            match dop::typecheck_expr(&arg.expression, env, annotations, errors) {
+                            match dop::typecheck_expr(&arg.expression, env, annotations) {
                                 Ok(t) => t,
                                 Err(err) => {
                                     errors.push(err);
@@ -393,14 +393,13 @@ fn typecheck_node(
             ..
         } => {
             for set_attr in set_attributes {
-                let expr_type =
-                    match dop::typecheck_expr(&set_attr.expression, env, annotations, errors) {
-                        Ok(t) => t,
-                        Err(err) => {
-                            errors.push(err);
-                            continue; // Skip this attribute
-                        }
-                    };
+                let expr_type = match dop::typecheck_expr(&set_attr.expression, env, annotations) {
+                    Ok(t) => t,
+                    Err(err) => {
+                        errors.push(err);
+                        continue; // Skip this attribute
+                    }
+                };
 
                 if !is_subtype(&expr_type, &DopType::String) {
                     errors.push(TypeError::ExpectedStringAttribute {
@@ -417,19 +416,19 @@ fn typecheck_node(
         }
 
         HopNode::TextExpression { expression, span } => {
-            let expr_type = match dop::typecheck_expr(expression, env, annotations, errors) {
-                Ok(t) => t,
+            match dop::typecheck_expr(expression, env, annotations) {
+                Ok(t) => {
+                    if !is_subtype(&t, &DopType::String) {
+                        errors.push(TypeError::ExpectedStringExpression {
+                            found: t.to_string(),
+                            span: span.clone(),
+                        });
+                    }
+                }
                 Err(err) => {
                     errors.push(err);
-                    return;
                 }
             };
-            if !is_subtype(&expr_type, &DopType::String) {
-                errors.push(TypeError::ExpectedStringExpression {
-                    found: expr_type.to_string(),
-                    span: span.clone(),
-                });
-            }
         }
 
         HopNode::XExec { children, .. }

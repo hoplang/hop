@@ -80,7 +80,6 @@ pub fn typecheck_expr(
     expr: &DopExpr,
     env: &mut Environment<DopType>,
     annotations: &mut Vec<TypeAnnotation>,
-    errors: &mut Vec<TypeError>,
 ) -> Result<DopType, TypeError> {
     match expr {
         DopExpr::Variable { value: name, .. } => {
@@ -106,7 +105,7 @@ pub fn typecheck_expr(
             property,
             ..
         } => {
-            let base_type = typecheck_expr(base_expr, env, annotations, errors)?;
+            let base_type = typecheck_expr(base_expr, env, annotations)?;
 
             match &base_type {
                 DopType::Object(props) => {
@@ -131,8 +130,8 @@ pub fn typecheck_expr(
             right,
             ..
         } => {
-            let left_type = typecheck_expr(left, env, annotations, errors)?;
-            let right_type = typecheck_expr(right, env, annotations, errors)?;
+            let left_type = typecheck_expr(left, env, annotations)?;
+            let right_type = typecheck_expr(right, env, annotations)?;
 
             // Both operands should have the same type for equality comparison
             if left_type != right_type {
@@ -151,7 +150,7 @@ pub fn typecheck_expr(
             operand: expr,
             ..
         } => {
-            let expr_type = typecheck_expr(expr, env, annotations, errors)?;
+            let expr_type = typecheck_expr(expr, env, annotations)?;
 
             // Negation only works on boolean expressions
             if !is_subtype(&expr_type, &DopType::Bool) {
@@ -167,11 +166,11 @@ pub fn typecheck_expr(
                 Ok(DopType::Array(None))
             } else {
                 // Check the type of the first element
-                let first_type = typecheck_expr(&elements[0], env, annotations, errors)?;
+                let first_type = typecheck_expr(&elements[0], env, annotations)?;
 
                 // Check that all elements have the same type
                 for element in elements.iter().skip(1) {
-                    let element_type = typecheck_expr(element, env, annotations, errors)?;
+                    let element_type = typecheck_expr(element, env, annotations)?;
                     if element_type != first_type {
                         return Err(TypeError::ArrayTypeMismatch {
                             expected: first_type.to_string(),
@@ -188,7 +187,7 @@ pub fn typecheck_expr(
             let mut object_properties = BTreeMap::new();
 
             for (key, value_expr) in properties {
-                let value_type = typecheck_expr(value_expr, env, annotations, errors)?;
+                let value_type = typecheck_expr(value_expr, env, annotations)?;
                 object_properties.insert(key.to_string(), value_type);
             }
 
@@ -221,9 +220,8 @@ mod tests {
         let expr = parse_expr(&mut tokenizer).expect("Failed to parse expression");
 
         let mut annotations = Vec::new();
-        let mut errors = Vec::new();
 
-        let actual = match typecheck_expr(&expr, &mut env, &mut annotations, &mut errors) {
+        let actual = match typecheck_expr(&expr, &mut env, &mut annotations) {
             Ok(typ) => typ.to_string(),
             Err(e) => SourceAnnotator::new()
                 .with_label("error")

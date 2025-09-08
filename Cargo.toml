@@ -32,10 +32,3 @@ axum-test = "17.0"
 rand = "0.9"
 expect-test = "1.5"
 indoc = "2.0"
-
-[lints.clippy]
-only_used_in_recursion = "allow"
-manual_is_ascii_check = "allow"
-too_many_arguments = "allow"
-useless_format = "allow"
-module_inception = "allow"
