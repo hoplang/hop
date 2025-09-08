@@ -83,7 +83,7 @@ pub fn evaluate_expr(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dop::{DopTokenizer, parse_expr};
+    use crate::dop::DopParser;
     use crate::hop::environment::Environment;
     use expect_test::{Expect, expect};
     use serde_json::json;
@@ -98,9 +98,9 @@ mod tests {
         }
 
         // Parse the expression
-        let mut tokenizer = DopTokenizer::from(expr_str).peekable();
+        let mut parser = DopParser::from(expr_str);
 
-        let expr = parse_expr(&mut tokenizer).expect("Failed to parse expression");
+        let expr = parser.parse_expr().expect("Failed to parse expression");
 
         // Evaluate the expression
         let actual = match evaluate_expr(&expr, &mut env) {

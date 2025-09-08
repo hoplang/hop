@@ -203,9 +203,7 @@ pub fn typecheck_expr(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dop::DopTokenizer;
-    use crate::dop::parse_parameters;
-    use crate::dop::parser::parse_expr;
+    use crate::dop::DopParser;
     use crate::span::SourceAnnotator;
     use expect_test::{Expect, expect};
 
@@ -213,15 +211,15 @@ mod tests {
         let mut env = Environment::new();
 
         if !env_str.is_empty() {
-            let mut tokenizer = DopTokenizer::from(env_str).peekable();
-            let params = parse_parameters(&mut tokenizer).expect("Failed to parse environment");
+            let mut parser = DopParser::from(env_str);
+            let params = parser.parse_parameters().expect("Failed to parse environment");
             for (_, param) in params {
                 let _ = env.push(param.var_name.to_string(), param.var_type);
             }
         }
 
-        let mut tokenizer = DopTokenizer::from(expr_str).peekable();
-        let expr = parse_expr(&mut tokenizer).expect("Failed to parse expression");
+        let mut parser = DopParser::from(expr_str);
+        let expr = parser.parse_expr().expect("Failed to parse expression");
 
         let mut annotations = Vec::new();
 

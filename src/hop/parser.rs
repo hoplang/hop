@@ -1,4 +1,4 @@
-use crate::dop::{self, DopTokenizer};
+use crate::dop;
 use crate::hop::ast::{ComponentDefinition, DopExprAttribute, HopAst, HopNode, Import, Render};
 use crate::hop::parse_error::ParseError;
 use crate::hop::token_tree::{TokenTree, build_tree};
@@ -146,8 +146,8 @@ pub fn parse(
                         continue;
                     }
                     let params = expression.as_ref().and_then(|expr| {
-                        let mut tokenizer = DopTokenizer::from(expr.cursor()).peekable();
-                        match dop::parse_parameters(&mut tokenizer) {
+                        let mut parser: dop::DopParser = expr.cursor().into();
+                        match parser.parse_parameters() {
                             Ok(params) => Some((params, expr.clone())),
                             Err(dop::parse_error::ParseError::UnexpectedEof) => {
                                 errors.push(ParseError::UnexpectedEndOfExpression { span: expr.clone() });
@@ -268,8 +268,8 @@ fn construct_node(
         Token::Expression {
             expression: expr, ..
         } => {
-            let mut tokenizer = DopTokenizer::from(expr.cursor()).peekable();
-            match dop::parse_expr(&mut tokenizer) {
+            let mut parser: dop::DopParser = expr.cursor().into();
+            match parser.parse_expr() {
                 Ok(expression) => HopNode::TextExpression {
                     expression,
                     span: tree.span.clone(),
@@ -305,8 +305,8 @@ fn construct_node(
                 "if" => match expression {
                     // TODO: Check for unrecognized attributes
                     Some(expr) => {
-                        let mut tokenizer = DopTokenizer::from(expr.cursor()).peekable();
-                        match dop::parse_expr(&mut tokenizer) {
+                        let mut parser: dop::DopParser = expr.cursor().into();
+                        match parser.parse_expr() {
                             Ok(condition) => HopNode::If {
                                 condition,
                                 span: tree.span.clone(),
@@ -346,8 +346,8 @@ fn construct_node(
                 "for" => match expression {
                     // TODO: Check for unrecognized attributes
                     Some(expr) => {
-                        let mut tokenizer = DopTokenizer::from(expr.cursor()).peekable();
-                        match dop::parse_loop_header(&mut tokenizer) {
+                        let mut parser: dop::DopParser = expr.cursor().into();
+                        match parser.parse_loop_header() {
                             Ok((var_name, array_expr)) => HopNode::For {
                                 var_name,
                                 array_expr,
@@ -445,8 +445,8 @@ fn construct_node(
                     }
                     let args = match &expression {
                         Some(expr) => {
-                            let mut tokenizer = DopTokenizer::from(expr.cursor()).peekable();
-                            match dop::parse_arguments(&mut tokenizer) {
+                            let mut parser: dop::DopParser = expr.cursor().into();
+                            match parser.parse_arguments() {
                                 Ok(named_args) => Some((named_args, expr.clone())),
                                 Err(dop::parse_error::ParseError::UnexpectedEof) => {
                                     errors.push(ParseError::UnexpectedEndOfExpression { span: expr.clone() });
@@ -500,8 +500,8 @@ fn construct_node(
                                 }
                                 Some(val) => val,
                             };
-                            let mut tokenizer = DopTokenizer::from(attr_val.cursor()).peekable();
-                            match dop::parse_expr(&mut tokenizer) {
+                            let mut parser: dop::DopParser = attr_val.cursor().into();
+                            match parser.parse_expr() {
                                 Ok(expression) => set_attributes.push(DopExprAttribute {
                                     name: attr.name.clone(),
                                     expression,
