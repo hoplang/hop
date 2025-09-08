@@ -6,7 +6,7 @@ use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
 use crate::span::Position;
-use crate::span::string_cursor::StringSpan;
+use crate::span::string_cursor::{StringSpan, Spanned};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
@@ -334,8 +334,8 @@ impl Program {
                 .flatten()
             {
                 diagnostics.push(Diagnostic {
-                    message: error.message.clone(),
-                    span: error.span.clone(),
+                    message: error.to_string(),
+                    span: error.span().clone(),
                 });
             }
         }
