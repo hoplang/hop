@@ -225,19 +225,18 @@ fn typecheck_node(
             for child in children {
                 typecheck_node(child, state, env, annotations, errors);
             }
-            let condition_type = match dop::typecheck_expr(condition, env, annotations) {
-                Ok(t) => t,
+            match dop::typecheck_expr(condition, env, annotations) {
+                Ok(condition_type) => {
+                    if !condition_type.is_subtype(&DopType::Bool) {
+                        errors.push(TypeError::ExpectedBooleanCondition {
+                            found: condition_type.to_string(),
+                            span: condition.span(),
+                        })
+                    }
+                }
                 Err(err) => {
                     errors.push(err);
-                    return; // Skip further processing of this branch
                 }
-            };
-
-            if !condition_type.is_subtype(&DopType::Bool) {
-                errors.push(TypeError::ExpectedBooleanCondition {
-                    found: condition_type.to_string(),
-                    span: condition.span(),
-                });
             }
         }
 
@@ -272,23 +271,23 @@ fn typecheck_node(
             };
 
             // Push the loop variable into scope
-            let mut pushed = false;
-            match env.push(var_name.to_string(), element_type.clone()) {
+            let pushed = match env.push(var_name.to_string(), element_type.clone()) {
                 Ok(_) => {
-                    pushed = true;
                     annotations.push(TypeAnnotation {
                         span: var_name.span().clone(),
                         typ: element_type.clone(),
                         name: var_name.to_string(),
                     });
+                    true
                 }
                 Err(_) => {
                     errors.push(TypeError::VariableIsAlreadyDefined {
                         var: var_name.as_str().to_string(),
                         span: var_name.span().clone(),
                     });
+                    false
                 }
-            }
+            };
 
             for child in children {
                 typecheck_node(child, state, env, annotations, errors);
