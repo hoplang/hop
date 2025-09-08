@@ -1,6 +1,6 @@
 use super::ast::{BinaryOp, DopExpr, UnaryOp};
-use crate::hop::errors::TypeError;
 use crate::hop::environment::Environment;
+use crate::hop::errors::TypeError;
 use crate::hop::typechecker::TypeAnnotation;
 use crate::span::string_cursor::StringSpan;
 use std::collections::BTreeMap;
@@ -15,6 +15,7 @@ pub enum DopType {
     Number,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SpannedDopType {
     pub dop_type: DopType,

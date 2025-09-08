@@ -36,7 +36,7 @@ where
         for dep in &dependencies {
             self.reverse_dependencies
                 .entry(dep.clone())
-                .or_insert_with(HashSet::new)
+                .or_default()
                 .insert(node.clone());
         }
 

@@ -20,10 +20,6 @@ impl ParseError {
         Self::new(format!("Unmatched '{token}'"), span)
     }
 
-    pub fn expected_digit_after_decimal_point(span: StringSpan) -> Self {
-        Self::new("Expected digit after decimal point".to_string(), span)
-    }
-
     pub fn invalid_variable_name(name: &str, span: StringSpan) -> Self {
         Self::new(
             format!(

@@ -130,12 +130,12 @@ fn typecheck_module(
     for import in module.get_imports() {
         let imported_module = import.imported_module();
         let imported_component = import.imported_component();
-        if !state.module_is_declared(&imported_module) {
+        if !state.module_is_declared(imported_module) {
             errors.push(TypeError::import_from_undefined_module(
                 imported_module.as_str(),
                 import.from_attr_value_span.clone(),
             ));
-        } else if !state.component_is_declared(&imported_module, imported_component.as_str()) {
+        } else if !state.component_is_declared(imported_module, imported_component.as_str()) {
             errors.push(TypeError::undeclared_component(
                 imported_module.as_str(),
                 imported_component.as_str(),

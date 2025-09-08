@@ -78,11 +78,6 @@ impl ModuleName {
     pub fn as_str(&self) -> &str {
         &self.0
     }
-
-    /// Get the filename for this module (adds .hop extension)
-    pub fn to_filename(&self) -> String {
-        format!("{}.hop", self.0)
-    }
 }
 
 impl fmt::Display for ModuleName {
@@ -154,11 +149,5 @@ mod tests {
             ModuleName::from_import_path("utils").unwrap().as_str(),
             "utils"
         );
-    }
-
-    #[test]
-    fn test_to_filename() {
-        let module = ModuleName::new("components/button".to_string()).unwrap();
-        assert_eq!(module.to_filename(), "components/button.hop");
     }
 }
