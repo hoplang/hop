@@ -448,34 +448,35 @@ impl Tokenizer {
         })
     }
 
+    fn iter_holds_closing_tag(&self, tag_name: &str) -> bool {
+        self.iter
+            .clone()
+            .map(|s| s.ch())
+            .filter(|ch| !ch.is_whitespace())
+            .take(tag_name.len())
+            .eq(tag_name.chars())
+    }
+
     fn step(&mut self) -> Option<Token> {
         // If we have a stored raw_text_closing_tag we need to parse all content
         // as raw text until we find the tag.
-        if let Some(stored_closing_tag) = mem::take(&mut self.raw_text_closing_tag) {
+        if let Some(tag_name) = mem::take(&mut self.raw_text_closing_tag) {
             let mut raw_text: Option<StringSpan> = None;
             loop {
-                let peeked = self.iter.peek()?.ch();
-                match peeked {
-                    '<' if self
-                        .iter
-                        .clone()
-                        .map(|s| s.ch())
-                        .filter(|ch| !ch.is_whitespace())
-                        .take(stored_closing_tag.len())
-                        .eq(stored_closing_tag.chars()) =>
-                    {
+                match self.iter.peek().map(|s| s.ch()) {
+                    Some('<') if self.iter_holds_closing_tag(&tag_name) => {
                         if let Some(s) = raw_text {
                             return Some(Token::Text { span: s });
                         } else {
                             break;
                         }
                     }
-                    _ => match raw_text.take() {
-                        Some(v) => {
-                            raw_text = Some(v.to(self.iter.next()?));
-                        }
-                        None => raw_text = Some(self.iter.next()?),
-                    },
+                    Some(_) => {
+                        let ch = self.iter.next().unwrap();
+                        raw_text = raw_text.into_iter().chain(Some(ch)).collect();
+                    }
+                    // EOF
+                    None => return raw_text.map(|s| Token::Text { span: s }),
                 }
             }
         }
