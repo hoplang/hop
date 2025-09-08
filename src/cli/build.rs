@@ -74,11 +74,13 @@ pub fn execute(
         }
     }
 
-    // Check for type errors
-    for (module_name, errors) in program.get_type_errors() {
-        if !errors.is_empty() {
-            let filename = format!("{}.hop", module_name);
-            error_output_parts.push(annotator.annotate(Some(&filename), errors));
+    // Check for type errors if there's no parse errors
+    if error_output_parts.is_empty() {
+        for (module_name, errors) in program.get_type_errors() {
+            if !errors.is_empty() {
+                let filename = format!("{}.hop", module_name);
+                error_output_parts.push(annotator.annotate(Some(&filename), errors));
+            }
         }
     }
 
