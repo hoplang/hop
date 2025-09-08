@@ -1,4 +1,4 @@
-use crate::filesystem::files::{self as files, ProjectRoot};
+use crate::filesystem::files::ProjectRoot;
 use crate::hop::module_name::ModuleName;
 use crate::hop::program::{DefinitionLocation, Program, RenameLocation};
 use crate::span::Position;
@@ -54,14 +54,14 @@ impl HopLanguageServer {
     }
 
     fn uri_to_module_name(uri: &Url, root: &ProjectRoot) -> ModuleName {
-        match files::path_to_module_name(Path::new(uri.path()), root) {
+        match root.path_to_module_name(Path::new(uri.path())) {
             Ok(s) => s,
             Err(_) => panic!(),
         }
     }
 
     fn module_name_to_uri(name: &ModuleName, root: &ProjectRoot) -> Url {
-        let p = files::module_name_to_path(name, root);
+        let p = root.module_name_to_path(name);
         match Url::from_file_path(&p) {
             Ok(url) => url,
             Err(_) => panic!(),
@@ -127,7 +127,7 @@ impl LanguageServer for HopLanguageServer {
 
     async fn initialized(&self, _: InitializedParams) {
         if let Some(root) = self.root.get() {
-            if let Ok(all_modules) = files::load_all_hop_modules(root) {
+            if let Ok(all_modules) = root.load_all_hop_modules() {
                 let names: Vec<ModuleName> = all_modules.keys().cloned().collect();
                 {
                     let mut server = self.program.write().await;

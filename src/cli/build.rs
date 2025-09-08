@@ -5,7 +5,6 @@ use rayon::prelude::*;
 use std::fs;
 use std::path::Path;
 
-use crate::filesystem::files;
 use crate::hop::program::Program;
 use crate::span::SourceAnnotator;
 use crate::tui::timing;
@@ -54,7 +53,7 @@ pub fn execute(
     let mut timer = timing::TimingCollector::new();
 
     timer.start_phase("loading modules");
-    let modules = files::load_all_hop_modules(root)?;
+    let modules = root.load_all_hop_modules()?;
 
     timer.start_phase("compiling");
     let program = Program::new(modules);

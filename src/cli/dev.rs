@@ -4,8 +4,6 @@ use crate::hop::module_name::ModuleName;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, OnceLock, RwLock};
-
-use crate::filesystem::files;
 use crate::hop::program::Program;
 use axum::body::Body;
 use axum::extract::{Request, State};
@@ -226,7 +224,7 @@ fn create_file_watcher(
 
                     if is_hop_file {
                         // Reload all modules from scratch
-                        if let Ok(modules) = files::load_all_hop_modules(&local_root) {
+                        if let Ok(modules) = local_root.load_all_hop_modules() {
                             let new_program = Program::new(modules);
                             if let Ok(mut program) = state.program.write() {
                                 *program = new_program;
@@ -265,7 +263,7 @@ pub async fn execute(
     use axum::routing::get;
     use tower_http::services::ServeDir;
 
-    let modules = files::load_all_hop_modules(root)?;
+    let modules = root.load_all_hop_modules()?;
 
     let (reload_channel, _) = tokio::sync::broadcast::channel::<()>(100);
 

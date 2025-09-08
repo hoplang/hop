@@ -6,6 +6,31 @@ use std::{
 
 use crate::hop::module_name::ModuleName;
 
+/// Check if a directory should be skipped during .hop file search
+fn should_skip_directory(dir_name: &str) -> bool {
+    matches!(
+        dir_name,
+        "target"
+            | ".git"
+            | "node_modules"
+            | ".cargo"
+            | ".rustup"
+            | "dist"
+            | "build"
+            | ".next"
+            | ".nuxt"
+            | "coverage"
+            | ".nyc_output"
+            | ".pytest_cache"
+            | "__pycache__"
+            | ".venv"
+            | "vendor"
+            | ".idea"
+            | ".vscode"
+            | ".direnv"
+    )
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProjectRoot(PathBuf);
 
@@ -36,8 +61,10 @@ impl ProjectRoot {
             })?
         }
     }
-    /// Construct the project root from a path. The path should be a directory and contain the
-    /// build file.
+
+    /// Construct the project root from a path.
+    ///
+    /// The path should be a directory and contain the build file.
     pub fn from(path: &Path) -> anyhow::Result<ProjectRoot> {
         if !path.is_dir() {
             anyhow::bail!("{:?} is not a directory", &path)
@@ -55,137 +82,104 @@ impl ProjectRoot {
     pub fn get_path(&self) -> &Path {
         &self.0
     }
-}
 
-/// Check if a directory should be skipped during .hop file search
-fn should_skip_directory(dir_name: &str) -> bool {
-    matches!(
-        dir_name,
-        "target"
-            | ".git"
-            | "node_modules"
-            | ".cargo"
-            | ".rustup"
-            | "dist"
-            | "build"
-            | ".next"
-            | ".nuxt"
-            | "coverage"
-            | ".nyc_output"
-            | ".pytest_cache"
-            | "__pycache__"
-            | ".venv"
-            | "vendor"
-            | ".idea"
-            | ".vscode"
-            | ".direnv"
-    )
-}
+    /// Convert a file path to a module name using this project root as reference
+    /// Returns a module name with '/' separators (e.g., "src/components/header")
+    pub fn path_to_module_name(&self, file_path: &Path) -> anyhow::Result<ModuleName> {
+        let relative_path = file_path
+            .strip_prefix(&self.0)
+            .with_context(|| format!("Failed to strip prefix from path {:?}", file_path))?;
 
-/// Recursively find all .hop files in a directory
-pub fn find_hop_files(root: &ProjectRoot) -> anyhow::Result<Vec<PathBuf>> {
-    let mut hop_files = Vec::new();
+        let module_str = relative_path
+            .with_extension("")
+            .to_string_lossy()
+            .replace(std::path::MAIN_SEPARATOR, "/");
 
-    let ProjectRoot(dir) = root;
-
-    if !dir.exists() || !dir.is_dir() {
-        return Ok(hop_files);
+        ModuleName::new(module_str)
+            .map_err(|e| anyhow::anyhow!("Invalid module name for path {:?}: {}", file_path, e))
     }
 
-    let mut paths: Vec<PathBuf> = Vec::new();
-    paths.push(dir.to_path_buf());
+    /// Convert a module name with '/' separators back to a file path
+    /// (e.g., "src/components/header" -> "src/components/header.hop")
+    pub fn module_name_to_path(&self, module_name: &ModuleName) -> PathBuf {
+        let module_path = module_name
+            .to_string()
+            .replace('/', std::path::MAIN_SEPARATOR_STR);
+        self.0.join(format!("{}.hop", module_path))
+    }
 
-    while let Some(path) = paths.pop() {
-        if path.is_dir() {
-            // Check if we should skip this directory
-            if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
-                if should_skip_directory(dir_name) {
-                    continue;
-                }
-            }
+    /// Load all hop modules from this project root, returning a HashMap of module_name -> content
+    pub fn load_all_hop_modules(&self) -> anyhow::Result<HashMap<ModuleName, String>> {
+        let all_hop_files = self.find_hop_files()?;
+        let mut modules = HashMap::new();
 
-            let entries = std::fs::read_dir(&path)
-                .with_context(|| format!("Failed to read directory {:?}", &path))?;
-            for entry in entries {
-                let p = entry.context("Failed to read directory entry")?.path();
-                paths.push(p);
-            }
-        } else if path.extension().and_then(|s| s.to_str()) == Some("hop") {
-            hop_files.push(path.to_path_buf());
+        for path in all_hop_files {
+            let module_name = self.path_to_module_name(&path)?;
+            let content = std::fs::read_to_string(&path)
+                .with_context(|| format!("Failed to read file {:?}", path))?;
+            modules.insert(module_name, content);
         }
+
+        Ok(modules)
     }
 
-    Ok(hop_files)
-}
+    /// Recursively find all .hop files in this project root
+    fn find_hop_files(&self) -> anyhow::Result<Vec<PathBuf>> {
+        let mut hop_files = Vec::new();
 
-/// Convert a file path to a module name using the base directory as reference
-/// Returns a module name with '/' separators (e.g., "src/components/header")
-pub fn path_to_module_name(file_path: &Path, root: &ProjectRoot) -> anyhow::Result<ModuleName> {
-    let ProjectRoot(dir) = root;
-    let relative_path = file_path
-        .strip_prefix(dir)
-        .with_context(|| format!("Failed to strip prefix from path {:?}", file_path))?;
+        if !self.0.exists() || !self.0.is_dir() {
+            return Ok(hop_files);
+        }
 
-    let module_str = relative_path
-        .with_extension("")
-        .to_string_lossy()
-        .replace(std::path::MAIN_SEPARATOR, "/");
-    
-    ModuleName::new(module_str)
-        .map_err(|e| anyhow::anyhow!("Invalid module name for path {:?}: {}", file_path, e))
-}
+        let mut paths: Vec<PathBuf> = Vec::new();
+        paths.push(self.0.to_path_buf());
 
-/// Convert a module name with '/' separators back to a file path
-/// (e.g., "src/components/header" -> "src/components/header.hop")
-pub fn module_name_to_path(module_name: &ModuleName, root: &ProjectRoot) -> PathBuf {
-    let ProjectRoot(base) = root;
-    let module_path = module_name
-        .to_string()
-        .replace('/', std::path::MAIN_SEPARATOR_STR);
-    base.join(format!("{}.hop", module_path))
-}
+        while let Some(path) = paths.pop() {
+            if path.is_dir() {
+                // Check if we should skip this directory
+                if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
+                    if should_skip_directory(dir_name) {
+                        continue;
+                    }
+                }
 
-/// Load all hop modules from a base directory, returning a HashMap of module_name -> content
-pub fn load_all_hop_modules(base_dir: &ProjectRoot) -> anyhow::Result<HashMap<ModuleName, String>> {
-    let all_hop_files = find_hop_files(base_dir)?;
-    let mut modules = HashMap::new();
+                let entries = std::fs::read_dir(&path)
+                    .with_context(|| format!("Failed to read directory {:?}", &path))?;
+                for entry in entries {
+                    let p = entry.context("Failed to read directory entry")?.path();
+                    paths.push(p);
+                }
+            } else if path.extension().and_then(|s| s.to_str()) == Some("hop") {
+                hop_files.push(path.to_path_buf());
+            }
+        }
 
-    for path in all_hop_files {
-        let module_name = path_to_module_name(&path, base_dir)?;
-        let content = std::fs::read_to_string(&path)
-            .with_context(|| format!("Failed to read file {:?}", path))?;
-        modules.insert(module_name, content);
+        Ok(hop_files)
     }
-
-    Ok(modules)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env;
+    use crate::test_utils::archive::temp_dir_from_archive;
+    use indoc::indoc;
+    use simple_txtar::Archive;
     use std::fs;
-
-    fn create_test_dir() -> std::io::Result<PathBuf> {
-        let r = rand::random::<u64>();
-        let temp_dir = env::temp_dir().join(format!("files_test_{}", r));
-        fs::create_dir_all(&temp_dir)?;
-        Ok(temp_dir)
-    }
 
     #[test]
     fn test_find_build_file() {
-        let temp_dir = create_test_dir().unwrap();
-
-        // Create nested directory structure
-        let nested_dir = temp_dir.join("src").join("components");
-        fs::create_dir_all(&nested_dir).unwrap();
-
-        // Create build.hop in root
-        let build_file = temp_dir.join("build.hop");
-        fs::write(&build_file, "test").unwrap();
+        let archive = Archive::from(indoc! {r#"
+            -- build.hop --
+            <render file="index.html">
+              Test content
+            </render>
+            -- src/components/.gitkeep --
+            
+        "#});
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
 
         // Test finding from nested directory
+        let nested_dir = temp_dir.join("src").join("components");
         let found = ProjectRoot::find_upwards(&nested_dir).unwrap();
         assert_eq!(found.0, temp_dir);
 
@@ -195,18 +189,201 @@ mod tests {
 
     #[test]
     fn test_find_build_file_not_found() {
-        let temp_dir = create_test_dir().unwrap();
-
-        // Create nested directory structure without build.hop
-        let nested_dir = temp_dir.join("src").join("components");
-        fs::create_dir_all(&nested_dir).unwrap();
+        let archive = Archive::from(indoc! {r#"
+            -- src/components/test.hop --
+            <test-comp>Hello</test-comp>
+            -- src/main.rs --
+            fn main() {}
+        "#});
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
 
         // Test that find_upwards fails when no build.hop exists
+        let nested_dir = temp_dir.join("src").join("components");
         let result = ProjectRoot::find_upwards(&nested_dir);
         assert!(result.is_err());
 
         let error_message = result.unwrap_err().to_string();
         assert!(error_message.contains("Failed to locate build.hop"));
+
+        // Clean up
+        fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[test]
+    fn test_path_to_module_name() {
+        let archive = Archive::from(indoc! {r#"
+            -- build.hop --
+            <render file="index.html">Test</render>
+            -- src/components/button.hop --
+            <button-comp>Click</button-comp>
+        "#});
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+        let root = ProjectRoot::from(&temp_dir).unwrap();
+
+        // Test converting file paths to module names
+        let button_path = temp_dir.join("src/components/button.hop");
+        let module_name = root.path_to_module_name(&button_path).unwrap();
+        assert_eq!(module_name.as_str(), "src/components/button");
+
+        let build_path = temp_dir.join("build.hop");
+        let build_module = root.path_to_module_name(&build_path).unwrap();
+        assert_eq!(build_module.as_str(), "build");
+
+        // Clean up
+        fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[test]
+    fn test_module_name_to_path() {
+        let archive = Archive::from(indoc! {r#"
+            -- build.hop --
+            <render file="index.html">Test</render>
+        "#});
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+        let root = ProjectRoot::from(&temp_dir).unwrap();
+
+        // Test converting module names back to paths
+        let module = ModuleName::new("src/components/button".to_string()).unwrap();
+        let path = root.module_name_to_path(&module);
+        assert_eq!(
+            path.strip_prefix(&temp_dir)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/"),
+            "src/components/button.hop"
+        );
+
+        // Clean up
+        fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[test]
+    fn test_load_all_hop_modules() {
+        let archive = Archive::from(indoc! {r#"
+            -- build.hop --
+            <render file="index.html">
+              <main-comp />
+            </render>
+            -- src/main.hop --
+            <main-comp>
+              <button-comp />
+              <header-comp />
+            </main-comp>
+            -- src/components/button.hop --
+            <button-comp>Click me!</button-comp>
+            -- src/components/header.hop --
+            <header-comp>Welcome</header-comp>
+        "#});
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+        let root = ProjectRoot::from(&temp_dir).unwrap();
+
+        let modules = root.load_all_hop_modules().unwrap();
+
+        // Should load exactly 4 modules
+        assert_eq!(modules.len(), 4);
+
+        // Check that specific modules are loaded with correct content
+        assert!(modules.contains_key(&ModuleName::new("build".to_string()).unwrap()));
+        assert!(modules.contains_key(&ModuleName::new("src/main".to_string()).unwrap()));
+        assert!(
+            modules.contains_key(&ModuleName::new("src/components/button".to_string()).unwrap())
+        );
+        assert!(
+            modules.contains_key(&ModuleName::new("src/components/header".to_string()).unwrap())
+        );
+
+        // Verify content of one module
+        let button_content = modules
+            .get(&ModuleName::new("src/components/button".to_string()).unwrap())
+            .unwrap();
+        assert!(button_content.contains("<button-comp>Click me!</button-comp>"));
+
+        // Clean up
+        fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[test]
+    fn test_files_with_dots_in_names_are_rejected() {
+        let archive = Archive::from(indoc! {r#"
+            -- build.hop --
+            <render file="index.html">Test</render>
+            -- src/foo.bar.hop --
+            <foo-bar-comp>Component with dots</foo-bar-comp>
+            -- src/utils/helper_test.hop --
+            <test-helper>Test helper</test-helper>
+            -- src/components/button_min.hop --
+            <button-min>Minified button</button-min>
+        "#});
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+        let root = ProjectRoot::from(&temp_dir).unwrap();
+
+        // Files with dots in the name (excluding .hop extension) should fail validation
+        let foo_bar_path = temp_dir.join("src/foo.bar.hop");
+        let result = root.path_to_module_name(&foo_bar_path);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Module name contains invalid character: '.'")
+        );
+
+        // Files with underscores should work fine
+        let helper_test_path = temp_dir.join("src/utils/helper_test.hop");
+        let helper_test_module = root.path_to_module_name(&helper_test_path).unwrap();
+        assert_eq!(helper_test_module.as_str(), "src/utils/helper_test");
+
+        let button_min_path = temp_dir.join("src/components/button_min.hop");
+        let button_min_module = root.path_to_module_name(&button_min_path).unwrap();
+        assert_eq!(button_min_module.as_str(), "src/components/button_min");
+
+        // load_all_hop_modules should skip files that produce invalid module names
+        let result = root.load_all_hop_modules();
+        // This will fail because foo.bar.hop creates an invalid module name
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Invalid module name")
+        );
+
+        // Clean up
+        fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[test]
+    fn test_skip_directories() {
+        let archive = Archive::from(indoc! {r#"
+            -- build.hop --
+            <render file="index.html">Test</render>
+            -- src/main.hop --
+            <main-comp>Main</main-comp>
+            -- node_modules/package/index.hop --
+            <should-not-find>This should be skipped</should-not-find>
+            -- .git/hooks/pre-commit.hop --
+            <should-not-find>This should also be skipped</should-not-find>
+            -- target/debug/test.hop --
+            <should-not-find>Skip this too</should-not-find>
+        "#});
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+        let root = ProjectRoot::from(&temp_dir).unwrap();
+
+        // Test that load_all_hop_modules correctly skips certain directories
+        let modules = root.load_all_hop_modules().unwrap();
+
+        // Should only load 2 modules (from build.hop and src/main.hop)
+        assert_eq!(modules.len(), 2);
+
+        // Check which modules were loaded
+        assert!(modules.contains_key(&ModuleName::new("build".to_string()).unwrap()));
+        assert!(modules.contains_key(&ModuleName::new("src/main".to_string()).unwrap()));
+
+        // Should NOT contain modules from skipped directories
+        let module_names: Vec<String> = modules.keys().map(|m| m.as_str().to_string()).collect();
+        assert!(!module_names.iter().any(|m| m.contains("node_modules")));
+        assert!(!module_names.iter().any(|m| m.contains(".git")));
+        assert!(!module_names.iter().any(|m| m.contains("target")));
 
         // Clean up
         fs::remove_dir_all(&temp_dir).unwrap();
