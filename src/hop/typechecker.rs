@@ -1,4 +1,4 @@
-use crate::common::TypeError;
+use crate::hop::errors::TypeError;
 use crate::dop::{self, DopParameter, DopType, is_subtype};
 use crate::hop::ast::HopAst;
 use crate::hop::ast::{ComponentDefinition, HopNode, Render};

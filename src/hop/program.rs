@@ -1,4 +1,4 @@
-use crate::common::{ParseError, TypeError};
+use crate::hop::errors::{ParseError, TypeError};
 use crate::hop::ast::HopAst;
 use crate::hop::evaluator;
 use crate::hop::parser::parse;

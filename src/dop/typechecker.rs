@@ -1,5 +1,5 @@
 use super::ast::{BinaryOp, DopExpr, UnaryOp};
-use crate::common::TypeError;
+use crate::hop::errors::TypeError;
 use crate::hop::environment::Environment;
 use crate::hop::typechecker::TypeAnnotation;
 use crate::span::string_cursor::StringSpan;

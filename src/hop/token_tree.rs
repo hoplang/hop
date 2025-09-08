@@ -1,4 +1,5 @@
-use crate::common::{ParseError, is_void_element};
+use crate::common::is_void_element;
+use crate::hop::errors::ParseError;
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
 use crate::span::string_cursor::{Spanned as _, StringSpan};
