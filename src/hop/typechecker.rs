@@ -106,7 +106,7 @@ impl TypeChecker {
                     let imported_module = import_node.imported_module();
                     type_errors.push(TypeError::import_cycle(
                         &module.name,
-                        &imported_module,
+                        imported_module.as_str(),
                         &modules
                             .iter()
                             .map(|m| m.name.to_string())
@@ -128,16 +128,16 @@ fn typecheck_module(
     for import in module.get_imports() {
         let imported_module = import.imported_module();
         let imported_component = import.imported_component();
-        if !state.module_is_declared(&imported_module) {
+        if !state.module_is_declared(imported_module.as_str()) {
             errors.push(TypeError::import_from_undefined_module(
-                &imported_module,
+                imported_module.as_str(),
                 import.from_attr.value.clone(),
             ));
         } else if !state
-            .component_is_declared(&imported_module, imported_component.as_str())
+            .component_is_declared(imported_module.as_str(), imported_component.as_str())
         {
             errors.push(TypeError::undeclared_component(
-                &imported_module,
+                imported_module.as_str(),
                 imported_component.as_str(),
                 imported_component.clone(),
             ));

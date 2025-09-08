@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
+use crate::hop::module_name::ModuleName;
 use crate::span::Position;
 use crate::span::string_cursor::{Spanned, StringSpan};
 
@@ -128,12 +129,13 @@ pub struct Import {
 }
 
 impl Import {
-    pub fn imported_module(&self) -> String {
+    pub fn imported_module(&self) -> ModuleName {
         // Strip @/ prefix for internal module resolution
-        self.from_attr.value.as_str()
+        let path = self.from_attr.value.as_str()
             .strip_prefix("@/")
-            .expect("Import path should start with @/")
-            .to_string()
+            .expect("Import path should start with @/");
+        ModuleName::new(path)
+            .expect("Import path should be a valid module name")
     }
     pub fn imported_component(&self) -> &StringSpan {
         &self.component_attr.value

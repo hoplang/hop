@@ -2,6 +2,7 @@ pub mod ast;
 pub mod environment;
 pub mod errors;
 pub mod evaluator;
+pub mod module_name;
 pub mod parser;
 pub mod program;
 pub mod script_collector;

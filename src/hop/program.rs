@@ -80,7 +80,7 @@ impl Program {
         let module_dependencies = module
             .get_imports()
             .iter()
-            .map(|import_node| import_node.imported_module())
+            .map(|import_node| import_node.imported_module().to_string())
             .collect::<HashSet<String>>();
 
         // Store the AST
