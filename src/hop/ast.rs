@@ -26,7 +26,7 @@ pub struct DopExprAttribute {
 
 #[derive(Debug)]
 pub struct HopAst {
-    pub name: String,
+    pub name: ModuleName,
     imports: Vec<Import>,
     component_definitions: Vec<ComponentDefinition>,
     renders: Vec<Render>,
@@ -34,7 +34,7 @@ pub struct HopAst {
 
 impl HopAst {
     pub fn new(
-        name: String,
+        name: ModuleName,
         component_definitions: Vec<ComponentDefinition>,
         imports: Vec<Import>,
         renders: Vec<Render>,
@@ -125,17 +125,13 @@ impl HopAst {
 #[derive(Debug)]
 pub struct Import {
     pub component_attr: PresentAttribute,
-    pub from_attr: PresentAttribute,
+    pub module_name: ModuleName,
+    pub from_attr_value_span: StringSpan,
 }
 
 impl Import {
-    pub fn imported_module(&self) -> ModuleName {
-        // Strip @/ prefix for internal module resolution
-        let path = self.from_attr.value.as_str()
-            .strip_prefix("@/")
-            .expect("Import path should start with @/");
-        ModuleName::new(path)
-            .expect("Import path should be a valid module name")
+    pub fn imported_module(&self) -> &ModuleName {
+        &self.module_name
     }
     pub fn imported_component(&self) -> &StringSpan {
         &self.component_attr.value
@@ -143,12 +139,8 @@ impl Import {
     pub fn imports_component(&self, component_name: &str) -> bool {
         self.component_attr.value.as_str() == component_name
     }
-    pub fn imports_from(&self, from_path: &str) -> bool {
-        // All imports now have @/ prefix, so we strip it for comparison
-        let normalized_from = self.from_attr.value.as_str()
-            .strip_prefix("@/")
-            .expect("Import path should start with @/");
-        normalized_from == from_path
+    pub fn imports_from(&self, module_name: &ModuleName) -> bool {
+        &self.module_name == module_name
     }
 }
 
@@ -213,7 +205,7 @@ pub enum HopNode {
     /// </my-component>
     ComponentReference {
         tag_name: StringSpan,
-        definition_module: Option<String>,
+        definition_module: Option<ModuleName>,
         closing_tag_name: Option<StringSpan>,
         args: Option<(BTreeMap<String, DopArgument>, StringSpan)>,
         attributes: Vec<Attribute>,
@@ -418,7 +410,11 @@ mod tests {
     fn check_find_node_at_position(input: &str, expected: Expect) {
         let (source, position) = extract_position(input).expect("Position marker not found");
         let mut errors = Vec::new();
-        let ast = parse("test".to_string(), Tokenizer::new(source), &mut errors);
+        let ast = parse(
+            ModuleName::from("test"),
+            Tokenizer::new(source),
+            &mut errors,
+        );
 
         assert!(errors.is_empty(), "Parse errors: {:?}", errors);
 

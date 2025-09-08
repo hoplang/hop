@@ -1,5 +1,6 @@
 use crate::filesystem::files::ProjectRoot;
 use crate::hop::evaluator::HopMode;
+use crate::hop::module_name::ModuleName;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, OnceLock, RwLock};
@@ -27,9 +28,12 @@ fn get_ui_program() -> &'static Program {
     CACHED_UI_SERVER.get_or_init(|| {
         let mut program = Program::default();
 
-        program.update_module("hop/error_pages", ERROR_TEMPLATES.to_string());
-        program.update_module("hop/ui", UI_TEMPLATES.to_string());
-        program.update_module("hop/icons", ICONS_TEMPLATES.to_string());
+        program.update_module(
+            ModuleName::from("hop/error_pages"),
+            ERROR_TEMPLATES.to_string(),
+        );
+        program.update_module(ModuleName::from("hop/ui"), UI_TEMPLATES.to_string());
+        program.update_module(ModuleName::from("hop/icons"), ICONS_TEMPLATES.to_string());
 
         // Check for any errors in the UI templates
         let parse_errors = program.get_parse_errors();
@@ -168,7 +172,7 @@ fn create_error_page(error: &anyhow::Error) -> String {
     );
     let mut html = String::new();
     match program.evaluate_component(
-        "hop/error_pages",
+        &ModuleName::from("hop/error_pages"),
         "generic-error",
         args,
         HopMode::Dev,
@@ -190,7 +194,7 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
     );
     let mut html = String::new();
     match program.evaluate_component(
-        "hop/error_pages",
+        &ModuleName::from("hop/error_pages"),
         "not-found-error",
         args,
         HopMode::Dev,

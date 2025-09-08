@@ -1,4 +1,5 @@
 use crate::filesystem::files::{self as files, ProjectRoot};
+use crate::hop::module_name::ModuleName;
 use crate::hop::program::{DefinitionLocation, Program, RenameLocation};
 use crate::span::Position;
 use crate::span::string_cursor::StringSpan;
@@ -52,14 +53,14 @@ impl HopLanguageServer {
         }
     }
 
-    fn uri_to_module_name(uri: &Url, root: &ProjectRoot) -> String {
+    fn uri_to_module_name(uri: &Url, root: &ProjectRoot) -> ModuleName {
         match files::path_to_module_name(Path::new(uri.path()), root) {
             Ok(s) => s,
             Err(_) => panic!(),
         }
     }
 
-    fn module_name_to_uri(name: &str, root: &ProjectRoot) -> Url {
+    fn module_name_to_uri(name: &ModuleName, root: &ProjectRoot) -> Url {
         let p = files::module_name_to_path(name, root);
         match Url::from_file_path(&p) {
             Ok(url) => url,
@@ -70,7 +71,7 @@ impl HopLanguageServer {
     async fn publish_diagnostics(&self, root: &ProjectRoot, uri: &Url) {
         let module_name = Self::uri_to_module_name(uri, root);
         let program = self.program.read().await;
-        let diagnostics = program.get_error_diagnostics(&module_name);
+        let diagnostics = program.get_error_diagnostics(module_name);
 
         let lsp_diagnostics: Vec<tower_lsp::lsp_types::Diagnostic> = diagnostics
             .into_iter()
@@ -127,11 +128,11 @@ impl LanguageServer for HopLanguageServer {
     async fn initialized(&self, _: InitializedParams) {
         if let Some(root) = self.root.get() {
             if let Ok(all_modules) = files::load_all_hop_modules(root) {
-                let names: Vec<String> = all_modules.keys().cloned().collect();
+                let names: Vec<ModuleName> = all_modules.keys().cloned().collect();
                 {
                     let mut server = self.program.write().await;
                     for (module_name, content) in all_modules {
-                        server.update_module(&module_name, content);
+                        server.update_module(module_name, content);
                     }
                 }
                 for module_name in names {
@@ -153,10 +154,10 @@ impl LanguageServer for HopLanguageServer {
         if let Some(root) = self.root.get() {
             let module_name = Self::uri_to_module_name(&uri, root);
             if let Some(change) = params.content_changes.into_iter().next() {
-                let changed_modules: Vec<String>;
+                let changed_modules: Vec<ModuleName>;
                 {
                     let mut server = self.program.write().await;
-                    changed_modules = server.update_module(&module_name, change.text);
+                    changed_modules = server.update_module(module_name, change.text);
                 }
                 for c in changed_modules {
                     let uri = Self::module_name_to_uri(&c, root);

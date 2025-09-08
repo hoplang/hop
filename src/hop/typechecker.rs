@@ -1,11 +1,13 @@
-use crate::hop::errors::TypeError;
 use crate::dop::{self, DopParameter, DopType, is_subtype};
 use crate::hop::ast::HopAst;
 use crate::hop::ast::{ComponentDefinition, HopNode, Render};
 use crate::hop::environment::Environment;
+use crate::hop::errors::TypeError;
 use crate::span::string_cursor::{Spanned, StringSpan};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
+
+use super::module_name::ModuleName;
 
 #[derive(Debug, Clone)]
 pub struct TypeAnnotation {
@@ -36,13 +38,13 @@ pub struct ComponentTypeInformation {
 
 #[derive(Debug, Default)]
 struct State {
-    component_type_information: HashMap<String, HashMap<String, ComponentTypeInformation>>,
+    component_type_information: HashMap<ModuleName, HashMap<String, ComponentTypeInformation>>,
 }
 
 impl State {
     fn get_parameter_types(
         &self,
-        module_name: &str,
+        module_name: &ModuleName,
         component_name: &str,
     ) -> Option<&BTreeMap<String, DopParameter>> {
         self.component_type_information
@@ -53,24 +55,24 @@ impl State {
     }
     fn set_type_info(
         &mut self,
-        module_name: &str,
+        module_name: &ModuleName,
         component_name: &str,
         type_info: ComponentTypeInformation,
     ) {
         self.component_type_information
-            .entry(module_name.to_string())
+            .entry(module_name.clone())
             .or_default()
             .insert(component_name.to_string(), type_info);
     }
-    fn component_has_slot(&self, module_name: &str, component_name: &str) -> bool {
+    fn component_has_slot(&self, module_name: &ModuleName, component_name: &str) -> bool {
         self.component_type_information
             .get(module_name)
             .is_some_and(|m| m.get(component_name).is_some_and(|c| c.has_slot))
     }
-    fn module_is_declared(&self, module_name: &str) -> bool {
+    fn module_is_declared(&self, module_name: &ModuleName) -> bool {
         self.component_type_information.contains_key(module_name)
     }
-    fn component_is_declared(&self, module_name: &str, component_name: &str) -> bool {
+    fn component_is_declared(&self, module_name: &ModuleName, component_name: &str) -> bool {
         self.component_type_information
             .get(module_name)
             .is_some_and(|c| c.get(component_name).is_some())
@@ -80,8 +82,8 @@ impl State {
 #[derive(Default, Debug)]
 pub struct TypeChecker {
     state: State,
-    pub type_errors: HashMap<String, Vec<TypeError>>,
-    pub type_annotations: HashMap<String, Vec<TypeAnnotation>>,
+    pub type_errors: HashMap<ModuleName, Vec<TypeError>>,
+    pub type_annotations: HashMap<ModuleName, Vec<TypeAnnotation>>,
 }
 
 impl TypeChecker {
@@ -89,10 +91,10 @@ impl TypeChecker {
     // were changed
     pub fn typecheck(&mut self, modules: &[&HopAst]) {
         for module in modules {
-            let type_errors = self.type_errors.entry(module.name.to_string()).or_default();
+            let type_errors = self.type_errors.entry(module.name.clone()).or_default();
             let type_annotations = self
                 .type_annotations
-                .entry(module.name.to_string())
+                .entry(module.name.clone())
                 .or_default();
 
             type_errors.clear();
@@ -105,13 +107,13 @@ impl TypeChecker {
                 for import_node in module.get_imports() {
                     let imported_module = import_node.imported_module();
                     type_errors.push(TypeError::import_cycle(
-                        &module.name,
+                        module.name.as_str(),
                         imported_module.as_str(),
                         &modules
                             .iter()
                             .map(|m| m.name.to_string())
                             .collect::<Vec<_>>(),
-                        import_node.from_attr.value.clone(),
+                        import_node.from_attr_value_span.clone(),
                     ));
                 }
             }
@@ -128,14 +130,12 @@ fn typecheck_module(
     for import in module.get_imports() {
         let imported_module = import.imported_module();
         let imported_component = import.imported_component();
-        if !state.module_is_declared(imported_module.as_str()) {
+        if !state.module_is_declared(&imported_module) {
             errors.push(TypeError::import_from_undefined_module(
                 imported_module.as_str(),
-                import.from_attr.value.clone(),
+                import.from_attr_value_span.clone(),
             ));
-        } else if !state
-            .component_is_declared(imported_module.as_str(), imported_component.as_str())
-        {
+        } else if !state.component_is_declared(&imported_module, imported_component.as_str()) {
             errors.push(TypeError::undeclared_component(
                 imported_module.as_str(),
                 imported_component.as_str(),
@@ -477,8 +477,8 @@ mod tests {
             let source_code = file.content.trim();
             let mut parse_errors = Vec::new();
             let tokenizer = Tokenizer::new(source_code.to_string());
-            let module_name = file.name.trim_end_matches(".hop");
-            let module = parse(module_name.to_string(), tokenizer, &mut parse_errors);
+            let module_name = ModuleName::from(file.name.trim_end_matches(".hop"));
+            let module = parse(module_name, tokenizer, &mut parse_errors);
 
             if !parse_errors.is_empty() {
                 panic!("Got parse errors: {:#?}", parse_errors);

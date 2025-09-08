@@ -3,14 +3,14 @@ use std::fmt;
 /// A type-safe wrapper for module names in the hop system.
 /// Module names represent the path to a module relative to the project root,
 /// without the .hop extension and without the @/ prefix.
-/// 
+///
 /// Examples: "components/button", "utils", "hop/ui"
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ModuleName(String);
 
 impl ModuleName {
     /// Create a new ModuleName from a string, validating it
-    /// 
+    ///
     /// Returns None if the module name is invalid.
     /// Valid module names:
     /// - Must not be empty
@@ -18,8 +18,7 @@ impl ModuleName {
     /// - Must not contain '//', '..' or '.'
     /// - Must not contain '@'
     /// - Must only contain alphanumeric characters, '-', '_', and '/'
-    pub fn new(name: impl Into<String>) -> Option<Self> {
-        let name = name.into();
+    pub fn new(name: String) -> Option<Self> {
         if Self::is_valid(&name) {
             Some(ModuleName(name))
         } else {
@@ -29,9 +28,10 @@ impl ModuleName {
 
     /// Create a ModuleName from an import path (strips @/ prefix if present)
     /// Returns None if the resulting module name is invalid
+    #[cfg(test)]
     pub fn from_import_path(path: &str) -> Option<Self> {
         let cleaned = path.strip_prefix("@/").unwrap_or(path);
-        Self::new(cleaned)
+        Self::new(cleaned.to_string())
     }
 
     /// Check if a module name is valid
@@ -61,9 +61,12 @@ impl ModuleName {
             if component.is_empty() || component == "." {
                 return false;
             }
-            
+
             // Each component should only contain valid characters
-            if !component.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+            if !component
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+            {
                 return false;
             }
         }
@@ -96,7 +99,7 @@ impl From<String> for ModuleName {
 
 impl From<&str> for ModuleName {
     fn from(s: &str) -> Self {
-        ModuleName::new(s).expect("Invalid module name")
+        ModuleName::new(s.to_string()).expect("Invalid module name")
     }
 }
 
@@ -112,26 +115,26 @@ mod tests {
 
     #[test]
     fn test_valid_module_names() {
-        assert!(ModuleName::new("utils").is_some());
-        assert!(ModuleName::new("components/button").is_some());
-        assert!(ModuleName::new("hop/ui").is_some());
-        assert!(ModuleName::new("my-component").is_some());
-        assert!(ModuleName::new("my_component").is_some());
-        assert!(ModuleName::new("a/b/c/d").is_some());
+        assert!(ModuleName::new("utils".to_string()).is_some());
+        assert!(ModuleName::new("components/button".to_string()).is_some());
+        assert!(ModuleName::new("hop/ui".to_string()).is_some());
+        assert!(ModuleName::new("my-component".to_string()).is_some());
+        assert!(ModuleName::new("my_component".to_string()).is_some());
+        assert!(ModuleName::new("a/b/c/d".to_string()).is_some());
     }
 
     #[test]
     fn test_invalid_module_names() {
-        assert!(ModuleName::new("").is_none());
-        assert!(ModuleName::new("/utils").is_none());
-        assert!(ModuleName::new("utils/").is_none());
-        assert!(ModuleName::new("utils//components").is_none());
-        assert!(ModuleName::new("../parent").is_none());
-        assert!(ModuleName::new("./current").is_none());
-        assert!(ModuleName::new("@/utils").is_none());
-        assert!(ModuleName::new("utils/./current").is_none());
-        assert!(ModuleName::new("my component").is_none()); // spaces not allowed
-        assert!(ModuleName::new("my!component").is_none()); // special chars not allowed
+        assert!(ModuleName::new("".to_string()).is_none());
+        assert!(ModuleName::new("/utils".to_string()).is_none());
+        assert!(ModuleName::new("utils/".to_string()).is_none());
+        assert!(ModuleName::new("utils//components".to_string()).is_none());
+        assert!(ModuleName::new("../parent".to_string()).is_none());
+        assert!(ModuleName::new("./current".to_string()).is_none());
+        assert!(ModuleName::new("@/utils".to_string()).is_none());
+        assert!(ModuleName::new("utils/./current".to_string()).is_none());
+        assert!(ModuleName::new("my component".to_string()).is_none()); // spaces not allowed
+        assert!(ModuleName::new("my!component".to_string()).is_none()); // special chars not allowed
     }
 
     #[test]
@@ -141,7 +144,9 @@ mod tests {
             "utils"
         );
         assert_eq!(
-            ModuleName::from_import_path("@/components/button").unwrap().as_str(),
+            ModuleName::from_import_path("@/components/button")
+                .unwrap()
+                .as_str(),
             "components/button"
         );
         // Works without @/ prefix too
@@ -153,7 +158,7 @@ mod tests {
 
     #[test]
     fn test_to_filename() {
-        let module = ModuleName::new("components/button").unwrap();
+        let module = ModuleName::new("components/button".to_string()).unwrap();
         assert_eq!(module.to_filename(), "components/button.hop");
     }
 }

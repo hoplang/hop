@@ -4,6 +4,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::hop::module_name::ModuleName;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProjectRoot(PathBuf);
 
@@ -118,28 +120,32 @@ pub fn find_hop_files(root: &ProjectRoot) -> anyhow::Result<Vec<PathBuf>> {
 
 /// Convert a file path to a module name using the base directory as reference
 /// Returns a module name with '/' separators (e.g., "src/components/header")
-pub fn path_to_module_name(file_path: &Path, root: &ProjectRoot) -> anyhow::Result<String> {
+pub fn path_to_module_name(file_path: &Path, root: &ProjectRoot) -> anyhow::Result<ModuleName> {
     let ProjectRoot(dir) = root;
     let relative_path = file_path
         .strip_prefix(dir)
         .with_context(|| format!("Failed to strip prefix from path {:?}", file_path))?;
 
-    Ok(relative_path
-        .with_extension("")
-        .to_string_lossy()
-        .replace(std::path::MAIN_SEPARATOR, "/"))
+    Ok(ModuleName::from(
+        relative_path
+            .with_extension("")
+            .to_string_lossy()
+            .replace(std::path::MAIN_SEPARATOR, "/"),
+    ))
 }
 
 /// Convert a module name with '/' separators back to a file path
 /// (e.g., "src/components/header" -> "src/components/header.hop")
-pub fn module_name_to_path(module_name: &str, root: &ProjectRoot) -> PathBuf {
+pub fn module_name_to_path(module_name: &ModuleName, root: &ProjectRoot) -> PathBuf {
     let ProjectRoot(base) = root;
-    let module_path = module_name.replace('/', std::path::MAIN_SEPARATOR_STR);
+    let module_path = module_name
+        .to_string()
+        .replace('/', std::path::MAIN_SEPARATOR_STR);
     base.join(format!("{}.hop", module_path))
 }
 
 /// Load all hop modules from a base directory, returning a HashMap of module_name -> content
-pub fn load_all_hop_modules(base_dir: &ProjectRoot) -> anyhow::Result<HashMap<String, String>> {
+pub fn load_all_hop_modules(base_dir: &ProjectRoot) -> anyhow::Result<HashMap<ModuleName, String>> {
     let all_hop_files = find_hop_files(base_dir)?;
     let mut modules = HashMap::new();
 

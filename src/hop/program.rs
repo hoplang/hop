@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::ast::HopNode;
 use super::evaluator::HopMode;
+use super::module_name::ModuleName;
 use super::typechecker::TypeChecker;
 
 /// HoverInfo is a message that should be displayed when the user hovers
@@ -24,7 +25,7 @@ pub struct HoverInfo {
 /// A DefinitionLocation is the definition of a certain symbol in the source
 /// code. This is the response for a go to definition-query.
 pub struct DefinitionLocation {
-    pub module: String,
+    pub module: ModuleName,
     pub span: StringSpan,
 }
 
@@ -36,7 +37,7 @@ pub struct Diagnostic {
 }
 
 pub struct RenameLocation {
-    pub module: String,
+    pub module: ModuleName,
     pub span: StringSpan,
 }
 
@@ -48,30 +49,31 @@ pub struct RenameableSymbol {
 
 #[derive(Debug, Default)]
 pub struct Program {
-    topo_sorter: TopoSorter,
-    parse_errors: HashMap<String, Vec<ParseError>>,
-    modules: HashMap<String, HopAst>,
+    topo_sorter: TopoSorter<ModuleName>,
+    parse_errors: HashMap<ModuleName, Vec<ParseError>>,
+    modules: HashMap<ModuleName, HopAst>,
     type_checker: TypeChecker,
 }
 
 impl Program {
-    pub fn new(modules: HashMap<String, String>) -> Self {
+    pub fn new(modules: HashMap<ModuleName, String>) -> Self {
         let mut program = Self::default();
         for (module_name, source_code) in modules {
-            program.update_module(&module_name, source_code);
+            program.update_module(module_name, source_code);
         }
         program
     }
 
-    pub fn update_module(&mut self, module_name: &str, source_code: String) -> Vec<String> {
+    pub fn update_module(
+        &mut self,
+        module_name: ModuleName,
+        source_code: String,
+    ) -> Vec<ModuleName> {
         // Parse the module
-        let parse_errors = self
-            .parse_errors
-            .entry(module_name.to_string())
-            .or_default();
+        let parse_errors = self.parse_errors.entry(module_name.clone()).or_default();
         parse_errors.clear();
         let module = parse(
-            module_name.to_string(),
+            module_name.clone(),
             Tokenizer::new(source_code),
             parse_errors,
         );
@@ -80,11 +82,11 @@ impl Program {
         let module_dependencies = module
             .get_imports()
             .iter()
-            .map(|import_node| import_node.imported_module().to_string())
-            .collect::<HashSet<String>>();
+            .map(|import_node| import_node.imported_module().clone())
+            .collect::<HashSet<ModuleName>>();
 
         // Store the AST
-        self.modules.insert(module_name.to_string(), module);
+        self.modules.insert(module_name.clone(), module);
 
         // Typecheck the module along with all dependent modules (grouped
         // into strongly connected components).
@@ -103,15 +105,19 @@ impl Program {
         grouped_modules.into_iter().flatten().collect()
     }
 
-    pub fn get_parse_errors(&self) -> &HashMap<String, Vec<ParseError>> {
+    pub fn get_parse_errors(&self) -> &HashMap<ModuleName, Vec<ParseError>> {
         &self.parse_errors
     }
 
-    pub fn get_type_errors(&self) -> &HashMap<String, Vec<TypeError>> {
+    pub fn get_type_errors(&self) -> &HashMap<ModuleName, Vec<TypeError>> {
         &self.type_checker.type_errors
     }
 
-    pub fn get_hover_info(&self, module_name: &str, position: Position) -> Option<HoverInfo> {
+    pub fn get_hover_info(
+        &self,
+        module_name: &ModuleName,
+        position: Position,
+    ) -> Option<HoverInfo> {
         self.type_checker
             .type_annotations
             .get(module_name)?
@@ -125,7 +131,7 @@ impl Program {
 
     pub fn get_definition_location(
         &self,
-        module_name: &str,
+        module_name: &ModuleName,
         position: Position,
     ) -> Option<DefinitionLocation> {
         let ast = self.modules.get(module_name)?;
@@ -150,7 +156,7 @@ impl Program {
                     .get(module_name)?
                     .get_component_definition(tag_name.as_str())?;
                 Some(DefinitionLocation {
-                    module: module_name.to_string(),
+                    module: module_name.clone(),
                     span: component_def.tag_name.clone(),
                 })
             }
@@ -164,7 +170,7 @@ impl Program {
 
     pub fn get_rename_locations(
         &self,
-        module_name: &str,
+        module_name: &ModuleName,
         position: Position,
     ) -> Option<Vec<RenameLocation>> {
         let ast = self.modules.get(module_name)?;
@@ -198,7 +204,7 @@ impl Program {
             n @ HopNode::Html { .. } => Some(
                 n.tag_names()
                     .map(|span| RenameLocation {
-                        module: module_name.to_string(),
+                        module: module_name.clone(),
                         span: span.clone(),
                     })
                     .collect(),
@@ -213,7 +219,7 @@ impl Program {
     /// and returns the symbol's current name and range if found.
     pub fn get_renameable_symbol(
         &self,
-        module_name: &str,
+        module_name: &ModuleName,
         position: Position,
     ) -> Option<RenameableSymbol> {
         let ast = self.modules.get(module_name)?;
@@ -241,7 +247,7 @@ impl Program {
     fn collect_component_rename_locations(
         &self,
         component_name: &str,
-        definition_module: &str,
+        definition_module: &ModuleName,
     ) -> Vec<RenameLocation> {
         let mut locations = Vec::new();
 
@@ -249,14 +255,14 @@ impl Program {
             if let Some(component_node) = module.get_component_definition(component_name) {
                 // Add the definition's opening tag name
                 locations.push(RenameLocation {
-                    module: definition_module.to_string(),
+                    module: definition_module.clone(),
                     span: component_node.tag_name.clone(),
                 });
 
                 // Add the definition's closing tag name if it exists
                 if let Some(span) = component_node.closing_tag_name.as_ref() {
                     locations.push(RenameLocation {
-                        module: definition_module.to_string(),
+                        module: definition_module.clone(),
                         span: span.clone(),
                     });
                 }
@@ -304,12 +310,12 @@ impl Program {
         locations
     }
 
-    pub fn get_error_diagnostics(&self, module_name: &str) -> Vec<Diagnostic> {
+    pub fn get_error_diagnostics(&self, module_name: ModuleName) -> Vec<Diagnostic> {
         let mut diagnostics = Vec::new();
 
         let mut found_parse_errors = false;
 
-        for error in self.parse_errors.get(module_name).into_iter().flatten() {
+        for error in self.parse_errors.get(&module_name).into_iter().flatten() {
             diagnostics.push(Diagnostic {
                 message: error.message.clone(),
                 span: error.span.clone(),
@@ -323,7 +329,7 @@ impl Program {
             for error in self
                 .type_checker
                 .type_errors
-                .get(module_name)
+                .get(&module_name)
                 .into_iter()
                 .flatten()
             {
@@ -369,7 +375,7 @@ impl Program {
 
     pub fn evaluate_component(
         &self,
-        module_name: &str,
+        module_name: &ModuleName,
         component_name: &str,
         args: HashMap<String, serde_json::Value>,
         hop_mode: HopMode,
@@ -401,7 +407,7 @@ mod tests {
         let archive = Archive::from(input);
         let mut map = HashMap::new();
         for file in archive.iter() {
-            let module_name = file.name.replace(".hop", "");
+            let module_name = ModuleName::from(file.name.replace(".hop", ""));
             map.insert(module_name, file.content.clone());
         }
         Program::new(map)
@@ -410,7 +416,7 @@ mod tests {
     fn program_from_archive(archive: &Archive) -> Program {
         let mut map = HashMap::new();
         for file in archive.iter() {
-            let module_name = file.name.replace(".hop", "");
+            let module_name = ModuleName::from(file.name.replace(".hop", ""));
             map.insert(module_name, file.content.clone());
         }
         Program::new(map)
@@ -426,7 +432,7 @@ mod tests {
         }
 
         let marker = &markers[0];
-        let module = marker.filename.replace(".hop", "");
+        let module = ModuleName::from(marker.filename.replace(".hop", ""));
 
         let locs = program_from_archive(&archive)
             .get_rename_locations(&module, marker.position)
@@ -436,7 +442,7 @@ mod tests {
         let annotator = SourceAnnotator::new().with_location();
 
         for file in archive.iter() {
-            let module_name = file.name.replace(".hop", "");
+            let module_name = ModuleName::from(file.name.replace(".hop", ""));
 
             let mut annotations: Vec<SimpleAnnotation> = locs
                 .iter()
@@ -468,7 +474,7 @@ mod tests {
         }
 
         let marker = &markers[0];
-        let module = marker.filename.replace(".hop", "");
+        let module = ModuleName::from(marker.filename.replace(".hop", ""));
 
         let program = program_from_archive(&archive);
 
@@ -477,7 +483,7 @@ mod tests {
             .expect("Expected definition location to be defined");
 
         let output = SourceAnnotator::new().with_location().annotate(
-            Some(&loc.module.clone()),
+            Some(loc.module.as_str()),
             [SimpleAnnotation {
                 message: "Definition".to_string(),
                 span: loc.span,
@@ -490,7 +496,7 @@ mod tests {
     fn check_error_diagnostics(input: &str, module: &str, expected: Expect) {
         let program = program_from_txtar(input);
 
-        let diagnostics = program.get_error_diagnostics(module);
+        let diagnostics = program.get_error_diagnostics(ModuleName::from(module));
 
         if diagnostics.is_empty() {
             panic!("Expected diagnostics to be non-empty");
@@ -522,7 +528,7 @@ mod tests {
         modules_with_errors.sort_by_key(|(module_name, _)| module_name.as_str());
 
         for (module_name, errors) in modules_with_errors {
-            let annotated = annotator.annotate(Some(module_name), errors);
+            let annotated = annotator.annotate(Some(module_name.as_str()), errors);
 
             output.push(annotated);
         }
@@ -540,7 +546,7 @@ mod tests {
         }
 
         let marker = &markers[0];
-        let module = marker.filename.replace(".hop", "");
+        let module = ModuleName::from(marker.filename.replace(".hop", ""));
 
         let symbol = program_from_archive(&archive)
             .get_renameable_symbol(&module, marker.position)
@@ -548,7 +554,7 @@ mod tests {
 
         let file = archive
             .iter()
-            .find(|f| f.name.replace(".hop", "") == module)
+            .find(|f| f.name.replace(".hop", "") == module.as_str())
             .expect("Could not find file in archive");
 
         let output = SourceAnnotator::new()
@@ -569,7 +575,7 @@ mod tests {
         }
 
         let marker = &markers[0];
-        let module = marker.filename.replace(".hop", "");
+        let module = ModuleName::from(marker.filename.replace(".hop", ""));
 
         let hover_info = program_from_archive(&archive)
             .get_hover_info(&module, marker.position)
@@ -577,7 +583,7 @@ mod tests {
 
         let file = archive
             .iter()
-            .find(|f| f.name.replace(".hop", "") == module)
+            .find(|f| ModuleName::from(f.name.replace(".hop", "")) == module)
             .expect("Could not find file in archive");
 
         let output = SourceAnnotator::new().with_location().annotate(
@@ -1070,7 +1076,7 @@ mod tests {
         );
         // Resolve cycle
         program.update_module(
-            "a",
+            ModuleName::from("a"),
             indoc! {r#"
                 <a-comp>
                 </a-comp>
@@ -1134,7 +1140,7 @@ mod tests {
         );
         // Resolve cycle
         program.update_module(
-            "c",
+            ModuleName::from("c"),
             indoc! {r#"
                 <c-comp>
                 </c-comp>
@@ -1145,7 +1151,7 @@ mod tests {
         check_type_errors(&program, expect![""]);
         // Introduce new cycle a → b → a
         program.update_module(
-            "b",
+            ModuleName::from("b"),
             indoc! {r#"
                 <import component="a-comp" from="@/a" />
                 <b-comp>
@@ -1170,7 +1176,7 @@ mod tests {
         );
         // Resolve cycle
         program.update_module(
-            "b",
+            ModuleName::from("b"),
             indoc! {r#"
                 <b-comp>
                 </b-comp>

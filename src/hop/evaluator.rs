@@ -7,6 +7,8 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::process::{Command, Stdio};
 
+use super::module_name::ModuleName;
+
 /// HopMode influences the runtime value of the global variable HOP_MODE which
 /// will be set to 'build' when running `hop build` and 'dev' when running
 /// `hop dev`.
@@ -27,7 +29,7 @@ impl HopMode {
 
 /// Render the content for a specific file path
 pub fn render_file(
-    asts: &HashMap<String, HopAst>,
+    asts: &HashMap<ModuleName, HopAst>,
     hop_mode: HopMode,
     file_path: &str,
     output: &mut String,
@@ -40,7 +42,14 @@ pub fn render_file(
         Some(node) => {
             let mut env = init_environment(hop_mode);
             for child in &node.children {
-                evaluate_node_entrypoint(asts, hop_mode, child, &mut env, "build", output)?;
+                evaluate_node_entrypoint(
+                    asts,
+                    hop_mode,
+                    child,
+                    &mut env,
+                    &ModuleName::from("build"),
+                    output,
+                )?;
             }
             Ok(())
         }
@@ -53,9 +62,9 @@ pub fn render_file(
 
 // Evaluate a component definition of a specific name in a specific module.
 pub fn evaluate_component(
-    asts: &HashMap<String, HopAst>,
+    asts: &HashMap<ModuleName, HopAst>,
     hop_mode: HopMode,
-    module_name: &str,
+    module_name: &ModuleName,
     component_name: &str,
     args: HashMap<String, serde_json::Value>,
     slot_content: Option<&str>,
@@ -102,7 +111,7 @@ pub fn evaluate_component(
         output.push('<');
         output.push_str(tag_name);
         output.push_str(" data-hop-id=\"");
-        output.push_str(module_name);
+        output.push_str(module_name.as_str());
         output.push('/');
         output.push_str(component_name);
         output.push('"');
@@ -185,12 +194,12 @@ fn init_environment(hop_mode: HopMode) -> Environment<serde_json::Value> {
 }
 
 fn evaluate_node(
-    asts: &HashMap<String, HopAst>,
+    asts: &HashMap<ModuleName, HopAst>,
     hop_mode: HopMode,
     node: &HopNode,
     slot_content: Option<&str>,
     env: &mut Environment<serde_json::Value>,
-    current_module: &str,
+    current_module: &ModuleName,
     output: &mut String,
 ) -> anyhow::Result<()> {
     match node {
@@ -470,11 +479,11 @@ fn evaluate_node(
 }
 
 fn evaluate_node_entrypoint(
-    asts: &HashMap<String, HopAst>,
+    asts: &HashMap<ModuleName, HopAst>,
     hop_mode: HopMode,
     node: &HopNode,
     env: &mut Environment<serde_json::Value>,
-    current_module: &str,
+    current_module: &ModuleName,
     output: &mut String,
 ) -> Result<()> {
     match node {
@@ -639,6 +648,7 @@ fn trim_raw_string(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hop::module_name::ModuleName;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
     use crate::hop::{ast::HopAst, typechecker::TypeChecker};
@@ -648,26 +658,30 @@ mod tests {
     use simple_txtar::Archive;
     use std::collections::HashMap;
 
-    fn asts_from_archive(archive: &Archive) -> HashMap<String, HopAst> {
+    fn asts_from_archive(archive: &Archive) -> HashMap<ModuleName, HopAst> {
         let mut asts = HashMap::new();
 
         for file in archive.iter() {
             let module_name = file.name.replace(".hop", "");
             let mut errors = Vec::new();
             let tokenizer = Tokenizer::new(file.content.clone());
-            let ast = parse(module_name.clone(), tokenizer, &mut errors);
+            let ast = parse(
+                ModuleName::from(module_name.clone()),
+                tokenizer,
+                &mut errors,
+            );
 
             if !errors.is_empty() {
                 panic!("Parse errors in {}: {:?}", module_name, errors);
             }
 
-            asts.insert(module_name, ast);
+            asts.insert(ModuleName::from(module_name), ast);
         }
 
         let mut typechecker = TypeChecker::default();
 
         for file in archive.iter() {
-            let module_name = file.name.replace(".hop", "");
+            let module_name = ModuleName::from(file.name.replace(".hop", ""));
             let ast = asts.get(&module_name).unwrap();
 
             typechecker.typecheck(&[ast]);
@@ -698,7 +712,7 @@ mod tests {
         evaluate_component(
             &asts,
             HopMode::Dev,
-            "main",
+            &ModuleName::from("main"),
             "main-comp",
             args,
             None,

@@ -1,14 +1,19 @@
-use crate::hop::errors::ParseError;
 use crate::dop::{self, DopTokenizer};
 use crate::hop::ast::{ComponentDefinition, DopExprAttribute, HopAst, HopNode, Import, Render};
+use crate::hop::errors::ParseError;
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
 use std::collections::{HashMap, HashSet};
 
 use super::ast::PresentAttribute;
+use super::module_name::ModuleName;
 
-pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> HopAst {
+pub fn parse(
+    module_name: ModuleName,
+    tokenizer: Tokenizer,
+    errors: &mut Vec<ParseError>,
+) -> HopAst {
     let trees = build_tree(tokenizer, errors);
 
     let mut components = Vec::new();
@@ -82,11 +87,14 @@ pub fn parse(module_name: String, tokenizer: Tokenizer, errors: &mut Vec<ParseEr
                         continue;
                     }
                     // Strip the @/ prefix for internal module resolution
-                    let module_path = from_attr.as_str().strip_prefix("@/").unwrap();
-                    imported_components.insert(cmp_attr.to_string(), module_path.to_string());
+                    let module_path =
+                        ModuleName::new(from_attr.as_str().strip_prefix("@/").unwrap().to_string())
+                            .unwrap();
+                    imported_components.insert(cmp_attr.to_string(), module_path.clone());
                     imports.push(Import {
                         component_attr: PresentAttribute { value: cmp_attr },
-                        from_attr: PresentAttribute { value: from_attr },
+                        module_name: module_path.clone(),
+                        from_attr_value_span: from_attr,
                     });
                 }
                 "render" => {
@@ -209,9 +217,9 @@ fn is_valid_component_name(name: &str) -> bool {
 fn construct_node(
     tree: TokenTree,
     errors: &mut Vec<ParseError>,
-    module_name: &str,
+    module_name: &ModuleName,
     defined_components: &HashSet<String>,
-    imported_components: &HashMap<String, String>,
+    imported_components: &HashMap<String, ModuleName>,
 ) -> HopNode {
     let children: Vec<HopNode> = tree
         .children
@@ -420,11 +428,12 @@ fn construct_node(
                         None => None,
                     };
 
-                    let definition_module = if defined_components.contains(tag_name.as_str()) {
-                        Some(module_name.to_string())
-                    } else {
-                        imported_components.get(tag_name.as_str()).cloned()
-                    };
+                    let definition_module: Option<ModuleName> =
+                        if defined_components.contains(tag_name.as_str()) {
+                            Some(module_name.clone())
+                        } else {
+                            imported_components.get(tag_name.as_str()).cloned()
+                        };
 
                     HopNode::ComponentReference {
                         tag_name,
@@ -532,7 +541,7 @@ mod tests {
     fn check(input: &str, expected: Expect) {
         let mut errors = Vec::new();
         let module = parse(
-            "test".to_string(),
+            ModuleName::from("test"),
             Tokenizer::new(input.to_string()),
             &mut errors,
         );
