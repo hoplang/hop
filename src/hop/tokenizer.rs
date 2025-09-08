@@ -166,161 +166,9 @@ impl Tokenizer {
         }
     }
 
-    // Skip whitespace
     fn skip_whitespace(&mut self) {
         while self.iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
             self.iter.next();
-        }
-    }
-
-    // Parse a tag name from the iterator.
-    //
-    // E.g. <h1 class="foo bar">
-    //       ^^
-    fn parse_tag_name(&mut self) -> Option<StringSpan> {
-        // consume [a-zA-Z]
-        let initial = self.iter.next_if(|s| s.ch().is_ascii_alphabetic())?;
-        // consume ('-' | [a-zA-Z0-9])*
-        let tag_name = initial.extend(
-            self.iter
-                .peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()),
-        );
-        Some(tag_name)
-    }
-
-    // Parse an attribute from the iterator.
-    //
-    // E.g. <div foo="bar">
-    //           ^^^^^^^^^
-    //
-    // Returns None if a valid attribute could not be parsed from the iterator.
-    fn parse_attribute(&mut self, attr_name: StringSpan) -> Option<Attribute> {
-        // skip whitespace
-        self.skip_whitespace();
-
-        // consume '='
-        let Some(eq) = self.iter.next_if(|s| s.ch() == '=') else {
-            return Some(Attribute {
-                name: attr_name.clone(),
-                value: None,
-                span: attr_name,
-            });
-        };
-
-        // skip whitespace
-        self.skip_whitespace();
-
-        // consume " or '
-        let Some(open_quote) = self.iter.next_if(|s| s.ch() == '"' || s.ch() == '\'') else {
-            self.errors.push(ParseError::new(
-                "Expected quoted attribute value".to_string(),
-                attr_name.to(eq),
-            ));
-            return None;
-        };
-
-        // consume attribute value
-        let attr_value = self
-            .iter
-            .peeking_take_while(|s| s.ch() != open_quote.ch())
-            .collect();
-
-        // consume " or '
-        let Some(close_quote) = self.iter.next_if(|s| s.ch() == open_quote.ch()) else {
-            self.errors.push(ParseError::new(
-                format!("Unmatched {}", open_quote.ch()),
-                open_quote,
-            ));
-            return None;
-        };
-
-        Some(Attribute {
-            name: attr_name.clone(),
-            value: attr_value,
-            span: attr_name.to(close_quote),
-        })
-    }
-
-    /// Parse an expression.
-    ///
-    /// E.g. <div foo="bar" {x: string}>
-    ///                     ^^^^^^^^^^^
-    ///
-    /// When it returns the iterator will be past the closing brace '}'
-    /// if it managed to parse the expression.
-    ///
-    /// Returns None if we reached EOF.
-    /// Returns Some(Err(...)) if the expression was empty
-    /// Returns Some(Ok((expr,span))) if we managed to parse the expression
-    /// where expr is the inner span for the expression and span is the outer (containing the
-    /// braces).
-    fn parse_expression(&mut self, left_brace: StringSpan) -> Option<(StringSpan, StringSpan)> {
-        let clone = self.iter.clone();
-        let Some(right_brace) = Self::find_expression_end(clone) else {
-            self.errors
-                .push(ParseError::new(format!("Unmatched {{"), left_brace));
-            return None;
-        };
-        if left_brace.end() == right_brace.start() {
-            self.next(); // skip right brace
-            self.errors.push(ParseError::new(
-                "Empty expression".to_string(),
-                left_brace.to(right_brace),
-            ));
-            return None;
-        }
-        let mut expr = self.iter.next()?;
-        while self.iter.peek()?.start() != right_brace.start() {
-            expr = expr.to(self.iter.next()?);
-        }
-        self.iter.next()?; // skip right brace
-        Some((expr, left_brace.to(right_brace)))
-    }
-
-    /// Parse tag content (attributes and expressions).
-    ///
-    /// E.g. <div foo="bar" {x: string}>
-    ///           ^^^^^^^^^^^^^^^^^^^^^
-    fn parse_tag_content(&mut self) -> (Vec<Attribute>, Option<StringSpan>) {
-        let mut attributes: Vec<Attribute> = Vec::new();
-        let mut expression: Option<StringSpan> = None;
-        loop {
-            // skip whitespace
-            self.skip_whitespace();
-
-            if let Some(initial) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) {
-                let tag_name = initial.extend(
-                    self.iter
-                        .peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()),
-                );
-                if let Some(attr) = self.parse_attribute(tag_name) {
-                    let exists = attributes
-                        .iter()
-                        .any(|a| a.name.as_str() == attr.name.as_str());
-                    if exists {
-                        self.errors.push(ParseError::duplicate_attribute(
-                            attr.name.as_str(),
-                            attr.name.clone(),
-                        ));
-                    } else {
-                        attributes.push(attr);
-                    }
-                }
-                continue;
-            }
-
-            match self.iter.peek().map(|s| s.ch()) {
-                // parse expression
-                Some('{') => {
-                    let left_brace = self.iter.next().unwrap();
-                    if let Some((expr, _)) = self.parse_expression(left_brace) {
-                        expression = Some(expr);
-                    }
-                }
-                _ => {
-                    return (attributes, expression);
-                }
-            }
         }
     }
 
@@ -385,17 +233,173 @@ impl Tokenizer {
         }
     }
 
-    fn parse_opening_tag(&mut self, left_angle: StringSpan, tag_name: StringSpan) -> Option<Token> {
-        // consume tag content
-        let (attributes, expression) = self.parse_tag_content();
+    // Parse a tag name from the iterator.
+    //
+    // E.g. <h1 class="foo bar">
+    //       ^^
+    fn parse_tag_name(&mut self) -> Option<StringSpan> {
+        // consume: [a-zA-Z]
+        let initial = self.iter.next_if(|s| s.ch().is_ascii_alphabetic())?;
+        // consume: ('-' | [a-zA-Z0-9])*
+        let tag_name = initial.extend(
+            self.iter
+                .peeking_take_while(|s| s.ch() == '-' || s.ch().is_ascii_alphanumeric()),
+        );
+        Some(tag_name)
+    }
 
-        // consume whitespace
+    // Parse an attribute from the iterator.
+    //
+    // E.g. <div foo="bar">
+    //           ^^^^^^^^^
+    //
+    // Returns None if a valid attribute could not be parsed from the iterator.
+    fn parse_attribute(&mut self, attr_name: StringSpan) -> Option<Attribute> {
+        // consume: whitespace
         self.skip_whitespace();
 
-        // consume '/'
+        // consume: '='
+        let Some(eq) = self.iter.next_if(|s| s.ch() == '=') else {
+            return Some(Attribute {
+                name: attr_name.clone(),
+                value: None,
+                span: attr_name,
+            });
+        };
+
+        // consume: whitespace
+        self.skip_whitespace();
+
+        // consume: " or '
+        let Some(open_quote) = self.iter.next_if(|s| s.ch() == '"' || s.ch() == '\'') else {
+            self.errors.push(ParseError::new(
+                "Expected quoted attribute value".to_string(),
+                attr_name.to(eq),
+            ));
+            return None;
+        };
+
+        // consume: attribute value
+        let attr_value = self
+            .iter
+            .peeking_take_while(|s| s.ch() != open_quote.ch())
+            .collect();
+
+        // consume: " or '
+        let Some(close_quote) = self.iter.next_if(|s| s.ch() == open_quote.ch()) else {
+            self.errors.push(ParseError::new(
+                format!("Unmatched {}", open_quote.ch()),
+                open_quote,
+            ));
+            return None;
+        };
+
+        Some(Attribute {
+            name: attr_name.clone(),
+            value: attr_value,
+            span: attr_name.to(close_quote),
+        })
+    }
+
+    /// Parse an expression.
+    ///
+    /// E.g. <div foo="bar" {x: string}>
+    ///                     ^^^^^^^^^^^
+    ///
+    /// When it returns the iterator will be past the closing brace '}'
+    /// if it managed to parse the expression.
+    ///
+    /// Returns None if we reached EOF.
+    /// Returns Some(Err(...)) if the expression was empty
+    /// Returns Some(Ok((expr,span))) if we managed to parse the expression
+    /// where expr is the inner span for the expression and span is the outer (containing the
+    /// braces).
+    fn parse_expression(&mut self) -> Option<(StringSpan, StringSpan)> {
+        let Some(left_brace) = self.iter.next() else {
+            panic!();
+        };
+        let clone = self.iter.clone();
+        let Some(right_brace) = Self::find_expression_end(clone) else {
+            self.errors
+                .push(ParseError::new(format!("Unmatched {{"), left_brace));
+            return None;
+        };
+        if left_brace.end() == right_brace.start() {
+            self.next(); // skip right brace
+            self.errors.push(ParseError::new(
+                "Empty expression".to_string(),
+                left_brace.to(right_brace),
+            ));
+            return None;
+        }
+        let mut expr = self.iter.next()?;
+        while self.iter.peek()?.start() != right_brace.start() {
+            expr = expr.to(self.iter.next()?);
+        }
+        self.iter.next()?; // skip right brace
+        Some((expr, left_brace.to(right_brace)))
+    }
+
+    /// Parse tag content (attributes and expressions).
+    ///
+    /// E.g. <div foo="bar" {x: string}>
+    ///           ^^^^^^^^^^^^^^^^^^^^^
+    fn parse_tag_content(&mut self) -> (Vec<Attribute>, Option<StringSpan>) {
+        let mut attributes: Vec<Attribute> = Vec::new();
+        let mut expression: Option<StringSpan> = None;
+        loop {
+            // consume: whitespace
+            self.skip_whitespace();
+
+            match self.iter.peek().map(|s| s.ch()) {
+                Some('{') => {
+                    if let Some((expr, _)) = self.parse_expression() {
+                        expression = Some(expr);
+                    }
+                }
+                Some(ch) if ch.is_ascii_alphabetic() => {
+                    let Some(initial) = self.iter.next() else {
+                        panic!();
+                    };
+                    // consume: [a-zA-Z0-9]*
+                    let tag_name =
+                        initial.extend(self.iter.peeking_take_while(|s| {
+                            s.ch() == '-' || s.ch().is_ascii_alphanumeric()
+                        }));
+                    // consume: attribute
+                    if let Some(attr) = self.parse_attribute(tag_name) {
+                        let exists = attributes
+                            .iter()
+                            .any(|a| a.name.as_str() == attr.name.as_str());
+                        if exists {
+                            self.errors.push(ParseError::duplicate_attribute(
+                                attr.name.as_str(),
+                                attr.name.clone(),
+                            ));
+                        } else {
+                            attributes.push(attr);
+                        }
+                    }
+                    continue;
+                }
+                _ => {
+                    return (attributes, expression);
+                }
+            }
+        }
+    }
+
+    fn parse_opening_tag(&mut self, left_angle: StringSpan, tag_name: StringSpan) -> Option<Token> {
+        // consume: tag content
+        let (attributes, expression) = self.parse_tag_content();
+
+        // consume: whitespace
+        self.skip_whitespace();
+
+        // consume: '/'
         let self_closing = self.iter.next_if(|s| s.ch() == '/').is_some();
 
-        // consume '>'
+        // consume: '>'
         let Some(right_angle) = self.iter.next_if(|s| s.ch() == '>') else {
             self.errors.push(ParseError::new(
                 "Unterminated opening tag".to_string(),
@@ -419,10 +423,12 @@ impl Tokenizer {
 
     // Expects that the slash has been consumed
     fn parse_closing_tag(&mut self, left_angle_slash: StringSpan) -> Option<Token> {
-        // skip whitespace
+        // sequential
+
+        // consume: whitespace
         self.skip_whitespace();
 
-        // consume tag name
+        // consume: tag name
         let Some(tag_name) = self.parse_tag_name() else {
             self.errors.push(ParseError::new(
                 "Unterminated closing tag".to_string(),
@@ -431,10 +437,10 @@ impl Tokenizer {
             return None;
         };
 
-        // skip whitespace
+        // consume: whitespace
         self.skip_whitespace();
 
-        // consume '>'
+        // consume: '>'
         let Some(right_angle) = self.iter.next_if(|s| s.ch() == '>') else {
             self.errors.push(ParseError::new(
                 "Unterminated closing tag".to_string(),
@@ -450,29 +456,34 @@ impl Tokenizer {
 
     fn iter_peek_closing_tag(&self, tag_name: &StringSpan) -> bool {
         let mut iter = self.iter.clone();
-        // consume '<'
+        // consume: '<'
         if iter.next().is_none_or(|s| s.ch() != '<') {
             return false;
         }
-        // consume '/'
+
+        // consume: '/'
         if iter.next().is_none_or(|s| s.ch() != '/') {
             return false;
         }
-        // skip whitespace
+
+        // consume: whitespace
         while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
             iter.next();
         }
-        // consume tag name
+
+        // consume: tag name
         for ch in tag_name.as_str().chars() {
             if iter.next().is_none_or(|s| s.ch() != ch) {
                 return false;
             }
         }
-        // skip whitespace
+
+        // consume: whitespace
         while iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
             iter.next();
         }
-        // consume '>'
+
+        // consume: '>'
         if iter.next().is_none_or(|s| s.ch() != '>') {
             return false;
         }
@@ -491,18 +502,22 @@ impl Tokenizer {
         }
     }
 
-    fn parse_tag(&mut self, left_angle: StringSpan) -> Option<Token> {
-        // case: parse markup declaration
+    fn parse_tag(&mut self) -> Option<Token> {
+        let Some(left_angle) = self.iter.next() else {
+            panic!();
+        };
+
+        // case: '!'
         if let Some(_bang) = self.iter.next_if(|s| s.ch() == '!') {
             return self.parse_markup_declaration(left_angle);
         }
 
-        // case: parse closing tag
+        // case: '/'
         if let Some(slash) = self.iter.next_if(|s| s.ch() == '/') {
             return self.parse_closing_tag(left_angle.to(slash));
         }
 
-        // case: parse opening tag
+        // case: [a-zA-Z]
         if let Some(initial) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) {
             let tag_name = initial.extend(
                 self.iter
@@ -516,12 +531,13 @@ impl Tokenizer {
             "Unterminated tag start".to_string(),
             left_angle,
         ));
-
         None
     }
 
     fn step(&mut self) -> Option<Token> {
-        // case: parse raw text
+        // if we have a raw text closing tag stored
+        // we need to parse all content as raw text
+        // until we find a matching closing tag
         if let Some(tag_name) = self.raw_text_closing_tag.take() {
             // note that we should only return if parse_raw_text
             // returns an actual token
@@ -530,29 +546,24 @@ impl Tokenizer {
             }
         }
 
-        // case: parse tag or markup declaration
-        if let Some(left_angle) = self.iter.next_if(|s| s.ch() == '<') {
-            return self.parse_tag(left_angle);
+        match self.iter.peek().map(|s| s.ch()) {
+            Some('<') => self.parse_tag(),
+            Some('{') => self
+                .parse_expression()
+                .map(|(expression, span)| Token::Expression { expression, span }),
+            Some(_) => {
+                let Some(initial) = self.iter.next() else {
+                    panic!();
+                };
+                Some(Token::Text {
+                    span: initial.extend(
+                        self.iter
+                            .peeking_take_while(|s| s.ch() != '{' && s.ch() != '<'),
+                    ),
+                })
+            }
+            None => None,
         }
-
-        // case: parse text expression
-        if let Some(left_brace) = self.iter.next_if(|s| s.ch() == '{') {
-            return self
-                .parse_expression(left_brace)
-                .map(|(expression, span)| Token::Expression { expression, span });
-        }
-
-        // case: parse text
-        if let Some(ch) = self.iter.next() {
-            return Some(Token::Text {
-                span: ch.extend(
-                    self.iter
-                        .peeking_take_while(|s| s.ch() != '{' && s.ch() != '<'),
-                ),
-            });
-        }
-
-        None
     }
 }
 
