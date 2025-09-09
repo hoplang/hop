@@ -95,12 +95,14 @@ impl PartialEq for DopToken {
 impl DopToken {
     /// Returns the matching closing token for opening tokens like LeftBrace, LeftBracket, LeftParen.
     /// Returns None for tokens that don't have a matching pair.
-    pub fn matching_closing_token(&self) -> Option<DopToken> {
+    pub fn matching_closing_token(&self) -> DopToken {
         match self {
-            DopToken::LeftBrace => Some(DopToken::RightBrace),
-            DopToken::LeftBracket => Some(DopToken::RightBracket),
-            DopToken::LeftParen => Some(DopToken::RightParen),
-            _ => None,
+            DopToken::LeftBrace => DopToken::RightBrace,
+            DopToken::LeftBracket => DopToken::RightBracket,
+            DopToken::LeftParen => DopToken::RightParen,
+            _ => {
+                panic!("matching_closing_token called on {}", self)
+            }
         }
     }
 }
