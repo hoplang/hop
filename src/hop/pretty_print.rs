@@ -1,3 +1,6 @@
+use std::collections::BTreeMap;
+
+use crate::document::document_cursor::StringSpan;
 use crate::dop::parser::DopParameter;
 use crate::dop::{DopParser, DopType};
 use crate::hop::module_name::ModuleName;
@@ -186,9 +189,10 @@ fn format_dop_type(typ: &DopType) -> RcDoc<'static, ()> {
     }
 }
 
-fn format_parameters(
-    params: std::collections::BTreeMap<crate::document::document_cursor::StringSpan, DopParameter>,
-) -> RcDoc<'static, ()> {
+/// Format the parameters of a component definition.
+/// E.g. <foo-component {users: array[{name: string}]}>
+///                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+fn format_parameters(params: BTreeMap<StringSpan, DopParameter>) -> RcDoc<'static, ()> {
     if params.is_empty() {
         return RcDoc::nil();
     }
@@ -215,6 +219,9 @@ fn format_parameters(
         .group()
 }
 
+/// Format an attribute.
+/// E.g. <div foo="bar">
+///           ^^^^^^^^^
 fn format_attribute(attr: &Attribute) -> RcDoc<'static, ()> {
     match &attr.value {
         Some(AttributeValue::String(val)) => RcDoc::text(attr.name.as_str().to_string())
@@ -396,7 +403,7 @@ mod tests {
 
     /// HTML nodes should get consistent indentation.
     #[test]
-    fn test_format_with_indoc_input() {
+    fn test_format_adds_consistent_indentation() {
         check_pretty_print(
             indoc! {r#"
                 <main-component>
