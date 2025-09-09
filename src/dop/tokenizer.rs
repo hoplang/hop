@@ -1,24 +1,24 @@
 use itertools::Itertools as _;
 
-use crate::span::string_cursor::{StringCursor, StringSpan};
+use crate::document::document_cursor::{DocumentCursor, DocumentRange};
 use std::{fmt, iter::Peekable, str::FromStr};
 
 use super::parse_error::ParseError;
 
 pub struct DopTokenizer {
-    iter: Peekable<StringCursor>,
+    iter: Peekable<DocumentCursor>,
 }
 
-impl From<StringCursor> for DopTokenizer {
-    fn from(iter: StringCursor) -> Self {
+impl From<DocumentCursor> for DopTokenizer {
+    fn from(iter: DocumentCursor) -> Self {
         Self {
             iter: iter.peekable(),
         }
     }
 }
 
-impl From<Peekable<StringCursor>> for DopTokenizer {
-    fn from(iter: Peekable<StringCursor>) -> Self {
+impl From<Peekable<DocumentCursor>> for DopTokenizer {
+    fn from(iter: Peekable<DocumentCursor>) -> Self {
         Self { iter }
     }
 }
@@ -26,7 +26,7 @@ impl From<Peekable<StringCursor>> for DopTokenizer {
 impl From<String> for DopTokenizer {
     fn from(input: String) -> Self {
         Self {
-            iter: StringCursor::new(input).peekable(),
+            iter: DocumentCursor::new(input).peekable(),
         }
     }
 }
@@ -39,7 +39,7 @@ impl From<&str> for DopTokenizer {
 
 #[derive(Debug, Clone)]
 pub enum DopToken {
-    Identifier(StringSpan),
+    Identifier(DocumentRange),
     StringLiteral(String),
     BooleanLiteral(bool),
     NumberLiteral(serde_json::Number),
@@ -134,7 +134,7 @@ impl fmt::Display for DopToken {
 }
 
 impl Iterator for DopTokenizer {
-    type Item = Result<(DopToken, StringSpan), ParseError>;
+    type Item = Result<(DopToken, DocumentRange), ParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.iter.peek().is_some_and(|s| s.ch().is_whitespace()) {
@@ -217,7 +217,7 @@ impl Iterator for DopTokenizer {
 
 #[cfg(test)]
 mod tests {
-    use crate::span::{SimpleAnnotation, SourceAnnotator, string_cursor::Spanned as _};
+    use crate::document::{DocumentAnnotator, SimpleAnnotation, document_cursor::Ranged as _};
 
     use super::*;
     use expect_test::{Expect, expect};
@@ -236,13 +236,13 @@ mod tests {
                 Err(err) => {
                     annotations.push(SimpleAnnotation {
                         message: format!("error: {err}"),
-                        span: err.span().clone(),
+                        span: err.range().clone(),
                     });
                 }
             }
         }
         expected.assert_eq(
-            &SourceAnnotator::new()
+            &DocumentAnnotator::new()
                 .without_line_numbers()
                 .annotate(None, &annotations),
         );

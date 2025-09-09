@@ -1,7 +1,7 @@
 use std::fmt::{self, Display};
 
+use crate::document::document_cursor::DocumentRange;
 use crate::dop::parser::DopVarName;
-use crate::span::string_cursor::StringSpan;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
@@ -36,46 +36,46 @@ pub enum DopExpr {
     },
     PropertyAccess {
         object: Box<DopExpr>,
-        property: StringSpan,
-        span: StringSpan,
+        property: DocumentRange,
+        span: DocumentRange,
     },
     StringLiteral {
         value: String,
-        span: StringSpan,
+        span: DocumentRange,
     },
     BooleanLiteral {
         value: bool,
-        span: StringSpan,
+        span: DocumentRange,
     },
     NumberLiteral {
         value: serde_json::Number,
-        span: StringSpan,
+        span: DocumentRange,
     },
     /// An array literal, e.g. [1, 2, 3]
     ArrayLiteral {
         elements: Vec<DopExpr>,
-        span: StringSpan,
+        span: DocumentRange,
     },
     ObjectLiteral {
-        properties: Vec<(StringSpan, DopExpr)>,
-        span: StringSpan,
+        properties: Vec<(DocumentRange, DopExpr)>,
+        span: DocumentRange,
     },
     BinaryOp {
         left: Box<DopExpr>,
         operator: BinaryOp,
         right: Box<DopExpr>,
-        span: StringSpan,
+        span: DocumentRange,
     },
     UnaryOp {
         operator: UnaryOp,
         operand: Box<DopExpr>,
-        span: StringSpan,
+        span: DocumentRange,
     },
 }
 
 impl DopExpr {
     /// Returns the span of this expression in the source code
-    pub fn span(&self) -> StringSpan {
+    pub fn span(&self) -> DocumentRange {
         match self {
             DopExpr::Variable { value, .. } => value.span().clone(),
             DopExpr::PropertyAccess { span, .. } => span.clone(),

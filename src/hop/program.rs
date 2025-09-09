@@ -1,3 +1,5 @@
+use crate::document::Position;
+use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::hop::ast::HopAst;
 use crate::hop::evaluator;
 use crate::hop::parse_error::ParseError;
@@ -6,8 +8,6 @@ use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
 use crate::hop::type_error::TypeError;
-use crate::span::Position;
-use crate::span::string_cursor::{Spanned, StringSpan};
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
@@ -20,32 +20,32 @@ use super::typechecker::TypeChecker;
 /// a specific span in the source code.
 pub struct HoverInfo {
     pub type_str: String,
-    pub span: StringSpan,
+    pub span: DocumentRange,
 }
 
 /// A DefinitionLocation is the definition of a certain symbol in the source
 /// code. This is the response for a go to definition-query.
 pub struct DefinitionLocation {
     pub module: ModuleName,
-    pub span: StringSpan,
+    pub span: DocumentRange,
 }
 
 /// A diagnostic is an error, warning or information that should be displayed
 /// for a specific span in the source code.
 pub struct Diagnostic {
     pub message: String,
-    pub span: StringSpan,
+    pub span: DocumentRange,
 }
 
 pub struct RenameLocation {
     pub module: ModuleName,
-    pub span: StringSpan,
+    pub span: DocumentRange,
 }
 
 /// A RenameableSymbol is a span in the source code that is renameable.
 /// The string contents of the span is the current name.
 pub struct RenameableSymbol {
-    pub span: StringSpan,
+    pub span: DocumentRange,
 }
 
 #[derive(Debug, Default)]
@@ -319,7 +319,7 @@ impl Program {
         for error in self.parse_errors.get(&module_name).into_iter().flatten() {
             diagnostics.push(Diagnostic {
                 message: error.to_string(),
-                span: error.span().clone(),
+                span: error.range().clone(),
             });
             found_parse_errors = true;
         }
@@ -336,7 +336,7 @@ impl Program {
             {
                 diagnostics.push(Diagnostic {
                     message: error.to_string(),
-                    span: error.span().clone(),
+                    span: error.range().clone(),
                 });
             }
         }
@@ -398,7 +398,7 @@ impl Program {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::span::{SimpleAnnotation, SourceAnnotator};
+    use crate::document::{DocumentAnnotator, SimpleAnnotation};
     use crate::test_utils::archive::extract_markers_from_archive;
     use expect_test::{Expect, expect};
     use indoc::indoc;
@@ -440,7 +440,7 @@ mod tests {
             .expect("Expected locations to be defined");
 
         let mut output = Vec::new();
-        let annotator = SourceAnnotator::new().with_location();
+        let annotator = DocumentAnnotator::new().with_location();
 
         for file in archive.iter() {
             let module_name = ModuleName::new(file.name.replace(".hop", "")).unwrap();
@@ -483,7 +483,7 @@ mod tests {
             .get_definition_location(&module, marker.position)
             .expect("Expected definition location to be defined");
 
-        let output = SourceAnnotator::new().with_location().annotate(
+        let output = DocumentAnnotator::new().with_location().annotate(
             Some(loc.module.as_str()),
             [SimpleAnnotation {
                 message: "Definition".to_string(),
@@ -504,7 +504,7 @@ mod tests {
             panic!("Expected diagnostics to be non-empty");
         }
 
-        let output = SourceAnnotator::new().with_location().annotate(
+        let output = DocumentAnnotator::new().with_location().annotate(
             Some(module),
             diagnostics.into_iter().map(|d| SimpleAnnotation {
                 message: d.message,
@@ -517,7 +517,7 @@ mod tests {
 
     fn check_type_errors(program: &Program, expected: Expect) {
         let mut output = Vec::new();
-        let annotator = SourceAnnotator::new().with_location();
+        let annotator = DocumentAnnotator::new().with_location();
 
         // Get all modules that have type errors
         let type_errors = program.get_type_errors();
@@ -559,7 +559,7 @@ mod tests {
             .find(|f| f.name.replace(".hop", "") == module.as_str())
             .expect("Could not find file in archive");
 
-        let output = SourceAnnotator::new()
+        let output = DocumentAnnotator::new()
             .with_location()
             .annotate(Some(&file.name), &[symbol.span]);
 
@@ -588,7 +588,7 @@ mod tests {
             .find(|f| ModuleName::new(f.name.replace(".hop", "")).unwrap() == module)
             .expect("Could not find file in archive");
 
-        let output = SourceAnnotator::new().with_location().annotate(
+        let output = DocumentAnnotator::new().with_location().annotate(
             Some(&file.name),
             &[SimpleAnnotation {
                 span: hover_info.span,

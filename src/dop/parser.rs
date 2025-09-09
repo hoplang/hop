@@ -2,17 +2,17 @@ use std::collections::{BTreeMap, HashSet};
 use std::fmt::{self, Display};
 use std::iter::Peekable;
 
+use crate::document::document_cursor::{DocumentCursor, DocumentRange};
 use crate::dop::DopType;
 use crate::dop::ast::{BinaryOp, DopExpr, UnaryOp};
 use crate::dop::parse_error::ParseError;
 use crate::dop::tokenizer::{DopToken, DopTokenizer};
 use crate::dop::typechecker::SpannedDopType;
-use crate::span::string_cursor::{StringCursor, StringSpan};
 
 /// A DopVarName represents a validated variable name in dop.
 #[derive(Debug, Clone)]
 pub struct DopVarName {
-    value: StringSpan,
+    value: DocumentRange,
 }
 
 impl Display for DopVarName {
@@ -22,7 +22,7 @@ impl Display for DopVarName {
 }
 
 impl DopVarName {
-    pub fn new(value: StringSpan) -> Result<Self, ParseError> {
+    pub fn new(value: DocumentRange) -> Result<Self, ParseError> {
         let mut chars = value.as_str().chars();
         if !chars.next().is_some_and(|c| c.is_ascii_alphabetic())
             || !chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
@@ -36,7 +36,7 @@ impl DopVarName {
     pub fn as_str(&self) -> &str {
         self.value.as_str()
     }
-    pub fn span(&self) -> &StringSpan {
+    pub fn span(&self) -> &DocumentRange {
         &self.value
     }
 }
@@ -73,13 +73,13 @@ impl Display for DopArgument {
 
 pub struct DopParser {
     iter: Peekable<DopTokenizer>,
-    span: StringSpan,
+    span: DocumentRange,
 }
 
 impl DopParser {}
 
-impl From<StringSpan> for DopParser {
-    fn from(span: StringSpan) -> Self {
+impl From<DocumentRange> for DopParser {
+    fn from(span: DocumentRange) -> Self {
         Self {
             iter: DopTokenizer::from(span.cursor()).peekable(),
             span: span.clone(),
@@ -89,7 +89,7 @@ impl From<StringSpan> for DopParser {
 
 impl From<&str> for DopParser {
     fn from(input: &str) -> Self {
-        let cursor = StringCursor::new(input.to_string());
+        let cursor = DocumentCursor::new(input.to_string());
         let span = cursor.span();
         Self {
             iter: DopTokenizer::from(cursor).peekable(),
@@ -99,7 +99,7 @@ impl From<&str> for DopParser {
 }
 
 impl DopParser {
-    fn advance_if(&mut self, token: DopToken) -> Option<StringSpan> {
+    fn advance_if(&mut self, token: DopToken) -> Option<DocumentRange> {
         if let Some(Ok((_, span))) = self
             .iter
             .next_if(|res| res.as_ref().is_ok_and(|(t, _)| *t == token))
@@ -110,7 +110,7 @@ impl DopParser {
         }
     }
 
-    fn expect_token(&mut self, expected: &DopToken) -> Result<StringSpan, ParseError> {
+    fn expect_token(&mut self, expected: &DopToken) -> Result<DocumentRange, ParseError> {
         match self.iter.next().transpose()? {
             Some((token, span)) if token == *expected => Ok(span),
             Some((actual, span)) => Err(ParseError::ExpectedTokenButGot {
@@ -127,8 +127,8 @@ impl DopParser {
     fn expect_opposite(
         &mut self,
         token: &DopToken,
-        span: &StringSpan,
-    ) -> Result<StringSpan, ParseError> {
+        span: &DocumentRange,
+    ) -> Result<DocumentRange, ParseError> {
         let expected = token.opposite_token();
 
         match self.iter.next().transpose()? {
@@ -155,7 +155,7 @@ impl DopParser {
         }
     }
 
-    fn expect_property_name(&mut self) -> Result<StringSpan, ParseError> {
+    fn expect_property_name(&mut self) -> Result<DocumentRange, ParseError> {
         match self.iter.next().transpose()? {
             Some((DopToken::Identifier(name), _)) => Ok(name),
             Some((token, span)) => Err(ParseError::ExpectedPropertyNameButGot {
@@ -206,9 +206,9 @@ impl DopParser {
     fn parse_delimited_list<F>(
         &mut self,
         opening_token: &DopToken,
-        opening_span: &StringSpan,
+        opening_span: &DocumentRange,
         parse: F,
-    ) -> Result<StringSpan, ParseError>
+    ) -> Result<DocumentRange, ParseError>
     where
         F: FnMut(&mut Self) -> Result<(), ParseError>,
     {
@@ -299,7 +299,10 @@ impl DopParser {
     }
 
     // object_type = "{" (Identifier ":" type ("," Identifier ":" type)*)? "}"
-    fn parse_object_type(&mut self, left_brace: StringSpan) -> Result<SpannedDopType, ParseError> {
+    fn parse_object_type(
+        &mut self,
+        left_brace: DocumentRange,
+    ) -> Result<SpannedDopType, ParseError> {
         let mut properties = BTreeMap::new();
         let right_brace = self.parse_delimited_list(&DopToken::LeftBrace, &left_brace, |this| {
             let prop_name = this.expect_property_name()?;
@@ -386,7 +389,7 @@ impl DopParser {
     }
 
     // array_literal = "[" ( equality ("," equality)* )? "]"
-    fn parse_array_literal(&mut self, left_bracket: StringSpan) -> Result<DopExpr, ParseError> {
+    fn parse_array_literal(&mut self, left_bracket: DocumentRange) -> Result<DopExpr, ParseError> {
         let mut elements = Vec::new();
         let right_bracket =
             self.parse_delimited_list(&DopToken::LeftBracket, &left_bracket, |this| {
@@ -399,7 +402,7 @@ impl DopParser {
         })
     }
 
-    fn parse_object_literal(&mut self, left_brace: StringSpan) -> Result<DopExpr, ParseError> {
+    fn parse_object_literal(&mut self, left_brace: DocumentRange) -> Result<DopExpr, ParseError> {
         let mut properties = Vec::new();
         let mut seen_names = HashSet::new();
         let right_brace = self.parse_delimited_list(&DopToken::LeftBrace, &left_brace, |this| {
@@ -419,7 +422,7 @@ impl DopParser {
         })
     }
 
-    fn parse_property_access(&mut self, identifier: StringSpan) -> Result<DopExpr, ParseError> {
+    fn parse_property_access(&mut self, identifier: DocumentRange) -> Result<DopExpr, ParseError> {
         let var_name = DopVarName::new(identifier)?;
         let mut expr = DopExpr::Variable { value: var_name };
 
@@ -478,11 +481,11 @@ impl DopParser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::span::{SimpleAnnotation, SourceAnnotator, string_cursor::Spanned as _};
+    use crate::document::{DocumentAnnotator, SimpleAnnotation, document_cursor::Ranged as _};
     use expect_test::{Expect, expect};
 
     fn annotate_error(error: ParseError) -> String {
-        let annotator = SourceAnnotator::new()
+        let annotator = DocumentAnnotator::new()
             .with_label("error")
             .without_location()
             .without_line_numbers();
@@ -490,7 +493,7 @@ mod tests {
             None,
             [SimpleAnnotation {
                 message: error.to_string(),
-                span: error.span().clone(),
+                span: error.range().clone(),
             }],
         )
     }

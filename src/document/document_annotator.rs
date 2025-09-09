@@ -3,12 +3,12 @@ use std::fmt::Display;
 
 use itertools::Itertools as _;
 
-use super::string_cursor::{Spanned, StringCursor, StringSpan};
+use super::document_cursor::{DocumentCursor, DocumentRange, Ranged};
 
 /// Simple annotation implementation for basic use cases
 #[derive(Clone, Debug)]
 pub struct SimpleAnnotation {
-    pub span: StringSpan,
+    pub span: DocumentRange,
     pub message: String,
 }
 
@@ -38,8 +38,8 @@ impl Ord for SimpleAnnotation {
     }
 }
 
-impl Spanned for SimpleAnnotation {
-    fn span(&self) -> &StringSpan {
+impl Ranged for SimpleAnnotation {
+    fn range(&self) -> &DocumentRange {
         &self.span
     }
 }
@@ -51,7 +51,7 @@ impl Display for SimpleAnnotation {
 }
 
 /// Annotator that can display source code with annotations
-pub struct SourceAnnotator {
+pub struct DocumentAnnotator {
     // Display options
     pub show_line_numbers: bool,
     pub show_location: bool,
@@ -64,7 +64,7 @@ pub struct SourceAnnotator {
     pub label: Option<String>,
 }
 
-impl SourceAnnotator {
+impl DocumentAnnotator {
     pub fn new() -> Self {
         Self {
             show_line_numbers: true,
@@ -116,26 +116,26 @@ impl SourceAnnotator {
         annotations: impl IntoIterator<Item = A>,
     ) -> String
     where
-        A: Display + Spanned,
+        A: Display + Ranged,
     {
         let annotations: Vec<A> = annotations.into_iter().collect();
 
         // Extract source from the first annotation's span
         let source = match annotations.first() {
-            Some(first) => first.span().full_source(),
+            Some(first) => first.range().full_source(),
             None => return String::new(),
         };
 
         // Debug assert that all annotations are from the same source
         for annotation in &annotations {
             debug_assert!(
-                std::ptr::eq(annotation.span().full_source(), source),
+                std::ptr::eq(annotation.range().full_source(), source),
                 "All annotations must be from the same source document"
             );
         }
 
         let mut output = String::new();
-        let lines: Vec<Option<StringSpan>> = StringCursor::new(source.to_string())
+        let lines: Vec<Option<DocumentRange>> = DocumentCursor::new(source.to_string())
             .chunk_by(|span| span.start_utf32().line())
             .into_iter()
             .map(|(_, group)| group.filter(|s| s.ch() != '\n').collect())
@@ -157,19 +157,19 @@ impl SourceAnnotator {
                     output.push_str(&format!(
                         "  --> {} (line {}, col {})\n",
                         filename,
-                        annotation.span().start_utf32().line() + 1,
-                        annotation.span().start_utf32().column() + 1
+                        annotation.range().start_utf32().line() + 1,
+                        annotation.range().start_utf32().column() + 1
                     ));
                 } else {
                     output.push_str(&format!(
                         "  --> (line {}, col {})\n",
-                        annotation.span().start_utf32().line() + 1,
-                        annotation.span().start_utf32().column() + 1
+                        annotation.range().start_utf32().line() + 1,
+                        annotation.range().start_utf32().column() + 1
                     ));
                 }
             }
 
-            self.format_annotation(&mut output, &lines, annotation.span());
+            self.format_annotation(&mut output, &lines, annotation.range());
         }
 
         output
@@ -178,8 +178,8 @@ impl SourceAnnotator {
     fn format_annotation(
         &self,
         output: &mut String,
-        lines: &[Option<StringSpan>],
-        span: &StringSpan,
+        lines: &[Option<DocumentRange>],
+        span: &DocumentRange,
     ) {
         let max_line_col_width = lines.len().to_string().len();
 
@@ -240,7 +240,7 @@ impl SourceAnnotator {
     }
 }
 
-impl Default for SourceAnnotator {
+impl Default for DocumentAnnotator {
     fn default() -> Self {
         Self::new()
     }
@@ -254,8 +254,8 @@ mod tests {
     fn create_annotations_from_chunks(
         source: &str,
         predicate: impl Fn(char) -> bool,
-    ) -> Vec<StringSpan> {
-        StringCursor::new(source.to_string())
+    ) -> Vec<DocumentRange> {
+        DocumentCursor::new(source.to_string())
             .chunk_by(|span| predicate(span.ch()))
             .into_iter()
             .filter_map(
@@ -272,7 +272,7 @@ mod tests {
 
         let annotations = create_annotations_from_chunks(source, |ch| ch == '\n');
 
-        let actual = SourceAnnotator::new()
+        let actual = DocumentAnnotator::new()
             .with_label("error")
             .annotate(None, annotations);
 
@@ -302,7 +302,7 @@ mod tests {
 
         let annotations = create_annotations_from_chunks(source, |ch| ch == '\n');
 
-        let actual = SourceAnnotator::new()
+        let actual = DocumentAnnotator::new()
             .with_location()
             .annotate(Some("main.rs"), annotations);
 
@@ -336,7 +336,7 @@ mod tests {
 
         let annotations = create_annotations_from_chunks(source, |ch| ch == '\n');
 
-        let actual = SourceAnnotator::new()
+        let actual = DocumentAnnotator::new()
             .with_lines_before(2)
             .annotate(None, annotations);
 
@@ -371,7 +371,7 @@ mod tests {
 
         let annotations = create_annotations_from_chunks(source, |ch| ch == '\n');
 
-        let actual = SourceAnnotator::new()
+        let actual = DocumentAnnotator::new()
             .with_lines_after(2)
             .annotate(None, annotations);
 
@@ -406,7 +406,7 @@ mod tests {
 
         let annotations = create_annotations_from_chunks(source, |ch| ch.is_whitespace());
 
-        let actual = SourceAnnotator::new()
+        let actual = DocumentAnnotator::new()
             .with_location()
             .annotate(None, annotations);
 
@@ -435,7 +435,7 @@ mod tests {
 
         let annotations = create_annotations_from_chunks(source, |ch| ch.is_whitespace());
 
-        let actual = SourceAnnotator::new()
+        let actual = DocumentAnnotator::new()
             .with_location()
             .annotate(None, annotations);
 
@@ -459,7 +459,7 @@ mod tests {
 
         let annotations = create_annotations_from_chunks(source, |ch| ch.is_whitespace());
 
-        let actual = SourceAnnotator::new()
+        let actual = DocumentAnnotator::new()
             .with_location()
             .annotate(None, annotations);
 
@@ -483,7 +483,7 @@ mod tests {
 
         let annotations = create_annotations_from_chunks(source, |ch| ch == '\n');
 
-        let actual = SourceAnnotator::new()
+        let actual = DocumentAnnotator::new()
             .with_lines_before(1000)
             .annotate(None, annotations);
 
@@ -536,7 +536,7 @@ mod tests {
 
         let annotations = create_annotations_from_chunks(source, |ch| ch == 'n');
 
-        let actual = SourceAnnotator::new().annotate(None, annotations);
+        let actual = DocumentAnnotator::new().annotate(None, annotations);
 
         expect![[r#"
             li

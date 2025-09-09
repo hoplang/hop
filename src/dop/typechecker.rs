@@ -1,8 +1,8 @@
 use super::ast::{BinaryOp, DopExpr, UnaryOp};
+use crate::document::document_cursor::DocumentRange;
 use crate::hop::environment::Environment;
 use crate::hop::type_error::TypeError;
 use crate::hop::typechecker::TypeAnnotation;
-use crate::span::string_cursor::StringSpan;
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -53,7 +53,7 @@ impl DopType {
 #[derive(Debug, Clone)]
 pub struct SpannedDopType {
     pub dop_type: DopType,
-    pub span: StringSpan,
+    pub span: DocumentRange,
 }
 
 impl fmt::Display for DopType {
@@ -203,8 +203,8 @@ pub fn typecheck_expr(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::document::DocumentAnnotator;
     use crate::dop::DopParser;
-    use crate::span::SourceAnnotator;
     use expect_test::{Expect, expect};
 
     fn check(env_str: &str, expr_str: &str, expected: Expect) {
@@ -227,7 +227,7 @@ mod tests {
 
         let actual = match typecheck_expr(&expr, &mut env, &mut annotations) {
             Ok(typ) => typ.to_string(),
-            Err(e) => SourceAnnotator::new()
+            Err(e) => DocumentAnnotator::new()
                 .with_label("error")
                 .without_location()
                 .without_line_numbers()

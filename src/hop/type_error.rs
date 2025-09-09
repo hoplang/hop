@@ -1,30 +1,33 @@
+use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::{DopParameter, DopType};
-use crate::span::string_cursor::{Spanned, StringSpan};
 use std::collections::BTreeMap;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
 pub enum TypeError {
     #[error("Component {tag_name} is not defined")]
-    UndefinedComponent { tag_name: StringSpan },
+    UndefinedComponent { tag_name: DocumentRange },
 
     #[error("Module {module_name} does not declare a component named {component_name}")]
     UndeclaredComponent {
-        module_name: StringSpan,
-        component_name: StringSpan,
+        module_name: DocumentRange,
+        component_name: DocumentRange,
     },
 
     #[error("Module {module} is not defined")]
-    ImportFromUndefinedModule { module: String, span: StringSpan },
+    ImportFromUndefinedModule { module: String, span: DocumentRange },
 
     #[error("Unused variable {var_name}")]
-    UnusedVariable { var_name: StringSpan },
+    UnusedVariable { var_name: DocumentRange },
 
     #[error("Variable {var} is already defined")]
-    VariableIsAlreadyDefined { var: String, span: StringSpan },
+    VariableIsAlreadyDefined { var: String, span: DocumentRange },
 
     #[error("Component {component} does not have a slot-default")]
-    UndefinedSlot { component: String, span: StringSpan },
+    UndefinedSlot {
+        component: String,
+        span: DocumentRange,
+    },
 
     #[error(
         "Import cycle: {importer_module} imports from {imported_component} which creates a dependency cycle: {cycle_display}"
@@ -33,68 +36,71 @@ pub enum TypeError {
         importer_module: String,
         imported_component: String,
         cycle_display: String,
-        span: StringSpan,
+        span: DocumentRange,
     },
 
     #[error("Expected boolean condition, got {found}")]
-    ExpectedBooleanCondition { found: String, span: StringSpan },
+    ExpectedBooleanCondition { found: String, span: DocumentRange },
 
     #[error("Missing required parameter '{param}'")]
-    MissingRequiredParameter { param: String, span: StringSpan },
+    MissingRequiredParameter { param: String, span: DocumentRange },
 
     #[error("Component requires arguments: {args}")]
-    MissingArguments { args: String, span: StringSpan },
+    MissingArguments { args: String, span: DocumentRange },
 
     #[error("Component does not accept arguments")]
-    UnexpectedArguments { span: StringSpan },
+    UnexpectedArguments { span: DocumentRange },
 
     #[error("Unexpected argument '{arg}'")]
-    UnexpectedArgument { arg: String, span: StringSpan },
+    UnexpectedArgument { arg: String, span: DocumentRange },
 
     #[error("Argument '{arg_name}' of type {found} is incompatible with expected type {expected}")]
     ArgumentIsIncompatible {
         expected: DopType,
         found: DopType,
-        arg_name: StringSpan,
-        expr_span: StringSpan,
+        arg_name: DocumentRange,
+        expr_span: DocumentRange,
     },
 
     #[error("Expected string attribute, got {found}")]
-    ExpectedStringAttribute { found: String, span: StringSpan },
+    ExpectedStringAttribute { found: String, span: DocumentRange },
 
     #[error("Cannot iterate over an empty array with unknown element type")]
-    CannotIterateEmptyArray { span: StringSpan },
+    CannotIterateEmptyArray { span: DocumentRange },
 
     #[error("Can not iterate over {typ}")]
-    CannotIterateOver { typ: String, span: StringSpan },
+    CannotIterateOver { typ: String, span: DocumentRange },
 
     #[error("Expected string for text expression, got {found}")]
-    ExpectedStringExpression { found: DopType, span: StringSpan },
+    ExpectedStringExpression { found: DopType, span: DocumentRange },
 
     #[error("Undefined variable: {name}")]
-    UndefinedVariable { name: String, span: StringSpan },
+    UndefinedVariable { name: String, span: DocumentRange },
 
     #[error("Property {property} not found in object")]
-    PropertyNotFoundInObject { property: String, span: StringSpan },
+    PropertyNotFoundInObject {
+        property: String,
+        span: DocumentRange,
+    },
 
     #[error("{typ} can not be used as an object")]
-    CannotUseAsObject { typ: String, span: StringSpan },
+    CannotUseAsObject { typ: String, span: DocumentRange },
 
     #[error("Can not compare {left} to {right}")]
     CannotCompareTypes {
         left: String,
         right: String,
-        span: StringSpan,
+        span: DocumentRange,
     },
 
     #[error("Negation operator can only be applied to boolean values")]
-    NegationRequiresBoolean { span: StringSpan },
+    NegationRequiresBoolean { span: DocumentRange },
 
     #[error("Array elements must all have the same type, found {expected} and {found}")]
     ArrayTypeMismatch {
         expected: String,
         found: String,
-        span: StringSpan,
+        span: DocumentRange,
     },
 }
 
@@ -103,7 +109,7 @@ impl TypeError {
         importer_module: &str,
         imported_component: &str,
         cycle: &[String],
-        span: StringSpan,
+        span: DocumentRange,
     ) -> Self {
         let cycle_display = if let Some(first) = cycle.first() {
             format!("{} → {}", cycle.join(" → "), first)
@@ -119,7 +125,7 @@ impl TypeError {
         }
     }
 
-    pub fn missing_arguments(params: &BTreeMap<String, DopParameter>, span: StringSpan) -> Self {
+    pub fn missing_arguments(params: &BTreeMap<String, DopParameter>, span: DocumentRange) -> Self {
         let args = params
             .iter()
             .map(|(_, p)| p.var_name.as_str())
@@ -129,8 +135,8 @@ impl TypeError {
     }
 }
 
-impl Spanned for TypeError {
-    fn span(&self) -> &StringSpan {
+impl Ranged for TypeError {
+    fn range(&self) -> &DocumentRange {
         match self {
             TypeError::UndefinedComponent { tag_name } => tag_name,
             TypeError::UndeclaredComponent { component_name, .. } => component_name,

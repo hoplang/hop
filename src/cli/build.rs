@@ -5,8 +5,8 @@ use rayon::prelude::*;
 use std::fs;
 use std::path::Path;
 
+use crate::document::DocumentAnnotator;
 use crate::hop::program::Program;
-use crate::span::SourceAnnotator;
 use crate::tui::timing;
 
 fn copy_dir_recursive(
@@ -60,7 +60,7 @@ pub fn execute(
 
     // Check for any compilation errors
     let mut error_output_parts = Vec::new();
-    let annotator = SourceAnnotator::new()
+    let annotator = DocumentAnnotator::new()
         .with_label("error")
         .with_lines_before(1)
         .with_location();

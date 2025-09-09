@@ -3,7 +3,7 @@ use super::Position;
 /// Holds source text and precomputed line start offsets for
 /// efficient position lookups.
 #[derive(Debug, Clone)]
-pub struct SourceInfo {
+pub struct DocumentInfo {
     /// The source text.
     pub(super) text: String,
     /// Byte offsets where each line starts.
@@ -11,7 +11,7 @@ pub struct SourceInfo {
     pub(super) line_starts: Vec<usize>,
 }
 
-impl SourceInfo {
+impl DocumentInfo {
     pub fn new(text: String) -> Self {
         let mut line_starts = vec![0];
         for (i, ch) in text.char_indices() {

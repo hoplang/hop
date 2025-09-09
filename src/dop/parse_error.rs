@@ -1,69 +1,81 @@
+use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::tokenizer::DopToken;
-use crate::span::string_cursor::{Spanned, StringSpan};
 use thiserror::Error;
 
 #[derive(Error, Debug, Clone)]
 pub enum ParseError {
     #[error("Unexpected end of expression")]
-    UnexpectedEof { span: StringSpan },
+    UnexpectedEof { span: DocumentRange },
 
     #[error("Unexpected end of property access")]
-    UnexpectedEndOfPropertyAccess { span: StringSpan },
+    UnexpectedEndOfPropertyAccess { span: DocumentRange },
 
     #[error("Unterminated string literal")]
-    UnterminatedStringLiteral { span: StringSpan },
+    UnterminatedStringLiteral { span: DocumentRange },
 
     #[error("Unmatched '{token}'")]
-    UnmatchedToken { token: DopToken, span: StringSpan },
+    UnmatchedToken {
+        token: DopToken,
+        span: DocumentRange,
+    },
 
     #[error(
         "Invalid variable name '{name}'. Variable names must start with a letter and contain only letters, digits, and underscores"
     )]
-    InvalidVariableName { name: StringSpan },
+    InvalidVariableName { name: DocumentRange },
 
     #[error("Expected token '{expected}' but got '{actual}'")]
     ExpectedTokenButGot {
         expected: DopToken,
         actual: DopToken,
-        span: StringSpan,
+        span: DocumentRange,
     },
 
     #[error("Unexpected token '{token}'")]
-    UnexpectedToken { token: DopToken, span: StringSpan },
+    UnexpectedToken {
+        token: DopToken,
+        span: DocumentRange,
+    },
 
     #[error("Unexpected character: '{ch}'")]
-    UnexpectedCharacter { ch: char, span: StringSpan },
+    UnexpectedCharacter { ch: char, span: DocumentRange },
 
     #[error("Expected variable name but got {actual}")]
-    ExpectedVariableNameButGot { actual: DopToken, span: StringSpan },
+    ExpectedVariableNameButGot {
+        actual: DopToken,
+        span: DocumentRange,
+    },
 
     #[error("Expected property name but got {actual}")]
-    ExpectedPropertyNameButGot { actual: DopToken, span: StringSpan },
+    ExpectedPropertyNameButGot {
+        actual: DopToken,
+        span: DocumentRange,
+    },
 
     #[error("Expected identifier after '.'")]
-    ExpectedIdentifierAfterDot { span: StringSpan },
+    ExpectedIdentifierAfterDot { span: DocumentRange },
 
     #[error("Duplicate argument '{name}'")]
-    DuplicateArgument { name: StringSpan },
+    DuplicateArgument { name: DocumentRange },
 
     #[error("Expected '==' but got '='")]
-    ExpectedDoubleEqButGotSingleEq { span: StringSpan },
+    ExpectedDoubleEqButGotSingleEq { span: DocumentRange },
 
     #[error("Duplicate parameter '{name}'")]
-    DuplicateParameter { name: StringSpan },
+    DuplicateParameter { name: DocumentRange },
 
     #[error("Duplicate property '{name}'")]
-    DuplicateProperty { name: StringSpan },
+    DuplicateProperty { name: DocumentRange },
 
     #[error("Expected type name")]
-    ExpectedTypeName { span: StringSpan },
+    ExpectedTypeName { span: DocumentRange },
 
     #[error("Invalid number format")]
-    InvalidNumberFormat { span: StringSpan },
+    InvalidNumberFormat { span: DocumentRange },
 }
 
-impl Spanned for ParseError {
-    fn span(&self) -> &StringSpan {
+impl Ranged for ParseError {
+    fn range(&self) -> &DocumentRange {
         match self {
             ParseError::UnexpectedEof { span, .. }
             | ParseError::UnterminatedStringLiteral { span }

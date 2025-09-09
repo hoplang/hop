@@ -1,5 +1,5 @@
-use crate::span::Position;
-use crate::span::position_marker::extract_position;
+use crate::document::Position;
+use crate::document::position_marker::extract_position;
 use simple_txtar::{Archive, Builder, File};
 use std::{
     env, fs,

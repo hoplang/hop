@@ -1,9 +1,9 @@
+use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::{self, DopParameter, DopType};
 use crate::hop::ast::HopAst;
 use crate::hop::ast::{ComponentDefinition, HopNode, Render};
 use crate::hop::environment::Environment;
 use crate::hop::type_error::TypeError;
-use crate::span::string_cursor::{Spanned, StringSpan};
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
@@ -13,11 +13,11 @@ use super::module_name::ModuleName;
 pub struct TypeAnnotation {
     pub typ: DopType,
     pub name: String,
-    pub span: StringSpan,
+    pub span: DocumentRange,
 }
 
-impl Spanned for TypeAnnotation {
-    fn span(&self) -> &StringSpan {
+impl Ranged for TypeAnnotation {
+    fn range(&self) -> &DocumentRange {
         &self.span
     }
 }
@@ -457,9 +457,9 @@ fn typecheck_node(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::document::DocumentAnnotator;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
-    use crate::span::SourceAnnotator;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use simple_txtar::Archive;
@@ -468,12 +468,14 @@ mod tests {
         let archive = Archive::from(archive_str);
         let mut error_output = Vec::new();
         let mut type_output = Vec::new();
-        let error_annotator = SourceAnnotator::new()
+        let error_annotator = DocumentAnnotator::new()
             .with_label("error")
             .with_lines_before(1)
             .with_location();
 
-        let type_annotator = SourceAnnotator::new().with_lines_before(1).with_location();
+        let type_annotator = DocumentAnnotator::new()
+            .with_lines_before(1)
+            .with_location();
 
         let mut typechecker = TypeChecker::default();
 

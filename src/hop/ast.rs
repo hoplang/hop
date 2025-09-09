@@ -1,27 +1,27 @@
 use std::collections::BTreeMap;
 
+use crate::document::Position;
+use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
 use crate::hop::module_name::ModuleName;
-use crate::span::Position;
-use crate::span::string_cursor::{Spanned, StringSpan};
 
 #[derive(Debug)]
 pub struct PresentAttribute {
-    pub value: StringSpan,
+    pub value: DocumentRange,
 }
 
 #[derive(Debug, Clone)]
 pub struct Attribute {
-    pub name: StringSpan,
-    pub value: Option<StringSpan>,
-    pub span: StringSpan,
+    pub name: DocumentRange,
+    pub value: Option<DocumentRange>,
+    pub span: DocumentRange,
 }
 
 #[derive(Debug)]
 pub struct DopExprAttribute {
-    pub name: StringSpan,
+    pub name: DocumentRange,
     pub expression: DopExpr,
-    pub span: StringSpan,
+    pub span: DocumentRange,
 }
 
 #[derive(Debug)]
@@ -126,14 +126,14 @@ impl HopAst {
 pub struct Import {
     pub component_attr: PresentAttribute,
     pub module_name: ModuleName,
-    pub from_attr_value_span: StringSpan,
+    pub from_attr_value_span: DocumentRange,
 }
 
 impl Import {
     pub fn imported_module(&self) -> &ModuleName {
         &self.module_name
     }
-    pub fn imported_component(&self) -> &StringSpan {
+    pub fn imported_component(&self) -> &DocumentRange {
         &self.component_attr.value
     }
     pub fn imports_component(&self, component_name: &str) -> bool {
@@ -147,37 +147,37 @@ impl Import {
 #[derive(Debug)]
 pub struct Render {
     pub file_attr: PresentAttribute,
-    pub span: StringSpan,
+    pub span: DocumentRange,
     pub children: Vec<HopNode>,
 }
 
-impl Spanned for Render {
-    fn span(&self) -> &StringSpan {
+impl Ranged for Render {
+    fn range(&self) -> &DocumentRange {
         &self.span
     }
 }
 
 #[derive(Debug)]
 pub struct ComponentDefinition {
-    pub tag_name: StringSpan,
-    pub closing_tag_name: Option<StringSpan>,
-    pub params: Option<(BTreeMap<String, DopParameter>, StringSpan)>,
+    pub tag_name: DocumentRange,
+    pub closing_tag_name: Option<DocumentRange>,
+    pub params: Option<(BTreeMap<String, DopParameter>, DocumentRange)>,
     pub as_attr: Option<PresentAttribute>,
     pub attributes: Vec<Attribute>,
-    pub span: StringSpan,
+    pub span: DocumentRange,
     pub children: Vec<HopNode>,
     pub is_entrypoint: bool,
     pub has_slot: bool,
 }
 
-impl Spanned for ComponentDefinition {
-    fn span(&self) -> &StringSpan {
+impl Ranged for ComponentDefinition {
+    fn range(&self) -> &DocumentRange {
         &self.span
     }
 }
 
 impl ComponentDefinition {
-    pub fn tag_name_ranges(&self) -> impl Iterator<Item = &StringSpan> {
+    pub fn tag_name_ranges(&self) -> impl Iterator<Item = &DocumentRange> {
         self.closing_tag_name.iter().chain(Some(&self.tag_name))
     }
 }
@@ -187,14 +187,14 @@ pub enum HopNode {
     /// A Text node represents text in the document.
     /// E.g. <div>hello world</div>
     ///           ^^^^^^^^^^^
-    Text { span: StringSpan },
+    Text { span: DocumentRange },
 
     /// A TextExpression represents an expression that occurs in a text position.
     /// E.g. <div>hello {world}</div>
     ///                 ^^^^^^^
     TextExpression {
         expression: DopExpr,
-        span: StringSpan,
+        span: DocumentRange,
     },
 
     /// A ComponentReference represents a reference to a component.
@@ -204,12 +204,12 @@ pub enum HopNode {
     ///   ^^^^^^^^^^^^^^^^^^
     /// </my-component>
     ComponentReference {
-        tag_name: StringSpan,
+        tag_name: DocumentRange,
         definition_module: Option<ModuleName>,
-        closing_tag_name: Option<StringSpan>,
-        args: Option<(BTreeMap<String, DopArgument>, StringSpan)>,
+        closing_tag_name: Option<DocumentRange>,
+        args: Option<(BTreeMap<String, DopArgument>, DocumentRange)>,
         attributes: Vec<Attribute>,
-        span: StringSpan,
+        span: DocumentRange,
         children: Vec<HopNode>,
     },
 
@@ -219,13 +219,13 @@ pub enum HopNode {
     /// <my-component>
     ///   <slot-default/>
     /// </my-component>
-    SlotDefinition { span: StringSpan },
+    SlotDefinition { span: DocumentRange },
 
     /// An If node contains content that is only evaluated when its condition
     /// expression evaluates to true.
     If {
         condition: DopExpr,
-        span: StringSpan,
+        span: DocumentRange,
         children: Vec<HopNode>,
     },
 
@@ -234,27 +234,27 @@ pub enum HopNode {
     For {
         var_name: DopVarName,
         array_expr: DopExpr,
-        span: StringSpan,
+        span: DocumentRange,
         children: Vec<HopNode>,
     },
 
     /// A Doctype node represents a doctype, e.g. a <!DOCTYPE html>
-    Doctype { span: StringSpan },
+    Doctype { span: DocumentRange },
 
     /// An HTML node represents a plain HTML node.
     /// E.g. <div>...</div>
     ///      ^^^^^^^^^^^^^^
     Html {
-        tag_name: StringSpan,
-        closing_tag_name: Option<StringSpan>,
+        tag_name: DocumentRange,
+        closing_tag_name: Option<DocumentRange>,
         attributes: Vec<Attribute>,
-        span: StringSpan,
+        span: DocumentRange,
         children: Vec<HopNode>,
         set_attributes: Vec<DopExprAttribute>,
     },
     XExec {
         cmd_attr: PresentAttribute,
-        span: StringSpan,
+        span: DocumentRange,
         children: Vec<HopNode>,
     },
 
@@ -264,7 +264,7 @@ pub enum HopNode {
     /// The children vec should always contain a single Text node.
     XRaw {
         trim: bool,
-        span: StringSpan,
+        span: DocumentRange,
         children: Vec<HopNode>,
     },
 
@@ -274,7 +274,7 @@ pub enum HopNode {
     /// We use Error nodes to be able to construct the child nodes of the node that could not be
     /// constructed. This is useful for e.g. go-to-definition in the language server.
     Error {
-        span: StringSpan,
+        span: DocumentRange,
         children: Vec<HopNode>,
     },
 }
@@ -302,7 +302,7 @@ impl HopNode {
     }
 
     pub fn find_node_at_position(&self, position: Position) -> Option<&HopNode> {
-        if !self.span().contains_position(position) {
+        if !self.range().contains_position(position) {
             return None;
         }
         for child in self.children() {
@@ -318,7 +318,7 @@ impl HopNode {
     /// Example:
     /// <div>hello world</div>
     ///  ^^^
-    pub fn tag_name(&self) -> Option<&StringSpan> {
+    pub fn tag_name(&self) -> Option<&DocumentRange> {
         match self {
             HopNode::ComponentReference { tag_name, .. } => Some(tag_name),
             HopNode::Html { tag_name, .. } => Some(tag_name),
@@ -331,7 +331,7 @@ impl HopNode {
     /// Example:
     /// <div>hello world</div>
     ///                   ^^^
-    pub fn closing_tag_name(&self) -> Option<&StringSpan> {
+    pub fn closing_tag_name(&self) -> Option<&DocumentRange> {
         match self {
             HopNode::ComponentReference {
                 closing_tag_name, ..
@@ -348,13 +348,13 @@ impl HopNode {
     /// Example:
     /// <div>hello world</div>
     ///  ^^^              ^^^
-    pub fn tag_names(&self) -> impl Iterator<Item = &StringSpan> {
+    pub fn tag_names(&self) -> impl Iterator<Item = &DocumentRange> {
         self.tag_name().into_iter().chain(self.closing_tag_name())
     }
 }
 
-impl Spanned for HopNode {
-    fn span(&self) -> &StringSpan {
+impl Ranged for HopNode {
+    fn range(&self) -> &DocumentRange {
         match self {
             HopNode::Text { span, .. } => span,
             HopNode::TextExpression { span, .. } => span,
@@ -399,11 +399,11 @@ impl<'a> Iterator for DepthFirstIterator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::document::DocumentAnnotator;
+    use crate::document::SimpleAnnotation;
+    use crate::document::position_marker::extract_position;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
-    use crate::span::SimpleAnnotation;
-    use crate::span::SourceAnnotator;
-    use crate::span::position_marker::extract_position;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
@@ -421,11 +421,11 @@ mod tests {
         let found_node = ast.find_node_at_position(position);
 
         let output = if let Some(node) = found_node {
-            let annotator = SourceAnnotator::new().without_location();
+            let annotator = DocumentAnnotator::new().without_location();
             annotator.annotate(
                 None,
                 [SimpleAnnotation {
-                    span: node.span().clone(),
+                    span: node.range().clone(),
                     message: "range".to_string(),
                 }],
             )

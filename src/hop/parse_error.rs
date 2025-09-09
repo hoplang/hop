@@ -1,86 +1,92 @@
-use crate::span::string_cursor::{Spanned, StringSpan};
+use crate::document::document_cursor::{DocumentRange, Ranged};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
 pub enum ParseError {
     #[error("slot-default is already defined")]
-    SlotIsAlreadyDefined { span: StringSpan },
+    SlotIsAlreadyDefined { range: DocumentRange },
 
     #[error("Unmatched </{tag}>")]
-    UnmatchedClosingTag { tag: String, span: StringSpan },
+    UnmatchedClosingTag { tag: String, range: DocumentRange },
 
     #[error("Missing attribute value")]
-    MissingAttributeValue { span: StringSpan },
+    MissingAttributeValue { range: DocumentRange },
 
     #[error("Unclosed <{tag}>")]
-    UnclosedTag { tag: String, span: StringSpan },
+    UnclosedTag { tag: String, range: DocumentRange },
 
     #[error("<{tag}> should not be closed using a closing tag")]
-    ClosedVoidTag { tag: String, span: StringSpan },
+    ClosedVoidTag { tag: String, range: DocumentRange },
 
     #[error("Unrecognized hop tag: <{tag}>")]
-    UnrecognizedHopTag { tag: String, span: StringSpan },
+    UnrecognizedHopTag { tag: String, range: DocumentRange },
 
     #[error("<{tag_name}> is missing required attribute {attr}")]
     MissingRequiredAttribute {
         tag_name: String,
         attr: String,
-        span: StringSpan,
+        range: DocumentRange,
     },
 
     #[error(
         "Invalid component name '{tag_name}'. Component names must contain a dash and not start or end with one"
     )]
-    InvalidComponentName { tag_name: String, span: StringSpan },
+    InvalidComponentName {
+        tag_name: String,
+        range: DocumentRange,
+    },
 
     #[error("Component {component_name} is already defined")]
     ComponentIsAlreadyDefined {
         component_name: String,
-        span: StringSpan,
+        range: DocumentRange,
     },
 
     #[error("Duplicate attribute '{name}'")]
-    DuplicateAttribute { name: String, span: StringSpan },
+    DuplicateAttribute { name: String, range: DocumentRange },
 
     #[error("Import paths must start with '@/' where '@' indicates the root directory")]
-    InvalidImportPath { span: StringSpan },
+    InvalidImportPath { range: DocumentRange },
 
     #[error("{error}")]
     InvalidModuleName {
         error: crate::hop::module_name::InvalidModuleNameError,
-        span: StringSpan,
+        range: DocumentRange,
     },
 
     #[error("Unmatched {ch}")]
-    UnmatchedCharacter { ch: StringSpan },
+    UnmatchedCharacter { ch: DocumentRange },
 
     #[error("{message}")]
-    GenericError { message: String, span: StringSpan },
+    GenericError {
+        message: String,
+        range: DocumentRange,
+    },
 }
 
 impl ParseError {
-    pub fn new(message: String, span: StringSpan) -> Self {
-        ParseError::GenericError { message, span }
+    pub fn new(message: String, range: DocumentRange) -> Self {
+        ParseError::GenericError { message, range }
     }
 }
 
-impl Spanned for ParseError {
-    fn span(&self) -> &StringSpan {
+impl Ranged for ParseError {
+    fn range(&self) -> &DocumentRange {
         match self {
-            ParseError::SlotIsAlreadyDefined { span }
-            | ParseError::UnmatchedClosingTag { span, .. }
-            | ParseError::UnmatchedCharacter { ch: span, .. }
-            | ParseError::MissingAttributeValue { span }
-            | ParseError::UnclosedTag { span, .. }
-            | ParseError::ClosedVoidTag { span, .. }
-            | ParseError::UnrecognizedHopTag { span, .. }
-            | ParseError::MissingRequiredAttribute { span, .. }
-            | ParseError::InvalidComponentName { span, .. }
-            | ParseError::ComponentIsAlreadyDefined { span, .. }
-            | ParseError::DuplicateAttribute { span, .. }
-            | ParseError::InvalidImportPath { span }
-            | ParseError::InvalidModuleName { span, .. }
-            | ParseError::GenericError { span, .. } => span,
+            ParseError::SlotIsAlreadyDefined { range }
+            | ParseError::UnmatchedClosingTag { range, .. }
+            | ParseError::UnmatchedCharacter { ch: range, .. }
+            | ParseError::MissingAttributeValue { range }
+            | ParseError::UnclosedTag { range, .. }
+            | ParseError::ClosedVoidTag { range, .. }
+            | ParseError::UnrecognizedHopTag { range, .. }
+            | ParseError::MissingRequiredAttribute { range, .. }
+            | ParseError::InvalidComponentName { range, .. }
+            | ParseError::ComponentIsAlreadyDefined { range, .. }
+            | ParseError::DuplicateAttribute { range, .. }
+            | ParseError::InvalidImportPath { range }
+            | ParseError::InvalidModuleName { range, .. }
+            | ParseError::GenericError { range, .. } => range,
         }
     }
 }

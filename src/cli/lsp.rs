@@ -1,8 +1,8 @@
+use crate::document::Position;
+use crate::document::document_cursor::DocumentRange;
 use crate::filesystem::files::ProjectRoot;
 use crate::hop::module_name::ModuleName;
 use crate::hop::program::{DefinitionLocation, Program, RenameLocation};
-use crate::span::Position;
-use crate::span::string_cursor::StringSpan;
 use std::collections::HashMap;
 use std::path::Path;
 use tokio::sync::{OnceCell, RwLock};
@@ -20,8 +20,8 @@ impl From<lsp_types::Position> for Position {
     }
 }
 
-impl From<StringSpan> for lsp_types::Range {
-    fn from(span: StringSpan) -> Self {
+impl From<DocumentRange> for lsp_types::Range {
+    fn from(span: DocumentRange) -> Self {
         let start_pos = span.start_utf16();
         let end_pos = span.end_utf16();
 

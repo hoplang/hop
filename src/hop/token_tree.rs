@@ -1,8 +1,8 @@
 use crate::common::is_void_element;
+use crate::document::document_cursor::{DocumentRange, Ranged as _};
 use crate::hop::parse_error::ParseError;
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
-use crate::span::string_cursor::{Spanned as _, StringSpan};
 use std::fmt::{self, Display};
 
 /// A TokenTree represents a tree of tokens.
@@ -21,14 +21,14 @@ pub struct TokenTree {
     /// <div></div>
     ///        ^^^
     /// This information is needed by the parser.
-    pub closing_tag_name: Option<StringSpan>,
+    pub closing_tag_name: Option<DocumentRange>,
     pub children: Vec<TokenTree>,
-    pub span: StringSpan,
+    pub span: DocumentRange,
 }
 
 impl TokenTree {
     pub fn new(opening_token: Token) -> Self {
-        let span = opening_token.span().clone();
+        let span = opening_token.range().clone();
         TokenTree {
             span,
             token: opening_token,
@@ -90,7 +90,7 @@ impl Display for TokenTree {
 pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<TokenTree> {
     struct StackElement {
         tree: TokenTree,
-        tag_name: StringSpan,
+        tag_name: DocumentRange,
     }
 
     let mut stack: Vec<StackElement> = Vec::new();
@@ -136,7 +136,7 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
                 if is_void_element(tag_name.as_str()) {
                     errors.push(ParseError::ClosedVoidTag {
                         tag: tag_name.to_string(),
-                        span: token.span().clone(),
+                        range: token.range().clone(),
                     });
                 } else if !stack
                     .iter()
@@ -144,14 +144,14 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
                 {
                     errors.push(ParseError::UnmatchedClosingTag {
                         tag: tag_name.to_string(),
-                        span: token.span().clone(),
+                        range: token.range().clone(),
                     });
                 } else {
                     while stack.last().unwrap().tag_name.as_str() != tag_name.as_str() {
                         let unclosed = stack.pop().unwrap();
                         errors.push(ParseError::UnclosedTag {
                             tag: unclosed.tag_name.to_string(),
-                            span: unclosed.tree.token.span().clone(),
+                            range: unclosed.tree.token.range().clone(),
                         });
                         stack.last_mut().unwrap().tree.append_tree(unclosed.tree);
                     }
@@ -170,7 +170,7 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
     for unclosed in stack {
         errors.push(ParseError::UnclosedTag {
             tag: unclosed.tag_name.to_string(),
-            span: unclosed.tree.token.span().clone(),
+            range: unclosed.tree.token.range().clone(),
         });
     }
 

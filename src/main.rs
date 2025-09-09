@@ -1,9 +1,9 @@
 mod cli;
 mod common;
+mod document;
 mod dop;
 mod filesystem;
 mod hop;
-mod span;
 mod test_utils;
 mod tui;
 

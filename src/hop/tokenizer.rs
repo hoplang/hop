@@ -4,42 +4,42 @@ use std::mem;
 
 use itertools::Itertools as _;
 
+use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged};
 use crate::dop::DopTokenizer;
 use crate::dop::tokenizer::DopToken;
 use crate::hop::ast::Attribute;
 use crate::hop::parse_error::ParseError;
-use crate::span::string_cursor::{Spanned, StringCursor, StringSpan};
 
 #[derive(Debug)]
 pub enum Token {
     Doctype {
-        span: StringSpan,
+        span: DocumentRange,
     },
     Comment {
-        span: StringSpan,
+        span: DocumentRange,
     },
     Expression {
-        expression: StringSpan,
-        span: StringSpan,
+        expression: DocumentRange,
+        span: DocumentRange,
     },
     OpeningTag {
-        tag_name: StringSpan,
+        tag_name: DocumentRange,
         attributes: Vec<Attribute>,
-        expression: Option<StringSpan>,
+        expression: Option<DocumentRange>,
         self_closing: bool,
-        span: StringSpan,
+        span: DocumentRange,
     },
     ClosingTag {
-        tag_name: StringSpan,
-        span: StringSpan,
+        tag_name: DocumentRange,
+        span: DocumentRange,
     },
     Text {
-        span: StringSpan,
+        span: DocumentRange,
     },
 }
 
 impl Token {
-    pub fn get_attribute_value(&self, name: &str) -> Option<StringSpan> {
+    pub fn get_attribute_value(&self, name: &str) -> Option<DocumentRange> {
         match self {
             Token::OpeningTag { attributes, .. } => attributes
                 .iter()
@@ -50,8 +50,8 @@ impl Token {
     }
 }
 
-impl Spanned for Token {
-    fn span(&self) -> &StringSpan {
+impl Ranged for Token {
+    fn range(&self) -> &DocumentRange {
         match self {
             Token::Doctype { span } => span,
             Token::Comment { span } => span,
@@ -125,19 +125,19 @@ impl Display for Token {
 
 pub struct Tokenizer {
     /// The string cursor for the document we're tokenizing.
-    iter: Peekable<StringCursor>,
+    iter: Peekable<DocumentCursor>,
     /// The error vector contains the errors that occured during tokenization
     /// of the current token. It is returned together for the iterator.
     errors: Vec<ParseError>,
     /// The current raw text closing tag we're looking for, if any.
     /// E.g. </script>
-    raw_text_closing_tag: Option<StringSpan>,
+    raw_text_closing_tag: Option<DocumentRange>,
 }
 
 impl Tokenizer {
     pub fn new(input: String) -> Self {
         Self {
-            iter: StringCursor::new(input).peekable(),
+            iter: DocumentCursor::new(input).peekable(),
             errors: Vec::new(),
             raw_text_closing_tag: None,
         }
@@ -152,7 +152,7 @@ impl Tokenizer {
     ///       ^
     ///
     /// Returns None if we reached EOF before finding the closing '}'.
-    fn find_expression_end(iter: Peekable<StringCursor>) -> Option<StringSpan> {
+    fn find_expression_end(iter: Peekable<DocumentCursor>) -> Option<DocumentRange> {
         let mut dop_tokenizer = DopTokenizer::from(iter);
         let mut open_braces = 1;
         loop {
@@ -184,7 +184,7 @@ impl Tokenizer {
     //        ^^^^^^^^^^^^
     // Expects that the iterator points to the initial '-'.
     //
-    fn parse_comment(&mut self, left_angle_to_bang: StringSpan) -> Option<Token> {
+    fn parse_comment(&mut self, left_angle_to_bang: DocumentRange) -> Option<Token> {
         let Some(first_dash) = self.iter.next_if(|s| s.ch() == '-') else {
             panic!(
                 "Expected '-' in parse_comment but got {:?}",
@@ -228,7 +228,7 @@ impl Tokenizer {
         }
     }
 
-    fn parse_doctype(&mut self, left_angle_to_bang: StringSpan) -> Option<Token> {
+    fn parse_doctype(&mut self, left_angle_to_bang: DocumentRange) -> Option<Token> {
         let doctype = self
             .iter
             .clone()
@@ -262,7 +262,7 @@ impl Tokenizer {
     //       ^^^^^^^^^^^^^
     // Expects that the iterator points to the initial '!'.
     //
-    fn parse_markup_declaration(&mut self, left_angle: StringSpan) -> Option<Token> {
+    fn parse_markup_declaration(&mut self, left_angle: DocumentRange) -> Option<Token> {
         let Some(bang) = self.iter.next_if(|s| s.ch() == '!') else {
             panic!(
                 "Expected '!' in parse_markup_declaration but got {:?}",
@@ -358,7 +358,7 @@ impl Tokenizer {
     /// Returns Some((expr,span)) if we managed to parse the expression
     /// where expr is the inner span for the expression and span is th
     /// outer (containing the braces).
-    fn parse_expression(&mut self) -> Option<(StringSpan, StringSpan)> {
+    fn parse_expression(&mut self) -> Option<(DocumentRange, DocumentRange)> {
         // consume '{'
         let Some(left_brace) = self.iter.next_if(|s| s.ch() == '{') else {
             panic!(
@@ -404,9 +404,9 @@ impl Tokenizer {
     ///
     /// E.g. <div foo="bar" {x: string}>
     ///           ^^^^^^^^^^^^^^^^^^^^^
-    fn parse_tag_content(&mut self) -> (Vec<Attribute>, Option<StringSpan>) {
+    fn parse_tag_content(&mut self) -> (Vec<Attribute>, Option<DocumentRange>) {
         let mut attributes: Vec<Attribute> = Vec::new();
-        let mut expression: Option<StringSpan> = None;
+        let mut expression: Option<DocumentRange> = None;
         loop {
             self.skip_whitespace();
             match self.iter.peek().map(|s| s.ch()) {
@@ -426,7 +426,7 @@ impl Tokenizer {
                     if exists {
                         self.errors.push(ParseError::DuplicateAttribute {
                             name: attr.name.to_string(),
-                            span: attr.name.clone(),
+                            range: attr.name.clone(),
                         });
                     } else {
                         attributes.push(attr);
@@ -445,7 +445,7 @@ impl Tokenizer {
     ///       ^^^^^^^^^^^^^^^^^^^^^^^^^^
     /// Expects that the iterator points to the initial alphabetic char.
     ///
-    fn parse_opening_tag(&mut self, left_angle: StringSpan) -> Option<Token> {
+    fn parse_opening_tag(&mut self, left_angle: DocumentRange) -> Option<Token> {
         // consume: [a-zA-Z]
         let Some(initial) = self.iter.next_if(|s| s.ch().is_ascii_alphabetic()) else {
             panic!(
@@ -496,7 +496,7 @@ impl Tokenizer {
     ///            ^^^^^
     /// Expects that the iterator points to the initial '/'.
     ///
-    fn parse_closing_tag(&mut self, left_angle: StringSpan) -> Option<Token> {
+    fn parse_closing_tag(&mut self, left_angle: DocumentRange) -> Option<Token> {
         let Some(slash) = self.iter.next_if(|s| s.ch() == '/') else {
             panic!(
                 "Expected '/' in parse_closing_tag but got {:?}",
@@ -538,7 +538,7 @@ impl Tokenizer {
         })
     }
 
-    fn iter_peek_rawtext_closing_tag(&self, tag_name: &StringSpan) -> bool {
+    fn iter_peek_rawtext_closing_tag(&self, tag_name: &DocumentRange) -> bool {
         let mut iter = self.iter.clone();
         // consume: '<'
         if iter.next().is_none_or(|s| s.ch() != '<') {
@@ -574,8 +574,8 @@ impl Tokenizer {
         true
     }
 
-    fn parse_rawtext(&mut self, tag_name: StringSpan) -> Option<Token> {
-        let mut raw_text: Option<StringSpan> = None;
+    fn parse_rawtext(&mut self, tag_name: DocumentRange) -> Option<Token> {
+        let mut raw_text: Option<DocumentRange> = None;
         loop {
             if self.iter.peek().is_none() || self.iter_peek_rawtext_closing_tag(&tag_name) {
                 return raw_text.map(|s| Token::Text { span: s });
@@ -679,7 +679,7 @@ fn is_tag_name_with_raw_content(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::span::{SimpleAnnotation, SourceAnnotator};
+    use crate::document::{DocumentAnnotator, SimpleAnnotation};
 
     use super::*;
     use expect_test::{Expect, expect};
@@ -693,18 +693,18 @@ mod tests {
             if let Some(t) = token {
                 annotations.push(SimpleAnnotation {
                     message: t.to_string(),
-                    span: t.span().clone(),
+                    span: t.range().clone(),
                 });
             }
             for err in errors {
                 annotations.push(SimpleAnnotation {
                     message: err.to_string(),
-                    span: err.span().clone(),
+                    span: err.range().clone(),
                 });
             }
         }
 
-        expected.assert_eq(&SourceAnnotator::new().annotate(None, annotations));
+        expected.assert_eq(&DocumentAnnotator::new().annotate(None, annotations));
     }
 
     #[test]

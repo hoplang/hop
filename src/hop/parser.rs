@@ -1,10 +1,10 @@
+use crate::document::document_cursor::Ranged;
 use crate::dop::DopParser;
 use crate::hop::ast::{ComponentDefinition, DopExprAttribute, HopAst, HopNode, Import, Render};
 use crate::hop::parse_error::ParseError;
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
-use crate::span::string_cursor::Spanned;
 use std::collections::{HashMap, HashSet};
 
 use super::ast::PresentAttribute;
@@ -65,7 +65,7 @@ pub fn parse(
                         errors.push(ParseError::MissingRequiredAttribute {
                             tag_name: tag_name.to_string(),
                             attr: "from".to_string(),
-                            span: tag_name.clone(),
+                            range: tag_name.clone(),
                         });
                         continue;
                     };
@@ -74,7 +74,7 @@ pub fn parse(
                         errors.push(ParseError::MissingRequiredAttribute {
                             tag_name: tag_name.to_string(),
                             attr: "component".to_string(),
-                            span: tag_name.clone(),
+                            range: tag_name.clone(),
                         });
                         continue;
                     };
@@ -82,7 +82,7 @@ pub fn parse(
                     // Validate that the import path starts with @/
                     if !from_attr.as_str().starts_with("@/") {
                         errors.push(ParseError::InvalidImportPath {
-                            span: from_attr.clone(),
+                            range: from_attr.clone(),
                         });
                         continue;
                     }
@@ -90,7 +90,7 @@ pub fn parse(
                     if imported_components.contains_key(cmp_attr.as_str()) {
                         errors.push(ParseError::ComponentIsAlreadyDefined {
                             component_name: cmp_attr.to_string(),
-                            span: cmp_attr.clone(),
+                            range: cmp_attr.clone(),
                         });
                         continue;
                     }
@@ -108,7 +108,7 @@ pub fn parse(
                         Err(e) => {
                             errors.push(ParseError::InvalidModuleName {
                                 error: e,
-                                span: from_attr.clone(),
+                                range: from_attr.clone(),
                             });
                             continue;
                         }
@@ -128,7 +128,7 @@ pub fn parse(
                         errors.push(ParseError::MissingRequiredAttribute {
                             tag_name: tag_name.to_string(),
                             attr: "file".to_string(),
-                            span: tag_name.clone(),
+                            range: tag_name.clone(),
                         });
                         continue;
                     };
@@ -144,7 +144,7 @@ pub fn parse(
                     if !is_valid_component_name(name) {
                         errors.push(ParseError::InvalidComponentName {
                             tag_name: tag_name.to_string(),
-                            span: tag_name.clone(),
+                            range: tag_name.clone(),
                         });
                         continue;
                     }
@@ -152,7 +152,7 @@ pub fn parse(
                         match DopParser::from(expr.clone()).parse_parameters() {
                             Ok(params) => Some((params, expr.clone())),
                             Err(err) => {
-                                errors.push(ParseError::new(err.to_string(), err.span().clone()));
+                                errors.push(ParseError::new(err.to_string(), err.range().clone()));
                                 None
                             }
                         }
@@ -167,7 +167,7 @@ pub fn parse(
                             if let HopNode::SlotDefinition { span, .. } = node {
                                 if has_slot {
                                     errors.push(ParseError::SlotIsAlreadyDefined {
-                                        span: span.clone(),
+                                        range: span.clone(),
                                     });
                                 }
                                 has_slot = true;
@@ -178,7 +178,7 @@ pub fn parse(
                     if defined_components.contains(name) || imported_components.contains_key(name) {
                         errors.push(ParseError::ComponentIsAlreadyDefined {
                             component_name: tag_name.to_string(),
-                            span: tag_name.clone(),
+                            range: tag_name.clone(),
                         });
                         // fall-through
                     } else {
@@ -269,7 +269,7 @@ fn construct_node(
                 span: tree.span.clone(),
             },
             Err(err) => {
-                errors.push(ParseError::new(err.to_string(), err.span().clone()));
+                errors.push(ParseError::new(err.to_string(), err.range().clone()));
                 HopNode::Error {
                     span: tree.span.clone(),
                     children: vec![],
@@ -293,7 +293,7 @@ fn construct_node(
                             children,
                         },
                         Err(err) => {
-                            errors.push(ParseError::new(err.to_string(), err.span().clone()));
+                            errors.push(ParseError::new(err.to_string(), err.range().clone()));
                             HopNode::Error {
                                 span: tree.span.clone(),
                                 children,
@@ -321,7 +321,7 @@ fn construct_node(
                             children,
                         },
                         Err(err) => {
-                            errors.push(ParseError::new(err.to_string(), err.span().clone()));
+                            errors.push(ParseError::new(err.to_string(), err.range().clone()));
                             HopNode::Error {
                                 span: tree.span.clone(),
                                 children,
@@ -365,7 +365,7 @@ fn construct_node(
                                 errors.push(ParseError::MissingRequiredAttribute {
                                     tag_name: tag_name.to_string(),
                                     attr: "cmd".to_string(),
-                                    span: tag_name.clone(),
+                                    range: tag_name.clone(),
                                 });
                                 HopNode::Error {
                                     span: tree.span.clone(),
@@ -382,7 +382,7 @@ fn construct_node(
                     _ => {
                         errors.push(ParseError::UnrecognizedHopTag {
                             tag: tag_name.to_string(),
-                            span: tag_name.clone(),
+                            range: tag_name.clone(),
                         });
                         HopNode::Error {
                             span: tree.span.clone(),
@@ -394,14 +394,14 @@ fn construct_node(
                     if !is_valid_component_name(tag_name.as_str()) {
                         errors.push(ParseError::InvalidComponentName {
                             tag_name: tag_name.to_string(),
-                            span: tag_name.clone(),
+                            range: tag_name.clone(),
                         });
                     }
                     let args = match &expression {
                         Some(expr) => match DopParser::from(expr.clone()).parse_arguments() {
                             Ok(named_args) => Some((named_args, expr.clone())),
                             Err(err) => {
-                                errors.push(ParseError::new(err.to_string(), err.span().clone()));
+                                errors.push(ParseError::new(err.to_string(), err.range().clone()));
                                 return HopNode::Error {
                                     span: tree.span.clone(),
                                     children: vec![],
@@ -436,7 +436,7 @@ fn construct_node(
                             let attr_val = match &attr.value {
                                 None => {
                                     errors.push(ParseError::MissingAttributeValue {
-                                        span: attr.span.clone(),
+                                        range: attr.span.clone(),
                                     });
                                     continue;
                                 }
@@ -449,8 +449,10 @@ fn construct_node(
                                     span: attr.span.clone(),
                                 }),
                                 Err(err) => {
-                                    errors
-                                        .push(ParseError::new(err.to_string(), err.span().clone()));
+                                    errors.push(ParseError::new(
+                                        err.to_string(),
+                                        err.range().clone(),
+                                    ));
                                 }
                             };
                         }
@@ -476,7 +478,7 @@ fn construct_node(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::span::{SourceAnnotator, string_cursor::Spanned};
+    use crate::document::{DocumentAnnotator, document_cursor::Ranged};
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
@@ -501,7 +503,11 @@ mod tests {
             return;
         }
         let left = format!("{}{}", "    ".repeat(depth).as_str(), node_name(node));
-        let right = format!("{}-{}", node.span().start_utf32(), node.span().end_utf32());
+        let right = format!(
+            "{}-{}",
+            node.range().start_utf32(),
+            node.range().end_utf32()
+        );
         lines.push(format!("{:<50}{}", left, right));
         for child in node.children() {
             write_node(child, depth + 1, lines);
@@ -525,7 +531,7 @@ mod tests {
         );
 
         let actual = if !errors.is_empty() {
-            SourceAnnotator::new()
+            DocumentAnnotator::new()
                 .with_label("error")
                 .with_lines_before(1)
                 .annotate(None, errors)

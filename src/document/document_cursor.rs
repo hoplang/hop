@@ -1,28 +1,28 @@
 use std::{fmt, iter::FromIterator, sync::Arc};
 
-use super::{Position, source_info::SourceInfo};
+use super::{Position, document_info::DocumentInfo};
 
 #[derive(Clone)]
-pub struct StringCursor {
+pub struct DocumentCursor {
     /// The source info containing text and line starts.
-    source: Arc<SourceInfo>,
+    source: Arc<DocumentInfo>,
     /// The current byte offset in the source string.
     offset: usize,
     /// The byte offset where iteration should stop (exclusive).
     end: usize,
 }
 
-impl StringCursor {
+impl DocumentCursor {
     pub fn new(source: String) -> Self {
         let end = source.len();
         Self {
             offset: 0,
             end,
-            source: Arc::new(SourceInfo::new(source)),
+            source: Arc::new(DocumentInfo::new(source)),
         }
     }
-    pub fn span(&self) -> StringSpan {
-        StringSpan {
+    pub fn span(&self) -> DocumentRange {
+        DocumentRange {
             source: self.source.clone(),
             start: self.offset,
             end: self.end,
@@ -30,8 +30,8 @@ impl StringCursor {
     }
 }
 
-impl Iterator for StringCursor {
-    type Item = StringSpan;
+impl Iterator for DocumentCursor {
+    type Item = DocumentRange;
     fn next(&mut self) -> Option<Self::Item> {
         if self.offset >= self.end {
             return None;
@@ -42,7 +42,7 @@ impl Iterator for StringCursor {
             .next()
             .map(|ch| {
                 self.offset += ch.len_utf8();
-                StringSpan {
+                DocumentRange {
                     source: self.source.clone(),
                     start: start_offset,
                     end: self.offset,
@@ -51,21 +51,21 @@ impl Iterator for StringCursor {
     }
 }
 
-/// A StringSpan represents a segment of text in a document.
+/// A DocumentRange represents a range in a document.
 ///
-/// It is always non-empty, i.e. span.start < span.end and span.as_str().len() > 0
+/// It is always non-empty, i.e. start < end and as_str().len() > 0
 /// always holds.
 #[derive(Debug, Clone)]
-pub struct StringSpan {
+pub struct DocumentRange {
     /// The source info containing the document text and line starts.
-    source: Arc<SourceInfo>,
+    source: Arc<DocumentInfo>,
     /// the start byte offset for this string span in the document (inclusive).
     start: usize,
     /// the end byte offset for this string span in the document (exclusive).
     end: usize,
 }
 
-impl StringSpan {
+impl DocumentRange {
     /// Get the first char from the string span.
     pub fn ch(&self) -> char {
         self.source.text[self.start..].chars().next().unwrap()
@@ -73,10 +73,10 @@ impl StringSpan {
 
     /// Extend a string span to encompass another string span that occurs
     /// later in the document.
-    pub fn to(self, other: StringSpan) -> Self {
+    pub fn to(self, other: DocumentRange) -> Self {
         debug_assert!(other.start > self.start);
         debug_assert!(other.end > self.end);
-        StringSpan {
+        DocumentRange {
             source: self.source,
             start: self.start,
             end: other.end,
@@ -89,7 +89,7 @@ impl StringSpan {
     /// The string spans must occur sequentially in the document.
     pub fn extend<I>(self, iter: I) -> Self
     where
-        I: IntoIterator<Item = StringSpan>,
+        I: IntoIterator<Item = DocumentRange>,
     {
         iter.into_iter().fold(self, |acc, span| acc.to(span))
     }
@@ -105,8 +105,8 @@ impl StringSpan {
     }
 
     /// Get a string cursor for this string slice.
-    pub fn cursor(&self) -> StringCursor {
-        StringCursor {
+    pub fn cursor(&self) -> DocumentCursor {
+        DocumentCursor {
             source: self.source.clone(),
             offset: self.start,
             end: self.end,
@@ -137,7 +137,7 @@ impl StringSpan {
         self.source.offset_to_utf32_position(self.end)
     }
 
-    pub fn contains(&self, other: &StringSpan) -> bool {
+    pub fn contains(&self, other: &DocumentRange) -> bool {
         self.start <= other.start && other.end <= self.end
     }
 
@@ -157,12 +157,12 @@ impl StringSpan {
         }
     }
 
-    pub fn intersection(&self, other: &StringSpan) -> Option<StringSpan> {
+    pub fn intersection(&self, other: &DocumentRange) -> Option<DocumentRange> {
         let start = self.start.max(other.start);
         let end = self.end.min(other.end);
 
         if start < end {
-            Some(StringSpan {
+            Some(DocumentRange {
                 source: self.source.clone(),
                 start,
                 end,
@@ -178,30 +178,30 @@ impl StringSpan {
 /// Returns None if the iterator contains no elements.
 ///
 /// The string spans must occur sequentially in the document.
-impl FromIterator<StringSpan> for Option<StringSpan> {
-    fn from_iter<I: IntoIterator<Item = StringSpan>>(iter: I) -> Self {
+impl FromIterator<DocumentRange> for Option<DocumentRange> {
+    fn from_iter<I: IntoIterator<Item = DocumentRange>>(iter: I) -> Self {
         iter.into_iter().reduce(|acc, span| acc.to(span))
     }
 }
 
-impl fmt::Display for StringSpan {
+impl fmt::Display for DocumentRange {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(self.as_str())
     }
 }
 
-pub trait Spanned {
-    fn span(&self) -> &StringSpan;
+pub trait Ranged {
+    fn range(&self) -> &DocumentRange;
 }
 
-impl<T: Spanned> Spanned for &T {
-    fn span(&self) -> &StringSpan {
-        (*self).span()
+impl<T: Ranged> Ranged for &T {
+    fn range(&self) -> &DocumentRange {
+        (*self).range()
     }
 }
 
-impl Spanned for StringSpan {
-    fn span(&self) -> &StringSpan {
+impl Ranged for DocumentRange {
+    fn range(&self) -> &DocumentRange {
         self
     }
 }
@@ -212,14 +212,14 @@ mod tests {
 
     #[test]
     fn test_string_cursor_new() {
-        let cursor = StringCursor::new("hello".to_string());
+        let cursor = DocumentCursor::new("hello".to_string());
         assert_eq!(cursor.offset, 0);
         assert_eq!(cursor.end, 5);
     }
 
     #[test]
     fn test_string_cursor_single_line() {
-        let mut cursor = StringCursor::new("abc".to_string());
+        let mut cursor = DocumentCursor::new("abc".to_string());
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), 'a');
@@ -241,7 +241,7 @@ mod tests {
 
     #[test]
     fn test_string_cursor_multiline() {
-        let mut cursor = StringCursor::new("a\nb\nc".to_string());
+        let mut cursor = DocumentCursor::new("a\nb\nc".to_string());
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), 'a');
@@ -273,7 +273,7 @@ mod tests {
 
     #[test]
     fn test_string_span_extend() {
-        let mut cursor = StringCursor::new("abc".to_string());
+        let mut cursor = DocumentCursor::new("abc".to_string());
         let span1 = cursor.next().unwrap();
         let _span2 = cursor.next().unwrap();
         let span3 = cursor.next().unwrap();
@@ -290,7 +290,7 @@ mod tests {
 
     #[test]
     fn test_string_span_to_string() {
-        let mut cursor = StringCursor::new("hello world".to_string());
+        let mut cursor = DocumentCursor::new("hello world".to_string());
         let spans: Vec<_> = cursor.by_ref().take(5).collect();
 
         assert_eq!(spans[0].to_string(), "h");
@@ -305,13 +305,13 @@ mod tests {
 
     #[test]
     fn test_empty_string_cursor() {
-        let mut cursor = StringCursor::new("".to_string());
+        let mut cursor = DocumentCursor::new("".to_string());
         assert!(cursor.next().is_none());
     }
 
     #[test]
     fn test_string_cursor_clone() {
-        let cursor1 = StringCursor::new("test".to_string());
+        let cursor1 = DocumentCursor::new("test".to_string());
         let mut cursor2 = cursor1.clone();
 
         let span = cursor2.next().unwrap();
@@ -320,7 +320,7 @@ mod tests {
 
     #[test]
     fn test_collect_string_spans() {
-        let result: Option<StringSpan> = StringCursor::new("   hello".to_string())
+        let result: Option<DocumentRange> = DocumentCursor::new("   hello".to_string())
             .take_while(|s| s.ch() == ' ')
             .collect();
 
@@ -332,7 +332,7 @@ mod tests {
 
     #[test]
     fn test_collect_empty_spans() {
-        let result: Option<StringSpan> = StringCursor::new("hello".to_string())
+        let result: Option<DocumentRange> = DocumentCursor::new("hello".to_string())
             .take_while(|s| s.ch() == ' ')
             .collect();
 
@@ -341,7 +341,7 @@ mod tests {
 
     #[test]
     fn test_collect_multiline_spans() {
-        let result: Option<StringSpan> = StringCursor::new("aaa\nbbb".to_string())
+        let result: Option<DocumentRange> = DocumentCursor::new("aaa\nbbb".to_string())
             .take_while(|s| s.ch() == 'a')
             .collect();
 
@@ -353,7 +353,7 @@ mod tests {
 
     #[test]
     fn test_collect_with_skip() {
-        let result: Option<StringSpan> = StringCursor::new("   hello   ".to_string())
+        let result: Option<DocumentRange> = DocumentCursor::new("   hello   ".to_string())
             .skip(3)
             .take_while(|s| s.ch().is_alphabetic())
             .collect();
@@ -369,7 +369,7 @@ mod tests {
         // "a\u{20AC}b" - \u{20AC} is € (Euro sign)
         // UTF-8 bytes:  a(1) €(3) b(1) = positions 0,1,4,5
         // UTF-16 units: a(1) €(1) b(1) = positions 0,1,2,3
-        let mut cursor = StringCursor::new("a\u{20AC}b".to_string());
+        let mut cursor = DocumentCursor::new("a\u{20AC}b".to_string());
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), 'a');
@@ -395,7 +395,7 @@ mod tests {
         // Line 0: €(1) \n(1)
         // Line 1: 🎨(2) \n(1)
         // Line 2: c(1)
-        let mut cursor = StringCursor::new("\u{20AC}\n\u{1F3A8}\nc".to_string());
+        let mut cursor = DocumentCursor::new("\u{20AC}\n\u{1F3A8}\nc".to_string());
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), '\u{20AC}');
@@ -426,7 +426,7 @@ mod tests {
     #[test]
     fn test_contains_position_utf16() {
         // "hello\nworld" - ASCII text for simple position testing
-        let cursor = StringCursor::new("hello\nworld".to_string());
+        let cursor = DocumentCursor::new("hello\nworld".to_string());
         let spans: Vec<_> = cursor.collect();
 
         // "hello" spans
@@ -446,7 +446,7 @@ mod tests {
         // UTF-8:  a(1) €(3) b(1) 🎨(4) c(1) = byte positions
         // UTF-16: a(1) €(1) b(1) 🎨(2) c(1) = code unit positions
         // UTF-32: a(1) €(1) b(1) 🎨(1) c(1) = character positions 0,1,2,3,4,5
-        let mut cursor = StringCursor::new("a\u{20AC}b\u{1F3A8}c".to_string());
+        let mut cursor = DocumentCursor::new("a\u{20AC}b\u{1F3A8}c".to_string());
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), 'a');
@@ -479,7 +479,7 @@ mod tests {
         // "\u{1F3A8}\n\u{20AC}x" - Testing UTF-32 with newlines
         // Line 0: 🎨(1 char) \n(1 char)
         // Line 1: €(1 char) x(1 char)
-        let mut cursor = StringCursor::new("\u{1F3A8}\n\u{20AC}x".to_string());
+        let mut cursor = DocumentCursor::new("\u{1F3A8}\n\u{20AC}x".to_string());
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), '\u{1F3A8}');
@@ -505,7 +505,7 @@ mod tests {
     #[test]
     fn test_contains_position_utf32() {
         // "\u{1F3A8}hello" - Emoji followed by ASCII
-        let cursor = StringCursor::new("\u{1F3A8}hello".to_string());
+        let cursor = DocumentCursor::new("\u{1F3A8}hello".to_string());
         let spans: Vec<_> = cursor.collect();
 
         // Create span for "hello" (skipping the emoji)
@@ -522,7 +522,7 @@ mod tests {
     fn test_compare_utf_encodings() {
         // "\u{1F3A8}ab" - Compare UTF-16 and UTF-32 encodings
         // 🎨 = U+1F3A8: 2 code units UTF-16, 1 char UTF-32
-        let mut cursor = StringCursor::new("\u{1F3A8}ab".to_string());
+        let mut cursor = DocumentCursor::new("\u{1F3A8}ab".to_string());
 
         let emoji = cursor.next().unwrap();
         let a = cursor.next().unwrap();
