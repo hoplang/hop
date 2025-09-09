@@ -1,6 +1,6 @@
 use crate::document::document_cursor::Ranged;
 use crate::dop::DopParser;
-use crate::hop::ast::{ComponentDefinition, DopExprAttribute, HopAst, HopNode, Import, Render};
+use crate::hop::ast::{Attribute, ComponentDefinition, DopExprAttribute, HopAst, HopNode, Import, Render};
 use crate::hop::parse_error::ParseError;
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::Token;
@@ -201,7 +201,11 @@ pub fn parse(
                                 // Here we keep the unhandled attributes
                                 // since they should be rendered in the
                                 // resulting HTML.
-                                unhandled_attributes.push(attr.clone());
+                                unhandled_attributes.push(Attribute {
+                                    name: attr.name.clone(),
+                                    value: attr.value.clone(),
+                                    range: attr.range.clone(),
+                                });
                             }
                         }
                     }
@@ -425,7 +429,11 @@ fn construct_node(
                         closing_tag_name: tree.closing_tag_name,
                         definition_module,
                         args,
-                        attributes,
+                        attributes: attributes.iter().map(|attr| Attribute {
+                            name: attr.name.clone(),
+                            value: attr.value.clone(),
+                            range: attr.range.clone(),
+                        }).collect(),
                         range: tree.range.clone(),
                         children,
                     }
@@ -463,7 +471,11 @@ fn construct_node(
                     HopNode::Html {
                         tag_name,
                         closing_tag_name: tree.closing_tag_name,
-                        attributes: attributes.clone(),
+                        attributes: attributes.iter().map(|attr| Attribute {
+                            name: attr.name.clone(),
+                            value: attr.value.clone(),
+                            range: attr.range.clone(),
+                        }).collect(),
                         range: tree.range.clone(),
                         children,
                         set_attributes,

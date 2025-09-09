@@ -7,8 +7,14 @@ use itertools::Itertools as _;
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged};
 use crate::dop::DopTokenizer;
 use crate::dop::tokenizer::DopToken;
-use crate::hop::ast::Attribute;
 use crate::hop::parse_error::ParseError;
+
+#[derive(Debug, Clone)]
+pub struct Attribute {
+    pub name: DocumentRange,
+    pub value: Option<DocumentRange>,
+    pub range: DocumentRange,
+}
 
 #[derive(Debug)]
 pub enum Token {
@@ -127,7 +133,7 @@ pub struct Tokenizer {
     /// The string cursor for the document we're tokenizing.
     iter: Peekable<DocumentCursor>,
     /// The error vector contains the errors that occured during tokenization
-    /// of the current token. It is returned together for the iterator.
+    /// of the current token. It is returned together with the token.
     errors: Vec<ParseError>,
     /// The current raw text closing tag we're looking for, if any.
     /// E.g. </script>
