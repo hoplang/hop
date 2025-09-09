@@ -1,4 +1,4 @@
-use crate::document::Position;
+use crate::document::DocumentPosition;
 use crate::document::document_cursor::DocumentRange;
 use crate::filesystem::files::ProjectRoot;
 use crate::hop::module_name::ModuleName;
@@ -11,9 +11,9 @@ use tower_lsp::lsp_types::{self, *};
 use tower_lsp::{Client, LanguageServer, LspService, Server as LspServer};
 
 // LSP uses UTF-16 encoding by default for position character offsets.
-impl From<lsp_types::Position> for Position {
+impl From<lsp_types::Position> for DocumentPosition {
     fn from(lsp_pos: lsp_types::Position) -> Self {
-        Position::Utf16 {
+        DocumentPosition::Utf16 {
             line: lsp_pos.line as usize,
             column: lsp_pos.character as usize,
         }

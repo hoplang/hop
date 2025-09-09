@@ -1,4 +1,4 @@
-use super::Position;
+use super::DocumentPosition;
 
 /// Holds source text and precomputed line start offsets for
 /// efficient position lookups.
@@ -23,7 +23,7 @@ impl DocumentInfo {
     }
 
     /// Convert a byte offset to a UTF-16 position (line, column).
-    pub fn offset_to_utf16_position(&self, offset: usize) -> Position {
+    pub fn offset_to_utf16_position(&self, offset: usize) -> DocumentPosition {
         let line_idx = match self.line_starts.binary_search(&offset) {
             Ok(idx) => idx,
             Err(idx) => idx.saturating_sub(1),
@@ -34,7 +34,7 @@ impl DocumentInfo {
         let line_text = &self.text[line_start_byte..offset];
         let utf16_column: usize = line_text.chars().map(|ch| ch.len_utf16()).sum();
 
-        Position::Utf16 {
+        DocumentPosition::Utf16 {
             line: line_idx,
             column: utf16_column,
         }
@@ -42,7 +42,7 @@ impl DocumentInfo {
 
     /// Convert a byte offset to a UTF-32 position (line, column).
     /// UTF-32 column is the character count from the start of the line.
-    pub fn offset_to_utf32_position(&self, offset: usize) -> Position {
+    pub fn offset_to_utf32_position(&self, offset: usize) -> DocumentPosition {
         let line_idx = match self.line_starts.binary_search(&offset) {
             Ok(idx) => idx,
             Err(idx) => idx.saturating_sub(1),
@@ -53,7 +53,7 @@ impl DocumentInfo {
         let line_text = &self.text[line_start_byte..offset];
         let utf32_column = line_text.chars().count();
 
-        Position::Utf32 {
+        DocumentPosition::Utf32 {
             line: line_idx,
             column: utf32_column,
         }

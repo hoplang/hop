@@ -1,4 +1,4 @@
-use crate::document::Position;
+use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::hop::ast::HopAst;
 use crate::hop::evaluator;
@@ -117,7 +117,7 @@ impl Program {
     pub fn get_hover_info(
         &self,
         module_name: &ModuleName,
-        position: Position,
+        position: DocumentPosition,
     ) -> Option<HoverInfo> {
         self.type_checker
             .type_annotations
@@ -133,7 +133,7 @@ impl Program {
     pub fn get_definition_location(
         &self,
         module_name: &ModuleName,
-        position: Position,
+        position: DocumentPosition,
     ) -> Option<DefinitionLocation> {
         let ast = self.modules.get(module_name)?;
 
@@ -172,7 +172,7 @@ impl Program {
     pub fn get_rename_locations(
         &self,
         module_name: &ModuleName,
-        position: Position,
+        position: DocumentPosition,
     ) -> Option<Vec<RenameLocation>> {
         let ast = self.modules.get(module_name)?;
         for node in ast.get_component_definitions() {
@@ -221,7 +221,7 @@ impl Program {
     pub fn get_renameable_symbol(
         &self,
         module_name: &ModuleName,
-        position: Position,
+        position: DocumentPosition,
     ) -> Option<RenameableSymbol> {
         let ast = self.modules.get(module_name)?;
 

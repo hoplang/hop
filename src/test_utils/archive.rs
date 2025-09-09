@@ -1,5 +1,5 @@
-use crate::document::Position;
-use crate::document::position_marker::extract_position;
+use crate::document::DocumentPosition;
+use crate::document::extract_position::extract_position;
 use simple_txtar::{Archive, Builder, File};
 use std::{
     env, fs,
@@ -62,7 +62,7 @@ fn archive_from_dir_recursive(
 #[derive(Debug, Clone, PartialEq)]
 pub struct MarkerInfo {
     pub filename: String,
-    pub position: Position,
+    pub position: DocumentPosition,
 }
 
 /// Extracts all position markers from an archive and returns the cleaned archive

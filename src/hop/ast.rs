@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::document::Position;
+use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
 use crate::hop::module_name::ModuleName;
@@ -96,7 +96,7 @@ impl HopAst {
     ///     ^^^^^^^^^^^^^^^^^
     /// </div>
     ///
-    pub fn find_node_at_position(&self, position: Position) -> Option<&HopNode> {
+    pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&HopNode> {
         for n in &self.renders {
             if n.span.contains_position(position) {
                 for child in &n.children {
@@ -301,7 +301,7 @@ impl HopNode {
         DepthFirstIterator::new(self)
     }
 
-    pub fn find_node_at_position(&self, position: Position) -> Option<&HopNode> {
+    pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&HopNode> {
         if !self.range().contains_position(position) {
             return None;
         }
@@ -401,7 +401,7 @@ mod tests {
     use super::*;
     use crate::document::DocumentAnnotator;
     use crate::document::SimpleAnnotation;
-    use crate::document::position_marker::extract_position;
+    use crate::document::extract_position::extract_position;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
     use expect_test::{Expect, expect};

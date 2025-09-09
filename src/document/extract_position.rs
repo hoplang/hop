@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use super::{Position, document_cursor::DocumentCursor};
+use super::{DocumentPosition, document_cursor::DocumentCursor};
 
 /// Extracts a single position marked with `^` from the source.
 ///
@@ -11,7 +11,7 @@ use super::{Position, document_cursor::DocumentCursor};
 ///
 /// Panics if multiple position markers are found or if marker does not point to a valid character
 /// on the above line.
-pub fn extract_position(input: &str) -> Option<(String, Position)> {
+pub fn extract_position(input: &str) -> Option<(String, DocumentPosition)> {
     let markers = DocumentCursor::new(input.to_string())
         .filter(|span| span.ch() == '^')
         .map(|span| {
@@ -20,7 +20,7 @@ pub fn extract_position(input: &str) -> Option<(String, Position)> {
                 panic!("Marker does not point to a valid position");
             }
             // Get position at line above
-            Position::Utf32 {
+            DocumentPosition::Utf32 {
                 line: span.start_utf32().line() - 1,
                 column: span.start_utf32().column(),
             }
@@ -71,7 +71,10 @@ mod tests {
 
         assert_eq!(
             extract_position(input),
-            Some((output.to_string(), Position::Utf32 { line: 0, column: 0 }))
+            Some((
+                output.to_string(),
+                DocumentPosition::Utf32 { line: 0, column: 0 }
+            ))
         );
     }
 
@@ -91,7 +94,10 @@ mod tests {
 
         assert_eq!(
             extract_position(input),
-            Some((output.to_string(), Position::Utf32 { line: 0, column: 8 }))
+            Some((
+                output.to_string(),
+                DocumentPosition::Utf32 { line: 0, column: 8 }
+            ))
         );
     }
 
@@ -113,7 +119,7 @@ mod tests {
             extract_position(input),
             Some((
                 output.to_string(),
-                Position::Utf32 {
+                DocumentPosition::Utf32 {
                     line: 0,
                     column: 12
                 }
@@ -139,7 +145,7 @@ mod tests {
             extract_position(input),
             Some((
                 output.to_string(),
-                Position::Utf32 {
+                DocumentPosition::Utf32 {
                     line: 2,
                     column: 12
                 }
@@ -220,7 +226,10 @@ mod tests {
 
         assert_eq!(
             extract_position(input),
-            Some((output.to_string(), Position::Utf32 { line: 0, column: 8 }))
+            Some((
+                output.to_string(),
+                DocumentPosition::Utf32 { line: 0, column: 8 }
+            ))
         );
     }
 }

@@ -1,6 +1,6 @@
 use std::{fmt, iter::FromIterator, sync::Arc};
 
-use super::{Position, document_info::DocumentInfo};
+use super::{DocumentPosition, document_info::DocumentInfo};
 
 #[derive(Clone)]
 pub struct DocumentCursor {
@@ -83,10 +83,10 @@ impl DocumentRange {
         }
     }
 
-    /// Extend a StringSpan with an iterator of StringSpans
-    /// producing a single string span.
+    /// Extend a document range with an iterator of document ranges
+    /// producing a single document range.
     ///
-    /// The string spans must occur sequentially in the document.
+    /// The document ranges must occur sequentially in the document.
     pub fn extend<I>(self, iter: I) -> Self
     where
         I: IntoIterator<Item = DocumentRange>,
@@ -94,17 +94,18 @@ impl DocumentRange {
         iter.into_iter().fold(self, |acc, span| acc.to(span))
     }
 
-    /// Get the underlying string slice for this string span.
+    /// Get the underlying string slice for this document range.
     pub fn as_str(&self) -> &str {
         &self.source.text[self.start..self.end]
     }
 
-    /// Get the full source text that this span is a part of.
+    /// Get the full source text for the document that this
+    /// document range is a part of.
     pub(super) fn full_source(&self) -> &str {
         &self.source.text
     }
 
-    /// Get a string cursor for this string slice.
+    /// Get a string cursor for this document range.
     pub fn cursor(&self) -> DocumentCursor {
         DocumentCursor {
             source: self.source.clone(),
@@ -121,19 +122,19 @@ impl DocumentRange {
         self.end
     }
 
-    pub fn start_utf16(&self) -> Position {
+    pub fn start_utf16(&self) -> DocumentPosition {
         self.source.offset_to_utf16_position(self.start)
     }
 
-    pub fn end_utf16(&self) -> Position {
+    pub fn end_utf16(&self) -> DocumentPosition {
         self.source.offset_to_utf16_position(self.end)
     }
 
-    pub fn start_utf32(&self) -> Position {
+    pub fn start_utf32(&self) -> DocumentPosition {
         self.source.offset_to_utf32_position(self.start)
     }
 
-    pub fn end_utf32(&self) -> Position {
+    pub fn end_utf32(&self) -> DocumentPosition {
         self.source.offset_to_utf32_position(self.end)
     }
 
@@ -141,15 +142,15 @@ impl DocumentRange {
         self.start <= other.start && other.end <= self.end
     }
 
-    /// Returns true if the span contains the given Position.
-    pub fn contains_position(&self, position: Position) -> bool {
+    /// Returns true if the document range contains the given Position.
+    pub fn contains_position(&self, position: DocumentPosition) -> bool {
         match position {
-            Position::Utf16 { .. } => {
+            DocumentPosition::Utf16 { .. } => {
                 let start = self.start_utf16();
                 let end = self.end_utf16();
                 start <= position && position < end
             }
-            Position::Utf32 { .. } => {
+            DocumentPosition::Utf32 { .. } => {
                 let start = self.start_utf32();
                 let end = self.end_utf32();
                 start <= position && position < end
@@ -173,11 +174,11 @@ impl DocumentRange {
     }
 }
 
-/// Turn an iterator of StringSpans into a single Option<StringSpan>
+/// Turn an iterator of document ranges into a single Option<DocumentRange>
 ///
 /// Returns None if the iterator contains no elements.
 ///
-/// The string spans must occur sequentially in the document.
+/// The document ranges must occur sequentially in the document.
 impl FromIterator<DocumentRange> for Option<DocumentRange> {
     fn from_iter<I: IntoIterator<Item = DocumentRange>>(iter: I) -> Self {
         iter.into_iter().reduce(|acc, span| acc.to(span))
@@ -223,18 +224,36 @@ mod tests {
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), 'a');
-        assert_eq!(span1.start_utf32(), Position::Utf32 { line: 0, column: 0 });
-        assert_eq!(span1.end_utf32(), Position::Utf32 { line: 0, column: 1 });
+        assert_eq!(
+            span1.start_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 0 }
+        );
+        assert_eq!(
+            span1.end_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 1 }
+        );
 
         let span2 = cursor.next().unwrap();
         assert_eq!(span2.ch(), 'b');
-        assert_eq!(span2.start_utf32(), Position::Utf32 { line: 0, column: 1 });
-        assert_eq!(span2.end_utf32(), Position::Utf32 { line: 0, column: 2 });
+        assert_eq!(
+            span2.start_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 1 }
+        );
+        assert_eq!(
+            span2.end_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 2 }
+        );
 
         let span3 = cursor.next().unwrap();
         assert_eq!(span3.ch(), 'c');
-        assert_eq!(span3.start_utf32(), Position::Utf32 { line: 0, column: 2 });
-        assert_eq!(span3.end_utf32(), Position::Utf32 { line: 0, column: 3 });
+        assert_eq!(
+            span3.start_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 2 }
+        );
+        assert_eq!(
+            span3.end_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 3 }
+        );
 
         assert!(cursor.next().is_none());
     }
@@ -245,28 +264,58 @@ mod tests {
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), 'a');
-        assert_eq!(span1.start_utf32(), Position::Utf32 { line: 0, column: 0 });
-        assert_eq!(span1.end_utf32(), Position::Utf32 { line: 0, column: 1 });
+        assert_eq!(
+            span1.start_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 0 }
+        );
+        assert_eq!(
+            span1.end_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 1 }
+        );
 
         let span2 = cursor.next().unwrap();
         assert_eq!(span2.ch(), '\n');
-        assert_eq!(span2.start_utf32(), Position::Utf32 { line: 0, column: 1 });
-        assert_eq!(span2.end_utf32(), Position::Utf32 { line: 1, column: 0 });
+        assert_eq!(
+            span2.start_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 1 }
+        );
+        assert_eq!(
+            span2.end_utf32(),
+            DocumentPosition::Utf32 { line: 1, column: 0 }
+        );
 
         let span3 = cursor.next().unwrap();
         assert_eq!(span3.ch(), 'b');
-        assert_eq!(span3.start_utf32(), Position::Utf32 { line: 1, column: 0 });
-        assert_eq!(span3.end_utf32(), Position::Utf32 { line: 1, column: 1 });
+        assert_eq!(
+            span3.start_utf32(),
+            DocumentPosition::Utf32 { line: 1, column: 0 }
+        );
+        assert_eq!(
+            span3.end_utf32(),
+            DocumentPosition::Utf32 { line: 1, column: 1 }
+        );
 
         let span4 = cursor.next().unwrap();
         assert_eq!(span4.ch(), '\n');
-        assert_eq!(span4.start_utf32(), Position::Utf32 { line: 1, column: 1 });
-        assert_eq!(span4.end_utf32(), Position::Utf32 { line: 2, column: 0 });
+        assert_eq!(
+            span4.start_utf32(),
+            DocumentPosition::Utf32 { line: 1, column: 1 }
+        );
+        assert_eq!(
+            span4.end_utf32(),
+            DocumentPosition::Utf32 { line: 2, column: 0 }
+        );
 
         let span5 = cursor.next().unwrap();
         assert_eq!(span5.ch(), 'c');
-        assert_eq!(span5.start_utf32(), Position::Utf32 { line: 2, column: 0 });
-        assert_eq!(span5.end_utf32(), Position::Utf32 { line: 2, column: 1 });
+        assert_eq!(
+            span5.start_utf32(),
+            DocumentPosition::Utf32 { line: 2, column: 0 }
+        );
+        assert_eq!(
+            span5.end_utf32(),
+            DocumentPosition::Utf32 { line: 2, column: 1 }
+        );
 
         assert!(cursor.next().is_none());
     }
@@ -283,9 +332,12 @@ mod tests {
         assert_eq!(extended.to_string(), "abc");
         assert_eq!(
             extended.start_utf32(),
-            Position::Utf32 { line: 0, column: 0 }
+            DocumentPosition::Utf32 { line: 0, column: 0 }
         );
-        assert_eq!(extended.end_utf32(), Position::Utf32 { line: 0, column: 3 });
+        assert_eq!(
+            extended.end_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 3 }
+        );
     }
 
     #[test]
@@ -326,8 +378,14 @@ mod tests {
 
         let span = result.unwrap();
         assert_eq!(span.as_str(), "   ");
-        assert_eq!(span.start_utf32(), Position::Utf32 { line: 0, column: 0 });
-        assert_eq!(span.end_utf32(), Position::Utf32 { line: 0, column: 3 });
+        assert_eq!(
+            span.start_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 0 }
+        );
+        assert_eq!(
+            span.end_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 3 }
+        );
     }
 
     #[test]
@@ -347,8 +405,14 @@ mod tests {
 
         let span = result.unwrap();
         assert_eq!(span.as_str(), "aaa");
-        assert_eq!(span.start_utf32(), Position::Utf32 { line: 0, column: 0 });
-        assert_eq!(span.end_utf32(), Position::Utf32 { line: 0, column: 3 });
+        assert_eq!(
+            span.start_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 0 }
+        );
+        assert_eq!(
+            span.end_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 3 }
+        );
     }
 
     #[test]
@@ -360,8 +424,14 @@ mod tests {
 
         let span = result.unwrap();
         assert_eq!(span.as_str(), "hello");
-        assert_eq!(span.start_utf32(), Position::Utf32 { line: 0, column: 3 });
-        assert_eq!(span.end_utf32(), Position::Utf32 { line: 0, column: 8 });
+        assert_eq!(
+            span.start_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 3 }
+        );
+        assert_eq!(
+            span.end_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 8 }
+        );
     }
 
     #[test]
@@ -373,18 +443,36 @@ mod tests {
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), 'a');
-        assert_eq!(span1.start_utf16(), Position::Utf16 { line: 0, column: 0 });
-        assert_eq!(span1.end_utf16(), Position::Utf16 { line: 0, column: 1 });
+        assert_eq!(
+            span1.start_utf16(),
+            DocumentPosition::Utf16 { line: 0, column: 0 }
+        );
+        assert_eq!(
+            span1.end_utf16(),
+            DocumentPosition::Utf16 { line: 0, column: 1 }
+        );
 
         let span2 = cursor.next().unwrap();
         assert_eq!(span2.ch(), '\u{20AC}');
-        assert_eq!(span2.start_utf16(), Position::Utf16 { line: 0, column: 1 });
-        assert_eq!(span2.end_utf16(), Position::Utf16 { line: 0, column: 2 }); // Euro sign is 1 code unit in UTF-16
+        assert_eq!(
+            span2.start_utf16(),
+            DocumentPosition::Utf16 { line: 0, column: 1 }
+        );
+        assert_eq!(
+            span2.end_utf16(),
+            DocumentPosition::Utf16 { line: 0, column: 2 }
+        ); // Euro sign is 1 code unit in UTF-16
 
         let span3 = cursor.next().unwrap();
         assert_eq!(span3.ch(), 'b');
-        assert_eq!(span3.start_utf16(), Position::Utf16 { line: 0, column: 2 });
-        assert_eq!(span3.end_utf16(), Position::Utf16 { line: 0, column: 3 });
+        assert_eq!(
+            span3.start_utf16(),
+            DocumentPosition::Utf16 { line: 0, column: 2 }
+        );
+        assert_eq!(
+            span3.end_utf16(),
+            DocumentPosition::Utf16 { line: 0, column: 3 }
+        );
     }
 
     #[test]
@@ -399,28 +487,58 @@ mod tests {
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), '\u{20AC}');
-        assert_eq!(span1.start_utf16(), Position::Utf16 { line: 0, column: 0 });
-        assert_eq!(span1.end_utf16(), Position::Utf16 { line: 0, column: 1 });
+        assert_eq!(
+            span1.start_utf16(),
+            DocumentPosition::Utf16 { line: 0, column: 0 }
+        );
+        assert_eq!(
+            span1.end_utf16(),
+            DocumentPosition::Utf16 { line: 0, column: 1 }
+        );
 
         let span2 = cursor.next().unwrap();
         assert_eq!(span2.ch(), '\n');
-        assert_eq!(span2.start_utf16(), Position::Utf16 { line: 0, column: 1 });
-        assert_eq!(span2.end_utf16(), Position::Utf16 { line: 1, column: 0 });
+        assert_eq!(
+            span2.start_utf16(),
+            DocumentPosition::Utf16 { line: 0, column: 1 }
+        );
+        assert_eq!(
+            span2.end_utf16(),
+            DocumentPosition::Utf16 { line: 1, column: 0 }
+        );
 
         let span3 = cursor.next().unwrap();
         assert_eq!(span3.ch(), '\u{1F3A8}');
-        assert_eq!(span3.start_utf16(), Position::Utf16 { line: 1, column: 0 });
-        assert_eq!(span3.end_utf16(), Position::Utf16 { line: 1, column: 2 }); // Emoji is 2 code units in UTF-16
+        assert_eq!(
+            span3.start_utf16(),
+            DocumentPosition::Utf16 { line: 1, column: 0 }
+        );
+        assert_eq!(
+            span3.end_utf16(),
+            DocumentPosition::Utf16 { line: 1, column: 2 }
+        ); // Emoji is 2 code units in UTF-16
 
         let span4 = cursor.next().unwrap();
         assert_eq!(span4.ch(), '\n');
-        assert_eq!(span4.start_utf16(), Position::Utf16 { line: 1, column: 2 });
-        assert_eq!(span4.end_utf16(), Position::Utf16 { line: 2, column: 0 });
+        assert_eq!(
+            span4.start_utf16(),
+            DocumentPosition::Utf16 { line: 1, column: 2 }
+        );
+        assert_eq!(
+            span4.end_utf16(),
+            DocumentPosition::Utf16 { line: 2, column: 0 }
+        );
 
         let span5 = cursor.next().unwrap();
         assert_eq!(span5.ch(), 'c');
-        assert_eq!(span5.start_utf16(), Position::Utf16 { line: 2, column: 0 });
-        assert_eq!(span5.end_utf16(), Position::Utf16 { line: 2, column: 1 });
+        assert_eq!(
+            span5.start_utf16(),
+            DocumentPosition::Utf16 { line: 2, column: 0 }
+        );
+        assert_eq!(
+            span5.end_utf16(),
+            DocumentPosition::Utf16 { line: 2, column: 1 }
+        );
     }
 
     #[test]
@@ -433,10 +551,10 @@ mod tests {
         let hello_span = spans[0].clone().to(spans[4].clone());
 
         // Test UTF-16 position containment
-        assert!(hello_span.contains_position(Position::Utf16 { line: 0, column: 0 }));
-        assert!(hello_span.contains_position(Position::Utf16 { line: 0, column: 4 }));
-        assert!(!hello_span.contains_position(Position::Utf16 { line: 0, column: 5 }));
-        assert!(!hello_span.contains_position(Position::Utf16 { line: 1, column: 0 }));
+        assert!(hello_span.contains_position(DocumentPosition::Utf16 { line: 0, column: 0 }));
+        assert!(hello_span.contains_position(DocumentPosition::Utf16 { line: 0, column: 4 }));
+        assert!(!hello_span.contains_position(DocumentPosition::Utf16 { line: 0, column: 5 }));
+        assert!(!hello_span.contains_position(DocumentPosition::Utf16 { line: 1, column: 0 }));
     }
 
     #[test]
@@ -450,28 +568,58 @@ mod tests {
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), 'a');
-        assert_eq!(span1.start_utf32(), Position::Utf32 { line: 0, column: 0 });
-        assert_eq!(span1.end_utf32(), Position::Utf32 { line: 0, column: 1 });
+        assert_eq!(
+            span1.start_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 0 }
+        );
+        assert_eq!(
+            span1.end_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 1 }
+        );
 
         let span2 = cursor.next().unwrap();
         assert_eq!(span2.ch(), '\u{20AC}');
-        assert_eq!(span2.start_utf32(), Position::Utf32 { line: 0, column: 1 });
-        assert_eq!(span2.end_utf32(), Position::Utf32 { line: 0, column: 2 });
+        assert_eq!(
+            span2.start_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 1 }
+        );
+        assert_eq!(
+            span2.end_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 2 }
+        );
 
         let span3 = cursor.next().unwrap();
         assert_eq!(span3.ch(), 'b');
-        assert_eq!(span3.start_utf32(), Position::Utf32 { line: 0, column: 2 });
-        assert_eq!(span3.end_utf32(), Position::Utf32 { line: 0, column: 3 });
+        assert_eq!(
+            span3.start_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 2 }
+        );
+        assert_eq!(
+            span3.end_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 3 }
+        );
 
         let span4 = cursor.next().unwrap();
         assert_eq!(span4.ch(), '\u{1F3A8}');
-        assert_eq!(span4.start_utf32(), Position::Utf32 { line: 0, column: 3 });
-        assert_eq!(span4.end_utf32(), Position::Utf32 { line: 0, column: 4 });
+        assert_eq!(
+            span4.start_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 3 }
+        );
+        assert_eq!(
+            span4.end_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 4 }
+        );
 
         let span5 = cursor.next().unwrap();
         assert_eq!(span5.ch(), 'c');
-        assert_eq!(span5.start_utf32(), Position::Utf32 { line: 0, column: 4 });
-        assert_eq!(span5.end_utf32(), Position::Utf32 { line: 0, column: 5 });
+        assert_eq!(
+            span5.start_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 4 }
+        );
+        assert_eq!(
+            span5.end_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 5 }
+        );
     }
 
     #[test]
@@ -483,23 +631,47 @@ mod tests {
 
         let span1 = cursor.next().unwrap();
         assert_eq!(span1.ch(), '\u{1F3A8}');
-        assert_eq!(span1.start_utf32(), Position::Utf32 { line: 0, column: 0 });
-        assert_eq!(span1.end_utf32(), Position::Utf32 { line: 0, column: 1 });
+        assert_eq!(
+            span1.start_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 0 }
+        );
+        assert_eq!(
+            span1.end_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 1 }
+        );
 
         let span2 = cursor.next().unwrap();
         assert_eq!(span2.ch(), '\n');
-        assert_eq!(span2.start_utf32(), Position::Utf32 { line: 0, column: 1 });
-        assert_eq!(span2.end_utf32(), Position::Utf32 { line: 1, column: 0 });
+        assert_eq!(
+            span2.start_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 1 }
+        );
+        assert_eq!(
+            span2.end_utf32(),
+            DocumentPosition::Utf32 { line: 1, column: 0 }
+        );
 
         let span3 = cursor.next().unwrap();
         assert_eq!(span3.ch(), '\u{20AC}');
-        assert_eq!(span3.start_utf32(), Position::Utf32 { line: 1, column: 0 });
-        assert_eq!(span3.end_utf32(), Position::Utf32 { line: 1, column: 1 });
+        assert_eq!(
+            span3.start_utf32(),
+            DocumentPosition::Utf32 { line: 1, column: 0 }
+        );
+        assert_eq!(
+            span3.end_utf32(),
+            DocumentPosition::Utf32 { line: 1, column: 1 }
+        );
 
         let span4 = cursor.next().unwrap();
         assert_eq!(span4.ch(), 'x');
-        assert_eq!(span4.start_utf32(), Position::Utf32 { line: 1, column: 1 });
-        assert_eq!(span4.end_utf32(), Position::Utf32 { line: 1, column: 2 });
+        assert_eq!(
+            span4.start_utf32(),
+            DocumentPosition::Utf32 { line: 1, column: 1 }
+        );
+        assert_eq!(
+            span4.end_utf32(),
+            DocumentPosition::Utf32 { line: 1, column: 2 }
+        );
     }
 
     #[test]
@@ -512,10 +684,10 @@ mod tests {
         let hello_span = spans[1].clone().to(spans[5].clone());
 
         // Test UTF-32 position containment
-        assert!(hello_span.contains_position(Position::Utf32 { line: 0, column: 1 }));
-        assert!(hello_span.contains_position(Position::Utf32 { line: 0, column: 5 }));
-        assert!(!hello_span.contains_position(Position::Utf32 { line: 0, column: 0 }));
-        assert!(!hello_span.contains_position(Position::Utf32 { line: 0, column: 6 }));
+        assert!(hello_span.contains_position(DocumentPosition::Utf32 { line: 0, column: 1 }));
+        assert!(hello_span.contains_position(DocumentPosition::Utf32 { line: 0, column: 5 }));
+        assert!(!hello_span.contains_position(DocumentPosition::Utf32 { line: 0, column: 0 }));
+        assert!(!hello_span.contains_position(DocumentPosition::Utf32 { line: 0, column: 6 }));
     }
 
     #[test]
@@ -529,17 +701,41 @@ mod tests {
         let b = cursor.next().unwrap();
 
         // Emoji positions
-        assert_eq!(emoji.start_utf16(), Position::Utf16 { line: 0, column: 0 });
-        assert_eq!(emoji.end_utf16(), Position::Utf16 { line: 0, column: 2 });
-        assert_eq!(emoji.start_utf32(), Position::Utf32 { line: 0, column: 0 });
-        assert_eq!(emoji.end_utf32(), Position::Utf32 { line: 0, column: 1 });
+        assert_eq!(
+            emoji.start_utf16(),
+            DocumentPosition::Utf16 { line: 0, column: 0 }
+        );
+        assert_eq!(
+            emoji.end_utf16(),
+            DocumentPosition::Utf16 { line: 0, column: 2 }
+        );
+        assert_eq!(
+            emoji.start_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 0 }
+        );
+        assert_eq!(
+            emoji.end_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 1 }
+        );
 
         // 'a' positions - notice different column values
-        assert_eq!(a.start_utf16(), Position::Utf16 { line: 0, column: 2 });
-        assert_eq!(a.start_utf32(), Position::Utf32 { line: 0, column: 1 });
+        assert_eq!(
+            a.start_utf16(),
+            DocumentPosition::Utf16 { line: 0, column: 2 }
+        );
+        assert_eq!(
+            a.start_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 1 }
+        );
 
         // 'b' positions
-        assert_eq!(b.start_utf16(), Position::Utf16 { line: 0, column: 3 });
-        assert_eq!(b.start_utf32(), Position::Utf32 { line: 0, column: 2 });
+        assert_eq!(
+            b.start_utf16(),
+            DocumentPosition::Utf16 { line: 0, column: 3 }
+        );
+        assert_eq!(
+            b.start_utf32(),
+            DocumentPosition::Utf32 { line: 0, column: 2 }
+        );
     }
 }
