@@ -450,6 +450,23 @@ mod tests {
         );
     }
 
+    /// Whitespace should be added between keys and values in parameter lists
+    #[test]
+    fn test_format_long_parameter_list_gets_whitespace() {
+        check_pretty_print(
+            indoc! {r#"
+                <foo-component {users:array[{name:string}]}>
+                  <div>Hello</div>
+                </foo-component>
+            "#},
+            expect![[r#"
+                <foo-component {users: array[{name: string}]}>
+                  <div>Hello</div>
+                </foo-component>
+            "#]],
+        );
+    }
+
     /// In parameter lists, both parameters and the object properties
     /// should have a trailing comma added if broken over multiple lines.
     #[test]
