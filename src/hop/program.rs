@@ -1,5 +1,5 @@
 use crate::document::DocumentPosition;
-use crate::document::document_cursor::{DocumentRange, Ranged};
+use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::hop::ast::HopAst;
 use crate::hop::evaluator;
 use crate::hop::parse_error::ParseError;
@@ -19,7 +19,7 @@ use super::typechecker::TypeChecker;
 /// HoverInfo is a message that should be displayed when the user hovers
 /// a specific range in the source code.
 pub struct HoverInfo {
-    pub type_str: String,
+    pub message: String,
     pub range: DocumentRange,
 }
 
@@ -43,8 +43,8 @@ pub struct RenameLocation {
 }
 
 /// A RenameableSymbol is a range in the document that is renameable.
-/// The string contents of the range is the current name.
 pub struct RenameableSymbol {
+    pub current_name: StringSpan,
     pub range: DocumentRange,
 }
 
@@ -125,7 +125,7 @@ impl Program {
             .iter()
             .find(|a| a.range.contains_position(position))
             .map(|annotation| HoverInfo {
-                type_str: format!("`{}`: `{}`", annotation.name, annotation.typ),
+                message: format!("`{}`: `{}`", annotation.name, annotation.typ),
                 range: annotation.range.clone(),
             })
     }
@@ -231,6 +231,7 @@ impl Program {
                 .find(|r| r.contains_position(position))
             {
                 return Some(RenameableSymbol {
+                    current_name: range.to_string_span(),
                     range: range.clone(),
                 });
             }
@@ -241,6 +242,7 @@ impl Program {
         node.tag_names()
             .find(|r| r.contains_position(position))
             .map(|range| RenameableSymbol {
+                current_name: range.to_string_span(),
                 range: range.clone(),
             })
     }
@@ -596,7 +598,7 @@ mod tests {
             Some(&file.name),
             &[SimpleAnnotation {
                 range: hover_info.range,
-                message: hover_info.type_str,
+                message: hover_info.message,
             }],
         );
 

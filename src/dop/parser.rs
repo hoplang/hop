@@ -28,7 +28,8 @@ impl DopVarName {
             || !chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
         {
             return Err(ParseError::InvalidVariableName {
-                name: value.clone(),
+                name: value.to_string_span(),
+                range: value.clone(),
             });
         }
         Ok(DopVarName { value })
@@ -266,7 +267,8 @@ impl DopParser {
                 let param = this.parse_parameter()?;
                 if params.contains_key(param.var_name.value.as_str()) {
                     return Err(ParseError::DuplicateParameter {
-                        name: param.var_name.value.clone(),
+                        name: param.var_name.value.to_string_span(),
+                        range: param.var_name.value.clone(),
                     });
                 }
                 params.insert(param.var_name.value.to_string(), param);
@@ -286,7 +288,8 @@ impl DopParser {
                 let arg = this.parse_argument()?;
                 if args.contains_key(arg.var_name.value.as_str()) {
                     return Err(ParseError::DuplicateArgument {
-                        name: arg.var_name.value.clone(),
+                        name: arg.var_name.value.to_string_span(),
+                        range: arg.var_name.value.clone(),
                     });
                 }
                 args.insert(arg.var_name.value.to_string(), arg);
@@ -310,7 +313,8 @@ impl DopParser {
             let t = this.parse_type()?;
             if properties.contains_key(prop_name.as_str()) {
                 return Err(ParseError::DuplicateProperty {
-                    name: prop_name.clone(),
+                    name: prop_name.to_string_span(),
+                    range: prop_name.clone(),
                 });
             }
             properties.insert(prop_name.to_string(), t.dop_type);
@@ -409,9 +413,10 @@ impl DopParser {
         let mut seen_names = HashSet::new();
         let right_brace = self.parse_delimited_list(&DopToken::LeftBrace, &left_brace, |this| {
             let prop_name = this.expect_property_name()?;
-            if !seen_names.insert(prop_name.as_str().to_string()) {
+            if !seen_names.insert(prop_name.to_string_span()) {
                 return Err(ParseError::DuplicateProperty {
-                    name: prop_name.clone(),
+                    name: prop_name.to_string_span(),
+                    range: prop_name.clone(),
                 });
             }
             this.expect_token(&DopToken::Colon)?;

@@ -1,4 +1,10 @@
-use std::{fmt, iter::FromIterator, sync::Arc};
+use std::{
+    fmt,
+    hash::{Hash, Hasher},
+    iter::FromIterator,
+    ops::Deref,
+    sync::Arc,
+};
 
 use super::{DocumentPosition, document_info::DocumentInfo};
 
@@ -172,6 +178,15 @@ impl DocumentRange {
             None
         }
     }
+
+    /// Convert this DocumentRange into a StringSpan.
+    pub fn to_string_span(&self) -> StringSpan {
+        StringSpan {
+            source: self.source.clone(),
+            start: self.start,
+            end: self.end,
+        }
+    }
 }
 
 /// Turn an iterator of document ranges into a single Option<DocumentRange>
@@ -204,6 +219,54 @@ impl<T: Ranged> Ranged for &T {
 impl Ranged for DocumentRange {
     fn range(&self) -> &DocumentRange {
         self
+    }
+}
+
+/// A StringSpan is an owned smart pointer to a string.
+/// It has the same semantics as an owned string but does not require
+/// a heap allocation.
+#[derive(Debug, Clone)]
+pub struct StringSpan {
+    /// The source info containing the document text and line starts.
+    source: Arc<DocumentInfo>,
+    /// the start byte offset for this span in the document (inclusive).
+    start: usize,
+    /// the end byte offset for this span in the document (exclusive).
+    end: usize,
+}
+
+impl StringSpan {
+    /// Get the underlying string slice for this span.
+    pub fn as_str(&self) -> &str {
+        &self.source.text[self.start..self.end]
+    }
+}
+
+impl Hash for StringSpan {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.as_str().hash(state);
+    }
+}
+
+impl fmt::Display for StringSpan {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl PartialEq for StringSpan {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+
+impl Eq for StringSpan {}
+
+impl Deref for StringSpan {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        self.as_str()
     }
 }
 

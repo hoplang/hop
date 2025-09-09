@@ -177,7 +177,7 @@ impl LanguageServer for HopLanguageServer {
             Ok(program
                 .get_hover_info(&module_name, position.into())
                 .map(|hover_info| Hover {
-                    contents: HoverContents::Scalar(MarkedString::String(hover_info.type_str)),
+                    contents: HoverContents::Scalar(MarkedString::String(hover_info.message)),
                     range: Some(hover_info.range.into()),
                 }))
         } else {
@@ -225,7 +225,7 @@ impl LanguageServer for HopLanguageServer {
             {
                 Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
                     range: renameable_symbol.range.clone().into(),
-                    placeholder: renameable_symbol.range.as_str().to_string(),
+                    placeholder: renameable_symbol.current_name.to_string(),
                 }))
             } else {
                 Ok(None)

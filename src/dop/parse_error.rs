@@ -1,4 +1,4 @@
-use crate::document::document_cursor::{DocumentRange, Ranged};
+use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::tokenizer::DopToken;
 use thiserror::Error;
 
@@ -22,7 +22,10 @@ pub enum ParseError {
     #[error(
         "Invalid variable name '{name}'. Variable names must start with a letter and contain only letters, digits, and underscores"
     )]
-    InvalidVariableName { name: DocumentRange },
+    InvalidVariableName {
+        name: StringSpan,
+        range: DocumentRange,
+    },
 
     #[error("Expected token '{expected}' but got '{actual}'")]
     ExpectedTokenButGot {
@@ -56,16 +59,25 @@ pub enum ParseError {
     ExpectedIdentifierAfterDot { range: DocumentRange },
 
     #[error("Duplicate argument '{name}'")]
-    DuplicateArgument { name: DocumentRange },
+    DuplicateArgument {
+        name: StringSpan,
+        range: DocumentRange,
+    },
 
     #[error("Expected '==' but got '='")]
     ExpectedDoubleEqButGotSingleEq { range: DocumentRange },
 
     #[error("Duplicate parameter '{name}'")]
-    DuplicateParameter { name: DocumentRange },
+    DuplicateParameter {
+        name: StringSpan,
+        range: DocumentRange,
+    },
 
     #[error("Duplicate property '{name}'")]
-    DuplicateProperty { name: DocumentRange },
+    DuplicateProperty {
+        name: StringSpan,
+        range: DocumentRange,
+    },
 
     #[error("Expected type name")]
     ExpectedTypeName { range: DocumentRange },
@@ -87,13 +99,13 @@ impl Ranged for ParseError {
             | ParseError::UnexpectedToken { range, .. }
             | ParseError::ExpectedVariableNameButGot { range, .. }
             | ParseError::ExpectedPropertyNameButGot { range, .. }
+            | ParseError::DuplicateArgument { range, .. }
+            | ParseError::InvalidVariableName { range, .. }
             | ParseError::ExpectedTypeName { range, .. }
             | ParseError::UnexpectedEndOfPropertyAccess { range, .. }
+            | ParseError::DuplicateParameter { range, .. }
+            | ParseError::DuplicateProperty { range, .. }
             | ParseError::ExpectedIdentifierAfterDot { range } => range,
-            ParseError::InvalidVariableName { name }
-            | ParseError::DuplicateArgument { name }
-            | ParseError::DuplicateParameter { name }
-            | ParseError::DuplicateProperty { name } => name,
         }
     }
 }
