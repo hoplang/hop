@@ -174,6 +174,8 @@ fn format_dop_type(typ: &DopType) -> RcDoc<'static, ()> {
                                 field_docs,
                                 RcDoc::text(",").append(RcDoc::line()),
                             ))
+                            // trailing comma
+                            .append(RcDoc::text(",").flat_alt(RcDoc::nil()))
                             .append(RcDoc::line_())
                             .nest(2)
                             .group(),
@@ -206,6 +208,8 @@ fn format_parameters(
             param_docs,
             RcDoc::text(",").append(RcDoc::line()),
         ))
+        // trailing comma
+        .append(RcDoc::text(",").flat_alt(RcDoc::nil()))
         .append(RcDoc::line_())
         .nest(2)
         .group()
@@ -531,9 +535,9 @@ mod tests {
                     baz: string,
                     email: string,
                     foo: string,
-                    name: string
+                    name: string,
                   }],
-                  users: array[{name: string}]
+                  users: array[{name: string}],
                 }>
                   <div>
                     <h1>User List</h1>
