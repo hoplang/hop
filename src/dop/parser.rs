@@ -124,10 +124,15 @@ impl DopParser {
         }
     }
 
-    fn expect_closing_token(&mut self, opening_token: &DopToken, opening_span: &StringSpan) -> Result<StringSpan, ParseError> {
-        let expected = opening_token.matching_closing_token()
+    fn expect_closing_token(
+        &mut self,
+        opening_token: &DopToken,
+        opening_span: &StringSpan,
+    ) -> Result<StringSpan, ParseError> {
+        let expected = opening_token
+            .matching_closing_token()
             .expect("expect_closing_token called with non-opening token");
-        
+
         match self.iter.next().transpose()? {
             Some((token, span)) if token == expected => Ok(span),
             Some((actual, span)) => Err(ParseError::ExpectedTokenButGot {
@@ -178,6 +183,42 @@ impl DopParser {
         }
     }
 
+    fn parse_comma_separated<F>(
+        &mut self,
+        mut parse_and_process: F,
+        end_token: Option<DopToken>, // None means EOF-terminated
+    ) -> Result<(), ParseError>
+    where
+        F: FnMut(&mut Self) -> Result<(), ParseError>,
+    {
+        // Parse and process first item
+        parse_and_process(self)?;
+
+        // Parse remaining items
+        while self.advance_if(DopToken::Comma).is_some() {
+            // Handle trailing comma
+            let at_end = match end_token.as_ref() {
+                Some(token) => {
+                    // Check if next token matches our end token
+                    self.iter
+                        .peek()
+                        .and_then(|r| r.as_ref().ok())
+                        .map(|(t, _)| t == token)
+                        .unwrap_or(false)
+                }
+                None => self.iter.peek().is_none(), // EOF check
+            };
+
+            if at_end {
+                break;
+            }
+
+            parse_and_process(self)?;
+        }
+
+        Ok(())
+    }
+
     // expr = equality Eof
     pub fn parse_expr(&mut self) -> Result<DopExpr, ParseError> {
         let result = self.parse_equality()?;
@@ -219,102 +260,83 @@ impl DopParser {
     // parameters = parameter ("," parameter)* Eof
     pub fn parse_parameters(&mut self) -> Result<BTreeMap<String, DopParameter>, ParseError> {
         let mut params = BTreeMap::new();
-        let first_param = self.parse_parameter()?;
-        params.insert(first_param.var_name.value.to_string(), first_param);
 
-        while self.advance_if(DopToken::Comma).is_some() {
-            // Handle trailing comma
-            if self.iter.peek().is_none() {
-                break;
-            }
-            let param = self.parse_parameter()?;
-            if params.contains_key(param.var_name.value.as_str()) {
-                return Err(ParseError::DuplicateParameter {
-                    name: param.var_name.value.clone(),
-                });
-            }
-            params.insert(param.var_name.value.to_string(), param);
-        }
+        self.parse_comma_separated(
+            |p| {
+                let param = p.parse_parameter()?;
+                if params.contains_key(param.var_name.value.as_str()) {
+                    return Err(ParseError::DuplicateParameter {
+                        name: param.var_name.value.clone(),
+                    });
+                }
+                params.insert(param.var_name.value.to_string(), param);
+                Ok(())
+            },
+            None, // EOF-terminated
+        )?;
 
         self.expect_eof()?;
-
         Ok(params)
     }
 
     // arguments = argument ("," argument)* Eof
     pub fn parse_arguments(&mut self) -> Result<BTreeMap<String, DopArgument>, ParseError> {
         let mut args = BTreeMap::new();
-        let first_arg = self.parse_argument()?;
-        args.insert(first_arg.var_name.value.to_string(), first_arg);
 
-        while self.advance_if(DopToken::Comma).is_some() {
-            // Handle trailing comma
-            if self.iter.peek().is_none() {
-                break;
-            }
-            let arg = self.parse_argument()?;
-            if args.contains_key(arg.var_name.value.as_str()) {
-                return Err(ParseError::DuplicateArgument {
-                    name: arg.var_name.value.clone(),
-                });
-            }
-            args.insert(arg.var_name.value.to_string(), arg);
-        }
+        self.parse_comma_separated(
+            |p| {
+                let arg = p.parse_argument()?;
+                if args.contains_key(arg.var_name.value.as_str()) {
+                    return Err(ParseError::DuplicateArgument {
+                        name: arg.var_name.value.clone(),
+                    });
+                }
+                args.insert(arg.var_name.value.to_string(), arg);
+                Ok(())
+            },
+            None, // EOF-terminated
+        )?;
 
         self.expect_eof()?;
-
         Ok(args)
     }
 
     // object_type = "{" (Identifier ":" type ("," Identifier ":" type)*)? "}"
-    fn parse_object_type(&mut self, left_brace_span: StringSpan) -> Result<SpannedDopType, ParseError> {
+    fn parse_object_type(
+        &mut self,
+        left_brace_span: StringSpan,
+    ) -> Result<SpannedDopType, ParseError> {
         use std::collections::BTreeMap;
-        
-        let mut properties = BTreeMap::new();
 
         // Handle empty object type
         if let Some(right_brace_span) = self.advance_if(DopToken::RightBrace) {
             return Ok(SpannedDopType {
-                dop_type: DopType::Object(properties),
+                dop_type: DopType::Object(BTreeMap::new()),
                 span: left_brace_span.to(right_brace_span),
             });
         }
 
-        // Parse first property
-        let prop_name = self.expect_property_name()?;
-        self.expect_token(DopToken::Colon)?;
-        let typ = self.parse_type()?;
-        properties.insert(prop_name.to_string(), typ.dop_type);
+        // Parse properties with duplicate checking
+        let mut properties = BTreeMap::new();
+        self.parse_comma_separated(
+            |p| {
+                let prop_name = p.expect_property_name()?;
+                p.expect_token(DopToken::Colon)?;
+                let typ = p.parse_type()?;
 
-        // Parse remaining properties
-        while self.advance_if(DopToken::Comma).is_some() {
-            // Handle trailing comma
-            if let Some(right_brace_span) = self.advance_if(DopToken::RightBrace) {
-                return Ok(SpannedDopType {
-                    dop_type: DopType::Object(properties),
-                    span: left_brace_span.to(right_brace_span),
-                });
-            }
-
-            let prop_name = self.expect_property_name()?;
-            
-            // Check for duplicate property
-            if properties.contains_key(prop_name.as_str()) {
-                return Err(ParseError::DuplicateProperty {
-                    name: prop_name.clone(),
-                });
-            }
-
-            self.expect_token(DopToken::Colon)?;
-            let typ = self.parse_type()?;
-            properties.insert(prop_name.to_string(), typ.dop_type);
-        }
+                if properties.contains_key(prop_name.as_str()) {
+                    return Err(ParseError::DuplicateProperty {
+                        name: prop_name.clone(),
+                    });
+                }
+                properties.insert(prop_name.to_string(), typ.dop_type);
+                Ok(())
+            },
+            Some(DopToken::RightBrace),
+        )?;
 
         // Expect closing brace
-        let right_brace_span = self.expect_closing_token(
-            &DopToken::LeftBrace,
-            &left_brace_span,
-        )?;
+        let right_brace_span = self.expect_closing_token(&DopToken::LeftBrace, &left_brace_span)?;
         Ok(SpannedDopType {
             dop_type: DopType::Object(properties),
             span: left_brace_span.to(right_brace_span),
@@ -355,9 +377,7 @@ impl DopParser {
                 })
             }
             // Object type
-            Some((DopToken::LeftBrace, left_brace_span)) => {
-                self.parse_object_type(left_brace_span)
-            }
+            Some((DopToken::LeftBrace, left_brace_span)) => self.parse_object_type(left_brace_span),
             Some((_, span)) => Err(ParseError::ExpectedTypeName { span }),
             None => Err(ParseError::UnexpectedEof {
                 span: self.span.clone(),
@@ -397,38 +417,31 @@ impl DopParser {
     }
 
     // array_literal = "[" ( equality ("," equality)* )? "]"
-    fn parse_array_literal(&mut self, left_bracket_span: StringSpan) -> Result<DopExpr, ParseError> {
-        let mut elements = Vec::new();
-
+    fn parse_array_literal(
+        &mut self,
+        left_bracket_span: StringSpan,
+    ) -> Result<DopExpr, ParseError> {
         // Handle empty array
         if let Some(right_bracket_span) = self.advance_if(DopToken::RightBracket) {
             return Ok(DopExpr::ArrayLiteral {
-                elements,
+                elements: Vec::new(),
                 span: left_bracket_span.to(right_bracket_span),
             });
         }
 
-        // Parse first element
-        elements.push(self.parse_equality()?);
-
-        // Parse remaining elements
-        while self.advance_if(DopToken::Comma).is_some() {
-            // Handle trailing comma
-            if let Some(right_bracket_span) = self.advance_if(DopToken::RightBracket) {
-                return Ok(DopExpr::ArrayLiteral {
-                    elements,
-                    span: left_bracket_span.to(right_bracket_span),
-                });
-            }
-
-            elements.push(self.parse_equality()?);
-        }
+        // Parse elements
+        let mut elements = Vec::new();
+        self.parse_comma_separated(
+            |p| {
+                elements.push(p.parse_equality()?);
+                Ok(())
+            },
+            Some(DopToken::RightBracket),
+        )?;
 
         // Expect closing bracket
-        let right_bracket_span = self.expect_closing_token(
-            &DopToken::LeftBracket,
-            &left_bracket_span,
-        )?;
+        let right_bracket_span =
+            self.expect_closing_token(&DopToken::LeftBracket, &left_bracket_span)?;
         Ok(DopExpr::ArrayLiteral {
             elements,
             span: left_bracket_span.to(right_bracket_span),
@@ -437,54 +450,39 @@ impl DopParser {
 
     // object_literal = "{" ( Identifier ":" equality ("," Identifier ":" equality)* )? "}"
     fn parse_object_literal(&mut self, left_brace_span: StringSpan) -> Result<DopExpr, ParseError> {
-        let mut properties = Vec::new();
-
         // Handle empty object
         if let Some(right_brace_span) = self.advance_if(DopToken::RightBrace) {
             return Ok(DopExpr::ObjectLiteral {
-                properties,
+                properties: Vec::new(),
                 span: left_brace_span.to(right_brace_span),
             });
         }
 
-        // Parse first property
-        let prop_name = self.expect_property_name()?;
-        self.expect_token(DopToken::Colon)?;
-        let value = self.parse_equality()?;
-        properties.push((prop_name, value));
+        // Parse properties with duplicate checking
+        let mut properties: Vec<(StringSpan, DopExpr)> = Vec::new();
+        self.parse_comma_separated(
+            |p| {
+                let prop_name = p.expect_property_name()?;
+                p.expect_token(DopToken::Colon)?;
+                let value = p.parse_equality()?;
 
-        // Parse remaining properties
-        while self.advance_if(DopToken::Comma).is_some() {
-            // Handle trailing comma
-            if let Some(right_brace_span) = self.advance_if(DopToken::RightBrace) {
-                return Ok(DopExpr::ObjectLiteral {
-                    properties,
-                    span: left_brace_span.to(right_brace_span),
-                });
-            }
-
-            let prop_name = self.expect_property_name()?;
-            
-            // Check for duplicate property
-            if properties
-                .iter()
-                .any(|(name, _)| name.as_str() == prop_name.as_str())
-            {
-                return Err(ParseError::DuplicateProperty {
-                    name: prop_name.clone(),
-                });
-            }
-
-            self.expect_token(DopToken::Colon)?;
-            let value = self.parse_equality()?;
-            properties.push((prop_name, value));
-        }
+                // Check for duplicates
+                if properties
+                    .iter()
+                    .any(|(n, _)| n.as_str() == prop_name.as_str())
+                {
+                    return Err(ParseError::DuplicateProperty {
+                        name: prop_name.clone(),
+                    });
+                }
+                properties.push((prop_name, value));
+                Ok(())
+            },
+            Some(DopToken::RightBrace),
+        )?;
 
         // Expect closing brace
-        let right_brace_span = self.expect_closing_token(
-            &DopToken::LeftBrace,
-            &left_brace_span,
-        )?;
+        let right_brace_span = self.expect_closing_token(&DopToken::LeftBrace, &left_brace_span)?;
         Ok(DopExpr::ObjectLiteral {
             properties,
             span: left_brace_span.to(right_brace_span),
@@ -529,21 +527,22 @@ impl DopParser {
 
                 Ok(expr)
             }
-            Some((DopToken::StringLiteral(value), span)) => Ok(DopExpr::StringLiteral { value, span }),
-            Some((DopToken::BooleanLiteral(value), span)) => Ok(DopExpr::BooleanLiteral { value, span }),
-            Some((DopToken::NumberLiteral(value), span)) => Ok(DopExpr::NumberLiteral { value, span }),
-            Some((DopToken::LeftBracket, left_bracket)) => {
-                self.parse_array_literal(left_bracket)
+            Some((DopToken::StringLiteral(value), span)) => {
+                Ok(DopExpr::StringLiteral { value, span })
             }
+            Some((DopToken::BooleanLiteral(value), span)) => {
+                Ok(DopExpr::BooleanLiteral { value, span })
+            }
+            Some((DopToken::NumberLiteral(value), span)) => {
+                Ok(DopExpr::NumberLiteral { value, span })
+            }
+            Some((DopToken::LeftBracket, left_bracket)) => self.parse_array_literal(left_bracket),
             Some((DopToken::LeftBrace, left_brace_span)) => {
                 self.parse_object_literal(left_brace_span)
             }
             Some((DopToken::LeftParen, left_paren_span)) => {
                 let expr = self.parse_equality()?;
-                self.expect_closing_token(
-                    &DopToken::LeftParen,
-                    &left_paren_span,
-                )?;
+                self.expect_closing_token(&DopToken::LeftParen, &left_paren_span)?;
                 Ok(expr)
             }
             Some((token, span)) => Err(ParseError::UnexpectedToken {
