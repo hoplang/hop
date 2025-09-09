@@ -193,28 +193,29 @@ fn format_dop_type(typ: &DopType) -> RcDoc<'static, ()> {
 /// E.g. <foo-component {users: array[{name: string}]}>
 ///                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 fn format_parameters(params: BTreeMap<StringSpan, DopParameter>) -> RcDoc<'static, ()> {
-    if params.is_empty() {
-        return RcDoc::nil();
-    }
-
-    let mut param_docs = Vec::new();
-    for DopParameter { var_name, var_type } in params.values() {
-        param_docs.push(
-            RcDoc::text(var_name.to_string())
-                .append(RcDoc::text(":"))
-                .append(RcDoc::space())
-                .append(format_dop_type(var_type)),
-        );
-    }
-
     RcDoc::nil()
+        // soft line break after the initial '{'
         .append(RcDoc::line_())
+        // format parameters
         .append(RcDoc::intersperse(
-            param_docs,
+            params.values().map(|DopParameter { var_name, var_type }| {
+                RcDoc::nil()
+                    // key
+                    .append(RcDoc::text(var_name.to_string()))
+                    // colon
+                    .append(RcDoc::text(":"))
+                    // hard space between key and value
+                    .append(RcDoc::space())
+                    // value
+                    .append(format_dop_type(var_type))
+            }),
+            // intersperse with comma followed by line that acts
+            // as space if laid out on a single line
             RcDoc::text(",").append(RcDoc::line()),
         ))
-        // trailing comma
+        // trailing comma if laid out on multiple lines
         .append(RcDoc::text(",").flat_alt(RcDoc::nil()))
+        // soft line break before the last '{'
         .append(RcDoc::line_())
         .nest(2)
         .group()
