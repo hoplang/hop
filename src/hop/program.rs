@@ -137,6 +137,24 @@ impl Program {
     ) -> Option<DefinitionLocation> {
         let ast = self.modules.get(module_name)?;
 
+        // First check if we're on an import node's component attribute
+        for import in ast.get_imports() {
+            if import.component_attr.value.contains_position(position) {
+                // The import specifies the component name and module
+                let target_module = &import.module_name;
+                let component_name = import.component_attr.value.as_str();
+
+                // Find the component definition in the target module
+                let target_ast = self.modules.get(target_module)?;
+                let component_def = target_ast.get_component_definition(component_name)?;
+
+                return Some(DefinitionLocation {
+                    module: target_module.clone(),
+                    range: component_def.tag_name.clone(),
+                });
+            }
+        }
+
         let node = ast.find_node_at_position(position)?;
 
         let is_on_tag_name = node.tag_names().any(|r| r.contains_position(position));
@@ -651,6 +669,32 @@ mod tests {
                   <hello-world>
                   </hello-world>
                      ^
+                </main-comp>
+            "#},
+            expect![[r#"
+                Definition
+                  --> hop/components (line 1, col 2)
+                1 | <hello-world>
+                  |  ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_get_definition_from_import_component_attribute() {
+        check_definition_location(
+            indoc! {r#"
+                -- hop/components.hop --
+                <hello-world>
+                  <h1>Hello World</h1>
+                </hello-world>
+
+                -- main.hop --
+                <import component="hello-world" from="@/hop/components" />
+                                     ^
+
+                <main-comp>
+                  <hello-world />
                 </main-comp>
             "#},
             expect![[r#"
