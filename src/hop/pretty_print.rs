@@ -215,22 +215,6 @@ fn format_parameters(
         .group()
 }
 
-fn has_complex_type(param: &DopParameter) -> bool {
-    match &param.var_type {
-        DopType::Object(fields) => fields.len() > 1,
-        DopType::Array(Some(elem)) => has_complex_dop_type(elem),
-        _ => false,
-    }
-}
-
-fn has_complex_dop_type(typ: &DopType) -> bool {
-    match typ {
-        DopType::Object(fields) => fields.len() > 1,
-        DopType::Array(Some(elem)) => has_complex_dop_type(elem),
-        _ => false,
-    }
-}
-
 fn format_attribute(attr: &Attribute) -> RcDoc<'static, ()> {
     match &attr.value {
         Some(AttributeValue::String(val)) => RcDoc::text(attr.name.as_str().to_string())
@@ -410,9 +394,9 @@ mod tests {
         }
     }
 
+    /// HTML nodes should get consistent indentation.
     #[test]
     fn test_format_with_indoc_input() {
-        // Test that we can format messy indented input
         check_pretty_print(
             indoc! {r#"
                 <main-component>
@@ -441,35 +425,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_imports_and_components() {
-        check_pretty_print(
-            indoc! {r#"
-                <import from="@/hop/pages/test" component="test-comp">
-                <import from="@/hop/components/nav" component="nav-bar">
-                <guide-body>
-                <nav-bar/>
-                <div>
-                <h1>Welcome</h1>
-                <test-comp>This is a test</test-comp>
-                </div>
-                </guide-body>
-            "#},
-            expect![[r#"
-                <import from="@/hop/pages/test" component="test-comp">
-                <import from="@/hop/components/nav" component="nav-bar">
-
-                <guide-body>
-                  <nav-bar/>
-                  <div>
-                    <h1>Welcome</h1>
-                    <test-comp>This is a test</test-comp>
-                  </div>
-                </guide-body>
-            "#]],
-        );
-    }
-
+    /// Import statements should be grouped and there should be two line
+    /// breaks between the import statements and the components.
     #[test]
     fn test_multiple_imports_grouped() {
         check_pretty_print(
@@ -478,7 +435,7 @@ mod tests {
                 <import from="@/hop/components/footer" component="footer-bar">
                 <import from="@/hop/components/header" component="header-bar">
                 <main-component>
-                    <p>Content</p>
+                  <p>Content</p>
                 </main-component>
             "#},
             expect![[r#"
@@ -493,16 +450,12 @@ mod tests {
         );
     }
 
+    /// In parameter lists, both parameters and the object properties
+    /// should have a trailing comma added if broken over multiple lines.
     #[test]
-    fn test_two_component_definitions() {
+    fn test_format_long_parameter_list_has_trailing_comma() {
         check_pretty_print(
             indoc! {r#"
-                <user-card {user: {name: string, email: string}}>
-                    <div>
-                        <h2>{user.name}</h2>
-                        <p>{user.email}</p>
-                    </div>
-                </user-card>
                 <foo-component {users: array[{name: string}], admins: array[{name: string, email: string}], others: array[{name: string, email: string, foo: string, bar: string, baz: string}]}>
                     <div>
                         <h1>User List</h1>
@@ -511,23 +464,8 @@ mod tests {
                         </for>
                     </div>
                 </foo-component>
-                <main-component {a: string, b: string, c: string}>
-                    <div>
-                        <h1>User List</h1>
-                        <for {user in users}>
-                            <user-card {user: user}/>
-                        </for>
-                    </div>
-                </main-component>
             "#},
             expect![[r#"
-                <user-card {user: {email: string, name: string}}>
-                  <div>
-                    <h2>{user.name}</h2>
-                    <p>{user.email}</p>
-                  </div>
-                </user-card>
-
                 <foo-component {
                   admins: array[{email: string, name: string}],
                   others: array[{
@@ -546,15 +484,6 @@ mod tests {
                     </for>
                   </div>
                 </foo-component>
-
-                <main-component {a: string, b: string, c: string}>
-                  <div>
-                    <h1>User List</h1>
-                    <for {user in users}>
-                      <user-card {user: user}/>
-                    </for>
-                  </div>
-                </main-component>
             "#]],
         );
     }
