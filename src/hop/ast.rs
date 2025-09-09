@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use crate::document::DocumentPosition;
-use crate::document::document_cursor::{DocumentRange, Ranged};
+use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
 use crate::hop::module_name::ModuleName;
 
@@ -151,17 +151,11 @@ pub struct Render {
     pub children: Vec<HopNode>,
 }
 
-impl Ranged for Render {
-    fn range(&self) -> &DocumentRange {
-        &self.range
-    }
-}
-
 #[derive(Debug)]
 pub struct ComponentDefinition {
     pub tag_name: DocumentRange,
     pub closing_tag_name: Option<DocumentRange>,
-    pub params: Option<(BTreeMap<String, DopParameter>, DocumentRange)>,
+    pub params: Option<(BTreeMap<StringSpan, DopParameter>, DocumentRange)>,
     pub as_attr: Option<PresentAttribute>,
     pub attributes: Vec<Attribute>,
     pub range: DocumentRange,
@@ -207,7 +201,7 @@ pub enum HopNode {
         tag_name: DocumentRange,
         definition_module: Option<ModuleName>,
         closing_tag_name: Option<DocumentRange>,
-        args: Option<(BTreeMap<String, DopArgument>, DocumentRange)>,
+        args: Option<(BTreeMap<StringSpan, DopArgument>, DocumentRange)>,
         attributes: Vec<Attribute>,
         range: DocumentRange,
         children: Vec<HopNode>,

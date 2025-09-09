@@ -1,4 +1,4 @@
-use crate::document::document_cursor::{DocumentRange, Ranged};
+use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::{self, DopParameter, DopType};
 use crate::hop::ast::HopAst;
 use crate::hop::ast::{ComponentDefinition, HopNode, Render};
@@ -31,7 +31,7 @@ impl Display for TypeAnnotation {
 #[derive(Debug, Clone)]
 pub struct ComponentTypeInformation {
     // Track the parameter types for the component.
-    parameter_types: Option<BTreeMap<String, DopParameter>>,
+    parameter_types: Option<BTreeMap<StringSpan, DopParameter>>,
     // Track whether the component has a slot-default.
     has_slot: bool,
 }
@@ -42,7 +42,10 @@ pub struct ModuleTypeInformation {
 }
 
 impl ModuleTypeInformation {
-    fn get_parameter_types(&self, component_name: &str) -> Option<&BTreeMap<String, DopParameter>> {
+    fn get_parameter_types(
+        &self,
+        component_name: &str,
+    ) -> Option<&BTreeMap<StringSpan, DopParameter>> {
         self.components
             .get(component_name)?
             .parameter_types
@@ -184,7 +187,7 @@ fn typecheck_module(
             for _ in 0..params.len() {
                 let (key, _, accessed) = env.pop();
                 if !accessed {
-                    let param = params.get(&key).unwrap();
+                    let param = params.get(key.as_str()).unwrap();
                     errors.push(TypeError::UnusedVariable {
                         var_name: param.var_name.range().clone(),
                     })

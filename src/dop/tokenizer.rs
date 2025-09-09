@@ -59,7 +59,6 @@ pub enum DopToken {
     TypeString,
     TypeNumber,
     TypeBoolean,
-    TypeVoid,
     TypeArray,
 }
 
@@ -85,7 +84,6 @@ impl PartialEq for DopToken {
             (DopToken::TypeString, DopToken::TypeString) => true,
             (DopToken::TypeNumber, DopToken::TypeNumber) => true,
             (DopToken::TypeBoolean, DopToken::TypeBoolean) => true,
-            (DopToken::TypeVoid, DopToken::TypeVoid) => true,
             (DopToken::TypeArray, DopToken::TypeArray) => true,
             _ => false,
         }
@@ -127,7 +125,6 @@ impl fmt::Display for DopToken {
             DopToken::TypeString => write!(f, "string"),
             DopToken::TypeNumber => write!(f, "number"),
             DopToken::TypeBoolean => write!(f, "boolean"),
-            DopToken::TypeVoid => write!(f, "void"),
             DopToken::TypeArray => write!(f, "array"),
         }
     }
@@ -153,14 +150,10 @@ impl Iterator for DopTokenizer {
                 ':' => Ok((DopToken::Colon, start)),
                 ',' => Ok((DopToken::Comma, start)),
                 '!' => Ok((DopToken::Not, start)),
-                '=' => {
-                    let Some(end) = self.iter.next_if(|s| s.ch() == '=') else {
-                        return Err(ParseError::ExpectedDoubleEqButGotSingleEq {
-                            range: start.clone(),
-                        });
-                    };
-                    Ok((DopToken::Equal, start.to(end)))
-                }
+                '=' => match self.iter.next_if(|s| s.ch() == '=') {
+                    Some(end) => Ok((DopToken::Equal, start.to(end))),
+                    None => Err(ParseError::ExpectedDoubleEqButGotSingleEq { range: start }),
+                },
                 '\'' => {
                     let mut end_range = start.clone();
                     let mut result = String::new();
@@ -179,7 +172,6 @@ impl Iterator for DopTokenizer {
                     let identifier = start.extend(self.iter.peeking_take_while(
                         |s| matches!(s.ch(), 'A'..='Z' | 'a'..='z' | '0'..='9' | '_'),
                     ));
-
                     let t = match identifier.as_str() {
                         "in" => DopToken::In,
                         "true" => DopToken::BooleanLiteral(true),
@@ -188,7 +180,6 @@ impl Iterator for DopTokenizer {
                         "string" => DopToken::TypeString,
                         "number" => DopToken::TypeNumber,
                         "boolean" => DopToken::TypeBoolean,
-                        "void" => DopToken::TypeVoid,
                         "array" => DopToken::TypeArray,
                         _ => DopToken::Identifier(identifier.clone()),
                     };

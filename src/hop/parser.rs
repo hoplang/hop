@@ -63,7 +63,7 @@ pub fn parse(
 
                     let Some(from_attr) = tree.token.get_attribute_value("from") else {
                         errors.push(ParseError::MissingRequiredAttribute {
-                            tag_name: tag_name.to_string(),
+                            tag_name: tag_name.to_string_span(),
                             attr: "from".to_string(),
                             range: tag_name.clone(),
                         });
@@ -72,7 +72,7 @@ pub fn parse(
 
                     let Some(cmp_attr) = tree.token.get_attribute_value("component") else {
                         errors.push(ParseError::MissingRequiredAttribute {
-                            tag_name: tag_name.to_string(),
+                            tag_name: tag_name.to_string_span(),
                             attr: "component".to_string(),
                             range: tag_name.clone(),
                         });
@@ -89,7 +89,7 @@ pub fn parse(
 
                     if imported_components.contains_key(cmp_attr.as_str()) {
                         errors.push(ParseError::ComponentIsAlreadyDefined {
-                            component_name: cmp_attr.to_string(),
+                            component_name: cmp_attr.to_string_span(),
                             range: cmp_attr.clone(),
                         });
                         continue;
@@ -126,7 +126,7 @@ pub fn parse(
 
                     let Some(file_attr) = tree.token.get_attribute_value("file") else {
                         errors.push(ParseError::MissingRequiredAttribute {
-                            tag_name: tag_name.to_string(),
+                            tag_name: tag_name.to_string_span(),
                             attr: "file".to_string(),
                             range: tag_name.clone(),
                         });
@@ -143,7 +143,7 @@ pub fn parse(
                 name => {
                     if !is_valid_component_name(name) {
                         errors.push(ParseError::InvalidComponentName {
-                            tag_name: tag_name.to_string(),
+                            tag_name: tag_name.to_string_span(),
                             range: tag_name.clone(),
                         });
                         continue;
@@ -177,7 +177,7 @@ pub fn parse(
 
                     if defined_components.contains(name) || imported_components.contains_key(name) {
                         errors.push(ParseError::ComponentIsAlreadyDefined {
-                            component_name: tag_name.to_string(),
+                            component_name: tag_name.to_string_span(),
                             range: tag_name.clone(),
                         });
                         // fall-through
@@ -365,7 +365,7 @@ fn construct_node(
                             },
                             None => {
                                 errors.push(ParseError::MissingRequiredAttribute {
-                                    tag_name: tag_name.to_string(),
+                                    tag_name: tag_name.to_string_span(),
                                     attr: "cmd".to_string(),
                                     range: tag_name.clone(),
                                 });
@@ -383,7 +383,7 @@ fn construct_node(
                     },
                     _ => {
                         errors.push(ParseError::UnrecognizedHopTag {
-                            tag: tag_name.to_string(),
+                            tag: tag_name.to_string_span(),
                             range: tag_name.clone(),
                         });
                         HopNode::Error {
@@ -395,7 +395,7 @@ fn construct_node(
                 name if name.contains('-') => {
                     if !is_valid_component_name(tag_name.as_str()) {
                         errors.push(ParseError::InvalidComponentName {
-                            tag_name: tag_name.to_string(),
+                            tag_name: tag_name.to_string_span(),
                             range: tag_name.clone(),
                         });
                     }
@@ -575,17 +575,17 @@ mod tests {
                 error: Unclosed <p>
                 2 |     <div>
                 3 |     <p>
-                  |     ^^^
+                  |      ^
 
                 error: Unclosed <div>
                 1 | <main-comp>
                 2 |     <div>
-                  |     ^^^^^
+                  |      ^^^
 
                 error: Unclosed <foo-comp>
                 5 | 
                 6 | <foo-comp>
-                  | ^^^^^^^^^^
+                  |  ^^^^^^^^
             "#]],
         );
     }

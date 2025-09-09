@@ -336,8 +336,10 @@ impl Tokenizer {
 
         // consume: " or '
         let Some(close_quote) = self.iter.next_if(|s| s.ch() == open_quote.ch()) else {
-            self.errors
-                .push(ParseError::UnmatchedCharacter { ch: open_quote });
+            self.errors.push(ParseError::UnmatchedCharacter {
+                ch: open_quote.ch(),
+                range: open_quote,
+            });
             return None;
         };
 
@@ -368,8 +370,10 @@ impl Tokenizer {
         };
         let clone = self.iter.clone();
         let Some(found_right_brace) = Self::find_expression_end(clone) else {
-            self.errors
-                .push(ParseError::UnmatchedCharacter { ch: left_brace });
+            self.errors.push(ParseError::UnmatchedCharacter {
+                ch: left_brace.ch(),
+                range: left_brace,
+            });
             return None;
         };
         // handle empty expression
@@ -425,7 +429,7 @@ impl Tokenizer {
                         .any(|a| a.name.as_str() == attr.name.as_str());
                     if exists {
                         self.errors.push(ParseError::DuplicateAttribute {
-                            name: attr.name.to_string(),
+                            name: attr.name.to_string_span(),
                             range: attr.name.clone(),
                         });
                     } else {

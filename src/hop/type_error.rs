@@ -1,4 +1,4 @@
-use crate::document::document_cursor::{DocumentRange, Ranged};
+use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::{DopParameter, DopType};
 use std::collections::BTreeMap;
 use thiserror::Error;
@@ -132,7 +132,7 @@ impl TypeError {
     }
 
     pub fn missing_arguments(
-        params: &BTreeMap<String, DopParameter>,
+        params: &BTreeMap<StringSpan, DopParameter>,
         range: DocumentRange,
     ) -> Self {
         let args = params

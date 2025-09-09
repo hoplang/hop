@@ -1,4 +1,5 @@
 use std::{
+    borrow::Borrow,
     fmt,
     hash::{Hash, Hasher},
     iter::FromIterator,
@@ -262,10 +263,28 @@ impl PartialEq for StringSpan {
 
 impl Eq for StringSpan {}
 
+impl PartialOrd for StringSpan {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for StringSpan {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.as_str().cmp(other.as_str())
+    }
+}
+
 impl Deref for StringSpan {
     type Target = str;
 
     fn deref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl Borrow<str> for StringSpan {
+    fn borrow(&self) -> &str {
         self.as_str()
     }
 }

@@ -1,4 +1,4 @@
-use crate::document::document_cursor::{DocumentRange, Ranged};
+use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
@@ -7,23 +7,35 @@ pub enum ParseError {
     SlotIsAlreadyDefined { range: DocumentRange },
 
     #[error("Unmatched </{tag}>")]
-    UnmatchedClosingTag { tag: String, range: DocumentRange },
+    UnmatchedClosingTag {
+        tag: StringSpan,
+        range: DocumentRange,
+    },
 
     #[error("Missing attribute value")]
     MissingAttributeValue { range: DocumentRange },
 
     #[error("Unclosed <{tag}>")]
-    UnclosedTag { tag: String, range: DocumentRange },
+    UnclosedTag {
+        tag: StringSpan,
+        range: DocumentRange,
+    },
 
     #[error("<{tag}> should not be closed using a closing tag")]
-    ClosedVoidTag { tag: String, range: DocumentRange },
+    ClosedVoidTag {
+        tag: StringSpan,
+        range: DocumentRange,
+    },
 
     #[error("Unrecognized hop tag: <{tag}>")]
-    UnrecognizedHopTag { tag: String, range: DocumentRange },
+    UnrecognizedHopTag {
+        tag: StringSpan,
+        range: DocumentRange,
+    },
 
     #[error("<{tag_name}> is missing required attribute {attr}")]
     MissingRequiredAttribute {
-        tag_name: String,
+        tag_name: StringSpan,
         attr: String,
         range: DocumentRange,
     },
@@ -32,18 +44,21 @@ pub enum ParseError {
         "Invalid component name '{tag_name}'. Component names must contain a dash and not start or end with one"
     )]
     InvalidComponentName {
-        tag_name: String,
+        tag_name: StringSpan,
         range: DocumentRange,
     },
 
     #[error("Component {component_name} is already defined")]
     ComponentIsAlreadyDefined {
-        component_name: String,
+        component_name: StringSpan,
         range: DocumentRange,
     },
 
     #[error("Duplicate attribute '{name}'")]
-    DuplicateAttribute { name: String, range: DocumentRange },
+    DuplicateAttribute {
+        name: StringSpan,
+        range: DocumentRange,
+    },
 
     #[error("Import paths must start with '@/' where '@' indicates the root directory")]
     InvalidImportPath { range: DocumentRange },
@@ -55,7 +70,7 @@ pub enum ParseError {
     },
 
     #[error("Unmatched {ch}")]
-    UnmatchedCharacter { ch: DocumentRange },
+    UnmatchedCharacter { ch: char, range: DocumentRange },
 
     #[error("{message}")]
     GenericError {
@@ -75,7 +90,7 @@ impl Ranged for ParseError {
         match self {
             ParseError::SlotIsAlreadyDefined { range }
             | ParseError::UnmatchedClosingTag { range, .. }
-            | ParseError::UnmatchedCharacter { ch: range, .. }
+            | ParseError::UnmatchedCharacter { range, .. }
             | ParseError::MissingAttributeValue { range }
             | ParseError::UnclosedTag { range, .. }
             | ParseError::ClosedVoidTag { range, .. }

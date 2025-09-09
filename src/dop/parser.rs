@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::fmt::{self, Display};
 use std::iter::Peekable;
 
-use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged as _};
+use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged as _, StringSpan};
 use crate::dop::DopType;
 use crate::dop::ast::{BinaryOp, DopExpr, UnaryOp};
 use crate::dop::parse_error::ParseError;
@@ -260,7 +260,7 @@ impl DopParser {
     }
 
     // parameters = parameter ("," parameter)* Eof
-    pub fn parse_parameters(&mut self) -> Result<BTreeMap<String, DopParameter>, ParseError> {
+    pub fn parse_parameters(&mut self) -> Result<BTreeMap<StringSpan, DopParameter>, ParseError> {
         let mut params = BTreeMap::new();
         self.parse_comma_separated(
             |this| {
@@ -271,7 +271,7 @@ impl DopParser {
                         range: param.var_name.value.clone(),
                     });
                 }
-                params.insert(param.var_name.value.to_string(), param);
+                params.insert(param.var_name.value.to_string_span(), param);
                 Ok(())
             },
             None,
@@ -281,7 +281,7 @@ impl DopParser {
     }
 
     // arguments = argument ("," argument)* Eof
-    pub fn parse_arguments(&mut self) -> Result<BTreeMap<String, DopArgument>, ParseError> {
+    pub fn parse_arguments(&mut self) -> Result<BTreeMap<StringSpan, DopArgument>, ParseError> {
         let mut args = BTreeMap::new();
         self.parse_comma_separated(
             |this| {
@@ -292,7 +292,7 @@ impl DopParser {
                         range: arg.var_name.value.clone(),
                     });
                 }
-                args.insert(arg.var_name.value.to_string(), arg);
+                args.insert(arg.var_name.value.to_string_span(), arg);
                 Ok(())
             },
             None,

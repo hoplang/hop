@@ -135,7 +135,7 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
             Token::ClosingTag { ref tag_name, .. } => {
                 if is_void_element(tag_name.as_str()) {
                     errors.push(ParseError::ClosedVoidTag {
-                        tag: tag_name.to_string(),
+                        tag: tag_name.to_string_span(),
                         range: token.range().clone(),
                     });
                 } else if !stack
@@ -143,15 +143,15 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
                     .any(|el| el.tag_name.as_str() == tag_name.as_str())
                 {
                     errors.push(ParseError::UnmatchedClosingTag {
-                        tag: tag_name.to_string(),
+                        tag: tag_name.to_string_span(),
                         range: token.range().clone(),
                     });
                 } else {
                     while stack.last().unwrap().tag_name.as_str() != tag_name.as_str() {
                         let unclosed = stack.pop().unwrap();
                         errors.push(ParseError::UnclosedTag {
-                            tag: unclosed.tag_name.to_string(),
-                            range: unclosed.tree.token.range().clone(),
+                            tag: unclosed.tag_name.to_string_span(),
+                            range: unclosed.tag_name.clone(),
                         });
                         stack.last_mut().unwrap().tree.append_tree(unclosed.tree);
                     }
@@ -169,8 +169,8 @@ pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<Tok
 
     for unclosed in stack {
         errors.push(ParseError::UnclosedTag {
-            tag: unclosed.tag_name.to_string(),
-            range: unclosed.tree.token.range().clone(),
+            tag: unclosed.tag_name.to_string_span(),
+            range: unclosed.tag_name.clone(),
         });
     }
 

@@ -1001,14 +1001,14 @@ mod tests {
             "main",
             expect![[r#"
                 Unclosed <span>
-                  --> main (line 3, col 3)
+                  --> main (line 3, col 4)
                 3 |   <span>unclosed span
-                  |   ^^^^^^
+                  |    ^^^^
 
                 Unclosed <div>
-                  --> main (line 2, col 3)
+                  --> main (line 2, col 4)
                 2 |   <div>
-                  |   ^^^^^
+                  |    ^^^
             "#]],
         );
     }
