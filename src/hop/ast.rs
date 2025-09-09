@@ -244,7 +244,7 @@ pub enum HopNode {
         attributes: Vec<Attribute>,
         range: DocumentRange,
         children: Vec<HopNode>,
-        set_attributes: Vec<DopExprAttribute>,
+        expr_attributes: Vec<DopExprAttribute>,
     },
     XExec {
         cmd_attr: PresentAttribute,

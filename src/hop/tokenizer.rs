@@ -10,9 +10,15 @@ use crate::dop::tokenizer::DopToken;
 use crate::hop::parse_error::ParseError;
 
 #[derive(Debug, Clone)]
+pub enum AttributeValue {
+    String(DocumentRange),
+    Expression(DocumentRange),
+}
+
+#[derive(Debug, Clone)]
 pub struct Attribute {
     pub name: DocumentRange,
-    pub value: Option<DocumentRange>,
+    pub value: Option<AttributeValue>,
     pub range: DocumentRange,
 }
 
@@ -50,7 +56,11 @@ impl Token {
             Token::OpeningTag { attributes, .. } => attributes
                 .iter()
                 .find(|attr| attr.name.as_str() == name)
-                .and_then(|attr| attr.value.clone()),
+                .and_then(|attr| match &attr.value {
+                    Some(AttributeValue::String(range)) => Some(range.clone()),
+                    Some(AttributeValue::Expression(range)) => Some(range.clone()),
+                    None => None,
+                }),
             _ => None,
         }
     }
@@ -99,12 +109,14 @@ impl Display for Token {
                     write!(f, " ")?;
                     let attr_strs: Vec<String> = attributes
                         .iter()
-                        .map(|attr| {
-                            if let Some(val) = &attr.value {
+                        .map(|attr| match &attr.value {
+                            Some(AttributeValue::String(val)) => {
                                 format!("{}={:#?}", attr.name, val.to_string())
-                            } else {
-                                attr.name.to_string()
                             }
+                            Some(AttributeValue::Expression(val)) => {
+                                format!("{}={{{:#?}}}", attr.name, val.to_string())
+                            }
+                            None => attr.name.to_string(),
                         })
                         .collect();
                     write!(f, "{}", attr_strs.join(" "))?;
@@ -325,17 +337,30 @@ impl Tokenizer {
         // consume: whitespace
         self.skip_whitespace();
 
-        // consume: " or '
+        // Check if value is an expression
+        if self.iter.peek().map(|s| s.ch()) == Some('{') {
+            // Parse expression value
+            let Some((expr, expr_range)) = self.parse_expression() else {
+                return None;
+            };
+            return Some(Attribute {
+                name: attr_name.clone(),
+                value: Some(AttributeValue::Expression(expr)),
+                range: attr_name.to(expr_range),
+            });
+        }
+
+        // Parse string value (quoted)
         let Some(open_quote) = self.iter.next_if(|s| s.ch() == '"' || s.ch() == '\'') else {
             self.errors.push(ParseError::new(
-                "Expected quoted attribute value".to_string(),
+                "Expected quoted attribute value or expression".to_string(),
                 attr_name.to(eq),
             ));
             return None;
         };
 
         // consume: attribute value
-        let attr_value = self
+        let attr_value: Option<DocumentRange> = self
             .iter
             .peeking_take_while(|s| s.ch() != open_quote.ch())
             .collect();
@@ -351,7 +376,7 @@ impl Tokenizer {
 
         Some(Attribute {
             name: attr_name.clone(),
-            value: attr_value,
+            value: attr_value.map(AttributeValue::String),
             range: attr_name.to(close_quote),
         })
     }
@@ -720,6 +745,46 @@ mod tests {
     #[test]
     fn test_tokenize_empty() {
         check("", expect![""]);
+    }
+
+    #[test]
+    fn test_tokenize_expression_attribute() {
+        check(
+            r#"<div class={user.theme}>Hello</div>"#,
+            expect![[r#"
+                OpeningTag <div class={"user.theme"}>
+                1 | <div class={user.theme}>Hello</div>
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^
+
+                Text [5 byte, "Hello"]
+                1 | <div class={user.theme}>Hello</div>
+                  |                         ^^^^^
+
+                ClosingTag </div>
+                1 | <div class={user.theme}>Hello</div>
+                  |                              ^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_tokenize_mixed_attributes() {
+        check(
+            r#"<a href={user.url} target="_blank">Link</a>"#,
+            expect![[r#"
+                OpeningTag <a href={"user.url"} target="_blank">
+                1 | <a href={user.url} target="_blank">Link</a>
+                  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+                Text [4 byte, "Link"]
+                1 | <a href={user.url} target="_blank">Link</a>
+                  |                                    ^^^^
+
+                ClosingTag </a>
+                1 | <a href={user.url} target="_blank">Link</a>
+                  |                                        ^^^^
+            "#]],
+        );
     }
 
     #[test]
@@ -2683,7 +2748,7 @@ mod tests {
         check(
             r#"<div foo="#,
             expect![[r#"
-                Expected quoted attribute value
+                Expected quoted attribute value or expression
                 1 | <div foo=
                   |      ^^^^
 
@@ -2783,7 +2848,7 @@ mod tests {
         check(
             r#"<div foo="#,
             expect![[r#"
-                Expected quoted attribute value
+                Expected quoted attribute value or expression
                 1 | <div foo=
                   |      ^^^^
 

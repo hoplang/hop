@@ -19,7 +19,7 @@
 		Available routes:<br/>
 		<ul class="ml-6" style="list-style-type: square;">
 			<for {route in available_routes}>
-				<li><a set-href="route">{route}</a></li>
+				<li><a href={route}>{route}</a></li>
 			</for>
 		</ul>
 		<p>

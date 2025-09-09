@@ -400,12 +400,12 @@ fn typecheck_node(
         }
 
         HopNode::Html {
-            set_attributes,
+            expr_attributes,
             children,
             ..
         } => {
-            for set_attr in set_attributes {
-                let expr_type = match dop::typecheck_expr(&set_attr.expression, env, annotations) {
+            for expr_attr in expr_attributes {
+                let expr_type = match dop::typecheck_expr(&expr_attr.expression, env, annotations) {
                     Ok(t) => t,
                     Err(err) => {
                         errors.push(err);
@@ -416,7 +416,7 @@ fn typecheck_node(
                 if !expr_type.is_subtype(&DopType::String) {
                     errors.push(TypeError::ExpectedStringAttribute {
                         found: expr_type.to_string(),
-                        range: set_attr.range.clone(),
+                        range: expr_attr.range.clone(),
                     });
                     continue;
                 }
@@ -2595,12 +2595,12 @@ mod tests {
     }
 
     #[test]
-    fn test_set_attributes() {
+    fn test_expr_attributes() {
         check(
             indoc! {r#"
                 -- main.hop --
                 <main-comp {user: {url: string, theme: string}}>
-                  <a set-href="user.url" set-class="user.theme">Link</a>
+                  <a href={user.url} class={user.theme}>Link</a>
                 </main-comp>
             "#},
             expect![[r#"
@@ -2610,16 +2610,16 @@ mod tests {
                   |             ^^^^
 
                 user: {theme: string, url: string}
-                  --> main.hop (line 2, col 16)
+                  --> main.hop (line 2, col 12)
                 1 | <main-comp {user: {url: string, theme: string}}>
-                2 |   <a set-href="user.url" set-class="user.theme">Link</a>
-                  |                ^^^^
+                2 |   <a href={user.url} class={user.theme}>Link</a>
+                  |            ^^^^
 
                 user: {theme: string, url: string}
-                  --> main.hop (line 2, col 37)
+                  --> main.hop (line 2, col 29)
                 1 | <main-comp {user: {url: string, theme: string}}>
-                2 |   <a set-href="user.url" set-class="user.theme">Link</a>
-                  |                                     ^^^^
+                2 |   <a href={user.url} class={user.theme}>Link</a>
+                  |                             ^^^^
             "#]],
         );
     }

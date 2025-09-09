@@ -296,7 +296,7 @@ fn evaluate_node(
             children,
             tag_name,
             attributes,
-            set_attributes,
+            expr_attributes,
             ..
         } => {
             // Skip style nodes
@@ -325,10 +325,10 @@ fn evaluate_node(
                 }
             }
 
-            // Evaluate and add set-* attributes
-            for set_attr in set_attributes {
-                let attr_name = &set_attr.name.as_str()[4..]; // Remove "set-" prefix
-                let evaluated = evaluate_expr(&set_attr.expression, env)?;
+            // Evaluate and add expression attributes
+            for expr_attr in expr_attributes {
+                let attr_name = expr_attr.name.as_str();
+                let evaluated = evaluate_expr(&expr_attr.expression, env)?;
                 output.push(' ');
                 output.push_str(attr_name);
                 output.push_str("=\"");
@@ -418,7 +418,7 @@ fn evaluate_node_entrypoint(
             tag_name,
             attributes,
             children,
-            set_attributes,
+            expr_attributes,
             ..
         } => {
             // For entrypoints, preserve script and style tags
@@ -436,10 +436,10 @@ fn evaluate_node_entrypoint(
                 }
             }
 
-            // Evaluate and add set-* attributes
-            for set_attr in set_attributes {
-                let attr_name = &set_attr.name.as_str()[4..]; // Remove "set-" prefix
-                let evaluated = evaluate_expr(&set_attr.expression, env)?;
+            // Evaluate and add expression attributes
+            for expr_attr in expr_attributes {
+                let attr_name = expr_attr.name.as_str();
+                let evaluated = evaluate_expr(&expr_attr.expression, env)?;
                 output.push(' ');
                 output.push_str(attr_name);
                 output.push_str("=\"");
@@ -912,7 +912,7 @@ mod tests {
     }
 
     #[test]
-    fn test_set_attributes() {
+    fn test_expr_attributes() {
         check(
             indoc! {r#"
                 -- main.hop --
@@ -920,7 +920,7 @@ mod tests {
                     profile_url: string,
                     name: string,
                 }>
-                  <a set-href="profile_url" set-title="name">Click here</a>
+                  <a href={profile_url} title={name}>Click here</a>
                 </main-comp>
             "#},
             json!({
@@ -1090,14 +1090,14 @@ mod tests {
         );
     }
 
-    /// Test set-id attribute functionality
+    /// Test expression attribute functionality for id
     #[test]
-    fn test_set_id_attribute() {
+    fn test_expr_attribute_id() {
         check(
             indoc! {r#"
                 -- main.hop --
                 <main-comp {id: string}>
-                    <div set-id="id">my div</div>
+                    <div id={id}>my div</div>
                 </main-comp>
             "#},
             json!({

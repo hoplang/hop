@@ -3,8 +3,7 @@ use crate::dop::DopParser;
 use crate::hop::ast::{Attribute, ComponentDefinition, DopExprAttribute, HopAst, HopNode, Import, Render};
 use crate::hop::parse_error::ParseError;
 use crate::hop::token_tree::{TokenTree, build_tree};
-use crate::hop::tokenizer::Token;
-use crate::hop::tokenizer::Tokenizer;
+use crate::hop::tokenizer::{AttributeValue, Token, Tokenizer};
 use std::collections::{HashMap, HashSet};
 
 use super::ast::PresentAttribute;
@@ -192,18 +191,40 @@ pub fn parse(
                     for attr in attributes {
                         match attr.name.as_str() {
                             "as" => {
-                                as_attr = attr.value.clone();
+                                as_attr = match &attr.value {
+                                    Some(AttributeValue::String(s)) => Some(s.clone()),
+                                    Some(AttributeValue::Expression(_)) => {
+                                        errors.push(ParseError::new(
+                                            "Expression attributes are not supported on component definitions".to_string(),
+                                            attr.range.clone(),
+                                        ));
+                                        None
+                                    }
+                                    None => None,
+                                };
                             }
                             "entrypoint" => {
                                 is_entrypoint = true;
                             }
                             _ => {
+                                // Check for expression attributes on component definitions
+                                if let Some(AttributeValue::Expression(_)) = &attr.value {
+                                    errors.push(ParseError::new(
+                                        "Expression attributes are not supported on component definitions".to_string(),
+                                        attr.range.clone(),
+                                    ));
+                                    continue;
+                                }
+                                
                                 // Here we keep the unhandled attributes
                                 // since they should be rendered in the
                                 // resulting HTML.
                                 unhandled_attributes.push(Attribute {
                                     name: attr.name.clone(),
-                                    value: attr.value.clone(),
+                                    value: match &attr.value {
+                                        Some(AttributeValue::String(s)) => Some(s.clone()),
+                                        _ => None,
+                                    },
                                     range: attr.range.clone(),
                                 });
                             }
@@ -361,9 +382,19 @@ fn construct_node(
                             }
                         }
 
-                        match cmd_attr.and_then(|attr| attr.value) {
-                            Some(cmd_attr) => HopNode::XExec {
-                                cmd_attr: PresentAttribute { value: cmd_attr },
+                        match cmd_attr.and_then(|attr| match attr.value {
+                            Some(AttributeValue::String(s)) => Some(s),
+                            Some(AttributeValue::Expression(_)) => {
+                                errors.push(ParseError::new(
+                                    "Expression attributes are not supported on hop-x-exec".to_string(),
+                                    attr.range.clone(),
+                                ));
+                                None
+                            }
+                            None => None,
+                        }) {
+                            Some(cmd_value) => HopNode::XExec {
+                                cmd_attr: PresentAttribute { value: cmd_value },
                                 range: tree.range.clone(),
                                 children,
                             },
@@ -424,61 +455,83 @@ fn construct_node(
                             imported_components.get(tag_name.as_str()).cloned()
                         };
 
+                    // Check for expression attributes on component references
+                    let mut string_attributes = Vec::new();
+                    for attr in attributes {
+                        if let Some(AttributeValue::Expression(_)) = &attr.value {
+                            errors.push(ParseError::new(
+                                "Expression attributes are not supported on component references. Use the component's expression syntax instead".to_string(),
+                                attr.range.clone(),
+                            ));
+                        } else {
+                            string_attributes.push(Attribute {
+                                name: attr.name.clone(),
+                                value: match &attr.value {
+                                    Some(AttributeValue::String(s)) => Some(s.clone()),
+                                    _ => None,
+                                },
+                                range: attr.range.clone(),
+                            });
+                        }
+                    }
+
                     HopNode::ComponentReference {
                         tag_name,
                         closing_tag_name: tree.closing_tag_name,
                         definition_module,
                         args,
-                        attributes: attributes.iter().map(|attr| Attribute {
-                            name: attr.name.clone(),
-                            value: attr.value.clone(),
-                            range: attr.range.clone(),
-                        }).collect(),
+                        attributes: string_attributes,
                         range: tree.range.clone(),
                         children,
                     }
                 }
                 // Treat as HTML
                 _ => {
-                    let mut set_attributes = Vec::new();
+                    let mut string_attributes = Vec::new();
+                    let mut expr_attributes = Vec::new();
+                    
                     for attr in &attributes {
-                        if attr.name.as_str().starts_with("set-") {
-                            let attr_val = match &attr.value {
-                                None => {
-                                    errors.push(ParseError::MissingAttributeValue {
+                        match &attr.value {
+                            Some(AttributeValue::Expression(expr_range)) => {
+                                // Parse the expression
+                                match DopParser::from(expr_range.clone()).parse_expr() {
+                                    Ok(expression) => expr_attributes.push(DopExprAttribute {
+                                        name: attr.name.clone(),
+                                        expression,
                                         range: attr.range.clone(),
-                                    });
-                                    continue;
+                                    }),
+                                    Err(err) => {
+                                        errors.push(ParseError::new(
+                                            err.to_string(),
+                                            err.range().clone(),
+                                        ));
+                                    }
                                 }
-                                Some(val) => val,
-                            };
-                            match DopParser::from(attr_val.clone()).parse_expr() {
-                                Ok(expression) => set_attributes.push(DopExprAttribute {
+                            }
+                            Some(AttributeValue::String(str_range)) => {
+                                string_attributes.push(Attribute {
                                     name: attr.name.clone(),
-                                    expression,
+                                    value: Some(str_range.clone()),
                                     range: attr.range.clone(),
-                                }),
-                                Err(err) => {
-                                    errors.push(ParseError::new(
-                                        err.to_string(),
-                                        err.range().clone(),
-                                    ));
-                                }
-                            };
+                                });
+                            }
+                            None => {
+                                string_attributes.push(Attribute {
+                                    name: attr.name.clone(),
+                                    value: None,
+                                    range: attr.range.clone(),
+                                });
+                            }
                         }
                     }
 
                     HopNode::Html {
                         tag_name,
                         closing_tag_name: tree.closing_tag_name,
-                        attributes: attributes.iter().map(|attr| Attribute {
-                            name: attr.name.clone(),
-                            value: attr.value.clone(),
-                            range: attr.range.clone(),
-                        }).collect(),
+                        attributes: string_attributes,
                         range: tree.range.clone(),
                         children,
-                        set_attributes,
+                        expr_attributes,
                     }
                 }
             }
@@ -1191,15 +1244,15 @@ mod tests {
     }
 
     #[test]
-    fn test_parser_set_attributes() {
+    fn test_parser_expression_attributes() {
         check(
             indoc! {r#"
                 <main-comp {user: {url: string, theme: string}}>
-                    <a set-href="user.url" set-class="user.theme">Link</a>
+                    <a href={user.url} class={user.theme}>Link</a>
                 </main-comp>
             "#},
             expect![[r#"
-                a                                                 1:4-1:58
+                a                                                 1:4-1:50
             "#]],
         );
     }
