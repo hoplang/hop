@@ -92,6 +92,19 @@ impl PartialEq for DopToken {
     }
 }
 
+impl DopToken {
+    /// Returns the matching closing token for opening tokens like LeftBrace, LeftBracket, LeftParen.
+    /// Returns None for tokens that don't have a matching pair.
+    pub fn matching_closing_token(&self) -> Option<DopToken> {
+        match self {
+            DopToken::LeftBrace => Some(DopToken::RightBrace),
+            DopToken::LeftBracket => Some(DopToken::RightBracket),
+            DopToken::LeftParen => Some(DopToken::RightParen),
+            _ => None,
+        }
+    }
+}
+
 impl fmt::Display for DopToken {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

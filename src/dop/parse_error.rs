@@ -21,13 +21,6 @@ pub enum ParseError {
     )]
     InvalidVariableName { name: StringSpan },
 
-    #[error("Expected {} but got '{actual}'", expected.iter().map(|t| format!("'{}'", t)).collect::<Vec<_>>().join(" or "))]
-    ExpectedTokensButGot {
-        expected: Vec<DopToken>,
-        actual: DopToken,
-        span: StringSpan,
-    },
-
     #[error("Expected token '{expected}' but got '{actual}'")]
     ExpectedTokenButGot {
         expected: DopToken,
@@ -77,7 +70,6 @@ impl Spanned for ParseError {
             | ParseError::UnmatchedToken { span, .. }
             | ParseError::UnexpectedCharacter { span, .. }
             | ParseError::InvalidNumberFormat { span, .. }
-            | ParseError::ExpectedTokensButGot { span, .. }
             | ParseError::ExpectedTokenButGot { span, .. }
             | ParseError::ExpectedDoubleEqButGotSingleEq { span, .. }
             | ParseError::UnexpectedToken { span, .. }
