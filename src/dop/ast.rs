@@ -1,6 +1,6 @@
 use std::fmt::{self, Display};
 
-use crate::document::document_cursor::DocumentRange;
+use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::parser::DopVarName;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -37,55 +37,54 @@ pub enum DopExpr {
     PropertyAccess {
         object: Box<DopExpr>,
         property: DocumentRange,
-        span: DocumentRange,
+        range: DocumentRange,
     },
     StringLiteral {
         value: String,
-        span: DocumentRange,
+        range: DocumentRange,
     },
     BooleanLiteral {
         value: bool,
-        span: DocumentRange,
+        range: DocumentRange,
     },
     NumberLiteral {
         value: serde_json::Number,
-        span: DocumentRange,
+        range: DocumentRange,
     },
     /// An array literal, e.g. [1, 2, 3]
     ArrayLiteral {
         elements: Vec<DopExpr>,
-        span: DocumentRange,
+        range: DocumentRange,
     },
     ObjectLiteral {
         properties: Vec<(DocumentRange, DopExpr)>,
-        span: DocumentRange,
+        range: DocumentRange,
     },
     BinaryOp {
         left: Box<DopExpr>,
         operator: BinaryOp,
         right: Box<DopExpr>,
-        span: DocumentRange,
+        range: DocumentRange,
     },
     UnaryOp {
         operator: UnaryOp,
         operand: Box<DopExpr>,
-        span: DocumentRange,
+        range: DocumentRange,
     },
 }
 
-impl DopExpr {
-    /// Returns the span of this expression in the source code
-    pub fn span(&self) -> DocumentRange {
+impl Ranged for DopExpr {
+    fn range(&self) -> &DocumentRange {
         match self {
-            DopExpr::Variable { value, .. } => value.span().clone(),
-            DopExpr::PropertyAccess { span, .. } => span.clone(),
-            DopExpr::StringLiteral { span, .. } => span.clone(),
-            DopExpr::BooleanLiteral { span, .. } => span.clone(),
-            DopExpr::NumberLiteral { span, .. } => span.clone(),
-            DopExpr::ArrayLiteral { span, .. } => span.clone(),
-            DopExpr::ObjectLiteral { span, .. } => span.clone(),
-            DopExpr::BinaryOp { span, .. } => span.clone(),
-            DopExpr::UnaryOp { span, .. } => span.clone(),
+            DopExpr::Variable { value, .. } => value.range(),
+            DopExpr::PropertyAccess { range, .. }
+            | DopExpr::StringLiteral { range, .. }
+            | DopExpr::BooleanLiteral { range, .. }
+            | DopExpr::NumberLiteral { range, .. }
+            | DopExpr::ArrayLiteral { range, .. }
+            | DopExpr::ObjectLiteral { range, .. }
+            | DopExpr::BinaryOp { range, .. }
+            | DopExpr::UnaryOp { range, .. } => range,
         }
     }
 }

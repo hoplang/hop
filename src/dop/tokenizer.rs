@@ -156,21 +156,21 @@ impl Iterator for DopTokenizer {
                 '=' => {
                     let Some(end) = self.iter.next_if(|s| s.ch() == '=') else {
                         return Err(ParseError::ExpectedDoubleEqButGotSingleEq {
-                            span: start.clone(),
+                            range: start.clone(),
                         });
                     };
                     Ok((DopToken::Equal, start.to(end)))
                 }
                 '\'' => {
-                    let mut end_span = start.clone();
+                    let mut end_range = start.clone();
                     let mut result = String::new();
                     while let Some(s) = self.iter.next_if(|s| s.ch() != '\'') {
                         result.push(s.ch());
-                        end_span = s;
+                        end_range = s;
                     }
                     match self.iter.next() {
                         None => Err(ParseError::UnterminatedStringLiteral {
-                            span: start.to(end_span),
+                            range: start.to(end_range),
                         }),
                         Some(end) => Ok((DopToken::StringLiteral(result), start.to(end))),
                     }
@@ -205,11 +205,11 @@ impl Iterator for DopTokenizer {
                     match serde_json::Number::from_str(number_string.as_str()) {
                         Ok(n) => Ok((DopToken::NumberLiteral(n), number_string)),
                         Err(_) => Err(ParseError::InvalidNumberFormat {
-                            span: number_string,
+                            range: number_string,
                         }),
                     }
                 }
-                ch => Err(ParseError::UnexpectedCharacter { ch, span: start }),
+                ch => Err(ParseError::UnexpectedCharacter { ch, range: start }),
             }
         })
     }
@@ -227,16 +227,16 @@ mod tests {
         let mut annotations = Vec::new();
         for t in tokenizer {
             match t {
-                Ok((tok, span)) => {
+                Ok((tok, range)) => {
                     annotations.push(SimpleAnnotation {
                         message: format!("token: {}", tok),
-                        span,
+                        range,
                     });
                 }
                 Err(err) => {
                     annotations.push(SimpleAnnotation {
                         message: format!("error: {err}"),
-                        span: err.range().clone(),
+                        range: err.range().clone(),
                     });
                 }
             }

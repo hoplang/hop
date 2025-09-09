@@ -13,28 +13,28 @@ use crate::hop::parse_error::ParseError;
 #[derive(Debug)]
 pub enum Token {
     Doctype {
-        span: DocumentRange,
+        range: DocumentRange,
     },
     Comment {
-        span: DocumentRange,
+        range: DocumentRange,
     },
     Expression {
         expression: DocumentRange,
-        span: DocumentRange,
+        range: DocumentRange,
     },
     OpeningTag {
         tag_name: DocumentRange,
         attributes: Vec<Attribute>,
         expression: Option<DocumentRange>,
         self_closing: bool,
-        span: DocumentRange,
+        range: DocumentRange,
     },
     ClosingTag {
         tag_name: DocumentRange,
-        span: DocumentRange,
+        range: DocumentRange,
     },
     Text {
-        span: DocumentRange,
+        range: DocumentRange,
     },
 }
 
@@ -53,12 +53,12 @@ impl Token {
 impl Ranged for Token {
     fn range(&self) -> &DocumentRange {
         match self {
-            Token::Doctype { span } => span,
-            Token::Comment { span } => span,
-            Token::Expression { span, .. } => span,
-            Token::OpeningTag { span, .. } => span,
-            Token::ClosingTag { span, .. } => span,
-            Token::Text { span } => span,
+            Token::Doctype { range }
+            | Token::Comment { range }
+            | Token::Expression { range, .. }
+            | Token::OpeningTag { range, .. }
+            | Token::ClosingTag { range, .. }
+            | Token::Text { range } => range,
         }
     }
 }
@@ -66,7 +66,7 @@ impl Ranged for Token {
 impl Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Token::Text { span: value } => {
+            Token::Text { range: value } => {
                 write!(
                     f,
                     "Text [{} byte, {:#?}]",
@@ -161,10 +161,10 @@ impl Tokenizer {
                 Ok((DopToken::LeftBrace, _)) => {
                     open_braces += 1;
                 }
-                Ok((DopToken::RightBrace, span)) => {
+                Ok((DopToken::RightBrace, range)) => {
                     open_braces -= 1;
                     if open_braces == 0 {
-                        return Some(span);
+                        return Some(range);
                     }
                 }
                 _ => {}
@@ -208,7 +208,7 @@ impl Tokenizer {
                 Some(s) if s.ch() == '>' => {
                     if count >= 2 {
                         return Some(Token::Comment {
-                            span: left_angle_to_bang.to(s),
+                            range: left_angle_to_bang.to(s),
                         });
                     } else {
                         count = 0;
@@ -252,7 +252,7 @@ impl Tokenizer {
             return None;
         };
         Some(Token::Doctype {
-            span: left_angle_to_bang.to(right_angle),
+            range: left_angle_to_bang.to(right_angle),
         })
     }
 
@@ -312,7 +312,7 @@ impl Tokenizer {
             return Some(Attribute {
                 name: attr_name.clone(),
                 value: None,
-                span: attr_name,
+                range: attr_name,
             });
         };
 
@@ -344,7 +344,7 @@ impl Tokenizer {
         Some(Attribute {
             name: attr_name.clone(),
             value: attr_value,
-            span: attr_name.to(close_quote),
+            range: attr_name.to(close_quote),
         })
     }
 
@@ -355,8 +355,8 @@ impl Tokenizer {
     /// Expects that the iterator points to the initial '{'.
     ///
     /// Returns None if we reached EOF or if the expression was empty.
-    /// Returns Some((expr,span)) if we managed to parse the expression
-    /// where expr is the inner span for the expression and span is th
+    /// Returns Some((expr,range)) if we managed to parse the expression
+    /// where expr is the inner range for the expression and range is the
     /// outer (containing the braces).
     fn parse_expression(&mut self) -> Option<(DocumentRange, DocumentRange)> {
         // consume '{'
@@ -486,7 +486,7 @@ impl Tokenizer {
             tag_name,
             attributes,
             expression,
-            span: left_angle.to(right_angle),
+            range: left_angle.to(right_angle),
         })
     }
 
@@ -534,7 +534,7 @@ impl Tokenizer {
         };
         Some(Token::ClosingTag {
             tag_name,
-            span: left_angle.to(right_angle),
+            range: left_angle.to(right_angle),
         })
     }
 
@@ -578,7 +578,7 @@ impl Tokenizer {
         let mut raw_text: Option<DocumentRange> = None;
         loop {
             if self.iter.peek().is_none() || self.iter_peek_rawtext_closing_tag(&tag_name) {
-                return raw_text.map(|s| Token::Text { span: s });
+                return raw_text.map(|s| Token::Text { range: s });
             }
             if let Some(ch) = self.iter.next() {
                 raw_text = raw_text.into_iter().chain(Some(ch)).collect();
@@ -595,7 +595,7 @@ impl Tokenizer {
     ///
     fn parse_text_expression(&mut self) -> Option<Token> {
         self.parse_expression()
-            .map(|(expression, span)| Token::Expression { expression, span })
+            .map(|(expression, range)| Token::Expression { expression, range })
     }
 
     /// Parse a text token.
@@ -609,7 +609,7 @@ impl Tokenizer {
             panic!("Expected an initial char in parse_text but got None");
         };
         Some(Token::Text {
-            span: initial.extend(
+            range: initial.extend(
                 self.iter
                     .peeking_take_while(|s| s.ch() != '{' && s.ch() != '<'),
             ),
@@ -693,13 +693,13 @@ mod tests {
             if let Some(t) = token {
                 annotations.push(SimpleAnnotation {
                     message: t.to_string(),
-                    span: t.range().clone(),
+                    range: t.range().clone(),
                 });
             }
             for err in errors {
                 annotations.push(SimpleAnnotation {
                     message: err.to_string(),
-                    span: err.range().clone(),
+                    range: err.range().clone(),
                 });
             }
         }

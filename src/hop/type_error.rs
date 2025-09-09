@@ -15,18 +15,21 @@ pub enum TypeError {
     },
 
     #[error("Module {module} is not defined")]
-    ImportFromUndefinedModule { module: String, span: DocumentRange },
+    ImportFromUndefinedModule {
+        module: String,
+        range: DocumentRange,
+    },
 
     #[error("Unused variable {var_name}")]
     UnusedVariable { var_name: DocumentRange },
 
     #[error("Variable {var} is already defined")]
-    VariableIsAlreadyDefined { var: String, span: DocumentRange },
+    VariableIsAlreadyDefined { var: String, range: DocumentRange },
 
     #[error("Component {component} does not have a slot-default")]
     UndefinedSlot {
         component: String,
-        span: DocumentRange,
+        range: DocumentRange,
     },
 
     #[error(
@@ -36,71 +39,74 @@ pub enum TypeError {
         importer_module: String,
         imported_component: String,
         cycle_display: String,
-        span: DocumentRange,
+        range: DocumentRange,
     },
 
     #[error("Expected boolean condition, got {found}")]
-    ExpectedBooleanCondition { found: String, span: DocumentRange },
+    ExpectedBooleanCondition { found: String, range: DocumentRange },
 
     #[error("Missing required parameter '{param}'")]
-    MissingRequiredParameter { param: String, span: DocumentRange },
+    MissingRequiredParameter { param: String, range: DocumentRange },
 
     #[error("Component requires arguments: {args}")]
-    MissingArguments { args: String, span: DocumentRange },
+    MissingArguments { args: String, range: DocumentRange },
 
     #[error("Component does not accept arguments")]
-    UnexpectedArguments { span: DocumentRange },
+    UnexpectedArguments { range: DocumentRange },
 
     #[error("Unexpected argument '{arg}'")]
-    UnexpectedArgument { arg: String, span: DocumentRange },
+    UnexpectedArgument { arg: String, range: DocumentRange },
 
     #[error("Argument '{arg_name}' of type {found} is incompatible with expected type {expected}")]
     ArgumentIsIncompatible {
         expected: DopType,
         found: DopType,
         arg_name: DocumentRange,
-        expr_span: DocumentRange,
+        expr_range: DocumentRange,
     },
 
     #[error("Expected string attribute, got {found}")]
-    ExpectedStringAttribute { found: String, span: DocumentRange },
+    ExpectedStringAttribute { found: String, range: DocumentRange },
 
     #[error("Cannot iterate over an empty array with unknown element type")]
-    CannotIterateEmptyArray { span: DocumentRange },
+    CannotIterateEmptyArray { range: DocumentRange },
 
     #[error("Can not iterate over {typ}")]
-    CannotIterateOver { typ: String, span: DocumentRange },
+    CannotIterateOver { typ: String, range: DocumentRange },
 
     #[error("Expected string for text expression, got {found}")]
-    ExpectedStringExpression { found: DopType, span: DocumentRange },
+    ExpectedStringExpression {
+        found: DopType,
+        range: DocumentRange,
+    },
 
     #[error("Undefined variable: {name}")]
-    UndefinedVariable { name: String, span: DocumentRange },
+    UndefinedVariable { name: String, range: DocumentRange },
 
     #[error("Property {property} not found in object")]
     PropertyNotFoundInObject {
         property: String,
-        span: DocumentRange,
+        range: DocumentRange,
     },
 
     #[error("{typ} can not be used as an object")]
-    CannotUseAsObject { typ: String, span: DocumentRange },
+    CannotUseAsObject { typ: String, range: DocumentRange },
 
     #[error("Can not compare {left} to {right}")]
     CannotCompareTypes {
         left: String,
         right: String,
-        span: DocumentRange,
+        range: DocumentRange,
     },
 
     #[error("Negation operator can only be applied to boolean values")]
-    NegationRequiresBoolean { span: DocumentRange },
+    NegationRequiresBoolean { range: DocumentRange },
 
     #[error("Array elements must all have the same type, found {expected} and {found}")]
     ArrayTypeMismatch {
         expected: String,
         found: String,
-        span: DocumentRange,
+        range: DocumentRange,
     },
 }
 
@@ -109,7 +115,7 @@ impl TypeError {
         importer_module: &str,
         imported_component: &str,
         cycle: &[String],
-        span: DocumentRange,
+        range: DocumentRange,
     ) -> Self {
         let cycle_display = if let Some(first) = cycle.first() {
             format!("{} → {}", cycle.join(" → "), first)
@@ -121,48 +127,54 @@ impl TypeError {
             importer_module: importer_module.to_string(),
             imported_component: imported_component.to_string(),
             cycle_display,
-            span,
+            range,
         }
     }
 
-    pub fn missing_arguments(params: &BTreeMap<String, DopParameter>, span: DocumentRange) -> Self {
+    pub fn missing_arguments(
+        params: &BTreeMap<String, DopParameter>,
+        range: DocumentRange,
+    ) -> Self {
         let args = params
             .iter()
             .map(|(_, p)| p.var_name.as_str())
             .collect::<Vec<_>>()
             .join(", ");
-        TypeError::MissingArguments { args, span }
+        TypeError::MissingArguments { args, range }
     }
 }
 
 impl Ranged for TypeError {
     fn range(&self) -> &DocumentRange {
         match self {
-            TypeError::UndefinedComponent { tag_name } => tag_name,
-            TypeError::UndeclaredComponent { component_name, .. } => component_name,
-            TypeError::UnusedVariable { var_name } => var_name,
-            TypeError::ImportFromUndefinedModule { span, .. }
-            | TypeError::VariableIsAlreadyDefined { span, .. }
-            | TypeError::UndefinedSlot { span, .. }
-            | TypeError::ImportCycle { span, .. }
-            | TypeError::ExpectedBooleanCondition { span, .. }
-            | TypeError::MissingRequiredParameter { span, .. }
-            | TypeError::MissingArguments { span, .. }
-            | TypeError::UnexpectedArguments { span, .. }
-            | TypeError::UnexpectedArgument { span, .. }
-            | TypeError::ArgumentIsIncompatible {
-                expr_span: span, ..
+            TypeError::UndefinedComponent { tag_name: range }
+            | TypeError::UndeclaredComponent {
+                component_name: range,
+                ..
             }
-            | TypeError::ExpectedStringAttribute { span, .. }
-            | TypeError::CannotIterateEmptyArray { span, .. }
-            | TypeError::CannotIterateOver { span, .. }
-            | TypeError::ExpectedStringExpression { span, .. }
-            | TypeError::UndefinedVariable { span, .. }
-            | TypeError::PropertyNotFoundInObject { span, .. }
-            | TypeError::CannotUseAsObject { span, .. }
-            | TypeError::CannotCompareTypes { span, .. }
-            | TypeError::NegationRequiresBoolean { span, .. }
-            | TypeError::ArrayTypeMismatch { span, .. } => span,
+            | TypeError::UnusedVariable { var_name: range }
+            | TypeError::ImportFromUndefinedModule { range, .. }
+            | TypeError::VariableIsAlreadyDefined { range, .. }
+            | TypeError::UndefinedSlot { range, .. }
+            | TypeError::ImportCycle { range, .. }
+            | TypeError::ExpectedBooleanCondition { range, .. }
+            | TypeError::MissingRequiredParameter { range, .. }
+            | TypeError::MissingArguments { range, .. }
+            | TypeError::UnexpectedArguments { range, .. }
+            | TypeError::UnexpectedArgument { range, .. }
+            | TypeError::ArgumentIsIncompatible {
+                expr_range: range, ..
+            }
+            | TypeError::ExpectedStringAttribute { range, .. }
+            | TypeError::CannotIterateEmptyArray { range, .. }
+            | TypeError::CannotIterateOver { range, .. }
+            | TypeError::ExpectedStringExpression { range, .. }
+            | TypeError::UndefinedVariable { range, .. }
+            | TypeError::PropertyNotFoundInObject { range, .. }
+            | TypeError::CannotUseAsObject { range, .. }
+            | TypeError::CannotCompareTypes { range, .. }
+            | TypeError::NegationRequiresBoolean { range, .. }
+            | TypeError::ArrayTypeMismatch { range, .. } => range,
         }
     }
 }

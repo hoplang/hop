@@ -5,18 +5,18 @@ use thiserror::Error;
 #[derive(Error, Debug, Clone)]
 pub enum ParseError {
     #[error("Unexpected end of expression")]
-    UnexpectedEof { span: DocumentRange },
+    UnexpectedEof { range: DocumentRange },
 
     #[error("Unexpected end of property access")]
-    UnexpectedEndOfPropertyAccess { span: DocumentRange },
+    UnexpectedEndOfPropertyAccess { range: DocumentRange },
 
     #[error("Unterminated string literal")]
-    UnterminatedStringLiteral { span: DocumentRange },
+    UnterminatedStringLiteral { range: DocumentRange },
 
     #[error("Unmatched '{token}'")]
     UnmatchedToken {
         token: DopToken,
-        span: DocumentRange,
+        range: DocumentRange,
     },
 
     #[error(
@@ -28,38 +28,38 @@ pub enum ParseError {
     ExpectedTokenButGot {
         expected: DopToken,
         actual: DopToken,
-        span: DocumentRange,
+        range: DocumentRange,
     },
 
     #[error("Unexpected token '{token}'")]
     UnexpectedToken {
         token: DopToken,
-        span: DocumentRange,
+        range: DocumentRange,
     },
 
     #[error("Unexpected character: '{ch}'")]
-    UnexpectedCharacter { ch: char, span: DocumentRange },
+    UnexpectedCharacter { ch: char, range: DocumentRange },
 
     #[error("Expected variable name but got {actual}")]
     ExpectedVariableNameButGot {
         actual: DopToken,
-        span: DocumentRange,
+        range: DocumentRange,
     },
 
     #[error("Expected property name but got {actual}")]
     ExpectedPropertyNameButGot {
         actual: DopToken,
-        span: DocumentRange,
+        range: DocumentRange,
     },
 
     #[error("Expected identifier after '.'")]
-    ExpectedIdentifierAfterDot { span: DocumentRange },
+    ExpectedIdentifierAfterDot { range: DocumentRange },
 
     #[error("Duplicate argument '{name}'")]
     DuplicateArgument { name: DocumentRange },
 
     #[error("Expected '==' but got '='")]
-    ExpectedDoubleEqButGotSingleEq { span: DocumentRange },
+    ExpectedDoubleEqButGotSingleEq { range: DocumentRange },
 
     #[error("Duplicate parameter '{name}'")]
     DuplicateParameter { name: DocumentRange },
@@ -68,28 +68,28 @@ pub enum ParseError {
     DuplicateProperty { name: DocumentRange },
 
     #[error("Expected type name")]
-    ExpectedTypeName { span: DocumentRange },
+    ExpectedTypeName { range: DocumentRange },
 
     #[error("Invalid number format")]
-    InvalidNumberFormat { span: DocumentRange },
+    InvalidNumberFormat { range: DocumentRange },
 }
 
 impl Ranged for ParseError {
     fn range(&self) -> &DocumentRange {
         match self {
-            ParseError::UnexpectedEof { span, .. }
-            | ParseError::UnterminatedStringLiteral { span }
-            | ParseError::UnmatchedToken { span, .. }
-            | ParseError::UnexpectedCharacter { span, .. }
-            | ParseError::InvalidNumberFormat { span, .. }
-            | ParseError::ExpectedTokenButGot { span, .. }
-            | ParseError::ExpectedDoubleEqButGotSingleEq { span, .. }
-            | ParseError::UnexpectedToken { span, .. }
-            | ParseError::ExpectedVariableNameButGot { span, .. }
-            | ParseError::ExpectedPropertyNameButGot { span, .. }
-            | ParseError::ExpectedTypeName { span, .. }
-            | ParseError::UnexpectedEndOfPropertyAccess { span, .. }
-            | ParseError::ExpectedIdentifierAfterDot { span } => span,
+            ParseError::UnexpectedEof { range, .. }
+            | ParseError::UnterminatedStringLiteral { range }
+            | ParseError::UnmatchedToken { range, .. }
+            | ParseError::UnexpectedCharacter { range, .. }
+            | ParseError::InvalidNumberFormat { range, .. }
+            | ParseError::ExpectedTokenButGot { range, .. }
+            | ParseError::ExpectedDoubleEqButGotSingleEq { range, .. }
+            | ParseError::UnexpectedToken { range, .. }
+            | ParseError::ExpectedVariableNameButGot { range, .. }
+            | ParseError::ExpectedPropertyNameButGot { range, .. }
+            | ParseError::ExpectedTypeName { range, .. }
+            | ParseError::UnexpectedEndOfPropertyAccess { range, .. }
+            | ParseError::ExpectedIdentifierAfterDot { range } => range,
             ParseError::InvalidVariableName { name }
             | ParseError::DuplicateArgument { name }
             | ParseError::DuplicateParameter { name }

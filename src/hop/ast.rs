@@ -14,14 +14,14 @@ pub struct PresentAttribute {
 pub struct Attribute {
     pub name: DocumentRange,
     pub value: Option<DocumentRange>,
-    pub span: DocumentRange,
+    pub range: DocumentRange,
 }
 
 #[derive(Debug)]
 pub struct DopExprAttribute {
     pub name: DocumentRange,
     pub expression: DopExpr,
-    pub span: DocumentRange,
+    pub range: DocumentRange,
 }
 
 #[derive(Debug)]
@@ -98,7 +98,7 @@ impl HopAst {
     ///
     pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&HopNode> {
         for n in &self.renders {
-            if n.span.contains_position(position) {
+            if n.range.contains_position(position) {
                 for child in &n.children {
                     if let Some(node) = child.find_node_at_position(position) {
                         return Some(node);
@@ -108,7 +108,7 @@ impl HopAst {
             }
         }
         for n in &self.component_definitions {
-            if n.span.contains_position(position) {
+            if n.range.contains_position(position) {
                 for child in &n.children {
                     if let Some(node) = child.find_node_at_position(position) {
                         return Some(node);
@@ -126,7 +126,7 @@ impl HopAst {
 pub struct Import {
     pub component_attr: PresentAttribute,
     pub module_name: ModuleName,
-    pub from_attr_value_span: DocumentRange,
+    pub from_attr_value_range: DocumentRange,
 }
 
 impl Import {
@@ -147,13 +147,13 @@ impl Import {
 #[derive(Debug)]
 pub struct Render {
     pub file_attr: PresentAttribute,
-    pub span: DocumentRange,
+    pub range: DocumentRange,
     pub children: Vec<HopNode>,
 }
 
 impl Ranged for Render {
     fn range(&self) -> &DocumentRange {
-        &self.span
+        &self.range
     }
 }
 
@@ -164,7 +164,7 @@ pub struct ComponentDefinition {
     pub params: Option<(BTreeMap<String, DopParameter>, DocumentRange)>,
     pub as_attr: Option<PresentAttribute>,
     pub attributes: Vec<Attribute>,
-    pub span: DocumentRange,
+    pub range: DocumentRange,
     pub children: Vec<HopNode>,
     pub is_entrypoint: bool,
     pub has_slot: bool,
@@ -172,7 +172,7 @@ pub struct ComponentDefinition {
 
 impl Ranged for ComponentDefinition {
     fn range(&self) -> &DocumentRange {
-        &self.span
+        &self.range
     }
 }
 
@@ -187,14 +187,14 @@ pub enum HopNode {
     /// A Text node represents text in the document.
     /// E.g. <div>hello world</div>
     ///           ^^^^^^^^^^^
-    Text { span: DocumentRange },
+    Text { range: DocumentRange },
 
     /// A TextExpression represents an expression that occurs in a text position.
     /// E.g. <div>hello {world}</div>
     ///                 ^^^^^^^
     TextExpression {
         expression: DopExpr,
-        span: DocumentRange,
+        range: DocumentRange,
     },
 
     /// A ComponentReference represents a reference to a component.
@@ -209,7 +209,7 @@ pub enum HopNode {
         closing_tag_name: Option<DocumentRange>,
         args: Option<(BTreeMap<String, DopArgument>, DocumentRange)>,
         attributes: Vec<Attribute>,
-        span: DocumentRange,
+        range: DocumentRange,
         children: Vec<HopNode>,
     },
 
@@ -219,13 +219,13 @@ pub enum HopNode {
     /// <my-component>
     ///   <slot-default/>
     /// </my-component>
-    SlotDefinition { span: DocumentRange },
+    SlotDefinition { range: DocumentRange },
 
     /// An If node contains content that is only evaluated when its condition
     /// expression evaluates to true.
     If {
         condition: DopExpr,
-        span: DocumentRange,
+        range: DocumentRange,
         children: Vec<HopNode>,
     },
 
@@ -234,12 +234,12 @@ pub enum HopNode {
     For {
         var_name: DopVarName,
         array_expr: DopExpr,
-        span: DocumentRange,
+        range: DocumentRange,
         children: Vec<HopNode>,
     },
 
     /// A Doctype node represents a doctype, e.g. a <!DOCTYPE html>
-    Doctype { span: DocumentRange },
+    Doctype { range: DocumentRange },
 
     /// An HTML node represents a plain HTML node.
     /// E.g. <div>...</div>
@@ -248,13 +248,13 @@ pub enum HopNode {
         tag_name: DocumentRange,
         closing_tag_name: Option<DocumentRange>,
         attributes: Vec<Attribute>,
-        span: DocumentRange,
+        range: DocumentRange,
         children: Vec<HopNode>,
         set_attributes: Vec<DopExprAttribute>,
     },
     XExec {
         cmd_attr: PresentAttribute,
-        span: DocumentRange,
+        range: DocumentRange,
         children: Vec<HopNode>,
     },
 
@@ -264,7 +264,7 @@ pub enum HopNode {
     /// The children vec should always contain a single Text node.
     XRaw {
         trim: bool,
-        span: DocumentRange,
+        range: DocumentRange,
         children: Vec<HopNode>,
     },
 
@@ -274,7 +274,7 @@ pub enum HopNode {
     /// We use Error nodes to be able to construct the child nodes of the node that could not be
     /// constructed. This is useful for e.g. go-to-definition in the language server.
     Error {
-        span: DocumentRange,
+        range: DocumentRange,
         children: Vec<HopNode>,
     },
 }
@@ -313,7 +313,7 @@ impl HopNode {
         Some(self)
     }
 
-    /// Get the span for the opening tag of a node.
+    /// Get the range for the opening tag of a node.
     ///
     /// Example:
     /// <div>hello world</div>
@@ -326,7 +326,7 @@ impl HopNode {
         }
     }
 
-    /// Get the span for the closing tag of a node.
+    /// Get the range for the closing tag of a node.
     ///
     /// Example:
     /// <div>hello world</div>
@@ -356,17 +356,17 @@ impl HopNode {
 impl Ranged for HopNode {
     fn range(&self) -> &DocumentRange {
         match self {
-            HopNode::Text { span, .. } => span,
-            HopNode::TextExpression { span, .. } => span,
-            HopNode::ComponentReference { span, .. } => span,
-            HopNode::SlotDefinition { span, .. } => span,
-            HopNode::If { span, .. } => span,
-            HopNode::For { span, .. } => span,
-            HopNode::Html { span, .. } => span,
-            HopNode::XExec { span, .. } => span,
-            HopNode::XRaw { span, .. } => span,
-            HopNode::Error { span, .. } => span,
-            HopNode::Doctype { span, .. } => span,
+            HopNode::Text { range, .. }
+            | HopNode::TextExpression { range, .. }
+            | HopNode::ComponentReference { range, .. }
+            | HopNode::SlotDefinition { range, .. }
+            | HopNode::If { range, .. }
+            | HopNode::For { range, .. }
+            | HopNode::Html { range, .. }
+            | HopNode::XExec { range, .. }
+            | HopNode::XRaw { range, .. }
+            | HopNode::Error { range, .. }
+            | HopNode::Doctype { range, .. } => range,
         }
     }
 }
@@ -425,7 +425,7 @@ mod tests {
             annotator.annotate(
                 None,
                 [SimpleAnnotation {
-                    span: node.range().clone(),
+                    range: node.range().clone(),
                     message: "range".to_string(),
                 }],
             )

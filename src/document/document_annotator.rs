@@ -8,14 +8,14 @@ use super::document_cursor::{DocumentCursor, DocumentRange, Ranged};
 /// Simple annotation implementation for basic use cases
 #[derive(Clone, Debug)]
 pub struct SimpleAnnotation {
-    pub span: DocumentRange,
+    pub range: DocumentRange,
     pub message: String,
 }
 
 impl PartialEq for SimpleAnnotation {
     fn eq(&self, other: &Self) -> bool {
-        self.span.start() == other.span.start()
-            && self.span.end() == other.span.end()
+        self.range.start() == other.range.start()
+            && self.range.end() == other.range.end()
             && self.message == other.message
     }
 }
@@ -30,17 +30,17 @@ impl PartialOrd for SimpleAnnotation {
 
 impl Ord for SimpleAnnotation {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.span
+        self.range
             .start()
-            .cmp(&other.span.start())
-            .then_with(|| self.span.end().cmp(&other.span.end()))
+            .cmp(&other.range.start())
+            .then_with(|| self.range.end().cmp(&other.range.end()))
             .then_with(|| self.message.cmp(&other.message))
     }
 }
 
 impl Ranged for SimpleAnnotation {
     fn range(&self) -> &DocumentRange {
-        &self.span
+        &self.range
     }
 }
 
@@ -120,7 +120,7 @@ impl DocumentAnnotator {
     {
         let annotations: Vec<A> = annotations.into_iter().collect();
 
-        // Extract source from the first annotation's span
+        // Extract source from the first annotation's range
         let source = match annotations.first() {
             Some(first) => first.range().full_source(),
             None => return String::new(),
@@ -136,7 +136,7 @@ impl DocumentAnnotator {
 
         let mut output = String::new();
         let lines: Vec<Option<DocumentRange>> = DocumentCursor::new(source.to_string())
-            .chunk_by(|span| span.start_utf32().line())
+            .chunk_by(|range| range.start_utf32().line())
             .into_iter()
             .map(|(_, group)| group.filter(|s| s.ch() != '\n').collect())
             .collect();
@@ -179,12 +179,12 @@ impl DocumentAnnotator {
         &self,
         output: &mut String,
         lines: &[Option<DocumentRange>],
-        span: &DocumentRange,
+        range: &DocumentRange,
     ) {
         let max_line_col_width = lines.len().to_string().len();
 
-        let first_line = span.start_utf32().line().saturating_sub(self.lines_before);
-        let last_line = cmp::min(lines.len() - 1, span.end_utf32().line() + self.lines_after);
+        let first_line = range.start_utf32().line().saturating_sub(self.lines_before);
+        let last_line = cmp::min(lines.len() - 1, range.end_utf32().line() + self.lines_after);
 
         for (i, line) in lines.iter().enumerate() {
             if i < first_line || i > last_line {
@@ -201,22 +201,22 @@ impl DocumentAnnotator {
             output.push('\n');
             // Write annotation line
             if let Some(line) = line {
-                if let Some(intersection) = line.intersection(span) {
+                if let Some(intersection) = line.intersection(range) {
                     let mut has_written_annotation = false;
                     if self.show_line_numbers {
                         output.push_str(&format!("{:width$} | ", "", width = max_line_col_width));
                     }
-                    for span in line.cursor() {
-                        if intersection.contains(&span) {
+                    for range in line.cursor() {
+                        if intersection.contains(&range) {
                             has_written_annotation = true;
                             output.push_str(
                                 &self
                                     .underline_char
                                     .to_string()
-                                    .repeat(self.char_display_width(span.ch())),
+                                    .repeat(self.char_display_width(range.ch())),
                             );
                         } else if !has_written_annotation {
-                            output.push_str(&" ".repeat(self.char_display_width(span.ch())));
+                            output.push_str(&" ".repeat(self.char_display_width(range.ch())));
                         }
                     }
                     output.push('\n');
@@ -256,7 +256,7 @@ mod tests {
         predicate: impl Fn(char) -> bool,
     ) -> Vec<DocumentRange> {
         DocumentCursor::new(source.to_string())
-            .chunk_by(|span| predicate(span.ch()))
+            .chunk_by(|range| predicate(range.ch()))
             .into_iter()
             .filter_map(
                 |(is_separator, group)| {

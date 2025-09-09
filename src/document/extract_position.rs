@@ -13,16 +13,16 @@ use super::{DocumentPosition, document_cursor::DocumentCursor};
 /// on the above line.
 pub fn extract_position(input: &str) -> Option<(String, DocumentPosition)> {
     let markers = DocumentCursor::new(input.to_string())
-        .filter(|span| span.ch() == '^')
-        .map(|span| {
+        .filter(|range| range.ch() == '^')
+        .map(|range| {
             // Check if marker is on the first line (line 0)
-            if span.start_utf32().line() == 0 {
+            if range.start_utf32().line() == 0 {
                 panic!("Marker does not point to a valid position");
             }
             // Get position at line above
             DocumentPosition::Utf32 {
-                line: span.start_utf32().line() - 1,
-                column: span.start_utf32().column(),
+                line: range.start_utf32().line() - 1,
+                column: range.start_utf32().column(),
             }
         })
         .collect::<Vec<_>>();
@@ -32,7 +32,7 @@ pub fn extract_position(input: &str) -> Option<(String, DocumentPosition)> {
     );
     markers.first().map(|marker| {
         let char_starts = DocumentCursor::new(input.to_string())
-            .map(|span| span.start_utf32())
+            .map(|range| range.start_utf32())
             .collect::<HashSet<_>>();
         assert!(
             char_starts.contains(marker),

@@ -102,7 +102,7 @@ pub fn parse(
                             imports.push(Import {
                                 component_attr: PresentAttribute { value: cmp_attr },
                                 module_name: module_path.clone(),
-                                from_attr_value_span: from_attr,
+                                from_attr_value_range: from_attr,
                             });
                         }
                         Err(e) => {
@@ -135,7 +135,7 @@ pub fn parse(
 
                     renders.push(Render {
                         file_attr: PresentAttribute { value: file_attr },
-                        span: tree.span.clone(),
+                        range: tree.range.clone(),
                         children,
                     });
                 }
@@ -164,10 +164,10 @@ pub fn parse(
                     let mut has_slot = false;
                     for child in &children {
                         for node in child.iter_depth_first() {
-                            if let HopNode::SlotDefinition { span, .. } = node {
+                            if let HopNode::SlotDefinition { range, .. } = node {
                                 if has_slot {
                                     errors.push(ParseError::SlotIsAlreadyDefined {
-                                        range: span.clone(),
+                                        range: range.clone(),
                                     });
                                 }
                                 has_slot = true;
@@ -213,7 +213,7 @@ pub fn parse(
                         is_entrypoint,
                         as_attr: as_attr.map(|v| PresentAttribute { value: v }),
                         attributes: unhandled_attributes,
-                        span: tree.span.clone(),
+                        range: tree.range.clone(),
                         children,
                         has_slot,
                     });
@@ -259,19 +259,21 @@ fn construct_node(
     let t = tree.token;
 
     match t {
-        Token::Doctype { span } => HopNode::Doctype { span: span.clone() },
-        Token::Text { span: value, .. } => HopNode::Text { span: value },
+        Token::Doctype { range } => HopNode::Doctype {
+            range: range.clone(),
+        },
+        Token::Text { range: value, .. } => HopNode::Text { range: value },
         Token::Expression {
             expression: expr, ..
         } => match DopParser::from(expr.clone()).parse_expr() {
             Ok(expression) => HopNode::TextExpression {
                 expression,
-                span: tree.span.clone(),
+                range: tree.range.clone(),
             },
             Err(err) => {
                 errors.push(ParseError::new(err.to_string(), err.range().clone()));
                 HopNode::Error {
-                    span: tree.span.clone(),
+                    range: tree.range.clone(),
                     children: vec![],
                 }
             }
@@ -280,7 +282,7 @@ fn construct_node(
             tag_name,
             expression,
             attributes,
-            span: opening_tag_span,
+            range: opening_tag_range,
             ..
         } => {
             match tag_name.as_str() {
@@ -289,13 +291,13 @@ fn construct_node(
                     Some(expr) => match DopParser::from(expr.clone()).parse_expr() {
                         Ok(condition) => HopNode::If {
                             condition,
-                            span: tree.span.clone(),
+                            range: tree.range.clone(),
                             children,
                         },
                         Err(err) => {
                             errors.push(ParseError::new(err.to_string(), err.range().clone()));
                             HopNode::Error {
-                                span: tree.span.clone(),
+                                range: tree.range.clone(),
                                 children,
                             }
                         }
@@ -303,10 +305,10 @@ fn construct_node(
                     None => {
                         errors.push(ParseError::new(
                             "Missing expression in <if> tag".to_string(),
-                            opening_tag_span.clone(),
+                            opening_tag_range.clone(),
                         ));
                         HopNode::Error {
-                            span: tree.span.clone(),
+                            range: tree.range.clone(),
                             children,
                         }
                     }
@@ -317,13 +319,13 @@ fn construct_node(
                         Ok((var_name, array_expr)) => HopNode::For {
                             var_name,
                             array_expr,
-                            span: tree.span.clone(),
+                            range: tree.range.clone(),
                             children,
                         },
                         Err(err) => {
                             errors.push(ParseError::new(err.to_string(), err.range().clone()));
                             HopNode::Error {
-                                span: tree.span.clone(),
+                                range: tree.range.clone(),
                                 children,
                             }
                         }
@@ -331,16 +333,16 @@ fn construct_node(
                     None => {
                         errors.push(ParseError::new(
                             "Missing loop generator expression in <for> tag".to_string(),
-                            opening_tag_span.clone(),
+                            opening_tag_range.clone(),
                         ));
                         HopNode::Error {
-                            span: tree.span.clone(),
+                            range: tree.range.clone(),
                             children,
                         }
                     }
                 },
                 "slot-default" => HopNode::SlotDefinition {
-                    span: tree.span.clone(),
+                    range: tree.range.clone(),
                 },
                 name if name.starts_with("hop-") => match tag_name.as_str() {
                     "hop-x-exec" => {
@@ -358,7 +360,7 @@ fn construct_node(
                         match cmd_attr.and_then(|attr| attr.value) {
                             Some(cmd_attr) => HopNode::XExec {
                                 cmd_attr: PresentAttribute { value: cmd_attr },
-                                span: tree.span.clone(),
+                                range: tree.range.clone(),
                                 children,
                             },
                             None => {
@@ -368,7 +370,7 @@ fn construct_node(
                                     range: tag_name.clone(),
                                 });
                                 HopNode::Error {
-                                    span: tree.span.clone(),
+                                    range: tree.range.clone(),
                                     children,
                                 }
                             }
@@ -376,7 +378,7 @@ fn construct_node(
                     }
                     "hop-x-raw" => HopNode::XRaw {
                         trim: attributes.iter().any(|attr| attr.name.as_str() == "trim"),
-                        span: tree.span.clone(),
+                        range: tree.range.clone(),
                         children,
                     },
                     _ => {
@@ -385,7 +387,7 @@ fn construct_node(
                             range: tag_name.clone(),
                         });
                         HopNode::Error {
-                            span: tree.span.clone(),
+                            range: tree.range.clone(),
                             children: vec![],
                         }
                     }
@@ -403,7 +405,7 @@ fn construct_node(
                             Err(err) => {
                                 errors.push(ParseError::new(err.to_string(), err.range().clone()));
                                 return HopNode::Error {
-                                    span: tree.span.clone(),
+                                    range: tree.range.clone(),
                                     children: vec![],
                                 };
                             }
@@ -424,7 +426,7 @@ fn construct_node(
                         definition_module,
                         args,
                         attributes,
-                        span: tree.span.clone(),
+                        range: tree.range.clone(),
                         children,
                     }
                 }
@@ -436,7 +438,7 @@ fn construct_node(
                             let attr_val = match &attr.value {
                                 None => {
                                     errors.push(ParseError::MissingAttributeValue {
-                                        range: attr.span.clone(),
+                                        range: attr.range.clone(),
                                     });
                                     continue;
                                 }
@@ -446,7 +448,7 @@ fn construct_node(
                                 Ok(expression) => set_attributes.push(DopExprAttribute {
                                     name: attr.name.clone(),
                                     expression,
-                                    span: attr.span.clone(),
+                                    range: attr.range.clone(),
                                 }),
                                 Err(err) => {
                                     errors.push(ParseError::new(
@@ -462,7 +464,7 @@ fn construct_node(
                         tag_name,
                         closing_tag_name: tree.closing_tag_name,
                         attributes: attributes.clone(),
-                        span: tree.span.clone(),
+                        range: tree.range.clone(),
                         children,
                         set_attributes,
                     }

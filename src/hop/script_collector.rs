@@ -36,7 +36,7 @@ impl ScriptCollector {
                         );
 
                         let script_content = match &children[0] {
-                            HopNode::Text { span: value, .. } => value,
+                            HopNode::Text { range: value, .. } => value,
                             _ => panic!("Script tag child should be a text node"),
                         };
 

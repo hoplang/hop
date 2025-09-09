@@ -21,7 +21,7 @@ impl DocumentCursor {
             source: Arc::new(DocumentInfo::new(source)),
         }
     }
-    pub fn span(&self) -> DocumentRange {
+    pub fn range(&self) -> DocumentRange {
         DocumentRange {
             source: self.source.clone(),
             start: self.offset,
@@ -59,19 +59,19 @@ impl Iterator for DocumentCursor {
 pub struct DocumentRange {
     /// The source info containing the document text and line starts.
     source: Arc<DocumentInfo>,
-    /// the start byte offset for this string span in the document (inclusive).
+    /// the start byte offset for this range in the document (inclusive).
     start: usize,
-    /// the end byte offset for this string span in the document (exclusive).
+    /// the end byte offset for this range in the document (exclusive).
     end: usize,
 }
 
 impl DocumentRange {
-    /// Get the first char from the string span.
+    /// Get the first char from the range.
     pub fn ch(&self) -> char {
         self.source.text[self.start..].chars().next().unwrap()
     }
 
-    /// Extend a string span to encompass another string span that occurs
+    /// Extend a range to encompass another range that occurs
     /// later in the document.
     pub fn to(self, other: DocumentRange) -> Self {
         debug_assert!(other.start > self.start);
@@ -91,7 +91,7 @@ impl DocumentRange {
     where
         I: IntoIterator<Item = DocumentRange>,
     {
-        iter.into_iter().fold(self, |acc, span| acc.to(span))
+        iter.into_iter().fold(self, |acc, range| acc.to(range))
     }
 
     /// Get the underlying string slice for this document range.
@@ -181,7 +181,7 @@ impl DocumentRange {
 /// The document ranges must occur sequentially in the document.
 impl FromIterator<DocumentRange> for Option<DocumentRange> {
     fn from_iter<I: IntoIterator<Item = DocumentRange>>(iter: I) -> Self {
-        iter.into_iter().reduce(|acc, span| acc.to(span))
+        iter.into_iter().reduce(|acc, range| acc.to(range))
     }
 }
 
@@ -222,36 +222,36 @@ mod tests {
     fn test_string_cursor_single_line() {
         let mut cursor = DocumentCursor::new("abc".to_string());
 
-        let span1 = cursor.next().unwrap();
-        assert_eq!(span1.ch(), 'a');
+        let range1 = cursor.next().unwrap();
+        assert_eq!(range1.ch(), 'a');
         assert_eq!(
-            span1.start_utf32(),
+            range1.start_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 0 }
         );
         assert_eq!(
-            span1.end_utf32(),
+            range1.end_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 1 }
         );
 
-        let span2 = cursor.next().unwrap();
-        assert_eq!(span2.ch(), 'b');
+        let range2 = cursor.next().unwrap();
+        assert_eq!(range2.ch(), 'b');
         assert_eq!(
-            span2.start_utf32(),
+            range2.start_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 1 }
         );
         assert_eq!(
-            span2.end_utf32(),
+            range2.end_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 2 }
         );
 
-        let span3 = cursor.next().unwrap();
-        assert_eq!(span3.ch(), 'c');
+        let range3 = cursor.next().unwrap();
+        assert_eq!(range3.ch(), 'c');
         assert_eq!(
-            span3.start_utf32(),
+            range3.start_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 2 }
         );
         assert_eq!(
-            span3.end_utf32(),
+            range3.end_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 3 }
         );
 
@@ -262,58 +262,58 @@ mod tests {
     fn test_string_cursor_multiline() {
         let mut cursor = DocumentCursor::new("a\nb\nc".to_string());
 
-        let span1 = cursor.next().unwrap();
-        assert_eq!(span1.ch(), 'a');
+        let range1 = cursor.next().unwrap();
+        assert_eq!(range1.ch(), 'a');
         assert_eq!(
-            span1.start_utf32(),
+            range1.start_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 0 }
         );
         assert_eq!(
-            span1.end_utf32(),
+            range1.end_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 1 }
         );
 
-        let span2 = cursor.next().unwrap();
-        assert_eq!(span2.ch(), '\n');
+        let range2 = cursor.next().unwrap();
+        assert_eq!(range2.ch(), '\n');
         assert_eq!(
-            span2.start_utf32(),
+            range2.start_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 1 }
         );
         assert_eq!(
-            span2.end_utf32(),
+            range2.end_utf32(),
             DocumentPosition::Utf32 { line: 1, column: 0 }
         );
 
-        let span3 = cursor.next().unwrap();
-        assert_eq!(span3.ch(), 'b');
+        let range3 = cursor.next().unwrap();
+        assert_eq!(range3.ch(), 'b');
         assert_eq!(
-            span3.start_utf32(),
+            range3.start_utf32(),
             DocumentPosition::Utf32 { line: 1, column: 0 }
         );
         assert_eq!(
-            span3.end_utf32(),
+            range3.end_utf32(),
             DocumentPosition::Utf32 { line: 1, column: 1 }
         );
 
-        let span4 = cursor.next().unwrap();
-        assert_eq!(span4.ch(), '\n');
+        let range4 = cursor.next().unwrap();
+        assert_eq!(range4.ch(), '\n');
         assert_eq!(
-            span4.start_utf32(),
+            range4.start_utf32(),
             DocumentPosition::Utf32 { line: 1, column: 1 }
         );
         assert_eq!(
-            span4.end_utf32(),
+            range4.end_utf32(),
             DocumentPosition::Utf32 { line: 2, column: 0 }
         );
 
-        let span5 = cursor.next().unwrap();
-        assert_eq!(span5.ch(), 'c');
+        let range5 = cursor.next().unwrap();
+        assert_eq!(range5.ch(), 'c');
         assert_eq!(
-            span5.start_utf32(),
+            range5.start_utf32(),
             DocumentPosition::Utf32 { line: 2, column: 0 }
         );
         assert_eq!(
-            span5.end_utf32(),
+            range5.end_utf32(),
             DocumentPosition::Utf32 { line: 2, column: 1 }
         );
 
@@ -321,13 +321,13 @@ mod tests {
     }
 
     #[test]
-    fn test_string_span_extend() {
+    fn test_string_range_extend() {
         let mut cursor = DocumentCursor::new("abc".to_string());
-        let span1 = cursor.next().unwrap();
-        let _span2 = cursor.next().unwrap();
-        let span3 = cursor.next().unwrap();
+        let range1 = cursor.next().unwrap();
+        let _range2 = cursor.next().unwrap();
+        let range3 = cursor.next().unwrap();
 
-        let extended = span1.clone().to(span3);
+        let extended = range1.clone().to(range3);
         assert_eq!(extended.ch(), 'a');
         assert_eq!(extended.to_string(), "abc");
         assert_eq!(
@@ -341,17 +341,17 @@ mod tests {
     }
 
     #[test]
-    fn test_string_span_to_string() {
+    fn test_string_range_to_string() {
         let mut cursor = DocumentCursor::new("hello world".to_string());
-        let spans: Vec<_> = cursor.by_ref().take(5).collect();
+        let ranges: Vec<_> = cursor.by_ref().take(5).collect();
 
-        assert_eq!(spans[0].to_string(), "h");
-        assert_eq!(spans[1].to_string(), "e");
-        assert_eq!(spans[2].to_string(), "l");
-        assert_eq!(spans[3].to_string(), "l");
-        assert_eq!(spans[4].to_string(), "o");
+        assert_eq!(ranges[0].to_string(), "h");
+        assert_eq!(ranges[1].to_string(), "e");
+        assert_eq!(ranges[2].to_string(), "l");
+        assert_eq!(ranges[3].to_string(), "l");
+        assert_eq!(ranges[4].to_string(), "o");
 
-        let extended = spans[0].clone().to(spans[4].clone());
+        let extended = ranges[0].clone().to(ranges[4].clone());
         assert_eq!(extended.to_string(), "hello");
     }
 
@@ -366,30 +366,30 @@ mod tests {
         let cursor1 = DocumentCursor::new("test".to_string());
         let mut cursor2 = cursor1.clone();
 
-        let span = cursor2.next().unwrap();
-        assert_eq!(span.ch(), 't');
+        let range = cursor2.next().unwrap();
+        assert_eq!(range.ch(), 't');
     }
 
     #[test]
-    fn test_collect_string_spans() {
+    fn test_collect_string_ranges() {
         let result: Option<DocumentRange> = DocumentCursor::new("   hello".to_string())
             .take_while(|s| s.ch() == ' ')
             .collect();
 
-        let span = result.unwrap();
-        assert_eq!(span.as_str(), "   ");
+        let range = result.unwrap();
+        assert_eq!(range.as_str(), "   ");
         assert_eq!(
-            span.start_utf32(),
+            range.start_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 0 }
         );
         assert_eq!(
-            span.end_utf32(),
+            range.end_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 3 }
         );
     }
 
     #[test]
-    fn test_collect_empty_spans() {
+    fn test_collect_empty_ranges() {
         let result: Option<DocumentRange> = DocumentCursor::new("hello".to_string())
             .take_while(|s| s.ch() == ' ')
             .collect();
@@ -398,19 +398,19 @@ mod tests {
     }
 
     #[test]
-    fn test_collect_multiline_spans() {
+    fn test_collect_multiline_ranges() {
         let result: Option<DocumentRange> = DocumentCursor::new("aaa\nbbb".to_string())
             .take_while(|s| s.ch() == 'a')
             .collect();
 
-        let span = result.unwrap();
-        assert_eq!(span.as_str(), "aaa");
+        let range = result.unwrap();
+        assert_eq!(range.as_str(), "aaa");
         assert_eq!(
-            span.start_utf32(),
+            range.start_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 0 }
         );
         assert_eq!(
-            span.end_utf32(),
+            range.end_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 3 }
         );
     }
@@ -422,14 +422,14 @@ mod tests {
             .take_while(|s| s.ch().is_alphabetic())
             .collect();
 
-        let span = result.unwrap();
-        assert_eq!(span.as_str(), "hello");
+        let range = result.unwrap();
+        assert_eq!(range.as_str(), "hello");
         assert_eq!(
-            span.start_utf32(),
+            range.start_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 3 }
         );
         assert_eq!(
-            span.end_utf32(),
+            range.end_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 8 }
         );
     }
@@ -441,36 +441,36 @@ mod tests {
         // UTF-16 units: a(1) €(1) b(1) = positions 0,1,2,3
         let mut cursor = DocumentCursor::new("a\u{20AC}b".to_string());
 
-        let span1 = cursor.next().unwrap();
-        assert_eq!(span1.ch(), 'a');
+        let range1 = cursor.next().unwrap();
+        assert_eq!(range1.ch(), 'a');
         assert_eq!(
-            span1.start_utf16(),
+            range1.start_utf16(),
             DocumentPosition::Utf16 { line: 0, column: 0 }
         );
         assert_eq!(
-            span1.end_utf16(),
+            range1.end_utf16(),
             DocumentPosition::Utf16 { line: 0, column: 1 }
         );
 
-        let span2 = cursor.next().unwrap();
-        assert_eq!(span2.ch(), '\u{20AC}');
+        let range2 = cursor.next().unwrap();
+        assert_eq!(range2.ch(), '\u{20AC}');
         assert_eq!(
-            span2.start_utf16(),
+            range2.start_utf16(),
             DocumentPosition::Utf16 { line: 0, column: 1 }
         );
         assert_eq!(
-            span2.end_utf16(),
+            range2.end_utf16(),
             DocumentPosition::Utf16 { line: 0, column: 2 }
         ); // Euro sign is 1 code unit in UTF-16
 
-        let span3 = cursor.next().unwrap();
-        assert_eq!(span3.ch(), 'b');
+        let range3 = cursor.next().unwrap();
+        assert_eq!(range3.ch(), 'b');
         assert_eq!(
-            span3.start_utf16(),
+            range3.start_utf16(),
             DocumentPosition::Utf16 { line: 0, column: 2 }
         );
         assert_eq!(
-            span3.end_utf16(),
+            range3.end_utf16(),
             DocumentPosition::Utf16 { line: 0, column: 3 }
         );
     }
@@ -485,58 +485,58 @@ mod tests {
         // Line 2: c(1)
         let mut cursor = DocumentCursor::new("\u{20AC}\n\u{1F3A8}\nc".to_string());
 
-        let span1 = cursor.next().unwrap();
-        assert_eq!(span1.ch(), '\u{20AC}');
+        let range1 = cursor.next().unwrap();
+        assert_eq!(range1.ch(), '\u{20AC}');
         assert_eq!(
-            span1.start_utf16(),
+            range1.start_utf16(),
             DocumentPosition::Utf16 { line: 0, column: 0 }
         );
         assert_eq!(
-            span1.end_utf16(),
+            range1.end_utf16(),
             DocumentPosition::Utf16 { line: 0, column: 1 }
         );
 
-        let span2 = cursor.next().unwrap();
-        assert_eq!(span2.ch(), '\n');
+        let range2 = cursor.next().unwrap();
+        assert_eq!(range2.ch(), '\n');
         assert_eq!(
-            span2.start_utf16(),
+            range2.start_utf16(),
             DocumentPosition::Utf16 { line: 0, column: 1 }
         );
         assert_eq!(
-            span2.end_utf16(),
+            range2.end_utf16(),
             DocumentPosition::Utf16 { line: 1, column: 0 }
         );
 
-        let span3 = cursor.next().unwrap();
-        assert_eq!(span3.ch(), '\u{1F3A8}');
+        let range3 = cursor.next().unwrap();
+        assert_eq!(range3.ch(), '\u{1F3A8}');
         assert_eq!(
-            span3.start_utf16(),
+            range3.start_utf16(),
             DocumentPosition::Utf16 { line: 1, column: 0 }
         );
         assert_eq!(
-            span3.end_utf16(),
+            range3.end_utf16(),
             DocumentPosition::Utf16 { line: 1, column: 2 }
         ); // Emoji is 2 code units in UTF-16
 
-        let span4 = cursor.next().unwrap();
-        assert_eq!(span4.ch(), '\n');
+        let range4 = cursor.next().unwrap();
+        assert_eq!(range4.ch(), '\n');
         assert_eq!(
-            span4.start_utf16(),
+            range4.start_utf16(),
             DocumentPosition::Utf16 { line: 1, column: 2 }
         );
         assert_eq!(
-            span4.end_utf16(),
+            range4.end_utf16(),
             DocumentPosition::Utf16 { line: 2, column: 0 }
         );
 
-        let span5 = cursor.next().unwrap();
-        assert_eq!(span5.ch(), 'c');
+        let range5 = cursor.next().unwrap();
+        assert_eq!(range5.ch(), 'c');
         assert_eq!(
-            span5.start_utf16(),
+            range5.start_utf16(),
             DocumentPosition::Utf16 { line: 2, column: 0 }
         );
         assert_eq!(
-            span5.end_utf16(),
+            range5.end_utf16(),
             DocumentPosition::Utf16 { line: 2, column: 1 }
         );
     }
@@ -545,16 +545,16 @@ mod tests {
     fn test_contains_position_utf16() {
         // "hello\nworld" - ASCII text for simple position testing
         let cursor = DocumentCursor::new("hello\nworld".to_string());
-        let spans: Vec<_> = cursor.collect();
+        let ranges: Vec<_> = cursor.collect();
 
-        // "hello" spans
-        let hello_span = spans[0].clone().to(spans[4].clone());
+        // "hello" ranges
+        let hello_range = ranges[0].clone().to(ranges[4].clone());
 
         // Test UTF-16 position containment
-        assert!(hello_span.contains_position(DocumentPosition::Utf16 { line: 0, column: 0 }));
-        assert!(hello_span.contains_position(DocumentPosition::Utf16 { line: 0, column: 4 }));
-        assert!(!hello_span.contains_position(DocumentPosition::Utf16 { line: 0, column: 5 }));
-        assert!(!hello_span.contains_position(DocumentPosition::Utf16 { line: 1, column: 0 }));
+        assert!(hello_range.contains_position(DocumentPosition::Utf16 { line: 0, column: 0 }));
+        assert!(hello_range.contains_position(DocumentPosition::Utf16 { line: 0, column: 4 }));
+        assert!(!hello_range.contains_position(DocumentPosition::Utf16 { line: 0, column: 5 }));
+        assert!(!hello_range.contains_position(DocumentPosition::Utf16 { line: 1, column: 0 }));
     }
 
     #[test]
@@ -566,58 +566,58 @@ mod tests {
         // UTF-32: a(1) €(1) b(1) 🎨(1) c(1) = character positions 0,1,2,3,4,5
         let mut cursor = DocumentCursor::new("a\u{20AC}b\u{1F3A8}c".to_string());
 
-        let span1 = cursor.next().unwrap();
-        assert_eq!(span1.ch(), 'a');
+        let range1 = cursor.next().unwrap();
+        assert_eq!(range1.ch(), 'a');
         assert_eq!(
-            span1.start_utf32(),
+            range1.start_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 0 }
         );
         assert_eq!(
-            span1.end_utf32(),
+            range1.end_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 1 }
         );
 
-        let span2 = cursor.next().unwrap();
-        assert_eq!(span2.ch(), '\u{20AC}');
+        let range2 = cursor.next().unwrap();
+        assert_eq!(range2.ch(), '\u{20AC}');
         assert_eq!(
-            span2.start_utf32(),
+            range2.start_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 1 }
         );
         assert_eq!(
-            span2.end_utf32(),
+            range2.end_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 2 }
         );
 
-        let span3 = cursor.next().unwrap();
-        assert_eq!(span3.ch(), 'b');
+        let range3 = cursor.next().unwrap();
+        assert_eq!(range3.ch(), 'b');
         assert_eq!(
-            span3.start_utf32(),
+            range3.start_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 2 }
         );
         assert_eq!(
-            span3.end_utf32(),
+            range3.end_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 3 }
         );
 
-        let span4 = cursor.next().unwrap();
-        assert_eq!(span4.ch(), '\u{1F3A8}');
+        let range4 = cursor.next().unwrap();
+        assert_eq!(range4.ch(), '\u{1F3A8}');
         assert_eq!(
-            span4.start_utf32(),
+            range4.start_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 3 }
         );
         assert_eq!(
-            span4.end_utf32(),
+            range4.end_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 4 }
         );
 
-        let span5 = cursor.next().unwrap();
-        assert_eq!(span5.ch(), 'c');
+        let range5 = cursor.next().unwrap();
+        assert_eq!(range5.ch(), 'c');
         assert_eq!(
-            span5.start_utf32(),
+            range5.start_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 4 }
         );
         assert_eq!(
-            span5.end_utf32(),
+            range5.end_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 5 }
         );
     }
@@ -629,47 +629,47 @@ mod tests {
         // Line 1: €(1 char) x(1 char)
         let mut cursor = DocumentCursor::new("\u{1F3A8}\n\u{20AC}x".to_string());
 
-        let span1 = cursor.next().unwrap();
-        assert_eq!(span1.ch(), '\u{1F3A8}');
+        let range1 = cursor.next().unwrap();
+        assert_eq!(range1.ch(), '\u{1F3A8}');
         assert_eq!(
-            span1.start_utf32(),
+            range1.start_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 0 }
         );
         assert_eq!(
-            span1.end_utf32(),
+            range1.end_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 1 }
         );
 
-        let span2 = cursor.next().unwrap();
-        assert_eq!(span2.ch(), '\n');
+        let range2 = cursor.next().unwrap();
+        assert_eq!(range2.ch(), '\n');
         assert_eq!(
-            span2.start_utf32(),
+            range2.start_utf32(),
             DocumentPosition::Utf32 { line: 0, column: 1 }
         );
         assert_eq!(
-            span2.end_utf32(),
+            range2.end_utf32(),
             DocumentPosition::Utf32 { line: 1, column: 0 }
         );
 
-        let span3 = cursor.next().unwrap();
-        assert_eq!(span3.ch(), '\u{20AC}');
+        let range3 = cursor.next().unwrap();
+        assert_eq!(range3.ch(), '\u{20AC}');
         assert_eq!(
-            span3.start_utf32(),
+            range3.start_utf32(),
             DocumentPosition::Utf32 { line: 1, column: 0 }
         );
         assert_eq!(
-            span3.end_utf32(),
+            range3.end_utf32(),
             DocumentPosition::Utf32 { line: 1, column: 1 }
         );
 
-        let span4 = cursor.next().unwrap();
-        assert_eq!(span4.ch(), 'x');
+        let range4 = cursor.next().unwrap();
+        assert_eq!(range4.ch(), 'x');
         assert_eq!(
-            span4.start_utf32(),
+            range4.start_utf32(),
             DocumentPosition::Utf32 { line: 1, column: 1 }
         );
         assert_eq!(
-            span4.end_utf32(),
+            range4.end_utf32(),
             DocumentPosition::Utf32 { line: 1, column: 2 }
         );
     }
@@ -678,16 +678,16 @@ mod tests {
     fn test_contains_position_utf32() {
         // "\u{1F3A8}hello" - Emoji followed by ASCII
         let cursor = DocumentCursor::new("\u{1F3A8}hello".to_string());
-        let spans: Vec<_> = cursor.collect();
+        let ranges: Vec<_> = cursor.collect();
 
-        // Create span for "hello" (skipping the emoji)
-        let hello_span = spans[1].clone().to(spans[5].clone());
+        // Create range for "hello" (skipping the emoji)
+        let hello_range = ranges[1].clone().to(ranges[5].clone());
 
         // Test UTF-32 position containment
-        assert!(hello_span.contains_position(DocumentPosition::Utf32 { line: 0, column: 1 }));
-        assert!(hello_span.contains_position(DocumentPosition::Utf32 { line: 0, column: 5 }));
-        assert!(!hello_span.contains_position(DocumentPosition::Utf32 { line: 0, column: 0 }));
-        assert!(!hello_span.contains_position(DocumentPosition::Utf32 { line: 0, column: 6 }));
+        assert!(hello_range.contains_position(DocumentPosition::Utf32 { line: 0, column: 1 }));
+        assert!(hello_range.contains_position(DocumentPosition::Utf32 { line: 0, column: 5 }));
+        assert!(!hello_range.contains_position(DocumentPosition::Utf32 { line: 0, column: 0 }));
+        assert!(!hello_range.contains_position(DocumentPosition::Utf32 { line: 0, column: 6 }));
     }
 
     #[test]

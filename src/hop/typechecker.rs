@@ -13,12 +13,12 @@ use super::module_name::ModuleName;
 pub struct TypeAnnotation {
     pub typ: DopType,
     pub name: String,
-    pub span: DocumentRange,
+    pub range: DocumentRange,
 }
 
 impl Ranged for TypeAnnotation {
     fn range(&self) -> &DocumentRange {
-        &self.span
+        &self.range
     }
 }
 
@@ -122,7 +122,7 @@ impl TypeChecker {
                             .iter()
                             .map(|m| m.name.to_string())
                             .collect::<Vec<_>>(),
-                        import_node.from_attr_value_span.clone(),
+                        import_node.from_attr_value_range.clone(),
                     ));
                 }
             }
@@ -142,13 +142,13 @@ fn typecheck_module(
         let Some(module_state) = state.modules.get(imported_module) else {
             errors.push(TypeError::ImportFromUndefinedModule {
                 module: imported_module.as_str().to_string(),
-                span: import.from_attr_value_span.clone(),
+                range: import.from_attr_value_range.clone(),
             });
             continue;
         };
         if !module_state.component_is_declared(imported_component.as_str()) {
             errors.push(TypeError::UndeclaredComponent {
-                module_name: import.from_attr_value_span.clone(),
+                module_name: import.from_attr_value_range.clone(),
                 component_name: imported_component.clone(),
             });
         }
@@ -168,7 +168,7 @@ fn typecheck_module(
         if let Some((params, _)) = params {
             for param in params.values() {
                 annotations.push(TypeAnnotation {
-                    span: param.var_name.span().clone(),
+                    range: param.var_name.range().clone(),
                     typ: param.var_type.clone(),
                     name: param.var_name.to_string(),
                 });
@@ -186,7 +186,7 @@ fn typecheck_module(
                 if !accessed {
                     let param = params.get(&key).unwrap();
                     errors.push(TypeError::UnusedVariable {
-                        var_name: param.var_name.span().clone(),
+                        var_name: param.var_name.range().clone(),
                     })
                 }
             }
@@ -230,7 +230,7 @@ fn typecheck_node(
                     if !condition_type.is_subtype(&DopType::Bool) {
                         errors.push(TypeError::ExpectedBooleanCondition {
                             found: condition_type.to_string(),
-                            span: condition.span(),
+                            range: condition.range().clone(),
                         })
                     }
                 }
@@ -257,14 +257,14 @@ fn typecheck_node(
                 DopType::Array(Some(inner)) => *inner.clone(),
                 DopType::Array(None) => {
                     errors.push(TypeError::CannotIterateEmptyArray {
-                        span: array_expr.span(),
+                        range: array_expr.range().clone(),
                     });
                     return;
                 }
                 _ => {
                     errors.push(TypeError::CannotIterateOver {
                         typ: array_type.to_string(),
-                        span: array_expr.span(),
+                        range: array_expr.range().clone(),
                     });
                     return;
                 }
@@ -274,7 +274,7 @@ fn typecheck_node(
             let pushed = match env.push(var_name.to_string(), element_type.clone()) {
                 Ok(_) => {
                     annotations.push(TypeAnnotation {
-                        span: var_name.span().clone(),
+                        range: var_name.range().clone(),
                         typ: element_type.clone(),
                         name: var_name.to_string(),
                     });
@@ -283,7 +283,7 @@ fn typecheck_node(
                 Err(_) => {
                     errors.push(TypeError::VariableIsAlreadyDefined {
                         var: var_name.as_str().to_string(),
-                        span: var_name.span().clone(),
+                        range: var_name.range().clone(),
                     });
                     false
                 }
@@ -297,7 +297,7 @@ fn typecheck_node(
                 let (_, _, accessed) = env.pop();
                 if !accessed {
                     errors.push(TypeError::UnusedVariable {
-                        var_name: var_name.span().clone(),
+                        var_name: var_name.range().clone(),
                     })
                 }
             }
@@ -331,27 +331,27 @@ fn typecheck_node(
             if !children.is_empty() && !module_info.component_has_slot(tag_name.as_str()) {
                 errors.push(TypeError::UndefinedSlot {
                     component: tag_name.as_str().to_string(),
-                    span: tag_name.clone(),
+                    range: tag_name.clone(),
                 });
             }
 
             // Validate arguments
             match (module_info.get_parameter_types(tag_name.as_str()), args) {
                 (None, None) => {}
-                (None, Some((_, args_span))) => {
+                (None, Some((_, args_range))) => {
                     errors.push(TypeError::UnexpectedArguments {
-                        span: args_span.clone(),
+                        range: args_range.clone(),
                     });
                 }
                 (Some(params), None) => {
                     errors.push(TypeError::missing_arguments(params, tag_name.clone()));
                 }
-                (Some(params), Some((args, args_span))) => {
+                (Some(params), Some((args, args_range))) => {
                     for param in params.values() {
                         if !args.contains_key(param.var_name.as_str()) {
                             errors.push(TypeError::MissingRequiredParameter {
                                 param: param.var_name.as_str().to_string(),
-                                span: args_span.clone(),
+                                range: args_range.clone(),
                             });
                         }
                     }
@@ -361,7 +361,7 @@ fn typecheck_node(
                             None => {
                                 errors.push(TypeError::UnexpectedArgument {
                                     arg: arg.var_name.as_str().to_string(),
-                                    span: arg.var_name.span().clone(),
+                                    range: arg.var_name.range().clone(),
                                 });
                                 continue;
                             }
@@ -380,14 +380,14 @@ fn typecheck_node(
                             errors.push(TypeError::ArgumentIsIncompatible {
                                 expected: param.var_type.clone(),
                                 found: arg_type,
-                                arg_name: arg.var_name.span().clone(),
-                                expr_span: arg.var_expr.span(),
+                                arg_name: arg.var_name.range().clone(),
+                                expr_range: arg.var_expr.range().clone(),
                             });
                             continue;
                         }
 
                         annotations.push(TypeAnnotation {
-                            span: arg.var_expr.span().clone(),
+                            range: arg.var_expr.range().clone(),
                             typ: arg_type,
                             name: arg.var_name.to_string(),
                         });
@@ -413,7 +413,7 @@ fn typecheck_node(
                 if !expr_type.is_subtype(&DopType::String) {
                     errors.push(TypeError::ExpectedStringAttribute {
                         found: expr_type.to_string(),
-                        span: set_attr.span.clone(),
+                        range: set_attr.range.clone(),
                     });
                     continue;
                 }
@@ -424,13 +424,13 @@ fn typecheck_node(
             }
         }
 
-        HopNode::TextExpression { expression, span } => {
+        HopNode::TextExpression { expression, range } => {
             match dop::typecheck_expr(expression, env, annotations) {
                 Ok(expr_type) => {
                     if !expr_type.is_subtype(&DopType::String) {
                         errors.push(TypeError::ExpectedStringExpression {
                             found: expr_type,
-                            span: span.clone(),
+                            range: range.clone(),
                         });
                     }
                 }

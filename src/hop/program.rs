@@ -17,35 +17,35 @@ use super::module_name::ModuleName;
 use super::typechecker::TypeChecker;
 
 /// HoverInfo is a message that should be displayed when the user hovers
-/// a specific span in the source code.
+/// a specific range in the source code.
 pub struct HoverInfo {
     pub type_str: String,
-    pub span: DocumentRange,
+    pub range: DocumentRange,
 }
 
 /// A DefinitionLocation is the definition of a certain symbol in the source
 /// code. This is the response for a go to definition-query.
 pub struct DefinitionLocation {
     pub module: ModuleName,
-    pub span: DocumentRange,
+    pub range: DocumentRange,
 }
 
 /// A diagnostic is an error, warning or information that should be displayed
-/// for a specific span in the source code.
+/// for a specific range in the document.
 pub struct Diagnostic {
     pub message: String,
-    pub span: DocumentRange,
+    pub range: DocumentRange,
 }
 
 pub struct RenameLocation {
     pub module: ModuleName,
-    pub span: DocumentRange,
+    pub range: DocumentRange,
 }
 
-/// A RenameableSymbol is a span in the source code that is renameable.
-/// The string contents of the span is the current name.
+/// A RenameableSymbol is a range in the document that is renameable.
+/// The string contents of the range is the current name.
 pub struct RenameableSymbol {
-    pub span: DocumentRange,
+    pub range: DocumentRange,
 }
 
 #[derive(Debug, Default)]
@@ -123,10 +123,10 @@ impl Program {
             .type_annotations
             .get(module_name)?
             .iter()
-            .find(|a| a.span.contains_position(position))
+            .find(|a| a.range.contains_position(position))
             .map(|annotation| HoverInfo {
                 type_str: format!("`{}`: `{}`", annotation.name, annotation.typ),
-                span: annotation.span.clone(),
+                range: annotation.range.clone(),
             })
     }
 
@@ -158,7 +158,7 @@ impl Program {
                     .get_component_definition(tag_name.as_str())?;
                 Some(DefinitionLocation {
                     module: module_name.clone(),
-                    span: component_def.tag_name.clone(),
+                    range: component_def.tag_name.clone(),
                 })
             }
             HopNode::Html { .. } => {
@@ -204,9 +204,9 @@ impl Program {
             }),
             n @ HopNode::Html { .. } => Some(
                 n.tag_names()
-                    .map(|span| RenameLocation {
+                    .map(|range| RenameLocation {
                         module: module_name.clone(),
-                        span: span.clone(),
+                        range: range.clone(),
                     })
                     .collect(),
             ),
@@ -226,11 +226,13 @@ impl Program {
         let ast = self.modules.get(module_name)?;
 
         for component_node in ast.get_component_definitions() {
-            if let Some(span) = component_node
+            if let Some(range) = component_node
                 .tag_name_ranges()
                 .find(|r| r.contains_position(position))
             {
-                return Some(RenameableSymbol { span: span.clone() });
+                return Some(RenameableSymbol {
+                    range: range.clone(),
+                });
             }
         }
 
@@ -238,7 +240,9 @@ impl Program {
 
         node.tag_names()
             .find(|r| r.contains_position(position))
-            .map(|span| RenameableSymbol { span: span.clone() })
+            .map(|range| RenameableSymbol {
+                range: range.clone(),
+            })
     }
 
     /// Collects all locations where a component should be renamed, including:
@@ -257,14 +261,14 @@ impl Program {
                 // Add the definition's opening tag name
                 locations.push(RenameLocation {
                     module: definition_module.clone(),
-                    span: component_node.tag_name.clone(),
+                    range: component_node.tag_name.clone(),
                 });
 
                 // Add the definition's closing tag name if it exists
-                if let Some(span) = component_node.closing_tag_name.as_ref() {
+                if let Some(range) = component_node.closing_tag_name.as_ref() {
                     locations.push(RenameLocation {
                         module: definition_module.clone(),
-                        span: span.clone(),
+                        range: range.clone(),
                     });
                 }
             }
@@ -280,7 +284,7 @@ impl Program {
                     })
                     .map(|n| RenameLocation {
                         module: module_name.clone(),
-                        span: n.imported_component().clone(),
+                        range: n.imported_component().clone(),
                     }),
             );
 
@@ -301,9 +305,9 @@ impl Program {
                         _ => false,
                     })
                     .flat_map(|node| node.tag_names())
-                    .map(|span| RenameLocation {
+                    .map(|range| RenameLocation {
                         module: module_name.clone(),
-                        span: span.clone(),
+                        range: range.clone(),
                     }),
             );
         }
@@ -319,7 +323,7 @@ impl Program {
         for error in self.parse_errors.get(&module_name).into_iter().flatten() {
             diagnostics.push(Diagnostic {
                 message: error.to_string(),
-                span: error.range().clone(),
+                range: error.range().clone(),
             });
             found_parse_errors = true;
         }
@@ -336,7 +340,7 @@ impl Program {
             {
                 diagnostics.push(Diagnostic {
                     message: error.to_string(),
-                    span: error.range().clone(),
+                    range: error.range().clone(),
                 });
             }
         }
@@ -450,7 +454,7 @@ mod tests {
                 .filter(|l| l.module == module_name)
                 .map(|l| SimpleAnnotation {
                     message: "Rename".to_string(),
-                    span: l.span.clone(),
+                    range: l.range.clone(),
                 })
                 .collect();
 
@@ -487,7 +491,7 @@ mod tests {
             Some(loc.module.as_str()),
             [SimpleAnnotation {
                 message: "Definition".to_string(),
-                span: loc.span,
+                range: loc.range,
             }],
         );
 
@@ -508,7 +512,7 @@ mod tests {
             Some(module),
             diagnostics.into_iter().map(|d| SimpleAnnotation {
                 message: d.message,
-                span: d.span,
+                range: d.range,
             }),
         );
 
@@ -561,7 +565,7 @@ mod tests {
 
         let output = DocumentAnnotator::new()
             .with_location()
-            .annotate(Some(&file.name), &[symbol.span]);
+            .annotate(Some(&file.name), &[symbol.range]);
 
         expected.assert_eq(&output);
     }
@@ -591,7 +595,7 @@ mod tests {
         let output = DocumentAnnotator::new().with_location().annotate(
             Some(&file.name),
             &[SimpleAnnotation {
-                span: hover_info.span,
+                range: hover_info.range,
                 message: hover_info.type_str,
             }],
         );

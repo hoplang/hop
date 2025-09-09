@@ -1,5 +1,5 @@
 use super::ast::{BinaryOp, DopExpr, UnaryOp};
-use crate::document::document_cursor::DocumentRange;
+use crate::document::document_cursor::{DocumentRange, Ranged as _};
 use crate::hop::environment::Environment;
 use crate::hop::type_error::TypeError;
 use crate::hop::typechecker::TypeAnnotation;
@@ -51,9 +51,9 @@ impl DopType {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub struct SpannedDopType {
+pub struct RangedDopType {
     pub dop_type: DopType,
-    pub span: DocumentRange,
+    pub range: DocumentRange,
 }
 
 impl fmt::Display for DopType {
@@ -89,7 +89,7 @@ pub fn typecheck_expr(
         DopExpr::Variable { value: name, .. } => {
             if let Some(var_type) = env.lookup(name.as_str()) {
                 annotations.push(TypeAnnotation {
-                    span: expr.span().clone(),
+                    range: expr.range().clone(),
                     typ: var_type.clone(),
                     name: name.to_string(),
                 });
@@ -97,7 +97,7 @@ pub fn typecheck_expr(
             } else {
                 Err(TypeError::UndefinedVariable {
                     name: name.as_str().to_string(),
-                    span: expr.span(),
+                    range: expr.range().clone(),
                 })
             }
         }
@@ -118,13 +118,13 @@ pub fn typecheck_expr(
                     } else {
                         Err(TypeError::PropertyNotFoundInObject {
                             property: property.as_str().to_string(),
-                            span: property.clone(),
+                            range: property.clone(),
                         })
                     }
                 }
                 _ => Err(TypeError::CannotUseAsObject {
                     typ: base_type.to_string(),
-                    span: base_expr.span(),
+                    range: base_expr.range().clone(),
                 }),
             }
         }
@@ -142,7 +142,7 @@ pub fn typecheck_expr(
                 return Err(TypeError::CannotCompareTypes {
                     left: left_type.to_string(),
                     right: right_type.to_string(),
-                    span: expr.span(),
+                    range: expr.range().clone(),
                 });
             }
 
@@ -158,7 +158,9 @@ pub fn typecheck_expr(
 
             // Negation only works on boolean expressions
             if !expr_type.is_subtype(&DopType::Bool) {
-                return Err(TypeError::NegationRequiresBoolean { span: expr.span() });
+                return Err(TypeError::NegationRequiresBoolean {
+                    range: expr.range().clone(),
+                });
             }
 
             // The result of ! is always boolean
@@ -179,7 +181,7 @@ pub fn typecheck_expr(
                         return Err(TypeError::ArrayTypeMismatch {
                             expected: first_type.to_string(),
                             found: element_type.to_string(),
-                            span: element.span(),
+                            range: element.range().clone(),
                         });
                     }
                 }

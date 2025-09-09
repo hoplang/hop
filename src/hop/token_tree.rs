@@ -23,14 +23,14 @@ pub struct TokenTree {
     /// This information is needed by the parser.
     pub closing_tag_name: Option<DocumentRange>,
     pub children: Vec<TokenTree>,
-    pub span: DocumentRange,
+    pub range: DocumentRange,
 }
 
 impl TokenTree {
     pub fn new(opening_token: Token) -> Self {
-        let span = opening_token.range().clone();
+        let range = opening_token.range().clone();
         TokenTree {
-            span,
+            range,
             token: opening_token,
             closing_tag_name: None,
             children: Vec::new(),
@@ -47,9 +47,9 @@ impl TokenTree {
 
     pub fn set_closing_tag(&mut self, closing_token: Token) {
         match closing_token {
-            Token::ClosingTag { tag_name, span } => {
+            Token::ClosingTag { tag_name, range } => {
                 self.closing_tag_name = Some(tag_name);
-                self.span = self.span.clone().to(span);
+                self.range = self.range.clone().to(range);
             }
             _ => panic!("Called set_closing_tag with a token that was not a ClosingTag"),
         }

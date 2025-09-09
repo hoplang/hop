@@ -21,9 +21,9 @@ impl From<lsp_types::Position> for DocumentPosition {
 }
 
 impl From<DocumentRange> for lsp_types::Range {
-    fn from(span: DocumentRange) -> Self {
-        let start_pos = span.start_utf16();
-        let end_pos = span.end_utf16();
+    fn from(range: DocumentRange) -> Self {
+        let start_pos = range.start_utf16();
+        let end_pos = range.end_utf16();
 
         lsp_types::Range {
             start: lsp_types::Position {
@@ -76,7 +76,7 @@ impl HopLanguageServer {
         let lsp_diagnostics: Vec<tower_lsp::lsp_types::Diagnostic> = diagnostics
             .into_iter()
             .map(|d| tower_lsp::lsp_types::Diagnostic {
-                range: d.span.into(),
+                range: d.range.into(),
                 severity: Some(DiagnosticSeverity::ERROR),
                 code: None,
                 code_description: None,
@@ -178,7 +178,7 @@ impl LanguageServer for HopLanguageServer {
                 .get_hover_info(&module_name, position.into())
                 .map(|hover_info| Hover {
                     contents: HoverContents::Scalar(MarkedString::String(hover_info.type_str)),
-                    range: Some(hover_info.span.into()),
+                    range: Some(hover_info.range.into()),
                 }))
         } else {
             Ok(None)
@@ -198,10 +198,10 @@ impl LanguageServer for HopLanguageServer {
 
             Ok(program
                 .get_definition_location(&module_name, position.into())
-                .map(|DefinitionLocation { module, span }| {
+                .map(|DefinitionLocation { module, range }| {
                     GotoDefinitionResponse::Scalar(Location {
                         uri: Self::module_name_to_uri(&module, root),
-                        range: span.into(),
+                        range: range.into(),
                     })
                 }))
         } else {
@@ -224,8 +224,8 @@ impl LanguageServer for HopLanguageServer {
                 program.get_renameable_symbol(&module_name, position.into())
             {
                 Ok(Some(PrepareRenameResponse::RangeWithPlaceholder {
-                    range: renameable_symbol.span.clone().into(),
-                    placeholder: renameable_symbol.span.as_str().to_string(),
+                    range: renameable_symbol.range.clone().into(),
+                    placeholder: renameable_symbol.range.as_str().to_string(),
                 }))
             } else {
                 Ok(None)
@@ -249,10 +249,10 @@ impl LanguageServer for HopLanguageServer {
             {
                 let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
 
-                for RenameLocation { module, span } in rename_locations {
+                for RenameLocation { module, range } in rename_locations {
                     let file_uri = Self::module_name_to_uri(&module, root);
                     let edit = TextEdit {
-                        range: span.into(),
+                        range: range.into(),
                         new_text: new_name.clone(),
                     };
 
