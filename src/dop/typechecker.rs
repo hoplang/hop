@@ -179,7 +179,7 @@ pub fn typecheck_expr(
                         return Err(TypeError::ArrayTypeMismatch {
                             expected: first_type.to_string(),
                             found: element_type.to_string(),
-                            span: expr.span(),
+                            span: element.span(),
                         });
                     }
                 }
@@ -538,6 +538,19 @@ mod tests {
             "",
             "{nested: {inner: 'value'}}",
             expect!["{nested: {inner: string}}"],
+        );
+    }
+
+    #[test]
+    fn test_typecheck_array_different_types() {
+        check(
+            "",
+            "[1, true]",
+            expect![[r#"
+                error: Array elements must all have the same type, found number and boolean
+                [1, true]
+                    ^^^^
+            "#]],
         );
     }
 

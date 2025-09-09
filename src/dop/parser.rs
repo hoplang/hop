@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt::{self, Display};
 use std::iter::Peekable;
 
@@ -124,23 +124,23 @@ impl DopParser {
         }
     }
 
-    fn expect_closing_token(
+    fn expect_opposite(
         &mut self,
-        opening_token: &DopToken,
-        opening_span: &StringSpan,
+        token: &DopToken,
+        span: &StringSpan,
     ) -> Result<StringSpan, ParseError> {
-        let expected = opening_token.matching_closing_token();
+        let expected = token.opposite_token();
 
         match self.iter.next().transpose()? {
-            Some((token, span)) if token == expected => Ok(span),
+            Some((actual, span)) if actual == expected => Ok(span),
             Some((actual, span)) => Err(ParseError::ExpectedTokenButGot {
-                expected: expected.clone(),
+                expected,
                 actual,
-                span: span.clone(),
+                span,
             }),
             None => Err(ParseError::UnmatchedToken {
-                token: opening_token.clone(),
-                span: opening_span.clone(),
+                token: token.clone(),
+                span: span.clone(),
             }),
         }
     }
@@ -148,10 +148,7 @@ impl DopParser {
     fn expect_variable_name(&mut self) -> Result<DopVarName, ParseError> {
         match self.iter.next().transpose()? {
             Some((DopToken::Identifier(name), _)) => DopVarName::new(name),
-            Some((actual, span)) => Err(ParseError::ExpectedVariableNameButGot {
-                actual,
-                span: span.clone(),
-            }),
+            Some((actual, span)) => Err(ParseError::ExpectedVariableNameButGot { actual, span }),
             None => Err(ParseError::UnexpectedEof {
                 span: self.span.clone(),
             }),
@@ -215,12 +212,12 @@ impl DopParser {
     where
         F: FnMut(&mut Self) -> Result<(), ParseError>,
     {
-        let closing_token = opening_token.matching_closing_token();
+        let closing_token = opening_token.opposite_token();
         if let Some(closing_span) = self.advance_if(closing_token.clone()) {
             return Ok(closing_span);
         }
         self.parse_comma_separated(parse, Some(&closing_token))?;
-        self.expect_closing_token(opening_token, opening_span)
+        self.expect_opposite(opening_token, opening_span)
     }
 
     // expr = equality Eof
@@ -265,8 +262,8 @@ impl DopParser {
     pub fn parse_parameters(&mut self) -> Result<BTreeMap<String, DopParameter>, ParseError> {
         let mut params = BTreeMap::new();
         self.parse_comma_separated(
-            |p| {
-                let param = p.parse_parameter()?;
+            |this| {
+                let param = this.parse_parameter()?;
                 if params.contains_key(param.var_name.value.as_str()) {
                     return Err(ParseError::DuplicateParameter {
                         name: param.var_name.value.clone(),
@@ -285,8 +282,8 @@ impl DopParser {
     pub fn parse_arguments(&mut self) -> Result<BTreeMap<String, DopArgument>, ParseError> {
         let mut args = BTreeMap::new();
         self.parse_comma_separated(
-            |p| {
-                let arg = p.parse_argument()?;
+            |this| {
+                let arg = this.parse_argument()?;
                 if args.contains_key(arg.var_name.value.as_str()) {
                     return Err(ParseError::DuplicateArgument {
                         name: arg.var_name.value.clone(),
@@ -302,27 +299,23 @@ impl DopParser {
     }
 
     // object_type = "{" (Identifier ":" type ("," Identifier ":" type)*)? "}"
-    fn parse_object_type(
-        &mut self,
-        left_brace_span: StringSpan,
-    ) -> Result<SpannedDopType, ParseError> {
+    fn parse_object_type(&mut self, left_brace: StringSpan) -> Result<SpannedDopType, ParseError> {
         let mut properties = BTreeMap::new();
-        let right_brace_span =
-            self.parse_delimited_list(&DopToken::LeftBrace, &left_brace_span, |p| {
-                let prop_name = p.expect_property_name()?;
-                p.expect_token(&DopToken::Colon)?;
-                let t = p.parse_type()?;
-                if properties.contains_key(prop_name.as_str()) {
-                    return Err(ParseError::DuplicateProperty {
-                        name: prop_name.clone(),
-                    });
-                }
-                properties.insert(prop_name.to_string(), t.dop_type);
-                Ok(())
-            })?;
+        let right_brace = self.parse_delimited_list(&DopToken::LeftBrace, &left_brace, |this| {
+            let prop_name = this.expect_property_name()?;
+            this.expect_token(&DopToken::Colon)?;
+            let t = this.parse_type()?;
+            if properties.contains_key(prop_name.as_str()) {
+                return Err(ParseError::DuplicateProperty {
+                    name: prop_name.clone(),
+                });
+            }
+            properties.insert(prop_name.to_string(), t.dop_type);
+            Ok(())
+        })?;
         Ok(SpannedDopType {
             dop_type: DopType::Object(properties),
-            span: left_brace_span.to(right_brace_span),
+            span: left_brace.to(right_brace),
         })
     }
 
@@ -333,8 +326,6 @@ impl DopParser {
     //      | TypeArray "[" type "]"
     //      | "{" (Identifier ":" type ("," Identifier ":" type)*)? "}"
     fn parse_type(&mut self) -> Result<SpannedDopType, ParseError> {
-        use crate::dop::DopType;
-
         match self.iter.next().transpose()? {
             Some((DopToken::TypeString, span)) => Ok(SpannedDopType {
                 dop_type: DopType::String,
@@ -348,18 +339,15 @@ impl DopParser {
                 dop_type: DopType::Bool,
                 span,
             }),
-            // Array type
-            Some((DopToken::TypeArray, type_array_span)) => {
-                let left_bracket_span = self.expect_token(&DopToken::LeftBracket)?;
+            Some((DopToken::TypeArray, type_array)) => {
+                let left_bracket = self.expect_token(&DopToken::LeftBracket)?;
                 let inner_type = self.parse_type()?;
-                let right_bracket_span =
-                    self.expect_closing_token(&DopToken::LeftBracket, &left_bracket_span)?;
+                let right_bracket = self.expect_opposite(&DopToken::LeftBracket, &left_bracket)?;
                 Ok(SpannedDopType {
                     dop_type: DopType::Array(Some(Box::new(inner_type.dop_type))),
-                    span: type_array_span.to(right_bracket_span),
+                    span: type_array.to(right_bracket),
                 })
             }
-            // Object type
             Some((DopToken::LeftBrace, left_brace_span)) => self.parse_object_type(left_brace_span),
             Some((_, span)) => Err(ParseError::ExpectedTypeName { span }),
             None => Err(ParseError::UnexpectedEof {
@@ -398,81 +386,68 @@ impl DopParser {
     }
 
     // array_literal = "[" ( equality ("," equality)* )? "]"
-    fn parse_array_literal(
-        &mut self,
-        left_bracket_span: StringSpan,
-    ) -> Result<DopExpr, ParseError> {
+    fn parse_array_literal(&mut self, left_bracket: StringSpan) -> Result<DopExpr, ParseError> {
         let mut elements = Vec::new();
-        let right_bracket_span =
-            self.parse_delimited_list(&DopToken::LeftBracket, &left_bracket_span, |p| {
-                elements.push(p.parse_equality()?);
+        let right_bracket =
+            self.parse_delimited_list(&DopToken::LeftBracket, &left_bracket, |this| {
+                elements.push(this.parse_equality()?);
                 Ok(())
             })?;
         Ok(DopExpr::ArrayLiteral {
             elements,
-            span: left_bracket_span.to(right_bracket_span),
+            span: left_bracket.to(right_bracket),
         })
     }
 
-    fn parse_object_literal(&mut self, left_brace_span: StringSpan) -> Result<DopExpr, ParseError> {
-        let mut properties: Vec<(StringSpan, DopExpr)> = Vec::new();
-        let right_brace_span =
-            self.parse_delimited_list(&DopToken::LeftBrace, &left_brace_span, |p| {
-                let prop_name = p.expect_property_name()?;
-                p.expect_token(&DopToken::Colon)?;
-                let value = p.parse_equality()?;
-                if properties
-                    .iter()
-                    .any(|(n, _)| n.as_str() == prop_name.as_str())
-                {
-                    return Err(ParseError::DuplicateProperty {
-                        name: prop_name.clone(),
-                    });
-                }
-                properties.push((prop_name, value));
-                Ok(())
-            })?;
+    fn parse_object_literal(&mut self, left_brace: StringSpan) -> Result<DopExpr, ParseError> {
+        let mut properties = Vec::new();
+        let mut seen_names = HashSet::new();
+        let right_brace = self.parse_delimited_list(&DopToken::LeftBrace, &left_brace, |this| {
+            let prop_name = this.expect_property_name()?;
+            if !seen_names.insert(prop_name.as_str().to_string()) {
+                return Err(ParseError::DuplicateProperty {
+                    name: prop_name.clone(),
+                });
+            }
+            this.expect_token(&DopToken::Colon)?;
+            properties.push((prop_name, this.parse_equality()?));
+            Ok(())
+        })?;
         Ok(DopExpr::ObjectLiteral {
             properties,
-            span: left_brace_span.to(right_brace_span),
+            span: left_brace.to(right_brace),
         })
     }
 
-    // primary = Identifier ( "." Identifier )*
-    //         | StringLiteral
-    //         | BooleanLiteral
-    //         | NumberLiteral
-    //         | "[" ( equality ("," equality)* )? "]"
-    //         | "{" ( Identifier ":" equality ("," Identifier ":" equality)* )? "}"
-    //         | "(" equality ")"
+    fn parse_property_access(&mut self, identifier: StringSpan) -> Result<DopExpr, ParseError> {
+        let var_name = DopVarName::new(identifier)?;
+        let mut expr = DopExpr::Variable { value: var_name };
+
+        while let Some(dot) = self.advance_if(DopToken::Dot) {
+            match self.iter.next().transpose()? {
+                Some((DopToken::Identifier(prop), _)) => {
+                    expr = DopExpr::PropertyAccess {
+                        span: expr.span().to(prop.clone()),
+                        object: Box::new(expr),
+                        property: prop,
+                    };
+                }
+                Some((_, span)) => {
+                    return Err(ParseError::ExpectedIdentifierAfterDot { span });
+                }
+                None => {
+                    return Err(ParseError::UnexpectedEndOfPropertyAccess {
+                        span: expr.span().to(dot),
+                    });
+                }
+            }
+        }
+        Ok(expr)
+    }
+
     fn parse_primary(&mut self) -> Result<DopExpr, ParseError> {
         match self.iter.next().transpose()? {
-            Some((DopToken::Identifier(name), _)) => {
-                let var_name = DopVarName::new(name)?;
-                let mut expr = DopExpr::Variable { value: var_name };
-                while let Some(dot_span) = self.advance_if(DopToken::Dot) {
-                    match self.iter.next().transpose()? {
-                        Some((DopToken::Identifier(prop), prop_span)) => {
-                            expr = DopExpr::PropertyAccess {
-                                span: expr.span().to(prop_span.clone()),
-                                object: Box::new(expr),
-                                property: prop,
-                            };
-                        }
-                        Some((_, span)) => {
-                            return Err(ParseError::ExpectedIdentifierAfterDot {
-                                span: span.clone(),
-                            });
-                        }
-                        None => {
-                            return Err(ParseError::UnexpectedEndOfPropertyAccess {
-                                span: expr.span().to(dot_span),
-                            });
-                        }
-                    }
-                }
-                Ok(expr)
-            }
+            Some((DopToken::Identifier(name), _)) => self.parse_property_access(name),
             Some((DopToken::StringLiteral(value), span)) => {
                 Ok(DopExpr::StringLiteral { value, span })
             }
@@ -483,12 +458,10 @@ impl DopParser {
                 Ok(DopExpr::NumberLiteral { value, span })
             }
             Some((DopToken::LeftBracket, left_bracket)) => self.parse_array_literal(left_bracket),
-            Some((DopToken::LeftBrace, left_brace_span)) => {
-                self.parse_object_literal(left_brace_span)
-            }
-            Some((DopToken::LeftParen, left_paren_span)) => {
+            Some((DopToken::LeftBrace, left_brace)) => self.parse_object_literal(left_brace),
+            Some((DopToken::LeftParen, left_paren)) => {
                 let expr = self.parse_equality()?;
-                self.expect_closing_token(&DopToken::LeftParen, &left_paren_span)?;
+                self.expect_opposite(&DopToken::LeftParen, &left_paren)?;
                 Ok(expr)
             }
             Some((token, span)) => Err(ParseError::UnexpectedToken {
