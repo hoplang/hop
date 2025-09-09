@@ -63,6 +63,11 @@ enum Commands {
         #[arg(long)]
         scriptfile: Option<String>,
     },
+    /// Format a hop file
+    Fmt {
+        /// Path to the file to format
+        filename: String,
+    },
 }
 
 #[tokio::main]
@@ -167,6 +172,31 @@ async fn main() -> anyhow::Result<()> {
             println!("  {} http://{}:{}/", "➜".green(), host, port);
             println!();
             axum::serve(listener, router).await?;
+        }
+        Some(Commands::Fmt { filename }) => {
+            use std::fs;
+            use hop::pretty_print::pretty_print_from_source;
+            
+            // Read the file
+            let content = fs::read_to_string(filename)?;
+            
+            // Format the content
+            match pretty_print_from_source(&content, 80) {
+                Ok(formatted) => {
+                    // Write the formatted content back to the file
+                    fs::write(filename, formatted)?;
+                    use colored::*;
+                    println!("  {} {}", "✓".green(), filename);
+                }
+                Err(errors) => {
+                    use colored::*;
+                    eprintln!("  {} Failed to format {}", "✗".red(), filename);
+                    for error in errors {
+                        eprintln!("    {}", error);
+                    }
+                    std::process::exit(1);
+                }
+            }
         }
         None => {
             let mut cmd = Cli::command();

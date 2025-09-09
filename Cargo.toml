@@ -25,6 +25,7 @@ jsonschema = "0.18"
 rayon = "1.8"
 itertools = "0.13"
 thiserror = "2.0"
+pretty = "0.12"
 
 [dev-dependencies]
 simple_txtar = "1.1.0"

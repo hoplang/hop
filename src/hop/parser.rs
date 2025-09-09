@@ -1,6 +1,8 @@
 use crate::document::document_cursor::Ranged;
 use crate::dop::DopParser;
-use crate::hop::ast::{Attribute, ComponentDefinition, DopExprAttribute, HopAst, HopNode, Import, Render};
+use crate::hop::ast::{
+    Attribute, ComponentDefinition, DopExprAttribute, HopAst, HopNode, Import, Render,
+};
 use crate::hop::parse_error::ParseError;
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::{AttributeValue, Token, Tokenizer};
@@ -215,7 +217,7 @@ pub fn parse(
                                     ));
                                     continue;
                                 }
-                                
+
                                 // Here we keep the unhandled attributes
                                 // since they should be rendered in the
                                 // resulting HTML.
@@ -386,7 +388,8 @@ fn construct_node(
                             Some(AttributeValue::String(s)) => Some(s),
                             Some(AttributeValue::Expression(_)) => {
                                 errors.push(ParseError::new(
-                                    "Expression attributes are not supported on hop-x-exec".to_string(),
+                                    "Expression attributes are not supported on hop-x-exec"
+                                        .to_string(),
                                     attr.range.clone(),
                                 ));
                                 None
@@ -489,7 +492,7 @@ fn construct_node(
                 _ => {
                     let mut string_attributes = Vec::new();
                     let mut expr_attributes = Vec::new();
-                    
+
                     for attr in &attributes {
                         match &attr.value {
                             Some(AttributeValue::Expression(expr_range)) => {

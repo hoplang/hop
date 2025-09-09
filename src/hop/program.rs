@@ -157,7 +157,10 @@ impl Program {
 
         // Check if we're on a component definition's tag name (opening or closing)
         for component_def in ast.get_component_definitions() {
-            if component_def.tag_name_ranges().any(|r| r.contains_position(position)) {
+            if component_def
+                .tag_name_ranges()
+                .any(|r| r.contains_position(position))
+            {
                 // Navigate to the opening tag of this component definition
                 return Some(DefinitionLocation {
                     module: module_name.clone(),
