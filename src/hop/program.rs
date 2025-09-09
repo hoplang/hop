@@ -190,9 +190,12 @@ impl Program {
                     range: component_def.tag_name.clone(),
                 })
             }
-            HopNode::Html { .. } => {
-                // TODO
-                None
+            HopNode::Html { tag_name, .. } => {
+                // Navigate to the opening tag of this HTML element
+                Some(DefinitionLocation {
+                    module: module_name.clone(),
+                    range: tag_name.clone(),
+                })
             }
             _ => None,
         }
@@ -751,6 +754,48 @@ mod tests {
                   --> main (line 1, col 2)
                 1 | <hello-world>
                   |  ^^^^^^^^^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_get_definition_from_html_opening_tag() {
+        check_definition_location(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp>
+                  <div class="container">
+                   ^
+                    <span>Content</span>
+                  </div>
+                </main-comp>
+            "#},
+            expect![[r#"
+                Definition
+                  --> main (line 2, col 4)
+                2 |   <div class="container">
+                  |    ^^^
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_get_definition_from_html_closing_tag() {
+        check_definition_location(
+            indoc! {r#"
+                -- main.hop --
+                <main-comp>
+                  <div class="container">
+                    <span>Content</span>
+                  </div>
+                    ^
+                </main-comp>
+            "#},
+            expect![[r#"
+                Definition
+                  --> main (line 2, col 4)
+                2 |   <div class="container">
+                  |    ^^^
             "#]],
         );
     }
