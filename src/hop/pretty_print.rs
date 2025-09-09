@@ -21,7 +21,15 @@ impl TokenTreePrettyPrint for TokenTree {
                 ))
                 .append(RcDoc::text("-->")),
 
-            Token::Text { range } => RcDoc::text(range.as_str()),
+            Token::Text { range } => {
+                // Skip whitespace-only text nodes
+                let text = range.as_str();
+                if text.trim().is_empty() {
+                    RcDoc::nil()
+                } else {
+                    RcDoc::text(text)
+                }
+            }
 
             Token::Expression { expression, .. } => RcDoc::text("{")
                 .append(RcDoc::text(expression.as_str()))
@@ -116,11 +124,16 @@ fn format_attribute(attr: &Attribute) -> RcDoc<()> {
 }
 
 fn format_children(children: &[TokenTree]) -> RcDoc<()> {
-    // Group inline content together
+    // Filter out whitespace-only text nodes and group inline content
     let mut docs = Vec::new();
     let mut current_inline_group = Vec::new();
 
     for child in children {
+        // Skip whitespace-only text nodes
+        if is_whitespace_only_text(child) {
+            continue;
+        }
+
         if is_inline_token_tree(child) {
             current_inline_group.push(child.to_doc());
         } else {
@@ -144,6 +157,13 @@ fn format_children(children: &[TokenTree]) -> RcDoc<()> {
     }
 
     RcDoc::intersperse(docs, RcDoc::hardline())
+}
+
+fn is_whitespace_only_text(tree: &TokenTree) -> bool {
+    match &tree.token {
+        Token::Text { range } => range.as_str().trim().is_empty(),
+        _ => false,
+    }
 }
 
 fn is_inline_token_tree(tree: &TokenTree) -> bool {
@@ -192,11 +212,39 @@ fn is_inline_element(tag: &str) -> bool {
 
 /// Pretty print from a token tree with the specified width
 pub fn pretty_print_token_tree(trees: &[TokenTree], width: usize) -> String {
-    let doc = RcDoc::intersperse(
-        trees.iter().map(|tree| tree.to_doc()),
-        RcDoc::hardline().append(RcDoc::hardline()),
-    );
+    // Filter out whitespace-only trees at the top level
+    let non_empty_trees: Vec<&TokenTree> = trees
+        .iter()
+        .filter(|tree| !is_whitespace_only_text(tree))
+        .collect();
+
+    // Build document with appropriate spacing
+    let mut docs = Vec::new();
+    for (i, tree) in non_empty_trees.iter().enumerate() {
+        if i > 0 {
+            let prev_is_import = is_import_node(non_empty_trees[i - 1]);
+            let curr_is_import = is_import_node(tree);
+
+            // Single newline between imports, double newline otherwise
+            if prev_is_import && curr_is_import {
+                docs.push(RcDoc::hardline());
+            } else {
+                docs.push(RcDoc::hardline());
+                docs.push(RcDoc::hardline());
+            }
+        }
+        docs.push(tree.to_doc());
+    }
+
+    let doc = RcDoc::concat(docs).append(RcDoc::hardline()); // Always add trailing newline
     doc.pretty(width).to_string()
+}
+
+fn is_import_node(tree: &TokenTree) -> bool {
+    match &tree.token {
+        Token::OpeningTag { tag_name, .. } => tag_name.as_str() == "import",
+        _ => false,
+    }
 }
 
 /// Pretty print from source code directly using token trees
@@ -215,6 +263,7 @@ pub fn pretty_print_from_source(source: &str, width: usize) -> Result<String, Ve
 mod tests {
     use super::*;
     use expect_test::{Expect, expect};
+    use indoc::indoc;
 
     fn check_pretty_print(input: &str, expected: Expect) {
         match pretty_print_from_source(input, 80) {
@@ -228,7 +277,8 @@ mod tests {
         check_pretty_print(
             "<p>Hello <em>world</em>, this is <strong>important</strong>!</p>",
             expect![[r#"
-                <p>Hello <em>world</em>, this is <strong>important</strong>!</p>"#]],
+                <p>Hello <em>world</em>, this is <strong>important</strong>!</p>
+            "#]],
         );
     }
 
@@ -238,7 +288,8 @@ mod tests {
         check_pretty_print(
             "<p>Hello     world    with    spaces</p>",
             expect![[r#"
-                <p>Hello     world    with    spaces</p>"#]],
+                <p>Hello     world    with    spaces</p>
+            "#]],
         );
     }
 
@@ -247,7 +298,8 @@ mod tests {
         check_pretty_print(
             "<p>This is <em>emphasized</em> and <strong>bold</strong> text that should flow nicely.</p>",
             expect![[r#"
-                <p>This is <em>emphasized</em> and <strong>bold</strong> text that should flow nicely.</p>"#]],
+                <p>This is <em>emphasized</em> and <strong>bold</strong> text that should flow nicely.</p>
+            "#]],
         );
     }
 
@@ -255,9 +307,9 @@ mod tests {
     fn test_long_text_wrapping() {
         check_pretty_print(
             "<p>This is a very long piece of text that should absolutely wrap when the line gets too long for the specified width, at least that is the idea.</p>",
-            expect![
-                "<p>This is a very long piece of text that should absolutely wrap when the line gets too long for the specified width, at least that is the idea.</p>"
-            ],
+            expect![[r#"
+                <p>This is a very long piece of text that should absolutely wrap when the line gets too long for the specified width, at least that is the idea.</p>
+            "#]],
         );
     }
 
@@ -269,7 +321,8 @@ mod tests {
                 <div>
                   <p>First paragraph</p>
                   <p>Second paragraph</p>
-                </div>"#]],
+                </div>
+            "#]],
         );
     }
 
@@ -282,7 +335,109 @@ mod tests {
                   Some text <span>inline</span> more text
                   <p>Block element</p>
                   final text
-                </div>"#]],
+                </div>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_format_with_indoc_input() {
+        // Test that we can format messy indented input
+        check_pretty_print(
+            indoc! {r#"
+                <main-component>
+                        <div>
+                    <p>First paragraph</p>
+                            <p>Second paragraph</p>
+                                </div>
+                    <ul>
+                <li>Item 1</li>
+                    <li>Item 2</li>
+                        </ul>
+                </main-component>
+            "#},
+            expect![[r#"
+                <main-component>
+                  <div>
+                    <p>First paragraph</p>
+                    <p>Second paragraph</p>
+                  </div>
+                  <ul>
+                    <li>Item 1</li>
+                    <li>Item 2</li>
+                  </ul>
+                </main-component>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_format_preserves_inline_spacing_with_indoc() {
+        check_pretty_print(
+            indoc! {r#"
+                <p>
+                    Hello     <em>world</em>,     
+                    this is <strong>important</strong>!
+                </p>
+            "#},
+            expect![[r#"
+                <p>
+                    Hello     <em>world</em>,     
+                    this is <strong>important</strong>!
+                </p>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_imports_and_components() {
+        check_pretty_print(
+            indoc! {r#"
+                <import from="@/hop/pages/test" component="test-comp">
+                <import from="@/hop/components/nav" component="nav-bar">
+                <guide-body>
+                <nav-bar/>
+                <div>
+                <h1>Welcome</h1>
+                <test-comp>This is a test</test-comp>
+                </div>
+                </guide-body>
+            "#},
+            expect![[r#"
+                <import from="@/hop/pages/test" component="test-comp">
+                <import from="@/hop/components/nav" component="nav-bar">
+
+                <guide-body>
+                  <nav-bar/>
+                  <div>
+                    <h1>Welcome</h1>
+                    <test-comp>This is a test</test-comp>
+                  </div>
+                </guide-body>
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_multiple_imports_grouped() {
+        check_pretty_print(
+            indoc! {r#"
+                <import from="@/hop/components/nav" component="nav-bar">
+                <import from="@/hop/components/footer" component="footer-bar">
+                <import from="@/hop/components/header" component="header-bar">
+                <main-component>
+                    <p>Content</p>
+                </main-component>
+            "#},
+            expect![[r#"
+                <import from="@/hop/components/nav" component="nav-bar">
+                <import from="@/hop/components/footer" component="footer-bar">
+                <import from="@/hop/components/header" component="header-bar">
+
+                <main-component>
+                  <p>Content</p>
+                </main-component>
+            "#]],
         );
     }
 }
