@@ -198,11 +198,12 @@ fn format_parameters(params: BTreeMap<StringSpan, DopParameter>) -> RcDoc<'stati
     }
 
     let mut param_docs = Vec::new();
-    for param in params.values() {
+    for DopParameter { var_name, var_type } in params.values() {
         param_docs.push(
-            RcDoc::text(param.var_name.as_str().to_string())
-                .append(RcDoc::text(": "))
-                .append(format_dop_type(&param.var_type)),
+            RcDoc::text(var_name.to_string())
+                .append(RcDoc::text(":"))
+                .append(RcDoc::space())
+                .append(format_dop_type(var_type)),
         );
     }
 
