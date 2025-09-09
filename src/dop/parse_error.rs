@@ -38,7 +38,7 @@ pub enum ParseError {
     #[error("Unexpected token '{token}'")]
     UnexpectedToken { token: DopToken, span: StringSpan },
 
-    #[error("Unexpected character '{ch}'")]
+    #[error("Unexpected character: '{ch}'")]
     UnexpectedCharacter { ch: char, span: StringSpan },
 
     #[error("Expected variable name but got {actual}")]

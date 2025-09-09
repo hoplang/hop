@@ -252,7 +252,7 @@ mod tests {
         check(
             "=foo",
             expect![[r#"
-                error: Expected '==' but found single '='
+                error: Expected '==' but got '='
                 =foo
                 ^
 
@@ -328,31 +328,31 @@ mod tests {
         check(
             "1. 1000. 1. 000 0. 0123 01010",
             expect![[r#"
-                error: Invalid number format: 1.
+                error: Invalid number format
                 1. 1000. 1. 000 0. 0123 01010
                 ^^
 
-                error: Invalid number format: 1000.
+                error: Invalid number format
                 1. 1000. 1. 000 0. 0123 01010
                    ^^^^^
 
-                error: Invalid number format: 1.
+                error: Invalid number format
                 1. 1000. 1. 000 0. 0123 01010
                          ^^
 
-                error: Invalid number format: 000
+                error: Invalid number format
                 1. 1000. 1. 000 0. 0123 01010
                             ^^^
 
-                error: Invalid number format: 0.
+                error: Invalid number format
                 1. 1000. 1. 000 0. 0123 01010
                                 ^^
 
-                error: Invalid number format: 0123
+                error: Invalid number format
                 1. 1000. 1. 000 0. 0123 01010
                                    ^^^^
 
-                error: Invalid number format: 01010
+                error: Invalid number format
                 1. 1000. 1. 000 0. 0123 01010
                                         ^^^^^
             "#]],
