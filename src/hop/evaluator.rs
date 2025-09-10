@@ -327,14 +327,12 @@ fn evaluate_node(
             output.push('<');
             output.push_str(tag_name.as_str());
             for attr in attributes {
-                if !attr.name.as_str().starts_with("set-") {
-                    output.push(' ');
-                    output.push_str(attr.name.as_str());
-                    if let Some(val) = &attr.value {
-                        output.push_str("=\"");
-                        output.push_str(&evaluate_attribute_value(val, env)?);
-                        output.push('"');
-                    }
+                output.push(' ');
+                output.push_str(attr.name.as_str());
+                if let Some(val) = &attr.value {
+                    output.push_str("=\"");
+                    output.push_str(&evaluate_attribute_value(val, env)?);
+                    output.push('"');
                 }
             }
 
@@ -426,14 +424,12 @@ fn evaluate_node_entrypoint(
             output.push('<');
             output.push_str(tag_name.as_str());
             for attr in attributes {
-                if !attr.name.as_str().starts_with("set-") {
-                    output.push(' ');
-                    output.push_str(attr.name.as_str());
-                    if let Some(val) = &attr.value {
-                        output.push_str("=\"");
-                        output.push_str(&evaluate_attribute_value(val, env)?);
-                        output.push('"');
-                    }
+                output.push(' ');
+                output.push_str(attr.name.as_str());
+                if let Some(val) = &attr.value {
+                    output.push_str("=\"");
+                    output.push_str(&evaluate_attribute_value(val, env)?);
+                    output.push('"');
                 }
             }
 
