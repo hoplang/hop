@@ -36,7 +36,10 @@ impl TokenTreePrettyPrint for TokenTree {
 
     fn to_doc_with_context(&self, is_top_level: bool) -> RcDoc<'static, ()> {
         match &self.token {
-            Token::Doctype { .. } => RcDoc::text("<!DOCTYPE html>"),
+            Token::Doctype { range } => {
+                // Doctypes are currently left untouched.
+                RcDoc::text(range.to_string())
+            }
 
             Token::Comment { range } => {
                 // Comments are currently left untouched.
@@ -44,9 +47,9 @@ impl TokenTreePrettyPrint for TokenTree {
             }
 
             Token::Text { range } => {
-                // Skip whitespace-only text nodes
                 let text = range.as_str();
                 if text.trim().is_empty() {
+                    // Skip whitespace-only text nodes
                     RcDoc::nil()
                 } else {
                     // Otherwise, leave untouched.
@@ -61,6 +64,7 @@ impl TokenTreePrettyPrint for TokenTree {
                     .append(RcDoc::text(expression.to_string()))
                     .append(RcDoc::text("}"))
             }
+
             Token::OpeningTag {
                 tag_name,
                 attributes,
