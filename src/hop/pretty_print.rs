@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::document::document_cursor::StringSpan;
+use crate::document::document_cursor::{DocumentRange, StringSpan};
 use crate::dop::parser::DopParameter;
 use crate::dop::{DopParser, DopType};
 use crate::hop::module_name::ModuleName;
@@ -68,87 +68,105 @@ impl TokenTreePrettyPrint for TokenTree {
                 expression,
                 self_closing,
                 ..
-            } => {
-                let mut doc = RcDoc::text("<").append(RcDoc::text(tag_name.as_str().to_string()));
-
-                // Add attributes
-                for attr in attributes {
-                    doc = doc.append(RcDoc::space()).append(format_attribute(attr));
-                }
-
-                // Add expression (for component parameters)
-                if let Some(expr) = expression {
-                    // Check if this is a top-level component definition
-                    let is_component_definition = is_top_level && tag_name.as_str().contains('-');
-
-                    if is_component_definition {
-                        // Parse and format as parameters for component definitions
-                        let param_doc = match DopParser::from(expr.clone()).parse_parameters() {
-                            Ok(params) => format_parameters(params),
-                            Err(_) => RcDoc::text(expr.as_str().to_string()),
-                        };
-                        doc = doc
-                            .append(RcDoc::space())
-                            .append(RcDoc::text("{"))
-                            .append(param_doc)
-                            .append(RcDoc::text("}"));
-                    } else {
-                        // For now, keep original formatting for component references
-                        doc = doc
-                            .append(RcDoc::space())
-                            .append(RcDoc::text("{"))
-                            .append(RcDoc::text(expr.as_str().to_string()))
-                            .append(RcDoc::text("}"));
-                    }
-                }
-
-                if *self_closing {
-                    doc.append(RcDoc::text("/>"))
-                } else if self.children.is_empty() && self.closing_tag_name.is_some() {
-                    // Has closing tag but no children
-                    doc.append(RcDoc::text("></"))
-                        .append(RcDoc::text(tag_name.as_str().to_string()))
-                        .append(RcDoc::text(">"))
-                } else if !self.children.is_empty() {
-                    doc = doc.append(RcDoc::text(">"));
-
-                    // Check if all children are inline
-                    let all_inline = self.children.iter().all(is_inline_token_tree);
-
-                    if all_inline {
-                        // All children are inline - keep them on same line to preserve spacing
-                        doc = doc.append(format_children(&self.children, false));
-                    } else {
-                        // Has block-level children - safe to format with newlines
-                        doc = doc
-                            .append(
-                                RcDoc::hardline()
-                                    .append(format_children(&self.children, false))
-                                    .nest(2),
-                            )
-                            .append(RcDoc::hardline());
-                    }
-
-                    // Add closing tag if present
-                    if self.closing_tag_name.is_some() {
-                        doc = doc
-                            .append(RcDoc::text("</"))
-                            .append(RcDoc::text(tag_name.as_str().to_string()))
-                            .append(RcDoc::text(">"));
-                    }
-
-                    doc
-                } else {
-                    // Self-closing or void element
-                    doc.append(RcDoc::text(">"))
-                }
-            }
+            } => format_opening_tag(
+                tag_name,
+                attributes,
+                expression.as_ref(),
+                *self_closing,
+                &self.children,
+                self.closing_tag_name.is_some(),
+                is_top_level,
+            ),
 
             Token::ClosingTag { .. } => {
                 // Closing tags should not be present in the token tree
                 unreachable!()
             }
         }
+    }
+}
+
+fn format_opening_tag(
+    tag_name: &DocumentRange,
+    attributes: &[Attribute],
+    expression: Option<&DocumentRange>,
+    self_closing: bool,
+    children: &[TokenTree],
+    has_closing_tag: bool,
+    is_top_level: bool,
+) -> RcDoc<'static, ()> {
+    let mut doc = RcDoc::text("<").append(RcDoc::text(tag_name.as_str().to_string()));
+
+    // Add attributes
+    for attr in attributes {
+        doc = doc.append(RcDoc::space()).append(format_attribute(attr));
+    }
+
+    // Add expression (for component parameters)
+    if let Some(expr) = expression {
+        // Check if this is a top-level component definition
+        let is_component_definition = is_top_level && tag_name.as_str().contains('-');
+
+        if is_component_definition {
+            // Parse and format as parameters for component definitions
+            let params = DopParser::from(expr.clone())
+                .parse_parameters()
+                .expect("Failed to parse component parameters during formatting");
+            let param_doc = format_parameters(params);
+            doc = doc
+                .append(RcDoc::space())
+                .append(RcDoc::text("{"))
+                .append(param_doc)
+                .append(RcDoc::text("}"));
+        } else {
+            // For now, keep original formatting for component references
+            doc = doc
+                .append(RcDoc::space())
+                .append(RcDoc::text("{"))
+                .append(RcDoc::text(expr.as_str().to_string()))
+                .append(RcDoc::text("}"));
+        }
+    }
+
+    if self_closing {
+        doc.append(RcDoc::text("/>"))
+    } else if children.is_empty() && has_closing_tag {
+        // Has closing tag but no children
+        doc.append(RcDoc::text("></"))
+            .append(RcDoc::text(tag_name.as_str().to_string()))
+            .append(RcDoc::text(">"))
+    } else if !children.is_empty() {
+        doc = doc.append(RcDoc::text(">"));
+
+        // Check if all children are inline
+        let all_inline = children.iter().all(is_inline_token_tree);
+
+        if all_inline {
+            // All children are inline - keep them on same line to preserve spacing
+            doc = doc.append(format_children(children, false));
+        } else {
+            // Has block-level children - safe to format with newlines
+            doc = doc
+                .append(
+                    RcDoc::hardline()
+                        .append(format_children(children, false))
+                        .nest(2),
+                )
+                .append(RcDoc::hardline());
+        }
+
+        // Add closing tag if present
+        if has_closing_tag {
+            doc = doc
+                .append(RcDoc::text("</"))
+                .append(RcDoc::text(tag_name.as_str().to_string()))
+                .append(RcDoc::text(">"));
+        }
+
+        doc
+    } else {
+        // Self-closing or void element
+        doc.append(RcDoc::text(">"))
     }
 }
 
