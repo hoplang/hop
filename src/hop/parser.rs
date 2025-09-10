@@ -1,4 +1,4 @@
-use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::document::document_cursor::{DocumentRange, StringSpan};
 use crate::dop::DopParser;
 use crate::hop::ast::{ComponentDefinition, HopAst, HopNode, Import, Render};
 use crate::hop::parse_error::ParseError;
@@ -16,10 +16,9 @@ fn parse_attribute_value(
     match value {
         tokenizer::AttributeValue::String(range) => Ok(ast::AttributeValue::String(range.clone())),
         tokenizer::AttributeValue::Expression(expr) => {
-            //
             match DopParser::from(expr.clone()).parse_expr() {
                 Ok(expr) => Ok(ast::AttributeValue::Expression(expr)),
-                Err(err) => Err(ParseError::new(err.to_string(), err.range().clone())),
+                Err(err) => Err(err.into()),
             }
         }
     }
@@ -54,10 +53,7 @@ fn get_attribute<'a>(
         })
 }
 
-fn parse_attribute_as_static(
-    tag_name: &DocumentRange,
-    attr: &tokenizer::Attribute,
-) -> Result<StaticAttribute, ParseError> {
+fn parse_attribute_as_static(attr: &tokenizer::Attribute) -> Result<StaticAttribute, ParseError> {
     match &attr.value {
         Some(tokenizer::AttributeValue::String(s)) => Ok(StaticAttribute { value: s.clone() }),
         Some(tokenizer::AttributeValue::Expression(expr_range)) => {
@@ -66,19 +62,15 @@ fn parse_attribute_as_static(
                 range: expr_range.clone(),
             })
         }
-        None => {
-            // TODO: Replace with real error message
-            Err(ParseError::MissingRequiredAttribute {
-                tag_name: tag_name.to_string_span(),
-                attr: "file".to_string(),
-                range: tag_name.clone(),
-            })
-        }
+        None => Err(ParseError::AttributeMissingValue {
+            attr_name: attr.name.to_string_span(),
+            range: attr.name.clone(),
+        }),
     }
 }
 
 fn parse_import_name_from_attr(
-    attr: &StaticAttribute,
+    attr: StaticAttribute,
 ) -> Result<(StaticAttribute, ModuleName), ParseError> {
     // Strip the @/ prefix for internal module resolution
     let module_name_input = match attr.value.as_str().strip_prefix("@/") {
@@ -150,8 +142,8 @@ pub fn parse(
                     }
 
                     let (from_attr, module_name) = match get_attribute(tag_name, "from", attributes)
-                        .and_then(|attr| parse_attribute_as_static(tag_name, attr))
-                        .and_then(|attr| parse_import_name_from_attr(&attr))
+                        .and_then(parse_attribute_as_static)
+                        .and_then(parse_import_name_from_attr)
                     {
                         Ok(attr) => attr,
                         Err(err) => {
@@ -161,7 +153,7 @@ pub fn parse(
                     };
 
                     let component_attr = match get_attribute(tag_name, "component", attributes)
-                        .and_then(|attr| parse_attribute_as_static(tag_name, attr))
+                        .and_then(parse_attribute_as_static)
                         .and_then(|attr| {
                             // Validate that component is not already imported
                             if imported_components.contains_key(attr.value.as_str()) {
@@ -198,7 +190,7 @@ pub fn parse(
                     }
 
                     match get_attribute(tag_name, "file", attributes)
-                        .and_then(|attr| parse_attribute_as_static(tag_name, attr))
+                        .and_then(parse_attribute_as_static)
                     {
                         Ok(file_attr) => {
                             renders.push(Render {
@@ -259,7 +251,7 @@ pub fn parse(
                     let is_entrypoint = attributes.contains_key("entrypoint");
 
                     let as_attr = attributes.get("as").and_then(|attr| {
-                        parse_attribute_as_static(tag_name, attr)
+                        parse_attribute_as_static(attr)
                             .map_err(|err| errors.push(err))
                             .ok()
                     });
@@ -427,7 +419,7 @@ fn construct_node(
                         }
 
                         match get_attribute(&tag_name, "cmd", &attributes)
-                            .and_then(|attr| parse_attribute_as_static(&tag_name, attr))
+                            .and_then(parse_attribute_as_static)
                         {
                             Ok(cmd_attr) => Some(HopNode::XExec {
                                 cmd_attr,

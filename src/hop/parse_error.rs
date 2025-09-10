@@ -78,6 +78,12 @@ pub enum ParseError {
         range: DocumentRange,
     },
 
+    #[error("Missing value for attribute {attr_name}")]
+    AttributeMissingValue {
+        attr_name: StringSpan,
+        range: DocumentRange,
+    },
+
     #[error("{message}")]
     GenericError {
         message: String,
@@ -110,6 +116,7 @@ impl Ranged for ParseError {
             | ParseError::ClosedVoidTag { range, .. }
             | ParseError::UnrecognizedHopTag { range, .. }
             | ParseError::MissingRequiredAttribute { range, .. }
+            | ParseError::AttributeMissingValue { range, .. }
             | ParseError::InvalidComponentName { range, .. }
             | ParseError::ComponentIsAlreadyDefined { range, .. }
             | ParseError::DuplicateAttribute { range, .. }
