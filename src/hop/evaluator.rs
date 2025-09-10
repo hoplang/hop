@@ -204,17 +204,17 @@ fn evaluate_node(
             condition,
             children,
             ..
-        } => match dop::evaluate_expr(condition, env)?.as_bool() {
-            Some(cond) => {
-                if cond {
-                    for child in children {
-                        evaluate_node(asts, hop_mode, child, slot_content, env, output)?;
-                    }
+        } => {
+            let cond = dop::evaluate_expr(condition, env)?
+                .as_bool()
+                .ok_or_else(|| anyhow::anyhow!("Could not evaluate expression to boolean"))?;
+            if cond {
+                for child in children {
+                    evaluate_node(asts, hop_mode, child, slot_content, env, output)?;
                 }
-                Ok(())
             }
-            None => anyhow::bail!("Could not evaluate expression to boolean"),
-        },
+            Ok(())
+        }
 
         HopNode::For {
             var_name,
