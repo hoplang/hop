@@ -24,15 +24,10 @@ impl TokenTreePrettyPrint for TokenTree {
         match &self.token {
             Token::Doctype { .. } => RcDoc::text("<!DOCTYPE html>"),
 
-            Token::Comment { range } => RcDoc::text("<!--")
-                .append(RcDoc::text(
-                    range
-                        .as_str()
-                        .trim_start_matches("<!--")
-                        .trim_end_matches("-->")
-                        .to_string(),
-                ))
-                .append(RcDoc::text("-->")),
+            Token::Comment { range } => {
+                // Comments are currently left untouched.
+                RcDoc::text(range.to_string())
+            }
 
             Token::Text { range } => {
                 // Skip whitespace-only text nodes
@@ -40,22 +35,18 @@ impl TokenTreePrettyPrint for TokenTree {
                 if text.trim().is_empty() {
                     RcDoc::nil()
                 } else {
+                    // Otherwise, leave untouched.
                     RcDoc::text(text.to_string())
                 }
             }
 
-            Token::Expression { expression, .. } => {
-                // Try to parse and format the dop expression
-                let formatted_expr = DopParser::from(expression.clone())
-                    .parse_expr()
-                    .map(|expr| expr.to_string())
-                    .unwrap_or_else(|_| expression.as_str().to_string());
-
-                RcDoc::text("{")
-                    .append(RcDoc::text(formatted_expr))
+            Token::TextExpression { expression, .. } => {
+                // Text expressions are currently left untouched.
+                RcDoc::nil()
+                    .append(RcDoc::text("{"))
+                    .append(RcDoc::text(expression.to_string()))
                     .append(RcDoc::text("}"))
             }
-
             Token::OpeningTag {
                 tag_name,
                 attributes,
@@ -246,7 +237,7 @@ fn format_attribute(attr: &Attribute) -> RcDoc<'static, ()> {
                     // double quote
                     .append(RcDoc::text("\""))
             }
-            // case: expression
+            // case: expression value
             Some(AttributeValue::Expression(val)) => {
                 RcDoc::nil()
                     // '{'
@@ -305,7 +296,7 @@ fn is_whitespace_only_text(tree: &TokenTree) -> bool {
 
 fn is_inline_token_tree(tree: &TokenTree) -> bool {
     match &tree.token {
-        Token::Text { .. } | Token::Expression { .. } => true,
+        Token::Text { .. } | Token::TextExpression { .. } => true,
         Token::OpeningTag { tag_name, .. } => {
             is_inline_element(tag_name.as_str()) && tree.children.iter().all(is_inline_token_tree)
         }
@@ -389,7 +380,6 @@ pub fn pretty_print_from_source(source: &str, width: usize) -> Result<String, Ve
     let mut errors = Vec::new();
 
     // First, run the full parser to validate the syntax
-    // Use a dummy module name for validation purposes
     let module_name = ModuleName::new("formatter".to_string()).unwrap();
     let tokenizer = Tokenizer::new(source.to_string());
     let _ = parse(module_name, tokenizer, &mut errors);
@@ -451,6 +441,44 @@ mod tests {
                     <li>Item 2</li>
                   </ul>
                 </main-component>
+            "#]],
+        );
+    }
+
+    /// Comments should be left untouched for now.
+    #[test]
+    fn test_format_leaves_comments_untouched() {
+        check_pretty_print(
+            indoc! {r#"
+                <main-component>
+                    <!-- this is my single-line comment -->
+                    <!--
+                        this is my multi-line comment
+                    -->
+                </main-component>
+            "#},
+            expect![[r#"
+                <main-component>
+                  <!-- this is my single-line comment -->
+                  <!--
+                        this is my multi-line comment
+                    -->
+                </main-component>
+            "#]],
+        );
+    }
+
+    /// Text expressions should be left untouched for now.
+    #[test]
+    fn test_format_leaves_text_expressions_untouched() {
+        check_pretty_print(
+            indoc! {r#"
+                <main-component>
+                    {x   ==    2}
+                </main-component>
+            "#},
+            expect![[r#"
+                <main-component>{x   ==    2}</main-component>
             "#]],
         );
     }

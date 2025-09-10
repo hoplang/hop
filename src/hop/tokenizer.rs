@@ -30,7 +30,7 @@ pub enum Token {
     Comment {
         range: DocumentRange,
     },
-    Expression {
+    TextExpression {
         expression: DocumentRange,
         range: DocumentRange,
     },
@@ -71,7 +71,7 @@ impl Ranged for Token {
         match self {
             Token::Doctype { range }
             | Token::Comment { range }
-            | Token::Expression { range, .. }
+            | Token::TextExpression { range, .. }
             | Token::OpeningTag { range, .. }
             | Token::ClosingTag { range, .. }
             | Token::Text { range } => range,
@@ -134,7 +134,7 @@ impl Display for Token {
             Token::Comment { .. } => {
                 write!(f, "Comment")
             }
-            Token::Expression { expression, .. } => {
+            Token::TextExpression { expression, .. } => {
                 write!(f, "Expression {:#?}", expression.to_string())
             }
         }
@@ -630,7 +630,7 @@ impl Tokenizer {
     ///
     fn parse_text_expression(&mut self) -> Option<Token> {
         self.parse_expression()
-            .map(|(expression, range)| Token::Expression { expression, range })
+            .map(|(expression, range)| Token::TextExpression { expression, range })
     }
 
     /// Parse a text token.
