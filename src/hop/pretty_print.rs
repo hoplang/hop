@@ -99,7 +99,8 @@ fn format_opening_tag(
 
     // Add attributes
     if !attributes.is_empty() {
-        doc = doc.append(RcDoc::space()).append(RcDoc::intersperse(
+        doc = doc.append(RcDoc::space());
+        doc = doc.append(RcDoc::intersperse(
             attributes.iter().map(format_attribute),
             RcDoc::space(),
         ));
@@ -137,44 +138,34 @@ fn format_opening_tag(
         RcDoc::nil()
     });
 
-    if children.is_empty() && has_closing_tag {
-        // Has closing tag but no children
-        doc.append(RcDoc::text("></"))
-            .append(RcDoc::text(tag_name.as_str().to_string()))
-            .append(RcDoc::text(">"))
-    } else if !children.is_empty() {
-        doc = doc.append(RcDoc::text(">"));
+    doc = doc.append(RcDoc::text(">"));
 
-        // Check if all children are inline
-        let all_inline = children.iter().all(is_inline_token_tree);
+    // Check if all children are inline
+    let all_inline = children.iter().all(is_inline_token_tree);
 
-        if all_inline {
-            // All children are inline - keep them on same line to preserve spacing
-            doc = doc.append(format_children(children, false));
-        } else {
-            // Has block-level children - safe to format with newlines
-            doc = doc
-                .append(
-                    RcDoc::hardline()
-                        .append(format_children(children, false))
-                        .nest(2),
-                )
-                .append(RcDoc::hardline());
-        }
-
-        // Add closing tag if present
-        if has_closing_tag {
-            doc = doc
-                .append(RcDoc::text("</"))
-                .append(RcDoc::text(tag_name.as_str().to_string()))
-                .append(RcDoc::text(">"));
-        }
-
-        doc
+    if all_inline {
+        // All children are inline - keep them on same line to preserve spacing
+        doc = doc.append(format_children(children, false));
     } else {
-        // Self-closing or void element
-        doc.append(RcDoc::text(">"))
+        // Has block-level children - safe to format with newlines
+        doc = doc
+            .append(
+                RcDoc::hardline()
+                    .append(format_children(children, false))
+                    .nest(2),
+            )
+            .append(RcDoc::hardline());
     }
+
+    // Add closing tag if present
+    if has_closing_tag {
+        doc = doc
+            .append(RcDoc::text("</"))
+            .append(RcDoc::text(tag_name.as_str().to_string()))
+            .append(RcDoc::text(">"));
+    }
+
+    doc
 }
 
 /// Format a dop type.
