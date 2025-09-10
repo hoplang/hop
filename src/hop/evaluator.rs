@@ -123,41 +123,28 @@ pub fn evaluate_component(
         output.push('"');
 
         for attr in &component.attributes {
+            output.push(' ');
+            // write name
+            output.push_str(attr.name.as_str());
+            // write value
+            output.push_str("=\"");
+            if let Some(val) = &attr.value {
+                output.push_str(&evaluate_attribute_value(val, &mut env)?);
+            }
             if attr.name.as_str() == "class" {
                 match additional_classes {
-                    None => {
-                        output.push(' ');
-                        output.push_str(attr.name.as_str());
-                        if let Some(val) = &attr.value {
-                            output.push_str("=\"");
-                            output.push_str(&evaluate_attribute_value(val, &mut env)?);
-                            output.push('"');
-                        }
-                    }
+                    None => {}
                     Some(cls) => {
                         output.push(' ');
-                        output.push_str(attr.name.as_str());
-                        output.push_str("=\"");
-                        if let Some(val) = &attr.value {
-                            output.push_str(&evaluate_attribute_value(val, &mut env)?);
-                        }
-                        output.push(' ');
                         output.push_str(cls);
-                        output.push('"');
                     }
                 }
-            } else {
-                output.push(' ');
-                output.push_str(attr.name.as_str());
-                if let Some(val) = &attr.value {
-                    output.push_str("=\"");
-                    output.push_str(&evaluate_attribute_value(val, &mut env)?);
-                    output.push('"');
-                }
             }
+            output.push('"');
         }
 
-        // If component doesn't have a class attribute but the reference does, add it
+        // If component doesn't have a class attribute
+        // but the reference does, add it
         if !component
             .attributes
             .iter()
