@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::process::{Command, Stdio};
 
+use super::ast::AttributeValue;
 use super::module_name::ModuleName;
 
 /// HopMode influences the runtime value of the global variable HOP_MODE which
@@ -50,6 +51,18 @@ pub fn render_file(
             "File path '{}' not found in render nodes",
             file_path
         )),
+    }
+}
+
+fn evaluate_attribute_value(
+    val: &AttributeValue,
+    env: &mut Environment<serde_json::Value>,
+) -> Result<String> {
+    match val {
+        AttributeValue::String(s) => Ok(s.to_string()),
+        AttributeValue::Expression(expr) => {
+            Ok(escape_html(evaluate_expr(expr, env)?.as_str().unwrap()))
+        }
     }
 }
 
@@ -117,7 +130,7 @@ pub fn evaluate_component(
                         output.push_str(attr.name.as_str());
                         if let Some(val) = &attr.value {
                             output.push_str("=\"");
-                            output.push_str(val.as_str());
+                            output.push_str(&evaluate_attribute_value(val, &mut env)?);
                             output.push('"');
                         }
                     }
@@ -126,7 +139,7 @@ pub fn evaluate_component(
                         output.push_str(attr.name.as_str());
                         output.push_str("=\"");
                         if let Some(val) = &attr.value {
-                            output.push_str(val.as_str());
+                            output.push_str(&evaluate_attribute_value(val, &mut env)?);
                         }
                         output.push(' ');
                         output.push_str(cls);
@@ -138,7 +151,7 @@ pub fn evaluate_component(
                 output.push_str(attr.name.as_str());
                 if let Some(val) = &attr.value {
                     output.push_str("=\"");
-                    output.push_str(val.as_str());
+                    output.push_str(&evaluate_attribute_value(val, &mut env)?);
                     output.push('"');
                 }
             }
@@ -270,7 +283,8 @@ fn evaluate_node(
                 .iter()
                 .find(|attr| attr.name.as_str() == "class")
                 .and_then(|attr| attr.value.clone())
-                .map(|val| val.to_string());
+                .map(|val| evaluate_attribute_value(&val, env))
+                .transpose()?;
 
             evaluate_component(
                 asts,
@@ -296,7 +310,6 @@ fn evaluate_node(
             children,
             tag_name,
             attributes,
-            expr_attributes,
             ..
         } => {
             // Skip style nodes
@@ -319,21 +332,10 @@ fn evaluate_node(
                     output.push_str(attr.name.as_str());
                     if let Some(val) = &attr.value {
                         output.push_str("=\"");
-                        output.push_str(val.as_str());
+                        output.push_str(&evaluate_attribute_value(val, env)?);
                         output.push('"');
                     }
                 }
-            }
-
-            // Evaluate and add expression attributes
-            for expr_attr in expr_attributes {
-                let attr_name = expr_attr.name.as_str();
-                let evaluated = evaluate_expr(&expr_attr.expression, env)?;
-                output.push(' ');
-                output.push_str(attr_name);
-                output.push_str("=\"");
-                output.push_str(&escape_html(evaluated.as_str().unwrap()));
-                output.push('"');
             }
 
             output.push('>');
@@ -418,7 +420,6 @@ fn evaluate_node_entrypoint(
             tag_name,
             attributes,
             children,
-            expr_attributes,
             ..
         } => {
             // For entrypoints, preserve script and style tags
@@ -430,21 +431,10 @@ fn evaluate_node_entrypoint(
                     output.push_str(attr.name.as_str());
                     if let Some(val) = &attr.value {
                         output.push_str("=\"");
-                        output.push_str(val.as_str());
+                        output.push_str(&evaluate_attribute_value(val, env)?);
                         output.push('"');
                     }
                 }
-            }
-
-            // Evaluate and add expression attributes
-            for expr_attr in expr_attributes {
-                let attr_name = expr_attr.name.as_str();
-                let evaluated = evaluate_expr(&expr_attr.expression, env)?;
-                output.push(' ');
-                output.push_str(attr_name);
-                output.push_str("=\"");
-                output.push_str(&escape_html(evaluated.as_str().unwrap()));
-                output.push('"');
             }
 
             output.push('>');

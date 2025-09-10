@@ -72,6 +72,12 @@ pub enum ParseError {
     #[error("Unmatched {ch}")]
     UnmatchedCharacter { ch: char, range: DocumentRange },
 
+    #[error("Attribute {attr_name} must be statically known")]
+    AttributeMustBeStaticallyKnown {
+        attr_name: StringSpan,
+        range: DocumentRange,
+    },
+
     #[error("{message}")]
     GenericError {
         message: String,
@@ -101,6 +107,7 @@ impl Ranged for ParseError {
             | ParseError::DuplicateAttribute { range, .. }
             | ParseError::InvalidImportPath { range }
             | ParseError::InvalidModuleName { range, .. }
+            | ParseError::AttributeMustBeStaticallyKnown { range, .. }
             | ParseError::GenericError { range, .. } => range,
         }
     }

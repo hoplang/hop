@@ -3,23 +3,26 @@ use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
 use crate::hop::module_name::ModuleName;
 
+/// A StaticAttribute is an attribute that must
+/// be known at compile time.
 #[derive(Debug)]
-pub struct PresentAttribute {
+pub struct StaticAttribute {
     pub value: DocumentRange,
 }
 
+#[derive(Debug, Clone)]
+pub enum AttributeValue {
+    Expression(DopExpr),
+    String(DocumentRange),
+}
+
+/// An Attribute is an attribute on a node, it can either
+/// be empty, an expression or a string value.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Attribute {
     pub name: DocumentRange,
-    pub value: Option<DocumentRange>,
-    pub range: DocumentRange,
-}
-
-#[derive(Debug)]
-pub struct DopExprAttribute {
-    pub name: DocumentRange,
-    pub expression: DopExpr,
+    pub value: Option<AttributeValue>,
     pub range: DocumentRange,
 }
 
@@ -123,7 +126,7 @@ impl HopAst {
 
 #[derive(Debug)]
 pub struct Import {
-    pub component_attr: PresentAttribute,
+    pub component_attr: StaticAttribute,
     pub module_name: ModuleName,
     pub from_attr_value_range: DocumentRange,
 }
@@ -145,7 +148,7 @@ impl Import {
 
 #[derive(Debug)]
 pub struct Render {
-    pub file_attr: PresentAttribute,
+    pub file_attr: StaticAttribute,
     pub range: DocumentRange,
     pub children: Vec<HopNode>,
 }
@@ -155,7 +158,7 @@ pub struct ComponentDefinition {
     pub tag_name: DocumentRange,
     pub closing_tag_name: Option<DocumentRange>,
     pub params: Option<(Vec<DopParameter>, DocumentRange)>,
-    pub as_attr: Option<PresentAttribute>,
+    pub as_attr: Option<StaticAttribute>,
     pub attributes: Vec<Attribute>,
     pub range: DocumentRange,
     pub children: Vec<HopNode>,
@@ -243,10 +246,9 @@ pub enum HopNode {
         attributes: Vec<Attribute>,
         range: DocumentRange,
         children: Vec<HopNode>,
-        expr_attributes: Vec<DopExprAttribute>,
     },
     XExec {
-        cmd_attr: PresentAttribute,
+        cmd_attr: StaticAttribute,
         range: DocumentRange,
         children: Vec<HopNode>,
     },

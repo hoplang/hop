@@ -1,15 +1,44 @@
 use crate::document::document_cursor::Ranged;
 use crate::dop::DopParser;
-use crate::hop::ast::{
-    Attribute, ComponentDefinition, DopExprAttribute, HopAst, HopNode, Import, Render,
-};
+use crate::hop::ast::{Attribute, ComponentDefinition, HopAst, HopNode, Import, Render};
 use crate::hop::parse_error::ParseError;
 use crate::hop::token_tree::{TokenTree, build_tree};
-use crate::hop::tokenizer::{AttributeValue, Token, Tokenizer};
+use crate::hop::tokenizer::{Token, Tokenizer};
 use std::collections::{HashMap, HashSet};
 
-use super::ast::PresentAttribute;
+use super::ast::{self, StaticAttribute};
 use super::module_name::ModuleName;
+use super::tokenizer;
+
+fn parse_attribute_value(
+    value: &tokenizer::AttributeValue,
+) -> Result<ast::AttributeValue, ParseError> {
+    match value {
+        tokenizer::AttributeValue::String(range) => Ok(ast::AttributeValue::String(range.clone())),
+        tokenizer::AttributeValue::Expression(expr) => {
+            //
+            match DopParser::from(expr.clone()).parse_expr() {
+                Ok(expr) => Ok(ast::AttributeValue::Expression(expr)),
+                Err(err) => Err(ParseError::new(err.to_string(), err.range().clone())),
+            }
+        }
+    }
+}
+
+fn parse_attribute(attr: &tokenizer::Attribute) -> Result<ast::Attribute, ParseError> {
+    match &attr.value {
+        Some(val) => Ok(ast::Attribute {
+            name: attr.name.clone(),
+            value: Some(parse_attribute_value(val)?),
+            range: attr.range.clone(),
+        }),
+        None => Ok(ast::Attribute {
+            name: attr.name.clone(),
+            value: None,
+            range: attr.range.clone(),
+        }),
+    }
+}
 
 pub fn parse(
     module_name: ModuleName,
@@ -101,7 +130,7 @@ pub fn parse(
                         Ok(module_path) => {
                             imported_components.insert(cmp_attr.to_string(), module_path.clone());
                             imports.push(Import {
-                                component_attr: PresentAttribute { value: cmp_attr },
+                                component_attr: StaticAttribute { value: cmp_attr },
                                 module_name: module_path.clone(),
                                 from_attr_value_range: from_attr,
                             });
@@ -135,7 +164,7 @@ pub fn parse(
                     };
 
                     renders.push(Render {
-                        file_attr: PresentAttribute { value: file_attr },
+                        file_attr: StaticAttribute { value: file_attr },
                         range: tree.range.clone(),
                         children,
                     });
@@ -194,12 +223,12 @@ pub fn parse(
                         match attr.name.as_str() {
                             "as" => {
                                 as_attr = match &attr.value {
-                                    Some(AttributeValue::String(s)) => Some(s.clone()),
-                                    Some(AttributeValue::Expression(_)) => {
-                                        errors.push(ParseError::new(
-                                            "Expression attributes are not supported on component definitions".to_string(),
-                                            attr.range.clone(),
-                                        ));
+                                    Some(tokenizer::AttributeValue::String(s)) => Some(s.clone()),
+                                    Some(tokenizer::AttributeValue::Expression(expr_range)) => {
+                                        errors.push(ParseError::AttributeMustBeStaticallyKnown {
+                                            attr_name: attr.name.to_string_span(),
+                                            range: expr_range.clone(),
+                                        });
                                         None
                                     }
                                     None => None,
@@ -209,24 +238,23 @@ pub fn parse(
                                 is_entrypoint = true;
                             }
                             _ => {
-                                // Check for expression attributes on component definitions
-                                if let Some(AttributeValue::Expression(_)) = &attr.value {
-                                    errors.push(ParseError::new(
-                                        "Expression attributes are not supported on component definitions".to_string(),
-                                        attr.range.clone(),
-                                    ));
-                                    continue;
-                                }
-
                                 // Here we keep the unhandled attributes
                                 // since they should be rendered in the
                                 // resulting HTML.
+                                let value =
+                                    attr.value.as_ref().map(|v| match parse_attribute_value(v) {
+                                        Ok(v) => Some(v),
+                                        Err(err) => {
+                                            errors.push(ParseError::new(
+                                                err.to_string(),
+                                                err.range().clone(),
+                                            ));
+                                            None
+                                        }
+                                    });
                                 unhandled_attributes.push(Attribute {
                                     name: attr.name.clone(),
-                                    value: match &attr.value {
-                                        Some(AttributeValue::String(s)) => Some(s.clone()),
-                                        _ => None,
-                                    },
+                                    value: value.flatten(),
                                     range: attr.range.clone(),
                                 });
                             }
@@ -238,7 +266,7 @@ pub fn parse(
                         closing_tag_name: tree.closing_tag_name,
                         params,
                         is_entrypoint,
-                        as_attr: as_attr.map(|v| PresentAttribute { value: v }),
+                        as_attr: as_attr.map(|v| StaticAttribute { value: v }),
                         attributes: unhandled_attributes,
                         range: tree.range.clone(),
                         children,
@@ -387,19 +415,18 @@ fn construct_node(
                         }
 
                         match cmd_attr.and_then(|attr| match attr.value {
-                            Some(AttributeValue::String(s)) => Some(s),
-                            Some(AttributeValue::Expression(_)) => {
-                                errors.push(ParseError::new(
-                                    "Expression attributes are not supported on hop-x-exec"
-                                        .to_string(),
-                                    attr.range.clone(),
-                                ));
+                            Some(tokenizer::AttributeValue::String(s)) => Some(s),
+                            Some(tokenizer::AttributeValue::Expression(expr_range)) => {
+                                errors.push(ParseError::AttributeMustBeStaticallyKnown {
+                                    attr_name: attr.name.to_string_span(),
+                                    range: expr_range,
+                                });
                                 None
                             }
                             None => None,
                         }) {
                             Some(cmd_value) => Some(HopNode::XExec {
-                                cmd_attr: PresentAttribute { value: cmd_value },
+                                cmd_attr: StaticAttribute { value: cmd_value },
                                 range: tree.range.clone(),
                                 children,
                             }),
@@ -460,83 +487,46 @@ fn construct_node(
                             imported_components.get(tag_name.as_str()).cloned()
                         };
 
-                    // Check for expression attributes on component references
-                    let mut string_attributes = Vec::new();
-                    for attr in attributes {
-                        if let Some(AttributeValue::Expression(_)) = &attr.value {
-                            errors.push(ParseError::new(
-                                "Expression attributes are not supported on component references. Use the component's expression syntax instead".to_string(),
-                                attr.range.clone(),
-                            ));
-                        } else {
-                            string_attributes.push(Attribute {
-                                name: attr.name.clone(),
-                                value: match &attr.value {
-                                    Some(AttributeValue::String(s)) => Some(s.clone()),
-                                    _ => None,
-                                },
-                                range: attr.range.clone(),
-                            });
-                        }
-                    }
+                    let parsed_attrs = attributes
+                        .iter()
+                        .filter_map(|attr| match parse_attribute(attr) {
+                            Ok(attr) => Some(attr),
+                            Err(err) => {
+                                errors.push(err);
+                                None
+                            }
+                        })
+                        .collect();
 
                     Some(HopNode::ComponentReference {
                         tag_name,
                         closing_tag_name: tree.closing_tag_name,
                         definition_module,
                         args,
-                        attributes: string_attributes,
+                        attributes: parsed_attrs,
                         range: tree.range.clone(),
                         children,
                     })
                 }
                 // Treat as HTML
                 _ => {
-                    let mut string_attributes = Vec::new();
-                    let mut expr_attributes = Vec::new();
-
-                    for attr in &attributes {
-                        match &attr.value {
-                            Some(AttributeValue::Expression(expr_range)) => {
-                                // Parse the expression
-                                match DopParser::from(expr_range.clone()).parse_expr() {
-                                    Ok(expression) => expr_attributes.push(DopExprAttribute {
-                                        name: attr.name.clone(),
-                                        expression,
-                                        range: attr.range.clone(),
-                                    }),
-                                    Err(err) => {
-                                        errors.push(ParseError::new(
-                                            err.to_string(),
-                                            err.range().clone(),
-                                        ));
-                                    }
-                                }
+                    let parsed_attrs = attributes
+                        .iter()
+                        .filter_map(|attr| match parse_attribute(attr) {
+                            Ok(attr) => Some(attr),
+                            Err(err) => {
+                                errors.push(err);
+                                None
                             }
-                            Some(AttributeValue::String(str_range)) => {
-                                string_attributes.push(Attribute {
-                                    name: attr.name.clone(),
-                                    value: Some(str_range.clone()),
-                                    range: attr.range.clone(),
-                                });
-                            }
-                            None => {
-                                string_attributes.push(Attribute {
-                                    name: attr.name.clone(),
-                                    value: None,
-                                    range: attr.range.clone(),
-                                });
-                            }
-                        }
-                    }
+                        })
+                        .collect();
 
                     Some(HopNode::Html {
                         tag_name,
                         closing_tag_name: tree.closing_tag_name,
-                        attributes: string_attributes,
+                        attributes: parsed_attrs,
                         range: tree.range.clone(),
                         children,
-                        expr_attributes,
                     })
                 }
             }

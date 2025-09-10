@@ -7,6 +7,7 @@ use crate::hop::type_error::TypeError;
 use std::collections::HashMap;
 use std::fmt::{self, Display};
 
+use super::ast::AttributeValue;
 use super::module_name::ModuleName;
 
 #[derive(Debug, Clone)]
@@ -403,26 +404,28 @@ fn typecheck_node(
         }
 
         HopNode::Html {
-            expr_attributes,
+            attributes,
             children,
             ..
         } => {
-            for expr_attr in expr_attributes {
-                let expr_type = match dop::typecheck_expr(&expr_attr.expression, env, annotations) {
-                    Ok(t) => t,
-                    Err(err) => {
-                        errors.push(err);
-                        continue; // Skip this attribute
+            for attr in attributes {
+                if let Some(AttributeValue::Expression(expr)) = &attr.value {
+                    let expr_type = match dop::typecheck_expr(expr, env, annotations) {
+                        Ok(t) => t,
+                        Err(err) => {
+                            errors.push(err);
+                            continue; // Skip this attribute
+                        }
+                    };
+
+                    if !expr_type.is_subtype(&DopType::String) {
+                        errors.push(TypeError::ExpectedStringAttribute {
+                            found: expr_type.to_string(),
+                            range: expr.range().clone(),
+                        });
+                        continue;
                     }
                 };
-
-                if !expr_type.is_subtype(&DopType::String) {
-                    errors.push(TypeError::ExpectedStringAttribute {
-                        found: expr_type.to_string(),
-                        range: expr_attr.range.clone(),
-                    });
-                    continue;
-                }
             }
 
             for child in children {
