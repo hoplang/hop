@@ -187,7 +187,7 @@ pub fn parse(
                         }
                     }
 
-                    let component_attr = match get_attribute(tag_name, "component", attributes)
+                    let component_attr = get_attribute(tag_name, "component", attributes)
                         .and_then(|attr| parse_as_static(tag_name, attr))
                         .and_then(|attr| {
                             // Validate that component is not already imported
@@ -198,15 +198,13 @@ pub fn parse(
                                 });
                             }
                             Ok(attr)
-                        }) {
-                        Ok(v) => Some(v),
-                        Err(err) => {
+                        })
+                        .map_err(|err| {
                             errors.push(err);
-                            None
-                        }
-                    };
+                        })
+                        .ok();
 
-                    let from_attr = match get_attribute(tag_name, "from", attributes)
+                    let from_attr = get_attribute(tag_name, "from", attributes)
                         .and_then(|attr| parse_as_static(tag_name, attr))
                         .and_then(|attr| {
                             // Strip the @/ prefix for internal module resolution
@@ -225,13 +223,11 @@ pub fn parse(
                                     range: attr.value.clone(),
                                 }),
                             }
-                        }) {
-                        Ok(v) => Some(v),
-                        Err(err) => {
+                        })
+                        .map_err(|err| {
                             errors.push(err);
-                            None
-                        }
-                    };
+                        })
+                        .ok();
 
                     if let (Some((from_attr, module_name)), Some(component_attr)) =
                         (from_attr, component_attr)
