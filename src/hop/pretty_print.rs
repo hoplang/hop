@@ -10,6 +10,20 @@ use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::{Attribute, AttributeValue, Token, Tokenizer};
 use pretty::RcDoc;
 
+// This file uses the `pretty` crate to perform Wadler-style
+// pretty printing of token trees.
+//
+// The `pretty` crate has the following actions:
+//
+// * nil()            - empty document
+// * text(...)        - verbatim string
+// * line()           - line break that acts as a space when grouped on a single line.
+// * line_()          - line break that acts as an empty string when grouped on a single line.
+// * hardline()       - line break that always break the line.
+// * group()          - group the nodes on a single line if possible, otherwise on separate lines.
+// * flat_alt(...)    - make a node act as some other node when laid out on a single line.
+// * intersperse(...) - add a separator between each node
+
 pub trait TokenTreePrettyPrint {
     fn to_doc(&self) -> RcDoc<'static, ()>;
     fn to_doc_with_context(&self, is_top_level: bool) -> RcDoc<'static, ()>;
