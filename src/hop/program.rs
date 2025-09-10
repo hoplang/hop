@@ -9,7 +9,7 @@ use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
 use crate::hop::type_error::TypeError;
 use anyhow::Result;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::ast::HopNode;
 use super::evaluator::HopMode;
@@ -430,7 +430,7 @@ impl Program {
             component_name,
             args,
             None,
-            None,
+            BTreeMap::new(),
             output,
         )
     }

@@ -1,9 +1,11 @@
 use crate::common::{escape_html, is_void_element};
+use crate::document::document_cursor::StringSpan;
 use crate::dop::{self, evaluate_expr};
 use crate::hop::ast::{HopAst, HopNode};
 use crate::hop::environment::Environment;
 use anyhow::Result;
-use std::collections::HashMap;
+use itertools::{EitherOrBoth, Itertools as _};
+use std::collections::{BTreeMap, HashMap};
 use std::io::Write;
 use std::process::{Command, Stdio};
 
@@ -74,7 +76,7 @@ pub fn evaluate_component(
     component_name: &str,
     args: HashMap<String, serde_json::Value>,
     slot_content: Option<&str>,
-    additional_classes: Option<&str>,
+    additional_attributes: BTreeMap<StringSpan, Option<String>>,
     output: &mut String,
 ) -> Result<()> {
     let ast = asts
@@ -122,40 +124,50 @@ pub fn evaluate_component(
         output.push_str(component_name);
         output.push('"');
 
-        for attr in &component.attributes {
-            output.push(' ');
-            // write name
-            output.push_str(attr.name.as_str());
-            // write value
-            output.push_str("=\"");
-            if let Some(val) = &attr.value {
-                output.push_str(&evaluate_attribute_value(val, &mut env)?);
-            }
-            if attr.name.as_str() == "class" {
-                match additional_classes {
-                    None => {}
-                    Some(cls) => {
-                        output.push(' ');
-                        output.push_str(cls);
-                    }
-                }
-            }
-            output.push('"');
-        }
-
-        // If component doesn't have a class attribute
-        // but the reference does, add it
-        if !component
+        let own_attrs = component
             .attributes
             .iter()
-            .any(|attr| attr.name.as_str() == "class")
-        {
-            if let Some(cls) = additional_classes {
-                output.push_str(" class=\"");
-                output.push_str(cls);
+            .map(|attr| (attr.name.to_string_span(), attr.value.clone()))
+            .collect::<BTreeMap<_, _>>();
+
+        let merged_attrs = additional_attributes
+            .iter()
+            .merge_join_by(own_attrs.iter(), |a, b| a.0.cmp(b.0))
+            .map(|e| match e {
+                EitherOrBoth::Both((_, l), (k, r)) => {
+                    // Here we have special handling of the "class" attribute.
+                    // When both values are present they should be concatenated
+                    // rather than overridden.
+                    //
+                    // This code would be simpler if class attributes were static.
+                    if k.as_str() == "class" && r.is_some() && l.is_some() {
+                        if let (Some(lval), Some(rval)) = (l, r) {
+                            let evaluated = evaluate_attribute_value(rval, &mut env).unwrap();
+                            return (k, Some(format!("{} {}", evaluated, lval)));
+                        }
+                    }
+                    (k, l.as_ref().map(|v| v.to_string()))
+                }
+                EitherOrBoth::Left((k, v)) => (k, v.as_ref().map(|v| v.to_string())),
+                EitherOrBoth::Right((k, v)) => (
+                    k,
+                    v.as_ref()
+                        .map(|v| evaluate_attribute_value(v, &mut env).unwrap()),
+                ),
+            });
+
+        for (k, v) in merged_attrs {
+            output.push(' ');
+            // write name
+            output.push_str(k);
+            // write value
+            if let Some(v) = v {
+                output.push_str("=\"");
+                output.push_str(&v);
                 output.push('"');
             }
         }
+
         output.push('>');
         for child in &component.children {
             evaluate_node(asts, hop_mode, child, slot_content, &mut env, output)?;
@@ -266,12 +278,17 @@ fn evaluate_node(
             };
 
             // Extract class attribute from component reference
-            let additional_classes = attributes
+            let additional_attributes = attributes
                 .iter()
-                .find(|attr| attr.name.as_str() == "class")
-                .and_then(|attr| attr.value.clone())
-                .map(|val| evaluate_attribute_value(&val, env))
-                .transpose()?;
+                .map(|attr| {
+                    (
+                        attr.name.to_string_span(),
+                        attr.value
+                            .as_ref()
+                            .map(|v| evaluate_attribute_value(v, env).unwrap()),
+                    )
+                })
+                .collect::<BTreeMap<_, _>>();
 
             evaluate_component(
                 asts,
@@ -280,7 +297,7 @@ fn evaluate_node(
                 tag_name.as_str(),
                 arg_values,
                 slot_html.as_deref(),
-                additional_classes.as_deref(),
+                additional_attributes,
                 output,
             )
         }
@@ -616,7 +633,7 @@ mod tests {
             "main-comp",
             args,
             None,
-            None,
+            BTreeMap::new(),
             &mut actual_output,
         )
         .expect("Execution failed");
@@ -1063,22 +1080,43 @@ mod tests {
         );
     }
 
-    /// Test expression attribute functionality for id
+    /// Test passing an attribute from a component reference when the definition doesn't have the attribute.
     #[test]
-    fn test_expr_attribute_id() {
+    fn test_attribute_override_reference_only() {
         check(
             indoc! {r#"
                 -- main.hop --
-                <main-comp {id: string}>
-                    <div id={id}>my div</div>
+                <my-button class="px-4 py-2">Click me</my-button>
+
+                <main-comp>
+                	<my-button data-test="foo"/>
                 </main-comp>
             "#},
-            json!({
-                "id": "my-unique-id"
-            }),
+            json!({}),
             expect![[r#"
                 <div data-hop-id="main/main-comp">
-                    <div id="my-unique-id">my div</div>
+                	<div data-hop-id="main/my-button" class="px-4 py-2" data-test="foo">Click me</div>
+                </div>
+            "#]],
+        );
+    }
+
+    /// Test passing an attribute from a component reference when the definition has the attribute.
+    #[test]
+    fn test_attribute_override_exists_on_both() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <my-button data-test="foo" class="px-4 py-2">Click me</my-button>
+
+                <main-comp>
+                	<my-button data-test="bar"/>
+                </main-comp>
+            "#},
+            json!({}),
+            expect![[r#"
+                <div data-hop-id="main/main-comp">
+                	<div data-hop-id="main/my-button" class="px-4 py-2" data-test="bar">Click me</div>
                 </div>
             "#]],
         );
