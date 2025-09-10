@@ -4,7 +4,7 @@ use crate::hop::ast::{Attribute, ComponentDefinition, HopAst, HopNode, Import, R
 use crate::hop::parse_error::ParseError;
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::{Token, Tokenizer};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::ast::{self, StaticAttribute};
 use super::module_name::ModuleName;
@@ -82,7 +82,7 @@ pub fn parse(
                 ..
             } => match tag_name.as_str() {
                 "import" => {
-                    for attr in attributes {
+                    for attr in attributes.values() {
                         match attr.name.as_str() {
                             "component" | "from" => {}
                             _ => {
@@ -145,7 +145,7 @@ pub fn parse(
                     }
                 }
                 "render" => {
-                    for attr in attributes {
+                    for attr in attributes.values() {
                         match attr.name.as_str() {
                             "file" => {}
                             _ => {
@@ -217,10 +217,10 @@ pub fn parse(
 
                     let mut is_entrypoint = false;
                     let mut as_attr = None;
-                    let mut unhandled_attributes = Vec::new();
+                    let mut unhandled_attributes = BTreeMap::new();
 
-                    for attr in attributes {
-                        match attr.name.as_str() {
+                    for (name, attr) in attributes {
+                        match name.as_str() {
                             "as" => {
                                 as_attr = match &attr.value {
                                     Some(tokenizer::AttributeValue::String(s)) => Some(s.clone()),
@@ -252,11 +252,14 @@ pub fn parse(
                                             None
                                         }
                                     });
-                                unhandled_attributes.push(Attribute {
-                                    name: attr.name.clone(),
-                                    value: value.flatten(),
-                                    range: attr.range.clone(),
-                                });
+                                unhandled_attributes.insert(
+                                    name.clone(),
+                                    Attribute {
+                                        name: attr.name.clone(),
+                                        value: value.flatten(),
+                                        range: attr.range.clone(),
+                                    },
+                                );
                             }
                         }
                     }
@@ -405,8 +408,8 @@ fn construct_node(
                     "hop-x-exec" => {
                         let mut cmd_attr = None;
 
-                        for attr in attributes {
-                            match attr.name.as_str() {
+                        for (name, attr) in attributes {
+                            match name.as_str() {
                                 "cmd" => cmd_attr = Some(attr),
                                 _ => {
                                     // TODO: Check for unrecognized attributes
@@ -444,7 +447,7 @@ fn construct_node(
                         }
                     }
                     "hop-x-raw" => Some(HopNode::XRaw {
-                        trim: attributes.iter().any(|attr| attr.name.as_str() == "trim"),
+                        trim: attributes.contains_key("trim"),
                         range: tree.range.clone(),
                         children,
                     }),
@@ -489,8 +492,8 @@ fn construct_node(
 
                     let parsed_attrs = attributes
                         .iter()
-                        .filter_map(|attr| match parse_attribute(attr) {
-                            Ok(attr) => Some(attr),
+                        .filter_map(|(k, attr)| match parse_attribute(attr) {
+                            Ok(attr) => Some((k.clone(), attr)),
                             Err(err) => {
                                 errors.push(err);
                                 None
@@ -512,8 +515,8 @@ fn construct_node(
                 _ => {
                     let parsed_attrs = attributes
                         .iter()
-                        .filter_map(|attr| match parse_attribute(attr) {
-                            Ok(attr) => Some(attr),
+                        .filter_map(|(k, attr)| match parse_attribute(attr) {
+                            Ok(attr) => Some((k.clone(), attr)),
                             Err(err) => {
                                 errors.push(err);
                                 None

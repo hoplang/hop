@@ -124,15 +124,9 @@ pub fn evaluate_component(
         output.push_str(component_name);
         output.push('"');
 
-        let own_attrs = component
-            .attributes
-            .iter()
-            .map(|attr| (attr.name.to_string_span(), attr.value.clone()))
-            .collect::<BTreeMap<_, _>>();
-
         let merged_attrs = additional_attributes
             .iter()
-            .merge_join_by(own_attrs.iter(), |a, b| a.0.cmp(b.0))
+            .merge_join_by(&component.attributes, |a, b| a.0.cmp(b.0))
             .map(|e| match e {
                 EitherOrBoth::Both((_, l), (k, r)) => {
                     // Here we have special handling of the "class" attribute.
@@ -140,8 +134,8 @@ pub fn evaluate_component(
                     // rather than overridden.
                     //
                     // This code would be simpler if class attributes were static.
-                    if k.as_str() == "class" && r.is_some() && l.is_some() {
-                        if let (Some(lval), Some(rval)) = (l, r) {
+                    if k.as_str() == "class" && r.value.is_some() && l.is_some() {
+                        if let (Some(lval), Some(rval)) = (l, &r.value) {
                             let evaluated = evaluate_attribute_value(rval, &mut env).unwrap();
                             return (k, Some(format!("{} {}", evaluated, lval)));
                         }
@@ -151,7 +145,8 @@ pub fn evaluate_component(
                 EitherOrBoth::Left((k, v)) => (k, v.as_ref().map(|v| v.to_string())),
                 EitherOrBoth::Right((k, v)) => (
                     k,
-                    v.as_ref()
+                    v.value
+                        .as_ref()
                         .map(|v| evaluate_attribute_value(v, &mut env).unwrap()),
                 ),
             });
@@ -280,9 +275,9 @@ fn evaluate_node(
             // Extract class attribute from component reference
             let additional_attributes = attributes
                 .iter()
-                .map(|attr| {
+                .map(|(k, attr)| {
                     (
-                        attr.name.to_string_span(),
+                        k.clone(),
                         attr.value
                             .as_ref()
                             .map(|v| evaluate_attribute_value(v, env).unwrap()),
@@ -322,17 +317,15 @@ fn evaluate_node(
             }
 
             // Skip script nodes without a src attribute
-            if tag_name.as_str() == "script"
-                && !attributes.iter().any(|attr| attr.name.as_str() == "src")
-            {
+            if tag_name.as_str() == "script" && !attributes.contains_key("src") {
                 return Ok(());
             }
 
             output.push('<');
             output.push_str(tag_name.as_str());
-            for attr in attributes {
+            for (name, attr) in attributes {
                 output.push(' ');
-                output.push_str(attr.name.as_str());
+                output.push_str(name.as_str());
                 if let Some(val) = &attr.value {
                     output.push_str("=\"");
                     output.push_str(&evaluate_attribute_value(val, env)?);
@@ -427,9 +420,9 @@ fn evaluate_node_entrypoint(
             // For entrypoints, preserve script and style tags
             output.push('<');
             output.push_str(tag_name.as_str());
-            for attr in attributes {
+            for (name, attr) in attributes {
                 output.push(' ');
-                output.push_str(attr.name.as_str());
+                output.push_str(name.as_str());
                 if let Some(val) = &attr.value {
                     output.push_str("=\"");
                     output.push_str(&evaluate_attribute_value(val, env)?);

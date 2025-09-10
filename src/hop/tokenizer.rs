@@ -1,10 +1,11 @@
+use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 use std::iter::Peekable;
 use std::mem;
 
 use itertools::Itertools as _;
 
-use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged};
+use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged, StringSpan};
 use crate::dop::DopTokenizer;
 use crate::dop::tokenizer::DopToken;
 use crate::hop::parse_error::ParseError;
@@ -19,6 +20,12 @@ pub enum AttributeValue {
 pub struct Attribute {
     pub name: DocumentRange,
     pub value: Option<AttributeValue>,
+
+    /// This is the range for the whole attribute,
+    /// including possible quotes.
+    ///
+    /// E.g. <div foo="bar">
+    ///           ^^^^^^^^^
     pub range: DocumentRange,
 }
 
@@ -36,7 +43,7 @@ pub enum Token {
     },
     OpeningTag {
         tag_name: DocumentRange,
-        attributes: Vec<Attribute>,
+        attributes: BTreeMap<StringSpan, Attribute>,
         expression: Option<DocumentRange>,
         self_closing: bool,
         range: DocumentRange,
@@ -53,14 +60,13 @@ pub enum Token {
 impl Token {
     pub fn get_attribute_value(&self, name: &str) -> Option<DocumentRange> {
         match self {
-            Token::OpeningTag { attributes, .. } => attributes
-                .iter()
-                .find(|attr| attr.name.as_str() == name)
-                .and_then(|attr| match &attr.value {
+            Token::OpeningTag { attributes, .. } => {
+                attributes.get(name).and_then(|attr| match &attr.value {
                     Some(AttributeValue::String(range)) => Some(range.clone()),
                     Some(AttributeValue::Expression(range)) => Some(range.clone()),
                     None => None,
-                }),
+                })
+            }
             _ => None,
         }
     }
@@ -108,7 +114,9 @@ impl Display for Token {
                 if !attributes.is_empty() {
                     write!(f, " ")?;
                     let attr_strs: Vec<String> = attributes
-                        .iter()
+                        .values()
+                        // Sort by the order they occur in the document
+                        .sorted_by(|a, b| a.range.start().cmp(&b.range.start()))
                         .map(|attr| match &attr.value {
                             Some(AttributeValue::String(val)) => {
                                 format!("{}={:#?}", attr.name, val.to_string())
@@ -437,8 +445,8 @@ impl Tokenizer {
     ///
     /// E.g. <div foo="bar" {x: string}>
     ///           ^^^^^^^^^^^^^^^^^^^^^
-    fn parse_tag_content(&mut self) -> (Vec<Attribute>, Option<DocumentRange>) {
-        let mut attributes: Vec<Attribute> = Vec::new();
+    fn parse_tag_content(&mut self) -> (BTreeMap<StringSpan, Attribute>, Option<DocumentRange>) {
+        let mut attributes: BTreeMap<StringSpan, Attribute> = BTreeMap::new();
         let mut expression: Option<DocumentRange> = None;
         loop {
             self.skip_whitespace();
@@ -453,16 +461,13 @@ impl Tokenizer {
                     let Some(attr) = self.parse_attribute() else {
                         continue;
                     };
-                    let exists = attributes
-                        .iter()
-                        .any(|a| a.name.as_str() == attr.name.as_str());
-                    if exists {
+                    if attributes.contains_key(attr.name.as_str()) {
                         self.errors.push(ParseError::DuplicateAttribute {
                             name: attr.name.to_string_span(),
                             range: attr.name.clone(),
                         });
                     } else {
-                        attributes.push(attr);
+                        attributes.insert(attr.name.to_string_span(), attr);
                     }
                 }
                 _ => {

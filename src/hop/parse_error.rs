@@ -12,9 +12,6 @@ pub enum ParseError {
         range: DocumentRange,
     },
 
-    #[error("Missing attribute value")]
-    MissingAttributeValue { range: DocumentRange },
-
     #[error("Unclosed <{tag}>")]
     UnclosedTag {
         tag: StringSpan,
@@ -97,7 +94,6 @@ impl Ranged for ParseError {
             ParseError::SlotIsAlreadyDefined { range }
             | ParseError::UnmatchedClosingTag { range, .. }
             | ParseError::UnmatchedCharacter { range, .. }
-            | ParseError::MissingAttributeValue { range }
             | ParseError::UnclosedTag { range, .. }
             | ParseError::ClosedVoidTag { range, .. }
             | ParseError::UnrecognizedHopTag { range, .. }

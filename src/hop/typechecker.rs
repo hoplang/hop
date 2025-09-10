@@ -408,7 +408,7 @@ fn typecheck_node(
             children,
             ..
         } => {
-            for attr in attributes {
+            for attr in attributes.values() {
                 if let Some(AttributeValue::Expression(expr)) = &attr.value {
                     let expr_type = match dop::typecheck_expr(expr, env, annotations) {
                         Ok(t) => t,
@@ -2789,16 +2789,16 @@ mod tests {
                   |             ^^^^
 
                 user: {theme: string, url: string}
-                  --> main.hop (line 2, col 12)
-                1 | <main-comp {user: {url: string, theme: string}}>
-                2 |   <a href={user.url} class={user.theme}>Link</a>
-                  |            ^^^^
-
-                user: {theme: string, url: string}
                   --> main.hop (line 2, col 29)
                 1 | <main-comp {user: {url: string, theme: string}}>
                 2 |   <a href={user.url} class={user.theme}>Link</a>
                   |                             ^^^^
+
+                user: {theme: string, url: string}
+                  --> main.hop (line 2, col 12)
+                1 | <main-comp {user: {url: string, theme: string}}>
+                2 |   <a href={user.url} class={user.theme}>Link</a>
+                  |            ^^^^
             "#]],
         );
     }

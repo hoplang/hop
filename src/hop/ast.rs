@@ -1,5 +1,7 @@
+use std::collections::BTreeMap;
+
 use crate::document::DocumentPosition;
-use crate::document::document_cursor::{DocumentRange, Ranged};
+use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
 use crate::hop::module_name::ModuleName;
 
@@ -159,7 +161,7 @@ pub struct ComponentDefinition {
     pub closing_tag_name: Option<DocumentRange>,
     pub params: Option<(Vec<DopParameter>, DocumentRange)>,
     pub as_attr: Option<StaticAttribute>,
-    pub attributes: Vec<Attribute>,
+    pub attributes: BTreeMap<StringSpan, Attribute>,
     pub range: DocumentRange,
     pub children: Vec<HopNode>,
     pub is_entrypoint: bool,
@@ -204,7 +206,7 @@ pub enum HopNode {
         definition_module: Option<ModuleName>,
         closing_tag_name: Option<DocumentRange>,
         args: Option<(Vec<DopArgument>, DocumentRange)>,
-        attributes: Vec<Attribute>,
+        attributes: BTreeMap<StringSpan, Attribute>,
         range: DocumentRange,
         children: Vec<HopNode>,
     },
@@ -243,7 +245,7 @@ pub enum HopNode {
     Html {
         tag_name: DocumentRange,
         closing_tag_name: Option<DocumentRange>,
-        attributes: Vec<Attribute>,
+        attributes: BTreeMap<StringSpan, Attribute>,
         range: DocumentRange,
         children: Vec<HopNode>,
     },

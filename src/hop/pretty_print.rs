@@ -1,4 +1,6 @@
-use crate::document::document_cursor::DocumentRange;
+use std::collections::BTreeMap;
+
+use crate::document::document_cursor::{DocumentRange, StringSpan};
 use crate::dop::DopParser;
 use crate::dop::parser::DopParameter;
 use crate::hop::module_name::ModuleName;
@@ -7,6 +9,7 @@ use crate::hop::parser::parse;
 use crate::hop::pretty::Pretty;
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::{Attribute, AttributeValue, Token, Tokenizer};
+use itertools::Itertools as _;
 use pretty::RcDoc;
 
 // This file uses the `pretty` crate to perform Wadler-style
@@ -87,7 +90,7 @@ impl TokenTreePrettyPrint for TokenTree {
 
 fn format_opening_tag(
     tag_name: &DocumentRange,
-    attributes: &[Attribute],
+    attributes: &BTreeMap<StringSpan, Attribute>,
     expression: Option<&DocumentRange>,
     self_closing: bool,
     children: &[TokenTree],
@@ -100,7 +103,10 @@ fn format_opening_tag(
     if !attributes.is_empty() {
         doc = doc.append(RcDoc::space());
         doc = doc.append(RcDoc::intersperse(
-            attributes.iter().map(format_attribute),
+            attributes
+                .values()
+                .sorted_by(|a, b| a.range.start().cmp(&b.range.start()))
+                .map(|attr| format_attribute(attr)),
             RcDoc::space(),
         ));
     }
