@@ -251,21 +251,20 @@ pub fn parse(
                         }
                     }
 
-                    let file_attr = match get_attribute(tag_name, "file", attributes)
+                    get_attribute(tag_name, "file", attributes)
                         .and_then(|attr| parse_as_static(tag_name, attr))
-                    {
-                        Ok(v) => v,
-                        Err(err) => {
-                            errors.push(err);
-                            continue;
-                        }
-                    };
-
-                    renders.push(Render {
-                        file_attr,
-                        range: tree.range.clone(),
-                        children,
-                    });
+                        .map_or_else(
+                            |err| {
+                                errors.push(err);
+                            },
+                            |file_attr| {
+                                renders.push(Render {
+                                    file_attr,
+                                    range: tree.range.clone(),
+                                    children,
+                                });
+                            },
+                        );
                 }
                 // Treat as ComponentDefinition
                 name => {
