@@ -67,13 +67,9 @@ impl fmt::Display for DopType {
 impl Pretty for DopType {
     fn to_doc(&self) -> RcDoc<'static> {
         match self {
-            // Format a simple type.
             DopType::String => RcDoc::text("string"),
             DopType::Number => RcDoc::text("number"),
             DopType::Bool => RcDoc::text("boolean"),
-
-            // Format an Array type.
-            // E.g. {name: string}
             DopType::Array(elem_type) => match elem_type {
                 Some(elem) => RcDoc::nil()
                     .append(RcDoc::text("array["))
@@ -81,9 +77,6 @@ impl Pretty for DopType {
                     .append(RcDoc::text("]")),
                 None => RcDoc::text("array"),
             },
-
-            // Format an Object type.
-            // E.g. {name: string}
             DopType::Object(fields) => {
                 RcDoc::nil()
                     .append(RcDoc::text("{"))

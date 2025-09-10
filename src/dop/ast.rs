@@ -95,7 +95,6 @@ impl Pretty for DopExpr {
     fn to_doc(&self) -> RcDoc<'static> {
         match self {
             DopExpr::Variable { value } => RcDoc::text(value.to_string()),
-
             DopExpr::PropertyAccess {
                 object,
                 property,
@@ -104,13 +103,9 @@ impl Pretty for DopExpr {
                 .to_doc()
                 .append(RcDoc::text("."))
                 .append(RcDoc::text(property.to_string())),
-
             DopExpr::StringLiteral { value, range: _ } => RcDoc::text(format!("\"{}\"", value)),
-
             DopExpr::BooleanLiteral { value, range: _ } => RcDoc::text(value.to_string()),
-
             DopExpr::NumberLiteral { value, range: _ } => RcDoc::text(value.to_string()),
-
             DopExpr::ArrayLiteral { elements, range: _ } => {
                 if elements.is_empty() {
                     RcDoc::text("[]")
@@ -130,7 +125,6 @@ impl Pretty for DopExpr {
                         .append(RcDoc::text("]"))
                 }
             }
-
             DopExpr::ObjectLiteral {
                 properties,
                 range: _,
@@ -138,7 +132,8 @@ impl Pretty for DopExpr {
                 if properties.is_empty() {
                     RcDoc::text("{}")
                 } else {
-                    RcDoc::text("{")
+                    RcDoc::nil()
+                        .append(RcDoc::text("{"))
                         .append(
                             RcDoc::line_()
                                 .append(RcDoc::intersperse(
@@ -157,7 +152,6 @@ impl Pretty for DopExpr {
                         .append(RcDoc::text("}"))
                 }
             }
-
             DopExpr::BinaryOp {
                 left,
                 operator,
@@ -169,7 +163,6 @@ impl Pretty for DopExpr {
                 .append(RcDoc::text(format!(" {} ", operator)))
                 .append(right.to_doc())
                 .append(RcDoc::text(")")),
-
             DopExpr::UnaryOp {
                 operator,
                 operand,
