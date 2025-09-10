@@ -128,9 +128,13 @@ fn format_opening_tag(
         }
     }
 
-    if self_closing {
-        doc.append(RcDoc::text("/>"))
-    } else if children.is_empty() && has_closing_tag {
+    doc = doc.append(if self_closing {
+        RcDoc::text(" /")
+    } else {
+        RcDoc::nil()
+    });
+
+    if children.is_empty() && has_closing_tag {
         // Has closing tag but no children
         doc.append(RcDoc::text("></"))
             .append(RcDoc::text(tag_name.as_str().to_string()))
@@ -544,6 +548,22 @@ mod tests {
             "#]],
         );
     }
+    /// Self-closing tags should keep their slash
+    #[test]
+    fn test_format_self_closing_tag() {
+        check_pretty_print(
+            indoc! {r#"
+                <foo-component>
+                  <bar-component />
+                </foo-component>
+            "#},
+            expect![[r#"
+                <foo-component>
+                  <bar-component />
+                </foo-component>
+            "#]],
+        );
+    }
 
     /// Whitespace should be added between keys and values in parameter lists
     #[test]
@@ -592,7 +612,7 @@ mod tests {
                   <div>
                     <h1>User List</h1>
                     <for {user in users}>
-                      <user-card {user: user}/>
+                      <user-card {user: user} />
                     </for>
                   </div>
                 </foo-component>
