@@ -174,12 +174,12 @@ async fn main() -> anyhow::Result<()> {
             axum::serve(listener, router).await?;
         }
         Some(Commands::Fmt { filename }) => {
-            use std::fs;
             use hop::pretty_print::pretty_print_from_source;
-            
+            use std::fs;
+
             // Read the file
             let content = fs::read_to_string(filename)?;
-            
+
             // Format the content
             match pretty_print_from_source(&content, 80) {
                 Ok(formatted) => {

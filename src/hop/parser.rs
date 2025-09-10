@@ -40,48 +40,6 @@ fn parse_attribute(attr: &tokenizer::Attribute) -> Result<ast::Attribute, ParseE
     }
 }
 
-fn parse_attributes_or_push_error(
-    attributes: &BTreeMap<StringSpan, tokenizer::Attribute>,
-    errors: &mut Vec<ParseError>,
-) -> BTreeMap<StringSpan, ast::Attribute> {
-    attributes
-        .iter()
-        .filter_map(|(k, attr)| match parse_attribute(attr) {
-            Ok(attr) => Some((k.clone(), attr)),
-            Err(err) => {
-                errors.push(err);
-                None
-            }
-        })
-        .collect()
-}
-
-fn parse_static_attribute_or_push_error(
-    tag_name: &DocumentRange,
-    attr: &tokenizer::Attribute,
-    errors: &mut Vec<ParseError>,
-) -> Option<StaticAttribute> {
-    match &attr.value {
-        Some(tokenizer::AttributeValue::String(s)) => Some(StaticAttribute { value: s.clone() }),
-        Some(tokenizer::AttributeValue::Expression(expr_range)) => {
-            errors.push(ParseError::AttributeMustBeStaticallyKnown {
-                attr_name: attr.name.to_string_span(),
-                range: expr_range.clone(),
-            });
-            None
-        }
-        None => {
-            // TODO: Replace with real error message
-            errors.push(ParseError::MissingRequiredAttribute {
-                tag_name: tag_name.to_string_span(),
-                attr: "file".to_string(),
-                range: tag_name.clone(),
-            });
-            None
-        }
-    }
-}
-
 fn get_attribute<'a>(
     tag_name: &DocumentRange,
     key: &str,
@@ -96,7 +54,7 @@ fn get_attribute<'a>(
         })
 }
 
-fn parse_as_static(
+fn parse_attribute_as_static(
     tag_name: &DocumentRange,
     attr: &tokenizer::Attribute,
 ) -> Result<StaticAttribute, ParseError> {
@@ -119,21 +77,25 @@ fn parse_as_static(
     }
 }
 
-fn get_present_static_attribute_or_push_error(
-    tag_name: &DocumentRange,
-    key: &str,
-    attributes: &BTreeMap<StringSpan, tokenizer::Attribute>,
-    errors: &mut Vec<ParseError>,
-) -> Option<StaticAttribute> {
-    let Some(attr) = attributes.get(key) else {
-        errors.push(ParseError::MissingRequiredAttribute {
-            tag_name: tag_name.to_string_span(),
-            attr: key.to_string(),
-            range: tag_name.clone(),
-        });
-        return None;
+fn parse_import_name_from_attr(
+    attr: &StaticAttribute,
+) -> Result<(StaticAttribute, ModuleName), ParseError> {
+    // Strip the @/ prefix for internal module resolution
+    let module_name_input = match attr.value.as_str().strip_prefix("@/") {
+        Some(n) => n,
+        None => {
+            return Err(ParseError::MissingAtPrefixInImportPath {
+                range: attr.value.clone(),
+            });
+        }
     };
-    parse_static_attribute_or_push_error(tag_name, attr, errors)
+    match ModuleName::new(module_name_input.to_string()) {
+        Ok(name) => Ok((attr.clone(), name)),
+        Err(e) => Err(ParseError::InvalidModuleName {
+            error: e,
+            range: attr.value.clone(),
+        }),
+    }
 }
 
 pub fn parse(
@@ -187,8 +149,19 @@ pub fn parse(
                         }
                     }
 
-                    let component_attr = get_attribute(tag_name, "component", attributes)
-                        .and_then(|attr| parse_as_static(tag_name, attr))
+                    let (from_attr, module_name) = match get_attribute(tag_name, "from", attributes)
+                        .and_then(|attr| parse_attribute_as_static(tag_name, attr))
+                        .and_then(|attr| parse_import_name_from_attr(&attr))
+                    {
+                        Ok(attr) => attr,
+                        Err(err) => {
+                            errors.push(err);
+                            continue;
+                        }
+                    };
+
+                    let component_attr = match get_attribute(tag_name, "component", attributes)
+                        .and_then(|attr| parse_attribute_as_static(tag_name, attr))
                         .and_then(|attr| {
                             // Validate that component is not already imported
                             if imported_components.contains_key(attr.value.as_str()) {
@@ -198,48 +171,21 @@ pub fn parse(
                                 });
                             }
                             Ok(attr)
-                        })
-                        .map_err(|err| {
+                        }) {
+                        Ok(attr) => attr,
+                        Err(err) => {
                             errors.push(err);
-                        })
-                        .ok();
+                            continue;
+                        }
+                    };
 
-                    let from_attr = get_attribute(tag_name, "from", attributes)
-                        .and_then(|attr| parse_as_static(tag_name, attr))
-                        .and_then(|attr| {
-                            // Strip the @/ prefix for internal module resolution
-                            match attr.value.as_str().strip_prefix("@/") {
-                                Some(n) => Ok((attr.clone(), n.to_string())),
-                                None => Err(ParseError::MissingAtPrefixInImportPath {
-                                    range: attr.value.clone(),
-                                }),
-                            }
-                        })
-                        .and_then(|(attr, module_name_input)| {
-                            match ModuleName::new(module_name_input.to_string()) {
-                                Ok(name) => Ok((attr, name)),
-                                Err(e) => Err(ParseError::InvalidModuleName {
-                                    error: e,
-                                    range: attr.value.clone(),
-                                }),
-                            }
-                        })
-                        .map_err(|err| {
-                            errors.push(err);
-                        })
-                        .ok();
-
-                    if let (Some((from_attr, module_name)), Some(component_attr)) =
-                        (from_attr, component_attr)
-                    {
-                        imported_components
-                            .insert(component_attr.value.to_string(), module_name.clone());
-                        imports.push(Import {
-                            component_attr,
-                            module_name,
-                            from_attr,
-                        });
-                    }
+                    imported_components
+                        .insert(component_attr.value.to_string(), module_name.clone());
+                    imports.push(Import {
+                        component_attr,
+                        module_name,
+                        from_attr,
+                    });
                 }
                 "render" => {
                     for attr in attributes.values() {
@@ -251,20 +197,20 @@ pub fn parse(
                         }
                     }
 
-                    get_attribute(tag_name, "file", attributes)
-                        .and_then(|attr| parse_as_static(tag_name, attr))
-                        .map_or_else(
-                            |err| {
-                                errors.push(err);
-                            },
-                            |file_attr| {
-                                renders.push(Render {
-                                    file_attr,
-                                    range: tree.range.clone(),
-                                    children,
-                                });
-                            },
-                        );
+                    match get_attribute(tag_name, "file", attributes)
+                        .and_then(|attr| parse_attribute_as_static(tag_name, attr))
+                    {
+                        Ok(file_attr) => {
+                            renders.push(Render {
+                                file_attr,
+                                range: tree.range.clone(),
+                                children,
+                            });
+                        }
+                        Err(err) => {
+                            errors.push(err);
+                        }
+                    }
                 }
                 // Treat as ComponentDefinition
                 name => {
@@ -276,13 +222,11 @@ pub fn parse(
                         continue;
                     }
                     let params = expression.as_ref().and_then(|expr| {
-                        match DopParser::from(expr.clone()).parse_parameters() {
-                            Ok(params) => Some((params, expr.clone())),
-                            Err(err) => {
-                                errors.push(ParseError::new(err.to_string(), err.range().clone()));
-                                None
-                            }
-                        }
+                        DopParser::from(expr.clone())
+                            .parse_parameters()
+                            .map_err(|err| errors.push(err.into()))
+                            .map(|params| (params, expr.clone()))
+                            .ok()
                     });
 
                     // TODO: Here we iterate over the whole subtree to check
@@ -315,16 +259,22 @@ pub fn parse(
                     let is_entrypoint = attributes.contains_key("entrypoint");
 
                     let as_attr = attributes.get("as").and_then(|attr| {
-                        parse_static_attribute_or_push_error(tag_name, attr, errors)
+                        parse_attribute_as_static(tag_name, attr)
+                            .map_err(|err| errors.push(err))
+                            .ok()
                     });
-                    let unhandled_attributes = parse_attributes_or_push_error(
-                        &attributes
-                            .clone()
-                            .into_iter()
-                            .filter(|(k, _)| !matches!(k.as_str(), "as" | "entrypoint"))
-                            .collect(),
-                        errors,
-                    );
+
+                    let attributes = attributes
+                        .iter()
+                        .filter(|(k, _)| !matches!(k.as_str(), "as" | "entrypoint"))
+                        .filter_map(|(k, attr)| match parse_attribute(attr) {
+                            Ok(attr) => Some((k.clone(), attr)),
+                            Err(err) => {
+                                errors.push(err);
+                                None
+                            }
+                        })
+                        .collect();
 
                     components.push(ComponentDefinition {
                         tag_name: tag_name.clone(),
@@ -332,7 +282,7 @@ pub fn parse(
                         params,
                         is_entrypoint,
                         as_attr,
-                        attributes: unhandled_attributes,
+                        attributes,
                         range: tree.range.clone(),
                         children,
                         has_slot,
@@ -396,7 +346,7 @@ fn construct_node(
                 range: tree.range.clone(),
             }),
             Err(err) => {
-                errors.push(ParseError::new(err.to_string(), err.range().clone()));
+                errors.push(err.into());
                 None
             }
         },
@@ -408,36 +358,45 @@ fn construct_node(
             ..
         } => {
             match tag_name.as_str() {
-                "if" => match expression {
+                "if" =>
+                //
+                {
                     // TODO: Check for unrecognized attributes
-                    Some(expr) => match DopParser::from(expr.clone()).parse_expr() {
-                        Ok(condition) => Some(HopNode::If {
+                    expression
+                        .ok_or_else(|| {
+                            ParseError::new(
+                                "Missing expression in <if> tag".to_string(),
+                                opening_tag_range.clone(),
+                            )
+                        })
+                        .and_then(|expr| {
+                            DopParser::from(expr).parse_expr().map_err(|err| err.into())
+                        })
+                        .map(|condition| HopNode::If {
                             condition,
                             range: tree.range.clone(),
                             children,
-                        }),
-                        Err(err) => {
-                            errors.push(ParseError::new(err.to_string(), err.range().clone()));
-                            Some(HopNode::Error {
-                                range: tree.range.clone(),
-                                children,
-                            })
-                        }
-                    },
-                    None => {
-                        errors.push(ParseError::new(
-                            "Missing expression in <if> tag".to_string(),
-                            opening_tag_range.clone(),
-                        ));
-                        Some(HopNode::Error {
-                            range: tree.range.clone(),
-                            children,
                         })
-                    }
-                },
-                "for" => match expression {
+                        .map_err(|err| {
+                            errors.push(err);
+                        })
+                        .ok()
+                }
+                "for" => {
                     // TODO: Check for unrecognized attributes
-                    Some(expr) => match DopParser::from(expr.clone()).parse_loop_header() {
+                    let parse_result = expression
+                        .ok_or_else(|| {
+                            ParseError::new(
+                                "Missing loop generator expression in <for> tag".to_string(),
+                                opening_tag_range.clone(),
+                            )
+                        })
+                        .and_then(|expr| {
+                            DopParser::from(expr.clone())
+                                .parse_loop_header()
+                                .map_err(|err| err.into())
+                        });
+                    match parse_result {
                         Ok((var_name, array_expr)) => Some(HopNode::For {
                             var_name,
                             array_expr,
@@ -445,24 +404,14 @@ fn construct_node(
                             children,
                         }),
                         Err(err) => {
-                            errors.push(ParseError::new(err.to_string(), err.range().clone()));
+                            errors.push(err);
                             Some(HopNode::Error {
                                 range: tree.range.clone(),
                                 children,
                             })
                         }
-                    },
-                    None => {
-                        errors.push(ParseError::new(
-                            "Missing loop generator expression in <for> tag".to_string(),
-                            opening_tag_range.clone(),
-                        ));
-                        Some(HopNode::Error {
-                            range: tree.range.clone(),
-                            children,
-                        })
                     }
-                },
+                }
                 "slot-default" => Some(HopNode::SlotDefinition {
                     range: tree.range.clone(),
                 }),
@@ -477,23 +426,22 @@ fn construct_node(
                             }
                         }
 
-                        let Some(cmd_attr) = get_present_static_attribute_or_push_error(
-                            &tag_name,
-                            "cmd",
-                            &attributes,
-                            errors,
-                        ) else {
-                            return Some(HopNode::Error {
+                        match get_attribute(&tag_name, "cmd", &attributes)
+                            .and_then(|attr| parse_attribute_as_static(&tag_name, attr))
+                        {
+                            Ok(cmd_attr) => Some(HopNode::XExec {
+                                cmd_attr,
                                 range: tree.range.clone(),
                                 children,
-                            });
-                        };
-
-                        Some(HopNode::XExec {
-                            cmd_attr,
-                            range: tree.range.clone(),
-                            children,
-                        })
+                            }),
+                            Err(err) => {
+                                errors.push(err);
+                                Some(HopNode::Error {
+                                    range: tree.range.clone(),
+                                    children,
+                                })
+                            }
+                        }
                     }
                     "hop-x-raw" => Some(HopNode::XRaw {
                         trim: attributes.contains_key("trim"),
@@ -522,7 +470,7 @@ fn construct_node(
                         Some(expr) => match DopParser::from(expr.clone()).parse_arguments() {
                             Ok(named_args) => Some((named_args, expr.clone())),
                             Err(err) => {
-                                errors.push(ParseError::new(err.to_string(), err.range().clone()));
+                                errors.push(err.into());
                                 return Some(HopNode::Error {
                                     range: tree.range.clone(),
                                     children: vec![],
@@ -539,24 +487,48 @@ fn construct_node(
                             imported_components.get(tag_name.as_str()).cloned()
                         };
 
+                    let attributes = attributes
+                        .into_iter()
+                        .filter_map(|(k, attr)| match parse_attribute(&attr) {
+                            Ok(attr) => Some((k, attr)),
+                            Err(err) => {
+                                errors.push(err);
+                                None
+                            }
+                        })
+                        .collect();
+
                     Some(HopNode::ComponentReference {
                         tag_name,
                         closing_tag_name: tree.closing_tag_name,
                         definition_module,
                         args,
-                        attributes: parse_attributes_or_push_error(&attributes, errors),
+                        attributes,
                         range: tree.range.clone(),
                         children,
                     })
                 }
                 // Treat as HTML
-                _ => Some(HopNode::Html {
-                    tag_name,
-                    closing_tag_name: tree.closing_tag_name,
-                    attributes: parse_attributes_or_push_error(&attributes, errors),
-                    range: tree.range.clone(),
-                    children,
-                }),
+                _ => {
+                    let attributes = attributes
+                        .into_iter()
+                        .filter_map(|(k, attr)| match parse_attribute(&attr) {
+                            Ok(attr) => Some((k, attr)),
+                            Err(err) => {
+                                errors.push(err);
+                                None
+                            }
+                        })
+                        .collect();
+
+                    Some(HopNode::Html {
+                        tag_name,
+                        closing_tag_name: tree.closing_tag_name,
+                        attributes,
+                        range: tree.range.clone(),
+                        children,
+                    })
+                }
             }
         }
     }

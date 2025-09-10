@@ -1,4 +1,7 @@
-use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::{
+    document::document_cursor::{DocumentRange, Ranged, StringSpan},
+    dop,
+};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
@@ -85,6 +88,15 @@ pub enum ParseError {
 impl ParseError {
     pub fn new(message: String, range: DocumentRange) -> Self {
         ParseError::GenericError { message, range }
+    }
+}
+
+impl From<dop::parse_error::ParseError> for ParseError {
+    fn from(err: dop::parse_error::ParseError) -> Self {
+        Self::GenericError {
+            message: err.to_string(),
+            range: err.range().clone(),
+        }
     }
 }
 
