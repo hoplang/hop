@@ -225,18 +225,35 @@ fn format_parameters(params: BTreeMap<StringSpan, DopParameter>) -> RcDoc<'stati
 /// E.g. <div foo="bar">
 ///           ^^^^^^^^^
 fn format_attribute(attr: &Attribute) -> RcDoc<'static, ()> {
-    match &attr.value {
-        Some(AttributeValue::String(val)) => RcDoc::text(attr.name.as_str().to_string())
-            .append(RcDoc::text("=\""))
-            .append(RcDoc::text(val.as_str().to_string()))
-            .append(RcDoc::text("\"")),
-        Some(AttributeValue::Expression(val)) => RcDoc::text("{")
-            .append(RcDoc::text(attr.name.as_str().to_string()))
-            .append(RcDoc::text(": "))
-            .append(RcDoc::text(val.as_str().to_string()))
-            .append(RcDoc::text("}")),
-        None => RcDoc::text(attr.name.as_str().to_string()),
-    }
+    RcDoc::nil()
+        // key
+        .append(RcDoc::text(attr.name.to_string()))
+        // equal sign
+        .append(RcDoc::text("="))
+        // value
+        .append(match &attr.value {
+            // case: normal value
+            Some(AttributeValue::String(val)) => {
+                RcDoc::nil()
+                    // double quote
+                    .append(RcDoc::text("\""))
+                    // value
+                    .append(RcDoc::text(val.as_str().to_string()))
+                    // double quote
+                    .append(RcDoc::text("\""))
+            }
+            // case: expression
+            Some(AttributeValue::Expression(val)) => {
+                RcDoc::nil()
+                    // '{'
+                    .append(RcDoc::text("{"))
+                    // value
+                    .append(RcDoc::text(val.as_str().to_string()))
+                    // '}'
+                    .append(RcDoc::text("}"))
+            }
+            None => RcDoc::text(attr.name.as_str().to_string()),
+        })
 }
 
 fn format_children(children: &[TokenTree], is_top_level: bool) -> RcDoc<'static, ()> {
