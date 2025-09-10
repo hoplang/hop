@@ -348,7 +348,10 @@ fn typecheck_node(
                 }
                 (Some(params), Some((args, args_range))) => {
                     for param in params {
-                        if !args.contains_key(param.var_name.as_str()) {
+                        if !args
+                            .iter()
+                            .any(|a| a.var_name.as_str() == param.var_name.as_str())
+                        {
                             errors.push(TypeError::MissingRequiredParameter {
                                 param: param.var_name.as_str().to_string(),
                                 range: args_range.clone(),
@@ -356,7 +359,7 @@ fn typecheck_node(
                         }
                     }
 
-                    for arg in args.values() {
+                    for arg in args {
                         let param = match params
                             .iter()
                             .find(|p| p.var_name.as_str() == arg.var_name.as_str())
@@ -972,17 +975,17 @@ mod tests {
                 2 |   <if {a}>
                   |        ^
 
-                a: boolean
-                  --> main.hop (line 7, col 28)
-                6 | <foo-comp>
-                7 |   <main-comp {b: 'foo', a: true}/>
-                  |                            ^^^^
-
                 b: string
                   --> main.hop (line 7, col 18)
                 6 | <foo-comp>
                 7 |   <main-comp {b: 'foo', a: true}/>
                   |                  ^^^^^
+
+                a: boolean
+                  --> main.hop (line 7, col 28)
+                6 | <foo-comp>
+                7 |   <main-comp {b: 'foo', a: true}/>
+                  |                            ^^^^
             "#]],
         );
     }

@@ -1,7 +1,5 @@
-use std::collections::BTreeMap;
-
 use crate::document::DocumentPosition;
-use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
 use crate::hop::module_name::ModuleName;
 
@@ -202,7 +200,7 @@ pub enum HopNode {
         tag_name: DocumentRange,
         definition_module: Option<ModuleName>,
         closing_tag_name: Option<DocumentRange>,
-        args: Option<(BTreeMap<StringSpan, DopArgument>, DocumentRange)>,
+        args: Option<(Vec<DopArgument>, DocumentRange)>,
         attributes: Vec<Attribute>,
         range: DocumentRange,
         children: Vec<HopNode>,

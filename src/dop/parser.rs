@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashSet};
 use std::fmt::{self, Display};
 use std::iter::Peekable;
 
-use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged as _, StringSpan};
+use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged as _};
 use crate::dop::DopType;
 use crate::dop::ast::{BinaryOp, DopExpr, UnaryOp};
 use crate::dop::parse_error::ParseError;
@@ -282,18 +282,19 @@ impl DopParser {
     }
 
     // arguments = argument ("," argument)* Eof
-    pub fn parse_arguments(&mut self) -> Result<BTreeMap<StringSpan, DopArgument>, ParseError> {
-        let mut args = BTreeMap::new();
+    pub fn parse_arguments(&mut self) -> Result<Vec<DopArgument>, ParseError> {
+        let mut args = Vec::new();
+        let mut seen_names = HashSet::new();
         self.parse_comma_separated(
             |this| {
                 let arg = this.parse_argument()?;
-                if args.contains_key(arg.var_name.value.as_str()) {
+                if !seen_names.insert(arg.var_name.value.to_string_span()) {
                     return Err(ParseError::DuplicateArgument {
                         name: arg.var_name.value.to_string_span(),
                         range: arg.var_name.value.clone(),
                     });
                 }
-                args.insert(arg.var_name.value.to_string_span(), arg);
+                args.push(arg);
                 Ok(())
             },
             None,
@@ -534,7 +535,7 @@ mod tests {
 
         let actual = match parser.parse_arguments() {
             Ok(result) => {
-                let args: Vec<String> = result.values().map(|arg| arg.to_string()).collect();
+                let args: Vec<String> = result.iter().map(|arg| arg.to_string()).collect();
                 format!("[{}]\n", args.join(", "))
             }
             Err(err) => annotate_error(err),
@@ -1231,7 +1232,7 @@ mod tests {
         check_parse_arguments(
             "name: 'John', age: 25, active: true",
             expect![[r#"
-                [active: true, age: 25, name: "John"]
+                [name: "John", age: 25, active: true]
             "#]],
         );
     }
@@ -1241,7 +1242,7 @@ mod tests {
         check_parse_arguments(
             "user: user.name, enabled: !user.disabled",
             expect![[r#"
-                [enabled: (!user.disabled), user: user.name]
+                [user: user.name, enabled: (!user.disabled)]
             "#]],
         );
     }
@@ -1251,7 +1252,7 @@ mod tests {
         check_parse_arguments(
             "name: 'John', age: 25,",
             expect![[r#"
-                [age: 25, name: "John"]
+                [name: "John", age: 25]
             "#]],
         );
     }
