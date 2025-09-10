@@ -148,8 +148,8 @@ impl TokenTreePrettyPrint for TokenTree {
             }
 
             Token::ClosingTag { .. } => {
-                // Closing tags are handled by the opening tag
-                RcDoc::nil()
+                // Closing tags should not be present in the token tree
+                unreachable!()
             }
         }
     }
