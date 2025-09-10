@@ -1,6 +1,6 @@
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::DopParser;
-use crate::hop::ast::{Attribute, ComponentDefinition, HopAst, HopNode, Import, Render};
+use crate::hop::ast::{ComponentDefinition, HopAst, HopNode, Import, Render};
 use crate::hop::parse_error::ParseError;
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::{Token, Tokenizer};
@@ -40,21 +40,27 @@ fn parse_attribute(attr: &tokenizer::Attribute) -> Result<ast::Attribute, ParseE
     }
 }
 
-fn get_present_static_attribute_or_push_error(
-    tag_name: &DocumentRange,
-    key: &str,
+fn parse_attributes_or_push_error(
     attributes: &BTreeMap<StringSpan, tokenizer::Attribute>,
     errors: &mut Vec<ParseError>,
+) -> BTreeMap<StringSpan, ast::Attribute> {
+    attributes
+        .iter()
+        .filter_map(|(k, attr)| match parse_attribute(attr) {
+            Ok(attr) => Some((k.clone(), attr)),
+            Err(err) => {
+                errors.push(err);
+                None
+            }
+        })
+        .collect()
+}
+
+fn parse_static_attribute_or_push_error(
+    tag_name: &DocumentRange,
+    attr: &tokenizer::Attribute,
+    errors: &mut Vec<ParseError>,
 ) -> Option<StaticAttribute> {
-    let Some(attr) = attributes.get(key) else {
-        errors.push(ParseError::MissingRequiredAttribute {
-            tag_name: tag_name.to_string_span(),
-            attr: "from".to_string(),
-            range: tag_name.clone(),
-        });
-        return None;
-    };
-    //
     match &attr.value {
         Some(tokenizer::AttributeValue::String(s)) => Some(StaticAttribute { value: s.clone() }),
         Some(tokenizer::AttributeValue::Expression(expr_range)) => {
@@ -74,6 +80,23 @@ fn get_present_static_attribute_or_push_error(
             None
         }
     }
+}
+
+fn get_present_static_attribute_or_push_error(
+    tag_name: &DocumentRange,
+    key: &str,
+    attributes: &BTreeMap<StringSpan, tokenizer::Attribute>,
+    errors: &mut Vec<ParseError>,
+) -> Option<StaticAttribute> {
+    let Some(attr) = attributes.get(key) else {
+        errors.push(ParseError::MissingRequiredAttribute {
+            tag_name: tag_name.to_string_span(),
+            attr: key.to_string(),
+            range: tag_name.clone(),
+        });
+        return None;
+    };
+    parse_static_attribute_or_push_error(tag_name, attr, errors)
 }
 
 pub fn parse(
@@ -241,66 +264,31 @@ pub fn parse(
                             component_name: tag_name.to_string_span(),
                             range: tag_name.clone(),
                         });
-                        // fall-through
+                        // intentional fall-through
                     } else {
                         defined_components.insert(name.to_string());
                     }
 
-                    let mut is_entrypoint = false;
-                    let mut as_attr = None;
-                    let mut unhandled_attributes = BTreeMap::new();
+                    let is_entrypoint = attributes.contains_key("entrypoint");
 
-                    for (name, attr) in attributes {
-                        match name.as_str() {
-                            "as" => {
-                                as_attr = match &attr.value {
-                                    Some(tokenizer::AttributeValue::String(s)) => Some(s.clone()),
-                                    Some(tokenizer::AttributeValue::Expression(expr_range)) => {
-                                        errors.push(ParseError::AttributeMustBeStaticallyKnown {
-                                            attr_name: attr.name.to_string_span(),
-                                            range: expr_range.clone(),
-                                        });
-                                        None
-                                    }
-                                    None => None,
-                                };
-                            }
-                            "entrypoint" => {
-                                is_entrypoint = true;
-                            }
-                            _ => {
-                                // Here we keep the unhandled attributes
-                                // since they should be rendered in the
-                                // resulting HTML.
-                                let value =
-                                    attr.value.as_ref().map(|v| match parse_attribute_value(v) {
-                                        Ok(v) => Some(v),
-                                        Err(err) => {
-                                            errors.push(ParseError::new(
-                                                err.to_string(),
-                                                err.range().clone(),
-                                            ));
-                                            None
-                                        }
-                                    });
-                                unhandled_attributes.insert(
-                                    name.clone(),
-                                    Attribute {
-                                        name: attr.name.clone(),
-                                        value: value.flatten(),
-                                        range: attr.range.clone(),
-                                    },
-                                );
-                            }
-                        }
-                    }
+                    let as_attr = attributes.get("as").and_then(|attr| {
+                        parse_static_attribute_or_push_error(tag_name, attr, errors)
+                    });
+                    let unhandled_attributes = parse_attributes_or_push_error(
+                        &attributes
+                            .clone()
+                            .into_iter()
+                            .filter(|(k, _)| !matches!(k.as_str(), "as" | "entrypoint"))
+                            .collect(),
+                        errors,
+                    );
 
                     components.push(ComponentDefinition {
                         tag_name: tag_name.clone(),
                         closing_tag_name: tree.closing_tag_name,
                         params,
                         is_entrypoint,
-                        as_attr: as_attr.map(|v| StaticAttribute { value: v }),
+                        as_attr,
                         attributes: unhandled_attributes,
                         range: tree.range.clone(),
                         children,
@@ -508,48 +496,24 @@ fn construct_node(
                             imported_components.get(tag_name.as_str()).cloned()
                         };
 
-                    let parsed_attrs = attributes
-                        .iter()
-                        .filter_map(|(k, attr)| match parse_attribute(attr) {
-                            Ok(attr) => Some((k.clone(), attr)),
-                            Err(err) => {
-                                errors.push(err);
-                                None
-                            }
-                        })
-                        .collect();
-
                     Some(HopNode::ComponentReference {
                         tag_name,
                         closing_tag_name: tree.closing_tag_name,
                         definition_module,
                         args,
-                        attributes: parsed_attrs,
+                        attributes: parse_attributes_or_push_error(&attributes, errors),
                         range: tree.range.clone(),
                         children,
                     })
                 }
                 // Treat as HTML
-                _ => {
-                    let parsed_attrs = attributes
-                        .iter()
-                        .filter_map(|(k, attr)| match parse_attribute(attr) {
-                            Ok(attr) => Some((k.clone(), attr)),
-                            Err(err) => {
-                                errors.push(err);
-                                None
-                            }
-                        })
-                        .collect();
-
-                    Some(HopNode::Html {
-                        tag_name,
-                        closing_tag_name: tree.closing_tag_name,
-                        attributes: parsed_attrs,
-                        range: tree.range.clone(),
-                        children,
-                    })
-                }
+                _ => Some(HopNode::Html {
+                    tag_name,
+                    closing_tag_name: tree.closing_tag_name,
+                    attributes: parse_attributes_or_push_error(&attributes, errors),
+                    range: tree.range.clone(),
+                    children,
+                }),
             }
         }
     }
