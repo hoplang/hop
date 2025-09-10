@@ -1,4 +1,4 @@
-use crate::document::document_cursor::Ranged;
+use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::DopParser;
 use crate::hop::ast::{Attribute, ComponentDefinition, HopAst, HopNode, Import, Render};
 use crate::hop::parse_error::ParseError;
@@ -37,6 +37,42 @@ fn parse_attribute(attr: &tokenizer::Attribute) -> Result<ast::Attribute, ParseE
             value: None,
             range: attr.range.clone(),
         }),
+    }
+}
+
+fn get_present_static_attribute_or_push_error(
+    tag_name: &DocumentRange,
+    key: &str,
+    attributes: &BTreeMap<StringSpan, tokenizer::Attribute>,
+    errors: &mut Vec<ParseError>,
+) -> Option<StaticAttribute> {
+    let Some(attr) = attributes.get(key) else {
+        errors.push(ParseError::MissingRequiredAttribute {
+            tag_name: tag_name.to_string_span(),
+            attr: "from".to_string(),
+            range: tag_name.clone(),
+        });
+        return None;
+    };
+    //
+    match &attr.value {
+        Some(tokenizer::AttributeValue::String(s)) => Some(StaticAttribute { value: s.clone() }),
+        Some(tokenizer::AttributeValue::Expression(expr_range)) => {
+            errors.push(ParseError::AttributeMustBeStaticallyKnown {
+                attr_name: attr.name.to_string_span(),
+                range: expr_range.clone(),
+            });
+            None
+        }
+        None => {
+            // TODO: Replace with real error message
+            errors.push(ParseError::MissingRequiredAttribute {
+                tag_name: tag_name.to_string_span(),
+                attr: "file".to_string(),
+                range: tag_name.clone(),
+            });
+            None
+        }
     }
 }
 
@@ -91,58 +127,56 @@ pub fn parse(
                         }
                     }
 
-                    let Some(from_attr) = tree.token.get_attribute_value("from") else {
-                        errors.push(ParseError::MissingRequiredAttribute {
-                            tag_name: tag_name.to_string_span(),
-                            attr: "from".to_string(),
-                            range: tag_name.clone(),
-                        });
+                    let Some(from_attr) = get_present_static_attribute_or_push_error(
+                        tag_name, "from", attributes, errors,
+                    ) else {
                         continue;
                     };
 
-                    let Some(cmp_attr) = tree.token.get_attribute_value("component") else {
-                        errors.push(ParseError::MissingRequiredAttribute {
-                            tag_name: tag_name.to_string_span(),
-                            attr: "component".to_string(),
-                            range: tag_name.clone(),
-                        });
+                    let Some(component_attr) = get_present_static_attribute_or_push_error(
+                        tag_name,
+                        "component",
+                        attributes,
+                        errors,
+                    ) else {
                         continue;
                     };
 
-                    // Validate that the import path starts with @/
-                    if !from_attr.as_str().starts_with("@/") {
-                        errors.push(ParseError::InvalidImportPath {
-                            range: from_attr.clone(),
-                        });
-                        continue;
-                    }
-
-                    if imported_components.contains_key(cmp_attr.as_str()) {
+                    // Validate that component is not already imported
+                    if imported_components.contains_key(component_attr.value.as_str()) {
                         errors.push(ParseError::ComponentIsAlreadyDefined {
-                            component_name: cmp_attr.to_string_span(),
-                            range: cmp_attr.clone(),
+                            component_name: component_attr.value.to_string_span(),
+                            range: component_attr.value.clone(),
                         });
                         continue;
                     }
                     // Strip the @/ prefix for internal module resolution
-                    let module_str = from_attr.as_str().strip_prefix("@/").unwrap();
-                    match ModuleName::new(module_str.to_string()) {
-                        Ok(module_path) => {
-                            imported_components.insert(cmp_attr.to_string(), module_path.clone());
-                            imports.push(Import {
-                                component_attr: StaticAttribute { value: cmp_attr },
-                                module_name: module_path.clone(),
-                                from_attr_value_range: from_attr,
-                            });
-                        }
-                        Err(e) => {
-                            errors.push(ParseError::InvalidModuleName {
-                                error: e,
-                                range: from_attr.clone(),
+                    let module_name_input = match from_attr.value.as_str().strip_prefix("@/") {
+                        Some(n) => n,
+                        None => {
+                            errors.push(ParseError::MissingAtPrefixInImportPath {
+                                range: from_attr.value.clone(),
                             });
                             continue;
                         }
-                    }
+                    };
+                    let module_name = match ModuleName::new(module_name_input.to_string()) {
+                        Ok(name) => name,
+                        Err(e) => {
+                            errors.push(ParseError::InvalidModuleName {
+                                error: e,
+                                range: from_attr.value.clone(),
+                            });
+                            continue;
+                        }
+                    };
+                    imported_components
+                        .insert(component_attr.value.to_string(), module_name.clone());
+                    imports.push(Import {
+                        component_attr,
+                        module_name,
+                        from_attr,
+                    });
                 }
                 "render" => {
                     for attr in attributes.values() {
@@ -154,17 +188,14 @@ pub fn parse(
                         }
                     }
 
-                    let Some(file_attr) = tree.token.get_attribute_value("file") else {
-                        errors.push(ParseError::MissingRequiredAttribute {
-                            tag_name: tag_name.to_string_span(),
-                            attr: "file".to_string(),
-                            range: tag_name.clone(),
-                        });
+                    let Some(file_attr) = get_present_static_attribute_or_push_error(
+                        tag_name, "file", attributes, errors,
+                    ) else {
                         continue;
                     };
 
                     renders.push(Render {
-                        file_attr: StaticAttribute { value: file_attr },
+                        file_attr,
                         range: tree.range.clone(),
                         children,
                     });
@@ -406,45 +437,32 @@ fn construct_node(
                 }),
                 name if name.starts_with("hop-") => match tag_name.as_str() {
                     "hop-x-exec" => {
-                        let mut cmd_attr = None;
-
-                        for (name, attr) in attributes {
+                        for name in attributes.keys() {
                             match name.as_str() {
-                                "cmd" => cmd_attr = Some(attr),
+                                "cmd" => {}
                                 _ => {
                                     // TODO: Check for unrecognized attributes
                                 }
                             }
                         }
 
-                        match cmd_attr.and_then(|attr| match attr.value {
-                            Some(tokenizer::AttributeValue::String(s)) => Some(s),
-                            Some(tokenizer::AttributeValue::Expression(expr_range)) => {
-                                errors.push(ParseError::AttributeMustBeStaticallyKnown {
-                                    attr_name: attr.name.to_string_span(),
-                                    range: expr_range,
-                                });
-                                None
-                            }
-                            None => None,
-                        }) {
-                            Some(cmd_value) => Some(HopNode::XExec {
-                                cmd_attr: StaticAttribute { value: cmd_value },
+                        let Some(cmd_attr) = get_present_static_attribute_or_push_error(
+                            &tag_name,
+                            "cmd",
+                            &attributes,
+                            errors,
+                        ) else {
+                            return Some(HopNode::Error {
                                 range: tree.range.clone(),
                                 children,
-                            }),
-                            None => {
-                                errors.push(ParseError::MissingRequiredAttribute {
-                                    tag_name: tag_name.to_string_span(),
-                                    attr: "cmd".to_string(),
-                                    range: tag_name.clone(),
-                                });
-                                Some(HopNode::Error {
-                                    range: tree.range.clone(),
-                                    children,
-                                })
-                            }
-                        }
+                            });
+                        };
+
+                        Some(HopNode::XExec {
+                            cmd_attr,
+                            range: tree.range.clone(),
+                            children,
+                        })
                     }
                     "hop-x-raw" => Some(HopNode::XRaw {
                         trim: attributes.contains_key("trim"),

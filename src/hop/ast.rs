@@ -129,8 +129,8 @@ impl HopAst {
 #[derive(Debug)]
 pub struct Import {
     pub component_attr: StaticAttribute,
+    pub from_attr: StaticAttribute,
     pub module_name: ModuleName,
-    pub from_attr_value_range: DocumentRange,
 }
 
 impl Import {

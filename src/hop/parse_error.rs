@@ -58,7 +58,7 @@ pub enum ParseError {
     },
 
     #[error("Import paths must start with '@/' where '@' indicates the root directory")]
-    InvalidImportPath { range: DocumentRange },
+    MissingAtPrefixInImportPath { range: DocumentRange },
 
     #[error("{error}")]
     InvalidModuleName {
@@ -101,7 +101,7 @@ impl Ranged for ParseError {
             | ParseError::InvalidComponentName { range, .. }
             | ParseError::ComponentIsAlreadyDefined { range, .. }
             | ParseError::DuplicateAttribute { range, .. }
-            | ParseError::InvalidImportPath { range }
+            | ParseError::MissingAtPrefixInImportPath { range }
             | ParseError::InvalidModuleName { range, .. }
             | ParseError::AttributeMustBeStaticallyKnown { range, .. }
             | ParseError::GenericError { range, .. } => range,

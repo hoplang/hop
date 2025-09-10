@@ -123,7 +123,7 @@ impl TypeChecker {
                             .iter()
                             .map(|m| m.name.to_string())
                             .collect::<Vec<_>>(),
-                        import_node.from_attr_value_range.clone(),
+                        import_node.from_attr.value.clone(),
                     ));
                 }
             }
@@ -143,13 +143,13 @@ fn typecheck_module(
         let Some(module_state) = state.modules.get(imported_module) else {
             errors.push(TypeError::ImportFromUndefinedModule {
                 module: imported_module.as_str().to_string(),
-                range: import.from_attr_value_range.clone(),
+                range: import.from_attr.value.clone(),
             });
             continue;
         };
         if !module_state.component_is_declared(imported_component.as_str()) {
             errors.push(TypeError::UndeclaredComponent {
-                module_name: import.from_attr_value_range.clone(),
+                module_name: import.from_attr.value.clone(),
                 component_name: imported_component.clone(),
             });
         }

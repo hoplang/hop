@@ -57,21 +57,6 @@ pub enum Token {
     },
 }
 
-impl Token {
-    pub fn get_attribute_value(&self, name: &str) -> Option<DocumentRange> {
-        match self {
-            Token::OpeningTag { attributes, .. } => {
-                attributes.get(name).and_then(|attr| match &attr.value {
-                    Some(AttributeValue::String(range)) => Some(range.clone()),
-                    Some(AttributeValue::Expression(range)) => Some(range.clone()),
-                    None => None,
-                })
-            }
-            _ => None,
-        }
-    }
-}
-
 impl Ranged for Token {
     fn range(&self) -> &DocumentRange {
         match self {
