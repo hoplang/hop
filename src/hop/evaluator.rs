@@ -82,7 +82,7 @@ pub fn evaluate_component(
 
     // Set up environment with all parameters and their corresponding values
     if let Some((params, _)) = &component.params {
-        for (_, param) in params.iter() {
+        for param in params {
             if let Some(value) = args.get(param.var_name.as_str()) {
                 let _ = env.push(param.var_name.to_string(), value.clone());
             }

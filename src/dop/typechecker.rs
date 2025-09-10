@@ -217,7 +217,7 @@ mod tests {
             let params = parser
                 .parse_parameters()
                 .expect("Failed to parse environment");
-            for (_, param) in params {
+            for param in params {
                 let _ = env.push(param.var_name.to_string(), param.var_type);
             }
         }

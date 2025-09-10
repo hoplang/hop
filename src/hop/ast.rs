@@ -10,6 +10,7 @@ pub struct PresentAttribute {
     pub value: DocumentRange,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Attribute {
     pub name: DocumentRange,
@@ -155,7 +156,7 @@ pub struct Render {
 pub struct ComponentDefinition {
     pub tag_name: DocumentRange,
     pub closing_tag_name: Option<DocumentRange>,
-    pub params: Option<(BTreeMap<StringSpan, DopParameter>, DocumentRange)>,
+    pub params: Option<(Vec<DopParameter>, DocumentRange)>,
     pub as_attr: Option<PresentAttribute>,
     pub attributes: Vec<Attribute>,
     pub range: DocumentRange,

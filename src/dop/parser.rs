@@ -260,18 +260,19 @@ impl DopParser {
     }
 
     // parameters = parameter ("," parameter)* Eof
-    pub fn parse_parameters(&mut self) -> Result<BTreeMap<StringSpan, DopParameter>, ParseError> {
-        let mut params = BTreeMap::new();
+    pub fn parse_parameters(&mut self) -> Result<Vec<DopParameter>, ParseError> {
+        let mut params = Vec::new();
+        let mut seen_names = HashSet::new();
         self.parse_comma_separated(
             |this| {
                 let param = this.parse_parameter()?;
-                if params.contains_key(param.var_name.value.as_str()) {
+                if !seen_names.insert(param.var_name.range().to_string_span()) {
                     return Err(ParseError::DuplicateParameter {
                         name: param.var_name.value.to_string_span(),
                         range: param.var_name.value.clone(),
                     });
                 }
-                params.insert(param.var_name.value.to_string_span(), param);
+                params.push(param);
                 Ok(())
             },
             None,
@@ -519,7 +520,7 @@ mod tests {
 
         let actual = match parser.parse_parameters() {
             Ok(result) => {
-                let params: Vec<String> = result.values().map(|param| param.to_string()).collect();
+                let params: Vec<String> = result.iter().map(|param| param.to_string()).collect();
                 format!("[{}]\n", params.join(", "))
             }
             Err(err) => annotate_error(err),

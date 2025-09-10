@@ -1,10 +1,10 @@
-use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::{self, DopParameter, DopType};
 use crate::hop::ast::HopAst;
 use crate::hop::ast::{ComponentDefinition, HopNode, Render};
 use crate::hop::environment::Environment;
 use crate::hop::type_error::TypeError;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::fmt::{self, Display};
 
 use super::module_name::ModuleName;
@@ -31,7 +31,7 @@ impl Display for TypeAnnotation {
 #[derive(Debug, Clone)]
 pub struct ComponentTypeInformation {
     // Track the parameter types for the component.
-    parameter_types: Option<BTreeMap<StringSpan, DopParameter>>,
+    parameter_types: Option<Vec<DopParameter>>,
     // Track whether the component has a slot-default.
     has_slot: bool,
 }
@@ -42,10 +42,7 @@ pub struct ModuleTypeInformation {
 }
 
 impl ModuleTypeInformation {
-    fn get_parameter_types(
-        &self,
-        component_name: &str,
-    ) -> Option<&BTreeMap<StringSpan, DopParameter>> {
+    fn get_parameter_types(&self, component_name: &str) -> Option<&Vec<DopParameter>> {
         self.components
             .get(component_name)?
             .parameter_types
@@ -169,7 +166,7 @@ fn typecheck_module(
     } in module.get_component_definitions()
     {
         if let Some((params, _)) = params {
-            for param in params.values() {
+            for param in params {
                 annotations.push(TypeAnnotation {
                     range: param.var_name.range().clone(),
                     typ: param.var_type.clone(),
@@ -184,10 +181,10 @@ fn typecheck_module(
         }
 
         if let Some((params, _)) = params {
-            for _ in 0..params.len() {
-                let (key, _, accessed) = env.pop();
+            // iterate in reverse to pop in right order
+            for param in params.iter().rev() {
+                let (_, _, accessed) = env.pop();
                 if !accessed {
-                    let param = params.get(key.as_str()).unwrap();
                     errors.push(TypeError::UnusedVariable {
                         var_name: param.var_name.range().clone(),
                     })
@@ -350,7 +347,7 @@ fn typecheck_node(
                     errors.push(TypeError::missing_arguments(params, tag_name.clone()));
                 }
                 (Some(params), Some((args, args_range))) => {
-                    for param in params.values() {
+                    for param in params {
                         if !args.contains_key(param.var_name.as_str()) {
                             errors.push(TypeError::MissingRequiredParameter {
                                 param: param.var_name.as_str().to_string(),
@@ -360,7 +357,10 @@ fn typecheck_node(
                     }
 
                     for arg in args.values() {
-                        let param = match params.get(arg.var_name.as_str()) {
+                        let param = match params
+                            .iter()
+                            .find(|p| p.var_name.as_str() == arg.var_name.as_str())
+                        {
                             None => {
                                 errors.push(TypeError::UnexpectedArgument {
                                     arg: arg.var_name.as_str().to_string(),

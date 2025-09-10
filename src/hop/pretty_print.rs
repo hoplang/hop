@@ -1,6 +1,4 @@
-use std::collections::BTreeMap;
-
-use crate::document::document_cursor::{DocumentRange, StringSpan};
+use crate::document::document_cursor::DocumentRange;
 use crate::dop::parser::DopParameter;
 use crate::dop::{DopParser, DopType};
 use crate::hop::module_name::ModuleName;
@@ -224,13 +222,13 @@ fn format_dop_type(typ: &DopType) -> RcDoc<'static, ()> {
 /// Format the parameters of a component definition.
 /// E.g. <foo-component {users: array[{name: string}]}>
 ///                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-fn format_parameters(params: BTreeMap<StringSpan, DopParameter>) -> RcDoc<'static, ()> {
+fn format_parameters(params: Vec<DopParameter>) -> RcDoc<'static, ()> {
     RcDoc::nil()
         // soft line break after the initial '{'
         .append(RcDoc::line_())
         // format parameters
         .append(RcDoc::intersperse(
-            params.values().map(|DopParameter { var_name, var_type }| {
+            params.iter().map(|DopParameter { var_name, var_type }| {
                 RcDoc::nil()
                     // key
                     .append(RcDoc::text(var_name.to_string()))
@@ -635,6 +633,7 @@ mod tests {
             "#},
             expect![[r#"
                 <foo-component {
+                  users: array[{name: string}],
                   admins: array[{email: string, name: string}],
                   others: array[{
                     bar: string,
@@ -643,7 +642,6 @@ mod tests {
                     foo: string,
                     name: string,
                   }],
-                  users: array[{name: string}],
                 }>
                   <div>
                     <h1>User List</h1>

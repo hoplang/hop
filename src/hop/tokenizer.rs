@@ -340,9 +340,7 @@ impl Tokenizer {
         // Check if value is an expression
         if self.iter.peek().map(|s| s.ch()) == Some('{') {
             // Parse expression value
-            let Some((expr, expr_range)) = self.parse_expression() else {
-                return None;
-            };
+            let (expr, expr_range) = self.parse_expression()?;
             return Some(Attribute {
                 name: attr_name.clone(),
                 value: Some(AttributeValue::Expression(expr)),
