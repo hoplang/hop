@@ -1,6 +1,6 @@
 use crate::document::document_cursor::DocumentRange;
-use crate::dop::parser::DopParameter;
 use crate::dop::DopParser;
+use crate::dop::parser::DopParameter;
 use crate::hop::module_name::ModuleName;
 use crate::hop::parse_error::ParseError;
 use crate::hop::parser::parse;
@@ -166,7 +166,6 @@ fn format_opening_tag(
 
     doc
 }
-
 
 /// Format the parameters of a component definition.
 /// E.g. <foo-component {users: array[{name: string}]}>

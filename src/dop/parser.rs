@@ -1015,10 +1015,7 @@ mod tests {
         check_parse_expr(
             "[[1, 2], [3, 4]]",
             expect![[r#"
-                [
-                  [1, 2],
-                  [3, 4]
-                ]
+                [[1, 2], [3, 4]]
             "#]],
         );
     }
@@ -1028,10 +1025,7 @@ mod tests {
         check_parse_expr(
             "[[1 == [1 == 2], [] == []], [3, 4]]",
             expect![[r#"
-                [
-                  [(1 == [(1 == 2)]), ([] == [])],
-                  [3, 4]
-                ]
+                [[(1 == [(1 == 2)]), ([] == [])], [3, 4]]
             "#]],
         );
     }
@@ -1071,10 +1065,7 @@ mod tests {
         check_parse_expr(
             "{a: 'foo', b: 1}",
             expect![[r#"
-                {
-                  a: "foo",
-                  b: 1
-                }
+                {a: "foo", b: 1}
             "#]],
         );
     }
@@ -1084,10 +1075,7 @@ mod tests {
         check_parse_expr(
             "{user: user.name, active: !user.disabled}",
             expect![[r#"
-                {
-                  user: user.name,
-                  active: (!user.disabled)
-                }
+                {user: user.name, active: (!user.disabled)}
             "#]],
         );
     }
@@ -1112,15 +1100,12 @@ mod tests {
                     profile: {
                       settings: {
                         theme: "dark",
-                        notifications: {
-                          email: true,
-                          push: false
-                        }
+                        notifications: {email: true, push: false},
                       },
-                      name: "Alice"
-                    }
+                      name: "Alice",
+                    },
                   },
-                  status: "active"
+                  status: "active",
                 }
             "#]],
         );
@@ -1133,19 +1118,10 @@ mod tests {
             expect![[r#"
                 {
                   users: [
-                    {
-                      name: "Alice",
-                      tags: ["admin", "user"]
-                    },
-                    {
-                      name: "Bob",
-                      tags: ["user"]
-                    }
+                    {name: "Alice", tags: ["admin", "user"]},
+                    {name: "Bob", tags: ["user"]},
                   ],
-                  config: {
-                    features: ["auth", "api"],
-                    version: 2
-                  }
+                  config: {features: ["auth", "api"], version: 2},
                 }
             "#]],
         );
@@ -1186,10 +1162,7 @@ mod tests {
         check_parse_expr(
             "{\n\ta: 'foo',\n\tb: 1,\n}",
             expect![[r#"
-                {
-                  a: "foo",
-                  b: 1
-                }
+                {a: "foo", b: 1}
             "#]],
         );
     }
@@ -1209,10 +1182,7 @@ mod tests {
         check_parse_expr(
             "{\n\tuser: user.name,\n\tactive: !user.disabled,\n}",
             expect![[r#"
-                {
-                  user: user.name,
-                  active: (!user.disabled)
-                }
+                {user: user.name, active: (!user.disabled)}
             "#]],
         );
     }
