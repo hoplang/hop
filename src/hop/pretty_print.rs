@@ -146,45 +146,51 @@ impl TokenTreePrettyPrint for TokenTree {
     }
 }
 
+/// Format a dop type.
+/// E.g. <foo-component {users: array[{name: string}]}>
+///                             ^^^^^^^^^^^^^^^^^^^^^
 fn format_dop_type(typ: &DopType) -> RcDoc<'static, ()> {
     match typ {
-        DopType::String => RcDoc::text("string"),
-        DopType::Number => RcDoc::text("number"),
-        DopType::Bool => RcDoc::text("boolean"),
+        // simple types
+        DopType::String | DopType::Number | DopType::Bool => RcDoc::text(typ.to_string()),
+        // array type
         DopType::Array(elem_type) => match elem_type {
-            Some(elem) => RcDoc::text("array[")
+            Some(elem) => RcDoc::nil()
+                .append(RcDoc::text("array["))
                 .append(format_dop_type(elem))
                 .append(RcDoc::text("]")),
             None => RcDoc::text("array"),
         },
+        // object type
         DopType::Object(fields) => {
-            if fields.is_empty() {
-                RcDoc::text("{}")
-            } else {
-                // Multiple fields - use line breaks with trailing comma
-                let mut field_docs = Vec::new();
-                for (key, value) in fields {
-                    field_docs.push(
-                        RcDoc::text(key.clone())
-                            .append(RcDoc::text(": "))
-                            .append(format_dop_type(value)),
-                    );
-                }
-                RcDoc::text("{")
-                    .append(
-                        RcDoc::line_()
-                            .append(RcDoc::intersperse(
-                                field_docs,
-                                RcDoc::text(",").append(RcDoc::line()),
-                            ))
-                            // trailing comma
-                            .append(RcDoc::text(",").flat_alt(RcDoc::nil()))
-                            .append(RcDoc::line_())
-                            .nest(2)
-                            .group(),
-                    )
-                    .append(RcDoc::text("}"))
-            }
+            RcDoc::nil()
+                .append(RcDoc::text("{"))
+                .append(
+                    RcDoc::nil()
+                        // soft line break
+                        .append(RcDoc::line_())
+                        .append(RcDoc::intersperse(
+                            fields.iter().map(|(key, typ)| {
+                                RcDoc::nil()
+                                    // key
+                                    .append(RcDoc::text(key.clone()))
+                                    // separator
+                                    .append(RcDoc::text(": "))
+                                    // value
+                                    .append(format_dop_type(typ))
+                            }),
+                            // intersperse with comma followed by line that acts
+                            // as space if laid out on a single line
+                            RcDoc::text(",").append(RcDoc::line()),
+                        ))
+                        // trailing comma if laid out on multiple lines
+                        .append(RcDoc::text(",").flat_alt(RcDoc::nil()))
+                        // soft line break
+                        .append(RcDoc::line_())
+                        .nest(2)
+                        .group(),
+                )
+                .append(RcDoc::text("}"))
         }
     }
 }
@@ -202,10 +208,8 @@ fn format_parameters(params: BTreeMap<StringSpan, DopParameter>) -> RcDoc<'stati
                 RcDoc::nil()
                     // key
                     .append(RcDoc::text(var_name.to_string()))
-                    // colon
-                    .append(RcDoc::text(":"))
-                    // hard space between key and value
-                    .append(RcDoc::space())
+                    // separator
+                    .append(RcDoc::text(": "))
                     // value
                     .append(format_dop_type(var_type))
             }),
