@@ -142,9 +142,11 @@ impl TokenTreePrettyPrint for TokenTree {
 ///                             ^^^^^^^^^^^^^^^^^^^^^
 fn format_dop_type(typ: &DopType) -> RcDoc<'static, ()> {
     match typ {
-        // simple types
+        // Format a simple type.
         DopType::String | DopType::Number | DopType::Bool => RcDoc::text(typ.to_string()),
-        // array type
+
+        // Format an Array type.
+        // E.g. {name: string}
         DopType::Array(elem_type) => match elem_type {
             Some(elem) => RcDoc::nil()
                 .append(RcDoc::text("array["))
@@ -152,7 +154,9 @@ fn format_dop_type(typ: &DopType) -> RcDoc<'static, ()> {
                 .append(RcDoc::text("]")),
             None => RcDoc::text("array"),
         },
-        // object type
+
+        // Format an Object type.
+        // E.g. {name: string}
         DopType::Object(fields) => {
             RcDoc::nil()
                 .append(RcDoc::text("{"))
