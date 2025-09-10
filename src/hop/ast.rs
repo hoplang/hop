@@ -7,7 +7,7 @@ use crate::hop::module_name::ModuleName;
 
 /// A StaticAttribute is an attribute that must
 /// be known at compile time.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StaticAttribute {
     pub value: DocumentRange,
 }

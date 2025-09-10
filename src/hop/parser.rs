@@ -82,6 +82,43 @@ fn parse_static_attribute_or_push_error(
     }
 }
 
+fn get_attribute<'a>(
+    tag_name: &DocumentRange,
+    key: &str,
+    attributes: &'a BTreeMap<StringSpan, tokenizer::Attribute>,
+) -> Result<&'a tokenizer::Attribute, ParseError> {
+    attributes
+        .get(key)
+        .ok_or_else(|| ParseError::MissingRequiredAttribute {
+            tag_name: tag_name.to_string_span(),
+            attr: key.to_string(),
+            range: tag_name.clone(),
+        })
+}
+
+fn parse_as_static(
+    tag_name: &DocumentRange,
+    attr: &tokenizer::Attribute,
+) -> Result<StaticAttribute, ParseError> {
+    match &attr.value {
+        Some(tokenizer::AttributeValue::String(s)) => Ok(StaticAttribute { value: s.clone() }),
+        Some(tokenizer::AttributeValue::Expression(expr_range)) => {
+            Err(ParseError::AttributeMustBeStaticallyKnown {
+                attr_name: attr.name.to_string_span(),
+                range: expr_range.clone(),
+            })
+        }
+        None => {
+            // TODO: Replace with real error message
+            Err(ParseError::MissingRequiredAttribute {
+                tag_name: tag_name.to_string_span(),
+                attr: "file".to_string(),
+                range: tag_name.clone(),
+            })
+        }
+    }
+}
+
 fn get_present_static_attribute_or_push_error(
     tag_name: &DocumentRange,
     key: &str,
@@ -150,56 +187,63 @@ pub fn parse(
                         }
                     }
 
-                    let Some(from_attr) = get_present_static_attribute_or_push_error(
-                        tag_name, "from", attributes, errors,
-                    ) else {
-                        continue;
+                    let component_attr = match get_attribute(tag_name, "component", attributes)
+                        .and_then(|attr| parse_as_static(tag_name, attr))
+                        .and_then(|attr| {
+                            // Validate that component is not already imported
+                            if imported_components.contains_key(attr.value.as_str()) {
+                                return Err(ParseError::ComponentIsAlreadyDefined {
+                                    component_name: attr.value.to_string_span(),
+                                    range: attr.value.clone(),
+                                });
+                            }
+                            Ok(attr)
+                        }) {
+                        Ok(v) => Some(v),
+                        Err(err) => {
+                            errors.push(err);
+                            None
+                        }
                     };
 
-                    let Some(component_attr) = get_present_static_attribute_or_push_error(
-                        tag_name,
-                        "component",
-                        attributes,
-                        errors,
-                    ) else {
-                        continue;
+                    let from_attr = match get_attribute(tag_name, "from", attributes)
+                        .and_then(|attr| parse_as_static(tag_name, attr))
+                        .and_then(|attr| {
+                            // Strip the @/ prefix for internal module resolution
+                            match attr.value.as_str().strip_prefix("@/") {
+                                Some(n) => Ok((attr.clone(), n.to_string())),
+                                None => Err(ParseError::MissingAtPrefixInImportPath {
+                                    range: attr.value.clone(),
+                                }),
+                            }
+                        })
+                        .and_then(|(attr, module_name_input)| {
+                            match ModuleName::new(module_name_input.to_string()) {
+                                Ok(name) => Ok((attr, name)),
+                                Err(e) => Err(ParseError::InvalidModuleName {
+                                    error: e,
+                                    range: attr.value.clone(),
+                                }),
+                            }
+                        }) {
+                        Ok(v) => Some(v),
+                        Err(err) => {
+                            errors.push(err);
+                            None
+                        }
                     };
 
-                    // Validate that component is not already imported
-                    if imported_components.contains_key(component_attr.value.as_str()) {
-                        errors.push(ParseError::ComponentIsAlreadyDefined {
-                            component_name: component_attr.value.to_string_span(),
-                            range: component_attr.value.clone(),
+                    if let (Some((from_attr, module_name)), Some(component_attr)) =
+                        (from_attr, component_attr)
+                    {
+                        imported_components
+                            .insert(component_attr.value.to_string(), module_name.clone());
+                        imports.push(Import {
+                            component_attr,
+                            module_name,
+                            from_attr,
                         });
-                        continue;
                     }
-                    // Strip the @/ prefix for internal module resolution
-                    let module_name_input = match from_attr.value.as_str().strip_prefix("@/") {
-                        Some(n) => n,
-                        None => {
-                            errors.push(ParseError::MissingAtPrefixInImportPath {
-                                range: from_attr.value.clone(),
-                            });
-                            continue;
-                        }
-                    };
-                    let module_name = match ModuleName::new(module_name_input.to_string()) {
-                        Ok(name) => name,
-                        Err(e) => {
-                            errors.push(ParseError::InvalidModuleName {
-                                error: e,
-                                range: from_attr.value.clone(),
-                            });
-                            continue;
-                        }
-                    };
-                    imported_components
-                        .insert(component_attr.value.to_string(), module_name.clone());
-                    imports.push(Import {
-                        component_attr,
-                        module_name,
-                        from_attr,
-                    });
                 }
                 "render" => {
                     for attr in attributes.values() {
@@ -211,10 +255,14 @@ pub fn parse(
                         }
                     }
 
-                    let Some(file_attr) = get_present_static_attribute_or_push_error(
-                        tag_name, "file", attributes, errors,
-                    ) else {
-                        continue;
+                    let file_attr = match get_attribute(tag_name, "file", attributes)
+                        .and_then(|attr| parse_as_static(tag_name, attr))
+                    {
+                        Ok(v) => v,
+                        Err(err) => {
+                            errors.push(err);
+                            continue;
+                        }
                     };
 
                     renders.push(Render {
