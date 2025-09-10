@@ -1,9 +1,10 @@
 use crate::document::document_cursor::DocumentRange;
 use crate::dop::parser::DopParameter;
-use crate::dop::{DopParser, DopType};
+use crate::dop::DopParser;
 use crate::hop::module_name::ModuleName;
 use crate::hop::parse_error::ParseError;
 use crate::hop::parser::parse;
+use crate::hop::pretty::Pretty;
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::{Attribute, AttributeValue, Token, Tokenizer};
 use pretty::RcDoc;
@@ -166,58 +167,6 @@ fn format_opening_tag(
     doc
 }
 
-/// Format a dop type.
-/// E.g. <foo-component {users: array[{name: string}]}>
-///                             ^^^^^^^^^^^^^^^^^^^^^
-fn format_dop_type(typ: &DopType) -> RcDoc<'static> {
-    match typ {
-        // Format a simple type.
-        DopType::String | DopType::Number | DopType::Bool => RcDoc::text(typ.to_string()),
-
-        // Format an Array type.
-        // E.g. {name: string}
-        DopType::Array(elem_type) => match elem_type {
-            Some(elem) => RcDoc::nil()
-                .append(RcDoc::text("array["))
-                .append(format_dop_type(elem))
-                .append(RcDoc::text("]")),
-            None => RcDoc::text("array"),
-        },
-
-        // Format an Object type.
-        // E.g. {name: string}
-        DopType::Object(fields) => {
-            RcDoc::nil()
-                .append(RcDoc::text("{"))
-                .append(
-                    RcDoc::nil()
-                        // soft line break
-                        .append(RcDoc::line_())
-                        .append(RcDoc::intersperse(
-                            fields.iter().map(|(key, typ)| {
-                                RcDoc::nil()
-                                    // key
-                                    .append(RcDoc::text(key.clone()))
-                                    // separator
-                                    .append(RcDoc::text(": "))
-                                    // value
-                                    .append(format_dop_type(typ))
-                            }),
-                            // intersperse with comma followed by line that acts
-                            // as space if laid out on a single line
-                            RcDoc::text(",").append(RcDoc::line()),
-                        ))
-                        // trailing comma if laid out on multiple lines
-                        .append(RcDoc::text(",").flat_alt(RcDoc::nil()))
-                        // soft line break
-                        .append(RcDoc::line_())
-                        .nest(2)
-                        .group(),
-                )
-                .append(RcDoc::text("}"))
-        }
-    }
-}
 
 /// Format the parameters of a component definition.
 /// E.g. <foo-component {users: array[{name: string}]}>
@@ -235,7 +184,7 @@ fn format_parameters(params: Vec<DopParameter>) -> RcDoc<'static> {
                     // separator
                     .append(RcDoc::text(": "))
                     // value
-                    .append(format_dop_type(var_type))
+                    .append(var_type.to_doc())
             }),
             // intersperse with comma followed by line that acts
             // as space if laid out on a single line

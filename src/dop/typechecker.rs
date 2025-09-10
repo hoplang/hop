@@ -1,8 +1,10 @@
 use super::ast::{BinaryOp, DopExpr, UnaryOp};
 use crate::document::document_cursor::{DocumentRange, Ranged as _};
 use crate::hop::environment::Environment;
+use crate::hop::pretty::Pretty;
 use crate::hop::type_error::TypeError;
 use crate::hop::typechecker::TypeAnnotation;
+use pretty::RcDoc;
 use std::collections::BTreeMap;
 use std::fmt;
 
@@ -58,24 +60,60 @@ pub struct RangedDopType {
 
 impl fmt::Display for DopType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_doc().pretty(60))
+    }
+}
+
+impl Pretty for DopType {
+    fn to_doc(&self) -> RcDoc<'static> {
         match self {
-            DopType::Object(properties) => {
-                write!(f, "{{")?;
-                for (idx, (key, value)) in properties.iter().enumerate() {
-                    if idx > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}: {}", key, value)?;
-                }
-                write!(f, "}}")
-            }
-            DopType::Array(inner_type) => match inner_type {
-                Some(typ) => write!(f, "array[{}]", typ),
-                None => write!(f, "array[]"),
+            // Format a simple type.
+            DopType::String => RcDoc::text("string"),
+            DopType::Number => RcDoc::text("number"),
+            DopType::Bool => RcDoc::text("boolean"),
+
+            // Format an Array type.
+            // E.g. {name: string}
+            DopType::Array(elem_type) => match elem_type {
+                Some(elem) => RcDoc::nil()
+                    .append(RcDoc::text("array["))
+                    .append(elem.to_doc())
+                    .append(RcDoc::text("]")),
+                None => RcDoc::text("array"),
             },
-            DopType::Bool => write!(f, "boolean"),
-            DopType::String => write!(f, "string"),
-            DopType::Number => write!(f, "number"),
+
+            // Format an Object type.
+            // E.g. {name: string}
+            DopType::Object(fields) => {
+                RcDoc::nil()
+                    .append(RcDoc::text("{"))
+                    .append(
+                        RcDoc::nil()
+                            // soft line break
+                            .append(RcDoc::line_())
+                            .append(RcDoc::intersperse(
+                                fields.iter().map(|(key, typ)| {
+                                    RcDoc::nil()
+                                        // key
+                                        .append(RcDoc::text(key.clone()))
+                                        // separator
+                                        .append(RcDoc::text(": "))
+                                        // value
+                                        .append(typ.to_doc())
+                                }),
+                                // intersperse with comma followed by line that acts
+                                // as space if laid out on a single line
+                                RcDoc::text(",").append(RcDoc::line()),
+                            ))
+                            // trailing comma if laid out on multiple lines
+                            .append(RcDoc::text(",").flat_alt(RcDoc::nil()))
+                            // soft line break
+                            .append(RcDoc::line_())
+                            .nest(2)
+                            .group(),
+                    )
+                    .append(RcDoc::text("}"))
+            }
         }
     }
 }

@@ -1230,24 +1230,42 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {enabled: boolean, users: array[{posts: array[{published: boolean}], profile: {verified: boolean}}]}
+                params: {
+                  enabled: boolean,
+                  users: array[{
+                    posts: array[{published: boolean}],
+                    profile: {verified: boolean},
+                  }],
+                }
                   --> main.hop (line 1, col 13)
                  1 | <main-comp {params: {enabled: boolean, users: array[{profile: {verified: boolean}, posts: array[{published: boolean}]}]}}>
                    |             ^^^^^^
 
-                params: {enabled: boolean, users: array[{posts: array[{published: boolean}], profile: {verified: boolean}}]}
+                params: {
+                  enabled: boolean,
+                  users: array[{
+                    posts: array[{published: boolean}],
+                    profile: {verified: boolean},
+                  }],
+                }
                   --> main.hop (line 3, col 17)
                  2 |     <if {params.enabled}>
                  3 |         <for {user in params.users}>
                    |                       ^^^^^^
 
-                user: {posts: array[{published: boolean}], profile: {verified: boolean}}
+                user: {
+                  posts: array[{published: boolean}],
+                  profile: {verified: boolean},
+                }
                   --> main.hop (line 3, col 9)
                  2 |     <if {params.enabled}>
                  3 |         <for {user in params.users}>
                    |               ^^^^
 
-                user: {posts: array[{published: boolean}], profile: {verified: boolean}}
+                user: {
+                  posts: array[{published: boolean}],
+                  profile: {verified: boolean},
+                }
                   --> main.hop (line 5, col 19)
                  4 |             <if {user.profile.verified}>
                  5 |                 <for {post in user.posts}>
@@ -1265,13 +1283,22 @@ mod tests {
                  6 |                     <if {post.published}>
                    |                          ^^^^
 
-                user: {posts: array[{published: boolean}], profile: {verified: boolean}}
+                user: {
+                  posts: array[{published: boolean}],
+                  profile: {verified: boolean},
+                }
                   --> main.hop (line 4, col 9)
                  3 |         <for {user in params.users}>
                  4 |             <if {user.profile.verified}>
                    |                  ^^^^
 
-                params: {enabled: boolean, users: array[{posts: array[{published: boolean}], profile: {verified: boolean}}]}
+                params: {
+                  enabled: boolean,
+                  users: array[{
+                    posts: array[{published: boolean}],
+                    profile: {verified: boolean},
+                  }],
+                }
                   --> main.hop (line 2, col 7)
                  1 | <main-comp {params: {enabled: boolean, users: array[{profile: {verified: boolean}, posts: array[{published: boolean}]}]}}>
                  2 |     <if {params.enabled}>
@@ -1297,24 +1324,40 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {sections: array[{header: {visible: boolean}, items: array[{data: {valid: boolean}}]}]}
+                params: {
+                  sections: array[{
+                    header: {visible: boolean},
+                    items: array[{data: {valid: boolean}}],
+                  }],
+                }
                   --> main.hop (line 1, col 13)
                  1 | <main-comp {params: {sections: array[{header: {visible: boolean}, items: array[{data: {valid: boolean}}]}]}}>
                    |             ^^^^^^
 
-                params: {sections: array[{header: {visible: boolean}, items: array[{data: {valid: boolean}}]}]}
+                params: {
+                  sections: array[{
+                    header: {visible: boolean},
+                    items: array[{data: {valid: boolean}}],
+                  }],
+                }
                   --> main.hop (line 2, col 19)
                  1 | <main-comp {params: {sections: array[{header: {visible: boolean}, items: array[{data: {valid: boolean}}]}]}}>
                  2 |     <for {section in params.sections}>
                    |                      ^^^^^^
 
-                section: {header: {visible: boolean}, items: array[{data: {valid: boolean}}]}
+                section: {
+                  header: {visible: boolean},
+                  items: array[{data: {valid: boolean}}],
+                }
                   --> main.hop (line 2, col 8)
                  1 | <main-comp {params: {sections: array[{header: {visible: boolean}, items: array[{data: {valid: boolean}}]}]}}>
                  2 |     <for {section in params.sections}>
                    |           ^^^^^^^
 
-                section: {header: {visible: boolean}, items: array[{data: {valid: boolean}}]}
+                section: {
+                  header: {visible: boolean},
+                  items: array[{data: {valid: boolean}}],
+                }
                   --> main.hop (line 4, col 18)
                  3 |         <if {section.header.visible}>
                  4 |             <for {item in section.items}>
@@ -1332,7 +1375,10 @@ mod tests {
                  5 |                 <if {item.data.valid}>
                    |                      ^^^^
 
-                section: {header: {visible: boolean}, items: array[{data: {valid: boolean}}]}
+                section: {
+                  header: {visible: boolean},
+                  items: array[{data: {valid: boolean}}],
+                }
                   --> main.hop (line 3, col 8)
                  2 |     <for {section in params.sections}>
                  3 |         <if {section.header.visible}>
@@ -1381,24 +1427,48 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {app: {api: {endpoints: {users: {enabled: boolean}}}, database: {connection: {ssl: boolean}}, ui: {theme: {dark: boolean}}}}
+                params: {
+                  app: {
+                    api: {endpoints: {users: {enabled: boolean}}},
+                    database: {connection: {ssl: boolean}},
+                    ui: {theme: {dark: boolean}},
+                  },
+                }
                   --> main.hop (line 1, col 13)
                 1 | <main-comp {params: {app: {ui: {theme: {dark: boolean}}, api: {endpoints: {users: {enabled: boolean}}}, database: {connection: {ssl: boolean}}}}}>
                   |             ^^^^^^
 
-                params: {app: {api: {endpoints: {users: {enabled: boolean}}}, database: {connection: {ssl: boolean}}, ui: {theme: {dark: boolean}}}}
+                params: {
+                  app: {
+                    api: {endpoints: {users: {enabled: boolean}}},
+                    database: {connection: {ssl: boolean}},
+                    ui: {theme: {dark: boolean}},
+                  },
+                }
                   --> main.hop (line 2, col 7)
                 1 | <main-comp {params: {app: {ui: {theme: {dark: boolean}}, api: {endpoints: {users: {enabled: boolean}}}, database: {connection: {ssl: boolean}}}}}>
                 2 |     <if {params.app.ui.theme.dark}>
                   |          ^^^^^^
 
-                params: {app: {api: {endpoints: {users: {enabled: boolean}}}, database: {connection: {ssl: boolean}}, ui: {theme: {dark: boolean}}}}
+                params: {
+                  app: {
+                    api: {endpoints: {users: {enabled: boolean}}},
+                    database: {connection: {ssl: boolean}},
+                    ui: {theme: {dark: boolean}},
+                  },
+                }
                   --> main.hop (line 4, col 7)
                 3 |     </if>
                 4 |     <if {params.app.api.endpoints.users.enabled}>
                   |          ^^^^^^
 
-                params: {app: {api: {endpoints: {users: {enabled: boolean}}}, database: {connection: {ssl: boolean}}, ui: {theme: {dark: boolean}}}}
+                params: {
+                  app: {
+                    api: {endpoints: {users: {enabled: boolean}}},
+                    database: {connection: {ssl: boolean}},
+                    ui: {theme: {dark: boolean}},
+                  },
+                }
                   --> main.hop (line 6, col 7)
                 5 |     </if>
                 6 |     <if {params.app.database.connection.ssl}>
@@ -1465,30 +1535,50 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {data: {x: string, y: string}, other_user: {name: string}, user: {name: string}}
+                params: {
+                  data: {x: string, y: string},
+                  other_user: {name: string},
+                  user: {name: string},
+                }
                   --> main.hop (line 1, col 13)
                 1 | <main-comp {params: {user: {name: string}, other_user: {name: string}, data: {x: string, y: string}}}>
                   |             ^^^^^^
 
-                params: {data: {x: string, y: string}, other_user: {name: string}, user: {name: string}}
+                params: {
+                  data: {x: string, y: string},
+                  other_user: {name: string},
+                  user: {name: string},
+                }
                   --> main.hop (line 2, col 8)
                 1 | <main-comp {params: {user: {name: string}, other_user: {name: string}, data: {x: string, y: string}}}>
                 2 |   <if {params.user.name == params.other_user.name}>
                   |        ^^^^^^
 
-                params: {data: {x: string, y: string}, other_user: {name: string}, user: {name: string}}
+                params: {
+                  data: {x: string, y: string},
+                  other_user: {name: string},
+                  user: {name: string},
+                }
                   --> main.hop (line 2, col 28)
                 1 | <main-comp {params: {user: {name: string}, other_user: {name: string}, data: {x: string, y: string}}}>
                 2 |   <if {params.user.name == params.other_user.name}>
                   |                            ^^^^^^
 
-                params: {data: {x: string, y: string}, other_user: {name: string}, user: {name: string}}
+                params: {
+                  data: {x: string, y: string},
+                  other_user: {name: string},
+                  user: {name: string},
+                }
                   --> main.hop (line 5, col 9)
                 4 |   </if>
                 5 |   <if {(params.data.x == params.data.y)}>
                   |         ^^^^^^
 
-                params: {data: {x: string, y: string}, other_user: {name: string}, user: {name: string}}
+                params: {
+                  data: {x: string, y: string},
+                  other_user: {name: string},
+                  user: {name: string},
+                }
                   --> main.hop (line 5, col 26)
                 4 |   </if>
                 5 |   <if {(params.data.x == params.data.y)}>
@@ -1845,13 +1935,21 @@ mod tests {
                 5 |     <widget-comp {config: item}/>
                   |                           ^^^^
 
-                settings: {dashboard: {items: array[{enabled: boolean, title: string}]}}
+                settings: {
+                  dashboard: {
+                    items: array[{enabled: boolean, title: string}],
+                  },
+                }
                   --> main.hop (line 3, col 13)
                 2 | 
                 3 | <main-comp {settings: {dashboard: {items: array[{enabled: boolean, title: string}]}}}>
                   |             ^^^^^^^^
 
-                settings: {dashboard: {items: array[{enabled: boolean, title: string}]}}
+                settings: {
+                  dashboard: {
+                    items: array[{enabled: boolean, title: string}],
+                  },
+                }
                   --> main.hop (line 4, col 22)
                 3 | <main-comp {settings: {dashboard: {items: array[{enabled: boolean, title: string}]}}}>
                 4 |   <panel-comp {data: settings.dashboard}/>
@@ -1909,18 +2007,27 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {config: {debug: boolean}, data: array[{attributes: array[boolean], id: boolean}]}
+                params: {
+                  config: {debug: boolean},
+                  data: array[{attributes: array[boolean], id: boolean}],
+                }
                   --> main.hop (line 1, col 13)
                  1 | <main-comp {params: {config: {debug: boolean}, data: array[{id: boolean, attributes: array[boolean]}]}}>
                    |             ^^^^^^
 
-                params: {config: {debug: boolean}, data: array[{attributes: array[boolean], id: boolean}]}
+                params: {
+                  config: {debug: boolean},
+                  data: array[{attributes: array[boolean], id: boolean}],
+                }
                   --> main.hop (line 2, col 7)
                  1 | <main-comp {params: {config: {debug: boolean}, data: array[{id: boolean, attributes: array[boolean]}]}}>
                  2 |     <if {params.config.debug}>
                    |          ^^^^^^
 
-                params: {config: {debug: boolean}, data: array[{attributes: array[boolean], id: boolean}]}
+                params: {
+                  config: {debug: boolean},
+                  data: array[{attributes: array[boolean], id: boolean}],
+                }
                   --> main.hop (line 4, col 16)
                  3 |     </if>
                  4 |     <for {item in params.data}>
@@ -2128,13 +2235,25 @@ mod tests {
                 12 |     <main-card {item: item}/>
                    |                       ^^^^
 
-                data: {items: array[{active: boolean, status: string, title: string}]}
+                data: {
+                  items: array[{
+                    active: boolean,
+                    status: string,
+                    title: string,
+                  }],
+                }
                   --> main.hop (line 16, col 13)
                 15 | 
                 16 | <main-comp {data: {items: array[{title: string, active: boolean, status: string}]}}>
                    |             ^^^^
 
-                data: {items: array[{active: boolean, status: string, title: string}]}
+                data: {
+                  items: array[{
+                    active: boolean,
+                    status: string,
+                    title: string,
+                  }],
+                }
                   --> main.hop (line 17, col 22)
                 16 | <main-comp {data: {items: array[{title: string, active: boolean, status: string}]}}>
                 17 |   <main-list {items: data.items}/>
@@ -2234,12 +2353,20 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                params: {categories: array[boolean], metadata: {title: boolean}, tags: array[boolean]}
+                params: {
+                  categories: array[boolean],
+                  metadata: {title: boolean},
+                  tags: array[boolean],
+                }
                   --> main.hop (line 1, col 13)
                  1 | <main-comp {params: {tags: array[boolean], categories: array[boolean], metadata: {title: boolean}}}>
                    |             ^^^^^^
 
-                params: {categories: array[boolean], metadata: {title: boolean}, tags: array[boolean]}
+                params: {
+                  categories: array[boolean],
+                  metadata: {title: boolean},
+                  tags: array[boolean],
+                }
                   --> main.hop (line 2, col 15)
                  1 | <main-comp {params: {tags: array[boolean], categories: array[boolean], metadata: {title: boolean}}}>
                  2 |     <for {tag in params.tags}>
@@ -2257,7 +2384,11 @@ mod tests {
                  3 |         <if {tag}>
                    |              ^^^
 
-                params: {categories: array[boolean], metadata: {title: boolean}, tags: array[boolean]}
+                params: {
+                  categories: array[boolean],
+                  metadata: {title: boolean},
+                  tags: array[boolean],
+                }
                   --> main.hop (line 6, col 20)
                  5 |     </for>
                  6 |     <for {category in params.categories}>
@@ -2275,7 +2406,11 @@ mod tests {
                  7 |         <if {category}>
                    |              ^^^^^^^^
 
-                params: {categories: array[boolean], metadata: {title: boolean}, tags: array[boolean]}
+                params: {
+                  categories: array[boolean],
+                  metadata: {title: boolean},
+                  tags: array[boolean],
+                }
                   --> main.hop (line 10, col 7)
                  9 |     </for>
                 10 |     <if {params.metadata.title}>
@@ -2425,13 +2560,23 @@ mod tests {
                  7 |     <if {workflow.enabled}>
                    |          ^^^^^^^^
 
-                params: {workflows: array[{enabled: boolean, steps: array[{condition: boolean}]}]}
+                params: {
+                  workflows: array[{
+                    enabled: boolean,
+                    steps: array[{condition: boolean}],
+                  }],
+                }
                   --> main.hop (line 14, col 13)
                 13 | 
                 14 | <main-comp {params: {workflows: array[{enabled: boolean, steps: array[{condition: boolean}]}]}}>
                    |             ^^^^^^
 
-                params: {workflows: array[{enabled: boolean, steps: array[{condition: boolean}]}]}
+                params: {
+                  workflows: array[{
+                    enabled: boolean,
+                    steps: array[{condition: boolean}],
+                  }],
+                }
                   --> main.hop (line 15, col 20)
                 14 | <main-comp {params: {workflows: array[{enabled: boolean, steps: array[{condition: boolean}]}]}}>
                 15 |     <for {workflow in params.workflows}>
@@ -2534,19 +2679,28 @@ mod tests {
                 </main-comp>
             "#},
             expect![[r#"
-                item: {children: array[{visible: boolean}], status: {active: boolean}}
+                item: {
+                  children: array[{visible: boolean}],
+                  status: {active: boolean},
+                }
                   --> main.hop (line 2, col 5)
                  1 | <process-item {
                  2 |     item: {
                    |     ^^^^
 
-                item: {children: array[{visible: boolean}], status: {active: boolean}}
+                item: {
+                  children: array[{visible: boolean}],
+                  status: {active: boolean},
+                }
                   --> main.hop (line 7, col 7)
                  6 | }>
                  7 |     <if {item.status.active}>
                    |          ^^^^
 
-                item: {children: array[{visible: boolean}], status: {active: boolean}}
+                item: {
+                  children: array[{visible: boolean}],
+                  status: {active: boolean},
+                }
                   --> main.hop (line 9, col 17)
                  8 |     </if>
                  9 |     <for {child in item.children}>
@@ -2564,31 +2718,50 @@ mod tests {
                 10 |         <if {child.visible}>
                    |              ^^^^^
 
-                params: {items: array[{children: array[{visible: boolean}], status: {active: boolean}}]}
+                params: {
+                  items: array[{
+                    children: array[{visible: boolean}],
+                    status: {active: boolean},
+                  }],
+                }
                   --> main.hop (line 15, col 13)
                 14 | 
                 15 | <main-comp {params: {
                    |             ^^^^^^
 
-                params: {items: array[{children: array[{visible: boolean}], status: {active: boolean}}]}
+                params: {
+                  items: array[{
+                    children: array[{visible: boolean}],
+                    status: {active: boolean},
+                  }],
+                }
                   --> main.hop (line 19, col 16)
                 18 | }}>
                 19 |     <for {item in params.items}>
                    |                   ^^^^^^
 
-                item: {children: array[{visible: boolean}], status: {active: boolean}}
+                item: {
+                  children: array[{visible: boolean}],
+                  status: {active: boolean},
+                }
                   --> main.hop (line 19, col 8)
                 18 | }}>
                 19 |     <for {item in params.items}>
                    |           ^^^^
 
-                item: {children: array[{visible: boolean}], status: {active: boolean}}
+                item: {
+                  children: array[{visible: boolean}],
+                  status: {active: boolean},
+                }
                   --> main.hop (line 20, col 24)
                 19 |     <for {item in params.items}>
                 20 |         <process-item {item: item}/>
                    |                              ^^^^
 
-                item: {children: array[{visible: boolean}], status: {active: boolean}}
+                item: {
+                  children: array[{visible: boolean}],
+                  status: {active: boolean},
+                }
                   --> main.hop (line 20, col 24)
                 19 |     <for {item in params.items}>
                 20 |         <process-item {item: item}/>
@@ -3519,36 +3692,66 @@ mod tests {
                 </card-comp>
             "#},
             expect![[r#"
-                data: {content: string, metadata: {author: string, published: boolean}, tags: array[string], title: string}
+                data: {
+                  content: string,
+                  metadata: {author: string, published: boolean},
+                  tags: array[string],
+                  title: string,
+                }
                   --> main.hop (line 1, col 13)
                  1 | <card-comp {data: {
                    |             ^^^^
 
-                data: {content: string, metadata: {author: string, published: boolean}, tags: array[string], title: string}
+                data: {
+                  content: string,
+                  metadata: {author: string, published: boolean},
+                  tags: array[string],
+                  title: string,
+                }
                   --> main.hop (line 7, col 7)
                  6 | }}>
                  7 |     <h1>{data.title}</h1>
                    |          ^^^^
 
-                data: {content: string, metadata: {author: string, published: boolean}, tags: array[string], title: string}
+                data: {
+                  content: string,
+                  metadata: {author: string, published: boolean},
+                  tags: array[string],
+                  title: string,
+                }
                   --> main.hop (line 8, col 6)
                  7 |     <h1>{data.title}</h1>
                  8 |     <p>{data.content}</p>
                    |         ^^^^
 
-                data: {content: string, metadata: {author: string, published: boolean}, tags: array[string], title: string}
+                data: {
+                  content: string,
+                  metadata: {author: string, published: boolean},
+                  tags: array[string],
+                  title: string,
+                }
                   --> main.hop (line 9, col 8)
                  8 |     <p>{data.content}</p>
                  9 |     <div>{data.metadata.author}</div>
                    |           ^^^^
 
-                data: {content: string, metadata: {author: string, published: boolean}, tags: array[string], title: string}
+                data: {
+                  content: string,
+                  metadata: {author: string, published: boolean},
+                  tags: array[string],
+                  title: string,
+                }
                   --> main.hop (line 10, col 7)
                  9 |     <div>{data.metadata.author}</div>
                 10 |     <if {data.metadata.published}>
                    |          ^^^^
 
-                data: {content: string, metadata: {author: string, published: boolean}, tags: array[string], title: string}
+                data: {
+                  content: string,
+                  metadata: {author: string, published: boolean},
+                  tags: array[string],
+                  title: string,
+                }
                   --> main.hop (line 13, col 15)
                 12 |     </if>
                 13 |     <for {tag in data.tags}>
