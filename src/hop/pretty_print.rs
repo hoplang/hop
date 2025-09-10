@@ -98,8 +98,11 @@ fn format_opening_tag(
     let mut doc = RcDoc::text("<").append(RcDoc::text(tag_name.as_str().to_string()));
 
     // Add attributes
-    for attr in attributes {
-        doc = doc.append(RcDoc::space()).append(format_attribute(attr));
+    if !attributes.is_empty() {
+        doc = doc.append(RcDoc::space()).append(RcDoc::intersperse(
+            attributes.iter().map(format_attribute),
+            RcDoc::space(),
+        ));
     }
 
     // Add expression (for component parameters)
@@ -486,6 +489,27 @@ mod tests {
         );
     }
 
+    /// Attributes with inconsistent spacing should be normalized
+    #[test]
+    fn test_format_normalizes_attribute_spacing() {
+        check_pretty_print(
+            indoc! {r#"
+                <main-component>
+                  <div   id="test"    class="foo">
+                    <p>Hello world</p>
+                  </div>
+                </main-component>
+            "#},
+            expect![[r#"
+                <main-component>
+                  <div id="test" class="foo">
+                    <p>Hello world</p>
+                  </div>
+                </main-component>
+            "#]],
+        );
+    }
+
     /// Comments should be left untouched for now.
     #[test]
     fn test_format_leaves_comments_untouched() {
@@ -561,6 +585,27 @@ mod tests {
                 <foo-component>
                   <bar-component />
                 </foo-component>
+            "#]],
+        );
+    }
+
+    /// A div with many attributes should keep them on one line
+    #[test]
+    fn test_format_div_with_many_attributes() {
+        check_pretty_print(
+            indoc! {r#"
+                <main-component>
+                  <div id="container" class="wrapper main-content" data-role="content" data-index="1" aria-label="Main content area">
+                    <p>Hello world</p>
+                  </div>
+                </main-component>
+            "#},
+            expect![[r#"
+                <main-component>
+                  <div id="container" class="wrapper main-content" data-role="content" data-index="1" aria-label="Main content area">
+                    <p>Hello world</p>
+                  </div>
+                </main-component>
             "#]],
         );
     }
