@@ -23,16 +23,16 @@ use pretty::RcDoc;
 // * intersperse(...) - add a separator between each node
 
 pub trait TokenTreePrettyPrint {
-    fn to_doc(&self) -> RcDoc<'static, ()>;
-    fn to_doc_with_context(&self, is_top_level: bool) -> RcDoc<'static, ()>;
+    fn to_doc(&self) -> RcDoc<'static>;
+    fn to_doc_with_context(&self, is_top_level: bool) -> RcDoc<'static>;
 }
 
 impl TokenTreePrettyPrint for TokenTree {
-    fn to_doc(&self) -> RcDoc<'static, ()> {
+    fn to_doc(&self) -> RcDoc<'static> {
         self.to_doc_with_context(true)
     }
 
-    fn to_doc_with_context(&self, is_top_level: bool) -> RcDoc<'static, ()> {
+    fn to_doc_with_context(&self, is_top_level: bool) -> RcDoc<'static> {
         match &self.token {
             Token::Doctype { range } => {
                 // Doctypes are currently left untouched.
@@ -92,7 +92,7 @@ fn format_opening_tag(
     children: &[TokenTree],
     has_closing_tag: bool,
     is_top_level: bool,
-) -> RcDoc<'static, ()> {
+) -> RcDoc<'static> {
     let mut doc = RcDoc::text("<").append(RcDoc::text(tag_name.as_str().to_string()));
 
     // Add attributes
@@ -169,7 +169,7 @@ fn format_opening_tag(
 /// Format a dop type.
 /// E.g. <foo-component {users: array[{name: string}]}>
 ///                             ^^^^^^^^^^^^^^^^^^^^^
-fn format_dop_type(typ: &DopType) -> RcDoc<'static, ()> {
+fn format_dop_type(typ: &DopType) -> RcDoc<'static> {
     match typ {
         // Format a simple type.
         DopType::String | DopType::Number | DopType::Bool => RcDoc::text(typ.to_string()),
@@ -222,7 +222,7 @@ fn format_dop_type(typ: &DopType) -> RcDoc<'static, ()> {
 /// Format the parameters of a component definition.
 /// E.g. <foo-component {users: array[{name: string}]}>
 ///                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-fn format_parameters(params: Vec<DopParameter>) -> RcDoc<'static, ()> {
+fn format_parameters(params: Vec<DopParameter>) -> RcDoc<'static> {
     RcDoc::nil()
         // soft line break after the initial '{'
         .append(RcDoc::line_())
@@ -252,7 +252,7 @@ fn format_parameters(params: Vec<DopParameter>) -> RcDoc<'static, ()> {
 /// Format an attribute.
 /// E.g. <div foo="bar">
 ///           ^^^^^^^^^
-fn format_attribute(attr: &Attribute) -> RcDoc<'static, ()> {
+fn format_attribute(attr: &Attribute) -> RcDoc<'static> {
     RcDoc::nil()
         // key
         .append(RcDoc::text(attr.name.to_string()))
@@ -284,7 +284,7 @@ fn format_attribute(attr: &Attribute) -> RcDoc<'static, ()> {
         })
 }
 
-fn format_children(children: &[TokenTree], is_top_level: bool) -> RcDoc<'static, ()> {
+fn format_children(children: &[TokenTree], is_top_level: bool) -> RcDoc<'static> {
     // Filter out whitespace-only text nodes and group inline content
     let mut docs = Vec::new();
     let mut current_inline_group = Vec::new();
