@@ -57,12 +57,9 @@ impl TokenTreePrettyPrint for TokenTree {
                 }
             }
 
-            Token::TextExpression { expression, .. } => {
+            Token::TextExpression { range, .. } => {
                 // Text expressions are currently left untouched.
-                RcDoc::nil()
-                    .append(RcDoc::text("{"))
-                    .append(RcDoc::text(expression.to_string()))
-                    .append(RcDoc::text("}"))
+                RcDoc::text(range.to_string())
             }
 
             Token::OpeningTag {
