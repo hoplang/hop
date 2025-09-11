@@ -365,7 +365,7 @@ fn is_import_node(tree: &TokenTree) -> bool {
 /// Pretty print from source code directly using token trees
 pub fn pretty_print_from_source(source: &str, width: usize) -> Result<String, Vec<ParseError>> {
     use crate::error_collector::ErrorCollector;
-    
+
     let mut errors = ErrorCollector::new();
 
     // First, run the full parser to validate the syntax

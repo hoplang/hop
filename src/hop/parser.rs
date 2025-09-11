@@ -212,6 +212,7 @@ fn parse_top_level_node(
             expression,
             ..
         } => match tag_name.as_str() {
+            // <import ...>
             "import" => {
                 let validator = AttributeValidator::new(attributes, tag_name);
                 errors.extend(validator.check_unrecognized(&["component", "from"]));
@@ -228,6 +229,7 @@ fn parse_top_level_node(
                 }))
             }
 
+            // <render ...>
             "render" => {
                 let validator = AttributeValidator::new(attributes, tag_name);
                 errors.extend(validator.check_unrecognized(&["file"]));
@@ -238,8 +240,10 @@ fn parse_top_level_node(
                     children,
                 }))
             }
-            // Treat as ComponentDefinition
+
+            // <component-definition ...>
             name => {
+                // Validate component name
                 if !is_valid_component_name(name) {
                     errors.push(ParseError::InvalidComponentName {
                         tag_name: tag_name.to_string_span(),
@@ -247,6 +251,8 @@ fn parse_top_level_node(
                     });
                     return None;
                 }
+
+                // Parse parameters
                 let params = expression.as_ref().and_then(|expr| {
                     errors.ok_or_add(
                         DopParser::from(expr.clone())
@@ -273,12 +279,11 @@ fn parse_top_level_node(
                     }
                 }
 
+                // Parse attributes
                 let is_entrypoint = attributes.contains_key("entrypoint");
-
                 let as_attr = attributes.get("as").and_then(|attr| {
                     errors.ok_or_add(AttributeValidator::parse_attribute_as_static(attr))
                 });
-
                 let attributes = attributes
                     .iter()
                     .filter(|(k, _)| !matches!(k.as_str(), "as" | "entrypoint"))
@@ -361,6 +366,7 @@ fn construct_node(
             range: opening_tag_range,
             ..
         } => match tag_name.as_str() {
+            // <if {...}>
             "if" => {
                 // TODO: Check for unrecognized attributes
                 let expr = expression.ok_or_else(|| {
@@ -379,6 +385,7 @@ fn construct_node(
                 })
             }
 
+            // <for {...}>
             "for" => {
                 // TODO: Check for unrecognized attributes
                 let parse_result = expression
@@ -407,10 +414,12 @@ fn construct_node(
                 })
             }
 
+            // <slot-default>
             "slot-default" => Some(HopNode::SlotDefinition {
                 range: tree.range.clone(),
             }),
 
+            // <hop-x-exec>
             "hop-x-exec" => {
                 let validator = AttributeValidator::new(&attributes, &tag_name);
                 errors.extend(validator.check_unrecognized(&["cmd"]));
@@ -427,6 +436,7 @@ fn construct_node(
                 })
             }
 
+            // <hop-x-raw>
             "hop-x-raw" => Some(HopNode::XRaw {
                 trim: attributes.contains_key("trim"),
                 range: tree.range.clone(),
@@ -461,7 +471,7 @@ fn construct_node(
                     )
                 });
 
-                // If there was a parse error for arguments, return early with an Error node
+                // If there was a parse error for arguments, return early with a placeholder node
                 if expression.is_some() && args.is_none() {
                     return Some(HopNode::Placeholder {
                         range: tree.range.clone(),
