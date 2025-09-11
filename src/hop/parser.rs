@@ -1,15 +1,44 @@
+use itertools::Itertools as _;
+
 use crate::document::document_cursor::{DocumentRange, StringSpan};
 use crate::dop::DopParser;
 use crate::hop::ast::{ComponentDefinition, HopAst, HopNode, Import, Render};
 use crate::hop::parse_error::ParseError;
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::{Token, Tokenizer};
-use itertools::Itertools;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::ast::{self, StaticAttribute};
 use super::module_name::ModuleName;
 use super::tokenizer;
+
+struct ErrorCollector<'a> {
+    errors: &'a mut Vec<ParseError>,
+}
+
+impl<'a> ErrorCollector<'a> {
+    fn new(errors: &'a mut Vec<ParseError>) -> Self {
+        Self { errors }
+    }
+
+    fn push(&mut self, error: ParseError) {
+        self.errors.push(error);
+    }
+
+    fn extend<I: IntoIterator<Item = ParseError>>(&mut self, errors: I) {
+        self.errors.extend(errors);
+    }
+
+    fn ok_or_add<T>(&mut self, result: Result<T, ParseError>) -> Option<T> {
+        match result {
+            Ok(value) => Some(value),
+            Err(err) => {
+                self.push(err);
+                None
+            }
+        }
+    }
+}
 
 struct AttributeValidator<'a> {
     attributes: &'a BTreeMap<StringSpan, tokenizer::Attribute>,
@@ -200,6 +229,7 @@ fn parse_top_level_node(
     children: Vec<HopNode>,
     errors: &mut Vec<ParseError>,
 ) -> Option<TopLevelNode> {
+    let mut collector = ErrorCollector::new(errors);
     match &tree.token {
         Token::Text { .. } => None,
         Token::ClosingTag { .. } => None,
@@ -214,26 +244,13 @@ fn parse_top_level_node(
         } => match tag_name.as_str() {
             "import" => {
                 let validator = AttributeValidator::new(attributes, tag_name);
-                errors.extend(validator.check_unrecognized(&["component", "from"]));
-
-                let (from_attr, module_name) = match validator
-                    .get_static("from")
-                    .and_then(AttributeValidator::parse_import_name_from_attr)
-                {
-                    Ok(attr) => attr,
-                    Err(err) => {
-                        errors.push(err);
-                        return None;
-                    }
-                };
-
-                let component_attr = match validator.get_static("component") {
-                    Ok(attr) => attr,
-                    Err(err) => {
-                        errors.push(err);
-                        return None;
-                    }
-                };
+                collector.extend(validator.check_unrecognized(&["component", "from"]));
+                let (from_attr, module_name) = collector.ok_or_add(
+                    validator
+                        .get_static("from")
+                        .and_then(AttributeValidator::parse_import_name_from_attr),
+                )?;
+                let component_attr = collector.ok_or_add(validator.get_static("component"))?;
                 Some(TopLevelNode::Import(Import {
                     component_attr,
                     module_name,
@@ -243,16 +260,8 @@ fn parse_top_level_node(
 
             "render" => {
                 let validator = AttributeValidator::new(attributes, tag_name);
-                errors.extend(validator.check_unrecognized(&["file"]));
-
-                let file_attr = match validator.get_static("file") {
-                    Ok(attr) => attr,
-                    Err(err) => {
-                        errors.push(err);
-                        return None;
-                    }
-                };
-
+                collector.extend(validator.check_unrecognized(&["file"]));
+                let file_attr = collector.ok_or_add(validator.get_static("file"))?;
                 Some(TopLevelNode::Render(Render {
                     file_attr,
                     range: tree.range.clone(),
@@ -262,18 +271,19 @@ fn parse_top_level_node(
             // Treat as ComponentDefinition
             name => {
                 if !is_valid_component_name(name) {
-                    errors.push(ParseError::InvalidComponentName {
+                    collector.push(ParseError::InvalidComponentName {
                         tag_name: tag_name.to_string_span(),
                         range: tag_name.clone(),
                     });
                     return None;
                 }
                 let params = expression.as_ref().and_then(|expr| {
-                    DopParser::from(expr.clone())
-                        .parse_parameters()
-                        .map_err(|err| errors.push(err.into()))
-                        .map(|params| (params, expr.clone()))
-                        .ok()
+                    collector.ok_or_add(
+                        DopParser::from(expr.clone())
+                            .parse_parameters()
+                            .map(|params| (params, expr.clone()))
+                            .map_err(|err| err.into()),
+                    )
                 });
 
                 // TODO: Here we iterate over the whole subtree to check
@@ -284,7 +294,7 @@ fn parse_top_level_node(
                     for node in child.iter_depth_first() {
                         if let HopNode::SlotDefinition { range, .. } = node {
                             if has_slot {
-                                errors.push(ParseError::SlotIsAlreadyDefined {
+                                collector.push(ParseError::SlotIsAlreadyDefined {
                                     range: range.clone(),
                                 });
                             }
@@ -296,18 +306,18 @@ fn parse_top_level_node(
                 let is_entrypoint = attributes.contains_key("entrypoint");
 
                 let as_attr = attributes.get("as").and_then(|attr| {
-                    AttributeValidator::parse_attribute_as_static(attr)
-                        .map_err(|err| errors.push(err))
-                        .ok()
+                    collector.ok_or_add(AttributeValidator::parse_attribute_as_static(attr))
                 });
 
-                let (attributes, parse_errors): (BTreeMap<_, _>, Vec<_>) = attributes
+                let attributes = attributes
                     .iter()
                     .filter(|(k, _)| !matches!(k.as_str(), "as" | "entrypoint"))
-                    .map(|(k, attr)| AttributeValidator::parse_attribute(attr).map(|a| (k.clone(), a)))
-                    .partition_result();
-
-                errors.extend(parse_errors);
+                    .filter_map(|(k, attr)| {
+                        collector.ok_or_add(
+                            AttributeValidator::parse_attribute(attr).map(|a| (k.clone(), a)),
+                        )
+                    })
+                    .collect();
 
                 Some(TopLevelNode::ComponentDefinition(ComponentDefinition {
                     tag_name: tag_name.clone(),
