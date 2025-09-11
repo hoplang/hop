@@ -21,7 +21,3 @@ install: build
 
 install-release: build-release
 	sudo cp target/release/hop /usr/local/bin/hop
-
-visualize-tokenizer:
-	cd tokenizer-visualizer && nix develop --command cargo run
-	dot -Tpdf tokenizer_state_machine.dot > tokenizer.pdf

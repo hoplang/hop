@@ -1,8 +1,0 @@
-[package]
-name = "tokenizer-visualizer"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-syn = { version = "2.0", features = ["full", "visit"] }
-quote = "1.0"
