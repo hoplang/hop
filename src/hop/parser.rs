@@ -128,13 +128,33 @@ pub fn parse(
             tree,
             children,
             errors,
-            &mut defined_components,
-            &mut imported_components,
         ) {
             match node {
-                TopLevelNode::Import(import) => imports.push(import),
+                TopLevelNode::Import(import) => {
+                    let component_name = import.component_attr.value.as_str();
+                    if imported_components.contains_key(component_name) {
+                        errors.push(ParseError::ComponentIsAlreadyDefined {
+                            component_name: import.component_attr.value.to_string_span(),
+                            range: import.component_attr.value.clone(),
+                        });
+                    } else {
+                        imported_components.insert(component_name.to_string(), import.module_name.clone());
+                    }
+                    imports.push(import);
+                }
                 TopLevelNode::Render(render) => renders.push(render),
-                TopLevelNode::ComponentDefinition(component) => components.push(component),
+                TopLevelNode::ComponentDefinition(component) => {
+                    let name = component.tag_name.as_str();
+                    if defined_components.contains(name) || imported_components.contains_key(name) {
+                        errors.push(ParseError::ComponentIsAlreadyDefined {
+                            component_name: component.tag_name.to_string_span(),
+                            range: component.tag_name.clone(),
+                        });
+                    } else {
+                        defined_components.insert(name.to_string());
+                    }
+                    components.push(component);
+                }
             }
         }
     }
@@ -146,8 +166,6 @@ fn parse_top_level_node(
     tree: TokenTree,
     children: Vec<HopNode>,
     errors: &mut Vec<ParseError>,
-    defined_components: &mut HashSet<String>,
-    imported_components: &mut HashMap<String, ModuleName>,
 ) -> Option<TopLevelNode> {
     match &tree.token {
         Token::Text { .. } => None,
@@ -184,24 +202,13 @@ fn parse_top_level_node(
 
                 let component_attr = match get_attribute(tag_name, "component", attributes)
                     .and_then(parse_attribute_as_static)
-                    .and_then(|attr| {
-                        // Validate that component is not already imported
-                        if imported_components.contains_key(attr.value.as_str()) {
-                            return Err(ParseError::ComponentIsAlreadyDefined {
-                                component_name: attr.value.to_string_span(),
-                                range: attr.value.clone(),
-                            });
-                        }
-                        Ok(attr)
-                    }) {
+                {
                     Ok(attr) => attr,
                     Err(err) => {
                         errors.push(err);
                         return None;
                     }
                 };
-
-                imported_components.insert(component_attr.value.to_string(), module_name.clone());
                 Some(TopLevelNode::Import(Import {
                     component_attr,
                     module_name,
@@ -267,16 +274,6 @@ fn parse_top_level_node(
                             has_slot = true;
                         }
                     }
-                }
-
-                if defined_components.contains(name) || imported_components.contains_key(name) {
-                    errors.push(ParseError::ComponentIsAlreadyDefined {
-                        component_name: tag_name.to_string_span(),
-                        range: tag_name.clone(),
-                    });
-                    // intentional fall-through
-                } else {
-                    defined_components.insert(name.to_string());
                 }
 
                 let is_entrypoint = attributes.contains_key("entrypoint");
