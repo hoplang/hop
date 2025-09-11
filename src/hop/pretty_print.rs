@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use crate::document::document_cursor::{DocumentRange, StringSpan};
-use crate::dop::DopParser;
-use crate::dop::parser::DopParameter;
+use crate::dop::Parser;
+use crate::dop::parser::Parameter;
 use crate::hop::module_name::ModuleName;
 use crate::hop::parse_error::ParseError;
 use crate::hop::parser::parse;
@@ -118,7 +118,7 @@ fn format_opening_tag(
 
         if is_component_definition {
             // Parse and format as parameters for component definitions
-            let params = DopParser::from(expr.clone())
+            let params = Parser::from(expr.clone())
                 .parse_parameters()
                 .expect("Failed to parse component parameters during formatting");
             let param_doc = format_parameters(params);
@@ -176,13 +176,13 @@ fn format_opening_tag(
 /// Format the parameters of a component definition.
 /// E.g. <foo-component {users: array[{name: string}]}>
 ///                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-fn format_parameters(params: Vec<DopParameter>) -> RcDoc<'static> {
+fn format_parameters(params: Vec<Parameter>) -> RcDoc<'static> {
     RcDoc::nil()
         // soft line break after the initial '{'
         .append(RcDoc::line_())
         // format parameters
         .append(RcDoc::intersperse(
-            params.iter().map(|DopParameter { var_name, var_type }| {
+            params.iter().map(|Parameter { var_name, var_type }| {
                 RcDoc::nil()
                     // key
                     .append(RcDoc::text(var_name.to_string()))

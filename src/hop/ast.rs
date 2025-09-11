@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
-use crate::dop::{DopArgument, DopExpr, DopParameter, parser::DopVarName};
+use crate::dop::{Argument, Expr, Parameter, VarName};
 use crate::hop::module_name::ModuleName;
 
 /// A StaticAttribute is an attribute that must
@@ -14,7 +14,7 @@ pub struct StaticAttribute {
 
 #[derive(Debug, Clone)]
 pub enum AttributeValue {
-    Expression(DopExpr),
+    Expression(Expr),
     String(DocumentRange),
 }
 
@@ -159,7 +159,7 @@ pub struct Render {
 pub struct ComponentDefinition {
     pub tag_name: DocumentRange,
     pub closing_tag_name: Option<DocumentRange>,
-    pub params: Option<(Vec<DopParameter>, DocumentRange)>,
+    pub params: Option<(Vec<Parameter>, DocumentRange)>,
     pub as_attr: Option<StaticAttribute>,
     pub attributes: BTreeMap<StringSpan, Attribute>,
     pub range: DocumentRange,
@@ -191,7 +191,7 @@ pub enum HopNode {
     /// E.g. <div>hello {world}</div>
     ///                 ^^^^^^^
     TextExpression {
-        expression: DopExpr,
+        expression: Expr,
         range: DocumentRange,
     },
 
@@ -205,7 +205,7 @@ pub enum HopNode {
         tag_name: DocumentRange,
         definition_module: Option<ModuleName>,
         closing_tag_name: Option<DocumentRange>,
-        args: Option<(Vec<DopArgument>, DocumentRange)>,
+        args: Option<(Vec<Argument>, DocumentRange)>,
         attributes: BTreeMap<StringSpan, Attribute>,
         range: DocumentRange,
         children: Vec<HopNode>,
@@ -222,7 +222,7 @@ pub enum HopNode {
     /// An If node contains content that is only evaluated when its condition
     /// expression evaluates to true.
     If {
-        condition: DopExpr,
+        condition: Expr,
         range: DocumentRange,
         children: Vec<HopNode>,
     },
@@ -230,8 +230,8 @@ pub enum HopNode {
     /// A For node contains content that is evaluated once for each item of
     /// an array.
     For {
-        var_name: DopVarName,
-        array_expr: DopExpr,
+        var_name: VarName,
+        array_expr: Expr,
         range: DocumentRange,
         children: Vec<HopNode>,
     },

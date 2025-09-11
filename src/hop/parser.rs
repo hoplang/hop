@@ -1,5 +1,5 @@
 use crate::document::document_cursor::{DocumentRange, StringSpan};
-use crate::dop::DopParser;
+use crate::dop::Parser;
 use crate::error_collector::ErrorCollector;
 use crate::hop::ast::{ComponentDefinition, HopAst, HopNode, Import, Render};
 use crate::hop::parse_error::ParseError;
@@ -37,7 +37,7 @@ impl AttributeValidator {
                 Ok(ast::AttributeValue::String(range.clone()))
             }
             tokenizer::AttributeValue::Expression(expr) => {
-                match DopParser::from(expr.clone()).parse_expr() {
+                match Parser::from(expr.clone()).parse_expr() {
                     Ok(expr) => Ok(ast::AttributeValue::Expression(expr)),
                     Err(err) => Err(err.into()),
                 }
@@ -305,7 +305,7 @@ fn parse_top_level_node(
                     // Parse parameters
                     let params = expression.as_ref().and_then(|expr| {
                         errors.ok_or_add(
-                            DopParser::from(expr.clone())
+                            Parser::from(expr.clone())
                                 .parse_parameters()
                                 .map(|params| (params, expr.clone()))
                                 .map_err(|err| err.into()),
@@ -411,7 +411,7 @@ fn construct_node(
             expression: expr, ..
         } => {
             let expression = errors.ok_or_add(
-                DopParser::from(expr.clone())
+                Parser::from(expr.clone())
                     .parse_expr()
                     .map_err(|err| err.into()),
             )?;
@@ -441,7 +441,7 @@ fn construct_node(
                     });
                     let condition =
                         errors.ok_or_add(expr.and_then(|e| {
-                            DopParser::from(e).parse_expr().map_err(|err| err.into())
+                            Parser::from(e).parse_expr().map_err(|err| err.into())
                         }))?;
                     Some(HopNode::If {
                         condition,
@@ -461,7 +461,7 @@ fn construct_node(
                             )
                         })
                         .and_then(|e| {
-                            DopParser::from(e.clone())
+                            Parser::from(e.clone())
                                 .parse_loop_header()
                                 .map_err(|err| err.into())
                         });
@@ -538,7 +538,7 @@ fn construct_node(
 
                     let args = expression.as_ref().and_then(|expr| {
                         errors.ok_or_add(
-                            DopParser::from(expr.clone())
+                            Parser::from(expr.clone())
                                 .parse_arguments()
                                 .map(|named_args| (named_args, expr.clone()))
                                 .map_err(|err| err.into()),

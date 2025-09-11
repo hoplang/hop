@@ -1,5 +1,5 @@
-use super::DopType;
-use super::ast::{BinaryOp, DopExpr, UnaryOp};
+use super::Type;
+use super::ast::{BinaryOp, Expr, UnaryOp};
 use crate::document::document_cursor::Ranged as _;
 use crate::hop::environment::Environment;
 use crate::hop::type_error::TypeError;
@@ -7,12 +7,12 @@ use crate::hop::typechecker::TypeAnnotation;
 use std::collections::BTreeMap;
 
 pub fn typecheck_expr(
-    expr: &DopExpr,
-    env: &mut Environment<DopType>,
+    expr: &Expr,
+    env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
-) -> Result<DopType, TypeError> {
+) -> Result<Type, TypeError> {
     match expr {
-        DopExpr::Variable { value: name, .. } => {
+        Expr::Variable { value: name, .. } => {
             if let Some(var_type) = env.lookup(name.as_str()) {
                 annotations.push(TypeAnnotation {
                     range: expr.range().clone(),
@@ -27,10 +27,10 @@ pub fn typecheck_expr(
                 })
             }
         }
-        DopExpr::BooleanLiteral { .. } => Ok(DopType::Bool),
-        DopExpr::StringLiteral { .. } => Ok(DopType::String),
-        DopExpr::NumberLiteral { .. } => Ok(DopType::Number),
-        DopExpr::PropertyAccess {
+        Expr::BooleanLiteral { .. } => Ok(Type::Bool),
+        Expr::StringLiteral { .. } => Ok(Type::String),
+        Expr::NumberLiteral { .. } => Ok(Type::Number),
+        Expr::PropertyAccess {
             object: base_expr,
             property,
             ..
@@ -38,7 +38,7 @@ pub fn typecheck_expr(
             let base_type = typecheck_expr(base_expr, env, annotations)?;
 
             match &base_type {
-                DopType::Object(props) => {
+                Type::Object(props) => {
                     if let Some(prop_type) = props.get(property.as_str()) {
                         Ok(prop_type.clone())
                     } else {
@@ -55,7 +55,7 @@ pub fn typecheck_expr(
                 }),
             }
         }
-        DopExpr::BinaryOp {
+        Expr::BinaryOp {
             left,
             operator: BinaryOp::Equal,
             right,
@@ -74,9 +74,9 @@ pub fn typecheck_expr(
             }
 
             // The result of == is always boolean
-            Ok(DopType::Bool)
+            Ok(Type::Bool)
         }
-        DopExpr::UnaryOp {
+        Expr::UnaryOp {
             operator: UnaryOp::Not,
             operand: expr,
             ..
@@ -84,19 +84,19 @@ pub fn typecheck_expr(
             let expr_type = typecheck_expr(expr, env, annotations)?;
 
             // Negation only works on boolean expressions
-            if !expr_type.is_subtype(&DopType::Bool) {
+            if !expr_type.is_subtype(&Type::Bool) {
                 return Err(TypeError::NegationRequiresBoolean {
                     range: expr.range().clone(),
                 });
             }
 
             // The result of ! is always boolean
-            Ok(DopType::Bool)
+            Ok(Type::Bool)
         }
-        DopExpr::ArrayLiteral { elements, .. } => {
+        Expr::ArrayLiteral { elements, .. } => {
             if elements.is_empty() {
                 // Empty array has unknown element type
-                Ok(DopType::Array(None))
+                Ok(Type::Array(None))
             } else {
                 // Check the type of the first element
                 let first_type = typecheck_expr(&elements[0], env, annotations)?;
@@ -113,10 +113,10 @@ pub fn typecheck_expr(
                     }
                 }
 
-                Ok(DopType::Array(Some(Box::new(first_type))))
+                Ok(Type::Array(Some(Box::new(first_type))))
             }
         }
-        DopExpr::ObjectLiteral { properties, .. } => {
+        Expr::ObjectLiteral { properties, .. } => {
             let mut object_properties = BTreeMap::new();
 
             for (key, value_expr) in properties {
@@ -124,7 +124,7 @@ pub fn typecheck_expr(
                 object_properties.insert(key.to_string(), value_type);
             }
 
-            Ok(DopType::Object(object_properties))
+            Ok(Type::Object(object_properties))
         }
     }
 }
@@ -133,14 +133,14 @@ pub fn typecheck_expr(
 mod tests {
     use super::*;
     use crate::document::DocumentAnnotator;
-    use crate::dop::DopParser;
+    use crate::dop::Parser;
     use expect_test::{Expect, expect};
 
     fn check(env_str: &str, expr_str: &str, expected: Expect) {
         let mut env = Environment::new();
 
         if !env_str.is_empty() {
-            let mut parser = DopParser::from(env_str);
+            let mut parser = Parser::from(env_str);
             let params = parser
                 .parse_parameters()
                 .expect("Failed to parse environment");
@@ -149,7 +149,7 @@ mod tests {
             }
         }
 
-        let mut parser = DopParser::from(expr_str);
+        let mut parser = Parser::from(expr_str);
         let expr = parser.parse_expr().expect("Failed to parse expression");
 
         let mut annotations = Vec::new();

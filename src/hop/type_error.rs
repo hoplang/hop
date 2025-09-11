@@ -1,5 +1,5 @@
 use crate::document::document_cursor::{DocumentRange, Ranged};
-use crate::dop::{DopParameter, DopType};
+use crate::dop::{Parameter, Type};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
@@ -58,8 +58,8 @@ pub enum TypeError {
 
     #[error("Argument '{arg_name}' of type {found} is incompatible with expected type {expected}")]
     ArgumentIsIncompatible {
-        expected: DopType,
-        found: DopType,
+        expected: Type,
+        found: Type,
         arg_name: DocumentRange,
         expr_range: DocumentRange,
     },
@@ -74,10 +74,7 @@ pub enum TypeError {
     CannotIterateOver { typ: String, range: DocumentRange },
 
     #[error("Expected string for text expression, got {found}")]
-    ExpectedStringExpression {
-        found: DopType,
-        range: DocumentRange,
-    },
+    ExpectedStringExpression { found: Type, range: DocumentRange },
 
     #[error("Undefined variable: {name}")]
     UndefinedVariable { name: String, range: DocumentRange },
@@ -85,7 +82,7 @@ pub enum TypeError {
     #[error("Property {property} not found in object {dop_type}")]
     PropertyNotFoundInObject {
         property: String,
-        dop_type: DopType,
+        dop_type: Type,
         range: DocumentRange,
     },
 
@@ -131,7 +128,7 @@ impl TypeError {
         }
     }
 
-    pub fn missing_arguments(params: &[DopParameter], range: DocumentRange) -> Self {
+    pub fn missing_arguments(params: &[Parameter], range: DocumentRange) -> Self {
         let args = params
             .iter()
             .map(|p| p.var_name.as_str())

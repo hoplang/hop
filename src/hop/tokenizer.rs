@@ -6,7 +6,7 @@ use std::mem;
 use itertools::Itertools as _;
 
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged, StringSpan};
-use crate::dop::{DopToken, DopTokenizer};
+use crate::dop;
 use crate::hop::parse_error::ParseError;
 
 #[derive(Debug, Clone)]
@@ -163,15 +163,15 @@ impl Tokenizer {
     ///
     /// Returns None if we reached EOF before finding the closing '}'.
     fn find_expression_end(iter: Peekable<DocumentCursor>) -> Option<DocumentRange> {
-        let mut dop_tokenizer = DopTokenizer::from(iter);
+        let mut dop_tokenizer = dop::Tokenizer::from(iter);
         let mut open_braces = 1;
         loop {
             let token = dop_tokenizer.next()?;
             match token {
-                Ok((DopToken::LeftBrace, _)) => {
+                Ok((dop::Token::LeftBrace, _)) => {
                     open_braces += 1;
                 }
-                Ok((DopToken::RightBrace, range)) => {
+                Ok((dop::Token::RightBrace, range)) => {
                     open_braces -= 1;
                     if open_braces == 0 {
                         return Some(range);

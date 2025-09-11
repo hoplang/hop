@@ -1,7 +1,7 @@
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use thiserror::Error;
 
-use super::dop_token::DopToken;
+use super::token::Token;
 
 #[derive(Error, Debug, Clone)]
 pub enum ParseError {
@@ -15,10 +15,7 @@ pub enum ParseError {
     UnterminatedStringLiteral { range: DocumentRange },
 
     #[error("Unmatched '{token}'")]
-    UnmatchedToken {
-        token: DopToken,
-        range: DocumentRange,
-    },
+    UnmatchedToken { token: Token, range: DocumentRange },
 
     #[error(
         "Invalid variable name '{name}'. Variable names must start with a letter and contain only letters, digits, and underscores"
@@ -30,31 +27,22 @@ pub enum ParseError {
 
     #[error("Expected token '{expected}' but got '{actual}'")]
     ExpectedTokenButGot {
-        expected: DopToken,
-        actual: DopToken,
+        expected: Token,
+        actual: Token,
         range: DocumentRange,
     },
 
     #[error("Unexpected token '{token}'")]
-    UnexpectedToken {
-        token: DopToken,
-        range: DocumentRange,
-    },
+    UnexpectedToken { token: Token, range: DocumentRange },
 
     #[error("Unexpected character: '{ch}'")]
     UnexpectedCharacter { ch: char, range: DocumentRange },
 
     #[error("Expected variable name but got {actual}")]
-    ExpectedVariableNameButGot {
-        actual: DopToken,
-        range: DocumentRange,
-    },
+    ExpectedVariableNameButGot { actual: Token, range: DocumentRange },
 
     #[error("Expected property name but got {actual}")]
-    ExpectedPropertyNameButGot {
-        actual: DopToken,
-        range: DocumentRange,
-    },
+    ExpectedPropertyNameButGot { actual: Token, range: DocumentRange },
 
     #[error("Expected identifier after '.'")]
     ExpectedIdentifierAfterDot { range: DocumentRange },

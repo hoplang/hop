@@ -1,7 +1,7 @@
 use std::fmt::{self, Display};
 
 use crate::document::document_cursor::{DocumentRange, Ranged};
-use crate::dop::parser::DopVarName;
+use crate::dop::parser::VarName;
 use crate::hop::pretty::Pretty;
 use pretty::RcDoc;
 
@@ -32,12 +32,12 @@ impl Display for UnaryOp {
 }
 
 #[derive(Debug, Clone)]
-pub enum DopExpr {
+pub enum Expr {
     Variable {
-        value: DopVarName,
+        value: VarName,
     },
     PropertyAccess {
-        object: Box<DopExpr>,
+        object: Box<Expr>,
         property: DocumentRange,
         range: DocumentRange,
     },
@@ -55,47 +55,47 @@ pub enum DopExpr {
     },
     /// An array literal, e.g. [1, 2, 3]
     ArrayLiteral {
-        elements: Vec<DopExpr>,
+        elements: Vec<Expr>,
         range: DocumentRange,
     },
     ObjectLiteral {
-        properties: Vec<(DocumentRange, DopExpr)>,
+        properties: Vec<(DocumentRange, Expr)>,
         range: DocumentRange,
     },
     BinaryOp {
-        left: Box<DopExpr>,
+        left: Box<Expr>,
         operator: BinaryOp,
-        right: Box<DopExpr>,
+        right: Box<Expr>,
         range: DocumentRange,
     },
     UnaryOp {
         operator: UnaryOp,
-        operand: Box<DopExpr>,
+        operand: Box<Expr>,
         range: DocumentRange,
     },
 }
 
-impl Ranged for DopExpr {
+impl Ranged for Expr {
     fn range(&self) -> &DocumentRange {
         match self {
-            DopExpr::Variable { value, .. } => value.range(),
-            DopExpr::PropertyAccess { range, .. }
-            | DopExpr::StringLiteral { range, .. }
-            | DopExpr::BooleanLiteral { range, .. }
-            | DopExpr::NumberLiteral { range, .. }
-            | DopExpr::ArrayLiteral { range, .. }
-            | DopExpr::ObjectLiteral { range, .. }
-            | DopExpr::BinaryOp { range, .. }
-            | DopExpr::UnaryOp { range, .. } => range,
+            Expr::Variable { value, .. } => value.range(),
+            Expr::PropertyAccess { range, .. }
+            | Expr::StringLiteral { range, .. }
+            | Expr::BooleanLiteral { range, .. }
+            | Expr::NumberLiteral { range, .. }
+            | Expr::ArrayLiteral { range, .. }
+            | Expr::ObjectLiteral { range, .. }
+            | Expr::BinaryOp { range, .. }
+            | Expr::UnaryOp { range, .. } => range,
         }
     }
 }
 
-impl Pretty for DopExpr {
+impl Pretty for Expr {
     fn to_doc(&self) -> RcDoc<'static> {
         match self {
-            DopExpr::Variable { value } => RcDoc::text(value.to_string()),
-            DopExpr::PropertyAccess {
+            Expr::Variable { value } => RcDoc::text(value.to_string()),
+            Expr::PropertyAccess {
                 object,
                 property,
                 range: _,
@@ -103,10 +103,10 @@ impl Pretty for DopExpr {
                 .to_doc()
                 .append(RcDoc::text("."))
                 .append(RcDoc::text(property.to_string())),
-            DopExpr::StringLiteral { value, range: _ } => RcDoc::text(format!("\"{}\"", value)),
-            DopExpr::BooleanLiteral { value, range: _ } => RcDoc::text(value.to_string()),
-            DopExpr::NumberLiteral { value, range: _ } => RcDoc::text(value.to_string()),
-            DopExpr::ArrayLiteral { elements, range: _ } => {
+            Expr::StringLiteral { value, range: _ } => RcDoc::text(format!("\"{}\"", value)),
+            Expr::BooleanLiteral { value, range: _ } => RcDoc::text(value.to_string()),
+            Expr::NumberLiteral { value, range: _ } => RcDoc::text(value.to_string()),
+            Expr::ArrayLiteral { elements, range: _ } => {
                 if elements.is_empty() {
                     RcDoc::text("[]")
                 } else {
@@ -125,7 +125,7 @@ impl Pretty for DopExpr {
                         .append(RcDoc::text("]"))
                 }
             }
-            DopExpr::ObjectLiteral {
+            Expr::ObjectLiteral {
                 properties,
                 range: _,
             } => {
@@ -152,7 +152,7 @@ impl Pretty for DopExpr {
                         .append(RcDoc::text("}"))
                 }
             }
-            DopExpr::BinaryOp {
+            Expr::BinaryOp {
                 left,
                 operator,
                 right,
@@ -163,7 +163,7 @@ impl Pretty for DopExpr {
                 .append(RcDoc::text(format!(" {} ", operator)))
                 .append(right.to_doc())
                 .append(RcDoc::text(")")),
-            DopExpr::UnaryOp {
+            Expr::UnaryOp {
                 operator,
                 operand,
                 range: _,
@@ -176,7 +176,7 @@ impl Pretty for DopExpr {
     }
 }
 
-impl Display for DopExpr {
+impl Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_doc().pretty(60))
     }

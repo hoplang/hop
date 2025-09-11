@@ -6,25 +6,25 @@ use pretty::RcDoc;
 use crate::{document::document_cursor::DocumentRange, hop::pretty::Pretty};
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum DopType {
-    Object(BTreeMap<String, DopType>),
-    Array(Option<Box<DopType>>),
+pub enum Type {
+    Object(BTreeMap<String, Type>),
+    Array(Option<Box<Type>>),
     Bool,
     String,
     Number,
 }
 
-impl DopType {
+impl Type {
     /// Check if `subtype` is a subtype of `supertype`
-    pub fn is_subtype(&self, supertype: &DopType) -> bool {
+    pub fn is_subtype(&self, supertype: &Type) -> bool {
         match (self, supertype) {
             // Exact matches
-            (DopType::Bool, DopType::Bool) => true,
-            (DopType::String, DopType::String) => true,
-            (DopType::Number, DopType::Number) => true,
+            (Type::Bool, Type::Bool) => true,
+            (Type::String, Type::String) => true,
+            (Type::Number, Type::Number) => true,
 
             // Arrays are covariant in their element type
-            (DopType::Array(sub_elem), DopType::Array(super_elem)) => {
+            (Type::Array(sub_elem), Type::Array(super_elem)) => {
                 match (sub_elem, super_elem) {
                     (Some(sub_type), Some(super_type)) => sub_type.is_subtype(super_type),
                     (None, None) => true,
@@ -34,7 +34,7 @@ impl DopType {
             }
 
             // Objects: subtype must have all properties of supertype with compatible types
-            (DopType::Object(sub_props), DopType::Object(super_props)) => {
+            (Type::Object(sub_props), Type::Object(super_props)) => {
                 super_props.iter().all(|(key, super_type)| {
                     sub_props
                         .get(key)
@@ -50,31 +50,31 @@ impl DopType {
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub struct RangedDopType {
-    pub dop_type: DopType,
+pub struct RangedType {
+    pub dop_type: Type,
     pub range: DocumentRange,
 }
 
-impl fmt::Display for DopType {
+impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_doc().pretty(60))
     }
 }
 
-impl Pretty for DopType {
+impl Pretty for Type {
     fn to_doc(&self) -> RcDoc<'static> {
         match self {
-            DopType::String => RcDoc::text("string"),
-            DopType::Number => RcDoc::text("number"),
-            DopType::Bool => RcDoc::text("boolean"),
-            DopType::Array(elem_type) => match elem_type {
+            Type::String => RcDoc::text("string"),
+            Type::Number => RcDoc::text("number"),
+            Type::Bool => RcDoc::text("boolean"),
+            Type::Array(elem_type) => match elem_type {
                 Some(elem) => RcDoc::nil()
                     .append(RcDoc::text("array["))
                     .append(elem.to_doc())
                     .append(RcDoc::text("]")),
                 None => RcDoc::text("array"),
             },
-            DopType::Object(fields) => {
+            Type::Object(fields) => {
                 RcDoc::nil()
                     .append(RcDoc::text("{"))
                     .append(

@@ -3,27 +3,27 @@ use std::fmt::{self, Display};
 use std::iter::Peekable;
 
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged as _};
-use crate::dop::DopType;
-use crate::dop::ast::{BinaryOp, DopExpr, UnaryOp};
-use crate::dop::dop_token::DopToken;
+use crate::dop::Type;
+use crate::dop::ast::{BinaryOp, Expr, UnaryOp};
 use crate::dop::parse_error::ParseError;
-use crate::dop::tokenizer::DopTokenizer;
+use crate::dop::token::Token;
+use crate::dop::tokenizer::Tokenizer;
 
-use super::dop_type::RangedDopType;
+use super::r#type::RangedType;
 
-/// A DopVarName represents a validated variable name in dop.
+/// A VarName represents a validated variable name in dop.
 #[derive(Debug, Clone)]
-pub struct DopVarName {
+pub struct VarName {
     value: DocumentRange,
 }
 
-impl Display for DopVarName {
+impl Display for VarName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.value.as_str())
     }
 }
 
-impl DopVarName {
+impl VarName {
     pub fn new(value: DocumentRange) -> Result<Self, ParseError> {
         let mut chars = value.as_str().chars();
         if !chars.next().is_some_and(|c| c.is_ascii_alphabetic())
@@ -34,7 +34,7 @@ impl DopVarName {
                 range: value.clone(),
             });
         }
-        Ok(DopVarName { value })
+        Ok(VarName { value })
     }
     pub fn as_str(&self) -> &str {
         self.value.as_str()
@@ -44,65 +44,63 @@ impl DopVarName {
     }
 }
 
-/// A DopParameter represents a parsed parameter with type annotation.
+/// A Parameter represents a parsed parameter with type annotation.
 /// E.g. <my-comp {x: string, y: string}>
 ///                ^^^^^^^^^
 #[derive(Debug, Clone)]
-pub struct DopParameter {
-    pub var_name: DopVarName,
-    pub var_type: DopType,
+pub struct Parameter {
+    pub var_name: VarName,
+    pub var_type: Type,
 }
 
-impl Display for DopParameter {
+impl Display for Parameter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.var_name, self.var_type)
     }
 }
 
-/// A DopArgument represents a parsed argument with a name and a value.
+/// An Argument represents a parsed argument with a name and a value.
 /// E.g. <my-comp {x: [1,2], y: 2}>
 ///                ^^^^^^^^
 #[derive(Debug, Clone)]
-pub struct DopArgument {
-    pub var_name: DopVarName,
-    pub var_expr: DopExpr,
+pub struct Argument {
+    pub var_name: VarName,
+    pub var_expr: Expr,
 }
 
-impl Display for DopArgument {
+impl Display for Argument {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.var_name, self.var_expr)
     }
 }
 
-pub struct DopParser {
-    iter: Peekable<DopTokenizer>,
+pub struct Parser {
+    iter: Peekable<Tokenizer>,
     range: DocumentRange,
 }
 
-impl DopParser {}
-
-impl From<DocumentRange> for DopParser {
+impl From<DocumentRange> for Parser {
     fn from(range: DocumentRange) -> Self {
         Self {
-            iter: DopTokenizer::from(range.cursor()).peekable(),
+            iter: Tokenizer::from(range.cursor()).peekable(),
             range: range.clone(),
         }
     }
 }
 
-impl From<&str> for DopParser {
+impl From<&str> for Parser {
     fn from(input: &str) -> Self {
         let cursor = DocumentCursor::new(input.to_string());
         let range = cursor.range();
         Self {
-            iter: DopTokenizer::from(cursor).peekable(),
+            iter: Tokenizer::from(cursor).peekable(),
             range,
         }
     }
 }
 
-impl DopParser {
-    fn advance_if(&mut self, token: DopToken) -> Option<DocumentRange> {
+impl Parser {
+    fn advance_if(&mut self, token: Token) -> Option<DocumentRange> {
         if let Some(Ok((_, range))) = self
             .iter
             .next_if(|res| res.as_ref().is_ok_and(|(t, _)| *t == token))
@@ -113,7 +111,7 @@ impl DopParser {
         }
     }
 
-    fn expect_token(&mut self, expected: &DopToken) -> Result<DocumentRange, ParseError> {
+    fn expect_token(&mut self, expected: &Token) -> Result<DocumentRange, ParseError> {
         match self.iter.next().transpose()? {
             Some((token, range)) if token == *expected => Ok(range),
             Some((actual, range)) => Err(ParseError::ExpectedTokenButGot {
@@ -129,7 +127,7 @@ impl DopParser {
 
     fn expect_opposite(
         &mut self,
-        token: &DopToken,
+        token: &Token,
         range: &DocumentRange,
     ) -> Result<DocumentRange, ParseError> {
         let expected = token.opposite_token();
@@ -148,9 +146,9 @@ impl DopParser {
         }
     }
 
-    fn expect_variable_name(&mut self) -> Result<DopVarName, ParseError> {
+    fn expect_variable_name(&mut self) -> Result<VarName, ParseError> {
         match self.iter.next().transpose()? {
-            Some((DopToken::Identifier(name), _)) => DopVarName::new(name),
+            Some((Token::Identifier(name), _)) => VarName::new(name),
             Some((actual, range)) => Err(ParseError::ExpectedVariableNameButGot { actual, range }),
             None => Err(ParseError::UnexpectedEof {
                 range: self.range.clone(),
@@ -160,7 +158,7 @@ impl DopParser {
 
     fn expect_property_name(&mut self) -> Result<DocumentRange, ParseError> {
         match self.iter.next().transpose()? {
-            Some((DopToken::Identifier(name), _)) => Ok(name),
+            Some((Token::Identifier(name), _)) => Ok(name),
             Some((token, range)) => Err(ParseError::ExpectedPropertyNameButGot {
                 actual: token,
                 range: range.clone(),
@@ -184,13 +182,13 @@ impl DopParser {
     fn parse_comma_separated<F>(
         &mut self,
         mut parse: F,
-        end_token: Option<&DopToken>,
+        end_token: Option<&Token>,
     ) -> Result<(), ParseError>
     where
         F: FnMut(&mut Self) -> Result<(), ParseError>,
     {
         parse(self)?;
-        while self.advance_if(DopToken::Comma).is_some() {
+        while self.advance_if(Token::Comma).is_some() {
             let at_end = self
                 .iter
                 .peek()
@@ -208,7 +206,7 @@ impl DopParser {
 
     fn parse_delimited_list<F>(
         &mut self,
-        opening_token: &DopToken,
+        opening_token: &Token,
         opening_range: &DocumentRange,
         parse: F,
     ) -> Result<DocumentRange, ParseError>
@@ -224,45 +222,45 @@ impl DopParser {
     }
 
     // expr = equality Eof
-    pub fn parse_expr(&mut self) -> Result<DopExpr, ParseError> {
+    pub fn parse_expr(&mut self) -> Result<Expr, ParseError> {
         let result = self.parse_equality()?;
         self.expect_eof()?;
         Ok(result)
     }
 
     // loop_header = Identifier "in" equality Eof
-    pub fn parse_loop_header(&mut self) -> Result<(DopVarName, DopExpr), ParseError> {
+    pub fn parse_loop_header(&mut self) -> Result<(VarName, Expr), ParseError> {
         let var_name = self.expect_variable_name()?;
-        self.expect_token(&DopToken::In)?;
+        self.expect_token(&Token::In)?;
         let array_expr = self.parse_equality()?;
         self.expect_eof()?;
         Ok((var_name, array_expr))
     }
 
     // parameter_with_type = Identifier ":" type
-    fn parse_parameter(&mut self) -> Result<DopParameter, ParseError> {
+    fn parse_parameter(&mut self) -> Result<Parameter, ParseError> {
         let var_name = self.expect_variable_name()?;
-        self.expect_token(&DopToken::Colon)?;
+        self.expect_token(&Token::Colon)?;
         let typ = self.parse_type()?;
-        Ok(DopParameter {
+        Ok(Parameter {
             var_name,
             var_type: typ.dop_type,
         })
     }
 
     // named_argument = Identifier ":" expr
-    fn parse_argument(&mut self) -> Result<DopArgument, ParseError> {
+    fn parse_argument(&mut self) -> Result<Argument, ParseError> {
         let var_name = self.expect_variable_name()?;
-        self.expect_token(&DopToken::Colon)?;
+        self.expect_token(&Token::Colon)?;
         let expression = self.parse_equality()?;
-        Ok(DopArgument {
+        Ok(Argument {
             var_name,
             var_expr: expression,
         })
     }
 
     // parameters = parameter ("," parameter)* Eof
-    pub fn parse_parameters(&mut self) -> Result<Vec<DopParameter>, ParseError> {
+    pub fn parse_parameters(&mut self) -> Result<Vec<Parameter>, ParseError> {
         let mut params = Vec::new();
         let mut seen_names = HashSet::new();
         self.parse_comma_separated(
@@ -284,7 +282,7 @@ impl DopParser {
     }
 
     // arguments = argument ("," argument)* Eof
-    pub fn parse_arguments(&mut self) -> Result<Vec<DopArgument>, ParseError> {
+    pub fn parse_arguments(&mut self) -> Result<Vec<Argument>, ParseError> {
         let mut args = Vec::new();
         let mut seen_names = HashSet::new();
         self.parse_comma_separated(
@@ -306,14 +304,11 @@ impl DopParser {
     }
 
     // object_type = "{" (Identifier ":" type ("," Identifier ":" type)*)? "}"
-    fn parse_object_type(
-        &mut self,
-        left_brace: DocumentRange,
-    ) -> Result<RangedDopType, ParseError> {
+    fn parse_object_type(&mut self, left_brace: DocumentRange) -> Result<RangedType, ParseError> {
         let mut properties = BTreeMap::new();
-        let right_brace = self.parse_delimited_list(&DopToken::LeftBrace, &left_brace, |this| {
+        let right_brace = self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
             let prop_name = this.expect_property_name()?;
-            this.expect_token(&DopToken::Colon)?;
+            this.expect_token(&Token::Colon)?;
             let t = this.parse_type()?;
             if properties.contains_key(prop_name.as_str()) {
                 return Err(ParseError::DuplicateProperty {
@@ -324,8 +319,8 @@ impl DopParser {
             properties.insert(prop_name.to_string(), t.dop_type);
             Ok(())
         })?;
-        Ok(RangedDopType {
-            dop_type: DopType::Object(properties),
+        Ok(RangedType {
+            dop_type: Type::Object(properties),
             range: left_brace.to(right_brace),
         })
     }
@@ -336,32 +331,30 @@ impl DopParser {
     //      | TypeVoid
     //      | TypeArray "[" type "]"
     //      | "{" (Identifier ":" type ("," Identifier ":" type)*)? "}"
-    fn parse_type(&mut self) -> Result<RangedDopType, ParseError> {
+    fn parse_type(&mut self) -> Result<RangedType, ParseError> {
         match self.iter.next().transpose()? {
-            Some((DopToken::TypeString, range)) => Ok(RangedDopType {
-                dop_type: DopType::String,
+            Some((Token::TypeString, range)) => Ok(RangedType {
+                dop_type: Type::String,
                 range,
             }),
-            Some((DopToken::TypeNumber, range)) => Ok(RangedDopType {
-                dop_type: DopType::Number,
+            Some((Token::TypeNumber, range)) => Ok(RangedType {
+                dop_type: Type::Number,
                 range,
             }),
-            Some((DopToken::TypeBoolean, range)) => Ok(RangedDopType {
-                dop_type: DopType::Bool,
+            Some((Token::TypeBoolean, range)) => Ok(RangedType {
+                dop_type: Type::Bool,
                 range,
             }),
-            Some((DopToken::TypeArray, type_array)) => {
-                let left_bracket = self.expect_token(&DopToken::LeftBracket)?;
+            Some((Token::TypeArray, type_array)) => {
+                let left_bracket = self.expect_token(&Token::LeftBracket)?;
                 let inner_type = self.parse_type()?;
-                let right_bracket = self.expect_opposite(&DopToken::LeftBracket, &left_bracket)?;
-                Ok(RangedDopType {
-                    dop_type: DopType::Array(Some(Box::new(inner_type.dop_type))),
+                let right_bracket = self.expect_opposite(&Token::LeftBracket, &left_bracket)?;
+                Ok(RangedType {
+                    dop_type: Type::Array(Some(Box::new(inner_type.dop_type))),
                     range: type_array.to(right_bracket),
                 })
             }
-            Some((DopToken::LeftBrace, left_brace_range)) => {
-                self.parse_object_type(left_brace_range)
-            }
+            Some((Token::LeftBrace, left_brace_range)) => self.parse_object_type(left_brace_range),
             Some((_, range)) => Err(ParseError::ExpectedTypeName { range }),
             None => Err(ParseError::UnexpectedEof {
                 range: self.range.clone(),
@@ -370,11 +363,11 @@ impl DopParser {
     }
 
     // equality = unary ( "==" unary )*
-    fn parse_equality(&mut self) -> Result<DopExpr, ParseError> {
+    fn parse_equality(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.parse_unary()?;
-        while self.advance_if(DopToken::Equal).is_some() {
+        while self.advance_if(Token::Equal).is_some() {
             let right = self.parse_unary()?;
-            expr = DopExpr::BinaryOp {
+            expr = Expr::BinaryOp {
                 range: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
                 operator: BinaryOp::Equal,
@@ -385,10 +378,10 @@ impl DopParser {
     }
 
     // unary = ( "!" )* primary
-    fn parse_unary(&mut self) -> Result<DopExpr, ParseError> {
-        if let Some(operator_range) = self.advance_if(DopToken::Not) {
+    fn parse_unary(&mut self) -> Result<Expr, ParseError> {
+        if let Some(operator_range) = self.advance_if(Token::Not) {
             let expr = self.parse_unary()?; // Right associative for multiple !
-            Ok(DopExpr::UnaryOp {
+            Ok(Expr::UnaryOp {
                 range: operator_range.to(expr.range().clone()),
                 operator: UnaryOp::Not,
                 operand: Box::new(expr),
@@ -399,23 +392,23 @@ impl DopParser {
     }
 
     // array_literal = "[" ( equality ("," equality)* )? "]"
-    fn parse_array_literal(&mut self, left_bracket: DocumentRange) -> Result<DopExpr, ParseError> {
+    fn parse_array_literal(&mut self, left_bracket: DocumentRange) -> Result<Expr, ParseError> {
         let mut elements = Vec::new();
         let right_bracket =
-            self.parse_delimited_list(&DopToken::LeftBracket, &left_bracket, |this| {
+            self.parse_delimited_list(&Token::LeftBracket, &left_bracket, |this| {
                 elements.push(this.parse_equality()?);
                 Ok(())
             })?;
-        Ok(DopExpr::ArrayLiteral {
+        Ok(Expr::ArrayLiteral {
             elements,
             range: left_bracket.to(right_bracket),
         })
     }
 
-    fn parse_object_literal(&mut self, left_brace: DocumentRange) -> Result<DopExpr, ParseError> {
+    fn parse_object_literal(&mut self, left_brace: DocumentRange) -> Result<Expr, ParseError> {
         let mut properties = Vec::new();
         let mut seen_names = HashSet::new();
-        let right_brace = self.parse_delimited_list(&DopToken::LeftBrace, &left_brace, |this| {
+        let right_brace = self.parse_delimited_list(&Token::LeftBrace, &left_brace, |this| {
             let prop_name = this.expect_property_name()?;
             if !seen_names.insert(prop_name.to_string_span()) {
                 return Err(ParseError::DuplicateProperty {
@@ -423,24 +416,24 @@ impl DopParser {
                     range: prop_name.clone(),
                 });
             }
-            this.expect_token(&DopToken::Colon)?;
+            this.expect_token(&Token::Colon)?;
             properties.push((prop_name, this.parse_equality()?));
             Ok(())
         })?;
-        Ok(DopExpr::ObjectLiteral {
+        Ok(Expr::ObjectLiteral {
             properties,
             range: left_brace.to(right_brace),
         })
     }
 
-    fn parse_property_access(&mut self, identifier: DocumentRange) -> Result<DopExpr, ParseError> {
-        let var_name = DopVarName::new(identifier)?;
-        let mut expr = DopExpr::Variable { value: var_name };
+    fn parse_property_access(&mut self, identifier: DocumentRange) -> Result<Expr, ParseError> {
+        let var_name = VarName::new(identifier)?;
+        let mut expr = Expr::Variable { value: var_name };
 
-        while let Some(dot) = self.advance_if(DopToken::Dot) {
+        while let Some(dot) = self.advance_if(Token::Dot) {
             match self.iter.next().transpose()? {
-                Some((DopToken::Identifier(prop), _)) => {
-                    expr = DopExpr::PropertyAccess {
+                Some((Token::Identifier(prop), _)) => {
+                    expr = Expr::PropertyAccess {
                         range: expr.range().clone().to(prop.clone()),
                         object: Box::new(expr),
                         property: prop,
@@ -459,23 +452,19 @@ impl DopParser {
         Ok(expr)
     }
 
-    fn parse_primary(&mut self) -> Result<DopExpr, ParseError> {
+    fn parse_primary(&mut self) -> Result<Expr, ParseError> {
         match self.iter.next().transpose()? {
-            Some((DopToken::Identifier(name), _)) => self.parse_property_access(name),
-            Some((DopToken::StringLiteral(value), range)) => {
-                Ok(DopExpr::StringLiteral { value, range })
+            Some((Token::Identifier(name), _)) => self.parse_property_access(name),
+            Some((Token::StringLiteral(value), range)) => Ok(Expr::StringLiteral { value, range }),
+            Some((Token::BooleanLiteral(value), range)) => {
+                Ok(Expr::BooleanLiteral { value, range })
             }
-            Some((DopToken::BooleanLiteral(value), range)) => {
-                Ok(DopExpr::BooleanLiteral { value, range })
-            }
-            Some((DopToken::NumberLiteral(value), range)) => {
-                Ok(DopExpr::NumberLiteral { value, range })
-            }
-            Some((DopToken::LeftBracket, left_bracket)) => self.parse_array_literal(left_bracket),
-            Some((DopToken::LeftBrace, left_brace)) => self.parse_object_literal(left_brace),
-            Some((DopToken::LeftParen, left_paren)) => {
+            Some((Token::NumberLiteral(value), range)) => Ok(Expr::NumberLiteral { value, range }),
+            Some((Token::LeftBracket, left_bracket)) => self.parse_array_literal(left_bracket),
+            Some((Token::LeftBrace, left_brace)) => self.parse_object_literal(left_brace),
+            Some((Token::LeftParen, left_paren)) => {
                 let expr = self.parse_equality()?;
-                self.expect_opposite(&DopToken::LeftParen, &left_paren)?;
+                self.expect_opposite(&Token::LeftParen, &left_paren)?;
                 Ok(expr)
             }
             Some((token, range)) => Err(ParseError::UnexpectedToken {
@@ -510,7 +499,7 @@ mod tests {
     }
 
     fn check_parse_expr(input: &str, expected: Expect) {
-        let mut parser = DopParser::from(input);
+        let mut parser = Parser::from(input);
         let actual = match parser.parse_expr() {
             Ok(result) => format!("{}\n", result),
             Err(err) => annotate_error(err),
@@ -519,7 +508,7 @@ mod tests {
     }
 
     fn check_parse_parameters(input: &str, expected: Expect) {
-        let mut parser = DopParser::from(input);
+        let mut parser = Parser::from(input);
 
         let actual = match parser.parse_parameters() {
             Ok(result) => {
@@ -533,7 +522,7 @@ mod tests {
     }
 
     fn check_parse_arguments(input: &str, expected: Expect) {
-        let mut parser = DopParser::from(input);
+        let mut parser = Parser::from(input);
 
         let actual = match parser.parse_arguments() {
             Ok(result) => {

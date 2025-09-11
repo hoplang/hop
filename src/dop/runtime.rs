@@ -1,30 +1,30 @@
-use super::ast::{BinaryOp, DopExpr, UnaryOp};
+use super::ast::{BinaryOp, Expr, UnaryOp};
 use crate::hop::environment::Environment;
 use anyhow::Result;
 
 pub fn evaluate_expr(
-    expr: &DopExpr,
+    expr: &Expr,
     env: &mut Environment<serde_json::Value>,
 ) -> Result<serde_json::Value> {
     match expr {
-        DopExpr::Variable { value: name, .. } => {
+        Expr::Variable { value: name, .. } => {
             if let Some(val) = env.lookup(name.as_str()) {
                 Ok(val.clone())
             } else {
                 Err(anyhow::anyhow!("Undefined variable: {}", name))
             }
         }
-        DopExpr::StringLiteral { value, .. } => Ok(serde_json::Value::String(value.clone())),
-        DopExpr::BooleanLiteral { value, .. } => Ok(serde_json::Value::Bool(*value)),
-        DopExpr::NumberLiteral { value, .. } => Ok(serde_json::Value::Number(value.clone())),
-        DopExpr::ArrayLiteral { elements, .. } => {
+        Expr::StringLiteral { value, .. } => Ok(serde_json::Value::String(value.clone())),
+        Expr::BooleanLiteral { value, .. } => Ok(serde_json::Value::Bool(*value)),
+        Expr::NumberLiteral { value, .. } => Ok(serde_json::Value::Number(value.clone())),
+        Expr::ArrayLiteral { elements, .. } => {
             let mut array_values = Vec::new();
             for element in elements {
                 array_values.push(evaluate_expr(element, env)?);
             }
             Ok(serde_json::Value::Array(array_values))
         }
-        DopExpr::ObjectLiteral { properties, .. } => {
+        Expr::ObjectLiteral { properties, .. } => {
             let mut object_map = serde_json::Map::new();
             for (key, value_expr) in properties {
                 let value = evaluate_expr(value_expr, env)?;
@@ -32,7 +32,7 @@ pub fn evaluate_expr(
             }
             Ok(serde_json::Value::Object(object_map))
         }
-        DopExpr::PropertyAccess {
+        Expr::PropertyAccess {
             object: base_expr,
             property,
             ..
@@ -52,7 +52,7 @@ pub fn evaluate_expr(
                 .ok_or_else(|| anyhow::anyhow!("Property '{}' not found", property))
                 .cloned()
         }
-        DopExpr::BinaryOp {
+        Expr::BinaryOp {
             left,
             operator: BinaryOp::Equal,
             right,
@@ -63,7 +63,7 @@ pub fn evaluate_expr(
 
             Ok(serde_json::Value::Bool(left_value == right_value))
         }
-        DopExpr::UnaryOp {
+        Expr::UnaryOp {
             operator: UnaryOp::Not,
             operand: expr,
             ..
@@ -83,7 +83,7 @@ pub fn evaluate_expr(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dop::DopParser;
+    use crate::dop::Parser;
     use crate::hop::environment::Environment;
     use expect_test::{Expect, expect};
     use serde_json::json;
@@ -98,7 +98,7 @@ mod tests {
         }
 
         // Parse the expression
-        let mut parser = DopParser::from(expr_str);
+        let mut parser = Parser::from(expr_str);
 
         let expr = parser.parse_expr().expect("Failed to parse expression");
 

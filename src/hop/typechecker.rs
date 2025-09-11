@@ -1,5 +1,5 @@
 use crate::document::document_cursor::{DocumentRange, Ranged};
-use crate::dop::{self, DopParameter, DopType};
+use crate::dop::{self, Parameter, Type};
 use crate::hop::ast::HopAst;
 use crate::hop::ast::{ComponentDefinition, HopNode, Render};
 use crate::hop::environment::Environment;
@@ -12,7 +12,7 @@ use super::module_name::ModuleName;
 
 #[derive(Debug, Clone)]
 pub struct TypeAnnotation {
-    pub typ: DopType,
+    pub typ: Type,
     pub name: String,
     pub range: DocumentRange,
 }
@@ -32,7 +32,7 @@ impl Display for TypeAnnotation {
 #[derive(Debug, Clone)]
 pub struct ComponentTypeInformation {
     // Track the parameter types for the component.
-    parameter_types: Option<Vec<DopParameter>>,
+    parameter_types: Option<Vec<Parameter>>,
     // Track whether the component has a slot-default.
     has_slot: bool,
 }
@@ -43,7 +43,7 @@ pub struct ModuleTypeInformation {
 }
 
 impl ModuleTypeInformation {
-    fn get_parameter_types(&self, component_name: &str) -> Option<&Vec<DopParameter>> {
+    fn get_parameter_types(&self, component_name: &str) -> Option<&Vec<Parameter>> {
         self.components
             .get(component_name)?
             .parameter_types
@@ -156,7 +156,7 @@ fn typecheck_module(
     }
     let mut env = Environment::new();
 
-    let _ = env.push("HOP_MODE".to_string(), DopType::String);
+    let _ = env.push("HOP_MODE".to_string(), Type::String);
 
     for ComponentDefinition {
         tag_name: name,
@@ -213,7 +213,7 @@ fn typecheck_module(
 fn typecheck_node(
     node: &HopNode,
     state: &State,
-    env: &mut Environment<DopType>,
+    env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut Vec<TypeError>,
 ) {
@@ -228,7 +228,7 @@ fn typecheck_node(
             }
             match dop::typecheck_expr(condition, env, annotations) {
                 Ok(condition_type) => {
-                    if !condition_type.is_subtype(&DopType::Bool) {
+                    if !condition_type.is_subtype(&Type::Bool) {
                         errors.push(TypeError::ExpectedBooleanCondition {
                             found: condition_type.to_string(),
                             range: condition.range().clone(),
@@ -255,8 +255,8 @@ fn typecheck_node(
                 }
             };
             let element_type = match &array_type {
-                DopType::Array(Some(inner)) => *inner.clone(),
-                DopType::Array(None) => {
+                Type::Array(Some(inner)) => *inner.clone(),
+                Type::Array(None) => {
                     errors.push(TypeError::CannotIterateEmptyArray {
                         range: array_expr.range().clone(),
                     });
@@ -418,7 +418,7 @@ fn typecheck_node(
                         }
                     };
 
-                    if !expr_type.is_subtype(&DopType::String) {
+                    if !expr_type.is_subtype(&Type::String) {
                         errors.push(TypeError::ExpectedStringAttribute {
                             found: expr_type.to_string(),
                             range: expr.range().clone(),
@@ -436,7 +436,7 @@ fn typecheck_node(
         HopNode::TextExpression { expression, range } => {
             match dop::typecheck_expr(expression, env, annotations) {
                 Ok(expr_type) => {
-                    if !expr_type.is_subtype(&DopType::String) {
+                    if !expr_type.is_subtype(&Type::String) {
                         errors.push(TypeError::ExpectedStringExpression {
                             found: expr_type,
                             range: range.clone(),
