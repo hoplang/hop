@@ -403,9 +403,9 @@ fn construct_node(
             //
             Some(HopNode::Doctype { range })
         }
-        Token::Text { range: value, .. } => {
+        Token::Text { range, .. } => {
             //
-            Some(HopNode::Text { range: value })
+            Some(HopNode::Text { range })
         }
         Token::TextExpression {
             expression: expr, ..
