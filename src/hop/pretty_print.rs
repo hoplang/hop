@@ -364,7 +364,9 @@ fn is_import_node(tree: &TokenTree) -> bool {
 
 /// Pretty print from source code directly using token trees
 pub fn pretty_print_from_source(source: &str, width: usize) -> Result<String, Vec<ParseError>> {
-    let mut errors = Vec::new();
+    use crate::error_collector::ErrorCollector;
+    
+    let mut errors = ErrorCollector::new();
 
     // First, run the full parser to validate the syntax
     let module_name = ModuleName::new("formatter".to_string()).unwrap();
@@ -373,16 +375,16 @@ pub fn pretty_print_from_source(source: &str, width: usize) -> Result<String, Ve
 
     // If parsing found errors, don't format
     if !errors.is_empty() {
-        return Err(errors);
+        return Err(errors.to_vec());
     }
 
     // Now build the token tree for formatting (parse again for clean state)
-    let mut format_errors = Vec::new();
+    let mut format_errors = ErrorCollector::new();
     let trees = build_tree(Tokenizer::new(source.to_string()), &mut format_errors);
 
     // This should not happen since we already validated, but check anyway
     if !format_errors.is_empty() {
-        return Err(format_errors);
+        return Err(format_errors.to_vec());
     }
 
     Ok(pretty_print_token_tree(&trees, width))

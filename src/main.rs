@@ -2,6 +2,7 @@ mod cli;
 mod common;
 mod document;
 mod dop;
+mod error_collector;
 mod filesystem;
 mod hop;
 mod test_utils;

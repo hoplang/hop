@@ -1,5 +1,6 @@
 use crate::common::is_void_element;
 use crate::document::document_cursor::{DocumentRange, Ranged as _};
+use crate::error_collector::ErrorCollector;
 use crate::hop::parse_error::ParseError;
 use crate::hop::tokenizer::Token;
 use crate::hop::tokenizer::Tokenizer;
@@ -87,7 +88,7 @@ impl Display for TokenTree {
 ///
 /// We do our best here to construct as much of the tree as possible even
 /// when we encounter errors.
-pub fn build_tree(tokenizer: Tokenizer, errors: &mut Vec<ParseError>) -> Vec<TokenTree> {
+pub fn build_tree(tokenizer: Tokenizer, errors: &mut ErrorCollector<ParseError>) -> Vec<TokenTree> {
     struct StackElement {
         tree: TokenTree,
         tag_name: DocumentRange,
@@ -185,7 +186,7 @@ mod tests {
     use indoc::indoc;
 
     fn check(input: &str, expected: Expect) {
-        let mut errors = Vec::new();
+        let mut errors = ErrorCollector::new();
         let trees = build_tree(Tokenizer::new(input.to_string()), &mut errors);
         if !errors.is_empty() {
             panic!("Expected errors to be empty");

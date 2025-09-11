@@ -494,7 +494,7 @@ mod tests {
                 panic!("Got invalid file name")
             }
             let source_code = file.content.trim();
-            let mut parse_errors = Vec::new();
+            let mut parse_errors = crate::error_collector::ErrorCollector::new();
             let tokenizer = Tokenizer::new(source_code.to_string());
             let module_name =
                 ModuleName::new(file.name.trim_end_matches(".hop").to_string()).unwrap();

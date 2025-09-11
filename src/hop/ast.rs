@@ -405,8 +405,10 @@ mod tests {
     use indoc::indoc;
 
     fn check_find_node_at_position(input: &str, expected: Expect) {
+        use crate::error_collector::ErrorCollector;
+        
         let (source, position) = extract_position(input).expect("Position marker not found");
-        let mut errors = Vec::new();
+        let mut errors = ErrorCollector::new();
         let ast = parse(
             ModuleName::new("test".to_string()).unwrap(),
             Tokenizer::new(source),

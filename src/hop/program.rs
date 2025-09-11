@@ -1,5 +1,6 @@
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::error_collector::ErrorCollector;
 use crate::hop::ast::HopAst;
 use crate::hop::evaluator;
 use crate::hop::parse_error::ParseError;
@@ -51,7 +52,7 @@ pub struct RenameableSymbol {
 #[derive(Debug, Default)]
 pub struct Program {
     topo_sorter: TopoSorter<ModuleName>,
-    parse_errors: HashMap<ModuleName, Vec<ParseError>>,
+    parse_errors: HashMap<ModuleName, ErrorCollector<ParseError>>,
     modules: HashMap<ModuleName, HopAst>,
     type_checker: TypeChecker,
 }
@@ -106,7 +107,7 @@ impl Program {
         grouped_modules.into_iter().flatten().collect()
     }
 
-    pub fn get_parse_errors(&self) -> &HashMap<ModuleName, Vec<ParseError>> {
+    pub fn get_parse_errors(&self) -> &HashMap<ModuleName, ErrorCollector<ParseError>> {
         &self.parse_errors
     }
 
@@ -357,7 +358,12 @@ impl Program {
 
         let mut found_parse_errors = false;
 
-        for error in self.parse_errors.get(&module_name).into_iter().flatten() {
+        for error in self
+            .parse_errors
+            .get(&module_name)
+            .into_iter()
+            .flat_map(|c| c.iter())
+        {
             diagnostics.push(Diagnostic {
                 message: error.to_string(),
                 range: error.range().clone(),

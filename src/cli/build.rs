@@ -69,7 +69,7 @@ pub fn execute(
     for (module_name, errors) in program.get_parse_errors() {
         if !errors.is_empty() {
             let filename = format!("{}.hop", module_name);
-            error_output_parts.push(annotator.annotate(Some(&filename), errors));
+            error_output_parts.push(annotator.annotate(Some(&filename), errors.iter()));
         }
     }
 

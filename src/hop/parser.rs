@@ -2,6 +2,7 @@ use itertools::Itertools as _;
 
 use crate::document::document_cursor::{DocumentRange, StringSpan};
 use crate::dop::DopParser;
+use crate::error_collector::ErrorCollector;
 use crate::hop::ast::{ComponentDefinition, HopAst, HopNode, Import, Render};
 use crate::hop::parse_error::ParseError;
 use crate::hop::token_tree::{TokenTree, build_tree};
@@ -11,34 +12,6 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use super::ast::{self, StaticAttribute};
 use super::module_name::ModuleName;
 use super::tokenizer;
-
-struct ErrorCollector<'a> {
-    errors: &'a mut Vec<ParseError>,
-}
-
-impl<'a> ErrorCollector<'a> {
-    fn new(errors: &'a mut Vec<ParseError>) -> Self {
-        Self { errors }
-    }
-
-    fn push(&mut self, error: ParseError) {
-        self.errors.push(error);
-    }
-
-    fn extend<I: IntoIterator<Item = ParseError>>(&mut self, errors: I) {
-        self.errors.extend(errors);
-    }
-
-    fn ok_or_add<T>(&mut self, result: Result<T, ParseError>) -> Option<T> {
-        match result {
-            Ok(value) => Some(value),
-            Err(err) => {
-                self.push(err);
-                None
-            }
-        }
-    }
-}
 
 struct AttributeValidator<'a> {
     attributes: &'a BTreeMap<StringSpan, tokenizer::Attribute>,
@@ -164,7 +137,7 @@ enum TopLevelNode {
 pub fn parse(
     module_name: ModuleName,
     tokenizer: Tokenizer,
-    errors: &mut Vec<ParseError>,
+    errors: &mut ErrorCollector<ParseError>,
 ) -> HopAst {
     let trees = build_tree(tokenizer, errors);
 
@@ -227,9 +200,8 @@ pub fn parse(
 fn parse_top_level_node(
     tree: TokenTree,
     children: Vec<HopNode>,
-    errors: &mut Vec<ParseError>,
+    errors: &mut ErrorCollector<ParseError>,
 ) -> Option<TopLevelNode> {
-    let mut collector = ErrorCollector::new(errors);
     match &tree.token {
         Token::Text { .. } => None,
         Token::ClosingTag { .. } => None,
@@ -244,13 +216,13 @@ fn parse_top_level_node(
         } => match tag_name.as_str() {
             "import" => {
                 let validator = AttributeValidator::new(attributes, tag_name);
-                collector.extend(validator.check_unrecognized(&["component", "from"]));
-                let (from_attr, module_name) = collector.ok_or_add(
+                errors.extend(validator.check_unrecognized(&["component", "from"]));
+                let (from_attr, module_name) = errors.ok_or_add(
                     validator
                         .get_static("from")
                         .and_then(AttributeValidator::parse_import_name_from_attr),
                 )?;
-                let component_attr = collector.ok_or_add(validator.get_static("component"))?;
+                let component_attr = errors.ok_or_add(validator.get_static("component"))?;
                 Some(TopLevelNode::Import(Import {
                     component_attr,
                     module_name,
@@ -260,8 +232,8 @@ fn parse_top_level_node(
 
             "render" => {
                 let validator = AttributeValidator::new(attributes, tag_name);
-                collector.extend(validator.check_unrecognized(&["file"]));
-                let file_attr = collector.ok_or_add(validator.get_static("file"))?;
+                errors.extend(validator.check_unrecognized(&["file"]));
+                let file_attr = errors.ok_or_add(validator.get_static("file"))?;
                 Some(TopLevelNode::Render(Render {
                     file_attr,
                     range: tree.range.clone(),
@@ -271,14 +243,14 @@ fn parse_top_level_node(
             // Treat as ComponentDefinition
             name => {
                 if !is_valid_component_name(name) {
-                    collector.push(ParseError::InvalidComponentName {
+                    errors.push(ParseError::InvalidComponentName {
                         tag_name: tag_name.to_string_span(),
                         range: tag_name.clone(),
                     });
                     return None;
                 }
                 let params = expression.as_ref().and_then(|expr| {
-                    collector.ok_or_add(
+                    errors.ok_or_add(
                         DopParser::from(expr.clone())
                             .parse_parameters()
                             .map(|params| (params, expr.clone()))
@@ -294,7 +266,7 @@ fn parse_top_level_node(
                     for node in child.iter_depth_first() {
                         if let HopNode::SlotDefinition { range, .. } = node {
                             if has_slot {
-                                collector.push(ParseError::SlotIsAlreadyDefined {
+                                errors.push(ParseError::SlotIsAlreadyDefined {
                                     range: range.clone(),
                                 });
                             }
@@ -306,14 +278,14 @@ fn parse_top_level_node(
                 let is_entrypoint = attributes.contains_key("entrypoint");
 
                 let as_attr = attributes.get("as").and_then(|attr| {
-                    collector.ok_or_add(AttributeValidator::parse_attribute_as_static(attr))
+                    errors.ok_or_add(AttributeValidator::parse_attribute_as_static(attr))
                 });
 
                 let attributes = attributes
                     .iter()
                     .filter(|(k, _)| !matches!(k.as_str(), "as" | "entrypoint"))
                     .filter_map(|(k, attr)| {
-                        collector.ok_or_add(
+                        errors.ok_or_add(
                             AttributeValidator::parse_attribute(attr).map(|a| (k.clone(), a)),
                         )
                     })
@@ -347,7 +319,7 @@ fn is_valid_component_name(name: &str) -> bool {
 
 fn construct_node(
     tree: TokenTree,
-    errors: &mut Vec<ParseError>,
+    errors: &mut ErrorCollector<ParseError>,
     module_name: &ModuleName,
     defined_components: &HashSet<String>,
     imported_components: &HashMap<String, ModuleName>,
@@ -561,6 +533,7 @@ fn construct_node(
 mod tests {
     use super::*;
     use crate::document::{DocumentAnnotator, document_cursor::Ranged};
+    use crate::error_collector::ErrorCollector;
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
@@ -605,7 +578,7 @@ mod tests {
     }
 
     fn check(input: &str, expected: Expect) {
-        let mut errors = Vec::new();
+        let mut errors = ErrorCollector::new();
         let module = parse(
             ModuleName::new("test".to_string()).unwrap(),
             Tokenizer::new(input.to_string()),
@@ -616,7 +589,7 @@ mod tests {
             DocumentAnnotator::new()
                 .with_label("error")
                 .with_lines_before(1)
-                .annotate(None, errors)
+                .annotate(None, errors.to_vec())
         } else {
             for component in module.get_component_definitions() {
                 if component.tag_name.as_str() == "main-comp" {
