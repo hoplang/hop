@@ -265,12 +265,12 @@ pub enum HopNode {
         children: Vec<HopNode>,
     },
 
-    /// An Error node represents a node that could not be constructed (because
+    /// A Placeholder node represents a node that could not be constructed (because
     /// it is missing a required attribute or similar).
     ///
-    /// We use Error nodes to be able to construct the child nodes of the node that could not be
+    /// We use Placeholder nodes to be able to construct the child nodes of the node that could not be
     /// constructed. This is useful for e.g. go-to-definition in the language server.
-    Error {
+    Placeholder {
         range: DocumentRange,
         children: Vec<HopNode>,
     },
@@ -284,7 +284,7 @@ impl HopNode {
             HopNode::If { children, .. } => children,
             HopNode::For { children, .. } => children,
             HopNode::Html { children, .. } => children,
-            HopNode::Error { children, .. } => children,
+            HopNode::Placeholder { children, .. } => children,
             HopNode::XExec { children, .. } => children,
             HopNode::XRaw { children, .. } => children,
             HopNode::SlotDefinition { .. } => &[],
@@ -362,7 +362,7 @@ impl Ranged for HopNode {
             | HopNode::Html { range, .. }
             | HopNode::XExec { range, .. }
             | HopNode::XRaw { range, .. }
-            | HopNode::Error { range, .. }
+            | HopNode::Placeholder { range, .. }
             | HopNode::Doctype { range, .. } => range,
         }
     }
@@ -406,7 +406,7 @@ mod tests {
 
     fn check_find_node_at_position(input: &str, expected: Expect) {
         use crate::error_collector::ErrorCollector;
-        
+
         let (source, position) = extract_position(input).expect("Position marker not found");
         let mut errors = ErrorCollector::new();
         let ast = parse(

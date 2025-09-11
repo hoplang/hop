@@ -1,5 +1,3 @@
-use itertools::Itertools as _;
-
 use crate::document::document_cursor::{DocumentRange, StringSpan};
 use crate::dop::DopParser;
 use crate::error_collector::ErrorCollector;
@@ -338,194 +336,181 @@ fn construct_node(
         })
         .collect();
 
-    let t = tree.token;
-
-    match t {
+    match tree.token {
         Token::Comment { .. } => None,
-        Token::ClosingTag { .. } => {
-            // ClosingTags are not present in the token tree
-            unreachable!()
-        }
-        Token::Doctype { range } => Some(HopNode::Doctype {
-            range: range.clone(),
-        }),
+        Token::ClosingTag { .. } => unreachable!(), // ClosingTags are not present in the token tree
+        Token::Doctype { range } => Some(HopNode::Doctype { range }),
         Token::Text { range: value, .. } => Some(HopNode::Text { range: value }),
         Token::TextExpression {
             expression: expr, ..
-        } => match DopParser::from(expr.clone()).parse_expr() {
-            Ok(expression) => Some(HopNode::TextExpression {
+        } => {
+            let expression = errors.ok_or_add(
+                DopParser::from(expr.clone())
+                    .parse_expr()
+                    .map_err(|err| err.into()),
+            )?;
+            Some(HopNode::TextExpression {
                 expression,
                 range: tree.range.clone(),
-            }),
-            Err(err) => {
-                errors.push(err.into());
-                None
-            }
-        },
+            })
+        }
         Token::OpeningTag {
             tag_name,
             expression,
             attributes,
             range: opening_tag_range,
             ..
-        } => {
-            match tag_name.as_str() {
-                "if" =>
-                //
-                {
-                    // TODO: Check for unrecognized attributes
-                    expression
-                        .ok_or_else(|| {
-                            ParseError::new(
-                                "Missing expression in <if> tag".to_string(),
-                                opening_tag_range.clone(),
-                            )
-                        })
-                        .and_then(|expr| {
-                            DopParser::from(expr).parse_expr().map_err(|err| err.into())
-                        })
-                        .map(|condition| HopNode::If {
-                            condition,
-                            range: tree.range.clone(),
-                            children,
-                        })
-                        .map_err(|err| {
-                            errors.push(err);
-                        })
-                        .ok()
-                }
-                "for" => {
-                    // TODO: Check for unrecognized attributes
-                    let parse_result = expression
-                        .ok_or_else(|| {
-                            ParseError::new(
-                                "Missing loop generator expression in <for> tag".to_string(),
-                                opening_tag_range.clone(),
-                            )
-                        })
-                        .and_then(|expr| {
-                            DopParser::from(expr.clone())
-                                .parse_loop_header()
-                                .map_err(|err| err.into())
-                        });
-                    match parse_result {
-                        Ok((var_name, array_expr)) => Some(HopNode::For {
-                            var_name,
-                            array_expr,
-                            range: tree.range.clone(),
-                            children,
-                        }),
-                        Err(err) => {
-                            errors.push(err);
-                            Some(HopNode::Error {
-                                range: tree.range.clone(),
-                                children,
-                            })
-                        }
-                    }
-                }
-                "slot-default" => Some(HopNode::SlotDefinition {
+        } => match tag_name.as_str() {
+            "if" => {
+                // TODO: Check for unrecognized attributes
+                let expr = expression.ok_or_else(|| {
+                    ParseError::new(
+                        "Missing expression in <if> tag".to_string(),
+                        opening_tag_range.clone(),
+                    )
+                });
+                let condition = errors.ok_or_add(
+                    expr.and_then(|e| DopParser::from(e).parse_expr().map_err(|err| err.into())),
+                )?;
+                Some(HopNode::If {
+                    condition,
                     range: tree.range.clone(),
-                }),
-                name if name.starts_with("hop-") => match tag_name.as_str() {
-                    "hop-x-exec" => {
-                        let validator = AttributeValidator::new(&attributes, &tag_name);
-                        errors.extend(validator.check_unrecognized(&["cmd"]));
-                        match validator.get_static("cmd") {
-                            Ok(cmd_attr) => Some(HopNode::XExec {
-                                cmd_attr,
-                                range: tree.range.clone(),
-                                children,
-                            }),
-                            Err(err) => {
-                                errors.push(err);
-                                Some(HopNode::Error {
-                                    range: tree.range.clone(),
-                                    children,
-                                })
-                            }
-                        }
-                    }
-                    "hop-x-raw" => Some(HopNode::XRaw {
-                        trim: attributes.contains_key("trim"),
-                        range: tree.range.clone(),
-                        children,
-                    }),
-                    _ => {
-                        errors.push(ParseError::UnrecognizedHopTag {
-                            tag: tag_name.to_string_span(),
-                            range: tag_name.clone(),
-                        });
-                        Some(HopNode::Error {
-                            range: tree.range.clone(),
-                            children: vec![],
-                        })
-                    }
-                },
-                name if name.contains('-') => {
-                    if !is_valid_component_name(tag_name.as_str()) {
-                        errors.push(ParseError::InvalidComponentName {
-                            tag_name: tag_name.to_string_span(),
-                            range: tag_name.clone(),
-                        });
-                    }
-                    let args = match &expression {
-                        Some(expr) => match DopParser::from(expr.clone()).parse_arguments() {
-                            Ok(named_args) => Some((named_args, expr.clone())),
-                            Err(err) => {
-                                errors.push(err.into());
-                                return Some(HopNode::Error {
-                                    range: tree.range.clone(),
-                                    children: vec![],
-                                });
-                            }
-                        },
-                        None => None,
-                    };
-
-                    let definition_module: Option<ModuleName> =
-                        if defined_components.contains(tag_name.as_str()) {
-                            Some(module_name.clone())
-                        } else {
-                            imported_components.get(tag_name.as_str()).cloned()
-                        };
-
-                    let (attributes, parse_errors): (BTreeMap<_, _>, Vec<_>) = attributes
-                        .into_iter()
-                        .map(|(k, attr)| AttributeValidator::parse_attribute(&attr).map(|a| (k, a)))
-                        .partition_result();
-
-                    errors.extend(parse_errors);
-
-                    Some(HopNode::ComponentReference {
-                        tag_name,
-                        closing_tag_name: tree.closing_tag_name,
-                        definition_module,
-                        args,
-                        attributes,
-                        range: tree.range.clone(),
-                        children,
-                    })
-                }
-                // Treat as HTML
-                _ => {
-                    let (attributes, parse_errors): (BTreeMap<_, _>, Vec<_>) = attributes
-                        .into_iter()
-                        .map(|(k, attr)| AttributeValidator::parse_attribute(&attr).map(|a| (k, a)))
-                        .partition_result();
-
-                    errors.extend(parse_errors);
-
-                    Some(HopNode::Html {
-                        tag_name,
-                        closing_tag_name: tree.closing_tag_name,
-                        attributes,
-                        range: tree.range.clone(),
-                        children,
-                    })
-                }
+                    children,
+                })
             }
-        }
+
+            "for" => {
+                // TODO: Check for unrecognized attributes
+                let parse_result = expression
+                    .ok_or_else(|| {
+                        ParseError::new(
+                            "Missing loop generator expression in <for> tag".to_string(),
+                            opening_tag_range.clone(),
+                        )
+                    })
+                    .and_then(|e| {
+                        DopParser::from(e.clone())
+                            .parse_loop_header()
+                            .map_err(|err| err.into())
+                    });
+                let Some((var_name, array_expr)) = errors.ok_or_add(parse_result) else {
+                    return Some(HopNode::Placeholder {
+                        range: tree.range.clone(),
+                        children,
+                    });
+                };
+                Some(HopNode::For {
+                    var_name,
+                    array_expr,
+                    range: tree.range.clone(),
+                    children,
+                })
+            }
+
+            "slot-default" => Some(HopNode::SlotDefinition {
+                range: tree.range.clone(),
+            }),
+
+            "hop-x-exec" => {
+                let validator = AttributeValidator::new(&attributes, &tag_name);
+                errors.extend(validator.check_unrecognized(&["cmd"]));
+                let Some(cmd_attr) = errors.ok_or_add(validator.get_static("cmd")) else {
+                    return Some(HopNode::Placeholder {
+                        range: tree.range.clone(),
+                        children,
+                    });
+                };
+                Some(HopNode::XExec {
+                    cmd_attr,
+                    range: tree.range.clone(),
+                    children,
+                })
+            }
+
+            "hop-x-raw" => Some(HopNode::XRaw {
+                trim: attributes.contains_key("trim"),
+                range: tree.range.clone(),
+                children,
+            }),
+
+            name if name.starts_with("hop-") => {
+                errors.push(ParseError::UnrecognizedHopTag {
+                    tag: tag_name.to_string_span(),
+                    range: tag_name.clone(),
+                });
+                Some(HopNode::Placeholder {
+                    range: tree.range.clone(),
+                    children: vec![],
+                })
+            }
+
+            name if name.contains('-') => {
+                if !is_valid_component_name(tag_name.as_str()) {
+                    errors.push(ParseError::InvalidComponentName {
+                        tag_name: tag_name.to_string_span(),
+                        range: tag_name.clone(),
+                    });
+                }
+
+                let args = expression.as_ref().and_then(|expr| {
+                    errors.ok_or_add(
+                        DopParser::from(expr.clone())
+                            .parse_arguments()
+                            .map(|named_args| (named_args, expr.clone()))
+                            .map_err(|err| err.into()),
+                    )
+                });
+
+                // If there was a parse error for arguments, return early with an Error node
+                if expression.is_some() && args.is_none() {
+                    return Some(HopNode::Placeholder {
+                        range: tree.range.clone(),
+                        children: vec![],
+                    });
+                }
+
+                let definition_module = if defined_components.contains(tag_name.as_str()) {
+                    Some(module_name.clone())
+                } else {
+                    imported_components.get(tag_name.as_str()).cloned()
+                };
+
+                let attributes = attributes
+                    .into_iter()
+                    .filter_map(|(k, attr)| {
+                        errors.ok_or_add(AttributeValidator::parse_attribute(&attr).map(|a| (k, a)))
+                    })
+                    .collect();
+
+                Some(HopNode::ComponentReference {
+                    tag_name,
+                    closing_tag_name: tree.closing_tag_name,
+                    definition_module,
+                    args,
+                    attributes,
+                    range: tree.range.clone(),
+                    children,
+                })
+            }
+
+            _ => {
+                // Default case: treat as HTML
+                let attributes = attributes
+                    .into_iter()
+                    .filter_map(|(k, attr)| {
+                        errors.ok_or_add(AttributeValidator::parse_attribute(&attr).map(|a| (k, a)))
+                    })
+                    .collect();
+
+                Some(HopNode::Html {
+                    tag_name,
+                    closing_tag_name: tree.closing_tag_name,
+                    attributes,
+                    range: tree.range.clone(),
+                    children,
+                })
+            }
+        },
     }
 }
 
@@ -549,7 +534,7 @@ mod tests {
             HopNode::XRaw { .. } => "hop-x-raw",
             HopNode::Text { .. } => "text",
             HopNode::TextExpression { .. } => "text_expression",
-            HopNode::Error { .. } => "error",
+            HopNode::Placeholder { .. } => "error",
         }
     }
 

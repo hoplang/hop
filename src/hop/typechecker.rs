@@ -451,7 +451,7 @@ fn typecheck_node(
 
         HopNode::XExec { children, .. }
         | HopNode::XRaw { children, .. }
-        | HopNode::Error { children, .. } => {
+        | HopNode::Placeholder { children, .. } => {
             for child in children {
                 typecheck_node(child, state, env, annotations, errors);
             }
