@@ -4,6 +4,7 @@ use crate::hop::ast::{ComponentDefinition, HopAst, HopNode, Import, Render};
 use crate::hop::parse_error::ParseError;
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::{Token, Tokenizer};
+use itertools::Itertools;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::ast::{self, StaticAttribute};
@@ -300,19 +301,13 @@ fn parse_top_level_node(
                         .ok()
                 });
 
-                let attributes = attributes
+                let (attributes, parse_errors): (BTreeMap<_, _>, Vec<_>) = attributes
                     .iter()
                     .filter(|(k, _)| !matches!(k.as_str(), "as" | "entrypoint"))
-                    .filter_map(
-                        |(k, attr)| match AttributeValidator::parse_attribute(attr) {
-                            Ok(attr) => Some((k.clone(), attr)),
-                            Err(err) => {
-                                errors.push(err);
-                                None
-                            }
-                        },
-                    )
-                    .collect();
+                    .map(|(k, attr)| AttributeValidator::parse_attribute(attr).map(|a| (k.clone(), a)))
+                    .partition_result();
+
+                errors.extend(parse_errors);
 
                 Some(TopLevelNode::ComponentDefinition(ComponentDefinition {
                     tag_name: tag_name.clone(),
@@ -513,18 +508,12 @@ fn construct_node(
                             imported_components.get(tag_name.as_str()).cloned()
                         };
 
-                    let attributes = attributes
+                    let (attributes, parse_errors): (BTreeMap<_, _>, Vec<_>) = attributes
                         .into_iter()
-                        .filter_map(
-                            |(k, attr)| match AttributeValidator::parse_attribute(&attr) {
-                                Ok(attr) => Some((k, attr)),
-                                Err(err) => {
-                                    errors.push(err);
-                                    None
-                                }
-                            },
-                        )
-                        .collect();
+                        .map(|(k, attr)| AttributeValidator::parse_attribute(&attr).map(|a| (k, a)))
+                        .partition_result();
+
+                    errors.extend(parse_errors);
 
                     Some(HopNode::ComponentReference {
                         tag_name,
@@ -538,18 +527,12 @@ fn construct_node(
                 }
                 // Treat as HTML
                 _ => {
-                    let attributes = attributes
+                    let (attributes, parse_errors): (BTreeMap<_, _>, Vec<_>) = attributes
                         .into_iter()
-                        .filter_map(
-                            |(k, attr)| match AttributeValidator::parse_attribute(&attr) {
-                                Ok(attr) => Some((k, attr)),
-                                Err(err) => {
-                                    errors.push(err);
-                                    None
-                                }
-                            },
-                        )
-                        .collect();
+                        .map(|(k, attr)| AttributeValidator::parse_attribute(&attr).map(|a| (k, a)))
+                        .partition_result();
+
+                    errors.extend(parse_errors);
 
                     Some(HopNode::Html {
                         tag_name,
