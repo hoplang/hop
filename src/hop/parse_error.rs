@@ -84,6 +84,13 @@ pub enum ParseError {
         range: DocumentRange,
     },
 
+    #[error("Unrecognized attribute '{attr_name}' on <{tag_name}>")]
+    UnrecognizedAttribute {
+        tag_name: StringSpan,
+        attr_name: StringSpan,
+        range: DocumentRange,
+    },
+
     #[error("{message}")]
     GenericError {
         message: String,
@@ -123,6 +130,7 @@ impl Ranged for ParseError {
             | ParseError::MissingAtPrefixInImportPath { range }
             | ParseError::InvalidModuleName { range, .. }
             | ParseError::AttributeMustBeStaticallyKnown { range, .. }
+            | ParseError::UnrecognizedAttribute { range, .. }
             | ParseError::GenericError { range, .. } => range,
         }
     }

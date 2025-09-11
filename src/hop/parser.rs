@@ -10,83 +10,118 @@ use super::ast::{self, StaticAttribute};
 use super::module_name::ModuleName;
 use super::tokenizer;
 
-fn parse_attribute_value(
-    value: &tokenizer::AttributeValue,
-) -> Result<ast::AttributeValue, ParseError> {
-    match value {
-        tokenizer::AttributeValue::String(range) => Ok(ast::AttributeValue::String(range.clone())),
-        tokenizer::AttributeValue::Expression(expr) => {
-            match DopParser::from(expr.clone()).parse_expr() {
-                Ok(expr) => Ok(ast::AttributeValue::Expression(expr)),
-                Err(err) => Err(err.into()),
+struct AttributeValidator<'a> {
+    attributes: &'a BTreeMap<StringSpan, tokenizer::Attribute>,
+    tag_name: &'a DocumentRange,
+}
+
+impl<'a> AttributeValidator<'a> {
+    fn new(
+        attributes: &'a BTreeMap<StringSpan, tokenizer::Attribute>,
+        tag_name: &'a DocumentRange,
+    ) -> Self {
+        Self {
+            attributes,
+            tag_name,
+        }
+    }
+
+    fn parse_attribute_value(
+        value: &tokenizer::AttributeValue,
+    ) -> Result<ast::AttributeValue, ParseError> {
+        match value {
+            tokenizer::AttributeValue::String(range) => {
+                Ok(ast::AttributeValue::String(range.clone()))
+            }
+            tokenizer::AttributeValue::Expression(expr) => {
+                match DopParser::from(expr.clone()).parse_expr() {
+                    Ok(expr) => Ok(ast::AttributeValue::Expression(expr)),
+                    Err(err) => Err(err.into()),
+                }
             }
         }
     }
-}
 
-fn parse_attribute(attr: &tokenizer::Attribute) -> Result<ast::Attribute, ParseError> {
-    match &attr.value {
-        Some(val) => Ok(ast::Attribute {
-            name: attr.name.clone(),
-            value: Some(parse_attribute_value(val)?),
-            range: attr.range.clone(),
-        }),
-        None => Ok(ast::Attribute {
-            name: attr.name.clone(),
-            value: None,
-            range: attr.range.clone(),
-        }),
+    fn parse_attribute(attr: &tokenizer::Attribute) -> Result<ast::Attribute, ParseError> {
+        match &attr.value {
+            Some(val) => Ok(ast::Attribute {
+                name: attr.name.clone(),
+                value: Some(Self::parse_attribute_value(val)?),
+                range: attr.range.clone(),
+            }),
+            None => Ok(ast::Attribute {
+                name: attr.name.clone(),
+                value: None,
+                range: attr.range.clone(),
+            }),
+        }
     }
-}
 
-fn get_attribute<'a>(
-    tag_name: &DocumentRange,
-    key: &str,
-    attributes: &'a BTreeMap<StringSpan, tokenizer::Attribute>,
-) -> Result<&'a tokenizer::Attribute, ParseError> {
-    attributes
-        .get(key)
-        .ok_or_else(|| ParseError::MissingRequiredAttribute {
-            tag_name: tag_name.to_string_span(),
-            attr: key.to_string(),
-            range: tag_name.clone(),
-        })
-}
-
-fn parse_attribute_as_static(attr: &tokenizer::Attribute) -> Result<StaticAttribute, ParseError> {
-    match &attr.value {
-        Some(tokenizer::AttributeValue::String(s)) => Ok(StaticAttribute { value: s.clone() }),
-        Some(tokenizer::AttributeValue::Expression(expr_range)) => {
-            Err(ParseError::AttributeMustBeStaticallyKnown {
-                attr_name: attr.name.to_string_span(),
-                range: expr_range.clone(),
+    fn get(&self, key: &str) -> Result<&'a tokenizer::Attribute, ParseError> {
+        self.attributes
+            .get(key)
+            .ok_or_else(|| ParseError::MissingRequiredAttribute {
+                tag_name: self.tag_name.to_string_span(),
+                attr: key.to_string(),
+                range: self.tag_name.clone(),
             })
-        }
-        None => Err(ParseError::AttributeMissingValue {
-            attr_name: attr.name.to_string_span(),
-            range: attr.name.clone(),
-        }),
     }
-}
 
-fn parse_import_name_from_attr(
-    attr: StaticAttribute,
-) -> Result<(StaticAttribute, ModuleName), ParseError> {
-    // Strip the @/ prefix for internal module resolution
-    let module_name_input = match attr.value.as_str().strip_prefix("@/") {
-        Some(n) => n,
-        None => {
-            return Err(ParseError::MissingAtPrefixInImportPath {
-                range: attr.value.clone(),
-            });
+    fn get_static(&self, key: &str) -> Result<StaticAttribute, ParseError> {
+        self.get(key).and_then(Self::parse_attribute_as_static)
+    }
+
+    fn parse_attribute_as_static(
+        attr: &tokenizer::Attribute,
+    ) -> Result<StaticAttribute, ParseError> {
+        match &attr.value {
+            Some(tokenizer::AttributeValue::String(s)) => Ok(StaticAttribute { value: s.clone() }),
+            Some(tokenizer::AttributeValue::Expression(expr_range)) => {
+                Err(ParseError::AttributeMustBeStaticallyKnown {
+                    attr_name: attr.name.to_string_span(),
+                    range: expr_range.clone(),
+                })
+            }
+            None => Err(ParseError::AttributeMissingValue {
+                attr_name: attr.name.to_string_span(),
+                range: attr.name.clone(),
+            }),
         }
-    };
-    match ModuleName::new(module_name_input.to_string()) {
-        Ok(name) => Ok((attr.clone(), name)),
-        Err(e) => Err(ParseError::InvalidModuleName {
-            error: e,
-            range: attr.value.clone(),
-        }),
+    }
+
+    fn parse_import_name_from_attr(
+        attr: StaticAttribute,
+    ) -> Result<(StaticAttribute, ModuleName), ParseError> {
+        // Strip the @/ prefix for internal module resolution
+        let module_name_input = match attr.value.as_str().strip_prefix("@/") {
+            Some(n) => n,
+            None => {
+                return Err(ParseError::MissingAtPrefixInImportPath {
+                    range: attr.value.clone(),
+                });
+            }
+        };
+        match ModuleName::new(module_name_input.to_string()) {
+            Ok(name) => Ok((attr.clone(), name)),
+            Err(e) => Err(ParseError::InvalidModuleName {
+                error: e,
+                range: attr.value.clone(),
+            }),
+        }
+    }
+
+    fn check_unrecognized<'b>(
+        &'b self,
+        allowed: &'b [&str],
+    ) -> impl Iterator<Item = ParseError> + 'b {
+        self.attributes
+            .values()
+            .filter(move |attr| !allowed.contains(&attr.name.as_str()))
+            .map(move |attr| ParseError::UnrecognizedAttribute {
+                tag_name: self.tag_name.to_string_span(),
+                attr_name: attr.name.to_string_span(),
+                range: attr.range.clone(),
+            })
     }
 }
 
@@ -124,11 +159,7 @@ pub fn parse(
             })
             .collect();
 
-        if let Some(node) = parse_top_level_node(
-            tree,
-            children,
-            errors,
-        ) {
+        if let Some(node) = parse_top_level_node(tree, children, errors) {
             match node {
                 TopLevelNode::Import(import) => {
                     let component_name = import.component_attr.value.as_str();
@@ -138,7 +169,8 @@ pub fn parse(
                             range: import.component_attr.value.clone(),
                         });
                     } else {
-                        imported_components.insert(component_name.to_string(), import.module_name.clone());
+                        imported_components
+                            .insert(component_name.to_string(), import.module_name.clone());
                     }
                     imports.push(import);
                 }
@@ -180,18 +212,12 @@ fn parse_top_level_node(
             ..
         } => match tag_name.as_str() {
             "import" => {
-                for attr in attributes.values() {
-                    match attr.name.as_str() {
-                        "component" | "from" => {}
-                        _ => {
-                            // TODO: Check for unrecognized attributes
-                        }
-                    }
-                }
+                let validator = AttributeValidator::new(attributes, tag_name);
+                errors.extend(validator.check_unrecognized(&["component", "from"]));
 
-                let (from_attr, module_name) = match get_attribute(tag_name, "from", attributes)
-                    .and_then(parse_attribute_as_static)
-                    .and_then(parse_import_name_from_attr)
+                let (from_attr, module_name) = match validator
+                    .get_static("from")
+                    .and_then(AttributeValidator::parse_import_name_from_attr)
                 {
                     Ok(attr) => attr,
                     Err(err) => {
@@ -200,9 +226,7 @@ fn parse_top_level_node(
                     }
                 };
 
-                let component_attr = match get_attribute(tag_name, "component", attributes)
-                    .and_then(parse_attribute_as_static)
-                {
+                let component_attr = match validator.get_static("component") {
                     Ok(attr) => attr,
                     Err(err) => {
                         errors.push(err);
@@ -217,18 +241,10 @@ fn parse_top_level_node(
             }
 
             "render" => {
-                for attr in attributes.values() {
-                    match attr.name.as_str() {
-                        "file" => {}
-                        _ => {
-                            // TODO: Check for unrecognized attributes
-                        }
-                    }
-                }
+                let validator = AttributeValidator::new(attributes, tag_name);
+                errors.extend(validator.check_unrecognized(&["file"]));
 
-                let file_attr = match get_attribute(tag_name, "file", attributes)
-                    .and_then(parse_attribute_as_static)
-                {
+                let file_attr = match validator.get_static("file") {
                     Ok(attr) => attr,
                     Err(err) => {
                         errors.push(err);
@@ -279,7 +295,7 @@ fn parse_top_level_node(
                 let is_entrypoint = attributes.contains_key("entrypoint");
 
                 let as_attr = attributes.get("as").and_then(|attr| {
-                    parse_attribute_as_static(attr)
+                    AttributeValidator::parse_attribute_as_static(attr)
                         .map_err(|err| errors.push(err))
                         .ok()
                 });
@@ -287,13 +303,15 @@ fn parse_top_level_node(
                 let attributes = attributes
                     .iter()
                     .filter(|(k, _)| !matches!(k.as_str(), "as" | "entrypoint"))
-                    .filter_map(|(k, attr)| match parse_attribute(attr) {
-                        Ok(attr) => Some((k.clone(), attr)),
-                        Err(err) => {
-                            errors.push(err);
-                            None
-                        }
-                    })
+                    .filter_map(
+                        |(k, attr)| match AttributeValidator::parse_attribute(attr) {
+                            Ok(attr) => Some((k.clone(), attr)),
+                            Err(err) => {
+                                errors.push(err);
+                                None
+                            }
+                        },
+                    )
                     .collect();
 
                 Some(TopLevelNode::ComponentDefinition(ComponentDefinition {
@@ -434,18 +452,9 @@ fn construct_node(
                 }),
                 name if name.starts_with("hop-") => match tag_name.as_str() {
                     "hop-x-exec" => {
-                        for name in attributes.keys() {
-                            match name.as_str() {
-                                "cmd" => {}
-                                _ => {
-                                    // TODO: Check for unrecognized attributes
-                                }
-                            }
-                        }
-
-                        match get_attribute(&tag_name, "cmd", &attributes)
-                            .and_then(parse_attribute_as_static)
-                        {
+                        let validator = AttributeValidator::new(&attributes, &tag_name);
+                        errors.extend(validator.check_unrecognized(&["cmd"]));
+                        match validator.get_static("cmd") {
                             Ok(cmd_attr) => Some(HopNode::XExec {
                                 cmd_attr,
                                 range: tree.range.clone(),
@@ -506,13 +515,15 @@ fn construct_node(
 
                     let attributes = attributes
                         .into_iter()
-                        .filter_map(|(k, attr)| match parse_attribute(&attr) {
-                            Ok(attr) => Some((k, attr)),
-                            Err(err) => {
-                                errors.push(err);
-                                None
-                            }
-                        })
+                        .filter_map(
+                            |(k, attr)| match AttributeValidator::parse_attribute(&attr) {
+                                Ok(attr) => Some((k, attr)),
+                                Err(err) => {
+                                    errors.push(err);
+                                    None
+                                }
+                            },
+                        )
                         .collect();
 
                     Some(HopNode::ComponentReference {
@@ -529,13 +540,15 @@ fn construct_node(
                 _ => {
                     let attributes = attributes
                         .into_iter()
-                        .filter_map(|(k, attr)| match parse_attribute(&attr) {
-                            Ok(attr) => Some((k, attr)),
-                            Err(err) => {
-                                errors.push(err);
-                                None
-                            }
-                        })
+                        .filter_map(
+                            |(k, attr)| match AttributeValidator::parse_attribute(&attr) {
+                                Ok(attr) => Some((k, attr)),
+                                Err(err) => {
+                                    errors.push(err);
+                                    None
+                                }
+                            },
+                        )
                         .collect();
 
                     Some(HopNode::Html {
@@ -1631,6 +1644,28 @@ mod tests {
                 error: <import> is missing required attribute from
                 1 | <import>
                   |  ^^^^^^
+            "#]],
+        );
+    }
+
+    // Test <import> tag with unrecognized attribute produces error.
+    #[test]
+    fn test_parser_import_unrecognized_attribute() {
+        check(
+            indoc! {r#"
+                <import component="button-cmp" from="@/components/button" extra="value" unknown>
+                <main-comp>
+                    <button-cmp/>
+                </main-comp>
+            "#},
+            expect![[r#"
+                error: Unrecognized attribute 'extra' on <import>
+                1 | <import component="button-cmp" from="@/components/button" extra="value" unknown>
+                  |                                                           ^^^^^^^^^^^^^
+
+                error: Unrecognized attribute 'unknown' on <import>
+                1 | <import component="button-cmp" from="@/components/button" extra="value" unknown>
+                  |                                                                         ^^^^^^^
             "#]],
         );
     }
