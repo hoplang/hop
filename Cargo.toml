@@ -21,7 +21,6 @@ notify = "8.0"
 tokio-stream = { version = "0.1", features = ["sync"] }
 anyhow = "1.0"
 colored = "3.0"
-jsonschema = "0.18"
 rayon = "1.8"
 itertools = "0.13"
 thiserror = "2.0"
