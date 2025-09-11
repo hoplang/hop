@@ -1,7 +1,7 @@
 use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::{self, Parameter, Type};
-use crate::hop::ast::HopAst;
-use crate::hop::ast::{ComponentDefinition, HopNode, Render};
+use crate::hop::ast::Ast;
+use crate::hop::ast::{ComponentDefinition, Node, Render};
 use crate::hop::environment::Environment;
 use crate::hop::type_error::TypeError;
 use std::collections::HashMap;
@@ -99,7 +99,7 @@ pub struct TypeChecker {
 impl TypeChecker {
     // TODO: Return a bool here indicating whether the state for these modules
     // were changed
-    pub fn typecheck(&mut self, modules: &[&HopAst]) {
+    pub fn typecheck(&mut self, modules: &[&Ast]) {
         for module in modules {
             let type_errors = self.type_errors.entry(module.name.clone()).or_default();
             let type_annotations = self
@@ -132,7 +132,7 @@ impl TypeChecker {
 }
 
 fn typecheck_module(
-    module: &HopAst,
+    module: &Ast,
     state: &mut State,
     errors: &mut Vec<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
@@ -211,14 +211,14 @@ fn typecheck_module(
 }
 
 fn typecheck_node(
-    node: &HopNode,
+    node: &Node,
     state: &State,
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut Vec<TypeError>,
 ) {
     match node {
-        HopNode::If {
+        Node::If {
             condition,
             children,
             ..
@@ -241,7 +241,7 @@ fn typecheck_node(
             }
         }
 
-        HopNode::For {
+        Node::For {
             var_name,
             array_expr,
             children,
@@ -304,7 +304,7 @@ fn typecheck_node(
             }
         }
 
-        HopNode::ComponentReference {
+        Node::ComponentReference {
             tag_name,
             definition_module,
             args,
@@ -403,7 +403,7 @@ fn typecheck_node(
             }
         }
 
-        HopNode::Html {
+        Node::Html {
             attributes,
             children,
             ..
@@ -433,7 +433,7 @@ fn typecheck_node(
             }
         }
 
-        HopNode::TextExpression { expression, range } => {
+        Node::TextExpression { expression, range } => {
             match dop::typecheck_expr(expression, env, annotations) {
                 Ok(expr_type) => {
                     if !expr_type.is_subtype(&Type::String) {
@@ -449,15 +449,15 @@ fn typecheck_node(
             };
         }
 
-        HopNode::XExec { children, .. }
-        | HopNode::XRaw { children, .. }
-        | HopNode::Placeholder { children, .. } => {
+        Node::XExec { children, .. }
+        | Node::XRaw { children, .. }
+        | Node::Placeholder { children, .. } => {
             for child in children {
                 typecheck_node(child, state, env, annotations, errors);
             }
         }
 
-        HopNode::SlotDefinition { .. } | HopNode::Text { .. } | HopNode::Doctype { .. } => {
+        Node::SlotDefinition { .. } | Node::Text { .. } | Node::Doctype { .. } => {
             // No typechecking needed
         }
     }

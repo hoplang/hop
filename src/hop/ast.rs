@@ -29,14 +29,14 @@ pub struct Attribute {
 }
 
 #[derive(Debug)]
-pub struct HopAst {
+pub struct Ast {
     pub name: ModuleName,
     imports: Vec<Import>,
     component_definitions: Vec<ComponentDefinition>,
     renders: Vec<Render>,
 }
 
-impl HopAst {
+impl Ast {
     pub fn new(
         name: ModuleName,
         component_definitions: Vec<ComponentDefinition>,
@@ -74,7 +74,7 @@ impl HopAst {
 
     /// Returns an iterator over all nodes in the AST, iterating depth-first.
     /// This includes all child nodes from both render nodes and component definitions.
-    pub fn iter_all_nodes(&self) -> impl Iterator<Item = &HopNode> {
+    pub fn iter_all_nodes(&self) -> impl Iterator<Item = &Node> {
         self.renders
             .iter()
             .flat_map(|n| &n.children)
@@ -100,7 +100,7 @@ impl HopAst {
     ///     ^^^^^^^^^^^^^^^^^
     /// </div>
     ///
-    pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&HopNode> {
+    pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&Node> {
         for n in &self.renders {
             if n.range.contains_position(position) {
                 for child in &n.children {
@@ -152,7 +152,7 @@ impl Import {
 pub struct Render {
     pub file_attr: StaticAttribute,
     pub range: DocumentRange,
-    pub children: Vec<HopNode>,
+    pub children: Vec<Node>,
 }
 
 #[derive(Debug)]
@@ -163,7 +163,7 @@ pub struct ComponentDefinition {
     pub as_attr: Option<StaticAttribute>,
     pub attributes: BTreeMap<StringSpan, Attribute>,
     pub range: DocumentRange,
-    pub children: Vec<HopNode>,
+    pub children: Vec<Node>,
     pub is_entrypoint: bool,
     pub has_slot: bool,
 }
@@ -181,7 +181,7 @@ impl ComponentDefinition {
 }
 
 #[derive(Debug)]
-pub enum HopNode {
+pub enum Node {
     /// A Text node represents text in the document.
     /// E.g. <div>hello world</div>
     ///           ^^^^^^^^^^^
@@ -208,7 +208,7 @@ pub enum HopNode {
         args: Option<(Vec<Argument>, DocumentRange)>,
         attributes: BTreeMap<StringSpan, Attribute>,
         range: DocumentRange,
-        children: Vec<HopNode>,
+        children: Vec<Node>,
     },
 
     /// A SlotDefinition node represents the definition of a slot, e.g.
@@ -224,7 +224,7 @@ pub enum HopNode {
     If {
         condition: Expr,
         range: DocumentRange,
-        children: Vec<HopNode>,
+        children: Vec<Node>,
     },
 
     /// A For node contains content that is evaluated once for each item of
@@ -233,7 +233,7 @@ pub enum HopNode {
         var_name: VarName,
         array_expr: Expr,
         range: DocumentRange,
-        children: Vec<HopNode>,
+        children: Vec<Node>,
     },
 
     /// A Doctype node represents a doctype, e.g. a <!DOCTYPE html>
@@ -247,12 +247,12 @@ pub enum HopNode {
         closing_tag_name: Option<DocumentRange>,
         attributes: BTreeMap<StringSpan, Attribute>,
         range: DocumentRange,
-        children: Vec<HopNode>,
+        children: Vec<Node>,
     },
     XExec {
         cmd_attr: StaticAttribute,
         range: DocumentRange,
-        children: Vec<HopNode>,
+        children: Vec<Node>,
     },
 
     /// An XRaw node contains content that should be treated as a string and the contents
@@ -262,7 +262,7 @@ pub enum HopNode {
     XRaw {
         trim: bool,
         range: DocumentRange,
-        children: Vec<HopNode>,
+        children: Vec<Node>,
     },
 
     /// A Placeholder node represents a node that could not be constructed (because
@@ -272,25 +272,25 @@ pub enum HopNode {
     /// constructed. This is useful for e.g. go-to-definition in the language server.
     Placeholder {
         range: DocumentRange,
-        children: Vec<HopNode>,
+        children: Vec<Node>,
     },
 }
 
-impl HopNode {
+impl Node {
     /// Get the direct children of a node.
-    pub fn children(&self) -> &[HopNode] {
+    pub fn children(&self) -> &[Node] {
         match self {
-            HopNode::ComponentReference { children, .. } => children,
-            HopNode::If { children, .. } => children,
-            HopNode::For { children, .. } => children,
-            HopNode::Html { children, .. } => children,
-            HopNode::Placeholder { children, .. } => children,
-            HopNode::XExec { children, .. } => children,
-            HopNode::XRaw { children, .. } => children,
-            HopNode::SlotDefinition { .. } => &[],
-            HopNode::Doctype { .. } => &[],
-            HopNode::Text { .. } => &[],
-            HopNode::TextExpression { .. } => &[],
+            Node::ComponentReference { children, .. } => children,
+            Node::If { children, .. } => children,
+            Node::For { children, .. } => children,
+            Node::Html { children, .. } => children,
+            Node::Placeholder { children, .. } => children,
+            Node::XExec { children, .. } => children,
+            Node::XRaw { children, .. } => children,
+            Node::SlotDefinition { .. } => &[],
+            Node::Doctype { .. } => &[],
+            Node::Text { .. } => &[],
+            Node::TextExpression { .. } => &[],
         }
     }
 
@@ -298,7 +298,7 @@ impl HopNode {
         DepthFirstIterator::new(self)
     }
 
-    pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&HopNode> {
+    pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&Node> {
         if !self.range().contains_position(position) {
             return None;
         }
@@ -317,8 +317,8 @@ impl HopNode {
     ///  ^^^
     pub fn tag_name(&self) -> Option<&DocumentRange> {
         match self {
-            HopNode::ComponentReference { tag_name, .. } => Some(tag_name),
-            HopNode::Html { tag_name, .. } => Some(tag_name),
+            Node::ComponentReference { tag_name, .. } => Some(tag_name),
+            Node::Html { tag_name, .. } => Some(tag_name),
             _ => None,
         }
     }
@@ -330,10 +330,10 @@ impl HopNode {
     ///                   ^^^
     pub fn closing_tag_name(&self) -> Option<&DocumentRange> {
         match self {
-            HopNode::ComponentReference {
+            Node::ComponentReference {
                 closing_tag_name, ..
             } => closing_tag_name.as_ref(),
-            HopNode::Html {
+            Node::Html {
                 closing_tag_name, ..
             } => closing_tag_name.as_ref(),
             _ => None,
@@ -350,36 +350,36 @@ impl HopNode {
     }
 }
 
-impl Ranged for HopNode {
+impl Ranged for Node {
     fn range(&self) -> &DocumentRange {
         match self {
-            HopNode::Text { range, .. }
-            | HopNode::TextExpression { range, .. }
-            | HopNode::ComponentReference { range, .. }
-            | HopNode::SlotDefinition { range, .. }
-            | HopNode::If { range, .. }
-            | HopNode::For { range, .. }
-            | HopNode::Html { range, .. }
-            | HopNode::XExec { range, .. }
-            | HopNode::XRaw { range, .. }
-            | HopNode::Placeholder { range, .. }
-            | HopNode::Doctype { range, .. } => range,
+            Node::Text { range, .. }
+            | Node::TextExpression { range, .. }
+            | Node::ComponentReference { range, .. }
+            | Node::SlotDefinition { range, .. }
+            | Node::If { range, .. }
+            | Node::For { range, .. }
+            | Node::Html { range, .. }
+            | Node::XExec { range, .. }
+            | Node::XRaw { range, .. }
+            | Node::Placeholder { range, .. }
+            | Node::Doctype { range, .. } => range,
         }
     }
 }
 
 pub struct DepthFirstIterator<'a> {
-    stack: Vec<&'a HopNode>,
+    stack: Vec<&'a Node>,
 }
 
 impl<'a> DepthFirstIterator<'a> {
-    fn new(root: &'a HopNode) -> Self {
+    fn new(root: &'a Node) -> Self {
         Self { stack: vec![root] }
     }
 }
 
 impl<'a> Iterator for DepthFirstIterator<'a> {
-    type Item = &'a HopNode;
+    type Item = &'a Node;
 
     fn next(&mut self) -> Option<Self::Item> {
         let current = self.stack.pop()?;

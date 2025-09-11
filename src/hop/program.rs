@@ -1,7 +1,7 @@
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::error_collector::ErrorCollector;
-use crate::hop::ast::HopAst;
+use crate::hop::ast::Ast;
 use crate::hop::evaluator;
 use crate::hop::parse_error::ParseError;
 use crate::hop::parser::parse;
@@ -12,7 +12,7 @@ use crate::hop::type_error::TypeError;
 use anyhow::Result;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use super::ast::HopNode;
+use super::ast::Node;
 use super::evaluator::HopMode;
 use super::module_name::ModuleName;
 use super::typechecker::TypeChecker;
@@ -53,7 +53,7 @@ pub struct RenameableSymbol {
 pub struct Program {
     topo_sorter: TopoSorter<ModuleName>,
     parse_errors: HashMap<ModuleName, ErrorCollector<ParseError>>,
-    modules: HashMap<ModuleName, HopAst>,
+    modules: HashMap<ModuleName, Ast>,
     type_checker: TypeChecker,
 }
 
@@ -179,7 +179,7 @@ impl Program {
         }
 
         match node {
-            HopNode::ComponentReference {
+            Node::ComponentReference {
                 tag_name,
                 definition_module,
                 ..
@@ -194,7 +194,7 @@ impl Program {
                     range: component_def.tag_name.clone(),
                 })
             }
-            HopNode::Html { tag_name, .. } => {
+            Node::Html { tag_name, .. } => {
                 // Navigate to the opening tag of this HTML element
                 Some(DefinitionLocation {
                     module: module_name.clone(),
@@ -231,14 +231,14 @@ impl Program {
         }
 
         match node {
-            HopNode::ComponentReference {
+            Node::ComponentReference {
                 tag_name,
                 definition_module: definition_location,
                 ..
             } => definition_location.as_ref().map(|target_module| {
                 self.collect_component_rename_locations(tag_name.as_str(), target_module)
             }),
-            n @ HopNode::Html { .. } => Some(
+            n @ Node::Html { .. } => Some(
                 n.tag_names()
                     .map(|range| RenameLocation {
                         module: module_name.clone(),
@@ -330,7 +330,7 @@ impl Program {
             locations.extend(
                 ast.iter_all_nodes()
                     .filter(|node| match node {
-                        HopNode::ComponentReference {
+                        Node::ComponentReference {
                             tag_name,
                             definition_module: reference_definition_module,
                             ..

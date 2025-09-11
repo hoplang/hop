@@ -1,7 +1,7 @@
 use crate::common::{escape_html, is_void_element};
 use crate::document::document_cursor::StringSpan;
 use crate::dop::{self, evaluate_expr};
-use crate::hop::ast::{HopAst, HopNode};
+use crate::hop::ast::{Ast, Node};
 use crate::hop::environment::Environment;
 use anyhow::Result;
 use itertools::{EitherOrBoth, Itertools as _};
@@ -32,7 +32,7 @@ impl HopMode {
 
 /// Render the content for a specific file path
 pub fn render_file(
-    asts: &HashMap<ModuleName, HopAst>,
+    asts: &HashMap<ModuleName, Ast>,
     hop_mode: HopMode,
     file_path: &str,
     output: &mut String,
@@ -70,7 +70,7 @@ fn evaluate_attribute_value(
 
 // Evaluate a component definition of a specific name in a specific module.
 pub fn evaluate_component(
-    asts: &HashMap<ModuleName, HopAst>,
+    asts: &HashMap<ModuleName, Ast>,
     hop_mode: HopMode,
     module_name: &ModuleName,
     component_name: &str,
@@ -186,15 +186,15 @@ fn init_environment(hop_mode: HopMode) -> Environment<serde_json::Value> {
 }
 
 fn evaluate_node(
-    asts: &HashMap<ModuleName, HopAst>,
+    asts: &HashMap<ModuleName, Ast>,
     hop_mode: HopMode,
-    node: &HopNode,
+    node: &Node,
     slot_content: Option<&str>,
     env: &mut Environment<serde_json::Value>,
     output: &mut String,
 ) -> anyhow::Result<()> {
     match node {
-        HopNode::If {
+        Node::If {
             condition,
             children,
             ..
@@ -210,7 +210,7 @@ fn evaluate_node(
             Ok(())
         }
 
-        HopNode::For {
+        Node::For {
             var_name,
             array_expr,
             children,
@@ -233,7 +233,7 @@ fn evaluate_node(
             Ok(())
         }
 
-        HopNode::ComponentReference {
+        Node::ComponentReference {
             tag_name,
             args,
             attributes,
@@ -297,7 +297,7 @@ fn evaluate_node(
             )
         }
 
-        HopNode::SlotDefinition { .. } => {
+        Node::SlotDefinition { .. } => {
             // Use the supplied slot content if available, otherwise return empty
             if let Some(content) = slot_content {
                 output.push_str(content);
@@ -305,7 +305,7 @@ fn evaluate_node(
             Ok(())
         }
 
-        HopNode::Html {
+        Node::Html {
             children,
             tag_name,
             attributes,
@@ -347,29 +347,27 @@ fn evaluate_node(
             Ok(())
         }
 
-        HopNode::Placeholder { .. } => Ok(()),
+        Node::Placeholder { .. } => Ok(()),
 
-        HopNode::Text { range: value, .. } => {
+        Node::Text { range: value, .. } => {
             output.push_str(value.as_str());
             Ok(())
         }
 
-        HopNode::TextExpression { expression, .. } => {
-            match evaluate_expr(expression, env)?.as_str() {
-                Some(s) => {
-                    output.push_str(&escape_html(s));
-                    Ok(())
-                }
-                None => anyhow::bail!("Could not evaluate expression to string"),
+        Node::TextExpression { expression, .. } => match evaluate_expr(expression, env)?.as_str() {
+            Some(s) => {
+                output.push_str(&escape_html(s));
+                Ok(())
             }
-        }
+            None => anyhow::bail!("Could not evaluate expression to string"),
+        },
 
-        HopNode::Doctype { .. } => {
+        Node::Doctype { .. } => {
             output.push_str("<!DOCTYPE html>");
             Ok(())
         }
 
-        HopNode::XExec {
+        Node::XExec {
             cmd_attr, children, ..
         } => {
             // Collect child content as stdin
@@ -385,7 +383,7 @@ fn evaluate_node(
             Ok(())
         }
 
-        HopNode::XRaw { trim, children, .. } => {
+        Node::XRaw { trim, children, .. } => {
             // For hop-x-raw nodes, just render the inner content without the tags
             if *trim {
                 let mut temp = String::new();
@@ -404,14 +402,14 @@ fn evaluate_node(
 }
 
 fn evaluate_node_entrypoint(
-    asts: &HashMap<ModuleName, HopAst>,
+    asts: &HashMap<ModuleName, Ast>,
     hop_mode: HopMode,
-    node: &HopNode,
+    node: &Node,
     env: &mut Environment<serde_json::Value>,
     output: &mut String,
 ) -> Result<()> {
     match node {
-        HopNode::Html {
+        Node::Html {
             tag_name,
             attributes,
             children,
@@ -561,14 +559,14 @@ mod tests {
     use crate::hop::module_name::ModuleName;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
-    use crate::hop::{ast::HopAst, typechecker::TypeChecker};
+    use crate::hop::{ast::Ast, typechecker::TypeChecker};
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use serde_json::json;
     use simple_txtar::Archive;
     use std::collections::HashMap;
 
-    fn asts_from_archive(archive: &Archive) -> HashMap<ModuleName, HopAst> {
+    fn asts_from_archive(archive: &Archive) -> HashMap<ModuleName, Ast> {
         let mut asts = HashMap::new();
 
         for file in archive.iter() {

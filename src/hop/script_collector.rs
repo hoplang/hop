@@ -1,5 +1,5 @@
-use crate::hop::ast::HopAst;
-use crate::hop::ast::HopNode;
+use crate::hop::ast::Ast;
+use crate::hop::ast::Node;
 
 pub struct ScriptCollector {
     scripts: Vec<String>,
@@ -12,13 +12,13 @@ impl ScriptCollector {
         }
     }
 
-    pub fn process_module(&mut self, ast: &HopAst) {
+    pub fn process_module(&mut self, ast: &Ast) {
         let mut module_script = String::new();
 
         for component in ast.get_component_definitions() {
             for child in &component.children {
                 for node in child.iter_depth_first() {
-                    if let HopNode::Html {
+                    if let Node::Html {
                         tag_name, children, ..
                     } = node
                     {
@@ -36,7 +36,7 @@ impl ScriptCollector {
                         );
 
                         let script_content = match &children[0] {
-                            HopNode::Text { range: value, .. } => value,
+                            Node::Text { range: value, .. } => value,
                             _ => panic!("Script tag child should be a text node"),
                         };
 

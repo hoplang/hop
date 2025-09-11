@@ -1,7 +1,7 @@
 use crate::document::document_cursor::{DocumentRange, StringSpan};
 use crate::dop::Parser;
 use crate::error_collector::ErrorCollector;
-use crate::hop::ast::{ComponentDefinition, HopAst, HopNode, Import, Render};
+use crate::hop::ast::{Ast, ComponentDefinition, Import, Node, Render};
 use crate::hop::parse_error::ParseError;
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::{Token, Tokenizer};
@@ -185,7 +185,7 @@ pub fn parse(
     module_name: ModuleName,
     tokenizer: Tokenizer,
     errors: &mut ErrorCollector<ParseError>,
-) -> HopAst {
+) -> Ast {
     let trees = build_tree(tokenizer, errors);
 
     let mut components = Vec::new();
@@ -196,7 +196,7 @@ pub fn parse(
     let mut imported_components = HashMap::new();
 
     for mut tree in trees {
-        let children: Vec<HopNode> = std::mem::take(&mut tree.children)
+        let children: Vec<Node> = std::mem::take(&mut tree.children)
             .into_iter()
             .filter_map(|child| {
                 construct_node(
@@ -241,12 +241,12 @@ pub fn parse(
         }
     }
 
-    HopAst::new(module_name, components, imports, renders)
+    Ast::new(module_name, components, imports, renders)
 }
 
 fn parse_top_level_node(
     tree: TokenTree,
-    children: Vec<HopNode>,
+    children: Vec<Node>,
     errors: &mut ErrorCollector<ParseError>,
 ) -> Option<TopLevelNode> {
     match tree.token {
@@ -318,7 +318,7 @@ fn parse_top_level_node(
                     let mut has_slot = false;
                     for child in &children {
                         for node in child.iter_depth_first() {
-                            if let HopNode::SlotDefinition { range, .. } = node {
+                            if let Node::SlotDefinition { range, .. } = node {
                                 if has_slot {
                                     errors.push(ParseError::SlotIsAlreadyDefined {
                                         range: range.clone(),
@@ -375,8 +375,8 @@ fn construct_node(
     module_name: &ModuleName,
     defined_components: &HashSet<String>,
     imported_components: &HashMap<String, ModuleName>,
-) -> Option<HopNode> {
-    let children: Vec<HopNode> = tree
+) -> Option<Node> {
+    let children: Vec<Node> = tree
         .children
         .into_iter()
         .filter_map(|child| {
@@ -401,11 +401,11 @@ fn construct_node(
         }
         Token::Doctype { range } => {
             //
-            Some(HopNode::Doctype { range })
+            Some(Node::Doctype { range })
         }
         Token::Text { range, .. } => {
             //
-            Some(HopNode::Text { range })
+            Some(Node::Text { range })
         }
         Token::TextExpression {
             expression: expr, ..
@@ -415,7 +415,7 @@ fn construct_node(
                     .parse_expr()
                     .map_err(|err| err.into()),
             )?;
-            Some(HopNode::TextExpression {
+            Some(Node::TextExpression {
                 expression,
                 range: tree.range.clone(),
             })
@@ -443,7 +443,7 @@ fn construct_node(
                         errors.ok_or_add(expr.and_then(|e| {
                             Parser::from(e).parse_expr().map_err(|err| err.into())
                         }))?;
-                    Some(HopNode::If {
+                    Some(Node::If {
                         condition,
                         range: tree.range.clone(),
                         children,
@@ -466,12 +466,12 @@ fn construct_node(
                                 .map_err(|err| err.into())
                         });
                     let Some((var_name, array_expr)) = errors.ok_or_add(parse_result) else {
-                        return Some(HopNode::Placeholder {
+                        return Some(Node::Placeholder {
                             range: tree.range.clone(),
                             children,
                         });
                     };
-                    Some(HopNode::For {
+                    Some(Node::For {
                         var_name,
                         array_expr,
                         range: tree.range.clone(),
@@ -482,7 +482,7 @@ fn construct_node(
                 // <slot-default>
                 "slot-default" => {
                     errors.extend(validator.disallow_unrecognized());
-                    Some(HopNode::SlotDefinition {
+                    Some(Node::SlotDefinition {
                         range: tree.range.clone(),
                     })
                 }
@@ -490,13 +490,13 @@ fn construct_node(
                 // <hop-x-exec>
                 "hop-x-exec" => {
                     let Some(cmd_attr) = errors.ok_or_add(validator.require_static("cmd")) else {
-                        return Some(HopNode::Placeholder {
+                        return Some(Node::Placeholder {
                             range: tree.range.clone(),
                             children,
                         });
                     };
                     errors.extend(validator.disallow_unrecognized());
-                    Some(HopNode::XExec {
+                    Some(Node::XExec {
                         cmd_attr,
                         range: tree.range.clone(),
                         children,
@@ -509,7 +509,7 @@ fn construct_node(
                         .ok_or_add(validator.allow_boolean("trim"))
                         .is_some_and(|v| v);
                     errors.extend(validator.disallow_unrecognized());
-                    Some(HopNode::XRaw {
+                    Some(Node::XRaw {
                         trim,
                         range: tree.range.clone(),
                         children,
@@ -521,7 +521,7 @@ fn construct_node(
                         tag: tag_name.to_string_span(),
                         range: tag_name.clone(),
                     });
-                    Some(HopNode::Placeholder {
+                    Some(Node::Placeholder {
                         range: tree.range.clone(),
                         children: vec![],
                     })
@@ -557,7 +557,7 @@ fn construct_node(
                         .map(|attr| (attr.name.to_string_span(), attr))
                         .collect();
 
-                    Some(HopNode::ComponentReference {
+                    Some(Node::ComponentReference {
                         tag_name,
                         closing_tag_name: tree.closing_tag_name,
                         definition_module,
@@ -576,7 +576,7 @@ fn construct_node(
                         .map(|attr| (attr.name.to_string_span(), attr))
                         .collect();
 
-                    Some(HopNode::Html {
+                    Some(Node::Html {
                         tag_name,
                         closing_tag_name: tree.closing_tag_name,
                         attributes,
@@ -597,24 +597,24 @@ mod tests {
     use expect_test::{Expect, expect};
     use indoc::indoc;
 
-    fn node_name(node: &HopNode) -> &str {
+    fn node_name(node: &Node) -> &str {
         match node {
-            HopNode::Doctype { .. } => "doctype",
-            HopNode::ComponentReference { .. } => "component_reference",
-            HopNode::If { .. } => "if",
-            HopNode::For { .. } => "for",
-            HopNode::Html { tag_name, .. } => tag_name.as_str(),
-            HopNode::SlotDefinition { .. } => "slot-definition",
-            HopNode::XExec { .. } => "hop-x-exec",
-            HopNode::XRaw { .. } => "hop-x-raw",
-            HopNode::Text { .. } => "text",
-            HopNode::TextExpression { .. } => "text_expression",
-            HopNode::Placeholder { .. } => "error",
+            Node::Doctype { .. } => "doctype",
+            Node::ComponentReference { .. } => "component_reference",
+            Node::If { .. } => "if",
+            Node::For { .. } => "for",
+            Node::Html { tag_name, .. } => tag_name.as_str(),
+            Node::SlotDefinition { .. } => "slot-definition",
+            Node::XExec { .. } => "hop-x-exec",
+            Node::XRaw { .. } => "hop-x-raw",
+            Node::Text { .. } => "text",
+            Node::TextExpression { .. } => "text_expression",
+            Node::Placeholder { .. } => "error",
         }
     }
 
-    fn write_node(node: &HopNode, depth: usize, lines: &mut Vec<String>) {
-        if matches!(node, HopNode::Text { .. }) {
+    fn write_node(node: &Node, depth: usize, lines: &mut Vec<String>) {
+        if matches!(node, Node::Text { .. }) {
             return;
         }
         let left = format!("{}{}", "    ".repeat(depth).as_str(), node_name(node));
