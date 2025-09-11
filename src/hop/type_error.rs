@@ -82,9 +82,10 @@ pub enum TypeError {
     #[error("Undefined variable: {name}")]
     UndefinedVariable { name: String, range: DocumentRange },
 
-    #[error("Property {property} not found in object")]
+    #[error("Property {property} not found in object {dop_type}")]
     PropertyNotFoundInObject {
         property: String,
+        dop_type: DopType,
         range: DocumentRange,
     },
 

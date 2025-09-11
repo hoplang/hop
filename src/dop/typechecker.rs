@@ -149,6 +149,7 @@ pub fn typecheck_expr(
                     } else {
                         Err(TypeError::PropertyNotFoundInObject {
                             property: property.as_str().to_string(),
+                            dop_type: base_type.clone(),
                             range: property.clone(),
                         })
                     }
