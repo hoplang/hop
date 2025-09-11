@@ -7,23 +7,25 @@ use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::{Token, Tokenizer};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use super::ast::{self, StaticAttribute};
+use super::ast::{self};
 use super::module_name::ModuleName;
 use super::tokenizer;
 
-struct AttributeValidator<'a> {
-    attributes: &'a BTreeMap<StringSpan, tokenizer::Attribute>,
-    tag_name: &'a DocumentRange,
+struct AttributeValidator {
+    attributes: BTreeMap<StringSpan, tokenizer::Attribute>,
+    tag_name: DocumentRange,
+    handled_attributes: HashSet<String>,
 }
 
-impl<'a> AttributeValidator<'a> {
+impl AttributeValidator {
     fn new(
-        attributes: &'a BTreeMap<StringSpan, tokenizer::Attribute>,
-        tag_name: &'a DocumentRange,
+        attributes: BTreeMap<StringSpan, tokenizer::Attribute>,
+        tag_name: DocumentRange,
     ) -> Self {
         Self {
             attributes,
             tag_name,
+            handled_attributes: HashSet::new(),
         }
     }
 
@@ -43,7 +45,42 @@ impl<'a> AttributeValidator<'a> {
         }
     }
 
-    fn parse_attribute(attr: &tokenizer::Attribute) -> Result<ast::Attribute, ParseError> {
+    fn allow_static(&mut self, key: &str) -> Option<Result<ast::StaticAttribute, ParseError>> {
+        self.handled_attributes.insert(key.to_string());
+        self.attributes.get(key).map(Self::parse_as_static)
+    }
+
+    fn allow_boolean(&mut self, key: &str) -> Result<bool, ParseError> {
+        self.handled_attributes.insert(key.to_string());
+        match self.attributes.get(key) {
+            None => Ok(false),
+            Some(attr) => Self::parse_as_boolean(attr),
+        }
+    }
+
+    // Require an attribute.
+    //
+    // Checks that the attributes is present and returns it or returns an error.
+    fn require(&mut self, key: &str) -> Result<&tokenizer::Attribute, ParseError> {
+        self.handled_attributes.insert(key.to_string());
+        self.attributes
+            .get(key)
+            .ok_or_else(|| ParseError::MissingRequiredAttribute {
+                tag_name: self.tag_name.to_string_span(),
+                attr: key.to_string(),
+                range: self.tag_name.clone(),
+            })
+    }
+
+    // Require an attribute and parse it as static.
+    //
+    // Checks that the attributes is present and returns it or returns an error.
+    fn require_static(&mut self, key: &str) -> Result<ast::StaticAttribute, ParseError> {
+        self.require(key).and_then(Self::parse_as_static)
+    }
+
+    // Parse an attribute or return an error.
+    fn parse(attr: &tokenizer::Attribute) -> Result<ast::Attribute, ParseError> {
         match &attr.value {
             Some(val) => Ok(ast::Attribute {
                 name: attr.name.clone(),
@@ -58,25 +95,12 @@ impl<'a> AttributeValidator<'a> {
         }
     }
 
-    fn get(&self, key: &str) -> Result<&'a tokenizer::Attribute, ParseError> {
-        self.attributes
-            .get(key)
-            .ok_or_else(|| ParseError::MissingRequiredAttribute {
-                tag_name: self.tag_name.to_string_span(),
-                attr: key.to_string(),
-                range: self.tag_name.clone(),
-            })
-    }
-
-    fn get_static(&self, key: &str) -> Result<StaticAttribute, ParseError> {
-        self.get(key).and_then(Self::parse_attribute_as_static)
-    }
-
-    fn parse_attribute_as_static(
-        attr: &tokenizer::Attribute,
-    ) -> Result<StaticAttribute, ParseError> {
+    // Parse an attribute as static or return an error.
+    fn parse_as_static(attr: &tokenizer::Attribute) -> Result<ast::StaticAttribute, ParseError> {
         match &attr.value {
-            Some(tokenizer::AttributeValue::String(s)) => Ok(StaticAttribute { value: s.clone() }),
+            Some(tokenizer::AttributeValue::String(s)) => {
+                Ok(ast::StaticAttribute { value: s.clone() })
+            }
             Some(tokenizer::AttributeValue::Expression(expr_range)) => {
                 Err(ParseError::AttributeMustBeStaticallyKnown {
                     attr_name: attr.name.to_string_span(),
@@ -90,9 +114,30 @@ impl<'a> AttributeValidator<'a> {
         }
     }
 
+    // Parse an attribute as boolean return an error.
+    fn parse_as_boolean(attr: &tokenizer::Attribute) -> Result<bool, ParseError> {
+        match &attr.value {
+            Some(tokenizer::AttributeValue::String(s)) => {
+                // TODO: Better error
+                Err(ParseError::AttributeMustBeStaticallyKnown {
+                    attr_name: attr.name.to_string_span(),
+                    range: s.clone(),
+                })
+            }
+            Some(tokenizer::AttributeValue::Expression(expr_range)) => {
+                // TODO: Better error
+                Err(ParseError::AttributeMustBeStaticallyKnown {
+                    attr_name: attr.name.to_string_span(),
+                    range: expr_range.clone(),
+                })
+            }
+            None => Ok(true),
+        }
+    }
+
     fn parse_import_name_from_attr(
-        attr: StaticAttribute,
-    ) -> Result<(StaticAttribute, ModuleName), ParseError> {
+        attr: ast::StaticAttribute,
+    ) -> Result<(ast::StaticAttribute, ModuleName), ParseError> {
         // Strip the @/ prefix for internal module resolution
         let module_name_input = match attr.value.as_str().strip_prefix("@/") {
             Some(n) => n,
@@ -111,18 +156,22 @@ impl<'a> AttributeValidator<'a> {
         }
     }
 
-    fn check_unrecognized<'b>(
-        &'b self,
-        allowed: &'b [&str],
-    ) -> impl Iterator<Item = ParseError> + 'b {
+    fn disallow_unrecognized(&self) -> impl Iterator<Item = ParseError> {
         self.attributes
             .values()
-            .filter(move |attr| !allowed.contains(&attr.name.as_str()))
+            .filter(|attr| !self.handled_attributes.contains(attr.name.as_str()))
             .map(move |attr| ParseError::UnrecognizedAttribute {
                 tag_name: self.tag_name.to_string_span(),
                 attr_name: attr.name.to_string_span(),
                 range: attr.range.clone(),
             })
+    }
+
+    fn get_unrecognized(&self) -> impl Iterator<Item = Result<ast::Attribute, ParseError>> {
+        self.attributes
+            .values()
+            .filter(|attr| !self.handled_attributes.contains(attr.name.as_str()))
+            .map(AttributeValidator::parse)
     }
 }
 
@@ -200,7 +249,7 @@ fn parse_top_level_node(
     children: Vec<HopNode>,
     errors: &mut ErrorCollector<ParseError>,
 ) -> Option<TopLevelNode> {
-    match &tree.token {
+    match tree.token {
         Token::Text { .. } => None,
         Token::ClosingTag { .. } => None,
         Token::TextExpression { .. } => None,
@@ -211,102 +260,102 @@ fn parse_top_level_node(
             attributes,
             expression,
             ..
-        } => match tag_name.as_str() {
-            // <import ...>
-            "import" => {
-                let validator = AttributeValidator::new(attributes, tag_name);
-                errors.extend(validator.check_unrecognized(&["component", "from"]));
-                let (from_attr, module_name) = errors.ok_or_add(
-                    validator
-                        .get_static("from")
-                        .and_then(AttributeValidator::parse_import_name_from_attr),
-                )?;
-                let component_attr = errors.ok_or_add(validator.get_static("component"))?;
-                Some(TopLevelNode::Import(Import {
-                    component_attr,
-                    module_name,
-                    from_attr,
-                }))
-            }
-
-            // <render ...>
-            "render" => {
-                let validator = AttributeValidator::new(attributes, tag_name);
-                errors.extend(validator.check_unrecognized(&["file"]));
-                let file_attr = errors.ok_or_add(validator.get_static("file"))?;
-                Some(TopLevelNode::Render(Render {
-                    file_attr,
-                    range: tree.range.clone(),
-                    children,
-                }))
-            }
-
-            // <component-definition ...>
-            name => {
-                // Validate component name
-                if !is_valid_component_name(name) {
-                    errors.push(ParseError::InvalidComponentName {
-                        tag_name: tag_name.to_string_span(),
-                        range: tag_name.clone(),
-                    });
-                    return None;
+        } => {
+            let mut validator = AttributeValidator::new(attributes, tag_name.clone());
+            //
+            match tag_name.as_str() {
+                // <import ...>
+                "import" => {
+                    let (from_attr, module_name) = errors.ok_or_add(
+                        validator
+                            .require_static("from")
+                            .and_then(AttributeValidator::parse_import_name_from_attr),
+                    )?;
+                    let component_attr = errors.ok_or_add(validator.require_static("component"))?;
+                    errors.extend(validator.disallow_unrecognized());
+                    Some(TopLevelNode::Import(Import {
+                        component_attr,
+                        module_name,
+                        from_attr,
+                    }))
                 }
 
-                // Parse parameters
-                let params = expression.as_ref().and_then(|expr| {
-                    errors.ok_or_add(
-                        DopParser::from(expr.clone())
-                            .parse_parameters()
-                            .map(|params| (params, expr.clone()))
-                            .map_err(|err| err.into()),
-                    )
-                });
+                // <render ...>
+                "render" => {
+                    let file_attr = errors.ok_or_add(validator.require_static("file"))?;
+                    errors.extend(validator.disallow_unrecognized());
+                    Some(TopLevelNode::Render(Render {
+                        file_attr,
+                        range: tree.range.clone(),
+                        children,
+                    }))
+                }
 
-                // TODO: Here we iterate over the whole subtree to check
-                // if it contains a slot. There should be a better way
-                // to do this.
-                let mut has_slot = false;
-                for child in &children {
-                    for node in child.iter_depth_first() {
-                        if let HopNode::SlotDefinition { range, .. } = node {
-                            if has_slot {
-                                errors.push(ParseError::SlotIsAlreadyDefined {
-                                    range: range.clone(),
-                                });
+                // <component-definition ...>
+                name => {
+                    // Validate component name
+                    if !is_valid_component_name(name) {
+                        errors.push(ParseError::InvalidComponentName {
+                            tag_name: tag_name.to_string_span(),
+                            range: tag_name.clone(),
+                        });
+                        return None;
+                    }
+
+                    // Parse parameters
+                    let params = expression.as_ref().and_then(|expr| {
+                        errors.ok_or_add(
+                            DopParser::from(expr.clone())
+                                .parse_parameters()
+                                .map(|params| (params, expr.clone()))
+                                .map_err(|err| err.into()),
+                        )
+                    });
+
+                    // TODO: Here we iterate over the whole subtree to check
+                    // if it contains a slot. There should be a better way
+                    // to do this.
+                    let mut has_slot = false;
+                    for child in &children {
+                        for node in child.iter_depth_first() {
+                            if let HopNode::SlotDefinition { range, .. } = node {
+                                if has_slot {
+                                    errors.push(ParseError::SlotIsAlreadyDefined {
+                                        range: range.clone(),
+                                    });
+                                }
+                                has_slot = true;
                             }
-                            has_slot = true;
                         }
                     }
+
+                    // Parse attributes
+                    let is_entrypoint = errors
+                        .ok_or_add(validator.allow_boolean("entrypoint"))
+                        .is_some_and(|v| v);
+                    let as_attr = validator
+                        .allow_static("as")
+                        .and_then(|attr| errors.ok_or_add(attr));
+                    let attributes = validator
+                        .get_unrecognized()
+                        .filter_map(|attr| errors.ok_or_add(attr))
+                        .map(|attr| (attr.name.to_string_span(), attr))
+                        .collect();
+
+                    Some(TopLevelNode::ComponentDefinition(ComponentDefinition {
+                        tag_name: tag_name.clone(),
+                        closing_tag_name: tree.closing_tag_name,
+                        params,
+                        is_entrypoint,
+                        as_attr,
+                        attributes,
+                        range: tree.range.clone(),
+                        children,
+                        has_slot,
+                    }))
                 }
-
-                // Parse attributes
-                let is_entrypoint = attributes.contains_key("entrypoint");
-                let as_attr = attributes.get("as").and_then(|attr| {
-                    errors.ok_or_add(AttributeValidator::parse_attribute_as_static(attr))
-                });
-                let attributes = attributes
-                    .iter()
-                    .filter(|(k, _)| !matches!(k.as_str(), "as" | "entrypoint"))
-                    .filter_map(|(k, attr)| {
-                        errors.ok_or_add(
-                            AttributeValidator::parse_attribute(attr).map(|a| (k.clone(), a)),
-                        )
-                    })
-                    .collect();
-
-                Some(TopLevelNode::ComponentDefinition(ComponentDefinition {
-                    tag_name: tag_name.clone(),
-                    closing_tag_name: tree.closing_tag_name,
-                    params,
-                    is_entrypoint,
-                    as_attr,
-                    attributes,
-                    range: tree.range.clone(),
-                    children,
-                    has_slot,
-                }))
             }
-        },
+        }
     }
 }
 
@@ -342,10 +391,22 @@ fn construct_node(
         .collect();
 
     match tree.token {
-        Token::Comment { .. } => None,
-        Token::ClosingTag { .. } => unreachable!(), // ClosingTags are not present in the token tree
-        Token::Doctype { range } => Some(HopNode::Doctype { range }),
-        Token::Text { range: value, .. } => Some(HopNode::Text { range: value }),
+        Token::Comment { .. } => {
+            // Skip comments
+            None
+        }
+        Token::ClosingTag { .. } => {
+            // ClosingTags are not present in the token tree
+            unreachable!()
+        }
+        Token::Doctype { range } => {
+            //
+            Some(HopNode::Doctype { range })
+        }
+        Token::Text { range: value, .. } => {
+            //
+            Some(HopNode::Text { range: value })
+        }
         Token::TextExpression {
             expression: expr, ..
         } => {
@@ -365,162 +426,166 @@ fn construct_node(
             attributes,
             range: opening_tag_range,
             ..
-        } => match tag_name.as_str() {
-            // <if {...}>
-            "if" => {
-                // TODO: Check for unrecognized attributes
-                let expr = expression.ok_or_else(|| {
-                    ParseError::new(
-                        "Missing expression in <if> tag".to_string(),
-                        opening_tag_range.clone(),
-                    )
-                });
-                let condition = errors.ok_or_add(
-                    expr.and_then(|e| DopParser::from(e).parse_expr().map_err(|err| err.into())),
-                )?;
-                Some(HopNode::If {
-                    condition,
-                    range: tree.range.clone(),
-                    children,
-                })
-            }
-
-            // <for {...}>
-            "for" => {
-                // TODO: Check for unrecognized attributes
-                let parse_result = expression
-                    .ok_or_else(|| {
+        } => {
+            let mut validator = AttributeValidator::new(attributes, tag_name.clone());
+            //
+            match tag_name.as_str() {
+                // <if {...}>
+                "if" => {
+                    errors.extend(validator.disallow_unrecognized());
+                    let expr = expression.ok_or_else(|| {
                         ParseError::new(
-                            "Missing loop generator expression in <for> tag".to_string(),
+                            "Missing expression in <if> tag".to_string(),
                             opening_tag_range.clone(),
                         )
+                    });
+                    let condition =
+                        errors.ok_or_add(expr.and_then(|e| {
+                            DopParser::from(e).parse_expr().map_err(|err| err.into())
+                        }))?;
+                    Some(HopNode::If {
+                        condition,
+                        range: tree.range.clone(),
+                        children,
                     })
-                    .and_then(|e| {
-                        DopParser::from(e.clone())
-                            .parse_loop_header()
-                            .map_err(|err| err.into())
-                    });
-                let Some((var_name, array_expr)) = errors.ok_or_add(parse_result) else {
-                    return Some(HopNode::Placeholder {
+                }
+
+                // <for {...}>
+                "for" => {
+                    errors.extend(validator.disallow_unrecognized());
+                    let parse_result = expression
+                        .ok_or_else(|| {
+                            ParseError::new(
+                                "Missing loop generator expression in <for> tag".to_string(),
+                                opening_tag_range.clone(),
+                            )
+                        })
+                        .and_then(|e| {
+                            DopParser::from(e.clone())
+                                .parse_loop_header()
+                                .map_err(|err| err.into())
+                        });
+                    let Some((var_name, array_expr)) = errors.ok_or_add(parse_result) else {
+                        return Some(HopNode::Placeholder {
+                            range: tree.range.clone(),
+                            children,
+                        });
+                    };
+                    Some(HopNode::For {
+                        var_name,
+                        array_expr,
                         range: tree.range.clone(),
                         children,
-                    });
-                };
-                Some(HopNode::For {
-                    var_name,
-                    array_expr,
-                    range: tree.range.clone(),
-                    children,
-                })
-            }
+                    })
+                }
 
-            // <slot-default>
-            "slot-default" => Some(HopNode::SlotDefinition {
-                range: tree.range.clone(),
-            }),
+                // <slot-default>
+                "slot-default" => {
+                    errors.extend(validator.disallow_unrecognized());
+                    Some(HopNode::SlotDefinition {
+                        range: tree.range.clone(),
+                    })
+                }
 
-            // <hop-x-exec>
-            "hop-x-exec" => {
-                let validator = AttributeValidator::new(&attributes, &tag_name);
-                errors.extend(validator.check_unrecognized(&["cmd"]));
-                let Some(cmd_attr) = errors.ok_or_add(validator.get_static("cmd")) else {
-                    return Some(HopNode::Placeholder {
+                // <hop-x-exec>
+                "hop-x-exec" => {
+                    let Some(cmd_attr) = errors.ok_or_add(validator.require_static("cmd")) else {
+                        return Some(HopNode::Placeholder {
+                            range: tree.range.clone(),
+                            children,
+                        });
+                    };
+                    errors.extend(validator.disallow_unrecognized());
+                    Some(HopNode::XExec {
+                        cmd_attr,
                         range: tree.range.clone(),
                         children,
-                    });
-                };
-                Some(HopNode::XExec {
-                    cmd_attr,
-                    range: tree.range.clone(),
-                    children,
-                })
-            }
+                    })
+                }
 
-            // <hop-x-raw>
-            "hop-x-raw" => Some(HopNode::XRaw {
-                trim: attributes.contains_key("trim"),
-                range: tree.range.clone(),
-                children,
-            }),
+                // <hop-x-raw>
+                "hop-x-raw" => {
+                    let trim = errors
+                        .ok_or_add(validator.allow_boolean("trim"))
+                        .is_some_and(|v| v);
+                    errors.extend(validator.disallow_unrecognized());
+                    Some(HopNode::XRaw {
+                        trim,
+                        range: tree.range.clone(),
+                        children,
+                    })
+                }
 
-            name if name.starts_with("hop-") => {
-                errors.push(ParseError::UnrecognizedHopTag {
-                    tag: tag_name.to_string_span(),
-                    range: tag_name.clone(),
-                });
-                Some(HopNode::Placeholder {
-                    range: tree.range.clone(),
-                    children: vec![],
-                })
-            }
-
-            name if name.contains('-') => {
-                if !is_valid_component_name(tag_name.as_str()) {
-                    errors.push(ParseError::InvalidComponentName {
-                        tag_name: tag_name.to_string_span(),
+                name if name.starts_with("hop-") => {
+                    errors.push(ParseError::UnrecognizedHopTag {
+                        tag: tag_name.to_string_span(),
                         range: tag_name.clone(),
                     });
-                }
-
-                let args = expression.as_ref().and_then(|expr| {
-                    errors.ok_or_add(
-                        DopParser::from(expr.clone())
-                            .parse_arguments()
-                            .map(|named_args| (named_args, expr.clone()))
-                            .map_err(|err| err.into()),
-                    )
-                });
-
-                // If there was a parse error for arguments, return early with a placeholder node
-                if expression.is_some() && args.is_none() {
-                    return Some(HopNode::Placeholder {
+                    Some(HopNode::Placeholder {
                         range: tree.range.clone(),
                         children: vec![],
-                    });
+                    })
                 }
 
-                let definition_module = if defined_components.contains(tag_name.as_str()) {
-                    Some(module_name.clone())
-                } else {
-                    imported_components.get(tag_name.as_str()).cloned()
-                };
+                // <component-reference>
+                name if name.contains('-') => {
+                    if !is_valid_component_name(tag_name.as_str()) {
+                        errors.push(ParseError::InvalidComponentName {
+                            tag_name: tag_name.to_string_span(),
+                            range: tag_name.clone(),
+                        });
+                    }
 
-                let attributes = attributes
-                    .into_iter()
-                    .filter_map(|(k, attr)| {
-                        errors.ok_or_add(AttributeValidator::parse_attribute(&attr).map(|a| (k, a)))
+                    let args = expression.as_ref().and_then(|expr| {
+                        errors.ok_or_add(
+                            DopParser::from(expr.clone())
+                                .parse_arguments()
+                                .map(|named_args| (named_args, expr.clone()))
+                                .map_err(|err| err.into()),
+                        )
+                    });
+
+                    let definition_module = if defined_components.contains(tag_name.as_str()) {
+                        Some(module_name.clone())
+                    } else {
+                        imported_components.get(tag_name.as_str()).cloned()
+                    };
+
+                    let attributes = validator
+                        .get_unrecognized()
+                        .filter_map(|attr| errors.ok_or_add(attr))
+                        .map(|attr| (attr.name.to_string_span(), attr))
+                        .collect();
+
+                    Some(HopNode::ComponentReference {
+                        tag_name,
+                        closing_tag_name: tree.closing_tag_name,
+                        definition_module,
+                        args,
+                        attributes,
+                        range: tree.range,
+                        children,
                     })
-                    .collect();
+                }
 
-                Some(HopNode::ComponentReference {
-                    tag_name,
-                    closing_tag_name: tree.closing_tag_name,
-                    definition_module,
-                    args,
-                    attributes,
-                    range: tree.range.clone(),
-                    children,
-                })
-            }
+                _ => {
+                    // Default case: treat as HTML
+                    let attributes = validator
+                        .get_unrecognized()
+                        .filter_map(|attr| errors.ok_or_add(attr))
+                        .map(|attr| (attr.name.to_string_span(), attr))
+                        .collect();
 
-            _ => {
-                // Default case: treat as HTML
-                let attributes = attributes
-                    .into_iter()
-                    .filter_map(|(k, attr)| {
-                        errors.ok_or_add(AttributeValidator::parse_attribute(&attr).map(|a| (k, a)))
+                    Some(HopNode::Html {
+                        tag_name,
+                        closing_tag_name: tree.closing_tag_name,
+                        attributes,
+                        range: tree.range,
+                        children,
                     })
-                    .collect();
-
-                Some(HopNode::Html {
-                    tag_name,
-                    closing_tag_name: tree.closing_tag_name,
-                    attributes,
-                    range: tree.range.clone(),
-                    children,
-                })
+                }
             }
-        },
+        }
     }
 }
 

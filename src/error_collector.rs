@@ -7,9 +7,7 @@ pub struct ErrorCollector<E> {
 
 impl<E> ErrorCollector<E> {
     pub fn new() -> Self {
-        Self {
-            errors: Vec::new(),
-        }
+        Self { errors: Vec::new() }
     }
 
     pub fn push(&mut self, error: E) {
