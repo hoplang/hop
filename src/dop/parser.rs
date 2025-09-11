@@ -5,9 +5,11 @@ use std::iter::Peekable;
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged as _};
 use crate::dop::DopType;
 use crate::dop::ast::{BinaryOp, DopExpr, UnaryOp};
+use crate::dop::dop_token::DopToken;
 use crate::dop::parse_error::ParseError;
-use crate::dop::tokenizer::{DopToken, DopTokenizer};
-use crate::dop::typechecker::RangedDopType;
+use crate::dop::tokenizer::DopTokenizer;
+
+use super::dop_type::RangedDopType;
 
 /// A DopVarName represents a validated variable name in dop.
 #[derive(Debug, Clone)]

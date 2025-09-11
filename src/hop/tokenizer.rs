@@ -6,8 +6,7 @@ use std::mem;
 use itertools::Itertools as _;
 
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged, StringSpan};
-use crate::dop::DopTokenizer;
-use crate::dop::tokenizer::DopToken;
+use crate::dop::{DopToken, DopTokenizer};
 use crate::hop::parse_error::ParseError;
 
 #[derive(Debug, Clone)]

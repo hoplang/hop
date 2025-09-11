@@ -1,6 +1,7 @@
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
-use crate::dop::tokenizer::DopToken;
 use thiserror::Error;
+
+use super::dop_token::DopToken;
 
 #[derive(Error, Debug, Clone)]
 pub enum ParseError {
