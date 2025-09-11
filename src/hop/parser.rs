@@ -90,6 +90,12 @@ fn parse_import_name_from_attr(
     }
 }
 
+enum TopLevelNode {
+    Import(Import),
+    Render(Render),
+    ComponentDefinition(ComponentDefinition),
+}
+
 pub fn parse(
     module_name: ModuleName,
     tokenizer: Tokenizer,
@@ -104,9 +110,8 @@ pub fn parse(
     let mut defined_components = HashSet::new();
     let mut imported_components = HashMap::new();
 
-    for tree in trees {
-        let children: Vec<HopNode> = tree
-            .children
+    for mut tree in trees {
+        let children: Vec<HopNode> = std::mem::take(&mut tree.children)
             .into_iter()
             .filter_map(|child| {
                 construct_node(
@@ -119,172 +124,195 @@ pub fn parse(
             })
             .collect();
 
-        match &tree.token {
-            Token::Text { .. } => {}
-            Token::ClosingTag { .. } => {}
-            Token::TextExpression { .. } => {}
-            Token::Comment { .. } => {}
-            Token::Doctype { .. } => {}
-            Token::OpeningTag {
-                tag_name,
-                attributes,
-                expression,
-                ..
-            } => match tag_name.as_str() {
-                "import" => {
-                    for attr in attributes.values() {
-                        match attr.name.as_str() {
-                            "component" | "from" => {}
-                            _ => {
-                                // TODO: Check for unrecognized attributes
-                            }
-                        }
-                    }
-
-                    let (from_attr, module_name) = match get_attribute(tag_name, "from", attributes)
-                        .and_then(parse_attribute_as_static)
-                        .and_then(parse_import_name_from_attr)
-                    {
-                        Ok(attr) => attr,
-                        Err(err) => {
-                            errors.push(err);
-                            continue;
-                        }
-                    };
-
-                    let component_attr = match get_attribute(tag_name, "component", attributes)
-                        .and_then(parse_attribute_as_static)
-                        .and_then(|attr| {
-                            // Validate that component is not already imported
-                            if imported_components.contains_key(attr.value.as_str()) {
-                                return Err(ParseError::ComponentIsAlreadyDefined {
-                                    component_name: attr.value.to_string_span(),
-                                    range: attr.value.clone(),
-                                });
-                            }
-                            Ok(attr)
-                        }) {
-                        Ok(attr) => attr,
-                        Err(err) => {
-                            errors.push(err);
-                            continue;
-                        }
-                    };
-
-                    imported_components
-                        .insert(component_attr.value.to_string(), module_name.clone());
-                    imports.push(Import {
-                        component_attr,
-                        module_name,
-                        from_attr,
-                    });
-                }
-                "render" => {
-                    for attr in attributes.values() {
-                        match attr.name.as_str() {
-                            "file" => {}
-                            _ => {
-                                // TODO: Check for unrecognized attributes
-                            }
-                        }
-                    }
-
-                    match get_attribute(tag_name, "file", attributes)
-                        .and_then(parse_attribute_as_static)
-                    {
-                        Ok(file_attr) => {
-                            renders.push(Render {
-                                file_attr,
-                                range: tree.range.clone(),
-                                children,
-                            });
-                        }
-                        Err(err) => {
-                            errors.push(err);
-                        }
-                    }
-                }
-                // Treat as ComponentDefinition
-                name => {
-                    if !is_valid_component_name(name) {
-                        errors.push(ParseError::InvalidComponentName {
-                            tag_name: tag_name.to_string_span(),
-                            range: tag_name.clone(),
-                        });
-                        continue;
-                    }
-                    let params = expression.as_ref().and_then(|expr| {
-                        DopParser::from(expr.clone())
-                            .parse_parameters()
-                            .map_err(|err| errors.push(err.into()))
-                            .map(|params| (params, expr.clone()))
-                            .ok()
-                    });
-
-                    // TODO: Here we iterate over the whole subtree to check
-                    // if it contains a slot. There should be a better way
-                    // to do this.
-                    let mut has_slot = false;
-                    for child in &children {
-                        for node in child.iter_depth_first() {
-                            if let HopNode::SlotDefinition { range, .. } = node {
-                                if has_slot {
-                                    errors.push(ParseError::SlotIsAlreadyDefined {
-                                        range: range.clone(),
-                                    });
-                                }
-                                has_slot = true;
-                            }
-                        }
-                    }
-
-                    if defined_components.contains(name) || imported_components.contains_key(name) {
-                        errors.push(ParseError::ComponentIsAlreadyDefined {
-                            component_name: tag_name.to_string_span(),
-                            range: tag_name.clone(),
-                        });
-                        // intentional fall-through
-                    } else {
-                        defined_components.insert(name.to_string());
-                    }
-
-                    let is_entrypoint = attributes.contains_key("entrypoint");
-
-                    let as_attr = attributes.get("as").and_then(|attr| {
-                        parse_attribute_as_static(attr)
-                            .map_err(|err| errors.push(err))
-                            .ok()
-                    });
-
-                    let attributes = attributes
-                        .iter()
-                        .filter(|(k, _)| !matches!(k.as_str(), "as" | "entrypoint"))
-                        .filter_map(|(k, attr)| match parse_attribute(attr) {
-                            Ok(attr) => Some((k.clone(), attr)),
-                            Err(err) => {
-                                errors.push(err);
-                                None
-                            }
-                        })
-                        .collect();
-
-                    components.push(ComponentDefinition {
-                        tag_name: tag_name.clone(),
-                        closing_tag_name: tree.closing_tag_name,
-                        params,
-                        is_entrypoint,
-                        as_attr,
-                        attributes,
-                        range: tree.range.clone(),
-                        children,
-                        has_slot,
-                    });
-                }
-            },
+        if let Some(node) = parse_top_level_node(
+            tree,
+            children,
+            errors,
+            &mut defined_components,
+            &mut imported_components,
+        ) {
+            match node {
+                TopLevelNode::Import(import) => imports.push(import),
+                TopLevelNode::Render(render) => renders.push(render),
+                TopLevelNode::ComponentDefinition(component) => components.push(component),
+            }
         }
     }
 
     HopAst::new(module_name, components, imports, renders)
+}
+
+fn parse_top_level_node(
+    tree: TokenTree,
+    children: Vec<HopNode>,
+    errors: &mut Vec<ParseError>,
+    defined_components: &mut HashSet<String>,
+    imported_components: &mut HashMap<String, ModuleName>,
+) -> Option<TopLevelNode> {
+    match &tree.token {
+        Token::Text { .. } => None,
+        Token::ClosingTag { .. } => None,
+        Token::TextExpression { .. } => None,
+        Token::Comment { .. } => None,
+        Token::Doctype { .. } => None,
+        Token::OpeningTag {
+            tag_name,
+            attributes,
+            expression,
+            ..
+        } => match tag_name.as_str() {
+            "import" => {
+                for attr in attributes.values() {
+                    match attr.name.as_str() {
+                        "component" | "from" => {}
+                        _ => {
+                            // TODO: Check for unrecognized attributes
+                        }
+                    }
+                }
+
+                let (from_attr, module_name) = match get_attribute(tag_name, "from", attributes)
+                    .and_then(parse_attribute_as_static)
+                    .and_then(parse_import_name_from_attr)
+                {
+                    Ok(attr) => attr,
+                    Err(err) => {
+                        errors.push(err);
+                        return None;
+                    }
+                };
+
+                let component_attr = match get_attribute(tag_name, "component", attributes)
+                    .and_then(parse_attribute_as_static)
+                    .and_then(|attr| {
+                        // Validate that component is not already imported
+                        if imported_components.contains_key(attr.value.as_str()) {
+                            return Err(ParseError::ComponentIsAlreadyDefined {
+                                component_name: attr.value.to_string_span(),
+                                range: attr.value.clone(),
+                            });
+                        }
+                        Ok(attr)
+                    }) {
+                    Ok(attr) => attr,
+                    Err(err) => {
+                        errors.push(err);
+                        return None;
+                    }
+                };
+
+                imported_components.insert(component_attr.value.to_string(), module_name.clone());
+                Some(TopLevelNode::Import(Import {
+                    component_attr,
+                    module_name,
+                    from_attr,
+                }))
+            }
+
+            "render" => {
+                for attr in attributes.values() {
+                    match attr.name.as_str() {
+                        "file" => {}
+                        _ => {
+                            // TODO: Check for unrecognized attributes
+                        }
+                    }
+                }
+
+                let file_attr = match get_attribute(tag_name, "file", attributes)
+                    .and_then(parse_attribute_as_static)
+                {
+                    Ok(attr) => attr,
+                    Err(err) => {
+                        errors.push(err);
+                        return None;
+                    }
+                };
+
+                Some(TopLevelNode::Render(Render {
+                    file_attr,
+                    range: tree.range.clone(),
+                    children,
+                }))
+            }
+            // Treat as ComponentDefinition
+            name => {
+                if !is_valid_component_name(name) {
+                    errors.push(ParseError::InvalidComponentName {
+                        tag_name: tag_name.to_string_span(),
+                        range: tag_name.clone(),
+                    });
+                    return None;
+                }
+                let params = expression.as_ref().and_then(|expr| {
+                    DopParser::from(expr.clone())
+                        .parse_parameters()
+                        .map_err(|err| errors.push(err.into()))
+                        .map(|params| (params, expr.clone()))
+                        .ok()
+                });
+
+                // TODO: Here we iterate over the whole subtree to check
+                // if it contains a slot. There should be a better way
+                // to do this.
+                let mut has_slot = false;
+                for child in &children {
+                    for node in child.iter_depth_first() {
+                        if let HopNode::SlotDefinition { range, .. } = node {
+                            if has_slot {
+                                errors.push(ParseError::SlotIsAlreadyDefined {
+                                    range: range.clone(),
+                                });
+                            }
+                            has_slot = true;
+                        }
+                    }
+                }
+
+                if defined_components.contains(name) || imported_components.contains_key(name) {
+                    errors.push(ParseError::ComponentIsAlreadyDefined {
+                        component_name: tag_name.to_string_span(),
+                        range: tag_name.clone(),
+                    });
+                    // intentional fall-through
+                } else {
+                    defined_components.insert(name.to_string());
+                }
+
+                let is_entrypoint = attributes.contains_key("entrypoint");
+
+                let as_attr = attributes.get("as").and_then(|attr| {
+                    parse_attribute_as_static(attr)
+                        .map_err(|err| errors.push(err))
+                        .ok()
+                });
+
+                let attributes = attributes
+                    .iter()
+                    .filter(|(k, _)| !matches!(k.as_str(), "as" | "entrypoint"))
+                    .filter_map(|(k, attr)| match parse_attribute(attr) {
+                        Ok(attr) => Some((k.clone(), attr)),
+                        Err(err) => {
+                            errors.push(err);
+                            None
+                        }
+                    })
+                    .collect();
+
+                Some(TopLevelNode::ComponentDefinition(ComponentDefinition {
+                    tag_name: tag_name.clone(),
+                    closing_tag_name: tree.closing_tag_name,
+                    params,
+                    is_entrypoint,
+                    as_attr,
+                    attributes,
+                    range: tree.range.clone(),
+                    children,
+                    has_slot,
+                }))
+            }
+        },
+    }
 }
 
 fn is_valid_component_name(name: &str) -> bool {
