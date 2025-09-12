@@ -692,9 +692,7 @@ mod tests {
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("<div>")
-                    Write("Content")
-                    Write("</div>")
+                    Write("<div>Content</div>")
                   }
                 }
             "#]],
@@ -718,9 +716,7 @@ mod tests {
                   body: {
                     Let(var: show_1, value: show) {
                       If(condition: show_1) {
-                        Write("<div>")
-                        Write("Visible")
-                        Write("</div>")
+                        Write("<div>Visible</div>")
                       }
                     }
                   }
@@ -800,9 +796,7 @@ mod tests {
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("<div class=\"base\" id=\"test\">")
-                    Write("Content")
-                    Write("</div>")
+                    Write("<div class=\"base\" id=\"test\">Content</div>")
                   }
                 }
             "#]],
@@ -825,9 +819,7 @@ mod tests {
                     Let(var: cls_1, value: cls) {
                       Write("<div class=\"base\" data-value=\"")
                       WriteExpr(expr: cls_1, escape: true)
-                      Write("\">")
-                      Write("Content")
-                      Write("</div>")
+                      Write("\">Content</div>")
                     }
                   }
                 }
@@ -877,10 +869,7 @@ mod tests {
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("<!DOCTYPE html>")
-                    Write("<html>")
-                    Write("Content")
-                    Write("</html>")
+                    Write("<!DOCTYPE html><html>Content</html>")
                   }
                 }
             "#]],
@@ -901,8 +890,7 @@ mod tests {
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("<img alt=\"test\" src=\"test.jpg\">")
-                    Write("<br>")
+                    Write("<img alt=\"test\" src=\"test.jpg\"><br>")
                   }
                 }
             "#]],
@@ -925,12 +913,7 @@ mod tests {
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("<div>")
-                    Write("Before")
-                    Write("</div>")
-                    Write("<div>")
-                    Write("After")
-                    Write("</div>")
+                    Write("<div>Before</div><div>After</div>")
                   }
                 }
             "#]],
@@ -981,13 +964,7 @@ mod tests {
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("<div data-hop-id=\"test/card-comp\">")
-                    Write("<div class=\"card\">")
-                    Write("<p>")
-                    Write("Slot content")
-                    Write("</p>")
-                    Write("</div>")
-                    Write("</div>")
+                    Write("<div data-hop-id=\"test/card-comp\"><div class=\"card\"><p>Slot content</p></div></div>")
                   }
                 }
             "#]],

@@ -1,6 +1,8 @@
 mod constant_folding;
+mod write_coalescing;
 
 pub use constant_folding::ConstantFoldingPass;
+pub use write_coalescing::WriteCoalescingPass;
 
 use crate::ir::{IrModule, IrEntrypoint};
 
@@ -48,6 +50,7 @@ impl PassManager {
     pub fn default_optimization_pipeline() -> Self {
         let mut manager = Self::new();
         manager.add_pass(Box::new(ConstantFoldingPass::new()));
+        manager.add_pass(Box::new(WriteCoalescingPass::new()));
         manager
     }
 }

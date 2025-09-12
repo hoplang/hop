@@ -265,11 +265,7 @@ mod tests {
 
                 export function test_main_comp() {
                     let output = "";
-                    output += "\n                ";
-                    output += "<div>";
-                    output += "Hello World";
-                    output += "</div>";
-                    output += "\n            ";
+                    output += "\n                <div>Hello World</div>\n            ";
                     return output;
                 }
 
@@ -300,14 +296,11 @@ mod tests {
                     let output = "";
                     const name_1 = name;
                     const message_2 = message;
-                    output += "\n                ";
-                    output += "<h1>";
-                    output += "Hello ";
+                    output += "\n                <h1>Hello ";
                     output += escapeHtml(name_1);
                     output += ", ";
                     output += escapeHtml(message_2);
-                    output += "</h1>";
-                    output += "\n            ";
+                    output += "</h1>\n            ";
                     return output;
                 }
 
@@ -341,11 +334,7 @@ mod tests {
                     const show_1 = show;
                     output += "\n                ";
                     if (show_1) {
-                        output += "\n                    ";
-                        output += "<div>";
-                        output += "Visible";
-                        output += "</div>";
-                        output += "\n                ";
+                        output += "\n                    <div>Visible</div>\n                ";
                     }
                     output += "\n            ";
                     return output;
@@ -381,11 +370,9 @@ mod tests {
                     const items_1 = items;
                     output += "\n                ";
                     for (const item_2 of items_1) {
-                        output += "\n                    ";
-                        output += "<li>";
+                        output += "\n                    <li>";
                         output += escapeHtml(item_2);
-                        output += "</li>";
-                        output += "\n                ";
+                        output += "</li>\n                ";
                     }
                     output += "\n            ";
                     return output;
@@ -420,16 +407,12 @@ mod tests {
 
                 export function test_main_comp() {
                     let output = "";
-                    output += "\n                ";
-                    output += "<div data-hop-id=\"test/card-comp\">";
+                    output += "\n                <div data-hop-id=\"test/card-comp\">";
                     const title_1 = "Hello World";
-                    output += "\n                ";
-                    output += "<h2>";
+                    output += "\n                <h2>";
                     output += escapeHtml(title_1);
-                    output += "</h2>";
-                    output += "\n            ";
-                    output += "</div>";
-                    output += "\n            ";
+                    output += "</h2>\n            ";
+                    output += "</div>\n            ";
                     return output;
                 }
 
