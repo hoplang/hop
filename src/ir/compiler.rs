@@ -592,3 +592,486 @@ impl Compiler<'_> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error_collector::ErrorCollector;
+    use crate::hop::module_name::ModuleName;
+    use crate::hop::parser::parse;
+    use crate::hop::tokenizer::Tokenizer;
+    use crate::hop::typechecker::TypeChecker;
+    use expect_test::{Expect, expect};
+
+    fn compile_hop_to_ir(source: &str) -> IrModule {
+        let mut errors = ErrorCollector::new();
+        let module_name = ModuleName::new("test".to_string()).unwrap();
+        let tokenizer = Tokenizer::new(source.to_string());
+        let ast = parse(module_name.clone(), tokenizer, &mut errors);
+
+        assert!(errors.is_empty(), "Parse errors: {:?}", errors);
+
+        // Type check
+        let mut typechecker = TypeChecker::default();
+        typechecker.typecheck(&[&ast]);
+        assert!(
+            typechecker
+                .type_errors
+                .get(&module_name)
+                .unwrap()
+                .is_empty(),
+            "Type errors: {:?}",
+            typechecker.type_errors
+        );
+
+        // Compile to IR
+        let mut asts = HashMap::new();
+        asts.insert(module_name.clone(), ast);
+        Compiler::compile(&asts)
+    }
+
+    fn get_entrypoint(ir_module: &IrModule) -> &IrEntrypoint {
+        ir_module
+            .entry_points
+            .values()
+            .next()
+            .expect("Should have an entrypoint")
+    }
+
+    fn check_ir(source: &str, expected: Expect) {
+        let ir_module = compile_hop_to_ir(source);
+        let entrypoint = get_entrypoint(&ir_module);
+        expected.assert_eq(&entrypoint.to_string());
+    }
+
+    #[test]
+    fn test_compile_simple_text() {
+        check_ir(
+            r#"
+            <main-comp entrypoint>
+                Hello World
+            </main-comp>
+            "#,
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: []
+                  body: {
+                    Write("\n                Hello World\n            ")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_compile_text_expression() {
+        check_ir(
+            r#"
+            <main-comp entrypoint {name: string}>
+                Hello {name}
+            </main-comp>
+            "#,
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: ["name"]
+                  body: {
+                    Let(var: name_1, value: name) {
+                      Write("\n                Hello ")
+                      WriteExpr(expr: name_1, escape: true)
+                      Write("\n            ")
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_compile_html_element() {
+        check_ir(
+            r#"
+            <main-comp entrypoint>
+                <div>Content</div>
+            </main-comp>
+            "#,
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: []
+                  body: {
+                    Write("\n                ")
+                    Write("<div>")
+                    Write("Content")
+                    Write("</div>")
+                    Write("\n            ")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_compile_if_statement() {
+        check_ir(
+            r#"
+            <main-comp entrypoint {show: boolean}>
+                <if {show}>
+                    <div>Visible</div>
+                </if>
+            </main-comp>
+            "#,
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: ["show"]
+                  body: {
+                    Let(var: show_1, value: show) {
+                      Write("\n                ")
+                      If(condition: show_1) {
+                        Write("\n                    ")
+                        Write("<div>")
+                        Write("Visible")
+                        Write("</div>")
+                        Write("\n                ")
+                      }
+                      Write("\n            ")
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_compile_for_loop() {
+        check_ir(
+            r#"
+            <main-comp entrypoint {items: array[string]}>
+                <for {item in items}>
+                    <li>{item}</li>
+                </for>
+            </main-comp>
+            "#,
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: ["items"]
+                  body: {
+                    Let(var: items_1, value: items) {
+                      Write("\n                ")
+                      For(var: item_2, array: items_1) {
+                        Write("\n                    ")
+                        Write("<li>")
+                        WriteExpr(expr: item_2, escape: true)
+                        Write("</li>")
+                        Write("\n                ")
+                      }
+                      Write("\n            ")
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_compile_component_reference() {
+        check_ir(
+            r#"
+            <card-comp {title: string}>
+                <h2>{title}</h2>
+            </card-comp>
+            
+            <main-comp entrypoint>
+                <card-comp {title: "Hello"}/>
+            </main-comp>
+            "#,
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: []
+                  body: {
+                    Write("\n                ")
+                    Write("<div data-hop-id=\"test/card-comp\">")
+                    Let(var: title_1, value: "Hello") {
+                      Write("\n                ")
+                      Write("<h2>")
+                      WriteExpr(expr: title_1, escape: true)
+                      Write("</h2>")
+                      Write("\n            ")
+                    }
+                    Write("</div>")
+                    Write("\n            ")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_compile_attributes_static() {
+        check_ir(
+            r#"
+            <main-comp entrypoint>
+                <div class="base" id="test">Content</div>
+            </main-comp>
+            "#,
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: []
+                  body: {
+                    Write("\n                ")
+                    Write("<div class=\"base\" id=\"test\">")
+                    Write("Content")
+                    Write("</div>")
+                    Write("\n            ")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_compile_attributes_dynamic() {
+        check_ir(
+            r#"
+            <main-comp entrypoint {cls: string}>
+                <div class="base" data-value={cls}>Content</div>
+            </main-comp>
+            "#,
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: ["cls"]
+                  body: {
+                    Let(var: cls_1, value: cls) {
+                      Write("\n                ")
+                      Write("<div class=\"base\" data-value=\"")
+                      WriteExpr(expr: cls_1, escape: true)
+                      Write("\">")
+                      Write("Content")
+                      Write("</div>")
+                      Write("\n            ")
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_alpha_renaming_nested_scopes() {
+        check_ir(
+            r#"
+            <main-comp entrypoint {y: string}>
+                <for {x in ["a", "b"]}>
+                    {x}
+                </for>
+                {y}
+            </main-comp>
+            "#,
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: ["y"]
+                  body: {
+                    Let(var: y_1, value: y) {
+                      Write("\n                ")
+                      For(var: x_2, array: ["a", "b"]) {
+                        Write("\n                    ")
+                        WriteExpr(expr: x_2, escape: true)
+                        Write("\n                ")
+                      }
+                      Write("\n                ")
+                      WriteExpr(expr: y_1, escape: true)
+                      Write("\n            ")
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_doctype_compilation() {
+        check_ir(
+            r#"
+            <main-comp entrypoint>
+                <!doctype html>
+                <html>Content</html>
+            </main-comp>
+            "#,
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: []
+                  body: {
+                    Write("\n                ")
+                    Write("<!DOCTYPE html>")
+                    Write("\n                ")
+                    Write("<html>")
+                    Write("Content")
+                    Write("</html>")
+                    Write("\n            ")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_void_elements() {
+        check_ir(
+            r#"
+            <main-comp entrypoint>
+                <img src="test.jpg" alt="test">
+                <br>
+            </main-comp>
+            "#,
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: []
+                  body: {
+                    Write("\n                ")
+                    Write("<img alt=\"test\" src=\"test.jpg\">")
+                    Write("\n                ")
+                    Write("<br>")
+                    Write("\n            ")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_skip_style_and_script_tags() {
+        check_ir(
+            r#"
+            <main-comp entrypoint>
+                <div>Before</div>
+                <style>body { color: red; }</style>
+                <script>console.log("test");</script>
+                <div>After</div>
+            </main-comp>
+            "#,
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: []
+                  body: {
+                    Write("\n                ")
+                    Write("<div>")
+                    Write("Before")
+                    Write("</div>")
+                    Write("\n                ")
+                    Write("\n                ")
+                    Write("\n                ")
+                    Write("<div>")
+                    Write("After")
+                    Write("</div>")
+                    Write("\n            ")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_property_access_renaming() {
+        check_ir(
+            r#"
+            <main-comp entrypoint {user: {name: string}}>
+                Hello {user.name}
+            </main-comp>
+            "#,
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: ["user"]
+                  body: {
+                    Let(var: user_1, value: user) {
+                      Write("\n                Hello ")
+                      WriteExpr(expr: user_1.name, escape: true)
+                      Write("\n            ")
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_component_with_slot() {
+        check_ir(
+            r#"
+            <card-comp>
+                <div class="card">
+                    <slot-default/>
+                </div>
+            </card-comp>
+            
+            <main-comp entrypoint>
+                <card-comp>
+                    <p>Slot content</p>
+                </card-comp>
+            </main-comp>
+            "#,
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: []
+                  body: {
+                    Write("\n                ")
+                    Write("<div data-hop-id=\"test/card-comp\">")
+                    Write("\n                ")
+                    Write("<div class=\"card\">")
+                    Write("\n                    ")
+                    Write("\n                    ")
+                    Write("<p>")
+                    Write("Slot content")
+                    Write("</p>")
+                    Write("\n                ")
+                    Write("\n                ")
+                    Write("</div>")
+                    Write("\n            ")
+                    Write("</div>")
+                    Write("\n            ")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_nested_components_with_parameters() {
+        check_ir(
+            r#"
+            <inner-comp {msg: string}>
+                <span>{msg}</span>
+            </inner-comp>
+            
+            <outer-comp {text: string}>
+                <inner-comp {msg: text}/>
+            </outer-comp>
+            
+            <main-comp entrypoint>
+                <outer-comp {text: "Hello"}/>
+            </main-comp>
+            "#,
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: []
+                  body: {
+                    Write("\n                ")
+                    Write("<div data-hop-id=\"test/outer-comp\">")
+                    Let(var: text_1, value: "Hello") {
+                      Write("\n                ")
+                      Write("<div data-hop-id=\"test/inner-comp\">")
+                      Let(var: msg_2, value: text_1) {
+                        Write("\n                ")
+                        Write("<span>")
+                        WriteExpr(expr: msg_2, escape: true)
+                        Write("</span>")
+                        Write("\n            ")
+                      }
+                      Write("</div>")
+                      Write("\n            ")
+                    }
+                    Write("</div>")
+                    Write("\n            ")
+                  }
+                }
+            "#]],
+        );
+    }
+}

@@ -7,6 +7,7 @@ pub use js_compiler::JsCompiler;
 
 use crate::dop::Expr;
 use std::collections::HashMap;
+use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum IrNode {
@@ -53,5 +54,103 @@ impl IrModule {
         Self {
             entry_points: HashMap::new(),
         }
+    }
+}
+
+impl fmt::Display for IrNode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fn fmt_nodes(nodes: &[IrNode], f: &mut fmt::Formatter<'_>, indent: usize) -> fmt::Result {
+            for node in nodes {
+                for _ in 0..indent {
+                    write!(f, "  ")?;
+                }
+                match node {
+                    IrNode::Write(s) => writeln!(f, "Write({:?})", s)?,
+                    IrNode::WriteExpr { expr, escape } => {
+                        writeln!(f, "WriteExpr(expr: {}, escape: {})", expr, escape)?
+                    }
+                    IrNode::If { condition, body } => {
+                        writeln!(f, "If(condition: {}) {{", condition)?;
+                        fmt_nodes(body, f, indent + 1)?;
+                        for _ in 0..indent {
+                            write!(f, "  ")?;
+                        }
+                        writeln!(f, "}}")?;
+                    }
+                    IrNode::For { var, array, body } => {
+                        writeln!(f, "For(var: {}, array: {}) {{", var, array)?;
+                        fmt_nodes(body, f, indent + 1)?;
+                        for _ in 0..indent {
+                            write!(f, "  ")?;
+                        }
+                        writeln!(f, "}}")?;
+                    }
+                    IrNode::Let { var, value, body } => {
+                        writeln!(f, "Let(var: {}, value: {}) {{", var, value)?;
+                        fmt_nodes(body, f, indent + 1)?;
+                        for _ in 0..indent {
+                            write!(f, "  ")?;
+                        }
+                        writeln!(f, "}}")?;
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        fmt_nodes(&[self.clone()], f, 0)?;
+        Ok(())
+    }
+}
+
+impl fmt::Display for IrEntrypoint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "IrEntrypoint {{")?;
+        writeln!(f, "  parameters: {:?}", self.parameters)?;
+        writeln!(f, "  body: {{")?;
+        
+        fn fmt_nodes(nodes: &[IrNode], f: &mut fmt::Formatter<'_>, indent: usize) -> fmt::Result {
+            for node in nodes {
+                for _ in 0..indent {
+                    write!(f, "  ")?;
+                }
+                match node {
+                    IrNode::Write(s) => writeln!(f, "Write({:?})", s)?,
+                    IrNode::WriteExpr { expr, escape } => {
+                        writeln!(f, "WriteExpr(expr: {}, escape: {})", expr, escape)?
+                    }
+                    IrNode::If { condition, body } => {
+                        writeln!(f, "If(condition: {}) {{", condition)?;
+                        fmt_nodes(body, f, indent + 1)?;
+                        for _ in 0..indent {
+                            write!(f, "  ")?;
+                        }
+                        writeln!(f, "}}")?;
+                    }
+                    IrNode::For { var, array, body } => {
+                        writeln!(f, "For(var: {}, array: {}) {{", var, array)?;
+                        fmt_nodes(body, f, indent + 1)?;
+                        for _ in 0..indent {
+                            write!(f, "  ")?;
+                        }
+                        writeln!(f, "}}")?;
+                    }
+                    IrNode::Let { var, value, body } => {
+                        writeln!(f, "Let(var: {}, value: {}) {{", var, value)?;
+                        fmt_nodes(body, f, indent + 1)?;
+                        for _ in 0..indent {
+                            write!(f, "  ")?;
+                        }
+                        writeln!(f, "}}")?;
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        fmt_nodes(&self.body, f, 2)?;
+        writeln!(f, "  }}")?;
+        writeln!(f, "}}")?;
+        Ok(())
     }
 }
