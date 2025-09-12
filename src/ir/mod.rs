@@ -1,6 +1,7 @@
 mod compiler;
 mod evaluator;
 mod js_compiler;
+pub mod passes;
 
 pub use compiler::Compiler;
 pub use js_compiler::JsCompiler;
@@ -9,7 +10,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 /// IR-specific expression type, simplified from dop::Expr
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum IrExpr {
     /// Variable reference
     Variable(String),
@@ -50,18 +51,18 @@ pub enum IrExpr {
 }
 
 /// Binary operators in IR
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
     Equal,
 }
 
 /// Unary operators in IR
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOp {
     Not,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum IrNode {
     /// Output a pre-computed string
     Write(String),
@@ -87,7 +88,7 @@ pub enum IrNode {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct IrEntrypoint {
     /// Original parameter names (for function signature)
     pub parameters: Vec<String>,

@@ -4,6 +4,7 @@ use crate::dop::{self, Argument, Expr};
 use crate::hop::ast::{Ast, Attribute, AttributeValue, ComponentDefinition, Node};
 use crate::hop::module_name::ModuleName;
 use crate::ir::{BinaryOp, IrEntrypoint, IrExpr, IrModule, IrNode, UnaryOp};
+use crate::ir::passes::PassManager;
 use std::collections::{BTreeMap, HashMap};
 
 pub struct Compiler<'a> {
@@ -32,6 +33,10 @@ impl Compiler<'_> {
                 }
             }
         }
+
+        // Run optimization passes
+        let mut pass_manager = PassManager::default_optimization_pipeline();
+        pass_manager.run(&mut compiler.ir_module);
 
         compiler.ir_module
     }
