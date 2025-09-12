@@ -3,8 +3,8 @@ use crate::document::document_cursor::{DocumentRange, StringSpan};
 use crate::dop::{self, Argument, Expr};
 use crate::hop::ast::{Ast, Attribute, AttributeValue, ComponentDefinition, Node};
 use crate::hop::module_name::ModuleName;
-use crate::ir::{BinaryOp, IrEntrypoint, IrExpr, IrModule, IrNode, UnaryOp};
 use crate::ir::passes::PassManager;
+use crate::ir::{BinaryOp, IrEntrypoint, IrExpr, IrModule, IrNode, UnaryOp};
 use std::collections::{BTreeMap, HashMap};
 
 pub struct Compiler<'a> {
@@ -538,13 +538,18 @@ impl Compiler<'_> {
                 let renamed = self.lookup_var(value.as_str());
                 IrExpr::Variable(renamed)
             }
-            Expr::PropertyAccess { object, property, .. } => {
-                IrExpr::PropertyAccess {
-                    object: Box::new(self.rename_expr(object)),
-                    property: property.as_str().to_string(),
-                }
-            }
-            Expr::BinaryOp { left, operator, right, .. } => {
+            Expr::PropertyAccess {
+                object, property, ..
+            } => IrExpr::PropertyAccess {
+                object: Box::new(self.rename_expr(object)),
+                property: property.as_str().to_string(),
+            },
+            Expr::BinaryOp {
+                left,
+                operator,
+                right,
+                ..
+            } => {
                 let ir_op = match operator {
                     dop::ast::BinaryOp::Equal => BinaryOp::Equal,
                 };
@@ -554,7 +559,9 @@ impl Compiler<'_> {
                     right: Box::new(self.rename_expr(right)),
                 }
             }
-            Expr::UnaryOp { operator, operand, .. } => {
+            Expr::UnaryOp {
+                operator, operand, ..
+            } => {
                 let ir_op = match operator {
                     dop::ast::UnaryOp::Not => UnaryOp::Not,
                 };
@@ -566,20 +573,14 @@ impl Compiler<'_> {
             Expr::ArrayLiteral { elements, .. } => {
                 IrExpr::ArrayLiteral(elements.iter().map(|e| self.rename_expr(e)).collect())
             }
-            Expr::ObjectLiteral { properties, .. } => {
-                IrExpr::ObjectLiteral(
-                    properties
-                        .iter()
-                        .map(|(k, v)| (k.as_str().to_string(), self.rename_expr(v)))
-                        .collect()
-                )
-            }
-            Expr::StringLiteral { value, .. } => {
-                IrExpr::StringLiteral(value.to_string())
-            }
-            Expr::BooleanLiteral { value, .. } => {
-                IrExpr::BooleanLiteral(*value)
-            }
+            Expr::ObjectLiteral { properties, .. } => IrExpr::ObjectLiteral(
+                properties
+                    .iter()
+                    .map(|(k, v)| (k.as_str().to_string(), self.rename_expr(v)))
+                    .collect(),
+            ),
+            Expr::StringLiteral { value, .. } => IrExpr::StringLiteral(value.to_string()),
+            Expr::BooleanLiteral { value, .. } => IrExpr::BooleanLiteral(*value),
             Expr::NumberLiteral { value, .. } => {
                 IrExpr::NumberLiteral(value.as_f64().unwrap_or(0.0))
             }
@@ -641,16 +642,12 @@ mod tests {
     #[test]
     fn test_compile_simple_text() {
         check_ir(
-            r#"
-            <main-comp entrypoint>
-                Hello World
-            </main-comp>
-            "#,
+            &["<main-comp entrypoint>", "Hello World", "</main-comp>"].join(""),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("\n                Hello World\n            ")
+                    Write("Hello World")
                   }
                 }
             "#]],
@@ -660,19 +657,19 @@ mod tests {
     #[test]
     fn test_compile_text_expression() {
         check_ir(
-            r#"
-            <main-comp entrypoint {name: string}>
-                Hello {name}
-            </main-comp>
-            "#,
+            &[
+                "<main-comp entrypoint {name: string}>",
+                "Hello {name}",
+                "</main-comp>",
+            ]
+            .join(""),
             expect![[r#"
                 IrEntrypoint {
                   parameters: ["name"]
                   body: {
                     Let(var: name_1, value: name) {
-                      Write("\n                Hello ")
+                      Write("Hello ")
                       WriteExpr(expr: name_1, escape: true)
-                      Write("\n            ")
                     }
                   }
                 }
@@ -683,20 +680,21 @@ mod tests {
     #[test]
     fn test_compile_html_element() {
         check_ir(
-            r#"
-            <main-comp entrypoint>
-                <div>Content</div>
-            </main-comp>
-            "#,
+            &[
+                "<main-comp entrypoint>",
+                "<div>",
+                "Content",
+                "</div>",
+                "</main-comp>",
+            ]
+            .join(""),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("\n                ")
                     Write("<div>")
                     Write("Content")
                     Write("</div>")
-                    Write("\n            ")
                   }
                 }
             "#]],
@@ -706,27 +704,24 @@ mod tests {
     #[test]
     fn test_compile_if_statement() {
         check_ir(
-            r#"
-            <main-comp entrypoint {show: boolean}>
-                <if {show}>
-                    <div>Visible</div>
-                </if>
-            </main-comp>
-            "#,
+            &[
+                "<main-comp entrypoint {show: boolean}>",
+                "<if {show}>",
+                "<div>Visible</div>",
+                "</if>",
+                "</main-comp>",
+            ]
+            .join(""),
             expect![[r#"
                 IrEntrypoint {
                   parameters: ["show"]
                   body: {
                     Let(var: show_1, value: show) {
-                      Write("\n                ")
                       If(condition: show_1) {
-                        Write("\n                    ")
                         Write("<div>")
                         Write("Visible")
                         Write("</div>")
-                        Write("\n                ")
                       }
-                      Write("\n            ")
                     }
                   }
                 }
@@ -737,27 +732,24 @@ mod tests {
     #[test]
     fn test_compile_for_loop() {
         check_ir(
-            r#"
-            <main-comp entrypoint {items: array[string]}>
-                <for {item in items}>
-                    <li>{item}</li>
-                </for>
-            </main-comp>
-            "#,
+            &[
+                "<main-comp entrypoint {items: array[string]}>",
+                "<for {item in items}>",
+                "<li>{item}</li>",
+                "</for>",
+                "</main-comp>",
+            ]
+            .join(""),
             expect![[r#"
                 IrEntrypoint {
                   parameters: ["items"]
                   body: {
                     Let(var: items_1, value: items) {
-                      Write("\n                ")
                       For(var: item_2, array: items_1) {
-                        Write("\n                    ")
                         Write("<li>")
                         WriteExpr(expr: item_2, escape: true)
                         Write("</li>")
-                        Write("\n                ")
                       }
-                      Write("\n            ")
                     }
                   }
                 }
@@ -768,30 +760,27 @@ mod tests {
     #[test]
     fn test_compile_component_reference() {
         check_ir(
-            r#"
-            <card-comp {title: string}>
-                <h2>{title}</h2>
-            </card-comp>
-            
-            <main-comp entrypoint>
-                <card-comp {title: "Hello"}/>
-            </main-comp>
-            "#,
+            &[
+                "<card-comp {title: string}>",
+                "<h2>{title}</h2>",
+                "</card-comp>",
+                "",
+                "<main-comp entrypoint>",
+                "<card-comp {title: \"Hello\"}/>",
+                "</main-comp>",
+            ]
+            .join(""),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("\n                ")
                     Write("<div data-hop-id=\"test/card-comp\">")
                     Let(var: title_1, value: "Hello") {
-                      Write("\n                ")
                       Write("<h2>")
                       WriteExpr(expr: title_1, escape: true)
                       Write("</h2>")
-                      Write("\n            ")
                     }
                     Write("</div>")
-                    Write("\n            ")
                   }
                 }
             "#]],
@@ -801,20 +790,19 @@ mod tests {
     #[test]
     fn test_compile_attributes_static() {
         check_ir(
-            r#"
-            <main-comp entrypoint>
-                <div class="base" id="test">Content</div>
-            </main-comp>
-            "#,
+            &[
+                "<main-comp entrypoint>",
+                "<div class=\"base\" id=\"test\">Content</div>",
+                "</main-comp>",
+            ]
+            .join(""),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("\n                ")
                     Write("<div class=\"base\" id=\"test\">")
                     Write("Content")
                     Write("</div>")
-                    Write("\n            ")
                   }
                 }
             "#]],
@@ -824,23 +812,22 @@ mod tests {
     #[test]
     fn test_compile_attributes_dynamic() {
         check_ir(
-            r#"
-            <main-comp entrypoint {cls: string}>
-                <div class="base" data-value={cls}>Content</div>
-            </main-comp>
-            "#,
+            &[
+                "<main-comp entrypoint {cls: string}>",
+                "<div class=\"base\" data-value={cls}>Content</div>",
+                "</main-comp>",
+            ]
+            .join(""),
             expect![[r#"
                 IrEntrypoint {
                   parameters: ["cls"]
                   body: {
                     Let(var: cls_1, value: cls) {
-                      Write("\n                ")
                       Write("<div class=\"base\" data-value=\"")
                       WriteExpr(expr: cls_1, escape: true)
                       Write("\">")
                       Write("Content")
                       Write("</div>")
-                      Write("\n            ")
                     }
                   }
                 }
@@ -851,28 +838,24 @@ mod tests {
     #[test]
     fn test_alpha_renaming_nested_scopes() {
         check_ir(
-            r#"
-            <main-comp entrypoint {y: string}>
-                <for {x in ["a", "b"]}>
-                    {x}
-                </for>
-                {y}
-            </main-comp>
-            "#,
+            &[
+                "<main-comp entrypoint {y: string}>",
+                "<for {x in [\"a\", \"b\"]}>",
+                "{x}",
+                "</for>",
+                "{y}",
+                "</main-comp>",
+            ]
+            .join(""),
             expect![[r#"
                 IrEntrypoint {
                   parameters: ["y"]
                   body: {
                     Let(var: y_1, value: y) {
-                      Write("\n                ")
                       For(var: x_2, array: ["a", "b"]) {
-                        Write("\n                    ")
                         WriteExpr(expr: x_2, escape: true)
-                        Write("\n                ")
                       }
-                      Write("\n                ")
                       WriteExpr(expr: y_1, escape: true)
-                      Write("\n            ")
                     }
                   }
                 }
@@ -883,23 +866,21 @@ mod tests {
     #[test]
     fn test_doctype_compilation() {
         check_ir(
-            r#"
-            <main-comp entrypoint>
-                <!doctype html>
-                <html>Content</html>
-            </main-comp>
-            "#,
+            &[
+                "<main-comp entrypoint>",
+                "<!doctype html>",
+                "<html>Content</html>",
+                "</main-comp>",
+            ]
+            .join(""),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("\n                ")
                     Write("<!DOCTYPE html>")
-                    Write("\n                ")
                     Write("<html>")
                     Write("Content")
                     Write("</html>")
-                    Write("\n            ")
                   }
                 }
             "#]],
@@ -909,21 +890,19 @@ mod tests {
     #[test]
     fn test_void_elements() {
         check_ir(
-            r#"
-            <main-comp entrypoint>
-                <img src="test.jpg" alt="test">
-                <br>
-            </main-comp>
-            "#,
+            &[
+                "<main-comp entrypoint>",
+                "<img src=\"test.jpg\" alt=\"test\">",
+                "<br>",
+                "</main-comp>",
+            ]
+            .join(""),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("\n                ")
                     Write("<img alt=\"test\" src=\"test.jpg\">")
-                    Write("\n                ")
                     Write("<br>")
-                    Write("\n            ")
                   }
                 }
             "#]],
@@ -933,29 +912,25 @@ mod tests {
     #[test]
     fn test_skip_style_and_script_tags() {
         check_ir(
-            r#"
-            <main-comp entrypoint>
-                <div>Before</div>
-                <style>body { color: red; }</style>
-                <script>console.log("test");</script>
-                <div>After</div>
-            </main-comp>
-            "#,
+            &[
+                "<main-comp entrypoint>",
+                "<div>Before</div>",
+                "<style>body { color: red; }</style>",
+                "<script>console.log(\"test\");</script>",
+                "<div>After</div>",
+                "</main-comp>",
+            ]
+            .join(""),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("\n                ")
                     Write("<div>")
                     Write("Before")
                     Write("</div>")
-                    Write("\n                ")
-                    Write("\n                ")
-                    Write("\n                ")
                     Write("<div>")
                     Write("After")
                     Write("</div>")
-                    Write("\n            ")
                   }
                 }
             "#]],
@@ -965,19 +940,19 @@ mod tests {
     #[test]
     fn test_property_access_renaming() {
         check_ir(
-            r#"
-            <main-comp entrypoint {user: {name: string}}>
-                Hello {user.name}
-            </main-comp>
-            "#,
+            &[
+                "<main-comp entrypoint {user: {name: string}}>",
+                "Hello {user.name}",
+                "</main-comp>",
+            ]
+            .join(""),
             expect![[r#"
                 IrEntrypoint {
                   parameters: ["user"]
                   body: {
                     Let(var: user_1, value: user) {
-                      Write("\n                Hello ")
+                      Write("Hello ")
                       WriteExpr(expr: user_1.name, escape: true)
-                      Write("\n            ")
                     }
                   }
                 }
@@ -988,38 +963,31 @@ mod tests {
     #[test]
     fn test_component_with_slot() {
         check_ir(
-            r#"
-            <card-comp>
-                <div class="card">
-                    <slot-default/>
-                </div>
-            </card-comp>
-            
-            <main-comp entrypoint>
-                <card-comp>
-                    <p>Slot content</p>
-                </card-comp>
-            </main-comp>
-            "#,
+            &[
+                "<card-comp>",
+                "<div class=\"card\">",
+                "<slot-default/>",
+                "</div>",
+                "</card-comp>",
+                "",
+                "<main-comp entrypoint>",
+                "<card-comp>",
+                "<p>Slot content</p>",
+                "</card-comp>",
+                "</main-comp>",
+            ]
+            .join(""),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("\n                ")
                     Write("<div data-hop-id=\"test/card-comp\">")
-                    Write("\n                ")
                     Write("<div class=\"card\">")
-                    Write("\n                    ")
-                    Write("\n                    ")
                     Write("<p>")
                     Write("Slot content")
                     Write("</p>")
-                    Write("\n                ")
-                    Write("\n                ")
                     Write("</div>")
-                    Write("\n            ")
                     Write("</div>")
-                    Write("\n            ")
                   }
                 }
             "#]],
@@ -1029,40 +997,35 @@ mod tests {
     #[test]
     fn test_nested_components_with_parameters() {
         check_ir(
-            r#"
-            <inner-comp {msg: string}>
-                <span>{msg}</span>
-            </inner-comp>
-            
-            <outer-comp {text: string}>
-                <inner-comp {msg: text}/>
-            </outer-comp>
-            
-            <main-comp entrypoint>
-                <outer-comp {text: "Hello"}/>
-            </main-comp>
-            "#,
+            &[
+                "<inner-comp {msg: string}>",
+                "<span>{msg}</span>",
+                "</inner-comp>",
+                "",
+                "<outer-comp {text: string}>",
+                "<inner-comp {msg: text}/>",
+                "</outer-comp>",
+                "",
+                "<main-comp entrypoint>",
+                "<outer-comp {text: \"Hello\"}/>",
+                "</main-comp>",
+            ]
+            .join(""),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("\n                ")
                     Write("<div data-hop-id=\"test/outer-comp\">")
                     Let(var: text_1, value: "Hello") {
-                      Write("\n                ")
                       Write("<div data-hop-id=\"test/inner-comp\">")
                       Let(var: msg_2, value: text_1) {
-                        Write("\n                ")
                         Write("<span>")
                         WriteExpr(expr: msg_2, escape: true)
                         Write("</span>")
-                        Write("\n            ")
                       }
                       Write("</div>")
-                      Write("\n            ")
                     }
                     Write("</div>")
-                    Write("\n            ")
                   }
                 }
             "#]],
