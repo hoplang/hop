@@ -249,11 +249,6 @@ pub enum Node {
         range: DocumentRange,
         children: Vec<Node>,
     },
-    XExec {
-        cmd_attr: StaticAttribute,
-        range: DocumentRange,
-        children: Vec<Node>,
-    },
 
     /// An XRaw node contains content that should be treated as a string and the contents
     /// are not parsed, typechecked nor evaluated.
@@ -285,7 +280,6 @@ impl Node {
             Node::For { children, .. } => children,
             Node::Html { children, .. } => children,
             Node::Placeholder { children, .. } => children,
-            Node::XExec { children, .. } => children,
             Node::XRaw { children, .. } => children,
             Node::SlotDefinition { .. } => &[],
             Node::Doctype { .. } => &[],
@@ -360,7 +354,6 @@ impl Ranged for Node {
             | Node::If { range, .. }
             | Node::For { range, .. }
             | Node::Html { range, .. }
-            | Node::XExec { range, .. }
             | Node::XRaw { range, .. }
             | Node::Placeholder { range, .. }
             | Node::Doctype { range, .. } => range,

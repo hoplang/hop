@@ -487,22 +487,6 @@ fn construct_node(
                     })
                 }
 
-                // <hop-x-exec>
-                "hop-x-exec" => {
-                    let Some(cmd_attr) = errors.ok_or_add(validator.require_static("cmd")) else {
-                        return Some(Node::Placeholder {
-                            range: tree.range.clone(),
-                            children,
-                        });
-                    };
-                    errors.extend(validator.disallow_unrecognized());
-                    Some(Node::XExec {
-                        cmd_attr,
-                        range: tree.range.clone(),
-                        children,
-                    })
-                }
-
                 // <hop-x-raw>
                 "hop-x-raw" => {
                     let trim = errors
@@ -605,7 +589,6 @@ mod tests {
             Node::For { .. } => "for",
             Node::Html { tag_name, .. } => tag_name.as_str(),
             Node::SlotDefinition { .. } => "slot-definition",
-            Node::XExec { .. } => "hop-x-exec",
             Node::XRaw { .. } => "hop-x-raw",
             Node::Text { .. } => "text",
             Node::TextExpression { .. } => "text_expression",

@@ -449,8 +449,7 @@ fn typecheck_node(
             };
         }
 
-        Node::XExec { children, .. }
-        | Node::XRaw { children, .. }
+        Node::XRaw { children, .. }
         | Node::Placeholder { children, .. } => {
             for child in children {
                 typecheck_node(child, state, env, annotations, errors);

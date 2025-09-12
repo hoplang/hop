@@ -6,8 +6,6 @@ use crate::hop::environment::Environment;
 use anyhow::Result;
 use itertools::{EitherOrBoth, Itertools as _};
 use std::collections::{BTreeMap, HashMap};
-use std::io::Write;
-use std::process::{Command, Stdio};
 
 use super::ast::AttributeValue;
 use super::module_name::ModuleName;
@@ -367,22 +365,6 @@ fn evaluate_node(
             Ok(())
         }
 
-        Node::XExec {
-            cmd_attr, children, ..
-        } => {
-            // Collect child content as stdin
-            let mut stdin_content = String::new();
-            for child in children {
-                evaluate_node(asts, hop_mode, child, slot_content, env, &mut stdin_content)?;
-            }
-
-            // Execute the command with stdin
-            let command = &cmd_attr.value;
-            let result = execute_command(command.as_str(), &stdin_content)?;
-            output.push_str(&result);
-            Ok(())
-        }
-
         Node::XRaw { trim, children, .. } => {
             // For hop-x-raw nodes, just render the inner content without the tags
             if *trim {
@@ -448,51 +430,6 @@ fn evaluate_node_entrypoint(
     }
 }
 
-/// execute_command is used by the experimental <hop-x-exec> command
-/// which allows an external program to be executed from the context of a
-/// hop program.
-fn execute_command(command: &str, stdin_content: &str) -> Result<String> {
-    // Parse the command and arguments
-    let parts: Vec<&str> = command.split_whitespace().collect();
-    if parts.is_empty() {
-        return Err(anyhow::anyhow!("Empty command"));
-    }
-
-    let cmd = parts[0];
-    let args = &parts[1..];
-
-    // Execute the command
-    let mut child = Command::new(cmd)
-        .args(args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| anyhow::anyhow!("Failed to execute command '{}': {}", command, e))?;
-
-    // Write stdin content to the child process
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(stdin_content.as_bytes())
-            .map_err(|e| anyhow::anyhow!("Failed to write to stdin: {}", e))?;
-    }
-
-    // Wait for the command to complete and get output
-    let output = child
-        .wait_with_output()
-        .map_err(|e| anyhow::anyhow!("Failed to read command output: {}", e))?;
-
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        Err(anyhow::anyhow!(
-            "Command '{}' failed with exit code {}: {}",
-            command,
-            output.status.code().unwrap_or(-1),
-            String::from_utf8_lossy(&output.stderr)
-        ))
-    }
-}
 
 /// trim_raw_string is used by the experimental <hop-x-raw> node
 /// and allows indentation to be trimmed.
