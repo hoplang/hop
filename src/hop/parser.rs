@@ -489,15 +489,14 @@ fn construct_node(
 
                 // <hop-x-raw>
                 "hop-x-raw" => {
-                    let trim = errors
-                        .ok_or_add(validator.allow_boolean("trim"))
-                        .is_some_and(|v| v);
                     errors.extend(validator.disallow_unrecognized());
-                    Some(Node::XRaw {
-                        trim,
-                        range: tree.range.clone(),
-                        children,
-                    })
+                    
+                    // XRaw should contain either no children or a single Text node
+                    match children.into_iter().next() {
+                        None => None,
+                        Some(text_node @ Node::Text { .. }) => Some(text_node),
+                        _ => panic!("hop-x-raw should contain either no children or a single Text node"),
+                    }
                 }
 
                 name if name.starts_with("hop-") => {
@@ -589,7 +588,6 @@ mod tests {
             Node::For { .. } => "for",
             Node::Html { tag_name, .. } => tag_name.as_str(),
             Node::SlotDefinition { .. } => "slot-definition",
-            Node::XRaw { .. } => "hop-x-raw",
             Node::Text { .. } => "text",
             Node::TextExpression { .. } => "text_expression",
             Node::Placeholder { .. } => "error",

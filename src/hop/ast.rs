@@ -250,16 +250,6 @@ pub enum Node {
         children: Vec<Node>,
     },
 
-    /// An XRaw node contains content that should be treated as a string and the contents
-    /// are not parsed, typechecked nor evaluated.
-    ///
-    /// The children vec should always contain a single Text node.
-    XRaw {
-        trim: bool,
-        range: DocumentRange,
-        children: Vec<Node>,
-    },
-
     /// A Placeholder node represents a node that could not be constructed (because
     /// it is missing a required attribute or similar).
     ///
@@ -280,7 +270,6 @@ impl Node {
             Node::For { children, .. } => children,
             Node::Html { children, .. } => children,
             Node::Placeholder { children, .. } => children,
-            Node::XRaw { children, .. } => children,
             Node::SlotDefinition { .. } => &[],
             Node::Doctype { .. } => &[],
             Node::Text { .. } => &[],
@@ -354,7 +343,6 @@ impl Ranged for Node {
             | Node::If { range, .. }
             | Node::For { range, .. }
             | Node::Html { range, .. }
-            | Node::XRaw { range, .. }
             | Node::Placeholder { range, .. }
             | Node::Doctype { range, .. } => range,
         }
