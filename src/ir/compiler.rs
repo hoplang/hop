@@ -85,11 +85,14 @@ impl Compiler<'_> {
         // that will be passed in from outside
         let mut result = body;
         for (original, renamed) in original_params.iter().zip(renamed_params.iter()).rev() {
-            result = vec![IrNode::Let {
-                var: renamed.clone(),
-                value: IrExpr::Variable(original.clone()),
-                body: result,
-            }];
+            // Only create a Let binding if the name was actually renamed
+            if original != renamed {
+                result = vec![IrNode::Let {
+                    var: renamed.clone(),
+                    value: IrExpr::Variable(original.clone()),
+                    body: result,
+                }];
+            }
         }
         result
     }
@@ -224,7 +227,11 @@ impl Compiler<'_> {
             if let Some(val) = &attr.value {
                 match val {
                     AttributeValue::String(s) => {
-                        output.push(IrNode::Write(format!(" {}=\"{}\"", name.as_str(), s.as_str())));
+                        output.push(IrNode::Write(format!(
+                            " {}=\"{}\"",
+                            name.as_str(),
+                            s.as_str()
+                        )));
                     }
                     AttributeValue::Expression(expr) => {
                         output.push(IrNode::Write(format!(" {}=\"", name.as_str())));
@@ -420,18 +427,17 @@ impl Compiler<'_> {
 
         output.push(IrNode::Write(">".to_string()));
 
-        // Push new scope for component parameters
-        self.push_scope();
-
-        // Build bindings for component parameters
+        // Build bindings for component parameters.
+        //
+        // We need to evaluate argument expressions in the current scope,
+        // before pushing a new scope for the component body.
         let mut param_bindings = Vec::new();
 
         if let Some((params, _)) = &component.params {
             for param in params {
                 let param_name = param.var_name.to_string();
-                let renamed = self.bind_var(&param_name);
 
-                // Find corresponding argument value
+                // Find corresponding argument value and evaluate it in current scope
                 let value = if let Some((args, _)) = args {
                     args.iter()
                         .find(|a| a.var_name.as_str() == param_name)
@@ -456,8 +462,18 @@ impl Compiler<'_> {
                     )
                 };
 
-                param_bindings.push((renamed, value));
+                param_bindings.push((param_name, value));
             }
+        }
+
+        // Now push new scope for component parameters
+        self.push_scope();
+
+        // Bind parameters in the new scope
+        let mut renamed_params = Vec::new();
+        for (param_name, _) in &param_bindings {
+            let renamed = self.bind_var(param_name);
+            renamed_params.push(renamed);
         }
 
         // Compile slot content if needed
@@ -473,9 +489,9 @@ impl Compiler<'_> {
         self.pop_scope();
 
         // Wrap body with Let bindings (in reverse order for nesting)
-        for (var, value) in param_bindings.into_iter().rev() {
+        for (renamed_var, (_, value)) in renamed_params.into_iter().zip(param_bindings).rev() {
             component_body = vec![IrNode::Let {
-                var,
+                var: renamed_var,
                 value,
                 body: component_body,
             }];
@@ -500,12 +516,30 @@ impl Compiler<'_> {
     }
 
     fn bind_var(&mut self, name: &str) -> String {
-        let renamed = self.fresh_var(name);
+        // Check if this name would shadow an existing binding
+        let needs_renaming = self.is_name_in_scope(name);
+
+        let renamed = if needs_renaming {
+            self.fresh_var(name)
+        } else {
+            name.to_string()
+        };
+
         self.scope_stack
             .last_mut()
             .expect("Scope stack should not be empty")
             .insert(name.to_string(), renamed.clone());
         renamed
+    }
+
+    fn is_name_in_scope(&self, name: &str) -> bool {
+        // Check if name exists in any parent scope (not the current one)
+        for scope in self.scope_stack.iter().rev().skip(1) {
+            if scope.contains_key(name) {
+                return true;
+            }
+        }
+        false
     }
 
     fn lookup_var(&self, name: &str) -> String {
@@ -652,10 +686,8 @@ mod tests {
                 IrEntrypoint {
                   parameters: ["name"]
                   body: {
-                    Let(var: name_1, value: name) {
-                      Write("Hello ")
-                      WriteExpr(expr: name_1, escape: true)
-                    }
+                    Write("Hello ")
+                    WriteExpr(expr: name, escape: true)
                   }
                 }
             "#]],
@@ -699,10 +731,8 @@ mod tests {
                 IrEntrypoint {
                   parameters: ["show"]
                   body: {
-                    Let(var: show_1, value: show) {
-                      If(condition: show_1) {
-                        Write("<div>Visible</div>")
-                      }
+                    If(condition: show) {
+                      Write("<div>Visible</div>")
                     }
                   }
                 }
@@ -725,12 +755,10 @@ mod tests {
                 IrEntrypoint {
                   parameters: ["items"]
                   body: {
-                    Let(var: items_1, value: items) {
-                      For(var: item_2, array: items_1) {
-                        Write("<li>")
-                        WriteExpr(expr: item_2, escape: true)
-                        Write("</li>")
-                      }
+                    For(var: item, array: items) {
+                      Write("<li>")
+                      WriteExpr(expr: item, escape: true)
+                      Write("</li>")
                     }
                   }
                 }
@@ -756,9 +784,9 @@ mod tests {
                   parameters: []
                   body: {
                     Write("<div data-hop-id=\"test/card-comp\">")
-                    Let(var: title_1, value: "Hello") {
+                    Let(var: title, value: "Hello") {
                       Write("<h2>")
-                      WriteExpr(expr: title_1, escape: true)
+                      WriteExpr(expr: title, escape: true)
                       Write("</h2>")
                     }
                     Write("</div>")
@@ -801,11 +829,9 @@ mod tests {
                 IrEntrypoint {
                   parameters: ["cls"]
                   body: {
-                    Let(var: cls_1, value: cls) {
-                      Write("<div class=\"base\" data-value=\"")
-                      WriteExpr(expr: cls_1, escape: true)
-                      Write("\">Content</div>")
-                    }
+                    Write("<div class=\"base\" data-value=\"")
+                    WriteExpr(expr: cls, escape: true)
+                    Write("\">Content</div>")
                   }
                 }
             "#]],
@@ -828,12 +854,10 @@ mod tests {
                 IrEntrypoint {
                   parameters: ["y"]
                   body: {
-                    Let(var: y_1, value: y) {
-                      For(var: x_2, array: ["a", "b"]) {
-                        WriteExpr(expr: x_2, escape: true)
-                      }
-                      WriteExpr(expr: y_1, escape: true)
+                    For(var: x, array: ["a", "b"]) {
+                      WriteExpr(expr: x, escape: true)
                     }
+                    WriteExpr(expr: y, escape: true)
                   }
                 }
             "#]],
@@ -918,10 +942,8 @@ mod tests {
                 IrEntrypoint {
                   parameters: ["user"]
                   body: {
-                    Let(var: user_1, value: user) {
-                      Write("Hello ")
-                      WriteExpr(expr: user_1.name, escape: true)
-                    }
+                    Write("Hello ")
+                    WriteExpr(expr: user.name, escape: true)
                   }
                 }
             "#]],
@@ -978,13 +1000,80 @@ mod tests {
                   parameters: []
                   body: {
                     Write("<div data-hop-id=\"test/outer-comp\">")
-                    Let(var: text_1, value: "Hello") {
+                    Let(var: text, value: "Hello") {
                       Write("<div data-hop-id=\"test/inner-comp\">")
-                      Let(var: msg_2, value: text_1) {
+                      Let(var: msg, value: text) {
                         Write("<span>")
-                        WriteExpr(expr: msg_2, escape: true)
+                        WriteExpr(expr: msg, escape: true)
                         Write("</span>")
                       }
+                      Write("</div>")
+                    }
+                    Write("</div>")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_entrypoint_passes_parameter_to_component_with_same_name() {
+        check_ir(
+            &[
+                "<child-comp {x: string}>",
+                "<div>Value: {x}</div>",
+                "</child-comp>",
+                "",
+                "<main-comp entrypoint {x: string}>",
+                "<child-comp {x: x}/>",
+                "</main-comp>",
+            ]
+            .join(""),
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: ["x"]
+                  body: {
+                    Write("<div data-hop-id=\"test/child-comp\">")
+                    Let(var: x_1, value: x) {
+                      Write("<div>Value: ")
+                      WriteExpr(expr: x_1, escape: true)
+                      Write("</div>")
+                    }
+                    Write("</div>")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_entrypoint_passes_parameter_to_component_with_same_name_twice() {
+        check_ir(
+            &[
+                "<child-comp {x: string}>",
+                "<div>Value: {x}</div>",
+                "</child-comp>",
+                "",
+                "<main-comp entrypoint {x: string}>",
+                "<child-comp {x: x}/>",
+                "<child-comp {x: x}/>",
+                "</main-comp>",
+            ]
+            .join(""),
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: ["x"]
+                  body: {
+                    Write("<div data-hop-id=\"test/child-comp\">")
+                    Let(var: x_1, value: x) {
+                      Write("<div>Value: ")
+                      WriteExpr(expr: x_1, escape: true)
+                      Write("</div>")
+                    }
+                    Write("</div><div data-hop-id=\"test/child-comp\">")
+                    Let(var: x_2, value: x) {
+                      Write("<div>Value: ")
+                      WriteExpr(expr: x_2, escape: true)
                       Write("</div>")
                     }
                     Write("</div>")

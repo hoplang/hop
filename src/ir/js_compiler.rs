@@ -294,12 +294,10 @@ mod tests {
 
                 export function test_greeting_comp({ name, message }) {
                     let output = "";
-                    const name_1 = name;
-                    const message_2 = message;
                     output += "\n                <h1>Hello ";
-                    output += escapeHtml(name_1);
+                    output += escapeHtml(name);
                     output += ", ";
-                    output += escapeHtml(message_2);
+                    output += escapeHtml(message);
                     output += "</h1>\n            ";
                     return output;
                 }
@@ -331,9 +329,8 @@ mod tests {
 
                 export function test_main_comp({ show }) {
                     let output = "";
-                    const show_1 = show;
                     output += "\n                ";
-                    if (show_1) {
+                    if (show) {
                         output += "\n                    <div>Visible</div>\n                ";
                     }
                     output += "\n            ";
@@ -367,11 +364,10 @@ mod tests {
 
                 export function test_main_comp({ items }) {
                     let output = "";
-                    const items_1 = items;
                     output += "\n                ";
-                    for (const item_2 of items_1) {
+                    for (const item of items) {
                         output += "\n                    <li>";
-                        output += escapeHtml(item_2);
+                        output += escapeHtml(item);
                         output += "</li>\n                ";
                     }
                     output += "\n            ";
@@ -408,9 +404,9 @@ mod tests {
                 export function test_main_comp() {
                     let output = "";
                     output += "\n                <div data-hop-id=\"test/card-comp\">";
-                    const title_1 = "Hello World";
+                    const title = "Hello World";
                     output += "\n                <h2>";
-                    output += escapeHtml(title_1);
+                    output += escapeHtml(title);
                     output += "</h2>\n            ";
                     output += "</div>\n            ";
                     return output;
