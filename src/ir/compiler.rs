@@ -215,7 +215,6 @@ impl Compiler<'_> {
 
         // Build opening tag with static attributes
         let mut open_tag = format!("<{}", tag_name.as_str());
-        let mut has_dynamic_attrs = false;
 
         for (name, attr) in attributes {
             if let Some(val) = &attr.value {
@@ -224,10 +223,6 @@ impl Compiler<'_> {
                         open_tag.push_str(&format!(" {}=\"{}\"", name.as_str(), s.as_str()));
                     }
                     AttributeValue::Expression(expr) => {
-                        // Output what we have so far
-                        if !has_dynamic_attrs {
-                            has_dynamic_attrs = true;
-                        }
                         open_tag.push_str(&format!(" {}=\"", name.as_str()));
                         output.push(IrNode::Write(open_tag.clone()));
                         output.push(IrNode::WriteExpr {
