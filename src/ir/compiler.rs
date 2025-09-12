@@ -21,11 +21,8 @@ impl Compiler<'_> {
             asts,
             ir_module: IrModule::new(),
             var_counter: 0,
-            scope_stack: vec![HashMap::new()], // Global scope
+            scope_stack: vec![],
         };
-
-        // Add globals like HOP_MODE (don't rename these)
-        compiler.scope_stack[0].insert("HOP_MODE".to_string(), "HOP_MODE".to_string());
 
         // Compile all entrypoint components
         for ast in asts.values() {
