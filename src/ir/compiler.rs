@@ -216,34 +216,32 @@ impl Compiler<'_> {
             return;
         }
 
-        // Build opening tag with static attributes
-        let mut open_tag = format!("<{}", tag_name.as_str());
+        // Push opening tag
+        output.push(IrNode::Write(format!("<{}", tag_name.as_str())));
 
+        // Push attributes
         for (name, attr) in attributes {
             if let Some(val) = &attr.value {
                 match val {
                     AttributeValue::String(s) => {
-                        open_tag.push_str(&format!(" {}=\"{}\"", name.as_str(), s.as_str()));
+                        output.push(IrNode::Write(format!(" {}=\"{}\"", name.as_str(), s.as_str())));
                     }
                     AttributeValue::Expression(expr) => {
-                        open_tag.push_str(&format!(" {}=\"", name.as_str()));
-                        output.push(IrNode::Write(open_tag.clone()));
+                        output.push(IrNode::Write(format!(" {}=\"", name.as_str())));
                         output.push(IrNode::WriteExpr {
                             expr: self.rename_expr(expr),
                             escape: true,
                         });
-                        open_tag = String::from("\"");
+                        output.push(IrNode::Write("\"".to_string()));
                     }
                 }
             } else {
                 // Boolean attribute
-                open_tag.push(' ');
-                open_tag.push_str(name.as_str());
+                output.push(IrNode::Write(format!(" {}", name.as_str())));
             }
         }
 
-        open_tag.push('>');
-        output.push(IrNode::Write(open_tag));
+        output.push(IrNode::Write(">".to_string()));
 
         // Compile children
         if !is_void_element(tag_name.as_str()) {
@@ -277,13 +275,13 @@ impl Compiler<'_> {
             .map(|a| a.value.as_str())
             .unwrap_or("div");
 
-        // Build opening tag with data-hop-id
-        let mut open_tag = format!(
+        // Push opening tag with data-hop-id
+        output.push(IrNode::Write(format!(
             "<{} data-hop-id=\"{}/{}\"",
             wrapper_tag,
             module.as_str(),
             tag_name
-        );
+        )));
 
         // Merge attributes from component definition and reference
         // Use itertools to merge the two sorted maps
@@ -300,24 +298,22 @@ impl Compiler<'_> {
                     // Attribute exists in both reference and definition
                     if name.as_str() == "class" {
                         // Special handling for class attribute - concatenate values
-                        open_tag.push_str(" class=\"");
+                        output.push(IrNode::Write(" class=\"".to_string()));
 
                         // First add the definition's class (if any)
                         let mut has_def_class = false;
                         if let Some(def_val) = &def_attr.value {
                             match def_val {
                                 AttributeValue::String(s) => {
-                                    open_tag.push_str(s.as_str());
+                                    output.push(IrNode::Write(s.as_str().to_string()));
                                     has_def_class = true;
                                 }
                                 AttributeValue::Expression(expr) => {
                                     // Dynamic class from definition
-                                    output.push(IrNode::Write(open_tag.clone()));
                                     output.push(IrNode::WriteExpr {
                                         expr: self.rename_expr(expr),
                                         escape: true,
                                     });
-                                    open_tag = String::new();
                                     has_def_class = true;
                                 }
                             }
@@ -326,52 +322,46 @@ impl Compiler<'_> {
                         // Then add the reference's class (if any)
                         if let Some(ref_val) = &ref_attr.value {
                             if has_def_class {
-                                open_tag.push(' ');
+                                output.push(IrNode::Write(" ".to_string()));
                             }
                             match ref_val {
                                 AttributeValue::String(s) => {
-                                    open_tag.push_str(s.as_str());
+                                    output.push(IrNode::Write(s.as_str().to_string()));
                                 }
                                 AttributeValue::Expression(expr) => {
                                     // Dynamic class from reference
-                                    if !open_tag.is_empty() {
-                                        output.push(IrNode::Write(open_tag.clone()));
-                                    }
                                     output.push(IrNode::WriteExpr {
                                         expr: self.rename_expr(expr),
                                         escape: true,
                                     });
-                                    open_tag = String::new();
                                 }
                             }
                         }
 
-                        open_tag.push('"');
+                        output.push(IrNode::Write("\"".to_string()));
                     } else {
                         // For other attributes, reference overrides definition
                         if let Some(ref_val) = &ref_attr.value {
                             match ref_val {
                                 AttributeValue::String(s) => {
-                                    open_tag.push_str(&format!(
+                                    output.push(IrNode::Write(format!(
                                         " {}=\"{}\"",
                                         name.as_str(),
                                         s.as_str()
-                                    ));
+                                    )));
                                 }
                                 AttributeValue::Expression(expr) => {
-                                    open_tag.push_str(&format!(" {}=\"", name.as_str()));
-                                    output.push(IrNode::Write(open_tag.clone()));
+                                    output.push(IrNode::Write(format!(" {}=\"", name.as_str())));
                                     output.push(IrNode::WriteExpr {
                                         expr: self.rename_expr(expr),
                                         escape: true,
                                     });
-                                    open_tag = String::from("\"");
+                                    output.push(IrNode::Write("\"".to_string()));
                                 }
                             }
                         } else {
                             // Boolean attribute
-                            open_tag.push(' ');
-                            open_tag.push_str(name.as_str());
+                            output.push(IrNode::Write(format!(" {}", name.as_str())));
                         }
                     }
                 }
@@ -380,26 +370,24 @@ impl Compiler<'_> {
                     if let Some(val) = &ref_attr.value {
                         match val {
                             AttributeValue::String(s) => {
-                                open_tag.push_str(&format!(
+                                output.push(IrNode::Write(format!(
                                     " {}=\"{}\"",
                                     name.as_str(),
                                     s.as_str()
-                                ));
+                                )));
                             }
                             AttributeValue::Expression(expr) => {
-                                open_tag.push_str(&format!(" {}=\"", name.as_str()));
-                                output.push(IrNode::Write(open_tag.clone()));
+                                output.push(IrNode::Write(format!(" {}=\"", name.as_str())));
                                 output.push(IrNode::WriteExpr {
                                     expr: self.rename_expr(expr),
                                     escape: true,
                                 });
-                                open_tag = String::from("\"");
+                                output.push(IrNode::Write("\"".to_string()));
                             }
                         }
                     } else {
                         // Boolean attribute
-                        open_tag.push(' ');
-                        open_tag.push_str(name.as_str());
+                        output.push(IrNode::Write(format!(" {}", name.as_str())));
                     }
                 }
                 EitherOrBoth::Right((name, def_attr)) => {
@@ -407,33 +395,30 @@ impl Compiler<'_> {
                     if let Some(val) = &def_attr.value {
                         match val {
                             AttributeValue::String(s) => {
-                                open_tag.push_str(&format!(
+                                output.push(IrNode::Write(format!(
                                     " {}=\"{}\"",
                                     name.as_str(),
                                     s.as_str()
-                                ));
+                                )));
                             }
                             AttributeValue::Expression(expr) => {
-                                open_tag.push_str(&format!(" {}=\"", name.as_str()));
-                                output.push(IrNode::Write(open_tag.clone()));
+                                output.push(IrNode::Write(format!(" {}=\"", name.as_str())));
                                 output.push(IrNode::WriteExpr {
                                     expr: self.rename_expr(expr),
                                     escape: true,
                                 });
-                                open_tag = String::from("\"");
+                                output.push(IrNode::Write("\"".to_string()));
                             }
                         }
                     } else {
                         // Boolean attribute
-                        open_tag.push(' ');
-                        open_tag.push_str(name.as_str());
+                        output.push(IrNode::Write(format!(" {}", name.as_str())));
                     }
                 }
             }
         }
 
-        open_tag.push('>');
-        output.push(IrNode::Write(open_tag));
+        output.push(IrNode::Write(">".to_string()));
 
         // Push new scope for component parameters
         self.push_scope();
