@@ -427,7 +427,7 @@ fn construct_node(
             range: opening_tag_range,
             ..
         } => {
-            let mut validator = AttributeValidator::new(attributes, tag_name.clone());
+            let validator = AttributeValidator::new(attributes, tag_name.clone());
             //
             match tag_name.as_str() {
                 // <if {...}>
@@ -490,12 +490,14 @@ fn construct_node(
                 // <hop-x-raw>
                 "hop-x-raw" => {
                     errors.extend(validator.disallow_unrecognized());
-                    
+
                     // XRaw should contain either no children or a single Text node
                     match children.into_iter().next() {
                         None => None,
                         Some(text_node @ Node::Text { .. }) => Some(text_node),
-                        _ => panic!("hop-x-raw should contain either no children or a single Text node"),
+                        _ => panic!(
+                            "hop-x-raw should contain either no children or a single Text node"
+                        ),
                     }
                 }
 

@@ -414,7 +414,6 @@ fn evaluate_node_entrypoint(
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

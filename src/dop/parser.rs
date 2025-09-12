@@ -482,8 +482,8 @@ impl Parser {
 mod tests {
     use super::*;
     use crate::document::{DocumentAnnotator, SimpleAnnotation};
-    use indoc::indoc;
     use expect_test::{Expect, expect};
+    use indoc::indoc;
 
     fn annotate_error(error: ParseError) -> String {
         let annotator = DocumentAnnotator::new()

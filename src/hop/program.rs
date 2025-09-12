@@ -440,6 +440,11 @@ impl Program {
             output,
         )
     }
+
+    /// Get all modules for compilation
+    pub fn get_modules(&self) -> &HashMap<ModuleName, Ast> {
+        &self.modules
+    }
 }
 
 #[cfg(test)]

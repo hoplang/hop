@@ -5,6 +5,7 @@ mod dop;
 mod error_collector;
 mod filesystem;
 mod hop;
+mod ir;
 mod test_utils;
 mod tui;
 
@@ -45,6 +46,15 @@ enum Commands {
         /// Directory to copy static files from
         #[arg(long)]
         staticdir: Option<String>,
+    },
+    /// Compile hop templates to JavaScript
+    Compile {
+        /// Path to project root
+        #[arg(long)]
+        projectdir: Option<String>,
+        /// Output JavaScript file
+        #[arg(short, long, default_value = "output.js")]
+        output: String,
     },
     /// Start development server for serving hop templates from a manifest
     Dev {
@@ -145,6 +155,9 @@ async fn main() -> anyhow::Result<()> {
             println!();
             println!("  {:<50} {}", "total", format_file_size(total_size));
             println!();
+        }
+        Some(Commands::Compile { projectdir, output }) => {
+            cli::compile::run(projectdir.as_deref(), output)?;
         }
         Some(Commands::Dev {
             projectdir,

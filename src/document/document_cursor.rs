@@ -73,6 +73,14 @@ pub struct DocumentRange {
 }
 
 impl DocumentRange {
+    pub fn new(s: String) -> Self {
+        Self {
+            end: s.len(),
+            source: Arc::new(DocumentInfo::new(s)),
+            start: 0,
+        }
+    }
+
     /// Get the first char from the range.
     pub fn ch(&self) -> char {
         self.source.text[self.start..].chars().next().unwrap()

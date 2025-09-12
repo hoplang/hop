@@ -133,9 +133,9 @@ pub fn typecheck_expr(
 mod tests {
     use super::*;
     use crate::document::DocumentAnnotator;
-    use indoc::indoc;
     use crate::dop::Parser;
     use expect_test::{Expect, expect};
+    use indoc::indoc;
 
     fn check(env_str: &str, expr_str: &str, expected: Expect) {
         let mut env = Environment::new();
@@ -491,11 +491,15 @@ mod tests {
 
     #[test]
     fn test_typecheck_array_trailing_comma_single() {
-        check("", indoc! {r#"
+        check(
+            "",
+            indoc! {r#"
             [
             	"hello",
             ]
-        "#}, expect!["array[string]"]);
+        "#},
+            expect!["array[string]"],
+        );
     }
 
     #[test]
@@ -514,10 +518,14 @@ mod tests {
 
     #[test]
     fn test_typecheck_object_literal_trailing_comma_single() {
-        check("", indoc! {r#"
+        check(
+            "",
+            indoc! {r#"
             {
             	name: "John",
             }
-        "#}, expect!["{name: string}"]);
+        "#},
+            expect!["{name: string}"],
+        );
     }
 }

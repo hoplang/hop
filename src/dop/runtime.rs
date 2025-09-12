@@ -84,9 +84,9 @@ pub fn evaluate_expr(
 mod tests {
     use super::*;
     use crate::dop::Parser;
-    use indoc::indoc;
     use crate::hop::environment::Environment;
     use expect_test::{Expect, expect};
+    use indoc::indoc;
     use serde_json::json;
 
     fn check(env_json: serde_json::Value, expr_str: &str, expected: Expect) {
