@@ -1,10 +1,63 @@
 use crate::common::escape_html;
-use crate::dop::evaluate_expr;
 use crate::hop::environment::Environment;
-use crate::ir::{IrEntrypoint, IrNode};
-use anyhow::Result;
+use crate::ir::{BinaryOp, IrEntrypoint, IrExpr, IrNode, UnaryOp};
+use anyhow::{anyhow, Result};
 use serde_json::Value;
 use std::collections::HashMap;
+
+/// Evaluate an IrExpr expression
+fn evaluate_ir_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
+    match expr {
+        IrExpr::Variable(name) => {
+            env.lookup(name)
+                .cloned()
+                .ok_or_else(|| anyhow!("Undefined variable: {}", name))
+        }
+        IrExpr::PropertyAccess { object, property } => {
+            let obj_value = evaluate_ir_expr(object, env)?;
+            if let Some(obj) = obj_value.as_object() {
+                Ok(obj.get(property).cloned().unwrap_or(Value::Null))
+            } else {
+                Ok(Value::Null)
+            }
+        }
+        IrExpr::StringLiteral(s) => Ok(Value::String(s.clone())),
+        IrExpr::BooleanLiteral(b) => Ok(Value::Bool(*b)),
+        IrExpr::NumberLiteral(n) => Ok(Value::Number(
+            serde_json::Number::from_f64(*n).unwrap_or_else(|| serde_json::Number::from(0))
+        )),
+        IrExpr::ArrayLiteral(elements) => {
+            let mut array = Vec::new();
+            for elem in elements {
+                array.push(evaluate_ir_expr(elem, env)?);
+            }
+            Ok(Value::Array(array))
+        }
+        IrExpr::ObjectLiteral(properties) => {
+            let mut obj = serde_json::Map::new();
+            for (key, value) in properties {
+                obj.insert(key.clone(), evaluate_ir_expr(value, env)?);
+            }
+            Ok(Value::Object(obj))
+        }
+        IrExpr::BinaryOp { left, op, right } => {
+            let left_val = evaluate_ir_expr(left, env)?;
+            let right_val = evaluate_ir_expr(right, env)?;
+            match op {
+                BinaryOp::Equal => Ok(Value::Bool(left_val == right_val)),
+            }
+        }
+        IrExpr::UnaryOp { op, operand } => {
+            let val = evaluate_ir_expr(operand, env)?;
+            match op {
+                UnaryOp::Not => {
+                    let bool_val = val.as_bool().unwrap_or(false);
+                    Ok(Value::Bool(!bool_val))
+                }
+            }
+        }
+    }
+}
 
 /// Evaluate an IR entrypoint with the given arguments
 pub fn evaluate_entrypoint(
@@ -48,7 +101,7 @@ fn eval_node(node: &IrNode, env: &mut Environment<Value>, output: &mut String) -
         }
 
         IrNode::WriteExpr { expr, escape } => {
-            let value = evaluate_expr(expr, env)?;
+            let value = evaluate_ir_expr(expr, env)?;
             let s = value.as_str().unwrap_or("");
             if *escape {
                 output.push_str(&escape_html(s));
@@ -59,7 +112,7 @@ fn eval_node(node: &IrNode, env: &mut Environment<Value>, output: &mut String) -
         }
 
         IrNode::If { condition, body } => {
-            let cond_value = evaluate_expr(condition, env)?;
+            let cond_value = evaluate_ir_expr(condition, env)?;
             if cond_value.as_bool().unwrap_or(false) {
                 eval_ir(body, env, output)?;
             }
@@ -67,7 +120,7 @@ fn eval_node(node: &IrNode, env: &mut Environment<Value>, output: &mut String) -
         }
 
         IrNode::For { var, array, body } => {
-            let array_value = evaluate_expr(array, env)?;
+            let array_value = evaluate_ir_expr(array, env)?;
             let items = array_value.as_array().cloned().unwrap_or_default();
 
             for item in items {
@@ -79,7 +132,7 @@ fn eval_node(node: &IrNode, env: &mut Environment<Value>, output: &mut String) -
         }
 
         IrNode::Let { var, value, body } => {
-            let val = evaluate_expr(value, env)?;
+            let val = evaluate_ir_expr(value, env)?;
             let _ = env.push(var.clone(), val);
             eval_ir(body, env, output)?;
             let _ = env.pop();

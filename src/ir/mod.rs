@@ -5,9 +5,61 @@ mod js_compiler;
 pub use compiler::Compiler;
 pub use js_compiler::JsCompiler;
 
-use crate::dop::Expr;
 use std::collections::HashMap;
 use std::fmt;
+
+/// IR-specific expression type, simplified from dop::Expr
+#[derive(Debug, Clone)]
+pub enum IrExpr {
+    /// Variable reference
+    Variable(String),
+    
+    /// Property access (e.g., obj.prop)
+    PropertyAccess {
+        object: Box<IrExpr>,
+        property: String,
+    },
+    
+    /// String literal
+    StringLiteral(String),
+    
+    /// Boolean literal
+    BooleanLiteral(bool),
+    
+    /// Number literal
+    NumberLiteral(f64),
+    
+    /// Array literal
+    ArrayLiteral(Vec<IrExpr>),
+    
+    /// Object literal
+    ObjectLiteral(Vec<(String, IrExpr)>),
+    
+    /// Binary operation
+    BinaryOp {
+        left: Box<IrExpr>,
+        op: BinaryOp,
+        right: Box<IrExpr>,
+    },
+    
+    /// Unary operation
+    UnaryOp {
+        op: UnaryOp,
+        operand: Box<IrExpr>,
+    },
+}
+
+/// Binary operators in IR
+#[derive(Debug, Clone)]
+pub enum BinaryOp {
+    Equal,
+}
+
+/// Unary operators in IR
+#[derive(Debug, Clone)]
+pub enum UnaryOp {
+    Not,
+}
 
 #[derive(Debug, Clone)]
 pub enum IrNode {
@@ -15,22 +67,22 @@ pub enum IrNode {
     Write(String),
 
     /// Evaluate expression and output as string
-    WriteExpr { expr: Expr, escape: bool },
+    WriteExpr { expr: IrExpr, escape: bool },
 
     /// Conditional execution
-    If { condition: Expr, body: Vec<IrNode> },
+    If { condition: IrExpr, body: Vec<IrNode> },
 
     /// Loop over array
     For {
         var: String,
-        array: Expr,
+        array: IrExpr,
         body: Vec<IrNode>,
     },
 
     /// Variable binding
     Let {
         var: String,
-        value: Expr,
+        value: IrExpr,
         body: Vec<IrNode>,
     },
 }
@@ -53,6 +105,62 @@ impl IrModule {
     pub fn new() -> Self {
         Self {
             entry_points: HashMap::new(),
+        }
+    }
+}
+
+impl fmt::Display for IrExpr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            IrExpr::Variable(name) => write!(f, "{}", name),
+            IrExpr::PropertyAccess { object, property } => {
+                write!(f, "{}.{}", object, property)
+            }
+            IrExpr::StringLiteral(s) => write!(f, "{:?}", s),
+            IrExpr::BooleanLiteral(b) => write!(f, "{}", b),
+            IrExpr::NumberLiteral(n) => write!(f, "{}", n),
+            IrExpr::ArrayLiteral(elements) => {
+                write!(f, "[")?;
+                for (i, elem) in elements.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", elem)?;
+                }
+                write!(f, "]")
+            }
+            IrExpr::ObjectLiteral(props) => {
+                write!(f, "{{")?;
+                for (i, (key, value)) in props.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}: {}", key, value)?;
+                }
+                write!(f, "}}")
+            }
+            IrExpr::BinaryOp { left, op, right } => {
+                write!(f, "({} {} {})", left, op, right)
+            }
+            IrExpr::UnaryOp { op, operand } => {
+                write!(f, "{}{}", op, operand)
+            }
+        }
+    }
+}
+
+impl fmt::Display for BinaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BinaryOp::Equal => write!(f, "=="),
+        }
+    }
+}
+
+impl fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UnaryOp::Not => write!(f, "!"),
         }
     }
 }

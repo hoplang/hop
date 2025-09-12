@@ -1,5 +1,4 @@
-use crate::dop::ast::{BinaryOp, Expr, UnaryOp};
-use crate::ir::{IrEntrypoint, IrModule, IrNode};
+use crate::ir::{BinaryOp, IrEntrypoint, IrExpr, IrModule, IrNode, UnaryOp};
 
 /// Compiles an IR module to JavaScript code
 pub struct JsCompiler {
@@ -124,18 +123,16 @@ impl JsCompiler {
         }
     }
 
-    fn compile_expr(expr: &Expr) -> String {
+    fn compile_expr(expr: &IrExpr) -> String {
         match expr {
-            Expr::Variable { value } => value.as_str().to_string(),
+            IrExpr::Variable(name) => name.clone(),
 
-            Expr::PropertyAccess {
-                object, property, ..
-            } => {
+            IrExpr::PropertyAccess { object, property } => {
                 let obj = Self::compile_expr(object);
-                format!("{}.{}", obj, property.as_str())
+                format!("{}.{}", obj, property)
             }
 
-            Expr::StringLiteral { value, .. } => {
+            IrExpr::StringLiteral(value) => {
                 // Escape for JavaScript string literal
                 let escaped = value
                     .replace('\\', "\\\\")
@@ -146,42 +143,35 @@ impl JsCompiler {
                 format!("\"{}\"", escaped)
             }
 
-            Expr::BooleanLiteral { value, .. } => value.to_string(),
+            IrExpr::BooleanLiteral(value) => value.to_string(),
 
-            Expr::NumberLiteral { value, .. } => value.to_string(),
+            IrExpr::NumberLiteral(value) => value.to_string(),
 
-            Expr::ArrayLiteral { elements, .. } => {
+            IrExpr::ArrayLiteral(elements) => {
                 let items: Vec<String> = elements.iter().map(Self::compile_expr).collect();
                 format!("[{}]", items.join(", "))
             }
 
-            Expr::ObjectLiteral { properties, .. } => {
+            IrExpr::ObjectLiteral(properties) => {
                 let props: Vec<String> = properties
                     .iter()
-                    .map(|(key, value)| format!("{}: {}", key.as_str(), Self::compile_expr(value)))
+                    .map(|(key, value)| format!("{}: {}", key, Self::compile_expr(value)))
                     .collect();
                 format!("{{{}}}", props.join(", "))
             }
 
-            Expr::BinaryOp {
-                left,
-                operator,
-                right,
-                ..
-            } => {
+            IrExpr::BinaryOp { left, op, right } => {
                 let l = Self::compile_expr(left);
                 let r = Self::compile_expr(right);
-                match operator {
+                match op {
                     BinaryOp::Equal => format!("({} === {})", l, r),
                 }
             }
 
-            Expr::UnaryOp {
-                operator, operand, ..
-            } => {
-                let op = Self::compile_expr(operand);
-                match operator {
-                    UnaryOp::Not => format!("!({})", op),
+            IrExpr::UnaryOp { op, operand } => {
+                let compiled_op = Self::compile_expr(operand);
+                match op {
+                    UnaryOp::Not => format!("!({})", compiled_op),
                 }
             }
         }

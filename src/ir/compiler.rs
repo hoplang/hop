@@ -1,9 +1,9 @@
 use crate::common::is_void_element;
 use crate::document::document_cursor::{DocumentRange, StringSpan};
-use crate::dop::{Argument, Expr, VarName};
+use crate::dop::{self, Argument, Expr};
 use crate::hop::ast::{Ast, Attribute, AttributeValue, ComponentDefinition, Node};
 use crate::hop::module_name::ModuleName;
-use crate::ir::{IrEntrypoint, IrModule, IrNode};
+use crate::ir::{BinaryOp, IrEntrypoint, IrExpr, IrModule, IrNode, UnaryOp};
 use std::collections::{BTreeMap, HashMap};
 
 pub struct Compiler<'a> {
@@ -82,9 +82,7 @@ impl Compiler<'_> {
         for (original, renamed) in original_params.iter().zip(renamed_params.iter()).rev() {
             result = vec![IrNode::Let {
                 var: renamed.clone(),
-                value: Expr::Variable {
-                    value: VarName::new(DocumentRange::new(original.clone())).unwrap(),
-                },
+                value: IrExpr::Variable(original.clone()),
                 body: result,
             }];
         }
@@ -529,58 +527,57 @@ impl Compiler<'_> {
         name.to_string() // Global or undefined
     }
 
-    fn rename_expr(&self, expr: &Expr) -> Expr {
+    fn rename_expr(&self, expr: &Expr) -> IrExpr {
         match expr {
             Expr::Variable { value } => {
                 let renamed = self.lookup_var(value.as_str());
-                Expr::Variable {
-                    value: VarName::new(DocumentRange::new(renamed)).unwrap(),
+                IrExpr::Variable(renamed)
+            }
+            Expr::PropertyAccess { object, property, .. } => {
+                IrExpr::PropertyAccess {
+                    object: Box::new(self.rename_expr(object)),
+                    property: property.as_str().to_string(),
                 }
             }
-            Expr::PropertyAccess {
-                object,
-                property,
-                range,
-            } => Expr::PropertyAccess {
-                object: Box::new(self.rename_expr(object)),
-                property: property.clone(),
-                range: range.clone(),
-            },
-            Expr::BinaryOp {
-                left,
-                operator,
-                right,
-                range,
-            } => Expr::BinaryOp {
-                left: Box::new(self.rename_expr(left)),
-                operator: operator.clone(),
-                right: Box::new(self.rename_expr(right)),
-                range: range.clone(),
-            },
-            Expr::UnaryOp {
-                operator,
-                operand,
-                range,
-            } => Expr::UnaryOp {
-                operator: operator.clone(),
-                operand: Box::new(self.rename_expr(operand)),
-                range: range.clone(),
-            },
-            Expr::ArrayLiteral { elements, range } => Expr::ArrayLiteral {
-                elements: elements.iter().map(|e| self.rename_expr(e)).collect(),
-                range: range.clone(),
-            },
-            Expr::ObjectLiteral { properties, range } => Expr::ObjectLiteral {
-                properties: properties
-                    .iter()
-                    .map(|(k, v)| (k.clone(), self.rename_expr(v)))
-                    .collect(),
-                range: range.clone(),
-            },
-            // Literals don't need renaming
-            Expr::StringLiteral { .. }
-            | Expr::BooleanLiteral { .. }
-            | Expr::NumberLiteral { .. } => expr.clone(),
+            Expr::BinaryOp { left, operator, right, .. } => {
+                let ir_op = match operator {
+                    dop::ast::BinaryOp::Equal => BinaryOp::Equal,
+                };
+                IrExpr::BinaryOp {
+                    left: Box::new(self.rename_expr(left)),
+                    op: ir_op,
+                    right: Box::new(self.rename_expr(right)),
+                }
+            }
+            Expr::UnaryOp { operator, operand, .. } => {
+                let ir_op = match operator {
+                    dop::ast::UnaryOp::Not => UnaryOp::Not,
+                };
+                IrExpr::UnaryOp {
+                    op: ir_op,
+                    operand: Box::new(self.rename_expr(operand)),
+                }
+            }
+            Expr::ArrayLiteral { elements, .. } => {
+                IrExpr::ArrayLiteral(elements.iter().map(|e| self.rename_expr(e)).collect())
+            }
+            Expr::ObjectLiteral { properties, .. } => {
+                IrExpr::ObjectLiteral(
+                    properties
+                        .iter()
+                        .map(|(k, v)| (k.as_str().to_string(), self.rename_expr(v)))
+                        .collect()
+                )
+            }
+            Expr::StringLiteral { value, .. } => {
+                IrExpr::StringLiteral(value.to_string())
+            }
+            Expr::BooleanLiteral { value, .. } => {
+                IrExpr::BooleanLiteral(*value)
+            }
+            Expr::NumberLiteral { value, .. } => {
+                IrExpr::NumberLiteral(value.as_f64().unwrap_or(0.0))
+            }
         }
     }
 }
