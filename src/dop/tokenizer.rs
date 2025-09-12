@@ -61,10 +61,10 @@ impl Iterator for Tokenizer {
                     Some(end) => Ok((Token::Equal, start.to(end))),
                     None => Err(ParseError::ExpectedDoubleEqButGotSingleEq { range: start }),
                 },
-                '\'' => {
+                '"' => {
                     let mut end_range = start.clone();
                     let mut result = String::new();
-                    while let Some(s) = self.iter.next_if(|s| s.ch() != '\'') {
+                    while let Some(s) = self.iter.next_if(|s| s.ch() != '"') {
                         result.push(s.ch());
                         end_range = s;
                     }
@@ -333,18 +333,18 @@ mod tests {
     #[test]
     fn test_tokenize_string_literals() {
         check(
-            "'hello' 'world with spaces' ''",
+            r#""hello" "world with spaces" """#,
             expect![[r#"
-                token: 'hello'
-                'hello' 'world with spaces' ''
+                token: "hello"
+                "hello" "world with spaces" ""
                 ^^^^^^^
 
-                token: 'world with spaces'
-                'hello' 'world with spaces' ''
+                token: "world with spaces"
+                "hello" "world with spaces" ""
                         ^^^^^^^^^^^^^^^^^^^
 
-                token: ''
-                'hello' 'world with spaces' ''
+                token: ""
+                "hello" "world with spaces" ""
                                             ^^
             "#]],
         );
@@ -405,26 +405,26 @@ mod tests {
     #[test]
     fn test_tokenize_complex_expression() {
         check(
-            "user.name == 'admin'",
+            r#"user.name == "admin""#,
             expect![[r#"
                 token: user
-                user.name == 'admin'
+                user.name == "admin"
                 ^^^^
 
                 token: .
-                user.name == 'admin'
+                user.name == "admin"
                     ^
 
                 token: name
-                user.name == 'admin'
+                user.name == "admin"
                      ^^^^
 
                 token: ==
-                user.name == 'admin'
+                user.name == "admin"
                           ^^
 
-                token: 'admin'
-                user.name == 'admin'
+                token: "admin"
+                user.name == "admin"
                              ^^^^^^^
             "#]],
         );
@@ -553,26 +553,26 @@ mod tests {
     #[test]
     fn test_tokenize_object_literal_syntax() {
         check(
-            "{name: 'John'}",
+            r#"{name: "John"}"#,
             expect![[r#"
                 token: {
-                {name: 'John'}
+                {name: "John"}
                 ^
 
                 token: name
-                {name: 'John'}
+                {name: "John"}
                  ^^^^
 
                 token: :
-                {name: 'John'}
+                {name: "John"}
                      ^
 
-                token: 'John'
-                {name: 'John'}
+                token: "John"
+                {name: "John"}
                        ^^^^^^
 
                 token: }
-                {name: 'John'}
+                {name: "John"}
                              ^
             "#]],
         );

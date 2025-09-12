@@ -72,7 +72,7 @@ impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Token::Identifier(name) => write!(f, "{}", name),
-            Token::StringLiteral(s) => write!(f, "'{}'", s),
+            Token::StringLiteral(s) => write!(f, "\"{}\"", s),
             Token::BooleanLiteral(b) => write!(f, "{}", b),
             Token::NumberLiteral(n) => write!(f, "{}", n),
             Token::Equal => write!(f, "=="),

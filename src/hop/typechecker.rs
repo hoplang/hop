@@ -952,7 +952,7 @@ mod tests {
                   </if>
                 </main-comp>
                 <foo-comp>
-                  <main-comp {b: 'foo', a: true}/>
+                  <main-comp {b: "foo", a: true}/>
                 </foo-comp>
             "#},
             expect![[r#"
@@ -981,13 +981,13 @@ mod tests {
                 b: string
                   --> main.hop (line 7, col 18)
                 6 | <foo-comp>
-                7 |   <main-comp {b: 'foo', a: true}/>
+                7 |   <main-comp {b: "foo", a: true}/>
                   |                  ^^^^^
 
                 a: boolean
                   --> main.hop (line 7, col 28)
                 6 | <foo-comp>
-                7 |   <main-comp {b: 'foo', a: true}/>
+                7 |   <main-comp {b: "foo", a: true}/>
                   |                            ^^^^
             "#]],
         );
@@ -1005,14 +1005,14 @@ mod tests {
                   </if>
                 </main-comp>
                 <foo-comp>
-                  <main-comp {b: 'foo'}/>
+                  <main-comp {b: "foo"}/>
                 </foo-comp>
             "#},
             expect![[r#"
                 error: Missing required parameter 'a'
                   --> main.hop (line 7, col 15)
                 6 | <foo-comp>
-                7 |   <main-comp {b: 'foo'}/>
+                7 |   <main-comp {b: "foo"}/>
                   |               ^^^^^^^^
             "#]],
         );
@@ -1054,14 +1054,14 @@ mod tests {
                   hello world
                 </main-comp>
                 <foo-comp>
-                  <main-comp {a: 'foo'} />
+                  <main-comp {a: "foo"} />
                 </foo-comp>
             "#},
             expect![[r#"
                 error: Component does not accept arguments
                   --> main.hop (line 5, col 15)
                 4 | <foo-comp>
-                5 |   <main-comp {a: 'foo'} />
+                5 |   <main-comp {a: "foo"} />
                   |               ^^^^^^^^
             "#]],
         );
@@ -1187,7 +1187,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 <main-comp {params: {a: string, b: boolean}}>
-                  <if {(params.a == 'str') == params.b}>
+                  <if {(params.a == "str") == params.b}>
                     <div>Match</div>
                   </if>
                 </main-comp>
@@ -1201,13 +1201,13 @@ mod tests {
                 params: {a: string, b: boolean}
                   --> main.hop (line 2, col 9)
                 1 | <main-comp {params: {a: string, b: boolean}}>
-                2 |   <if {(params.a == 'str') == params.b}>
+                2 |   <if {(params.a == "str") == params.b}>
                   |         ^^^^^^
 
                 params: {a: string, b: boolean}
                   --> main.hop (line 2, col 31)
                 1 | <main-comp {params: {a: string, b: boolean}}>
-                2 |   <if {(params.a == 'str') == params.b}>
+                2 |   <if {(params.a == "str") == params.b}>
                   |                               ^^^^^^
             "#]],
         );
@@ -2855,7 +2855,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 <main-comp {params: {role: string}}>
-                  <if {params.role == 'admin'}>
+                  <if {params.role == "admin"}>
                     <div>Admin</div>
                   </if>
                 </main-comp>
@@ -2869,7 +2869,7 @@ mod tests {
                 params: {role: string}
                   --> main.hop (line 2, col 8)
                 1 | <main-comp {params: {role: string}}>
-                2 |   <if {params.role == 'admin'}>
+                2 |   <if {params.role == "admin"}>
                   |        ^^^^^^
             "#]],
         );
@@ -3059,7 +3059,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 <main-comp {data: {status: string}}>
-                  <if {data.status == 'approved'}>
+                  <if {data.status == "approved"}>
                     <div>Status is approved</div>
                   </if>
                 </main-comp>
@@ -3073,7 +3073,7 @@ mod tests {
                 data: {status: string}
                   --> main.hop (line 2, col 8)
                 1 | <main-comp {data: {status: string}}>
-                2 |   <if {data.status == 'approved'}>
+                2 |   <if {data.status == "approved"}>
                   |        ^^^^
             "#]],
         );
@@ -3086,7 +3086,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 <main-comp>
-                  <if {1 == 'approved'}>
+                  <if {1 == "approved"}>
                     <div>Status is approved</div>
                   </if>
                 </main-comp>
@@ -3095,7 +3095,7 @@ mod tests {
                 error: Can not compare number to string
                   --> main.hop (line 2, col 8)
                 1 | <main-comp>
-                2 |   <if {1 == 'approved'}>
+                2 |   <if {1 == "approved"}>
                   |        ^^^^^^^^^^^^^^^
             "#]],
         );
@@ -3190,10 +3190,10 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 <main-comp>
-                  <if {HOP_MODE == 'dev'}>
+                  <if {HOP_MODE == "dev"}>
                     <div>Development mode</div>
                   </if>
-                  <if {HOP_MODE == 'build'}>
+                  <if {HOP_MODE == "build"}>
                     <div>Build mode</div>
                   </if>
                 </main-comp>
@@ -3202,13 +3202,13 @@ mod tests {
                 HOP_MODE: string
                   --> main.hop (line 2, col 8)
                 1 | <main-comp>
-                2 |   <if {HOP_MODE == 'dev'}>
+                2 |   <if {HOP_MODE == "dev"}>
                   |        ^^^^^^^^
 
                 HOP_MODE: string
                   --> main.hop (line 5, col 8)
                 4 |   </if>
-                5 |   <if {HOP_MODE == 'build'}>
+                5 |   <if {HOP_MODE == "build"}>
                   |        ^^^^^^^^
             "#]],
         );
@@ -3253,7 +3253,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 <main-comp {params: {foo: string}}>
-                  <if {params.foo == 'foo'}>
+                  <if {params.foo == "foo"}>
                     eq 1
                   </if>
                   <if {params == params}>
@@ -3270,7 +3270,7 @@ mod tests {
                 params: {foo: string}
                   --> main.hop (line 2, col 8)
                 1 | <main-comp {params: {foo: string}}>
-                2 |   <if {params.foo == 'foo'}>
+                2 |   <if {params.foo == "foo"}>
                   |        ^^^^^^
 
                 params: {foo: string}
@@ -3378,14 +3378,14 @@ mod tests {
                 	<div>{user.name} ({user.age})</div>
                 </user-comp>
                 <main-comp>
-                	<user-comp {user: 'invalid'}/>
+                	<user-comp {user: "invalid"}/>
                 </main-comp>
             "#},
             expect![[r#"
                 error: Argument 'user' of type string is incompatible with expected type {age: string, name: string}
                   --> main.hop (line 5, col 20)
                 4 | <main-comp>
-                5 |     <user-comp {user: 'invalid'}/>
+                5 |     <user-comp {user: "invalid"}/>
                   |                       ^^^^^^^^^
             "#]],
         );
@@ -3451,14 +3451,14 @@ mod tests {
                 	<div>{user.name}</div>
                 </new-comp>
                 <main-comp>
-                	<new-comp {user: 'invalid'}/>
+                	<new-comp {user: "invalid"}/>
                 </main-comp>
             "#},
             expect![[r#"
                 error: Argument 'user' of type string is incompatible with expected type {name: string}
                   --> main.hop (line 5, col 19)
                 4 | <main-comp>
-                5 |     <new-comp {user: 'invalid'}/>
+                5 |     <new-comp {user: "invalid"}/>
                   |                      ^^^^^^^^^
             "#]],
         );
@@ -3787,14 +3787,14 @@ mod tests {
                 	</if>
                 </toggle-comp>
                 <main-comp>
-                	<toggle-comp {enabled: 'not a boolean'}/>
+                	<toggle-comp {enabled: "not a boolean"}/>
                 </main-comp>
             "#},
             expect![[r#"
                 error: Argument 'enabled' of type string is incompatible with expected type boolean
                   --> main.hop (line 7, col 25)
                 6 | <main-comp>
-                7 |     <toggle-comp {enabled: 'not a boolean'}/>
+                7 |     <toggle-comp {enabled: "not a boolean"}/>
                   |                            ^^^^^^^^^^^^^^^
             "#]],
         );
@@ -3981,7 +3981,7 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 <main-component>
-                    <if {'str'}>
+                    <if {"str"}>
                       is str?
                     </if>
                 </main-component>
@@ -3990,7 +3990,7 @@ mod tests {
                 error: Expected boolean condition, got string
                   --> main.hop (line 2, col 10)
                 1 | <main-component>
-                2 |     <if {'str'}>
+                2 |     <if {"str"}>
                   |          ^^^^^
             "#]],
         );
@@ -4006,14 +4006,14 @@ mod tests {
                   {a}
                 </main-comp>
                 <foo-comp>
-                    <main-comp {a: '', b: 1}/>
+                    <main-comp {a: "", b: 1}/>
                 </foo-comp>
             "#},
             expect![[r#"
                 error: Unexpected argument 'b'
                   --> main.hop (line 5, col 24)
                 4 | <foo-comp>
-                5 |     <main-comp {a: '', b: 1}/>
+                5 |     <main-comp {a: "", b: 1}/>
                   |                        ^
             "#]],
         );
@@ -4029,20 +4029,20 @@ mod tests {
                   {a} {b}
                 </main-comp>
                 <foo-comp>
-                    <main-comp {a: 1 == '', b: 1 == ''}/>
+                    <main-comp {a: 1 == "", b: 1 == ""}/>
                 </foo-comp>
             "#},
             expect![[r#"
                 error: Can not compare number to string
                   --> main.hop (line 5, col 20)
                 4 | <foo-comp>
-                5 |     <main-comp {a: 1 == '', b: 1 == ''}/>
+                5 |     <main-comp {a: 1 == "", b: 1 == ""}/>
                   |                    ^^^^^^^
 
                 error: Can not compare number to string
                   --> main.hop (line 5, col 32)
                 4 | <foo-comp>
-                5 |     <main-comp {a: 1 == '', b: 1 == ''}/>
+                5 |     <main-comp {a: 1 == "", b: 1 == ""}/>
                   |                                ^^^^^^^
             "#]],
         );

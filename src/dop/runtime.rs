@@ -84,6 +84,7 @@ pub fn evaluate_expr(
 mod tests {
     use super::*;
     use crate::dop::Parser;
+    use indoc::indoc;
     use crate::hop::environment::Environment;
     use expect_test::{Expect, expect};
     use serde_json::json;
@@ -118,7 +119,7 @@ mod tests {
 
     #[test]
     fn test_string_literals() {
-        check(json!({}), "'hello world'", expect![["\"hello world\""]]);
+        check(json!({}), r#""hello world""#, expect![["\"hello world\""]]);
     }
 
     #[test]
@@ -204,7 +205,7 @@ mod tests {
             json!({
                 "status": "active",
             }),
-            "status == 'active'",
+            r#"status == "active""#,
             expect![["true"]],
         );
         check(
@@ -260,7 +261,7 @@ mod tests {
         check(json!({}), "[1, 2, 3]", expect![["[1,2,3]"]]);
         check(
             json!({}),
-            "[42, 'hello', true]",
+            r#"[42, "hello", true]"#,
             expect![["[42,\"hello\",true]"]],
         );
         check(
@@ -289,12 +290,12 @@ mod tests {
         check(json!({}), "{}", expect![["{}"]]);
         check(
             json!({}),
-            "{name: 'John'}",
+            r#"{name: "John"}"#,
             expect![["{\"name\":\"John\"}"]],
         );
         check(
             json!({}),
-            "{a: 'foo', b: 1, c: true}",
+            r#"{a: "foo", b: 1, c: true}"#,
             expect![["{\"a\":\"foo\",\"b\":1,\"c\":true}"]],
         );
         check(
@@ -309,7 +310,7 @@ mod tests {
         );
         check(
             json!({}),
-            "{nested: {inner: 'value'}}",
+            r#"{nested: {inner: "value"}}"#,
             expect![["{\"nested\":{\"inner\":\"value\"}}"]],
         );
     }
@@ -317,15 +318,24 @@ mod tests {
     #[test]
     fn test_trailing_commas() {
         check(json!({}), "[\n\t1,\n\t2,\n\t3,\n]", expect![["[1,2,3]"]]);
-        check(json!({}), "['hello',]", expect![["[\"hello\"]"]]);
+        check(json!({}), r#"["hello",]"#, expect![["[\"hello\"]"]]);
         check(
             json!({}),
-            "{\n\ta: 'foo',\n\tb: 1,\n}",
+            indoc! {r#"
+                {
+                	a: "foo",
+                	b: 1,
+                }
+            "#},
             expect![["{\"a\":\"foo\",\"b\":1}"]],
         );
         check(
             json!({}),
-            "{\n\tname: 'John',\n}",
+            indoc! {r#"
+                {
+                	name: "John",
+                }
+            "#},
             expect![["{\"name\":\"John\"}"]],
         );
     }

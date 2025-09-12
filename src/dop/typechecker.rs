@@ -133,6 +133,7 @@ pub fn typecheck_expr(
 mod tests {
     use super::*;
     use crate::document::DocumentAnnotator;
+    use indoc::indoc;
     use crate::dop::Parser;
     use expect_test::{Expect, expect};
 
@@ -303,7 +304,7 @@ mod tests {
 
     #[test]
     fn test_typecheck_string_literal() {
-        check("", "'hello world'", expect!["string"]);
+        check("", r#""hello world""#, expect!["string"]);
     }
 
     #[test]
@@ -342,7 +343,7 @@ mod tests {
 
     #[test]
     fn test_typecheck_equality_string() {
-        check("name: string", "name == 'alice'", expect!["boolean"]);
+        check("name: string", r#"name == "alice""#, expect!["boolean"]);
     }
 
     #[test]
@@ -440,14 +441,14 @@ mod tests {
 
     #[test]
     fn test_typecheck_object_literal_single_property() {
-        check("", "{name: 'John'}", expect!["{name: string}"]);
+        check("", r#"{name: "John"}"#, expect!["{name: string}"]);
     }
 
     #[test]
     fn test_typecheck_object_literal_multiple_properties() {
         check(
             "",
-            "{a: 'foo', b: 1, c: true}",
+            r#"{a: "foo", b: 1, c: true}"#,
             expect!["{a: string, b: number, c: boolean}"],
         );
     }
@@ -465,7 +466,7 @@ mod tests {
     fn test_typecheck_nested_object_literal() {
         check(
             "",
-            "{nested: {inner: 'value'}}",
+            r#"{nested: {inner: "value"}}"#,
             expect!["{nested: {inner: string}}"],
         );
     }
@@ -490,20 +491,33 @@ mod tests {
 
     #[test]
     fn test_typecheck_array_trailing_comma_single() {
-        check("", "[\n\t'hello',\n]", expect!["array[string]"]);
+        check("", indoc! {r#"
+            [
+            	"hello",
+            ]
+        "#}, expect!["array[string]"]);
     }
 
     #[test]
     fn test_typecheck_object_literal_trailing_comma() {
         check(
             "",
-            "{\n\ta: 'foo',\n\tb: 1,\n}",
+            indoc! {r#"
+                {
+                	a: "foo",
+                	b: 1,
+                }
+            "#},
             expect!["{a: string, b: number}"],
         );
     }
 
     #[test]
     fn test_typecheck_object_literal_trailing_comma_single() {
-        check("", "{\n\tname: 'John',\n}", expect!["{name: string}"]);
+        check("", indoc! {r#"
+            {
+            	name: "John",
+            }
+        "#}, expect!["{name: string}"]);
     }
 }

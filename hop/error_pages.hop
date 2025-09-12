@@ -6,13 +6,13 @@
 </code-text>
 
 <error-generic-error class="flex flex-col gap-4">
-	<heading-box {title: 'Error'}>
+	<heading-box {title: "Error"}>
 		<slot-default/>
 	</heading-box>
 </error-generic-error>
 
 <error-not-found-error class="flex flex-col gap-4" {requested_path: string, available_routes: array[string]}>
-	<heading-box {title: 'Error - Route not found'}>
+	<heading-box {title: "Error - Route not found"}>
 		<div>
 		The requested route <code-text>{requested_path}</code-text> was not found in the build file.
 		</div>

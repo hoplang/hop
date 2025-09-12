@@ -837,10 +837,10 @@ mod tests {
             indoc! {r#"
                 -- main.hop --
                 <main-comp>
-                  <if {HOP_MODE == 'build'}>
+                  <if {HOP_MODE == "build"}>
                     <div>Build mode active</div>
                   </if>
-                  <if {HOP_MODE == 'dev'}>
+                  <if {HOP_MODE == "dev"}>
                     <div>Dev mode active</div>
                   </if>
                 </main-comp>

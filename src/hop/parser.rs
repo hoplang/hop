@@ -1524,7 +1524,7 @@ mod tests {
         check(
             indoc! {r#"
                 <main-comp>
-                    <if {user.name == 'admin'}>
+                    <if {user.name == "admin"}>
                         <div>Admin panel</div>
                         <button>Settings</button>
                     </if>

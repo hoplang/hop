@@ -482,6 +482,7 @@ impl Parser {
 mod tests {
     use super::*;
     use crate::document::{DocumentAnnotator, SimpleAnnotation};
+    use indoc::indoc;
     use expect_test::{Expect, expect};
 
     fn annotate_error(error: ParseError) -> String {
@@ -844,7 +845,7 @@ mod tests {
     #[test]
     fn test_parse_expr_empty_string() {
         check_parse_expr(
-            "''",
+            r#""""#,
             expect![[r#"
                 ""
             "#]],
@@ -894,7 +895,7 @@ mod tests {
     #[test]
     fn test_parse_expr_string_comparison() {
         check_parse_expr(
-            "'guest' == user.role",
+            r#""guest" == user.role"#,
             expect![[r#"
                 ("guest" == user.role)
             "#]],
@@ -914,7 +915,7 @@ mod tests {
     #[test]
     fn test_parse_expr_string_literal() {
         check_parse_expr(
-            "'hello'",
+            r#""hello""#,
             expect![[r#"
                 "hello"
             "#]],
@@ -934,7 +935,7 @@ mod tests {
     #[test]
     fn test_parse_expr_string_literal_comparison() {
         check_parse_expr(
-            "'apple' == 'orange'",
+            r#""apple" == "orange""#,
             expect![[r#"
                 ("apple" == "orange")
             "#]],
@@ -944,7 +945,7 @@ mod tests {
     #[test]
     fn test_parse_expr_property_string_comparison() {
         check_parse_expr(
-            "user.name == 'admin'",
+            r#"user.name == "admin""#,
             expect![[r#"
                 (user.name == "admin")
             "#]],
@@ -954,7 +955,7 @@ mod tests {
     #[test]
     fn test_parse_expr_string_with_space() {
         check_parse_expr(
-            "'hello world'",
+            r#""hello world""#,
             expect![[r#"
                 "hello world"
             "#]],
@@ -994,7 +995,7 @@ mod tests {
     #[test]
     fn test_parse_expr_array_mixed_types() {
         check_parse_expr(
-            "[1, 'hello', true]",
+            r#"[1, "hello", true]"#,
             expect![[r#"
                 [1, "hello", true]
             "#]],
@@ -1044,7 +1045,7 @@ mod tests {
     #[test]
     fn test_parse_expr_object_single_property() {
         check_parse_expr(
-            "{name: 'John'}",
+            r#"{name: "John"}"#,
             expect![[r#"
                 {name: "John"}
             "#]],
@@ -1054,7 +1055,7 @@ mod tests {
     #[test]
     fn test_parse_expr_object_multiple_properties() {
         check_parse_expr(
-            "{a: 'foo', b: 1}",
+            r#"{a: "foo", b: 1}"#,
             expect![[r#"
                 {a: "foo", b: 1}
             "#]],
@@ -1074,7 +1075,7 @@ mod tests {
     #[test]
     fn test_parse_expr_object_nested() {
         check_parse_expr(
-            "{nested: {inner: 'value'}}",
+            r#"{nested: {inner: "value"}}"#,
             expect![[r#"
                 {nested: {inner: "value"}}
             "#]],
@@ -1084,7 +1085,7 @@ mod tests {
     #[test]
     fn test_parse_expr_object_deeply_nested() {
         check_parse_expr(
-            "{user: {profile: {settings: {theme: 'dark', notifications: {email: true, push: false}}, name: 'Alice'}}, status: 'active'}",
+            r#"{user: {profile: {settings: {theme: "dark", notifications: {email: true, push: false}}, name: "Alice"}}, status: "active"}"#,
             expect![[r#"
                 {
                   user: {
@@ -1105,7 +1106,7 @@ mod tests {
     #[test]
     fn test_parse_expr_mixed_arrays_and_objects() {
         check_parse_expr(
-            "{users: [{name: 'Alice', tags: ['admin', 'user']}, {name: 'Bob', tags: ['user']}], config: {features: ['auth', 'api'], version: 2}}",
+            r#"{users: [{name: "Alice", tags: ["admin", "user"]}, {name: "Bob", tags: ["user"]}], config: {features: ["auth", "api"], version: 2}}"#,
             expect![[r#"
                 {
                   users: [
@@ -1151,7 +1152,12 @@ mod tests {
     #[test]
     fn test_parse_expr_object_trailing_comma_multiline() {
         check_parse_expr(
-            "{\n\ta: 'foo',\n\tb: 1,\n}",
+            indoc! {r#"
+                {
+                	a: "foo",
+                	b: 1,
+                }
+            "#},
             expect![[r#"
                 {a: "foo", b: 1}
             "#]],
@@ -1161,7 +1167,11 @@ mod tests {
     #[test]
     fn test_parse_expr_object_trailing_comma_single() {
         check_parse_expr(
-            "{\n\tname: 'John',\n}",
+            indoc! {r#"
+                {
+                	name: "John",
+                }
+            "#},
             expect![[r#"
                 {name: "John"}
             "#]],
@@ -1181,7 +1191,7 @@ mod tests {
     #[test]
     fn test_parse_arguments_single() {
         check_parse_arguments(
-            "name: 'John'",
+            r#"name: "John""#,
             expect![[r#"
                 [name: "John"]
             "#]],
@@ -1191,7 +1201,7 @@ mod tests {
     #[test]
     fn test_parse_arguments_multiple() {
         check_parse_arguments(
-            "name: 'John', age: 25, active: true",
+            r#"name: "John", age: 25, active: true"#,
             expect![[r#"
                 [name: "John", age: 25, active: true]
             "#]],
@@ -1211,7 +1221,7 @@ mod tests {
     #[test]
     fn test_parse_named_arguments_trailing_comma() {
         check_parse_arguments(
-            "name: 'John', age: 25,",
+            r#"name: "John", age: 25,"#,
             expect![[r#"
                 [name: "John", age: 25]
             "#]],
@@ -1221,10 +1231,10 @@ mod tests {
     #[test]
     fn test_parse_arguments_duplicate_argument_error() {
         check_parse_arguments(
-            "name: 'John', name: 'Jane'",
+            r#"name: "John", name: "Jane""#,
             expect![[r#"
                 error: Duplicate argument 'name'
-                name: 'John', name: 'Jane'
+                name: "John", name: "Jane"
                               ^^^^
             "#]],
         );
@@ -1233,10 +1243,10 @@ mod tests {
     #[test]
     fn test_parse_named_arguments_missing_colon_error() {
         check_parse_arguments(
-            "name 'John'",
+            r#"name "John""#,
             expect![[r#"
-                error: Expected token ':' but got ''John''
-                name 'John'
+                error: Expected token ':' but got '"John"'
+                name "John"
                      ^^^^^^
             "#]],
         );
@@ -1257,10 +1267,10 @@ mod tests {
     #[test]
     fn test_parse_named_arguments_invalid_start_error() {
         check_parse_arguments(
-            "123: 'value'",
+            r#"123: "value""#,
             expect![[r#"
                 error: Expected variable name but got 123
-                123: 'value'
+                123: "value"
                 ^^^
             "#]],
         );
@@ -1269,10 +1279,10 @@ mod tests {
     #[test]
     fn test_parse_named_arguments_unexpected_token_error() {
         check_parse_arguments(
-            "name: 'John' age: 25",
+            r#"name: "John" age: 25"#,
             expect![[r#"
                 error: Unexpected token 'age'
-                name: 'John' age: 25
+                name: "John" age: 25
                              ^^^
             "#]],
         );
