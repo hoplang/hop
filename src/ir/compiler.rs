@@ -5,7 +5,7 @@ use crate::hop::ast::{Ast, Attribute, AttributeValue, ComponentDefinition, Node}
 use crate::hop::module_name::ModuleName;
 use crate::ir::passes::PassManager;
 use crate::ir::{BinaryOp, IrEntrypoint, IrExpr, IrModule, IrNode, UnaryOp};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 pub struct Compiler<'a> {
     asts: &'a HashMap<ModuleName, Ast>,
@@ -14,6 +14,7 @@ pub struct Compiler<'a> {
     // Alpha-renaming state
     var_counter: usize,
     scope_stack: Vec<HashMap<String, String>>, // Stack of scopes (original → renamed)
+    all_used_names: HashSet<String>, // Track all variable names ever used
 }
 
 impl Compiler<'_> {
@@ -23,6 +24,7 @@ impl Compiler<'_> {
             ir_module: IrModule::new(),
             var_counter: 0,
             scope_stack: vec![],
+            all_used_names: HashSet::new(),
         };
 
         // Compile all entrypoint components
@@ -516,14 +518,17 @@ impl Compiler<'_> {
     }
 
     fn bind_var(&mut self, name: &str) -> String {
-        // Check if this name would shadow an existing binding
-        let needs_renaming = self.is_name_in_scope(name);
+        // Check if this name would shadow an existing binding OR has been used before
+        let needs_renaming = self.is_name_in_scope(name) || self.all_used_names.contains(name);
 
         let renamed = if needs_renaming {
             self.fresh_var(name)
         } else {
             name.to_string()
         };
+
+        // Track this name as used
+        self.all_used_names.insert(renamed.clone());
 
         self.scope_stack
             .last_mut()
@@ -1077,6 +1082,45 @@ mod tests {
                       Write("</div>")
                     }
                     Write("</div>")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_variable_reuse_bug_in_sibling_scopes() {
+        // This test demonstrates the bug where variables can be incorrectly reused
+        // in sibling scopes after a scope is popped
+        check_ir(
+            &[
+                "<main-comp entrypoint>",
+                // First for loop introduces 'x'
+                "<for {x in [\"a\", \"b\"]}>",
+                "<div>{x}</div>",
+                "</for>",
+                // Second for loop also introduces 'x' - should be renamed!
+                // But with the current bug, it might reuse 'x' since the first scope was popped
+                "<for {x in [\"c\", \"d\"]}>",
+                "<span>{x}</span>",
+                "</for>",
+                "</main-comp>",
+            ]
+            .join(""),
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: []
+                  body: {
+                    For(var: x, array: ["a", "b"]) {
+                      Write("<div>")
+                      WriteExpr(expr: x, escape: true)
+                      Write("</div>")
+                    }
+                    For(var: x_1, array: ["c", "d"]) {
+                      Write("<span>")
+                      WriteExpr(expr: x_1, escape: true)
+                      Write("</span>")
+                    }
                   }
                 }
             "#]],
