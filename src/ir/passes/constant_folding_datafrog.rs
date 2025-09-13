@@ -87,7 +87,9 @@ impl DatafrogConstantFoldingPass {
             bool_value.from_join(
                 &eq_left_value,
                 &eq_right_value,
-                |eq_expr: &ExprId, left_val: &bool, right_val: &bool| (*eq_expr, left_val == right_val),
+                |eq_expr: &ExprId, left_val: &bool, right_val: &bool| {
+                    (*eq_expr, left_val == right_val)
+                },
             );
         }
 

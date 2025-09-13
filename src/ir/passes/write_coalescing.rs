@@ -23,7 +23,10 @@ impl WriteCoalescingPass {
 
         for node in nodes {
             match node {
-                IrNode::Write { id: _, content: text } => {
+                IrNode::Write {
+                    id: _,
+                    content: text,
+                } => {
                     // Accumulate consecutive writes
                     match pending_write {
                         Some(ref mut accumulated) => {
@@ -34,10 +37,17 @@ impl WriteCoalescingPass {
                         }
                     }
                 }
-                IrNode::If { id, condition, body } => {
+                IrNode::If {
+                    id,
+                    condition,
+                    body,
+                } => {
                     // Flush any pending write before a control flow node
                     if let Some(text) = pending_write.take() {
-                        result.push(IrNode::Write { id: Self::next_id(next_id), content: text });
+                        result.push(IrNode::Write {
+                            id: Self::next_id(next_id),
+                            content: text,
+                        });
                     }
                     // Recursively transform the body
                     result.push(IrNode::If {
@@ -46,10 +56,18 @@ impl WriteCoalescingPass {
                         body: Self::transform_nodes(body, next_id),
                     });
                 }
-                IrNode::For { id, var, array, body } => {
+                IrNode::For {
+                    id,
+                    var,
+                    array,
+                    body,
+                } => {
                     // Flush any pending write before a control flow node
                     if let Some(text) = pending_write.take() {
-                        result.push(IrNode::Write { id: Self::next_id(next_id), content: text });
+                        result.push(IrNode::Write {
+                            id: Self::next_id(next_id),
+                            content: text,
+                        });
                     }
                     // Recursively transform the body
                     result.push(IrNode::For {
@@ -59,10 +77,18 @@ impl WriteCoalescingPass {
                         body: Self::transform_nodes(body, next_id),
                     });
                 }
-                IrNode::Let { id, var, value, body } => {
+                IrNode::Let {
+                    id,
+                    var,
+                    value,
+                    body,
+                } => {
                     // Flush any pending write before a control flow node
                     if let Some(text) = pending_write.take() {
-                        result.push(IrNode::Write { id: Self::next_id(next_id), content: text });
+                        result.push(IrNode::Write {
+                            id: Self::next_id(next_id),
+                            content: text,
+                        });
                     }
                     // Recursively transform the body
                     result.push(IrNode::Let {
@@ -76,7 +102,10 @@ impl WriteCoalescingPass {
                     // WriteExpr can't be coalesced with Write nodes
                     // Flush any pending write
                     if let Some(text) = pending_write.take() {
-                        result.push(IrNode::Write { id: Self::next_id(next_id), content: text });
+                        result.push(IrNode::Write {
+                            id: Self::next_id(next_id),
+                            content: text,
+                        });
                     }
                     result.push(node);
                 }
@@ -85,7 +114,10 @@ impl WriteCoalescingPass {
 
         // Flush any remaining pending write
         if let Some(text) = pending_write {
-            result.push(IrNode::Write { id: Self::next_id(next_id), content: text });
+            result.push(IrNode::Write {
+                id: Self::next_id(next_id),
+                content: text,
+            });
         }
 
         result
@@ -148,10 +180,7 @@ mod tests {
             body: vec![
                 t.write("Before"),
                 t.write(" if"),
-                t.if_stmt(
-                    t.boolean(true),
-                    vec![t.write("Inside if")]
-                ),
+                t.if_stmt(t.boolean(true), vec![t.write("Inside if")]),
                 t.write("After"),
                 t.write(" if"),
             ],
@@ -180,16 +209,10 @@ mod tests {
 
         let entrypoint = IrEntrypoint {
             parameters: vec![],
-            body: vec![
-                t.if_stmt(
-                    t.boolean(true),
-                    vec![
-                        t.write("Line"),
-                        t.write(" "),
-                        t.write("one"),
-                    ]
-                )
-            ],
+            body: vec![t.if_stmt(
+                t.boolean(true),
+                vec![t.write("Line"), t.write(" "), t.write("one")],
+            )],
         };
 
         check(
@@ -213,19 +236,17 @@ mod tests {
 
         let entrypoint = IrEntrypoint {
             parameters: vec![],
-            body: vec![
-                t.for_loop(
-                    "item",
-                    t.array(vec![t.str("x")]),
-                    vec![
-                        t.write("Item"),
-                        t.write(": "),
-                        t.write_expr(t.var("item"), true),
-                        t.write(" - "),
-                        t.write("Done"),
-                    ]
-                )
-            ],
+            body: vec![t.for_loop(
+                "item",
+                t.array(vec![t.str("x")]),
+                vec![
+                    t.write("Item"),
+                    t.write(": "),
+                    t.write_expr(t.var("item"), true),
+                    t.write(" - "),
+                    t.write("Done"),
+                ],
+            )],
         };
 
         check(
@@ -251,17 +272,11 @@ mod tests {
 
         let entrypoint = IrEntrypoint {
             parameters: vec![],
-            body: vec![
-                t.let_stmt(
-                    "x",
-                    t.str("value"),
-                    vec![
-                        t.write("The"),
-                        t.write(" value"),
-                        t.write(" is"),
-                    ]
-                )
-            ],
+            body: vec![t.let_stmt(
+                "x",
+                t.str("value"),
+                vec![t.write("The"), t.write(" value"), t.write(" is")],
+            )],
         };
 
         check(
@@ -296,14 +311,11 @@ mod tests {
                         t.for_loop(
                             "i",
                             t.array(vec![]),
-                            vec![
-                                t.write("Loop"),
-                                t.write(" body"),
-                            ]
+                            vec![t.write("Loop"), t.write(" body")],
                         ),
                         t.write("After"),
                         t.write(" loop"),
-                    ]
+                    ],
                 ),
                 t.write("End"),
                 t.write("."),

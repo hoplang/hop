@@ -1,9 +1,9 @@
+use crate::CompileLanguage;
 use crate::document::DocumentAnnotator;
 use crate::filesystem::files::ProjectRoot;
 use crate::hop::program::Program;
 use crate::ir::{Compiler, JsCompiler, LanguageMode};
 use crate::tui::timing;
-use crate::CompileLanguage;
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
@@ -14,7 +14,11 @@ pub struct CompileResult {
     pub entry_points: Vec<String>,
 }
 
-pub fn execute(projectdir: Option<&str>, output_path: &str, language: &CompileLanguage) -> Result<CompileResult> {
+pub fn execute(
+    projectdir: Option<&str>,
+    output_path: &str,
+    language: &CompileLanguage,
+) -> Result<CompileResult> {
     let mut timer = timing::TimingCollector::new();
 
     // Find project root
