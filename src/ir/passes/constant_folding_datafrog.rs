@@ -20,52 +20,50 @@ impl DatafrogConstantFoldingPass {
         let mut iteration = Iteration::new();
 
         // Variables - (expr_id, boolean_value)
-        let constant = iteration.variable::<(ExprId, bool)>("constant");
+        let bool_value = iteration.variable::<(ExprId, bool)>("bool_value");
 
-        // Variable for not operations - (operand_id, result_id)
+        // Variable for not operations - (operand_id, expr_id)
         let not_rel = iteration.variable::<(ExprId, ExprId)>("not_rel");
 
         // Extract facts from expression tree using DFS iterator
         for node in expr.dfs_iter() {
             match &node.value {
                 IrExprValue::Boolean(b) => {
-                    // Insert literals directly into the constant variable
-                    constant.insert(Relation::from_vec(vec![(node.id, *b)]));
+                    // Insert literals directly into the bool_value variable
+                    bool_value.insert(Relation::from_vec(vec![(node.id, *b)]));
                 }
-                IrExprValue::UnaryOp { op: UnaryOp::Not, operand } => {
-                    // Insert NOT facts directly in the correct order for join: (operand_id, result_id)
+                IrExprValue::UnaryOp {
+                    op: UnaryOp::Not,
+                    operand,
+                } => {
+                    // Insert NOT facts directly in the correct order for join: (operand_id, expr_id)
                     not_rel.insert(Relation::from_vec(vec![(operand.id, node.id)]));
                 }
                 _ => {} // Other expression types don't contribute facts yet
             }
         }
 
-        // Rule: !constant => constant
-        // from_join signature: fn(&V1, &K, &V2) -> (K_new, V_new)
-        // constant is Variable<(ExprId, bool)> where K=ExprId, V=bool
-        // not_rel is Relation<(ExprId, ExprId)> where K=ExprId, V=ExprId
-        // The callback receives (&bool, &ExprId, &ExprId)
         while iteration.changed() {
-            constant.from_join(
-                &constant,
+            // bool_value(Y, !V) :- not_rel(X, Y), bool_value(X, V).
+            bool_value.from_join(
+                &bool_value,
                 &not_rel,
-                |_operand_id: &ExprId, bool_val: &bool, result_id: &ExprId| {
+                |_operand_id: &ExprId, bool_val: &bool, expr_id: &ExprId| {
                     // _operand_id is the join key (matches between both relations)
-                    // bool_val is the value from constant
+                    // bool_val is the value from bool_value
                     // result_id is the value from not_rel
-                    (*result_id, !bool_val)
+                    (*expr_id, !bool_val)
                 },
             );
         }
 
         // Convert results to IrExprValue
         let mut results = HashMap::new();
-        for (id, bool_val) in constant.complete().iter() {
+        for (id, bool_val) in bool_value.complete().iter() {
             results.insert(*id, IrExprValue::Boolean(*bool_val));
         }
         results
     }
-
 
     /// Transform an expression using computed constants
     fn transform_expr(expr: IrExpr) -> IrExpr {
