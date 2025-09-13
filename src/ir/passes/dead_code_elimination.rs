@@ -1,8 +1,8 @@
 use super::Pass;
 use crate::ir::{
     IrExpr,
-    ast::{IrEntrypoint, IrNode},
     ast::IrExprValue,
+    ast::{IrEntrypoint, IrNode},
 };
 
 /// A pass that eliminates dead code, particularly unreachable If branches
@@ -77,8 +77,9 @@ impl Pass for DeadCodeEliminationPass {
 
 #[cfg(test)]
 mod tests {
-    use crate::dop::Type;
     use super::*;
+    use crate::dop::Type;
+    use expect_test::{Expect, expect};
 
     // Helper functions to create IrExpr for tests
     fn make_boolean(b: bool) -> IrExpr {
@@ -95,21 +96,35 @@ mod tests {
         }
     }
 
+    fn check(entrypoint: IrEntrypoint, expected: Expect) {
+        let mut pass = DeadCodeEliminationPass::new();
+        let result = pass.run(entrypoint);
+        expected.assert_eq(&result.to_string());
+    }
+
     #[test]
     fn test_removes_always_true_if() {
         let entrypoint = IrEntrypoint {
             parameters: vec![],
             body: vec![IrNode::If {
                 condition: make_boolean(true),
-                body: vec![IrNode::Write { content: "Always shown".to_string() }],
+                body: vec![IrNode::Write {
+                    content: "Always shown".to_string(),
+                }],
             }],
         };
 
-        let mut pass = DeadCodeEliminationPass::new();
-        let result = pass.run(entrypoint);
-
-        let expected = vec![IrNode::Write { content: "Always shown".to_string() }];
-        assert_eq!(result.body, expected);
+        check(
+            entrypoint,
+            expect![[r#"
+            IrEntrypoint {
+              parameters: []
+              body: {
+                Write("Always shown")
+              }
+            }
+        "#]],
+        );
     }
 
     #[test]
@@ -119,17 +134,27 @@ mod tests {
             body: vec![
                 IrNode::If {
                     condition: make_boolean(false),
-                    body: vec![IrNode::Write { content: "Never shown".to_string() }],
+                    body: vec![IrNode::Write {
+                        content: "Never shown".to_string(),
+                    }],
                 },
-                IrNode::Write { content: "After if".to_string() },
+                IrNode::Write {
+                    content: "After if".to_string(),
+                },
             ],
         };
 
-        let mut pass = DeadCodeEliminationPass::new();
-        let result = pass.run(entrypoint);
-
-        let expected = vec![IrNode::Write { content: "After if".to_string() }];
-        assert_eq!(result.body, expected);
+        check(
+            entrypoint,
+            expect![[r#"
+            IrEntrypoint {
+              parameters: []
+              body: {
+                Write("After if")
+              }
+            }
+        "#]],
+        );
     }
 
     #[test]
@@ -139,31 +164,39 @@ mod tests {
             body: vec![
                 IrNode::If {
                     condition: make_var("show"),
-                    body: vec![IrNode::Write { content: "Dynamic".to_string() }],
+                    body: vec![IrNode::Write {
+                        content: "Dynamic".to_string(),
+                    }],
                 },
                 IrNode::If {
                     condition: make_boolean(true),
-                    body: vec![IrNode::Write { content: "Static true".to_string() }],
+                    body: vec![IrNode::Write {
+                        content: "Static true".to_string(),
+                    }],
                 },
                 IrNode::If {
                     condition: make_boolean(false),
-                    body: vec![IrNode::Write { content: "Static false".to_string() }],
+                    body: vec![IrNode::Write {
+                        content: "Static false".to_string(),
+                    }],
                 },
             ],
         };
 
-        let mut pass = DeadCodeEliminationPass::new();
-        let result = pass.run(entrypoint);
-
-        let expected = vec![
-            IrNode::If {
-                condition: make_var("show"),
-                body: vec![IrNode::Write { content: "Dynamic".to_string() }],
-            },
-            IrNode::Write { content: "Static true".to_string() },
-        ];
-
-        assert_eq!(result.body, expected);
+        check(
+            entrypoint,
+            expect![[r#"
+            IrEntrypoint {
+              parameters: [show: boolean]
+              body: {
+                If(condition: show) {
+                  Write("Dynamic")
+                }
+                Write("Static true")
+              }
+            }
+        "#]],
+        );
     }
 
     #[test]
@@ -176,25 +209,33 @@ mod tests {
                 body: vec![
                     IrNode::If {
                         condition: make_boolean(true),
-                        body: vec![IrNode::Write { content: "Inside let and true if".to_string() }],
+                        body: vec![IrNode::Write {
+                            content: "Inside let and true if".to_string(),
+                        }],
                     },
                     IrNode::If {
                         condition: make_boolean(false),
-                        body: vec![IrNode::Write { content: "Never shown".to_string() }],
+                        body: vec![IrNode::Write {
+                            content: "Never shown".to_string(),
+                        }],
                     },
                 ],
             }],
         };
 
-        let mut pass = DeadCodeEliminationPass::new();
-        let result = pass.run(entrypoint);
-
-        let expected = vec![IrNode::Let {
-            var: "x".to_string(),
-            value: make_var("value"),
-            body: vec![IrNode::Write { content: "Inside let and true if".to_string() }],
-        }];
-
-        assert_eq!(result.body, expected);
+        check(
+            entrypoint,
+            expect![[r#"
+            IrEntrypoint {
+              parameters: []
+              body: {
+                Let(var: x, value: value) {
+                  Write("Inside let and true if")
+                }
+              }
+            }
+        "#]],
+        );
     }
 }
+

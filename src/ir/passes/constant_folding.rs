@@ -1,8 +1,8 @@
 use super::Pass;
 use crate::ir::{
     IrExpr,
-    ast::{IrEntrypoint, IrNode},
     ast::{BinaryOp, IrExprValue, UnaryOp},
+    ast::{IrEntrypoint, IrNode},
 };
 
 /// Represents a compile-time constant value
@@ -203,6 +203,7 @@ impl Pass for ConstantFoldingPass {
 #[cfg(test)]
 mod tests {
     use crate::dop::Type;
+    use expect_test::{Expect, expect};
 
     use super::*;
 
@@ -263,6 +264,12 @@ mod tests {
         }
     }
 
+    fn check(entrypoint: IrEntrypoint, expected: Expect) {
+        let mut pass = ConstantFoldingPass::new();
+        let result = pass.run(entrypoint);
+        expected.assert_eq(&result.to_string());
+    }
+
     #[test]
     fn test_constant_folding_folds_binary_operations() {
         // Create an if with condition "x" == "x" (should be folded to true)
@@ -270,20 +277,25 @@ mod tests {
             parameters: vec![],
             body: vec![IrNode::If {
                 condition: make_binary_op(make_string("x"), BinaryOp::Equal, make_string("x")),
-                body: vec![IrNode::Write { content: "Condition folded to true".to_string() }],
+                body: vec![IrNode::Write {
+                    content: "Condition folded to true".to_string(),
+                }],
             }],
         };
 
-        let mut pass = ConstantFoldingPass::new();
-        let result = pass.run(entrypoint);
-
-        // Expected: The condition should be folded to a boolean true
-        let expected = vec![IrNode::If {
-            condition: make_boolean(true),
-            body: vec![IrNode::Write { content: "Condition folded to true".to_string() }],
-        }];
-
-        assert_eq!(result.body, expected);
+        check(
+            entrypoint,
+            expect![[r#"
+            IrEntrypoint {
+              parameters: []
+              body: {
+                If(condition: true) {
+                  Write("Condition folded to true")
+                }
+              }
+            }
+        "#]],
+        );
     }
 
     #[test]
@@ -292,20 +304,25 @@ mod tests {
             parameters: vec![],
             body: vec![IrNode::If {
                 condition: make_unary_op(UnaryOp::Not, make_boolean(false)),
-                body: vec![IrNode::Write { content: "Negation folded".to_string() }],
+                body: vec![IrNode::Write {
+                    content: "Negation folded".to_string(),
+                }],
             }],
         };
 
-        let mut pass = ConstantFoldingPass::new();
-        let result = pass.run(entrypoint);
-
-        // Expected: !false should be folded to true
-        let expected = vec![IrNode::If {
-            condition: make_boolean(true),
-            body: vec![IrNode::Write { content: "Negation folded".to_string() }],
-        }];
-
-        assert_eq!(result.body, expected);
+        check(
+            entrypoint,
+            expect![[r#"
+            IrEntrypoint {
+              parameters: []
+              body: {
+                If(condition: true) {
+                  Write("Negation folded")
+                }
+              }
+            }
+        "#]],
+        );
     }
 
     #[test]
@@ -314,20 +331,25 @@ mod tests {
             parameters: vec![("show".to_string(), Type::Bool)],
             body: vec![IrNode::If {
                 condition: make_var("show"),
-                body: vec![IrNode::Write { content: "Dynamic condition preserved".to_string() }],
+                body: vec![IrNode::Write {
+                    content: "Dynamic condition preserved".to_string(),
+                }],
             }],
         };
 
-        let mut pass = ConstantFoldingPass::new();
-        let result = pass.run(entrypoint);
-
-        // Expected: Dynamic condition should be preserved as-is
-        let expected = vec![IrNode::If {
-            condition: make_var("show"),
-            body: vec![IrNode::Write { content: "Dynamic condition preserved".to_string() }],
-        }];
-
-        assert_eq!(result.body, expected);
+        check(
+            entrypoint,
+            expect![[r#"
+            IrEntrypoint {
+              parameters: [show: boolean]
+              body: {
+                If(condition: show) {
+                  Write("Dynamic condition preserved")
+                }
+              }
+            }
+        "#]],
+        );
     }
 
     #[test]
@@ -337,21 +359,25 @@ mod tests {
             body: vec![IrNode::Let {
                 var: "x".to_string(),
                 value: make_binary_op(make_number(2.0), BinaryOp::Equal, make_number(2.0)),
-                body: vec![IrNode::Write { content: "Let with folded expression".to_string() }],
+                body: vec![IrNode::Write {
+                    content: "Let with folded expression".to_string(),
+                }],
             }],
         };
 
-        let mut pass = ConstantFoldingPass::new();
-        let result = pass.run(entrypoint);
-
-        // Expected: Binary operation in let value should be folded
-        let expected = vec![IrNode::Let {
-            var: "x".to_string(),
-            value: make_boolean(true),
-            body: vec![IrNode::Write { content: "Let with folded expression".to_string() }],
-        }];
-
-        assert_eq!(result.body, expected);
+        check(
+            entrypoint,
+            expect![[r#"
+            IrEntrypoint {
+              parameters: []
+              body: {
+                Let(var: x, value: true) {
+                  Write("Let with folded expression")
+                }
+              }
+            }
+        "#]],
+        );
     }
 
     #[test]
@@ -364,16 +390,17 @@ mod tests {
             }],
         };
 
-        let mut pass = ConstantFoldingPass::new();
-        let result = pass.run(entrypoint);
-
-        // Expected: Expression in WriteExpr should be folded
-        let expected = vec![IrNode::WriteExpr {
-            expr: make_boolean(true),
-            escape: true,
-        }];
-
-        assert_eq!(result.body, expected);
+        check(
+            entrypoint,
+            expect![[r#"
+            IrEntrypoint {
+              parameters: []
+              body: {
+                WriteExpr(expr: true, escape: true)
+              }
+            }
+        "#]],
+        );
     }
 
     #[test]
@@ -386,20 +413,24 @@ mod tests {
                     make_binary_op(make_number(1.0), BinaryOp::Equal, make_number(1.0)),
                     make_binary_op(make_number(2.0), BinaryOp::Equal, make_number(3.0)),
                 ]),
-                body: vec![IrNode::Write { content: "For loop body".to_string() }],
+                body: vec![IrNode::Write {
+                    content: "For loop body".to_string(),
+                }],
             }],
         };
 
-        let mut pass = ConstantFoldingPass::new();
-        let result = pass.run(entrypoint);
-
-        // Expected: Array elements should be folded
-        let expected = vec![IrNode::For {
-            var: "item".to_string(),
-            array: make_array(vec![make_boolean(true), make_boolean(false)]),
-            body: vec![IrNode::Write { content: "For loop body".to_string() }],
-        }];
-
-        assert_eq!(result.body, expected);
+        check(
+            entrypoint,
+            expect![[r#"
+            IrEntrypoint {
+              parameters: []
+              body: {
+                For(var: item, array: [true, false]) {
+                  Write("For loop body")
+                }
+              }
+            }
+        "#]],
+        );
     }
 }
