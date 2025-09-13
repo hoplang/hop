@@ -79,22 +79,8 @@ impl Pass for DeadCodeEliminationPass {
 mod tests {
     use super::*;
     use crate::dop::Type;
+    use crate::ir::test_utils::IrTestBuilder;
     use expect_test::{Expect, expect};
-
-    // Helper functions to create IrExpr for tests
-    fn make_boolean(b: bool) -> IrExpr {
-        IrExpr {
-            id: 0,
-            value: IrExprValue::Boolean(b),
-        }
-    }
-
-    fn make_var(name: &str) -> IrExpr {
-        IrExpr {
-            id: 0,
-            value: IrExprValue::Var(name.to_string()),
-        }
-    }
 
     fn check(entrypoint: IrEntrypoint, expected: Expect) {
         let mut pass = DeadCodeEliminationPass::new();
@@ -104,18 +90,12 @@ mod tests {
 
     #[test]
     fn test_removes_always_true_if() {
-        let entrypoint = IrEntrypoint {
-            parameters: vec![],
-            body: vec![IrNode::If {
-                condition: make_boolean(true),
-                body: vec![IrNode::Write {
-                    content: "Always shown".to_string(),
-                }],
-            }],
-        };
-
+        let t = IrTestBuilder::new();
         check(
-            entrypoint,
+            IrEntrypoint {
+                parameters: vec![],
+                body: vec![t.if_stmt(t.boolean(true), vec![t.write("Always shown")])],
+            },
             expect![[r#"
             IrEntrypoint {
               parameters: []
@@ -129,23 +109,15 @@ mod tests {
 
     #[test]
     fn test_removes_always_false_if() {
-        let entrypoint = IrEntrypoint {
-            parameters: vec![],
-            body: vec![
-                IrNode::If {
-                    condition: make_boolean(false),
-                    body: vec![IrNode::Write {
-                        content: "Never shown".to_string(),
-                    }],
-                },
-                IrNode::Write {
-                    content: "After if".to_string(),
-                },
-            ],
-        };
-
+        let t = IrTestBuilder::new();
         check(
-            entrypoint,
+            IrEntrypoint {
+                parameters: vec![],
+                body: vec![
+                    t.if_stmt(t.boolean(false), vec![t.write("Never shown")]),
+                    t.write("After if"),
+                ],
+            },
             expect![[r#"
             IrEntrypoint {
               parameters: []
@@ -159,32 +131,16 @@ mod tests {
 
     #[test]
     fn test_preserves_dynamic_conditions() {
-        let entrypoint = IrEntrypoint {
-            parameters: vec![("show".to_string(), Type::Bool)],
-            body: vec![
-                IrNode::If {
-                    condition: make_var("show"),
-                    body: vec![IrNode::Write {
-                        content: "Dynamic".to_string(),
-                    }],
-                },
-                IrNode::If {
-                    condition: make_boolean(true),
-                    body: vec![IrNode::Write {
-                        content: "Static true".to_string(),
-                    }],
-                },
-                IrNode::If {
-                    condition: make_boolean(false),
-                    body: vec![IrNode::Write {
-                        content: "Static false".to_string(),
-                    }],
-                },
-            ],
-        };
-
+        let t = IrTestBuilder::new();
         check(
-            entrypoint,
+            IrEntrypoint {
+                parameters: vec![("show".to_string(), Type::Bool)],
+                body: vec![
+                    t.if_stmt(t.var("show"), vec![t.write("Dynamic")]),
+                    t.if_stmt(t.boolean(true), vec![t.write("Static true")]),
+                    t.if_stmt(t.boolean(false), vec![t.write("Static false")]),
+                ],
+            },
             expect![[r#"
             IrEntrypoint {
               parameters: [show: boolean]
@@ -201,30 +157,19 @@ mod tests {
 
     #[test]
     fn test_nested_dead_code_elimination() {
-        let entrypoint = IrEntrypoint {
-            parameters: vec![],
-            body: vec![IrNode::Let {
-                var: "x".to_string(),
-                value: make_var("value"),
-                body: vec![
-                    IrNode::If {
-                        condition: make_boolean(true),
-                        body: vec![IrNode::Write {
-                            content: "Inside let and true if".to_string(),
-                        }],
-                    },
-                    IrNode::If {
-                        condition: make_boolean(false),
-                        body: vec![IrNode::Write {
-                            content: "Never shown".to_string(),
-                        }],
-                    },
-                ],
-            }],
-        };
-
+        let t = IrTestBuilder::new();
         check(
-            entrypoint,
+            IrEntrypoint {
+                parameters: vec![],
+                body: vec![t.let_stmt(
+                    "x",
+                    t.var("value"),
+                    vec![
+                        t.if_stmt(t.boolean(true), vec![t.write("Inside let and true if")]),
+                        t.if_stmt(t.boolean(false), vec![t.write("Never shown")]),
+                    ],
+                )],
+            },
             expect![[r#"
             IrEntrypoint {
               parameters: []
@@ -238,4 +183,3 @@ mod tests {
         );
     }
 }
-

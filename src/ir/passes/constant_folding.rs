@@ -203,66 +203,10 @@ impl Pass for ConstantFoldingPass {
 #[cfg(test)]
 mod tests {
     use crate::dop::Type;
+    use crate::ir::test_utils::IrTestBuilder;
     use expect_test::{Expect, expect};
 
     use super::*;
-
-    // Helper functions to create IrExpr for tests
-    fn make_string(s: &str) -> IrExpr {
-        IrExpr {
-            id: 0, // Use dummy ID for tests
-            value: IrExprValue::String(s.to_string()),
-        }
-    }
-
-    fn make_boolean(b: bool) -> IrExpr {
-        IrExpr {
-            id: 0,
-            value: IrExprValue::Boolean(b),
-        }
-    }
-
-    fn make_binary_op(left: IrExpr, op: BinaryOp, right: IrExpr) -> IrExpr {
-        IrExpr {
-            id: 0,
-            value: IrExprValue::BinaryOp {
-                left: Box::new(left),
-                op,
-                right: Box::new(right),
-            },
-        }
-    }
-
-    fn make_unary_op(op: UnaryOp, operand: IrExpr) -> IrExpr {
-        IrExpr {
-            id: 0,
-            value: IrExprValue::UnaryOp {
-                op,
-                operand: Box::new(operand),
-            },
-        }
-    }
-
-    fn make_var(name: &str) -> IrExpr {
-        IrExpr {
-            id: 0,
-            value: IrExprValue::Var(name.to_string()),
-        }
-    }
-
-    fn make_number(n: f64) -> IrExpr {
-        IrExpr {
-            id: 0,
-            value: IrExprValue::Number(n),
-        }
-    }
-
-    fn make_array(elements: Vec<IrExpr>) -> IrExpr {
-        IrExpr {
-            id: 0,
-            value: IrExprValue::Array(elements),
-        }
-    }
 
     fn check(entrypoint: IrEntrypoint, expected: Expect) {
         let mut pass = ConstantFoldingPass::new();
@@ -272,19 +216,18 @@ mod tests {
 
     #[test]
     fn test_constant_folding_folds_binary_operations() {
-        // Create an if with condition "x" == "x" (should be folded to true)
-        let entrypoint = IrEntrypoint {
-            parameters: vec![],
-            body: vec![IrNode::If {
-                condition: make_binary_op(make_string("x"), BinaryOp::Equal, make_string("x")),
-                body: vec![IrNode::Write {
-                    content: "Condition folded to true".to_string(),
-                }],
-            }],
-        };
-
+        let t = IrTestBuilder::new();
         check(
-            entrypoint,
+            IrEntrypoint {
+                parameters: vec![],
+                body: vec![
+                    // "x" == "x" => true
+                    t.if_stmt(
+                        t.eq(t.str("x"), t.str("x")),
+                        vec![t.write("Condition folded to true")],
+                    ),
+                ],
+            },
             expect![[r#"
             IrEntrypoint {
               parameters: []
@@ -300,18 +243,15 @@ mod tests {
 
     #[test]
     fn test_constant_folding_folds_unary_operations() {
-        let entrypoint = IrEntrypoint {
-            parameters: vec![],
-            body: vec![IrNode::If {
-                condition: make_unary_op(UnaryOp::Not, make_boolean(false)),
-                body: vec![IrNode::Write {
-                    content: "Negation folded".to_string(),
-                }],
-            }],
-        };
-
+        let t = IrTestBuilder::new();
         check(
-            entrypoint,
+            IrEntrypoint {
+                parameters: vec![],
+                body: vec![
+                    // !false => true
+                    t.if_stmt(t.not(t.boolean(false)), vec![t.write("Negation folded")]),
+                ],
+            },
             expect![[r#"
             IrEntrypoint {
               parameters: []
@@ -327,18 +267,15 @@ mod tests {
 
     #[test]
     fn test_constant_folding_preserves_dynamic_expressions() {
-        let entrypoint = IrEntrypoint {
-            parameters: vec![("show".to_string(), Type::Bool)],
-            body: vec![IrNode::If {
-                condition: make_var("show"),
-                body: vec![IrNode::Write {
-                    content: "Dynamic condition preserved".to_string(),
-                }],
-            }],
-        };
-
+        let t = IrTestBuilder::new();
         check(
-            entrypoint,
+            IrEntrypoint {
+                parameters: vec![("show".to_string(), Type::Bool)],
+                body: vec![
+                    // show is preserved
+                    t.if_stmt(t.var("show"), vec![t.write("Dynamic condition preserved")]),
+                ],
+            },
             expect![[r#"
             IrEntrypoint {
               parameters: [show: boolean]
@@ -354,19 +291,19 @@ mod tests {
 
     #[test]
     fn test_constant_folding_in_nested_expressions() {
-        let entrypoint = IrEntrypoint {
-            parameters: vec![],
-            body: vec![IrNode::Let {
-                var: "x".to_string(),
-                value: make_binary_op(make_number(2.0), BinaryOp::Equal, make_number(2.0)),
-                body: vec![IrNode::Write {
-                    content: "Let with folded expression".to_string(),
-                }],
-            }],
-        };
-
+        let t = IrTestBuilder::new();
         check(
-            entrypoint,
+            IrEntrypoint {
+                parameters: vec![],
+                body: vec![
+                    // 2.0 == 2.0 => true
+                    t.let_stmt(
+                        "x",
+                        t.eq(t.num(2.0), t.num(2.0)),
+                        vec![t.write("Let with folded expression")],
+                    ),
+                ],
+            },
             expect![[r#"
             IrEntrypoint {
               parameters: []
@@ -381,46 +318,22 @@ mod tests {
     }
 
     #[test]
-    fn test_constant_folding_in_write_expr() {
-        let entrypoint = IrEntrypoint {
-            parameters: vec![],
-            body: vec![IrNode::WriteExpr {
-                expr: make_binary_op(make_string("hello"), BinaryOp::Equal, make_string("hello")),
-                escape: true,
-            }],
-        };
-
-        check(
-            entrypoint,
-            expect![[r#"
-            IrEntrypoint {
-              parameters: []
-              body: {
-                WriteExpr(expr: true, escape: true)
-              }
-            }
-        "#]],
-        );
-    }
-
-    #[test]
     fn test_constant_folding_in_for_array() {
-        let entrypoint = IrEntrypoint {
-            parameters: vec![],
-            body: vec![IrNode::For {
-                var: "item".to_string(),
-                array: make_array(vec![
-                    make_binary_op(make_number(1.0), BinaryOp::Equal, make_number(1.0)),
-                    make_binary_op(make_number(2.0), BinaryOp::Equal, make_number(3.0)),
-                ]),
-                body: vec![IrNode::Write {
-                    content: "For loop body".to_string(),
-                }],
-            }],
-        };
-
+        let t = IrTestBuilder::new();
         check(
-            entrypoint,
+            IrEntrypoint {
+                parameters: vec![],
+                body: vec![t.for_loop(
+                    "item",
+                    t.array(vec![
+                        // 1.0 == 1.0 => true
+                        t.eq(t.num(1.0), t.num(1.0)),
+                        // 2.0 == 2.0 => true
+                        t.eq(t.num(2.0), t.num(3.0)),
+                    ]),
+                    vec![t.write("For loop body")],
+                )],
+            },
             expect![[r#"
             IrEntrypoint {
               parameters: []

@@ -93,37 +93,8 @@ impl Pass for WriteCoalescingPass {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::{IrExpr, ast::IrExprValue};
+    use crate::ir::test_utils::IrTestBuilder;
     use expect_test::{Expect, expect};
-
-    // Helper functions to create IrExpr for tests
-    fn make_string(s: &str) -> IrExpr {
-        IrExpr {
-            id: 0,
-            value: IrExprValue::String(s.to_string()),
-        }
-    }
-
-    fn make_boolean(b: bool) -> IrExpr {
-        IrExpr {
-            id: 0,
-            value: IrExprValue::Boolean(b),
-        }
-    }
-
-    fn make_var(name: &str) -> IrExpr {
-        IrExpr {
-            id: 0,
-            value: IrExprValue::Var(name.to_string()),
-        }
-    }
-
-    fn make_array(elements: Vec<IrExpr>) -> IrExpr {
-        IrExpr {
-            id: 0,
-            value: IrExprValue::Array(elements),
-        }
-    }
 
     fn check(entrypoint: IrEntrypoint, expected: Expect) {
         let mut pass = WriteCoalescingPass::new();
@@ -133,21 +104,15 @@ mod tests {
 
     #[test]
     fn test_coalesce_consecutive_writes() {
+        let t = IrTestBuilder::new();
+
         let entrypoint = IrEntrypoint {
             parameters: vec![],
             body: vec![
-                IrNode::Write {
-                    content: "Hello".to_string(),
-                },
-                IrNode::Write {
-                    content: " ".to_string(),
-                },
-                IrNode::Write {
-                    content: "World".to_string(),
-                },
-                IrNode::Write {
-                    content: "!".to_string(),
-                },
+                t.write("Hello"),
+                t.write(" "),
+                t.write("World"),
+                t.write("!"),
             ],
         };
 
@@ -166,27 +131,19 @@ mod tests {
 
     #[test]
     fn test_coalesce_with_interruption() {
+        let t = IrTestBuilder::new();
+
         let entrypoint = IrEntrypoint {
             parameters: vec![],
             body: vec![
-                IrNode::Write {
-                    content: "Before".to_string(),
-                },
-                IrNode::Write {
-                    content: " if".to_string(),
-                },
-                IrNode::If {
-                    condition: make_boolean(true),
-                    body: vec![IrNode::Write {
-                        content: "Inside if".to_string(),
-                    }],
-                },
-                IrNode::Write {
-                    content: "After".to_string(),
-                },
-                IrNode::Write {
-                    content: " if".to_string(),
-                },
+                t.write("Before"),
+                t.write(" if"),
+                t.if_stmt(
+                    t.boolean(true),
+                    vec![t.write("Inside if")]
+                ),
+                t.write("After"),
+                t.write(" if"),
             ],
         };
 
@@ -209,22 +166,20 @@ mod tests {
 
     #[test]
     fn test_coalesce_inside_if() {
+        let t = IrTestBuilder::new();
+
         let entrypoint = IrEntrypoint {
             parameters: vec![],
-            body: vec![IrNode::If {
-                condition: make_boolean(true),
-                body: vec![
-                    IrNode::Write {
-                        content: "Line".to_string(),
-                    },
-                    IrNode::Write {
-                        content: " ".to_string(),
-                    },
-                    IrNode::Write {
-                        content: "one".to_string(),
-                    },
-                ],
-            }],
+            body: vec![
+                t.if_stmt(
+                    t.boolean(true),
+                    vec![
+                        t.write("Line"),
+                        t.write(" "),
+                        t.write("one"),
+                    ]
+                )
+            ],
         };
 
         check(
@@ -244,30 +199,23 @@ mod tests {
 
     #[test]
     fn test_coalesce_inside_for() {
+        let t = IrTestBuilder::new();
+
         let entrypoint = IrEntrypoint {
             parameters: vec![],
-            body: vec![IrNode::For {
-                var: "item".to_string(),
-                array: make_array(vec![make_string("x")]),
-                body: vec![
-                    IrNode::Write {
-                        content: "Item".to_string(),
-                    },
-                    IrNode::Write {
-                        content: ": ".to_string(),
-                    },
-                    IrNode::WriteExpr {
-                        expr: make_var("item"),
-                        escape: true,
-                    },
-                    IrNode::Write {
-                        content: " - ".to_string(),
-                    },
-                    IrNode::Write {
-                        content: "Done".to_string(),
-                    },
-                ],
-            }],
+            body: vec![
+                t.for_loop(
+                    "item",
+                    t.array(vec![t.str("x")]),
+                    vec![
+                        t.write("Item"),
+                        t.write(": "),
+                        t.write_expr(t.var("item"), true),
+                        t.write(" - "),
+                        t.write("Done"),
+                    ]
+                )
+            ],
         };
 
         check(
@@ -289,23 +237,21 @@ mod tests {
 
     #[test]
     fn test_coalesce_inside_let() {
+        let t = IrTestBuilder::new();
+
         let entrypoint = IrEntrypoint {
             parameters: vec![],
-            body: vec![IrNode::Let {
-                var: "x".to_string(),
-                value: make_string("value"),
-                body: vec![
-                    IrNode::Write {
-                        content: "The".to_string(),
-                    },
-                    IrNode::Write {
-                        content: " value".to_string(),
-                    },
-                    IrNode::Write {
-                        content: " is".to_string(),
-                    },
-                ],
-            }],
+            body: vec![
+                t.let_stmt(
+                    "x",
+                    t.str("value"),
+                    vec![
+                        t.write("The"),
+                        t.write(" value"),
+                        t.write(" is"),
+                    ]
+                )
+            ],
         };
 
         check(
@@ -325,50 +271,32 @@ mod tests {
 
     #[test]
     fn test_nested_coalescing() {
+        let t = IrTestBuilder::new();
+
         let entrypoint = IrEntrypoint {
             parameters: vec![],
             body: vec![
-                IrNode::Write {
-                    content: "Start".to_string(),
-                },
-                IrNode::Write {
-                    content: ": ".to_string(),
-                },
-                IrNode::If {
-                    condition: make_boolean(true),
-                    body: vec![
-                        IrNode::Write {
-                            content: "In".to_string(),
-                        },
-                        IrNode::Write {
-                            content: " if".to_string(),
-                        },
-                        IrNode::For {
-                            var: "i".to_string(),
-                            array: make_array(vec![]),
-                            body: vec![
-                                IrNode::Write {
-                                    content: "Loop".to_string(),
-                                },
-                                IrNode::Write {
-                                    content: " body".to_string(),
-                                },
-                            ],
-                        },
-                        IrNode::Write {
-                            content: "After".to_string(),
-                        },
-                        IrNode::Write {
-                            content: " loop".to_string(),
-                        },
-                    ],
-                },
-                IrNode::Write {
-                    content: "End".to_string(),
-                },
-                IrNode::Write {
-                    content: ".".to_string(),
-                },
+                t.write("Start"),
+                t.write(": "),
+                t.if_stmt(
+                    t.boolean(true),
+                    vec![
+                        t.write("In"),
+                        t.write(" if"),
+                        t.for_loop(
+                            "i",
+                            t.array(vec![]),
+                            vec![
+                                t.write("Loop"),
+                                t.write(" body"),
+                            ]
+                        ),
+                        t.write("After"),
+                        t.write(" loop"),
+                    ]
+                ),
+                t.write("End"),
+                t.write("."),
             ],
         };
 
@@ -395,25 +323,16 @@ mod tests {
 
     #[test]
     fn test_no_coalescing_with_write_expr() {
+        let t = IrTestBuilder::new();
+
         let entrypoint = IrEntrypoint {
             parameters: vec![],
             body: vec![
-                IrNode::Write {
-                    content: "Value".to_string(),
-                },
-                IrNode::Write {
-                    content: ": ".to_string(),
-                },
-                IrNode::WriteExpr {
-                    expr: make_var("x"),
-                    escape: true,
-                },
-                IrNode::Write {
-                    content: " - ".to_string(),
-                },
-                IrNode::Write {
-                    content: "done".to_string(),
-                },
+                t.write("Value"),
+                t.write(": "),
+                t.write_expr(t.var("x"), true),
+                t.write(" - "),
+                t.write("done"),
             ],
         };
 
@@ -453,11 +372,11 @@ mod tests {
 
     #[test]
     fn test_single_write() {
+        let t = IrTestBuilder::new();
+
         let entrypoint = IrEntrypoint {
             parameters: vec![],
-            body: vec![IrNode::Write {
-                content: "Single".to_string(),
-            }],
+            body: vec![t.write("Single")],
         };
 
         check(
