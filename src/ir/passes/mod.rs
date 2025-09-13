@@ -1,7 +1,9 @@
 mod constant_folding;
+mod dead_code_elimination;
 mod write_coalescing;
 
 pub use constant_folding::ConstantFoldingPass;
+pub use dead_code_elimination::DeadCodeEliminationPass;
 pub use write_coalescing::WriteCoalescingPass;
 
 use super::ast::{IrEntrypoint, IrModule};
@@ -48,6 +50,7 @@ impl PassManager {
     pub fn default_optimization_pipeline() -> Self {
         let mut manager = Self::new();
         manager.add_pass(Box::new(ConstantFoldingPass::new()));
+        manager.add_pass(Box::new(DeadCodeEliminationPass::new()));
         manager.add_pass(Box::new(WriteCoalescingPass::new()));
         manager
     }
