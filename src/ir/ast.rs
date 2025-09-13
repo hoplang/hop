@@ -299,6 +299,63 @@ impl IrNode {
     }
 }
 
+/// Event for node traversal
+#[derive(Debug, Clone)]
+pub enum NodeEvent<'a> {
+    Enter(&'a IrNode),
+    Exit(&'a IrNode),
+}
+
+/// Iterator over nodes with enter/exit events
+pub struct NodeVisitor<'a> {
+    stack: Vec<NodeVisitState<'a>>,
+}
+
+enum NodeVisitState<'a> {
+    Enter(&'a IrNode),
+    Exit(&'a IrNode),
+    VisitChildren(&'a [IrNode]),
+}
+
+impl<'a> Iterator for NodeVisitor<'a> {
+    type Item = NodeEvent<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(state) = self.stack.pop() {
+            match state {
+                NodeVisitState::Enter(node) => {
+                    // Push exit event for later
+                    self.stack.push(NodeVisitState::Exit(node));
+
+                    // Push children to visit
+                    match node {
+                        IrNode::If { body, .. }
+                        | IrNode::For { body, .. }
+                        | IrNode::Let { body, .. } => {
+                            self.stack.push(NodeVisitState::VisitChildren(body));
+                        }
+                        IrNode::Write { .. } | IrNode::WriteExpr { .. } => {
+                            // Leaf nodes - no children
+                        }
+                    }
+
+                    return Some(NodeEvent::Enter(node));
+                }
+                NodeVisitState::Exit(node) => {
+                    return Some(NodeEvent::Exit(node));
+                }
+                NodeVisitState::VisitChildren(nodes) => {
+                    // Push children in reverse order so they're visited in correct order
+                    for node in nodes.iter().rev() {
+                        self.stack.push(NodeVisitState::Enter(node));
+                    }
+                }
+            }
+        }
+        None
+    }
+}
+
 impl IrEntrypoint {
     /// Transform all expressions in the entrypoint
     pub fn map_expressions<F>(mut self, f: F) -> IrEntrypoint
@@ -307,6 +364,16 @@ impl IrEntrypoint {
     {
         self.body = self.body.into_iter().map(|n| n.map_expressions(&f)).collect();
         self
+    }
+
+    /// Returns an iterator over all nodes with enter/exit events
+    pub fn visit_nodes(&self) -> NodeVisitor {
+        let mut stack = Vec::new();
+        // Push children in reverse order
+        for node in self.body.iter().rev() {
+            stack.push(NodeVisitState::Enter(node));
+        }
+        NodeVisitor { stack }
     }
 }
 

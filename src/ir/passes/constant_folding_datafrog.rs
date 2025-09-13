@@ -1,7 +1,7 @@
 use super::Pass;
 use crate::ir::{
     IrExpr,
-    ast::{BinaryOp, ExprId, IrExprValue, UnaryOp},
+    ast::{BinaryOp, ExprId, IrExprValue, UnaryOp, NodeEvent},
     ast::{IrEntrypoint, IrNode},
 };
 use datafrog::{Iteration, Relation};
@@ -15,66 +15,75 @@ impl DatafrogConstantFoldingPass {
         Self
     }
 
-    /// Collect all expressions and variable definitions with proper scoping
-    /// Returns (expressions, var_bindings) where var_bindings are (def_expr_id, var_expr_id) pairs
-    fn collect_data(entrypoint: &IrEntrypoint) -> (Vec<&IrExpr>, Vec<(ExprId, ExprId)>) {
+    /// Collect all expressions from the entrypoint
+    fn collect_all_expressions(entrypoint: &IrEntrypoint) -> Vec<&IrExpr> {
         let mut expressions = Vec::new();
+
+        for event in entrypoint.visit_nodes() {
+            if let NodeEvent::Enter(node) = event {
+                match node {
+                    IrNode::If { condition, .. } => {
+                        expressions.extend(condition.dfs_iter());
+                    }
+                    IrNode::WriteExpr { expr, .. } => {
+                        expressions.extend(expr.dfs_iter());
+                    }
+                    IrNode::For { array, .. } => {
+                        expressions.extend(array.dfs_iter());
+                    }
+                    IrNode::Let { value, .. } => {
+                        expressions.extend(value.dfs_iter());
+                    }
+                    IrNode::Write { .. } => {}
+                }
+            }
+        }
+
+        expressions
+    }
+
+    /// Collect variable bindings with proper scoping
+    /// Returns (def_expr_id, var_expr_id) pairs
+    fn collect_variable_bindings(entrypoint: &IrEntrypoint) -> Vec<(ExprId, ExprId)> {
         let mut var_bindings = Vec::new();
         let mut scope_stack: HashMap<String, ExprId> = HashMap::new();
 
-        Self::collect_from_nodes(
-            &entrypoint.body,
-            &mut expressions,
-            &mut var_bindings,
-            &mut scope_stack,
-        );
-        (expressions, var_bindings)
-    }
-
-    fn collect_from_nodes<'a>(
-        nodes: &'a [IrNode],
-        expressions: &mut Vec<&'a IrExpr>,
-        var_bindings: &mut Vec<(ExprId, ExprId)>,
-        scope_stack: &mut HashMap<String, ExprId>,
-    ) {
-        for node in nodes {
-            match node {
-                IrNode::If {
-                    condition, body, ..
-                } => {
-                    Self::collect_from_expr(condition, expressions, var_bindings, scope_stack);
-                    Self::collect_from_nodes(body, expressions, var_bindings, scope_stack);
+        for event in entrypoint.visit_nodes() {
+            match event {
+                NodeEvent::Enter(node) => {
+                    match node {
+                        IrNode::If { condition, .. } => {
+                            Self::collect_var_uses(condition, &mut var_bindings, &scope_stack);
+                        }
+                        IrNode::WriteExpr { expr, .. } => {
+                            Self::collect_var_uses(expr, &mut var_bindings, &scope_stack);
+                        }
+                        IrNode::For { array, .. } => {
+                            Self::collect_var_uses(array, &mut var_bindings, &scope_stack);
+                        }
+                        IrNode::Let { var, value, .. } => {
+                            // Collect variable uses from the value expression (before the variable is in scope)
+                            Self::collect_var_uses(value, &mut var_bindings, &scope_stack);
+                            // Add the variable binding to the scope
+                            scope_stack.insert(var.clone(), value.id);
+                        }
+                        IrNode::Write { .. } => {}
+                    }
                 }
-                IrNode::WriteExpr { expr, .. } => {
-                    Self::collect_from_expr(expr, expressions, var_bindings, scope_stack);
+                NodeEvent::Exit(node) => {
+                    if let IrNode::Let { var, .. } = node {
+                        // Remove the variable binding when leaving the scope
+                        scope_stack.remove(var);
+                    }
                 }
-                IrNode::For { array, body, .. } => {
-                    Self::collect_from_expr(array, expressions, var_bindings, scope_stack);
-                    Self::collect_from_nodes(body, expressions, var_bindings, scope_stack);
-                }
-                IrNode::Let {
-                    var, value, body, ..
-                } => {
-                    // First, collect from the value expression (before the variable is in scope)
-                    Self::collect_from_expr(value, expressions, var_bindings, scope_stack);
-
-                    // Add the variable binding to the scope
-                    scope_stack.insert(var.clone(), value.id);
-
-                    // Process the body with the new binding in scope
-                    Self::collect_from_nodes(body, expressions, var_bindings, scope_stack);
-
-                    // Remove the variable binding when leaving the scope
-                    scope_stack.remove(var);
-                }
-                _ => {}
             }
         }
+
+        var_bindings
     }
 
-    fn collect_from_expr<'a>(
-        expr: &'a IrExpr,
-        expressions: &mut Vec<&'a IrExpr>,
+    fn collect_var_uses(
+        expr: &IrExpr,
         var_bindings: &mut Vec<(ExprId, ExprId)>,
         scope_stack: &HashMap<String, ExprId>,
     ) {
@@ -86,13 +95,13 @@ impl DatafrogConstantFoldingPass {
                     var_bindings.push((def_expr_id, e.id));
                 }
             }
-            expressions.push(e);
         }
     }
 
     /// Run datafrog to compute which expressions are constants across the entire entrypoint
     fn compute_constants(entrypoint: &IrEntrypoint) -> HashMap<ExprId, IrExprValue> {
-        let (all_expressions, var_bindings) = Self::collect_data(entrypoint);
+        let all_expressions = Self::collect_all_expressions(entrypoint);
+        let var_bindings = Self::collect_variable_bindings(entrypoint);
         let mut iteration = Iteration::new();
 
         // Boolean values of expressions: (expr_id => boolean_value)
