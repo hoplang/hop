@@ -9,8 +9,16 @@ mod ir;
 mod test_utils;
 mod tui;
 
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use std::path::Path;
+
+#[derive(Clone, Debug, ValueEnum)]
+enum CompileLanguage {
+    /// JavaScript
+    Js,
+    /// TypeScript
+    Ts,
+}
 
 #[derive(Parser)]
 #[command(name = "hop")]
@@ -46,14 +54,17 @@ enum Commands {
     //    #[arg(long)]
     //    staticdir: Option<String>,
     //},
-    /// Compile hop templates to JavaScript
+    /// Compile hop templates to the specified language
     Compile {
+        /// Target language (currently only 'js' is supported)
+        #[arg(value_enum)]
+        language: CompileLanguage,
         /// Path to project root
         #[arg(long)]
         projectdir: Option<String>,
-        /// Output JavaScript file
-        #[arg(short, long, default_value = "output.js")]
-        output: String,
+        /// Output file (defaults to output.{ext})
+        #[arg(short, long)]
+        output: Option<String>,
     },
     ///// Start development server for serving hop templates from a manifest
     //Dev {
@@ -155,10 +166,17 @@ async fn main() -> anyhow::Result<()> {
         //    println!("  {:<50} {}", "total", format_file_size(total_size));
         //    println!();
         //}
-        Some(Commands::Compile { projectdir, output }) => {
+        Some(Commands::Compile { language, projectdir, output }) => {
             use std::time::Instant;
             let start_time = Instant::now();
-            let result = cli::compile::execute(projectdir.as_deref(), output)?;
+
+            // Determine output filename based on language if not specified
+            let output_path = output.as_deref().unwrap_or(match language {
+                CompileLanguage::Js => "output.js",
+                CompileLanguage::Ts => "output.ts",
+            });
+
+            let result = cli::compile::execute(projectdir.as_deref(), output_path, language)?;
             let elapsed = start_time.elapsed();
 
             print_header("compiled", elapsed.as_millis());

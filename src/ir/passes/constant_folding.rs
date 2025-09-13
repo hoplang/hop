@@ -4,6 +4,7 @@ use crate::ir::{
     ast::{IrEntrypoint, IrNode},
     expr::{BinaryOp, UnaryOp},
 };
+use crate::dop::r#type::Type;
 
 /// Represents a compile-time constant value
 #[derive(Debug, Clone, PartialEq)]
@@ -221,7 +222,7 @@ mod tests {
     #[test]
     fn test_constant_folding_preserves_dynamic_conditions() {
         let entrypoint = IrEntrypoint {
-            parameters: vec!["show".to_string()],
+            parameters: vec![("show".to_string(), Type::Bool)],
             body: vec![
                 // Dynamic condition - should be preserved
                 IrNode::If {

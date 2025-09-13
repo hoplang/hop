@@ -74,10 +74,9 @@ pub fn evaluate_entrypoint(
     // Set up global variables
     let _ = env.push("HOP_MODE".to_string(), Value::String(hop_mode.to_string()));
 
-    // Bind parameters
-    for param in &entrypoint.parameters {
-        if let Some(value) = args.get(param) {
-            let _ = env.push(param.clone(), value.clone());
+    for (param_name, _param_type) in &entrypoint.parameters {
+        if let Some(value) = args.get(param_name) {
+            let _ = env.push(param_name.clone(), value.clone());
         }
     }
 

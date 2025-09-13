@@ -48,7 +48,8 @@ impl Compiler<'_> {
     fn compile_entrypoint(&mut self, ast: &Ast, component: &ComponentDefinition) {
         self.push_scope();
 
-        // Extract and rename parameters
+        // Extract and rename parameters with types
+        let mut param_info = Vec::new();
         let mut param_names = Vec::new();
         let mut renamed_params = Vec::new();
 
@@ -56,6 +57,7 @@ impl Compiler<'_> {
             for param in params {
                 let original = param.var_name.to_string();
                 let renamed = self.bind_var(&original);
+                param_info.push((original.clone(), param.var_type.clone()));
                 param_names.push(original);
                 renamed_params.push(renamed);
             }
@@ -71,7 +73,7 @@ impl Compiler<'_> {
         self.pop_scope();
 
         let entrypoint = IrEntrypoint {
-            parameters: param_names, // Original names for function signature
+            parameters: param_info, // Original names with types for function signature
             body: body_with_bindings,
         };
 
@@ -689,7 +691,7 @@ mod tests {
             .join(""),
             expect![[r#"
                 IrEntrypoint {
-                  parameters: ["name"]
+                  parameters: [name: string]
                   body: {
                     Write("Hello ")
                     WriteExpr(expr: name, escape: true)
@@ -734,7 +736,7 @@ mod tests {
             .join(""),
             expect![[r#"
                 IrEntrypoint {
-                  parameters: ["show"]
+                  parameters: [show: boolean]
                   body: {
                     If(condition: show) {
                       Write("<div>Visible</div>")
@@ -758,7 +760,7 @@ mod tests {
             .join(""),
             expect![[r#"
                 IrEntrypoint {
-                  parameters: ["items"]
+                  parameters: [items: array[string]]
                   body: {
                     For(var: item, array: items) {
                       Write("<li>")
@@ -832,7 +834,7 @@ mod tests {
             .join(""),
             expect![[r#"
                 IrEntrypoint {
-                  parameters: ["cls"]
+                  parameters: [cls: string]
                   body: {
                     Write("<div class=\"base\" data-value=\"")
                     WriteExpr(expr: cls, escape: true)
@@ -857,7 +859,7 @@ mod tests {
             .join(""),
             expect![[r#"
                 IrEntrypoint {
-                  parameters: ["y"]
+                  parameters: [y: string]
                   body: {
                     For(var: x, array: ["a", "b"]) {
                       WriteExpr(expr: x, escape: true)
@@ -945,7 +947,7 @@ mod tests {
             .join(""),
             expect![[r#"
                 IrEntrypoint {
-                  parameters: ["user"]
+                  parameters: [user: {name: string}]
                   body: {
                     Write("Hello ")
                     WriteExpr(expr: user.name, escape: true)
@@ -1036,7 +1038,7 @@ mod tests {
             .join(""),
             expect![[r#"
                 IrEntrypoint {
-                  parameters: ["x"]
+                  parameters: [x: string]
                   body: {
                     Write("<div data-hop-id=\"test/child-comp\">")
                     Let(var: x_1, value: x) {
@@ -1067,7 +1069,7 @@ mod tests {
             .join(""),
             expect![[r#"
                 IrEntrypoint {
-                  parameters: ["x"]
+                  parameters: [x: string]
                   body: {
                     Write("<div data-hop-id=\"test/child-comp\">")
                     Let(var: x_1, value: x) {

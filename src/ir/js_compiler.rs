@@ -2,47 +2,62 @@ use super::{
     ast::{IrEntrypoint, IrModule, IrNode},
     expr::{BinaryOp, IrExpr, UnaryOp},
 };
+use crate::dop::r#type::Type;
 
-/// Compiles an IR module to JavaScript code
+#[derive(Debug, Clone, Copy)]
+pub enum LanguageMode {
+    JavaScript,
+    TypeScript,
+}
+
+/// Compiles an IR module to JavaScript or TypeScript code
 pub struct JsCompiler {
     output: String,
     indent_level: usize,
+    mode: LanguageMode,
 }
 
 impl JsCompiler {
-    pub fn new() -> Self {
+    pub fn new(mode: LanguageMode) -> Self {
         Self {
             output: String::new(),
             indent_level: 0,
+            mode,
         }
     }
 
-    pub fn compile_module(ir_module: &IrModule) -> String {
-        let mut compiler = Self::new();
-
+    pub fn compile_module(&mut self, ir_module: &IrModule) -> String {
         // Add the escape HTML helper function
-        compiler.write_line("function escapeHtml(str) {");
-        compiler.indent();
-        compiler.write_line("if (typeof str !== 'string') return str;");
-        compiler.write_line("return str");
-        compiler.indent();
-        compiler.write_line(".replace(/&/g, '&amp;')");
-        compiler.write_line(".replace(/</g, '&lt;')");
-        compiler.write_line(".replace(/>/g, '&gt;')");
-        compiler.write_line(".replace(/\"/g, '&quot;')");
-        compiler.write_line(".replace(/'/g, '&#39;');");
-        compiler.dedent();
-        compiler.dedent();
-        compiler.write_line("}");
-        compiler.write_line("");
+        match self.mode {
+            LanguageMode::JavaScript => {
+                self.write_line("function escapeHtml(str) {");
+                self.indent();
+                self.write_line("if (typeof str !== 'string') return str;");
+            }
+            LanguageMode::TypeScript => {
+                self.write_line("function escapeHtml(str: string): string {");
+                self.indent();
+            }
+        }
+        self.write_line("return str");
+        self.indent();
+        self.write_line(".replace(/&/g, '&amp;')");
+        self.write_line(".replace(/</g, '&lt;')");
+        self.write_line(".replace(/>/g, '&gt;')");
+        self.write_line(".replace(/\"/g, '&quot;')");
+        self.write_line(".replace(/'/g, '&#39;');");
+        self.dedent();
+        self.dedent();
+        self.write_line("}");
+        self.write_line("");
 
         // Compile each entrypoint as an exported function
         for (name, entrypoint) in &ir_module.entry_points {
-            compiler.compile_entrypoint(name, entrypoint);
-            compiler.write_line("");
+            self.compile_entrypoint(name, entrypoint);
+            self.write_line("");
         }
 
-        compiler.output
+        self.output.clone()
     }
 
     fn compile_entrypoint(&mut self, name: &str, entrypoint: &IrEntrypoint) {
@@ -50,18 +65,54 @@ impl JsCompiler {
         let func_name = name.replace(['/', '-'], "_");
 
         if entrypoint.parameters.is_empty() {
-            self.write_line(&format!("export function {}() {{", func_name));
+            match self.mode {
+                LanguageMode::JavaScript => {
+                    self.write_line(&format!("export function {}() {{", func_name));
+                }
+                LanguageMode::TypeScript => {
+                    self.write_line(&format!("export function {}(): string {{", func_name));
+                }
+            }
         } else {
-            // Destructure parameters from input object
-            let params = entrypoint.parameters.join(", ");
-            self.write_line(&format!(
-                "export function {}({{ {} }}) {{",
-                func_name, params
-            ));
+            // Build parameter list
+            let params: Vec<String> = entrypoint
+                .parameters
+                .iter()
+                .map(|(name, _)| name.clone())
+                .collect();
+
+            match self.mode {
+                LanguageMode::JavaScript => {
+                    // Destructure parameters from input object
+                    let params_str = params.join(", ");
+                    self.write_line(&format!(
+                        "export function {}({{ {} }}) {{",
+                        func_name, params_str
+                    ));
+                }
+                LanguageMode::TypeScript => {
+                    // Generate TypeScript interface for parameters
+                    let type_params: Vec<String> = entrypoint
+                        .parameters
+                        .iter()
+                        .map(|(name, ty)| format!("{}: {}", name, Self::type_to_typescript(ty)))
+                        .collect();
+                    let params_str = params.join(", ");
+                    let type_params_str = type_params.join(", ");
+
+                    self.write_line(&format!(
+                        "export function {}({{ {} }}: {{ {} }}): string {{",
+                        func_name, params_str, type_params_str
+                    ));
+                }
+            }
         }
 
         self.indent();
-        self.write_line("let output = \"\";");
+        match self.mode {
+            LanguageMode::JavaScript => self.write_line("let output = \"\";"),
+            LanguageMode::TypeScript => self.write_line("let output: string = \"\";"),
+        }
 
         // Compile the body
         self.compile_nodes(&entrypoint.body);
@@ -69,6 +120,25 @@ impl JsCompiler {
         self.write_line("return output;");
         self.dedent();
         self.write_line("}");
+    }
+
+    fn type_to_typescript(ty: &Type) -> String {
+        match ty {
+            Type::Bool => "boolean".to_string(),
+            Type::String => "string".to_string(),
+            Type::Number => "number".to_string(),
+            Type::Array(elem) => match elem {
+                Some(elem_type) => format!("{}[]", Self::type_to_typescript(elem_type)),
+                None => "unknown[]".to_string(),
+            },
+            Type::Object(fields) => {
+                let field_strs: Vec<String> = fields
+                    .iter()
+                    .map(|(name, ty)| format!("{}: {}", name, Self::type_to_typescript(ty)))
+                    .collect();
+                format!("{{ {} }}", field_strs.join(", "))
+            }
+        }
     }
 
     fn compile_nodes(&mut self, nodes: &[IrNode]) {
@@ -211,7 +281,7 @@ mod tests {
     use expect_test::{Expect, expect};
     use std::collections::HashMap;
 
-    fn compile_to_js(source: &str) -> String {
+    fn compile_to_output(source: &str, mode: LanguageMode) -> String {
         let mut errors = ErrorCollector::new();
         let module_name = ModuleName::new("test".to_string()).unwrap();
         let tokenizer = Tokenizer::new(source.to_string());
@@ -237,13 +307,27 @@ mod tests {
         asts.insert(module_name, ast);
         let ir_module = Compiler::compile(&asts);
 
-        // Compile to JavaScript
-        JsCompiler::compile_module(&ir_module)
+        // Compile to JavaScript or TypeScript
+        let mut compiler = JsCompiler::new(mode);
+        compiler.compile_module(&ir_module)
+    }
+
+    fn compile_to_js(source: &str) -> String {
+        compile_to_output(source, LanguageMode::JavaScript)
+    }
+
+    fn compile_to_ts(source: &str) -> String {
+        compile_to_output(source, LanguageMode::TypeScript)
     }
 
     fn check_js_output(source: &str, expected: Expect) {
         let js = compile_to_js(source);
         expected.assert_eq(&js);
+    }
+
+    fn check_ts_output(source: &str, expected: Expect) {
+        let ts = compile_to_ts(source);
+        expected.assert_eq(&ts);
     }
 
     #[test]
@@ -411,6 +495,57 @@ mod tests {
                     output += escapeHtml(title);
                     output += "</h2>\n            ";
                     output += "</div>\n            ";
+                    return output;
+                }
+
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_typescript_with_parameters() {
+        check_ts_output(
+            r#"
+            <user-list entrypoint {users: array[{name: string, id: string, active: boolean}], title: string}>
+                <div>
+                    <h1>{title}</h1>
+                    <ul>
+                        <for {user in users}>
+                            <if {user.active}>
+                                <li>User {user.id}: {user.name}</li>
+                            </if>
+                        </for>
+                    </ul>
+                </div>
+            </user-list>
+            "#,
+            expect![[r#"
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export function test_user_list({ users, title }: { users: { active: boolean, id: string, name: string }[], title: string }): string {
+                    let output: string = "";
+                    output += "\n                <div>\n                    <h1>";
+                    output += escapeHtml(title);
+                    output += "</h1>\n                    <ul>\n                        ";
+                    for (const user of users) {
+                        output += "\n                            ";
+                        if (user.active) {
+                            output += "\n                                <li>User ";
+                            output += escapeHtml(user.id);
+                            output += ": ";
+                            output += escapeHtml(user.name);
+                            output += "</li>\n                            ";
+                        }
+                        output += "\n                        ";
+                    }
+                    output += "\n                    </ul>\n                </div>\n            ";
                     return output;
                 }
 

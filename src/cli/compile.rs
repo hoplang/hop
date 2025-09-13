@@ -1,8 +1,9 @@
 use crate::document::DocumentAnnotator;
 use crate::filesystem::files::ProjectRoot;
 use crate::hop::program::Program;
-use crate::ir::{Compiler, JsCompiler};
+use crate::ir::{Compiler, JsCompiler, LanguageMode};
 use crate::tui::timing;
+use crate::CompileLanguage;
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
@@ -13,7 +14,7 @@ pub struct CompileResult {
     pub entry_points: Vec<String>,
 }
 
-pub fn execute(projectdir: Option<&str>, output_path: &str) -> Result<CompileResult> {
+pub fn execute(projectdir: Option<&str>, output_path: &str, language: &CompileLanguage) -> Result<CompileResult> {
     let mut timer = timing::TimingCollector::new();
 
     // Find project root
@@ -68,13 +69,23 @@ pub fn execute(projectdir: Option<&str>, output_path: &str) -> Result<CompileRes
     // Compile to IR
     let ir_module = Compiler::compile(program.get_modules());
 
-    timer.start_phase("generating js");
-    // Compile to JavaScript
-    let js_code = JsCompiler::compile_module(&ir_module);
+    // Generate code based on target language
+    let generated_code = match language {
+        CompileLanguage::Js => {
+            timer.start_phase("generating js");
+            let mut compiler = JsCompiler::new(LanguageMode::JavaScript);
+            compiler.compile_module(&ir_module)
+        }
+        CompileLanguage::Ts => {
+            timer.start_phase("generating ts");
+            let mut compiler = JsCompiler::new(LanguageMode::TypeScript);
+            compiler.compile_module(&ir_module)
+        }
+    };
 
     timer.start_phase("writing output");
     // Write output file
-    fs::write(output_path, &js_code)
+    fs::write(output_path, &generated_code)
         .with_context(|| format!("Failed to write output to {}", output_path))?;
 
     timer.print();
@@ -87,7 +98,7 @@ pub fn execute(projectdir: Option<&str>, output_path: &str) -> Result<CompileRes
 
     Ok(CompileResult {
         output_path: output_path.to_string(),
-        file_size: js_code.len(),
+        file_size: generated_code.len(),
         entry_points,
     })
 }

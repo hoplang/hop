@@ -1,6 +1,7 @@
 use std::{collections::HashMap, fmt};
 
 use super::expr::IrExpr;
+use crate::dop::r#type::Type;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum IrNode {
@@ -33,8 +34,8 @@ pub enum IrNode {
 
 #[derive(Debug, Default)]
 pub struct IrEntrypoint {
-    /// Original parameter names (for function signature)
-    pub parameters: Vec<String>,
+    /// Original parameter names with their types (for function signature)
+    pub parameters: Vec<(String, Type)>,
     /// IR nodes for the entrypoint body
     pub body: Vec<IrNode>,
 }
@@ -102,7 +103,14 @@ impl fmt::Display for IrNode {
 impl fmt::Display for IrEntrypoint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "IrEntrypoint {{")?;
-        writeln!(f, "  parameters: {:?}", self.parameters)?;
+        write!(f, "  parameters: [")?;
+        for (i, (name, _type)) in self.parameters.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}: {}", name, _type)?;
+        }
+        writeln!(f, "]")?;
         writeln!(f, "  body: {{")?;
 
         fn fmt_nodes(nodes: &[IrNode], f: &mut fmt::Formatter<'_>, indent: usize) -> fmt::Result {
