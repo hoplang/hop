@@ -2,7 +2,7 @@ use super::Pass;
 use crate::ir::{
     IrExpr,
     ast::{BinaryOp, IrExprValue, UnaryOp},
-    ast::{IrEntrypoint, IrNode},
+    ast::IrEntrypoint,
 };
 
 /// Represents a compile-time constant value
@@ -164,57 +164,11 @@ impl ConstantFoldingPass {
         IrExpr { id, value }
     }
 
-    /// Transform a list of IR nodes, applying constant folding to expressions
-    fn transform_nodes(nodes: Vec<IrNode>) -> Vec<IrNode> {
-        nodes
-            .into_iter()
-            .map(|node| match node {
-                IrNode::If {
-                    id,
-                    condition,
-                    body,
-                } => IrNode::If {
-                    id,
-                    condition: Self::transform_expr(condition),
-                    body: Self::transform_nodes(body),
-                },
-                IrNode::For {
-                    id,
-                    var,
-                    array,
-                    body,
-                } => IrNode::For {
-                    id,
-                    var,
-                    array: Self::transform_expr(array),
-                    body: Self::transform_nodes(body),
-                },
-                IrNode::Let {
-                    id,
-                    var,
-                    value,
-                    body,
-                } => IrNode::Let {
-                    id,
-                    var,
-                    value: Self::transform_expr(value),
-                    body: Self::transform_nodes(body),
-                },
-                IrNode::WriteExpr { id, expr, escape } => IrNode::WriteExpr {
-                    id,
-                    expr: Self::transform_expr(expr),
-                    escape,
-                },
-                _ => node, // Write nodes and others are preserved as-is
-            })
-            .collect()
-    }
 }
 
 impl Pass for ConstantFoldingPass {
-    fn run(&mut self, mut entrypoint: IrEntrypoint) -> IrEntrypoint {
-        entrypoint.body = Self::transform_nodes(entrypoint.body);
-        entrypoint
+    fn run(&mut self, entrypoint: IrEntrypoint) -> IrEntrypoint {
+        entrypoint.map_expressions(Self::transform_expr)
     }
 }
 
