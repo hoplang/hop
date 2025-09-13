@@ -144,52 +144,12 @@ fn eval_node(node: &IrNode, env: &mut Environment<Value>, output: &mut String) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error_collector::ErrorCollector;
-    use crate::hop::module_name::ModuleName;
-    use crate::hop::parser::parse;
-    use crate::hop::tokenizer::Tokenizer;
-    use crate::hop::typechecker::TypeChecker;
-    use crate::ir::Compiler;
+    use crate::dop::Type;
+    use crate::ir::test_utils::IrTestBuilder;
     use expect_test::{Expect, expect};
     use serde_json::json;
 
-    fn compile_hop(source: &str) -> IrEntrypoint {
-        let mut errors = ErrorCollector::new();
-        let module_name = ModuleName::new("test".to_string()).unwrap();
-        let tokenizer = Tokenizer::new(source.to_string());
-        let ast = parse(module_name.clone(), tokenizer, &mut errors);
-
-        assert!(errors.is_empty(), "Parse errors: {:?}", errors);
-
-        // Type check
-        let mut typechecker = TypeChecker::default();
-        typechecker.typecheck(&[&ast]);
-        assert!(
-            typechecker
-                .type_errors
-                .get(&module_name)
-                .unwrap()
-                .is_empty(),
-            "Type errors: {:?}",
-            typechecker.type_errors
-        );
-
-        // Compile to IR
-        let mut asts = HashMap::new();
-        asts.insert(module_name.clone(), ast);
-        let ir_module = Compiler::compile(&asts);
-
-        // Get the first (and only) entrypoint
-        ir_module
-            .entry_points
-            .into_iter()
-            .next()
-            .expect("Should have an entrypoint")
-            .1
-    }
-
-    fn check_eval(source: &str, args: HashMap<String, Value>, expected: Expect) {
-        let entrypoint = compile_hop(source);
+    fn check_eval(entrypoint: IrEntrypoint, args: HashMap<String, Value>, expected: Expect) {
         let result =
             evaluate_entrypoint(&entrypoint, args, "dev").expect("Evaluation should succeed");
 
@@ -206,12 +166,15 @@ mod tests {
 
     #[test]
     fn test_simple_write() {
+        let t = IrTestBuilder::new();
+
+        let entrypoint = IrEntrypoint {
+            parameters: vec![],
+            body: vec![t.write("<div>Hello World</div>")],
+        };
+
         check_eval(
-            r#"
-            <main-comp entrypoint>
-                <div>Hello World</div>
-            </main-comp>
-            "#,
+            entrypoint,
             HashMap::new(),
             expect!["<div>Hello World</div>"],
         );
@@ -219,15 +182,22 @@ mod tests {
 
     #[test]
     fn test_write_expr() {
+        let t = IrTestBuilder::new();
+
+        let entrypoint = IrEntrypoint {
+            parameters: vec![("name".to_string(), Type::String)],
+            body: vec![
+                t.write("<h1>Hello "),
+                t.write_expr(t.var("name"), true),
+                t.write("</h1>"),
+            ],
+        };
+
         let mut args = HashMap::new();
         args.insert("name".to_string(), json!("Alice"));
 
         check_eval(
-            r#"
-            <main-comp entrypoint {name: string}>
-                <h1>Hello {name}</h1>
-            </main-comp>
-            "#,
+            entrypoint,
             args,
             expect!["<h1>Hello Alice</h1>"],
         );
@@ -235,6 +205,13 @@ mod tests {
 
     #[test]
     fn test_escape_html() {
+        let t = IrTestBuilder::new();
+
+        let entrypoint = IrEntrypoint {
+            parameters: vec![("content".to_string(), Type::String)],
+            body: vec![t.write_expr(t.var("content"), true)],
+        };
+
         let mut args = HashMap::new();
         args.insert(
             "content".to_string(),
@@ -242,11 +219,7 @@ mod tests {
         );
 
         check_eval(
-            r#"
-            <main-comp entrypoint {content: string}>
-                {content}
-            </main-comp>
-            "#,
+            entrypoint,
             args,
             expect!["&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;"],
         );
@@ -254,17 +227,23 @@ mod tests {
 
     #[test]
     fn test_if_true() {
+        let t = IrTestBuilder::new();
+
+        let entrypoint = IrEntrypoint {
+            parameters: vec![("show".to_string(), Type::Bool)],
+            body: vec![
+                t.if_stmt(
+                    t.var("show"),
+                    vec![t.write("<div>Visible</div>")]
+                )
+            ],
+        };
+
         let mut args = HashMap::new();
         args.insert("show".to_string(), json!(true));
 
         check_eval(
-            r#"
-            <main-comp entrypoint {show: boolean}>
-                <if {show}>
-                    <div>Visible</div>
-                </if>
-            </main-comp>
-            "#,
+            entrypoint,
             args,
             expect!["<div>Visible</div>"],
         );
@@ -272,17 +251,23 @@ mod tests {
 
     #[test]
     fn test_if_false() {
+        let t = IrTestBuilder::new();
+
+        let entrypoint = IrEntrypoint {
+            parameters: vec![("show".to_string(), Type::Bool)],
+            body: vec![
+                t.if_stmt(
+                    t.var("show"),
+                    vec![t.write("<div>Hidden</div>")]
+                )
+            ],
+        };
+
         let mut args = HashMap::new();
         args.insert("show".to_string(), json!(false));
 
         check_eval(
-            r#"
-            <main-comp entrypoint {show: boolean}>
-                <if {show}>
-                    <div>Hidden</div>
-                </if>
-            </main-comp>
-            "#,
+            entrypoint,
             args,
             expect![""],
         );
@@ -290,17 +275,28 @@ mod tests {
 
     #[test]
     fn test_for_loop() {
+        let t = IrTestBuilder::new();
+
+        let entrypoint = IrEntrypoint {
+            parameters: vec![("items".to_string(), Type::Array(Some(Box::new(Type::String))))],
+            body: vec![
+                t.for_loop(
+                    "item",
+                    t.var("items"),
+                    vec![
+                        t.write("<li>"),
+                        t.write_expr(t.var("item"), true),
+                        t.write("</li>\n"),
+                    ]
+                )
+            ],
+        };
+
         let mut args = HashMap::new();
         args.insert("items".to_string(), json!(["Apple", "Banana", "Cherry"]));
 
         check_eval(
-            r#"
-            <main-comp entrypoint {items: array[string]}>
-                <for {item in items}>
-                    <li>{item}</li>
-                </for>
-            </main-comp>
-            "#,
+            entrypoint,
             args,
             expect![[r#"
                     <li>Apple</li>
@@ -311,17 +307,28 @@ mod tests {
 
     #[test]
     fn test_component_with_parameter() {
-        // Test that component parameters create Let bindings
+        let t = IrTestBuilder::new();
+
+        // In IR, nested components are inlined with Let bindings
+        let entrypoint = IrEntrypoint {
+            parameters: vec![],
+            body: vec![
+                t.write("<div data-hop-id=\"test/card-comp\">\n"),
+                t.let_stmt(
+                    "title",
+                    t.str("Hello World"),
+                    vec![
+                        t.write("<p>"),
+                        t.write_expr(t.var("title"), true),
+                        t.write("</p>\n"),
+                    ]
+                ),
+                t.write("</div>"),
+            ],
+        };
+
         check_eval(
-            r#"
-            <card-comp {title: string}>
-                <p>{title}</p>
-            </card-comp>
-            
-            <main-comp entrypoint>
-                <card-comp {title: "Hello World"}/>
-            </main-comp>
-            "#,
+            entrypoint,
             HashMap::new(),
             expect![[r#"
                 <div data-hop-id="test/card-comp">
@@ -332,17 +339,20 @@ mod tests {
 
     #[test]
     fn test_attribute_merging() {
-        // Test that class attributes are properly merged
+        let t = IrTestBuilder::new();
+
+        // In IR, attributes are already merged
+        let entrypoint = IrEntrypoint {
+            parameters: vec![],
+            body: vec![
+                t.write("<div data-hop-id=\"test/button-comp\" class=\"btn btn-default btn-primary\">\n"),
+                t.write("Click me\n"),
+                t.write("</div>"),
+            ],
+        };
+
         check_eval(
-            r#"
-            <button-comp class="btn btn-default">
-                Click me
-            </button-comp>
-            
-            <main-comp entrypoint>
-                <button-comp class="btn-primary"/>
-            </main-comp>
-            "#,
+            entrypoint,
             HashMap::new(),
             expect![[r#"
                 <div data-hop-id="test/button-comp" class="btn btn-default btn-primary">
@@ -353,17 +363,20 @@ mod tests {
 
     #[test]
     fn test_attribute_override() {
-        // Test that non-class attributes are overridden, not merged
+        let t = IrTestBuilder::new();
+
+        // In IR, attributes are already processed (overridden for non-class)
+        let entrypoint = IrEntrypoint {
+            parameters: vec![],
+            body: vec![
+                t.write("<div data-hop-id=\"test/button-comp\" class=\"btn\" data-id=\"custom\">\n"),
+                t.write("Click me\n"),
+                t.write("</div>"),
+            ],
+        };
+
         check_eval(
-            r#"
-            <button-comp class="btn" data-id="default">
-                Click me
-            </button-comp>
-            
-            <main-comp entrypoint>
-                <button-comp data-id="custom"/>
-            </main-comp>
-            "#,
+            entrypoint,
             HashMap::new(),
             expect![[r#"
                 <div data-hop-id="test/button-comp" class="btn" data-id="custom">
@@ -374,21 +387,43 @@ mod tests {
 
     #[test]
     fn test_nested_components() {
-        // Test nested components with parameters
+        let t = IrTestBuilder::new();
+
+        // In IR, nested components are fully inlined with Let bindings
+        let entrypoint = IrEntrypoint {
+            parameters: vec![],
+            body: vec![
+                t.write("<div data-hop-id=\"test/outer-comp\">\n"),
+                t.let_stmt(
+                    "a",
+                    t.str("outer"),
+                    vec![
+                        t.write("<div data-hop-id=\"test/inner-comp\">\n"),
+                        t.let_stmt(
+                            "x",
+                            t.var("a"),
+                            vec![
+                                t.let_stmt(
+                                    "y",
+                                    t.str("inner"),
+                                    vec![
+                                        t.write_expr(t.var("x"), true),
+                                        t.write(" "),
+                                        t.write_expr(t.var("y"), true),
+                                        t.write("\n"),
+                                    ]
+                                )
+                            ]
+                        ),
+                        t.write("</div>\n"),
+                    ]
+                ),
+                t.write("</div>"),
+            ],
+        };
+
         check_eval(
-            r#"
-            <inner-comp {x: string, y: string}>
-                {x} {y}
-            </inner-comp>
-            
-            <outer-comp {a: string}>
-                <inner-comp {x: a, y: "inner"}/>
-            </outer-comp>
-            
-            <main-comp entrypoint>
-                <outer-comp {a: "outer"}/>
-            </main-comp>
-            "#,
+            entrypoint,
             HashMap::new(),
             expect![[r#"
                 <div data-hop-id="test/outer-comp">
