@@ -10,7 +10,6 @@ mod test_utils;
 mod tui;
 
 use clap::{CommandFactory, Parser, Subcommand};
-use filesystem::files::ProjectRoot;
 use std::path::Path;
 
 #[derive(Parser)]
@@ -157,7 +156,33 @@ async fn main() -> anyhow::Result<()> {
         //    println!();
         //}
         Some(Commands::Compile { projectdir, output }) => {
-            cli::compile::run(projectdir.as_deref(), output)?;
+            use std::time::Instant;
+            let start_time = Instant::now();
+            let result = cli::compile::execute(projectdir.as_deref(), output)?;
+            let elapsed = start_time.elapsed();
+
+            print_header("compiled", elapsed.as_millis());
+            println!(
+                "  {:<50} {}",
+                result.output_path,
+                format_file_size(result.file_size)
+            );
+
+            if !result.entry_points.is_empty() {
+                println!();
+                use colored::*;
+                println!("  {}", "exported".bold());
+                println!();
+                for func_name in &result.entry_points {
+                    println!("    {}()", func_name);
+                }
+            } else {
+                use colored::*;
+                println!();
+                println!("  {} No entrypoint components found", "⚠".yellow());
+                println!("  Add 'entrypoint' attribute to components you want to export");
+            }
+            println!();
         }
         //Some(Commands::Dev {
         //    projectdir,

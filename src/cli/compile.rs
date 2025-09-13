@@ -2,19 +2,25 @@ use crate::document::DocumentAnnotator;
 use crate::filesystem::files::ProjectRoot;
 use crate::hop::program::Program;
 use crate::ir::{Compiler, JsCompiler};
+use crate::tui::timing;
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
 
-pub fn run(projectdir: Option<&str>, output_path: &str) -> Result<()> {
+pub struct CompileResult {
+    pub output_path: String,
+    pub file_size: usize,
+    pub entry_points: Vec<String>,
+}
+
+pub fn execute(projectdir: Option<&str>, output_path: &str) -> Result<CompileResult> {
+    let mut timer = timing::TimingCollector::new();
+
     // Find project root
     let project_root = match projectdir {
         Some(dir) => ProjectRoot::find_upwards(Path::new(dir))?,
         None => ProjectRoot::find_upwards(Path::new("."))?,
     };
-
-    println!("Compiling hop templates to JavaScript...");
-    println!("Project root: {}", project_root.get_path().display());
 
     // Load all .hop files
     let hop_modules = project_root.load_all_hop_modules()?;
@@ -23,8 +29,7 @@ pub fn run(projectdir: Option<&str>, output_path: &str) -> Result<()> {
         anyhow::bail!("No .hop files found in project");
     }
 
-    println!("Found {} hop files", hop_modules.len());
-
+    timer.start_phase("compiling");
     // Create Program and compile all modules
     let program = Program::new(hop_modules);
 
@@ -60,37 +65,29 @@ pub fn run(projectdir: Option<&str>, output_path: &str) -> Result<()> {
         ));
     }
 
-    println!("Type checking passed");
-
     // Compile to IR
     let ir_module = Compiler::compile(program.get_modules());
 
-    // Count entrypoints
-    let entrypoint_count = ir_module.entry_points.len();
-    if entrypoint_count == 0 {
-        eprintln!("Warning: No entrypoint components found");
-        eprintln!("Add 'entrypoint' attribute to components you want to export");
-    } else {
-        println!("Found {} entrypoint components", entrypoint_count);
-    }
-
+    timer.start_phase("generating js");
     // Compile to JavaScript
     let js_code = JsCompiler::compile_module(&ir_module);
 
+    timer.start_phase("writing output");
     // Write output file
-    fs::write(output_path, js_code)
+    fs::write(output_path, &js_code)
         .with_context(|| format!("Failed to write output to {}", output_path))?;
 
-    println!("Successfully compiled to {}", output_path);
+    timer.print();
 
-    // Print exported functions
-    if entrypoint_count > 0 {
-        println!("\nExported functions:");
-        for name in ir_module.entry_points.keys() {
-            let func_name = name.replace(['/', '-'], "_");
-            println!("  - {}()", func_name);
-        }
-    }
+    let entry_points: Vec<String> = ir_module
+        .entry_points
+        .keys()
+        .map(|name| name.replace(['/', '-'], "_"))
+        .collect();
 
-    Ok(())
+    Ok(CompileResult {
+        output_path: output_path.to_string(),
+        file_size: js_code.len(),
+        entry_points,
+    })
 }
