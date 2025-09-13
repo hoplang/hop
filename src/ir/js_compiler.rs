@@ -269,72 +269,45 @@ impl JsCompiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error_collector::ErrorCollector;
-    use crate::hop::module_name::ModuleName;
-    use crate::hop::parser::parse;
-    use crate::hop::tokenizer::Tokenizer;
-    use crate::hop::typechecker::TypeChecker;
-    use crate::ir::Compiler;
+    use crate::ir::test_utils::IrTestBuilder;
     use expect_test::{Expect, expect};
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
 
-    fn compile_to_output(source: &str, mode: LanguageMode) -> String {
-        let mut errors = ErrorCollector::new();
-        let module_name = ModuleName::new("test".to_string()).unwrap();
-        let tokenizer = Tokenizer::new(source.to_string());
-        let ast = parse(module_name.clone(), tokenizer, &mut errors);
-
-        assert!(errors.is_empty(), "Parse errors: {:?}", errors);
-
-        // Type check
-        let mut typechecker = TypeChecker::default();
-        typechecker.typecheck(&[&ast]);
-        assert!(
-            typechecker
-                .type_errors
-                .get(&module_name)
-                .unwrap()
-                .is_empty(),
-            "Type errors: {:?}",
-            typechecker.type_errors
-        );
-
-        // Compile to IR
-        let mut asts = HashMap::new();
-        asts.insert(module_name, ast);
-        let ir_module = Compiler::compile(&asts);
-
-        // Compile to JavaScript or TypeScript
-        let mut compiler = JsCompiler::new(mode);
-        compiler.compile_module(&ir_module)
+    fn compile_ir_to_js(ir_module: &IrModule) -> String {
+        let mut compiler = JsCompiler::new(LanguageMode::JavaScript);
+        compiler.compile_module(ir_module)
     }
 
-    fn compile_to_js(source: &str) -> String {
-        compile_to_output(source, LanguageMode::JavaScript)
+    fn compile_ir_to_ts(ir_module: &IrModule) -> String {
+        let mut compiler = JsCompiler::new(LanguageMode::TypeScript);
+        compiler.compile_module(ir_module)
     }
 
-    fn compile_to_ts(source: &str) -> String {
-        compile_to_output(source, LanguageMode::TypeScript)
-    }
-
-    fn check_js_output(source: &str, expected: Expect) {
-        let js = compile_to_js(source);
+    fn check_js_output(ir_module: &IrModule, expected: Expect) {
+        let js = compile_ir_to_js(ir_module);
         expected.assert_eq(&js);
     }
 
-    fn check_ts_output(source: &str, expected: Expect) {
-        let ts = compile_to_ts(source);
+    fn check_ts_output(ir_module: &IrModule, expected: Expect) {
+        let ts = compile_ir_to_ts(ir_module);
         expected.assert_eq(&ts);
     }
 
     #[test]
     fn test_simple_component() {
+        let t = IrTestBuilder::new();
+
+        let mut ir_module = IrModule::new();
+        ir_module.entry_points.insert(
+            "test_main_comp".to_string(),
+            IrEntrypoint {
+                parameters: vec![],
+                body: vec![t.write("<div>Hello World</div>\n")],
+            },
+        );
+
         check_js_output(
-            r#"
-            <main-comp entrypoint>
-                <div>Hello World</div>
-            </main-comp>
-            "#,
+            &ir_module,
             expect![[r#"
                 function escapeHtml(str) {
                     if (typeof str !== 'string') return str;
@@ -348,7 +321,7 @@ mod tests {
 
                 export function test_main_comp() {
                     let output = "";
-                    output += "\n                <div>Hello World</div>\n            ";
+                    output += "<div>Hello World</div>\n";
                     return output;
                 }
 
@@ -358,12 +331,28 @@ mod tests {
 
     #[test]
     fn test_component_with_parameters() {
+        let t = IrTestBuilder::new();
+
+        let mut ir_module = IrModule::new();
+        ir_module.entry_points.insert(
+            "test_greeting_comp".to_string(),
+            IrEntrypoint {
+                parameters: vec![
+                    ("name".to_string(), Type::String),
+                    ("message".to_string(), Type::String),
+                ],
+                body: vec![
+                    t.write("<h1>Hello "),
+                    t.write_expr(t.var("name"), true),
+                    t.write(", "),
+                    t.write_expr(t.var("message"), true),
+                    t.write("</h1>\n"),
+                ],
+            },
+        );
+
         check_js_output(
-            r#"
-            <greeting-comp entrypoint {name: string, message: string}>
-                <h1>Hello {name}, {message}</h1>
-            </greeting-comp>
-            "#,
+            &ir_module,
             expect![[r#"
                 function escapeHtml(str) {
                     if (typeof str !== 'string') return str;
@@ -377,11 +366,11 @@ mod tests {
 
                 export function test_greeting_comp({ name, message }) {
                     let output = "";
-                    output += "\n                <h1>Hello ";
+                    output += "<h1>Hello ";
                     output += escapeHtml(name);
                     output += ", ";
                     output += escapeHtml(message);
-                    output += "</h1>\n            ";
+                    output += "</h1>\n";
                     return output;
                 }
 
@@ -391,14 +380,19 @@ mod tests {
 
     #[test]
     fn test_if_condition() {
+        let t = IrTestBuilder::new();
+
+        let mut ir_module = IrModule::new();
+        ir_module.entry_points.insert(
+            "test_main_comp".to_string(),
+            IrEntrypoint {
+                parameters: vec![("show".to_string(), Type::Bool)],
+                body: vec![t.if_stmt(t.var("show"), vec![t.write("<div>Visible</div>\n")])],
+            },
+        );
+
         check_js_output(
-            r#"
-            <main-comp entrypoint {show: boolean}>
-                <if {show}>
-                    <div>Visible</div>
-                </if>
-            </main-comp>
-            "#,
+            &ir_module,
             expect![[r#"
                 function escapeHtml(str) {
                     if (typeof str !== 'string') return str;
@@ -412,11 +406,9 @@ mod tests {
 
                 export function test_main_comp({ show }) {
                     let output = "";
-                    output += "\n                ";
                     if (show) {
-                        output += "\n                    <div>Visible</div>\n                ";
+                        output += "<div>Visible</div>\n";
                     }
-                    output += "\n            ";
                     return output;
                 }
 
@@ -426,14 +418,30 @@ mod tests {
 
     #[test]
     fn test_for_loop() {
+        let t = IrTestBuilder::new();
+
+        let mut ir_module = IrModule::new();
+        ir_module.entry_points.insert(
+            "test_main_comp".to_string(),
+            IrEntrypoint {
+                parameters: vec![(
+                    "items".to_string(),
+                    Type::Array(Some(Box::new(Type::String))),
+                )],
+                body: vec![t.for_loop(
+                    "item",
+                    t.var("items"),
+                    vec![
+                        t.write("<li>"),
+                        t.write_expr(t.var("item"), true),
+                        t.write("</li>\n"),
+                    ],
+                )],
+            },
+        );
+
         check_js_output(
-            r#"
-            <main-comp entrypoint {items: array[string]}>
-                <for {item in items}>
-                    <li>{item}</li>
-                </for>
-            </main-comp>
-            "#,
+            &ir_module,
             expect![[r#"
                 function escapeHtml(str) {
                     if (typeof str !== 'string') return str;
@@ -447,13 +455,11 @@ mod tests {
 
                 export function test_main_comp({ items }) {
                     let output = "";
-                    output += "\n                ";
                     for (const item of items) {
-                        output += "\n                    <li>";
+                        output += "<li>";
                         output += escapeHtml(item);
-                        output += "</li>\n                ";
+                        output += "</li>\n";
                     }
-                    output += "\n            ";
                     return output;
                 }
 
@@ -463,16 +469,32 @@ mod tests {
 
     #[test]
     fn test_nested_components_with_let_bindings() {
+        let t = IrTestBuilder::new();
+
+        let mut ir_module = IrModule::new();
+        // Note: In the IR, nested components are already inlined, so we simulate the result
+        ir_module.entry_points.insert(
+            "test_main_comp".to_string(),
+            IrEntrypoint {
+                parameters: vec![],
+                body: vec![
+                    t.write("<div data-hop-id=\"test/card-comp\">"),
+                    t.let_stmt(
+                        "title",
+                        t.str("Hello World"),
+                        vec![
+                            t.write("<h2>"),
+                            t.write_expr(t.var("title"), true),
+                            t.write("</h2>"),
+                        ],
+                    ),
+                    t.write("</div>"),
+                ],
+            },
+        );
+
         check_js_output(
-            r#"
-            <card-comp {title: string}>
-                <h2>{title}</h2>
-            </card-comp>
-            
-            <main-comp entrypoint>
-                <card-comp {title: "Hello World"}/>
-            </main-comp>
-            "#,
+            &ir_module,
             expect![[r#"
                 function escapeHtml(str) {
                     if (typeof str !== 'string') return str;
@@ -486,12 +508,12 @@ mod tests {
 
                 export function test_main_comp() {
                     let output = "";
-                    output += "\n                <div data-hop-id=\"test/card-comp\">";
+                    output += "<div data-hop-id=\"test/card-comp\">";
                     const title = "Hello World";
-                    output += "\n                <h2>";
+                    output += "<h2>";
                     output += escapeHtml(title);
-                    output += "</h2>\n            ";
-                    output += "</div>\n            ";
+                    output += "</h2>";
+                    output += "</div>";
                     return output;
                 }
 
@@ -501,21 +523,57 @@ mod tests {
 
     #[test]
     fn test_typescript_with_parameters() {
+        let t = IrTestBuilder::new();
+
+        let mut ir_module = IrModule::new();
+        ir_module.entry_points.insert(
+            "test_user_list".to_string(),
+            IrEntrypoint {
+                parameters: vec![
+                    (
+                        "users".to_string(),
+                        Type::Array(Some(Box::new(Type::Object({
+                            let mut map = BTreeMap::new();
+                            map.insert("name".to_string(), Type::String);
+                            map.insert("id".to_string(), Type::String);
+                            map.insert("active".to_string(), Type::Bool);
+                            map
+                        })))),
+                    ),
+                    ("title".to_string(), Type::String),
+                ],
+                body: vec![
+                    t.write("<div>\n"),
+                    t.write("<h1>\n"),
+                    t.write_expr(t.var("title"), true),
+                    t.write("</h1>\n"),
+                    t.write("<ul>\n"),
+                    t.for_loop(
+                        "user",
+                        t.var("users"),
+                        vec![
+                            t.write("\n"),
+                            t.if_stmt(
+                                t.prop_access(t.var("user"), "active"),
+                                vec![
+                                    t.write("\n<li>User "),
+                                    t.write_expr(t.prop_access(t.var("user"), "id"), true),
+                                    t.write(": "),
+                                    t.write_expr(t.prop_access(t.var("user"), "name"), true),
+                                    t.write("</li>\n"),
+                                ],
+                            ),
+                            t.write("\n"),
+                        ],
+                    ),
+                    t.write("</ul>\n"),
+                    t.write("</div>\n"),
+                ],
+            },
+        );
+
         check_ts_output(
-            r#"
-            <user-list entrypoint {users: array[{name: string, id: string, active: boolean}], title: string}>
-                <div>
-                    <h1>{title}</h1>
-                    <ul>
-                        <for {user in users}>
-                            <if {user.active}>
-                                <li>User {user.id}: {user.name}</li>
-                            </if>
-                        </for>
-                    </ul>
-                </div>
-            </user-list>
-            "#,
+            &ir_module,
             expect![[r#"
                 function escapeHtml(str: string): string {
                     return str
@@ -528,21 +586,24 @@ mod tests {
 
                 export function test_user_list({ users, title }: { users: { active: boolean, id: string, name: string }[], title: string }): string {
                     let output: string = "";
-                    output += "\n                <div>\n                    <h1>";
+                    output += "<div>\n";
+                    output += "<h1>\n";
                     output += escapeHtml(title);
-                    output += "</h1>\n                    <ul>\n                        ";
+                    output += "</h1>\n";
+                    output += "<ul>\n";
                     for (const user of users) {
-                        output += "\n                            ";
+                        output += "\n";
                         if (user.active) {
-                            output += "\n                                <li>User ";
+                            output += "\n<li>User ";
                             output += escapeHtml(user.id);
                             output += ": ";
                             output += escapeHtml(user.name);
-                            output += "</li>\n                            ";
+                            output += "</li>\n";
                         }
-                        output += "\n                        ";
+                        output += "\n";
                     }
-                    output += "\n                    </ul>\n                </div>\n            ";
+                    output += "</ul>\n";
+                    output += "</div>\n";
                     return output;
                 }
 
