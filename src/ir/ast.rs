@@ -235,6 +235,58 @@ impl fmt::Display for UnaryOp {
     }
 }
 
+impl IrExpr {
+    /// Returns an iterator that performs depth-first traversal of the expression tree
+    pub fn dfs_iter(&self) -> DfsIter {
+        DfsIter {
+            stack: vec![self],
+        }
+    }
+}
+
+/// Depth-first iterator over IrExpr nodes
+pub struct DfsIter<'a> {
+    stack: Vec<&'a IrExpr>,
+}
+
+impl<'a> Iterator for DfsIter<'a> {
+    type Item = &'a IrExpr;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.stack.pop().map(|expr| {
+            // Push children onto stack in reverse order for left-to-right DFS
+            match &expr.value {
+                IrExprValue::PropertyAccess { object, .. } => {
+                    self.stack.push(object);
+                }
+                IrExprValue::BinaryOp { left, right, .. } => {
+                    self.stack.push(right);
+                    self.stack.push(left);
+                }
+                IrExprValue::UnaryOp { operand, .. } => {
+                    self.stack.push(operand);
+                }
+                IrExprValue::Array(elements) => {
+                    for elem in elements.iter().rev() {
+                        self.stack.push(elem);
+                    }
+                }
+                IrExprValue::Object(properties) => {
+                    for (_, value) in properties.iter().rev() {
+                        self.stack.push(value);
+                    }
+                }
+                // Explicitly list all leaf nodes (no children to traverse)
+                IrExprValue::Var(_) => {}
+                IrExprValue::String(_) => {}
+                IrExprValue::Boolean(_) => {}
+                IrExprValue::Number(_) => {}
+            }
+            expr
+        })
+    }
+}
+
 impl fmt::Display for IrExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.value {

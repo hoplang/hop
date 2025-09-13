@@ -1,8 +1,10 @@
 mod constant_folding;
+mod constant_folding_datafrog;
 mod dead_code_elimination;
 mod write_coalescing;
 
 pub use constant_folding::ConstantFoldingPass;
+pub use constant_folding_datafrog::DatafrogConstantFoldingPass;
 pub use dead_code_elimination::DeadCodeEliminationPass;
 pub use write_coalescing::WriteCoalescingPass;
 
