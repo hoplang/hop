@@ -4,7 +4,6 @@ use crate::ir::{
     ast::{IrEntrypoint, IrNode},
     expr::{BinaryOp, UnaryOp},
 };
-use crate::dop::r#type::Type;
 
 /// Represents a compile-time constant value
 #[derive(Debug, Clone, PartialEq)]
@@ -132,6 +131,8 @@ impl Pass for ConstantFoldingPass {
 
 #[cfg(test)]
 mod tests {
+    use crate::dop::Type;
+
     use super::*;
 
     #[test]
