@@ -3,6 +3,26 @@ use std::{collections::HashMap, fmt};
 use super::expr::IrExpr;
 use crate::dop::r#type::Type;
 
+// This module contains the types and implementations for ASTs in
+// the IR.
+//
+// The AST structure is:
+// * IrModule -> IrEntryPoint -> IrNode -> IrExpr
+
+#[derive(Debug, Default)]
+pub struct IrModule {
+    /// Map from component name to its IR representation
+    pub entry_points: HashMap<String, IrEntrypoint>,
+}
+
+#[derive(Debug, Default)]
+pub struct IrEntrypoint {
+    /// Original parameter names with their types (for function signature)
+    pub parameters: Vec<(String, Type)>,
+    /// IR nodes for the entrypoint body
+    pub body: Vec<IrNode>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum IrNode {
     /// Output a pre-computed string
@@ -32,25 +52,9 @@ pub enum IrNode {
     },
 }
 
-#[derive(Debug, Default)]
-pub struct IrEntrypoint {
-    /// Original parameter names with their types (for function signature)
-    pub parameters: Vec<(String, Type)>,
-    /// IR nodes for the entrypoint body
-    pub body: Vec<IrNode>,
-}
-
-#[derive(Debug)]
-pub struct IrModule {
-    /// Map from component name to its IR representation
-    pub entry_points: HashMap<String, IrEntrypoint>,
-}
-
 impl IrModule {
     pub fn new() -> Self {
-        Self {
-            entry_points: HashMap::new(),
-        }
+        Self::default()
     }
 }
 
