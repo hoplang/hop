@@ -17,7 +17,7 @@ impl WriteCoalescingPass {
 
         for node in nodes {
             match node {
-                IrNode::Write(text) => {
+                IrNode::Write { content: text } => {
                     // Accumulate consecutive writes
                     match pending_write {
                         Some(ref mut accumulated) => {
@@ -31,7 +31,7 @@ impl WriteCoalescingPass {
                 IrNode::If { condition, body } => {
                     // Flush any pending write before a control flow node
                     if let Some(text) = pending_write.take() {
-                        result.push(IrNode::Write(text));
+                        result.push(IrNode::Write { content: text });
                     }
                     // Recursively transform the body
                     result.push(IrNode::If {
@@ -42,7 +42,7 @@ impl WriteCoalescingPass {
                 IrNode::For { var, array, body } => {
                     // Flush any pending write before a control flow node
                     if let Some(text) = pending_write.take() {
-                        result.push(IrNode::Write(text));
+                        result.push(IrNode::Write { content: text });
                     }
                     // Recursively transform the body
                     result.push(IrNode::For {
@@ -54,7 +54,7 @@ impl WriteCoalescingPass {
                 IrNode::Let { var, value, body } => {
                     // Flush any pending write before a control flow node
                     if let Some(text) = pending_write.take() {
-                        result.push(IrNode::Write(text));
+                        result.push(IrNode::Write { content: text });
                     }
                     // Recursively transform the body
                     result.push(IrNode::Let {
@@ -67,7 +67,7 @@ impl WriteCoalescingPass {
                     // WriteExpr can't be coalesced with Write nodes
                     // Flush any pending write
                     if let Some(text) = pending_write.take() {
-                        result.push(IrNode::Write(text));
+                        result.push(IrNode::Write { content: text });
                     }
                     result.push(node);
                 }
@@ -76,7 +76,7 @@ impl WriteCoalescingPass {
 
         // Flush any remaining pending write
         if let Some(text) = pending_write {
-            result.push(IrNode::Write(text));
+            result.push(IrNode::Write { content: text });
         }
 
         result
@@ -129,17 +129,17 @@ mod tests {
         let entrypoint = IrEntrypoint {
             parameters: vec![],
             body: vec![
-                IrNode::Write("Hello".to_string()),
-                IrNode::Write(" ".to_string()),
-                IrNode::Write("World".to_string()),
-                IrNode::Write("!".to_string()),
+                IrNode::Write { content: "Hello".to_string() },
+                IrNode::Write { content: " ".to_string() },
+                IrNode::Write { content: "World".to_string() },
+                IrNode::Write { content: "!".to_string() },
             ],
         };
 
         let mut pass = WriteCoalescingPass::new();
         let result = pass.run(entrypoint);
 
-        let expected = vec![IrNode::Write("Hello World!".to_string())];
+        let expected = vec![IrNode::Write { content: "Hello World!".to_string() }];
         assert_eq!(result.body, expected);
     }
 
@@ -148,14 +148,14 @@ mod tests {
         let entrypoint = IrEntrypoint {
             parameters: vec![],
             body: vec![
-                IrNode::Write("Before".to_string()),
-                IrNode::Write(" if".to_string()),
+                IrNode::Write { content: "Before".to_string() },
+                IrNode::Write { content: " if".to_string() },
                 IrNode::If {
                     condition: make_boolean(true),
-                    body: vec![IrNode::Write("Inside if".to_string())],
+                    body: vec![IrNode::Write { content: "Inside if".to_string() }],
                 },
-                IrNode::Write("After".to_string()),
-                IrNode::Write(" if".to_string()),
+                IrNode::Write { content: "After".to_string() },
+                IrNode::Write { content: " if".to_string() },
             ],
         };
 
@@ -163,12 +163,12 @@ mod tests {
         let result = pass.run(entrypoint);
 
         let expected = vec![
-            IrNode::Write("Before if".to_string()),
+            IrNode::Write { content: "Before if".to_string() },
             IrNode::If {
                 condition: make_boolean(true),
-                body: vec![IrNode::Write("Inside if".to_string())],
+                body: vec![IrNode::Write { content: "Inside if".to_string() }],
             },
-            IrNode::Write("After if".to_string()),
+            IrNode::Write { content: "After if".to_string() },
         ];
         assert_eq!(result.body, expected);
     }
@@ -180,9 +180,9 @@ mod tests {
             body: vec![IrNode::If {
                 condition: make_boolean(true),
                 body: vec![
-                    IrNode::Write("Line".to_string()),
-                    IrNode::Write(" ".to_string()),
-                    IrNode::Write("one".to_string()),
+                    IrNode::Write { content: "Line".to_string() },
+                    IrNode::Write { content: " ".to_string() },
+                    IrNode::Write { content: "one".to_string() },
                 ],
             }],
         };
@@ -192,7 +192,7 @@ mod tests {
 
         let expected = vec![IrNode::If {
             condition: make_boolean(true),
-            body: vec![IrNode::Write("Line one".to_string())],
+            body: vec![IrNode::Write { content: "Line one".to_string() }],
         }];
         assert_eq!(result.body, expected);
     }
@@ -205,14 +205,14 @@ mod tests {
                 var: "item".to_string(),
                 array: make_array(vec![make_string("x")]),
                 body: vec![
-                    IrNode::Write("Item".to_string()),
-                    IrNode::Write(": ".to_string()),
+                    IrNode::Write { content: "Item".to_string() },
+                    IrNode::Write { content: ": ".to_string() },
                     IrNode::WriteExpr {
                         expr: make_var("item"),
                         escape: true,
                     },
-                    IrNode::Write(" - ".to_string()),
-                    IrNode::Write("Done".to_string()),
+                    IrNode::Write { content: " - ".to_string() },
+                    IrNode::Write { content: "Done".to_string() },
                 ],
             }],
         };
@@ -224,12 +224,12 @@ mod tests {
             var: "item".to_string(),
             array: make_array(vec![make_string("x")]),
             body: vec![
-                IrNode::Write("Item: ".to_string()),
+                IrNode::Write { content: "Item: ".to_string() },
                 IrNode::WriteExpr {
                     expr: make_var("item"),
                     escape: true,
                 },
-                IrNode::Write(" - Done".to_string()),
+                IrNode::Write { content: " - Done".to_string() },
             ],
         }];
         assert_eq!(result.body, expected);
@@ -243,9 +243,9 @@ mod tests {
                 var: "x".to_string(),
                 value: make_string("value"),
                 body: vec![
-                    IrNode::Write("The".to_string()),
-                    IrNode::Write(" value".to_string()),
-                    IrNode::Write(" is".to_string()),
+                    IrNode::Write { content: "The".to_string() },
+                    IrNode::Write { content: " value".to_string() },
+                    IrNode::Write { content: " is".to_string() },
                 ],
             }],
         };
@@ -256,7 +256,7 @@ mod tests {
         let expected = vec![IrNode::Let {
             var: "x".to_string(),
             value: make_string("value"),
-            body: vec![IrNode::Write("The value is".to_string())],
+            body: vec![IrNode::Write { content: "The value is".to_string() }],
         }];
         assert_eq!(result.body, expected);
     }
@@ -266,27 +266,27 @@ mod tests {
         let entrypoint = IrEntrypoint {
             parameters: vec![],
             body: vec![
-                IrNode::Write("Start".to_string()),
-                IrNode::Write(": ".to_string()),
+                IrNode::Write { content: "Start".to_string() },
+                IrNode::Write { content: ": ".to_string() },
                 IrNode::If {
                     condition: make_boolean(true),
                     body: vec![
-                        IrNode::Write("In".to_string()),
-                        IrNode::Write(" if".to_string()),
+                        IrNode::Write { content: "In".to_string() },
+                        IrNode::Write { content: " if".to_string() },
                         IrNode::For {
                             var: "i".to_string(),
                             array: make_array(vec![]),
                             body: vec![
-                                IrNode::Write("Loop".to_string()),
-                                IrNode::Write(" body".to_string()),
+                                IrNode::Write { content: "Loop".to_string() },
+                                IrNode::Write { content: " body".to_string() },
                             ],
                         },
-                        IrNode::Write("After".to_string()),
-                        IrNode::Write(" loop".to_string()),
+                        IrNode::Write { content: "After".to_string() },
+                        IrNode::Write { content: " loop".to_string() },
                     ],
                 },
-                IrNode::Write("End".to_string()),
-                IrNode::Write(".".to_string()),
+                IrNode::Write { content: "End".to_string() },
+                IrNode::Write { content: ".".to_string() },
             ],
         };
 
@@ -294,20 +294,20 @@ mod tests {
         let result = pass.run(entrypoint);
 
         let expected = vec![
-            IrNode::Write("Start: ".to_string()),
+            IrNode::Write { content: "Start: ".to_string() },
             IrNode::If {
                 condition: make_boolean(true),
                 body: vec![
-                    IrNode::Write("In if".to_string()),
+                    IrNode::Write { content: "In if".to_string() },
                     IrNode::For {
                         var: "i".to_string(),
                         array: make_array(vec![]),
-                        body: vec![IrNode::Write("Loop body".to_string())],
+                        body: vec![IrNode::Write { content: "Loop body".to_string() }],
                     },
-                    IrNode::Write("After loop".to_string()),
+                    IrNode::Write { content: "After loop".to_string() },
                 ],
             },
-            IrNode::Write("End.".to_string()),
+            IrNode::Write { content: "End.".to_string() },
         ];
         assert_eq!(result.body, expected);
     }
@@ -317,14 +317,14 @@ mod tests {
         let entrypoint = IrEntrypoint {
             parameters: vec![],
             body: vec![
-                IrNode::Write("Value".to_string()),
-                IrNode::Write(": ".to_string()),
+                IrNode::Write { content: "Value".to_string() },
+                IrNode::Write { content: ": ".to_string() },
                 IrNode::WriteExpr {
                     expr: make_var("x"),
                     escape: true,
                 },
-                IrNode::Write(" - ".to_string()),
-                IrNode::Write("done".to_string()),
+                IrNode::Write { content: " - ".to_string() },
+                IrNode::Write { content: "done".to_string() },
             ],
         };
 
@@ -332,12 +332,12 @@ mod tests {
         let result = pass.run(entrypoint);
 
         let expected = vec![
-            IrNode::Write("Value: ".to_string()),
+            IrNode::Write { content: "Value: ".to_string() },
             IrNode::WriteExpr {
                 expr: make_var("x"),
                 escape: true,
             },
-            IrNode::Write(" - done".to_string()),
+            IrNode::Write { content: " - done".to_string() },
         ];
         assert_eq!(result.body, expected);
     }
@@ -359,13 +359,13 @@ mod tests {
     fn test_single_write() {
         let entrypoint = IrEntrypoint {
             parameters: vec![],
-            body: vec![IrNode::Write("Single".to_string())],
+            body: vec![IrNode::Write { content: "Single".to_string() }],
         };
 
         let mut pass = WriteCoalescingPass::new();
         let result = pass.run(entrypoint);
 
-        let expected = vec![IrNode::Write("Single".to_string())];
+        let expected = vec![IrNode::Write { content: "Single".to_string() }];
         assert_eq!(result.body, expected);
     }
 }

@@ -146,9 +146,9 @@ impl JsCompiler {
 
     fn compile_node(&mut self, node: &IrNode) {
         match node {
-            IrNode::Write(s) => {
+            IrNode::Write { content } => {
                 // Escape the string for JavaScript string literal
-                let escaped = s
+                let escaped = content
                     .replace('\\', "\\\\")
                     .replace('"', "\\\"")
                     .replace('\n', "\\n")

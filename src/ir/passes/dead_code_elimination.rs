@@ -101,14 +101,14 @@ mod tests {
             parameters: vec![],
             body: vec![IrNode::If {
                 condition: make_boolean(true),
-                body: vec![IrNode::Write("Always shown".to_string())],
+                body: vec![IrNode::Write { content: "Always shown".to_string() }],
             }],
         };
 
         let mut pass = DeadCodeEliminationPass::new();
         let result = pass.run(entrypoint);
 
-        let expected = vec![IrNode::Write("Always shown".to_string())];
+        let expected = vec![IrNode::Write { content: "Always shown".to_string() }];
         assert_eq!(result.body, expected);
     }
 
@@ -119,16 +119,16 @@ mod tests {
             body: vec![
                 IrNode::If {
                     condition: make_boolean(false),
-                    body: vec![IrNode::Write("Never shown".to_string())],
+                    body: vec![IrNode::Write { content: "Never shown".to_string() }],
                 },
-                IrNode::Write("After if".to_string()),
+                IrNode::Write { content: "After if".to_string() },
             ],
         };
 
         let mut pass = DeadCodeEliminationPass::new();
         let result = pass.run(entrypoint);
 
-        let expected = vec![IrNode::Write("After if".to_string())];
+        let expected = vec![IrNode::Write { content: "After if".to_string() }];
         assert_eq!(result.body, expected);
     }
 
@@ -139,15 +139,15 @@ mod tests {
             body: vec![
                 IrNode::If {
                     condition: make_var("show"),
-                    body: vec![IrNode::Write("Dynamic".to_string())],
+                    body: vec![IrNode::Write { content: "Dynamic".to_string() }],
                 },
                 IrNode::If {
                     condition: make_boolean(true),
-                    body: vec![IrNode::Write("Static true".to_string())],
+                    body: vec![IrNode::Write { content: "Static true".to_string() }],
                 },
                 IrNode::If {
                     condition: make_boolean(false),
-                    body: vec![IrNode::Write("Static false".to_string())],
+                    body: vec![IrNode::Write { content: "Static false".to_string() }],
                 },
             ],
         };
@@ -158,9 +158,9 @@ mod tests {
         let expected = vec![
             IrNode::If {
                 condition: make_var("show"),
-                body: vec![IrNode::Write("Dynamic".to_string())],
+                body: vec![IrNode::Write { content: "Dynamic".to_string() }],
             },
-            IrNode::Write("Static true".to_string()),
+            IrNode::Write { content: "Static true".to_string() },
         ];
 
         assert_eq!(result.body, expected);
@@ -176,11 +176,11 @@ mod tests {
                 body: vec![
                     IrNode::If {
                         condition: make_boolean(true),
-                        body: vec![IrNode::Write("Inside let and true if".to_string())],
+                        body: vec![IrNode::Write { content: "Inside let and true if".to_string() }],
                     },
                     IrNode::If {
                         condition: make_boolean(false),
-                        body: vec![IrNode::Write("Never shown".to_string())],
+                        body: vec![IrNode::Write { content: "Never shown".to_string() }],
                     },
                 ],
             }],
@@ -192,7 +192,7 @@ mod tests {
         let expected = vec![IrNode::Let {
             var: "x".to_string(),
             value: make_var("value"),
-            body: vec![IrNode::Write("Inside let and true if".to_string())],
+            body: vec![IrNode::Write { content: "Inside let and true if".to_string() }],
         }];
 
         assert_eq!(result.body, expected);

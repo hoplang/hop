@@ -95,8 +95,8 @@ pub fn eval_ir(nodes: &[IrNode], env: &mut Environment<Value>, output: &mut Stri
 /// Evaluate a single IR node
 fn eval_node(node: &IrNode, env: &mut Environment<Value>, output: &mut String) -> Result<()> {
     match node {
-        IrNode::Write(s) => {
-            output.push_str(s);
+        IrNode::Write { content } => {
+            output.push_str(content);
             Ok(())
         }
 

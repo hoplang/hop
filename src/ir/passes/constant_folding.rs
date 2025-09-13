@@ -270,7 +270,7 @@ mod tests {
             parameters: vec![],
             body: vec![IrNode::If {
                 condition: make_binary_op(make_string("x"), BinaryOp::Equal, make_string("x")),
-                body: vec![IrNode::Write("Condition folded to true".to_string())],
+                body: vec![IrNode::Write { content: "Condition folded to true".to_string() }],
             }],
         };
 
@@ -280,7 +280,7 @@ mod tests {
         // Expected: The condition should be folded to a boolean true
         let expected = vec![IrNode::If {
             condition: make_boolean(true),
-            body: vec![IrNode::Write("Condition folded to true".to_string())],
+            body: vec![IrNode::Write { content: "Condition folded to true".to_string() }],
         }];
 
         assert_eq!(result.body, expected);
@@ -292,7 +292,7 @@ mod tests {
             parameters: vec![],
             body: vec![IrNode::If {
                 condition: make_unary_op(UnaryOp::Not, make_boolean(false)),
-                body: vec![IrNode::Write("Negation folded".to_string())],
+                body: vec![IrNode::Write { content: "Negation folded".to_string() }],
             }],
         };
 
@@ -302,7 +302,7 @@ mod tests {
         // Expected: !false should be folded to true
         let expected = vec![IrNode::If {
             condition: make_boolean(true),
-            body: vec![IrNode::Write("Negation folded".to_string())],
+            body: vec![IrNode::Write { content: "Negation folded".to_string() }],
         }];
 
         assert_eq!(result.body, expected);
@@ -314,7 +314,7 @@ mod tests {
             parameters: vec![("show".to_string(), Type::Bool)],
             body: vec![IrNode::If {
                 condition: make_var("show"),
-                body: vec![IrNode::Write("Dynamic condition preserved".to_string())],
+                body: vec![IrNode::Write { content: "Dynamic condition preserved".to_string() }],
             }],
         };
 
@@ -324,7 +324,7 @@ mod tests {
         // Expected: Dynamic condition should be preserved as-is
         let expected = vec![IrNode::If {
             condition: make_var("show"),
-            body: vec![IrNode::Write("Dynamic condition preserved".to_string())],
+            body: vec![IrNode::Write { content: "Dynamic condition preserved".to_string() }],
         }];
 
         assert_eq!(result.body, expected);
@@ -337,7 +337,7 @@ mod tests {
             body: vec![IrNode::Let {
                 var: "x".to_string(),
                 value: make_binary_op(make_number(2.0), BinaryOp::Equal, make_number(2.0)),
-                body: vec![IrNode::Write("Let with folded expression".to_string())],
+                body: vec![IrNode::Write { content: "Let with folded expression".to_string() }],
             }],
         };
 
@@ -348,7 +348,7 @@ mod tests {
         let expected = vec![IrNode::Let {
             var: "x".to_string(),
             value: make_boolean(true),
-            body: vec![IrNode::Write("Let with folded expression".to_string())],
+            body: vec![IrNode::Write { content: "Let with folded expression".to_string() }],
         }];
 
         assert_eq!(result.body, expected);
@@ -386,7 +386,7 @@ mod tests {
                     make_binary_op(make_number(1.0), BinaryOp::Equal, make_number(1.0)),
                     make_binary_op(make_number(2.0), BinaryOp::Equal, make_number(3.0)),
                 ]),
-                body: vec![IrNode::Write("For loop body".to_string())],
+                body: vec![IrNode::Write { content: "For loop body".to_string() }],
             }],
         };
 
@@ -397,7 +397,7 @@ mod tests {
         let expected = vec![IrNode::For {
             var: "item".to_string(),
             array: make_array(vec![make_boolean(true), make_boolean(false)]),
-            body: vec![IrNode::Write("For loop body".to_string())],
+            body: vec![IrNode::Write { content: "For loop body".to_string() }],
         }];
 
         assert_eq!(result.body, expected);

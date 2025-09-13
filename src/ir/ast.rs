@@ -2,14 +2,14 @@ use std::{collections::HashMap, fmt};
 
 use crate::dop::r#type::Type;
 
-/// Unique identifier for each expression in the IR
-pub type ExprId = u32;
-
 // This module contains the types and implementations for ASTs in
 // the IR.
 //
 // The AST structure is:
 // * IrModule -> IrEntryPoint -> IrNode -> IrExpr
+
+/// Unique identifier for each expression in the IR
+pub type ExprId = u32;
 
 #[derive(Debug, Default)]
 pub struct IrModule {
@@ -28,7 +28,7 @@ pub struct IrEntrypoint {
 #[derive(Debug, Clone, PartialEq)]
 pub enum IrNode {
     /// Output a pre-computed string
-    Write(String),
+    Write { content: String },
 
     /// Evaluate expression and output as string
     WriteExpr { expr: IrExpr, escape: bool },
@@ -62,39 +62,33 @@ pub struct IrExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum IrExprValue {
-    /// Variable reference
     Var(String),
 
-    /// Property access (e.g., obj.prop)
     PropertyAccess {
         object: Box<IrExpr>,
         property: String,
     },
 
-    /// String literal
     String(String),
 
-    /// Boolean literal
     Boolean(bool),
 
-    /// Number literal
     Number(f64),
 
-    /// Array literal
     Array(Vec<IrExpr>),
 
-    /// Object literal
     Object(Vec<(String, IrExpr)>),
 
-    /// Binary operation
     BinaryOp {
         left: Box<IrExpr>,
         op: BinaryOp,
         right: Box<IrExpr>,
     },
 
-    /// Unary operation
-    UnaryOp { op: UnaryOp, operand: Box<IrExpr> },
+    UnaryOp {
+        op: UnaryOp,
+        operand: Box<IrExpr>,
+    },
 }
 
 /// Binary operators in IR
@@ -122,7 +116,7 @@ impl fmt::Display for IrNode {
                     write!(f, "  ")?;
                 }
                 match node {
-                    IrNode::Write(s) => writeln!(f, "Write({:?})", s)?,
+                    IrNode::Write { content } => writeln!(f, "Write({:?})", content)?,
                     IrNode::WriteExpr { expr, escape } => {
                         writeln!(f, "WriteExpr(expr: {}, escape: {})", expr, escape)?
                     }
@@ -179,7 +173,7 @@ impl fmt::Display for IrEntrypoint {
                     write!(f, "  ")?;
                 }
                 match node {
-                    IrNode::Write(s) => writeln!(f, "Write({:?})", s)?,
+                    IrNode::Write { content } => writeln!(f, "Write({:?})", content)?,
                     IrNode::WriteExpr { expr, escape } => {
                         writeln!(f, "WriteExpr(expr: {}, escape: {})", expr, escape)?
                     }
