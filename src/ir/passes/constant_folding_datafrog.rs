@@ -21,27 +21,22 @@ impl DatafrogConstantFoldingPass {
 
         // Variables - (expr_id, boolean_value)
         let bool_value = iteration.variable::<(ExprId, bool)>("bool_value");
+        bool_value.extend(expr.dfs_iter().filter_map(|n| match n.value {
+            IrExprValue::Boolean(b) => Some((n.id, b)),
+            _ => None,
+        }));
 
-        // Variable for not operations - (operand_id, expr_id)
-        let not_rel = iteration.variable::<(ExprId, ExprId)>("not_rel");
-
-        // Extract facts from expression tree using DFS iterator
-        for node in expr.dfs_iter() {
-            match &node.value {
-                IrExprValue::Boolean(b) => {
-                    // Insert literals directly into the bool_value variable
-                    bool_value.insert(Relation::from_vec(vec![(node.id, *b)]));
-                }
-                IrExprValue::UnaryOp {
-                    op: UnaryOp::Not,
-                    operand,
-                } => {
-                    // Insert NOT facts directly in the correct order for join: (operand_id, expr_id)
-                    not_rel.insert(Relation::from_vec(vec![(operand.id, node.id)]));
-                }
-                _ => {} // Other expression types don't contribute facts yet
-            }
-        }
+        // Not operations keyed by operand: (operand_id => expr_id)
+        // I.e. !(...)
+        //      ^^^^^^ expr_id
+        //       ^^^^^ operand_id
+        let not_rel = Relation::from_iter(expr.dfs_iter().filter_map(|n| match &n.value {
+            IrExprValue::UnaryOp {
+                op: UnaryOp::Not,
+                operand,
+            } => Some((operand.id, n.id)),
+            _ => None,
+        }));
 
         while iteration.changed() {
             // bool_value(Y, !V) :- not_rel(X, Y), bool_value(X, V).
