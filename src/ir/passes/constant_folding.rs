@@ -1,5 +1,8 @@
 use super::Pass;
-use crate::ir::{BinaryOp, IrEntrypoint, IrExpr, IrNode, UnaryOp};
+use crate::ir::{
+    IrEntrypoint, IrExpr, IrNode,
+    expr::{BinaryOp, UnaryOp},
+};
 
 /// Represents a compile-time constant value
 #[derive(Debug, Clone, PartialEq)]

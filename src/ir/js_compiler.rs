@@ -1,4 +1,6 @@
-use crate::ir::{BinaryOp, IrEntrypoint, IrExpr, IrModule, IrNode, UnaryOp};
+use crate::ir::{IrEntrypoint, IrExpr, IrModule, IrNode};
+
+use super::expr::{BinaryOp, UnaryOp};
 
 /// Compiles an IR module to JavaScript code
 pub struct JsCompiler {
@@ -14,7 +16,6 @@ impl JsCompiler {
         }
     }
 
-    /// Compile an entire IR module to JavaScript
     pub fn compile_module(ir_module: &IrModule) -> String {
         let mut compiler = Self::new();
 
