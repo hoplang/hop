@@ -5,10 +5,7 @@ use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::collections::HashMap;
 
-use super::{
-    ast::{IrEntrypoint, IrNode},
-    expr::{BinaryOp, UnaryOp, IrExprValue},
-};
+use super::ast::{BinaryOp, IrEntrypoint, IrExprValue, IrNode, UnaryOp};
 
 /// Evaluate an IrExpr expression
 fn evaluate_ir_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {

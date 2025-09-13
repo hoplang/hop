@@ -1,7 +1,4 @@
-use super::{
-    ast::{IrEntrypoint, IrModule, IrNode},
-    expr::{BinaryOp, IrExpr, IrExprValue, UnaryOp},
-};
+use super::ast::{BinaryOp, IrEntrypoint, IrExpr, IrExprValue, IrModule, IrNode, UnaryOp};
 use crate::dop::r#type::Type;
 
 #[derive(Debug, Clone, Copy)]

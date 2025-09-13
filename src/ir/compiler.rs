@@ -6,8 +6,7 @@ use crate::hop::module_name::ModuleName;
 use crate::ir::passes::PassManager;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use super::ast::{IrEntrypoint, IrModule, IrNode};
-use super::expr::{BinaryOp, IrExpr, IrExprValue, UnaryOp, ExprId};
+use super::ast::{BinaryOp, ExprId, IrEntrypoint, IrExpr, IrExprValue, IrModule, IrNode, UnaryOp};
 
 pub struct Compiler<'a> {
     asts: &'a HashMap<ModuleName, Ast>,

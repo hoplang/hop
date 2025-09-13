@@ -93,7 +93,7 @@ impl Pass for WriteCoalescingPass {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::{IrExpr, expr::IrExprValue};
+    use crate::ir::{IrExpr, ast::IrExprValue};
 
     // Helper functions to create IrExpr for tests
     fn make_string(s: &str) -> IrExpr {

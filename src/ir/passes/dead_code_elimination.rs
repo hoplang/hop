@@ -2,7 +2,7 @@ use super::Pass;
 use crate::ir::{
     IrExpr,
     ast::{IrEntrypoint, IrNode},
-    expr::IrExprValue,
+    ast::IrExprValue,
 };
 
 /// A pass that eliminates dead code, particularly unreachable If branches

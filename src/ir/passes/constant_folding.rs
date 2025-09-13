@@ -2,7 +2,7 @@ use super::Pass;
 use crate::ir::{
     IrExpr,
     ast::{IrEntrypoint, IrNode},
-    expr::{BinaryOp, IrExprValue, UnaryOp},
+    ast::{BinaryOp, IrExprValue, UnaryOp},
 };
 
 /// Represents a compile-time constant value
