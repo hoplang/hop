@@ -1,7 +1,7 @@
 use crate::document::document_cursor::{DocumentRange, Ranged};
 use crate::dop::{self, Parameter, Type};
 use crate::hop::ast::Ast;
-use crate::hop::ast::{ComponentDefinition, Node, Render};
+use crate::hop::ast::{ComponentDefinition, Node};
 use crate::hop::environment::Environment;
 use crate::hop::type_error::TypeError;
 use std::collections::HashMap;
@@ -201,12 +201,6 @@ fn typecheck_module(
                 has_slot: *has_slot,
             },
         );
-    }
-
-    for Render { children, .. } in module.get_renders() {
-        for child in children {
-            typecheck_node(child, state, &mut env, annotations, errors);
-        }
     }
 }
 

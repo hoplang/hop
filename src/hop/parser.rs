@@ -1,7 +1,7 @@
 use crate::document::document_cursor::{DocumentRange, StringSpan};
 use crate::dop::Parser;
 use crate::error_collector::ErrorCollector;
-use crate::hop::ast::{Ast, ComponentDefinition, Import, Node, Render};
+use crate::hop::ast::{Ast, ComponentDefinition, Import, Node};
 use crate::hop::parse_error::ParseError;
 use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::{Token, Tokenizer};
@@ -177,7 +177,6 @@ impl AttributeValidator {
 
 enum TopLevelNode {
     Import(Import),
-    Render(Render),
     ComponentDefinition(ComponentDefinition),
 }
 
@@ -190,7 +189,6 @@ pub fn parse(
 
     let mut components = Vec::new();
     let mut imports = Vec::new();
-    let mut renders = Vec::new();
 
     let mut defined_components = HashSet::new();
     let mut imported_components = HashMap::new();
@@ -224,7 +222,6 @@ pub fn parse(
                     }
                     imports.push(import);
                 }
-                TopLevelNode::Render(render) => renders.push(render),
                 TopLevelNode::ComponentDefinition(component) => {
                     let name = component.tag_name.as_str();
                     if defined_components.contains(name) || imported_components.contains_key(name) {
@@ -241,7 +238,7 @@ pub fn parse(
         }
     }
 
-    Ast::new(module_name, components, imports, renders)
+    Ast::new(module_name, components, imports)
 }
 
 fn parse_top_level_node(
@@ -281,15 +278,15 @@ fn parse_top_level_node(
                 }
 
                 // <render ...>
-                "render" => {
-                    let file_attr = errors.ok_or_add(validator.require_static("file"))?;
-                    errors.extend(validator.disallow_unrecognized());
-                    Some(TopLevelNode::Render(Render {
-                        file_attr,
-                        range: tree.range.clone(),
-                        children,
-                    }))
-                }
+                //"render" => {
+                //    let file_attr = errors.ok_or_add(validator.require_static("file"))?;
+                //    errors.extend(validator.disallow_unrecognized());
+                //    Some(TopLevelNode::Render(Render {
+                //        file_attr,
+                //        range: tree.range.clone(),
+                //        children,
+                //    }))
+                //}
 
                 // <component-definition ...>
                 name => {
@@ -1675,23 +1672,6 @@ mod tests {
                 error: Unrecognized attribute 'unknown' on <import>
                 1 | <import component="button-cmp" from="@/components/button" extra="value" unknown>
                   |                                                                         ^^^^^^^
-            "#]],
-        );
-    }
-
-    // Test <render> tag without required file attribute produces error.
-    #[test]
-    fn test_parser_render_missing_file_attribute() {
-        check(
-            indoc! {r#"
-                <render>
-                    <div>Content</div>
-                </render>
-            "#},
-            expect![[r#"
-                error: <render> is missing required attribute file
-                1 | <render>
-                  |  ^^^^^^
             "#]],
         );
     }

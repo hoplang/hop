@@ -399,28 +399,6 @@ impl Program {
         script_collector.build()
     }
 
-    /// Get all file_attr values from render nodes across all modules
-    /// I.e. files specified in <render file="index.html">
-    pub fn get_renderable_file_paths(&self) -> Vec<String> {
-        let mut result = Vec::new();
-        for ast in self.modules.values() {
-            for node in ast.get_renders() {
-                result.push(node.file_attr.value.to_string())
-            }
-        }
-        result
-    }
-
-    /// Render the content for a specific file path
-    pub fn render_file(
-        &self,
-        file_path: &str,
-        hop_mode: HopMode,
-        output: &mut String,
-    ) -> Result<()> {
-        evaluator::render_file(&self.modules, hop_mode, file_path, output)
-    }
-
     pub fn evaluate_component(
         &self,
         module_name: &ModuleName,

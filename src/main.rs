@@ -32,21 +32,21 @@ enum Commands {
         #[arg(long)]
         path: Option<String>,
     },
-    /// Build hop templates from a manifest to files
-    Build {
-        /// Path to project root
-        #[arg(long)]
-        projectdir: Option<String>,
-        /// Output directory
-        #[arg(long)]
-        outdir: String,
-        /// Optional script file name to output collected scripts
-        #[arg(long)]
-        scriptfile: Option<String>,
-        /// Directory to copy static files from
-        #[arg(long)]
-        staticdir: Option<String>,
-    },
+    ///// Build hop templates from a manifest to files
+    //Build {
+    //    /// Path to project root
+    //    #[arg(long)]
+    //    projectdir: Option<String>,
+    //    /// Output directory
+    //    #[arg(long)]
+    //    outdir: String,
+    //    /// Optional script file name to output collected scripts
+    //    #[arg(long)]
+    //    scriptfile: Option<String>,
+    //    /// Directory to copy static files from
+    //    #[arg(long)]
+    //    staticdir: Option<String>,
+    //},
     /// Compile hop templates to JavaScript
     Compile {
         /// Path to project root
@@ -56,24 +56,24 @@ enum Commands {
         #[arg(short, long, default_value = "output.js")]
         output: String,
     },
-    /// Start development server for serving hop templates from a manifest
-    Dev {
-        /// Path to project root
-        #[arg(long)]
-        projectdir: Option<String>,
-        /// Port to serve on
-        #[arg(short, long, default_value = "3000")]
-        port: u16,
-        /// Host to bind to
-        #[arg(long, default_value = "127.0.0.1")]
-        host: String,
-        /// Directory to serve static files from
-        #[arg(long)]
-        staticdir: Option<String>,
-        /// Optional script file name to make scripts available over HTTP
-        #[arg(long)]
-        scriptfile: Option<String>,
-    },
+    ///// Start development server for serving hop templates from a manifest
+    //Dev {
+    //    /// Path to project root
+    //    #[arg(long)]
+    //    projectdir: Option<String>,
+    //    /// Port to serve on
+    //    #[arg(short, long, default_value = "3000")]
+    //    port: u16,
+    //    /// Host to bind to
+    //    #[arg(long, default_value = "127.0.0.1")]
+    //    host: String,
+    //    /// Directory to serve static files from
+    //    #[arg(long)]
+    //    staticdir: Option<String>,
+    //    /// Optional script file name to make scripts available over HTTP
+    //    #[arg(long)]
+    //    scriptfile: Option<String>,
+    //},
     /// Format a hop file
     Fmt {
         /// Path to the file to format
@@ -125,68 +125,68 @@ async fn main() -> anyhow::Result<()> {
             );
             println!();
         }
-        Some(Commands::Build {
-            projectdir,
-            outdir,
-            scriptfile,
-            staticdir,
-        }) => {
-            use std::time::Instant;
-            let start_time = Instant::now();
-            let root = match projectdir {
-                Some(d) => ProjectRoot::from(Path::new(d))?,
-                None => ProjectRoot::find_upwards(Path::new("."))?,
-            };
-            let mut outputs = cli::build::execute(
-                &root,
-                Path::new(outdir),
-                scriptfile.as_deref(),
-                staticdir.as_deref(),
-            )?;
-            let elapsed = start_time.elapsed();
-
-            print_header("built", elapsed.as_millis());
-            outputs.sort_by(|a, b| a.0.cmp(&b.0));
-            let mut total_size = 0;
-            for (file_path, size) in outputs {
-                println!("  {:<50} {}", file_path, format_file_size(size));
-                total_size += size;
-            }
-            println!();
-            println!("  {:<50} {}", "total", format_file_size(total_size));
-            println!();
-        }
+        //Some(Commands::Build {
+        //    projectdir,
+        //    outdir,
+        //    scriptfile,
+        //    staticdir,
+        //}) => {
+        //    use std::time::Instant;
+        //    let start_time = Instant::now();
+        //    let root = match projectdir {
+        //        Some(d) => ProjectRoot::from(Path::new(d))?,
+        //        None => ProjectRoot::find_upwards(Path::new("."))?,
+        //    };
+        //    let mut outputs = cli::build::execute(
+        //        &root,
+        //        Path::new(outdir),
+        //        scriptfile.as_deref(),
+        //        staticdir.as_deref(),
+        //    )?;
+        //    let elapsed = start_time.elapsed();
+        //
+        //    print_header("built", elapsed.as_millis());
+        //    outputs.sort_by(|a, b| a.0.cmp(&b.0));
+        //    let mut total_size = 0;
+        //    for (file_path, size) in outputs {
+        //        println!("  {:<50} {}", file_path, format_file_size(size));
+        //        total_size += size;
+        //    }
+        //    println!();
+        //    println!("  {:<50} {}", "total", format_file_size(total_size));
+        //    println!();
+        //}
         Some(Commands::Compile { projectdir, output }) => {
             cli::compile::run(projectdir.as_deref(), output)?;
         }
-        Some(Commands::Dev {
-            projectdir,
-            port,
-            host,
-            staticdir,
-            scriptfile,
-        }) => {
-            use colored::*;
-            use std::time::Instant;
-            let start_time = Instant::now();
-            let root = match projectdir {
-                Some(d) => ProjectRoot::from(Path::new(d))?,
-                None => ProjectRoot::find_upwards(Path::new("."))?,
-            };
-            let (router, _watcher) = cli::dev::execute(
-                &root,
-                staticdir.as_deref().map(Path::new),
-                scriptfile.as_deref(),
-            )
-            .await?;
-            let elapsed = start_time.elapsed();
-            let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port)).await?;
-
-            print_header("ready", elapsed.as_millis());
-            println!("  {} http://{}:{}/", "➜".green(), host, port);
-            println!();
-            axum::serve(listener, router).await?;
-        }
+        //Some(Commands::Dev {
+        //    projectdir,
+        //    port,
+        //    host,
+        //    staticdir,
+        //    scriptfile,
+        //}) => {
+        //    use colored::*;
+        //    use std::time::Instant;
+        //    let start_time = Instant::now();
+        //    let root = match projectdir {
+        //        Some(d) => ProjectRoot::from(Path::new(d))?,
+        //        None => ProjectRoot::find_upwards(Path::new("."))?,
+        //    };
+        //    let (router, _watcher) = cli::dev::execute(
+        //        &root,
+        //        staticdir.as_deref().map(Path::new),
+        //        scriptfile.as_deref(),
+        //    )
+        //    .await?;
+        //    let elapsed = start_time.elapsed();
+        //    let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port)).await?;
+        //
+        //    print_header("ready", elapsed.as_millis());
+        //    println!("  {} http://{}:{}/", "➜".green(), host, port);
+        //    println!();
+        //    axum::serve(listener, router).await?;
+        //}
         Some(Commands::Fmt { filename }) => {
             use hop::pretty_print::pretty_print_from_source;
             use std::fs;

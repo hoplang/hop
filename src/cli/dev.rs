@@ -121,7 +121,7 @@ async fn handle_request(
     req: Request,
 ) -> Result<Html<String>, (StatusCode, Html<String>)> {
     // Get the program from shared state
-    let program = state.program.read().unwrap();
+    let _program = state.program.read().unwrap();
 
     let path = req.uri().path();
 
@@ -137,30 +137,31 @@ async fn handle_request(
     }
 
     // Try to render the requested file
-    let mut content = String::new();
-    match program.render_file(&file_path, HopMode::Dev, &mut content) {
-        Ok(()) => Ok(Html(inject_hot_reload_script(&content))),
-        Err(_) => {
-            let available_paths: Vec<String> = program
-                .get_renderable_file_paths()
-                .iter()
-                .map(|file_path| {
-                    if file_path == "index.html" {
-                        "/".to_string()
-                    } else if file_path.ends_with(".html") {
-                        format!("/{}", file_path.strip_suffix(".html").unwrap())
-                    } else {
-                        format!("/{}", file_path)
-                    }
-                })
-                .collect();
-
-            Err((
-                StatusCode::NOT_FOUND,
-                Html(create_not_found_page(req.uri().path(), &available_paths)),
-            ))
-        }
-    }
+    let content = String::new();
+    //match program.render_file(&file_path, HopMode::Dev, &mut content) {
+    //    Ok(()) => Ok(Html(inject_hot_reload_script(&content))),
+    //    Err(_) => {
+    //        let available_paths: Vec<String> = program
+    //            .get_renderable_file_paths()
+    //            .iter()
+    //            .map(|file_path| {
+    //                if file_path == "index.html" {
+    //                    "/".to_string()
+    //                } else if file_path.ends_with(".html") {
+    //                    format!("/{}", file_path.strip_suffix(".html").unwrap())
+    //                } else {
+    //                    format!("/{}", file_path)
+    //                }
+    //            })
+    //            .collect();
+    //
+    //        Err((
+    //            StatusCode::NOT_FOUND,
+    //            Html(create_not_found_page(req.uri().path(), &available_paths)),
+    //        ))
+    //    }
+    //}
+    Ok(Html(content))
 }
 
 #[allow(dead_code)]

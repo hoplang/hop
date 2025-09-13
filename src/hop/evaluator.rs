@@ -28,31 +28,31 @@ impl HopMode {
     }
 }
 
-/// Render the content for a specific file path
-pub fn render_file(
-    asts: &HashMap<ModuleName, Ast>,
-    hop_mode: HopMode,
-    file_path: &str,
-    output: &mut String,
-) -> Result<()> {
-    let render = asts
-        .values()
-        .flat_map(|ast| ast.get_renders())
-        .find(|r| r.file_attr.value.as_str() == file_path);
-    match render {
-        Some(node) => {
-            let mut env = init_environment(hop_mode);
-            for child in &node.children {
-                evaluate_node_entrypoint(asts, hop_mode, child, &mut env, output)?;
-            }
-            Ok(())
-        }
-        None => Err(anyhow::anyhow!(
-            "File path '{}' not found in render nodes",
-            file_path
-        )),
-    }
-}
+///// Render the content for a specific file path
+//pub fn render_file(
+//    asts: &HashMap<ModuleName, Ast>,
+//    hop_mode: HopMode,
+//    file_path: &str,
+//    output: &mut String,
+//) -> Result<()> {
+//    let render = asts
+//        .values()
+//        .flat_map(|ast| ast.get_renders())
+//        .find(|r| r.file_attr.value.as_str() == file_path);
+//    match render {
+//        Some(node) => {
+//            let mut env = init_environment(hop_mode);
+//            for child in &node.children {
+//                evaluate_node_entrypoint(asts, hop_mode, child, &mut env, output)?;
+//            }
+//            Ok(())
+//        }
+//        None => Err(anyhow::anyhow!(
+//            "File path '{}' not found in render nodes",
+//            file_path
+//        )),
+//    }
+//}
 
 fn evaluate_attribute_value(
     val: &AttributeValue,

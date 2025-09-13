@@ -33,7 +33,6 @@ pub struct Ast {
     pub name: ModuleName,
     imports: Vec<Import>,
     component_definitions: Vec<ComponentDefinition>,
-    renders: Vec<Render>,
 }
 
 impl Ast {
@@ -41,13 +40,11 @@ impl Ast {
         name: ModuleName,
         component_definitions: Vec<ComponentDefinition>,
         imports: Vec<Import>,
-        renders: Vec<Render>,
     ) -> Self {
         Self {
             name,
             component_definitions,
             imports,
-            renders,
         }
     }
 
@@ -67,18 +64,11 @@ impl Ast {
         &self.imports
     }
 
-    /// Returns a reference to all render nodes in the AST.
-    pub fn get_renders(&self) -> &[Render] {
-        &self.renders
-    }
-
     /// Returns an iterator over all nodes in the AST, iterating depth-first.
-    /// This includes all child nodes from both render nodes and component definitions.
     pub fn iter_all_nodes(&self) -> impl Iterator<Item = &Node> {
-        self.renders
+        self.component_definitions
             .iter()
             .flat_map(|n| &n.children)
-            .chain(self.component_definitions.iter().flat_map(|n| &n.children))
             .flat_map(|n| n.iter_depth_first())
     }
 
@@ -101,16 +91,6 @@ impl Ast {
     /// </div>
     ///
     pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&Node> {
-        for n in &self.renders {
-            if n.range.contains_position(position) {
-                for child in &n.children {
-                    if let Some(node) = child.find_node_at_position(position) {
-                        return Some(node);
-                    }
-                }
-                return None;
-            }
-        }
         for n in &self.component_definitions {
             if n.range.contains_position(position) {
                 for child in &n.children {
@@ -146,13 +126,6 @@ impl Import {
     pub fn imports_from(&self, module_name: &ModuleName) -> bool {
         &self.module_name == module_name
     }
-}
-
-#[derive(Debug)]
-pub struct Render {
-    pub file_attr: StaticAttribute,
-    pub range: DocumentRange,
-    pub children: Vec<Node>,
 }
 
 #[derive(Debug)]
