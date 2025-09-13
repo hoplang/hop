@@ -125,14 +125,14 @@ impl JsCompiler {
 
     fn compile_expr(expr: &IrExpr) -> String {
         match expr {
-            IrExpr::Variable(name) => name.clone(),
+            IrExpr::Var(name) => name.clone(),
 
             IrExpr::PropertyAccess { object, property } => {
                 let obj = Self::compile_expr(object);
                 format!("{}.{}", obj, property)
             }
 
-            IrExpr::StringLiteral(value) => {
+            IrExpr::String(value) => {
                 // Escape for JavaScript string literal
                 let escaped = value
                     .replace('\\', "\\\\")
@@ -143,16 +143,16 @@ impl JsCompiler {
                 format!("\"{}\"", escaped)
             }
 
-            IrExpr::BooleanLiteral(value) => value.to_string(),
+            IrExpr::Boolean(value) => value.to_string(),
 
-            IrExpr::NumberLiteral(value) => value.to_string(),
+            IrExpr::Number(value) => value.to_string(),
 
-            IrExpr::ArrayLiteral(elements) => {
+            IrExpr::Array(elements) => {
                 let items: Vec<String> = elements.iter().map(Self::compile_expr).collect();
                 format!("[{}]", items.join(", "))
             }
 
-            IrExpr::ObjectLiteral(properties) => {
+            IrExpr::Object(properties) => {
                 let props: Vec<String> = properties
                     .iter()
                     .map(|(key, value)| format!("{}: {}", key, Self::compile_expr(value)))

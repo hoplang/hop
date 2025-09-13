@@ -4,10 +4,10 @@ mod write_coalescing;
 pub use constant_folding::ConstantFoldingPass;
 pub use write_coalescing::WriteCoalescingPass;
 
-use crate::ir::{IrModule, IrEntrypoint};
+use crate::ir::{IrEntrypoint, IrModule};
 
 /// Trait for IR optimization passes that operate on individual entrypoints
-/// 
+///
 /// Each pass is responsible for managing its own environment/state while
 /// traversing the entrypoint. Since entrypoints are independent, there's
 /// no need for cross-entrypoint analysis.
@@ -23,16 +23,14 @@ pub struct PassManager {
 
 impl PassManager {
     pub fn new() -> Self {
-        Self {
-            passes: Vec::new(),
-        }
+        Self { passes: Vec::new() }
     }
-    
+
     /// Add a pass to the manager
     pub fn add_pass(&mut self, pass: Box<dyn Pass>) {
         self.passes.push(pass);
     }
-    
+
     /// Run all passes on the module
     pub fn run(&mut self, module: &mut IrModule) {
         // Iterate over each entrypoint in the module
@@ -45,7 +43,7 @@ impl PassManager {
             *entrypoint = current;
         }
     }
-    
+
     /// Create a default optimization pipeline
     pub fn default_optimization_pipeline() -> Self {
         let mut manager = Self::new();

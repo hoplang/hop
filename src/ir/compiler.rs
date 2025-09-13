@@ -14,7 +14,7 @@ pub struct Compiler<'a> {
     // Alpha-renaming state
     var_counter: usize,
     scope_stack: Vec<HashMap<String, String>>, // Stack of scopes (original → renamed)
-    all_used_names: HashSet<String>, // Track all variable names ever used
+    all_used_names: HashSet<String>,           // Track all variable names ever used
 }
 
 impl Compiler<'_> {
@@ -91,7 +91,7 @@ impl Compiler<'_> {
             if original != renamed {
                 result = vec![IrNode::Let {
                     var: renamed.clone(),
-                    value: IrExpr::Variable(original.clone()),
+                    value: IrExpr::Var(original.clone()),
                     body: result,
                 }];
             }
@@ -560,7 +560,7 @@ impl Compiler<'_> {
         match expr {
             Expr::Variable { value } => {
                 let renamed = self.lookup_var(value.as_str());
-                IrExpr::Variable(renamed)
+                IrExpr::Var(renamed)
             }
             Expr::PropertyAccess {
                 object, property, ..
@@ -595,19 +595,17 @@ impl Compiler<'_> {
                 }
             }
             Expr::ArrayLiteral { elements, .. } => {
-                IrExpr::ArrayLiteral(elements.iter().map(|e| self.rename_expr(e)).collect())
+                IrExpr::Array(elements.iter().map(|e| self.rename_expr(e)).collect())
             }
-            Expr::ObjectLiteral { properties, .. } => IrExpr::ObjectLiteral(
+            Expr::ObjectLiteral { properties, .. } => IrExpr::Object(
                 properties
                     .iter()
                     .map(|(k, v)| (k.as_str().to_string(), self.rename_expr(v)))
                     .collect(),
             ),
-            Expr::StringLiteral { value, .. } => IrExpr::StringLiteral(value.to_string()),
-            Expr::BooleanLiteral { value, .. } => IrExpr::BooleanLiteral(*value),
-            Expr::NumberLiteral { value, .. } => {
-                IrExpr::NumberLiteral(value.as_f64().unwrap_or(0.0))
-            }
+            Expr::StringLiteral { value, .. } => IrExpr::String(value.to_string()),
+            Expr::BooleanLiteral { value, .. } => IrExpr::Boolean(*value),
+            Expr::NumberLiteral { value, .. } => IrExpr::Number(value.as_f64().unwrap_or(0.0)),
         }
     }
 }

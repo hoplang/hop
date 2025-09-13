@@ -1,18 +1,17 @@
 use crate::common::escape_html;
 use crate::hop::environment::Environment;
 use crate::ir::{BinaryOp, IrEntrypoint, IrExpr, IrNode, UnaryOp};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::collections::HashMap;
 
 /// Evaluate an IrExpr expression
 fn evaluate_ir_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
     match expr {
-        IrExpr::Variable(name) => {
-            env.lookup(name)
-                .cloned()
-                .ok_or_else(|| anyhow!("Undefined variable: {}", name))
-        }
+        IrExpr::Var(name) => env
+            .lookup(name)
+            .cloned()
+            .ok_or_else(|| anyhow!("Undefined variable: {}", name)),
         IrExpr::PropertyAccess { object, property } => {
             let obj_value = evaluate_ir_expr(object, env)?;
             if let Some(obj) = obj_value.as_object() {
@@ -21,19 +20,19 @@ fn evaluate_ir_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value
                 Ok(Value::Null)
             }
         }
-        IrExpr::StringLiteral(s) => Ok(Value::String(s.clone())),
-        IrExpr::BooleanLiteral(b) => Ok(Value::Bool(*b)),
-        IrExpr::NumberLiteral(n) => Ok(Value::Number(
-            serde_json::Number::from_f64(*n).unwrap_or_else(|| serde_json::Number::from(0))
+        IrExpr::String(s) => Ok(Value::String(s.clone())),
+        IrExpr::Boolean(b) => Ok(Value::Bool(*b)),
+        IrExpr::Number(n) => Ok(Value::Number(
+            serde_json::Number::from_f64(*n).unwrap_or_else(|| serde_json::Number::from(0)),
         )),
-        IrExpr::ArrayLiteral(elements) => {
+        IrExpr::Array(elements) => {
             let mut array = Vec::new();
             for elem in elements {
                 array.push(evaluate_ir_expr(elem, env)?);
             }
             Ok(Value::Array(array))
         }
-        IrExpr::ObjectLiteral(properties) => {
+        IrExpr::Object(properties) => {
             let mut obj = serde_json::Map::new();
             for (key, value) in properties {
                 obj.insert(key.clone(), evaluate_ir_expr(value, env)?);

@@ -9,45 +9,41 @@ pub use js_compiler::JsCompiler;
 use std::collections::HashMap;
 use std::fmt;
 
-/// IR-specific expression type, simplified from dop::Expr
 #[derive(Debug, Clone, PartialEq)]
 pub enum IrExpr {
     /// Variable reference
-    Variable(String),
-    
+    Var(String),
+
     /// Property access (e.g., obj.prop)
     PropertyAccess {
         object: Box<IrExpr>,
         property: String,
     },
-    
+
     /// String literal
-    StringLiteral(String),
-    
+    String(String),
+
     /// Boolean literal
-    BooleanLiteral(bool),
-    
+    Boolean(bool),
+
     /// Number literal
-    NumberLiteral(f64),
-    
+    Number(f64),
+
     /// Array literal
-    ArrayLiteral(Vec<IrExpr>),
-    
+    Array(Vec<IrExpr>),
+
     /// Object literal
-    ObjectLiteral(Vec<(String, IrExpr)>),
-    
+    Object(Vec<(String, IrExpr)>),
+
     /// Binary operation
     BinaryOp {
         left: Box<IrExpr>,
         op: BinaryOp,
         right: Box<IrExpr>,
     },
-    
+
     /// Unary operation
-    UnaryOp {
-        op: UnaryOp,
-        operand: Box<IrExpr>,
-    },
+    UnaryOp { op: UnaryOp, operand: Box<IrExpr> },
 }
 
 /// Binary operators in IR
@@ -71,7 +67,10 @@ pub enum IrNode {
     WriteExpr { expr: IrExpr, escape: bool },
 
     /// Conditional execution
-    If { condition: IrExpr, body: Vec<IrNode> },
+    If {
+        condition: IrExpr,
+        body: Vec<IrNode>,
+    },
 
     /// Loop over array
     For {
@@ -113,14 +112,14 @@ impl IrModule {
 impl fmt::Display for IrExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            IrExpr::Variable(name) => write!(f, "{}", name),
+            IrExpr::Var(name) => write!(f, "{}", name),
             IrExpr::PropertyAccess { object, property } => {
                 write!(f, "{}.{}", object, property)
             }
-            IrExpr::StringLiteral(s) => write!(f, "{:?}", s),
-            IrExpr::BooleanLiteral(b) => write!(f, "{}", b),
-            IrExpr::NumberLiteral(n) => write!(f, "{}", n),
-            IrExpr::ArrayLiteral(elements) => {
+            IrExpr::String(s) => write!(f, "{:?}", s),
+            IrExpr::Boolean(b) => write!(f, "{}", b),
+            IrExpr::Number(n) => write!(f, "{}", n),
+            IrExpr::Array(elements) => {
                 write!(f, "[")?;
                 for (i, elem) in elements.iter().enumerate() {
                     if i > 0 {
@@ -130,7 +129,7 @@ impl fmt::Display for IrExpr {
                 }
                 write!(f, "]")
             }
-            IrExpr::ObjectLiteral(props) => {
+            IrExpr::Object(props) => {
                 write!(f, "{{")?;
                 for (i, (key, value)) in props.iter().enumerate() {
                     if i > 0 {
@@ -217,7 +216,7 @@ impl fmt::Display for IrEntrypoint {
         writeln!(f, "IrEntrypoint {{")?;
         writeln!(f, "  parameters: {:?}", self.parameters)?;
         writeln!(f, "  body: {{")?;
-        
+
         fn fmt_nodes(nodes: &[IrNode], f: &mut fmt::Formatter<'_>, indent: usize) -> fmt::Result {
             for node in nodes {
                 for _ in 0..indent {

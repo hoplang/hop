@@ -22,9 +22,9 @@ impl ConstantFoldingPass {
     /// Try to evaluate a constant expression at compile time
     fn try_eval_constant(expr: &IrExpr) -> Option<ConstantValue> {
         match expr {
-            IrExpr::StringLiteral(s) => Some(ConstantValue::String(s.clone())),
-            IrExpr::BooleanLiteral(b) => Some(ConstantValue::Boolean(*b)),
-            IrExpr::NumberLiteral(n) => Some(ConstantValue::Number(*n)),
+            IrExpr::String(s) => Some(ConstantValue::String(s.clone())),
+            IrExpr::Boolean(b) => Some(ConstantValue::Boolean(*b)),
+            IrExpr::Number(n) => Some(ConstantValue::Number(*n)),
             IrExpr::BinaryOp { left, op, right } => {
                 let left_val = Self::try_eval_constant(left)?;
                 let right_val = Self::try_eval_constant(right)?;
@@ -41,14 +41,14 @@ impl ConstantFoldingPass {
                     },
                 }
             }
-            IrExpr::ArrayLiteral(elements) => {
+            IrExpr::Array(elements) => {
                 let mut const_elements = Vec::new();
                 for elem in elements {
                     const_elements.push(Self::try_eval_constant(elem)?);
                 }
                 Some(ConstantValue::Array(const_elements))
             }
-            IrExpr::ObjectLiteral(properties) => {
+            IrExpr::Object(properties) => {
                 let mut const_props = Vec::new();
                 for (key, value) in properties {
                     const_props.push((key.clone(), Self::try_eval_constant(value)?));
@@ -137,9 +137,9 @@ mod tests {
             parameters: vec![],
             body: vec![IrNode::If {
                 condition: IrExpr::BinaryOp {
-                    left: Box::new(IrExpr::StringLiteral("x".to_string())),
+                    left: Box::new(IrExpr::String("x".to_string())),
                     op: BinaryOp::Equal,
-                    right: Box::new(IrExpr::StringLiteral("x".to_string())),
+                    right: Box::new(IrExpr::String("x".to_string())),
                 },
                 body: vec![IrNode::Write("Always shown".to_string())],
             }],
@@ -163,9 +163,9 @@ mod tests {
             body: vec![
                 IrNode::If {
                     condition: IrExpr::BinaryOp {
-                        left: Box::new(IrExpr::StringLiteral("x".to_string())),
+                        left: Box::new(IrExpr::String("x".to_string())),
                         op: BinaryOp::Equal,
-                        right: Box::new(IrExpr::StringLiteral("y".to_string())),
+                        right: Box::new(IrExpr::String("y".to_string())),
                     },
                     body: vec![IrNode::Write("Never shown".to_string())],
                 },
@@ -191,14 +191,14 @@ mod tests {
                 IrNode::If {
                     condition: IrExpr::UnaryOp {
                         op: UnaryOp::Not,
-                        operand: Box::new(IrExpr::BooleanLiteral(false)),
+                        operand: Box::new(IrExpr::Boolean(false)),
                     },
                     body: vec![IrNode::Write("Shown".to_string())],
                 },
                 IrNode::If {
                     condition: IrExpr::UnaryOp {
                         op: UnaryOp::Not,
-                        operand: Box::new(IrExpr::BooleanLiteral(true)),
+                        operand: Box::new(IrExpr::Boolean(true)),
                     },
                     body: vec![IrNode::Write("Not shown".to_string())],
                 },
@@ -222,17 +222,17 @@ mod tests {
             body: vec![
                 // Dynamic condition - should be preserved
                 IrNode::If {
-                    condition: IrExpr::Variable("show".to_string()),
+                    condition: IrExpr::Var("show".to_string()),
                     body: vec![IrNode::Write("Dynamic".to_string())],
                 },
                 // Static true - should be replaced with body
                 IrNode::If {
-                    condition: IrExpr::BooleanLiteral(true),
+                    condition: IrExpr::Boolean(true),
                     body: vec![IrNode::Write("Static true".to_string())],
                 },
                 // Static false - should be removed
                 IrNode::If {
-                    condition: IrExpr::BooleanLiteral(false),
+                    condition: IrExpr::Boolean(false),
                     body: vec![IrNode::Write("Static false".to_string())],
                 },
             ],
@@ -245,7 +245,7 @@ mod tests {
         // Expected: Dynamic if preserved, static true replaced, static false removed
         let expected = vec![
             IrNode::If {
-                condition: IrExpr::Variable("show".to_string()),
+                condition: IrExpr::Var("show".to_string()),
                 body: vec![IrNode::Write("Dynamic".to_string())],
             },
             IrNode::Write("Static true".to_string()),
@@ -260,14 +260,14 @@ mod tests {
             parameters: vec![],
             body: vec![IrNode::Let {
                 var: "x".to_string(),
-                value: IrExpr::StringLiteral("value".to_string()),
+                value: IrExpr::String("value".to_string()),
                 body: vec![
                     IrNode::If {
-                        condition: IrExpr::BooleanLiteral(true),
+                        condition: IrExpr::Boolean(true),
                         body: vec![IrNode::Write("Inside let and true if".to_string())],
                     },
                     IrNode::If {
-                        condition: IrExpr::BooleanLiteral(false),
+                        condition: IrExpr::Boolean(false),
                         body: vec![IrNode::Write("Never shown".to_string())],
                     },
                 ],
@@ -281,7 +281,7 @@ mod tests {
         // Expected: Let preserved but ifs inside optimized
         let expected = vec![IrNode::Let {
             var: "x".to_string(),
-            value: IrExpr::StringLiteral("value".to_string()),
+            value: IrExpr::String("value".to_string()),
             body: vec![IrNode::Write("Inside let and true if".to_string())],
         }];
 
@@ -295,17 +295,17 @@ mod tests {
             body: vec![
                 IrNode::If {
                     condition: IrExpr::BinaryOp {
-                        left: Box::new(IrExpr::NumberLiteral(42.0)),
+                        left: Box::new(IrExpr::Number(42.0)),
                         op: BinaryOp::Equal,
-                        right: Box::new(IrExpr::NumberLiteral(42.0)),
+                        right: Box::new(IrExpr::Number(42.0)),
                     },
                     body: vec![IrNode::Write("Numbers equal".to_string())],
                 },
                 IrNode::If {
                     condition: IrExpr::BinaryOp {
-                        left: Box::new(IrExpr::NumberLiteral(1.0)),
+                        left: Box::new(IrExpr::Number(1.0)),
                         op: BinaryOp::Equal,
-                        right: Box::new(IrExpr::NumberLiteral(2.0)),
+                        right: Box::new(IrExpr::Number(2.0)),
                     },
                     body: vec![IrNode::Write("Numbers not equal".to_string())],
                 },
@@ -327,17 +327,17 @@ mod tests {
             parameters: vec![],
             body: vec![IrNode::For {
                 var: "item".to_string(),
-                array: IrExpr::ArrayLiteral(vec![
-                    IrExpr::StringLiteral("a".to_string()),
-                    IrExpr::StringLiteral("b".to_string()),
+                array: IrExpr::Array(vec![
+                    IrExpr::String("a".to_string()),
+                    IrExpr::String("b".to_string()),
                 ]),
                 body: vec![
                     IrNode::If {
-                        condition: IrExpr::BooleanLiteral(true),
+                        condition: IrExpr::Boolean(true),
                         body: vec![IrNode::Write("Always in loop".to_string())],
                     },
                     IrNode::If {
-                        condition: IrExpr::BooleanLiteral(false),
+                        condition: IrExpr::Boolean(false),
                         body: vec![IrNode::Write("Never in loop".to_string())],
                     },
                 ],
@@ -351,9 +351,9 @@ mod tests {
         // Expected: For loop preserved but ifs inside optimized
         let expected = vec![IrNode::For {
             var: "item".to_string(),
-            array: IrExpr::ArrayLiteral(vec![
-                IrExpr::StringLiteral("a".to_string()),
-                IrExpr::StringLiteral("b".to_string()),
+            array: IrExpr::Array(vec![
+                IrExpr::String("a".to_string()),
+                IrExpr::String("b".to_string()),
             ]),
             body: vec![IrNode::Write("Always in loop".to_string())],
         }];
