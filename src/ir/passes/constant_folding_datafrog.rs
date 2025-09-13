@@ -19,36 +19,26 @@ impl DatafrogConstantFoldingPass {
     fn compute_constants(expr: &IrExpr) -> HashMap<ExprId, IrExprValue> {
         let mut iteration = Iteration::new();
 
-        // Extract facts from expression tree using DFS iterator
-        let mut literal_facts = Vec::new();
-        let mut not_facts = Vec::new();
+        // Variables - (expr_id, boolean_value)
+        let constant = iteration.variable::<(ExprId, bool)>("constant");
 
+        // Variable for not operations - (operand_id, result_id)
+        let not_rel = iteration.variable::<(ExprId, ExprId)>("not_rel");
+
+        // Extract facts from expression tree using DFS iterator
         for node in expr.dfs_iter() {
             match &node.value {
                 IrExprValue::Boolean(b) => {
-                    literal_facts.push((node.id, *b));
+                    // Insert literals directly into the constant variable
+                    constant.insert(Relation::from_vec(vec![(node.id, *b)]));
                 }
                 IrExprValue::UnaryOp { op: UnaryOp::Not, operand } => {
-                    not_facts.push((node.id, operand.id));
+                    // Insert NOT facts directly in the correct order for join: (operand_id, result_id)
+                    not_rel.insert(Relation::from_vec(vec![(operand.id, node.id)]));
                 }
                 _ => {} // Other expression types don't contribute facts yet
             }
         }
-
-        // Variables - (expr_id, boolean_value)
-        let constant = iteration.variable::<(ExprId, bool)>("constant");
-
-        // Initialize with literals
-        constant.insert(literal_facts.into());
-
-        // Reformat not_facts to be (operand_id, result_id) for join
-        let not_op_inverted: Vec<(ExprId, ExprId)> = not_facts
-            .into_iter()
-            .map(|(result, operand)| (operand, result))
-            .collect();
-
-        // Create relation for not operations (operand_id, result_id)
-        let not_rel = Relation::from_vec(not_op_inverted);
 
         // Rule: !constant => constant
         // from_join signature: fn(&V1, &K, &V2) -> (K_new, V_new)
