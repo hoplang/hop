@@ -255,6 +255,61 @@ impl fmt::Display for IrEntrypoint {
     }
 }
 
+impl IrNode {
+    /// Transform all expressions in this node and its children
+    pub fn map_expressions<F>(self, f: &F) -> IrNode
+    where
+        F: Fn(IrExpr) -> IrExpr,
+    {
+        match self {
+            IrNode::Write { id, content } => IrNode::Write { id, content },
+            IrNode::WriteExpr { id, expr, escape } => IrNode::WriteExpr {
+                id,
+                expr: expr.map_expr(f),
+                escape,
+            },
+            IrNode::If { id, condition, body } => IrNode::If {
+                id,
+                condition: condition.map_expr(f),
+                body: body.into_iter().map(|n| n.map_expressions(f)).collect(),
+            },
+            IrNode::For {
+                id,
+                var,
+                array,
+                body,
+            } => IrNode::For {
+                id,
+                var,
+                array: array.map_expr(f),
+                body: body.into_iter().map(|n| n.map_expressions(f)).collect(),
+            },
+            IrNode::Let {
+                id,
+                var,
+                value,
+                body,
+            } => IrNode::Let {
+                id,
+                var,
+                value: value.map_expr(f),
+                body: body.into_iter().map(|n| n.map_expressions(f)).collect(),
+            },
+        }
+    }
+}
+
+impl IrEntrypoint {
+    /// Transform all expressions in the entrypoint
+    pub fn map_expressions<F>(mut self, f: F) -> IrEntrypoint
+    where
+        F: Fn(IrExpr) -> IrExpr,
+    {
+        self.body = self.body.into_iter().map(|n| n.map_expressions(&f)).collect();
+        self
+    }
+}
+
 impl fmt::Display for BinaryOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -275,6 +330,70 @@ impl IrExpr {
     /// Returns an iterator that performs depth-first traversal of the expression tree
     pub fn dfs_iter(&self) -> DfsIter {
         DfsIter { stack: vec![self] }
+    }
+
+    /// Transform this expression by applying a function to it and all sub-expressions
+    pub fn map_expr<F>(self, f: &F) -> IrExpr
+    where
+        F: Fn(IrExpr) -> IrExpr,
+    {
+        // First recursively transform children
+        let transformed = match self.value {
+            IrExprValue::UnaryOp { op, operand } => IrExpr {
+                id: self.id,
+                value: IrExprValue::UnaryOp {
+                    op,
+                    operand: Box::new(operand.map_expr(f)),
+                },
+            },
+            IrExprValue::BinaryOp { op, left, right } => IrExpr {
+                id: self.id,
+                value: IrExprValue::BinaryOp {
+                    op,
+                    left: Box::new(left.map_expr(f)),
+                    right: Box::new(right.map_expr(f)),
+                },
+            },
+            IrExprValue::PropertyAccess { object, property } => IrExpr {
+                id: self.id,
+                value: IrExprValue::PropertyAccess {
+                    object: Box::new(object.map_expr(f)),
+                    property,
+                },
+            },
+            IrExprValue::Array(elements) => IrExpr {
+                id: self.id,
+                value: IrExprValue::Array(elements.into_iter().map(|e| e.map_expr(f)).collect()),
+            },
+            IrExprValue::Object(properties) => IrExpr {
+                id: self.id,
+                value: IrExprValue::Object(
+                    properties
+                        .into_iter()
+                        .map(|(k, v)| (k, v.map_expr(f)))
+                        .collect(),
+                ),
+            },
+            // Leaf nodes - no children to transform
+            IrExprValue::Var(name) => IrExpr {
+                id: self.id,
+                value: IrExprValue::Var(name),
+            },
+            IrExprValue::String(s) => IrExpr {
+                id: self.id,
+                value: IrExprValue::String(s),
+            },
+            IrExprValue::Boolean(b) => IrExpr {
+                id: self.id,
+                value: IrExprValue::Boolean(b),
+            },
+            IrExprValue::Number(n) => IrExpr {
+                id: self.id,
+                value: IrExprValue::Number(n),
+            },
+        };
+        // Then apply the function to this node
+        f(transformed)
     }
 }
 

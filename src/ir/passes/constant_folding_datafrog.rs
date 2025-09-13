@@ -195,81 +195,18 @@ impl DatafrogConstantFoldingPass {
                 value: const_val.clone(),
             }
         } else {
-            // Recursively transform children
-            let value = match expr.value {
-                IrExprValue::UnaryOp { op, operand } => IrExprValue::UnaryOp {
-                    op,
-                    operand: Box::new(Self::transform_expr(*operand, constants)),
-                },
-                IrExprValue::BinaryOp { op, left, right } => IrExprValue::BinaryOp {
-                    op,
-                    left: Box::new(Self::transform_expr(*left, constants)),
-                    right: Box::new(Self::transform_expr(*right, constants)),
-                },
-                other => other,
-            };
-            IrExpr { id: expr.id, value }
+            expr
         }
-    }
-
-    /// Transform nodes, applying constant folding to expressions
-    fn transform_nodes(
-        nodes: Vec<IrNode>,
-        constants: &HashMap<ExprId, IrExprValue>,
-    ) -> Vec<IrNode> {
-        nodes
-            .into_iter()
-            .map(|node| match node {
-                IrNode::If {
-                    id,
-                    condition,
-                    body,
-                } => IrNode::If {
-                    id,
-                    condition: Self::transform_expr(condition, constants),
-                    body: Self::transform_nodes(body, constants),
-                },
-                IrNode::WriteExpr { id, expr, escape } => IrNode::WriteExpr {
-                    id,
-                    expr: Self::transform_expr(expr, constants),
-                    escape,
-                },
-                IrNode::For {
-                    id,
-                    var,
-                    array,
-                    body,
-                } => IrNode::For {
-                    id,
-                    var,
-                    array: Self::transform_expr(array, constants),
-                    body: Self::transform_nodes(body, constants),
-                },
-                IrNode::Let {
-                    id,
-                    var,
-                    value,
-                    body,
-                } => IrNode::Let {
-                    id,
-                    var,
-                    value: Self::transform_expr(value, constants),
-                    body: Self::transform_nodes(body, constants),
-                },
-                other => other,
-            })
-            .collect()
     }
 }
 
 impl Pass for DatafrogConstantFoldingPass {
-    fn run(&mut self, mut entrypoint: IrEntrypoint) -> IrEntrypoint {
+    fn run(&mut self, entrypoint: IrEntrypoint) -> IrEntrypoint {
         // Compute constants once for the entire entrypoint
         let constants = Self::compute_constants(&entrypoint);
 
         // Apply transformations using the computed constants
-        entrypoint.body = Self::transform_nodes(entrypoint.body, &constants);
-        entrypoint
+        entrypoint.map_expressions(|expr| Self::transform_expr(expr, &constants))
     }
 }
 
