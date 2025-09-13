@@ -33,7 +33,7 @@ impl ConstantFoldingPass {
                 let left_val = Self::try_eval_constant(left)?;
                 let right_val = Self::try_eval_constant(right)?;
                 match op {
-                    BinaryOp::Equal => Some(ConstantValue::Boolean(left_val == right_val)),
+                    BinaryOp::Eq => Some(ConstantValue::Boolean(left_val == right_val)),
                 }
             }
             IrExprValue::UnaryOp { op, operand } => {
@@ -169,18 +169,32 @@ impl ConstantFoldingPass {
         nodes
             .into_iter()
             .map(|node| match node {
-                IrNode::If { id, condition, body } => IrNode::If {
+                IrNode::If {
+                    id,
+                    condition,
+                    body,
+                } => IrNode::If {
                     id,
                     condition: Self::transform_expr(condition),
                     body: Self::transform_nodes(body),
                 },
-                IrNode::For { id, var, array, body } => IrNode::For {
+                IrNode::For {
+                    id,
+                    var,
+                    array,
+                    body,
+                } => IrNode::For {
                     id,
                     var,
                     array: Self::transform_expr(array),
                     body: Self::transform_nodes(body),
                 },
-                IrNode::Let { id, var, value, body } => IrNode::Let {
+                IrNode::Let {
+                    id,
+                    var,
+                    value,
+                    body,
+                } => IrNode::Let {
                     id,
                     var,
                     value: Self::transform_expr(value),

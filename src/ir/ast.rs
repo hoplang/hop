@@ -34,7 +34,11 @@ pub enum IrNode {
     Write { id: NodeId, content: String },
 
     /// Evaluate expression and output as string
-    WriteExpr { id: NodeId, expr: IrExpr, escape: bool },
+    WriteExpr {
+        id: NodeId,
+        expr: IrExpr,
+        escape: bool,
+    },
 
     /// Conditional execution
     If {
@@ -100,7 +104,7 @@ pub enum IrExprValue {
 /// Binary operators in IR
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
-    Equal,
+    Eq,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -123,10 +127,16 @@ impl fmt::Display for IrNode {
                 }
                 match node {
                     IrNode::Write { id: _, content } => writeln!(f, "Write({:?})", content)?,
-                    IrNode::WriteExpr { id: _, expr, escape } => {
-                        writeln!(f, "WriteExpr(expr: {}, escape: {})", expr, escape)?
-                    }
-                    IrNode::If { id: _, condition, body } => {
+                    IrNode::WriteExpr {
+                        id: _,
+                        expr,
+                        escape,
+                    } => writeln!(f, "WriteExpr(expr: {}, escape: {})", expr, escape)?,
+                    IrNode::If {
+                        id: _,
+                        condition,
+                        body,
+                    } => {
                         writeln!(f, "If(condition: {}) {{", condition)?;
                         fmt_nodes(body, f, indent + 1)?;
                         for _ in 0..indent {
@@ -134,7 +144,12 @@ impl fmt::Display for IrNode {
                         }
                         writeln!(f, "}}")?;
                     }
-                    IrNode::For { id: _, var, array, body } => {
+                    IrNode::For {
+                        id: _,
+                        var,
+                        array,
+                        body,
+                    } => {
                         writeln!(f, "For(var: {}, array: {}) {{", var, array)?;
                         fmt_nodes(body, f, indent + 1)?;
                         for _ in 0..indent {
@@ -142,7 +157,12 @@ impl fmt::Display for IrNode {
                         }
                         writeln!(f, "}}")?;
                     }
-                    IrNode::Let { id: _, var, value, body } => {
+                    IrNode::Let {
+                        id: _,
+                        var,
+                        value,
+                        body,
+                    } => {
                         writeln!(f, "Let(var: {}, value: {}) {{", var, value)?;
                         fmt_nodes(body, f, indent + 1)?;
                         for _ in 0..indent {
@@ -180,10 +200,16 @@ impl fmt::Display for IrEntrypoint {
                 }
                 match node {
                     IrNode::Write { id: _, content } => writeln!(f, "Write({:?})", content)?,
-                    IrNode::WriteExpr { id: _, expr, escape } => {
-                        writeln!(f, "WriteExpr(expr: {}, escape: {})", expr, escape)?
-                    }
-                    IrNode::If { id: _, condition, body } => {
+                    IrNode::WriteExpr {
+                        id: _,
+                        expr,
+                        escape,
+                    } => writeln!(f, "WriteExpr(expr: {}, escape: {})", expr, escape)?,
+                    IrNode::If {
+                        id: _,
+                        condition,
+                        body,
+                    } => {
                         writeln!(f, "If(condition: {}) {{", condition)?;
                         fmt_nodes(body, f, indent + 1)?;
                         for _ in 0..indent {
@@ -191,7 +217,12 @@ impl fmt::Display for IrEntrypoint {
                         }
                         writeln!(f, "}}")?;
                     }
-                    IrNode::For { id: _, var, array, body } => {
+                    IrNode::For {
+                        id: _,
+                        var,
+                        array,
+                        body,
+                    } => {
                         writeln!(f, "For(var: {}, array: {}) {{", var, array)?;
                         fmt_nodes(body, f, indent + 1)?;
                         for _ in 0..indent {
@@ -199,7 +230,12 @@ impl fmt::Display for IrEntrypoint {
                         }
                         writeln!(f, "}}")?;
                     }
-                    IrNode::Let { id: _, var, value, body } => {
+                    IrNode::Let {
+                        id: _,
+                        var,
+                        value,
+                        body,
+                    } => {
                         writeln!(f, "Let(var: {}, value: {}) {{", var, value)?;
                         fmt_nodes(body, f, indent + 1)?;
                         for _ in 0..indent {
@@ -222,7 +258,7 @@ impl fmt::Display for IrEntrypoint {
 impl fmt::Display for BinaryOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            BinaryOp::Equal => write!(f, "=="),
+            BinaryOp::Eq => write!(f, "=="),
         }
     }
 }
@@ -238,9 +274,7 @@ impl fmt::Display for UnaryOp {
 impl IrExpr {
     /// Returns an iterator that performs depth-first traversal of the expression tree
     pub fn dfs_iter(&self) -> DfsIter {
-        DfsIter {
-            stack: vec![self],
-        }
+        DfsIter { stack: vec![self] }
     }
 }
 

@@ -157,7 +157,11 @@ impl JsCompiler {
                 self.write_line(&format!("output += \"{}\";", escaped));
             }
 
-            IrNode::WriteExpr { id: _, expr, escape } => {
+            IrNode::WriteExpr {
+                id: _,
+                expr,
+                escape,
+            } => {
                 let js_expr = Self::compile_expr(expr);
                 if *escape {
                     self.write_line(&format!("output += escapeHtml({});", js_expr));
@@ -166,7 +170,11 @@ impl JsCompiler {
                 }
             }
 
-            IrNode::If { id: _, condition, body } => {
+            IrNode::If {
+                id: _,
+                condition,
+                body,
+            } => {
                 let js_cond = Self::compile_expr(condition);
                 self.write_line(&format!("if ({}) {{", js_cond));
                 self.indent();
@@ -175,7 +183,12 @@ impl JsCompiler {
                 self.write_line("}");
             }
 
-            IrNode::For { id: _, var, array, body } => {
+            IrNode::For {
+                id: _,
+                var,
+                array,
+                body,
+            } => {
                 let js_array = Self::compile_expr(array);
                 self.write_line(&format!("for (const {} of {}) {{", var, js_array));
                 self.indent();
@@ -184,7 +197,12 @@ impl JsCompiler {
                 self.write_line("}");
             }
 
-            IrNode::Let { id: _, var, value, body } => {
+            IrNode::Let {
+                id: _,
+                var,
+                value,
+                body,
+            } => {
                 let js_value = Self::compile_expr(value);
                 self.write_line(&format!("const {} = {};", var, js_value));
                 self.compile_nodes(body);
@@ -233,7 +251,7 @@ impl JsCompiler {
                 let l = Self::compile_expr(left);
                 let r = Self::compile_expr(right);
                 match op {
-                    BinaryOp::Equal => format!("({} === {})", l, r),
+                    BinaryOp::Eq => format!("({} === {})", l, r),
                 }
             }
 

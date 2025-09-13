@@ -60,7 +60,7 @@ impl IrTestBuilder {
             id: self.next_expr_id(),
             value: IrExprValue::BinaryOp {
                 left: Box::new(left),
-                op: BinaryOp::Equal,
+                op: BinaryOp::Eq,
                 right: Box::new(right),
             },
         }
@@ -87,10 +87,7 @@ impl IrTestBuilder {
         IrExpr {
             id: self.next_expr_id(),
             value: IrExprValue::Object(
-                props
-                    .into_iter()
-                    .map(|(k, v)| (k.to_string(), v))
-                    .collect(),
+                props.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
             ),
         }
     }
@@ -117,7 +114,7 @@ impl IrTestBuilder {
         IrNode::WriteExpr {
             id: self.next_node_id(),
             expr,
-            escape
+            escape,
         }
     }
 
@@ -147,3 +144,4 @@ impl IrTestBuilder {
         }
     }
 }
+

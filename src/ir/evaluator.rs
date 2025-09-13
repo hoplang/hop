@@ -45,7 +45,7 @@ fn evaluate_ir_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value
             let left_val = evaluate_ir_expr(left, env)?;
             let right_val = evaluate_ir_expr(right, env)?;
             match op {
-                BinaryOp::Equal => Ok(Value::Bool(left_val == right_val)),
+                BinaryOp::Eq => Ok(Value::Bool(left_val == right_val)),
             }
         }
         IrExprValue::UnaryOp { op, operand } => {
@@ -100,7 +100,11 @@ fn eval_node(node: &IrNode, env: &mut Environment<Value>, output: &mut String) -
             Ok(())
         }
 
-        IrNode::WriteExpr { id: _, expr, escape } => {
+        IrNode::WriteExpr {
+            id: _,
+            expr,
+            escape,
+        } => {
             let value = evaluate_ir_expr(expr, env)?;
             let s = value.as_str().unwrap_or("");
             if *escape {
@@ -111,7 +115,11 @@ fn eval_node(node: &IrNode, env: &mut Environment<Value>, output: &mut String) -
             Ok(())
         }
 
-        IrNode::If { id: _, condition, body } => {
+        IrNode::If {
+            id: _,
+            condition,
+            body,
+        } => {
             let cond_value = evaluate_ir_expr(condition, env)?;
             if cond_value.as_bool().unwrap_or(false) {
                 eval_ir(body, env, output)?;
@@ -119,7 +127,12 @@ fn eval_node(node: &IrNode, env: &mut Environment<Value>, output: &mut String) -
             Ok(())
         }
 
-        IrNode::For { id: _, var, array, body } => {
+        IrNode::For {
+            id: _,
+            var,
+            array,
+            body,
+        } => {
             let array_value = evaluate_ir_expr(array, env)?;
             let items = array_value.as_array().cloned().unwrap_or_default();
 
@@ -131,7 +144,12 @@ fn eval_node(node: &IrNode, env: &mut Environment<Value>, output: &mut String) -
             Ok(())
         }
 
-        IrNode::Let { id: _, var, value, body } => {
+        IrNode::Let {
+            id: _,
+            var,
+            value,
+            body,
+        } => {
             let val = evaluate_ir_expr(value, env)?;
             let _ = env.push(var.clone(), val);
             eval_ir(body, env, output)?;
@@ -196,11 +214,7 @@ mod tests {
         let mut args = HashMap::new();
         args.insert("name".to_string(), json!("Alice"));
 
-        check_eval(
-            entrypoint,
-            args,
-            expect!["<h1>Hello Alice</h1>"],
-        );
+        check_eval(entrypoint, args, expect!["<h1>Hello Alice</h1>"]);
     }
 
     #[test]
@@ -231,22 +245,13 @@ mod tests {
 
         let entrypoint = IrEntrypoint {
             parameters: vec![("show".to_string(), Type::Bool)],
-            body: vec![
-                t.if_stmt(
-                    t.var("show"),
-                    vec![t.write("<div>Visible</div>")]
-                )
-            ],
+            body: vec![t.if_stmt(t.var("show"), vec![t.write("<div>Visible</div>")])],
         };
 
         let mut args = HashMap::new();
         args.insert("show".to_string(), json!(true));
 
-        check_eval(
-            entrypoint,
-            args,
-            expect!["<div>Visible</div>"],
-        );
+        check_eval(entrypoint, args, expect!["<div>Visible</div>"]);
     }
 
     #[test]
@@ -255,22 +260,13 @@ mod tests {
 
         let entrypoint = IrEntrypoint {
             parameters: vec![("show".to_string(), Type::Bool)],
-            body: vec![
-                t.if_stmt(
-                    t.var("show"),
-                    vec![t.write("<div>Hidden</div>")]
-                )
-            ],
+            body: vec![t.if_stmt(t.var("show"), vec![t.write("<div>Hidden</div>")])],
         };
 
         let mut args = HashMap::new();
         args.insert("show".to_string(), json!(false));
 
-        check_eval(
-            entrypoint,
-            args,
-            expect![""],
-        );
+        check_eval(entrypoint, args, expect![""]);
     }
 
     #[test]
@@ -278,18 +274,19 @@ mod tests {
         let t = IrTestBuilder::new();
 
         let entrypoint = IrEntrypoint {
-            parameters: vec![("items".to_string(), Type::Array(Some(Box::new(Type::String))))],
-            body: vec![
-                t.for_loop(
-                    "item",
-                    t.var("items"),
-                    vec![
-                        t.write("<li>"),
-                        t.write_expr(t.var("item"), true),
-                        t.write("</li>\n"),
-                    ]
-                )
-            ],
+            parameters: vec![(
+                "items".to_string(),
+                Type::Array(Some(Box::new(Type::String))),
+            )],
+            body: vec![t.for_loop(
+                "item",
+                t.var("items"),
+                vec![
+                    t.write("<li>"),
+                    t.write_expr(t.var("item"), true),
+                    t.write("</li>\n"),
+                ],
+            )],
         };
 
         let mut args = HashMap::new();
@@ -321,7 +318,7 @@ mod tests {
                         t.write("<p>"),
                         t.write_expr(t.var("title"), true),
                         t.write("</p>\n"),
-                    ]
+                    ],
                 ),
                 t.write("</div>"),
             ],
@@ -369,7 +366,9 @@ mod tests {
         let entrypoint = IrEntrypoint {
             parameters: vec![],
             body: vec![
-                t.write("<div data-hop-id=\"test/button-comp\" class=\"btn\" data-id=\"custom\">\n"),
+                t.write(
+                    "<div data-hop-id=\"test/button-comp\" class=\"btn\" data-id=\"custom\">\n",
+                ),
                 t.write("Click me\n"),
                 t.write("</div>"),
             ],
@@ -402,21 +401,19 @@ mod tests {
                         t.let_stmt(
                             "x",
                             t.var("a"),
-                            vec![
-                                t.let_stmt(
-                                    "y",
-                                    t.str("inner"),
-                                    vec![
-                                        t.write_expr(t.var("x"), true),
-                                        t.write(" "),
-                                        t.write_expr(t.var("y"), true),
-                                        t.write("\n"),
-                                    ]
-                                )
-                            ]
+                            vec![t.let_stmt(
+                                "y",
+                                t.str("inner"),
+                                vec![
+                                    t.write_expr(t.var("x"), true),
+                                    t.write(" "),
+                                    t.write_expr(t.var("y"), true),
+                                    t.write("\n"),
+                                ],
+                            )],
                         ),
                         t.write("</div>\n"),
-                    ]
+                    ],
                 ),
                 t.write("</div>"),
             ],

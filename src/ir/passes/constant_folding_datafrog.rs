@@ -1,7 +1,7 @@
 use super::Pass;
 use crate::ir::{
     IrExpr,
-    ast::{ExprId, IrExprValue, UnaryOp},
+    ast::{BinaryOp, ExprId, IrExprValue, UnaryOp},
     ast::{IrEntrypoint, IrNode},
 };
 use datafrog::{Iteration, Relation};
@@ -26,6 +26,12 @@ impl DatafrogConstantFoldingPass {
             _ => None,
         }));
 
+        // Values of left operands in equality expressions: (eq_expr_id => left_value)
+        let eq_left_value = iteration.variable::<(ExprId, bool)>("eq_left_value");
+
+        // Values of right operands in equality expressions: (eq_expr_id => right_value)
+        let eq_right_value = iteration.variable::<(ExprId, bool)>("eq_right_value");
+
         // Not operations keyed by operand: (operand_id => expr_id)
         let not_rel = Relation::from_iter(expr.dfs_iter().filter_map(|n| match &n.value {
             IrExprValue::UnaryOp {
@@ -35,12 +41,53 @@ impl DatafrogConstantFoldingPass {
             _ => None,
         }));
 
+        // Equality operations - left operand: (left_operand_id => expr_id)
+        let eq_left = Relation::from_iter(expr.dfs_iter().filter_map(|n| match &n.value {
+            IrExprValue::BinaryOp {
+                op: BinaryOp::Eq,
+                left,
+                right: _,
+            } => Some((left.id, n.id)),
+            _ => None,
+        }));
+
+        // Equality operations - right operand: (right_operand_id => expr_id)
+        let eq_right = Relation::from_iter(expr.dfs_iter().filter_map(|n| match &n.value {
+            IrExprValue::BinaryOp {
+                op: BinaryOp::Eq,
+                left: _,
+                right,
+            } => Some((right.id, n.id)),
+            _ => None,
+        }));
+
         while iteration.changed() {
             // bool_value(exp, !b) :- not_rel(op, exp), bool_value(op, b).
             bool_value.from_join(
                 &bool_value,
                 &not_rel,
                 |_: &ExprId, bool_val: &bool, expr_id: &ExprId| (*expr_id, !bool_val),
+            );
+
+            // eq_left_value(eq_expr, left_val) :- eq_left(left_op, eq_expr), bool_value(left_op, left_val).
+            eq_left_value.from_join(
+                &bool_value,
+                &eq_left,
+                |_: &ExprId, left_val: &bool, eq_expr: &ExprId| (*eq_expr, *left_val),
+            );
+
+            // eq_right_value(eq_expr, right_val) :- eq_right(right_op, eq_expr), bool_value(right_op, right_val).
+            eq_right_value.from_join(
+                &bool_value,
+                &eq_right,
+                |_: &ExprId, right_val: &bool, eq_expr: &ExprId| (*eq_expr, *right_val),
+            );
+
+            // bool_value(eq, lv == rv) :- eq_left_value(eq, lv), eq_right_value(eq, rv).
+            bool_value.from_join(
+                &eq_left_value,
+                &eq_right_value,
+                |eq_expr: &ExprId, left_val: &bool, right_val: &bool| (*eq_expr, left_val == right_val),
             );
         }
 
@@ -70,6 +117,11 @@ impl DatafrogConstantFoldingPass {
                 IrExprValue::UnaryOp { op, operand } => IrExprValue::UnaryOp {
                     op,
                     operand: Box::new(Self::apply_constants(*operand, constants)),
+                },
+                IrExprValue::BinaryOp { op, left, right } => IrExprValue::BinaryOp {
+                    op,
+                    left: Box::new(Self::apply_constants(*left, constants)),
+                    right: Box::new(Self::apply_constants(*right, constants)),
                 },
                 other => other,
             };
@@ -215,6 +267,76 @@ mod tests {
               body: {
                 If(condition: true) {
                   Write("Triple negation")
+                }
+              }
+            }
+        "#]],
+        );
+    }
+
+    #[test]
+    fn test_equality_folding() {
+        let t = IrTestBuilder::new();
+        check(
+            IrEntrypoint {
+                parameters: vec![],
+                body: vec![
+                    // true == true => true
+                    t.if_stmt(
+                        t.eq(t.boolean(true), t.boolean(true)),
+                        vec![t.write("true == true")],
+                    ),
+                    // false == false => true
+                    t.if_stmt(
+                        t.eq(t.boolean(false), t.boolean(false)),
+                        vec![t.write("false == false")],
+                    ),
+                    // true == false => false
+                    t.if_stmt(
+                        t.eq(t.boolean(true), t.boolean(false)),
+                        vec![t.write("Should not appear")],
+                    ),
+                ],
+            },
+            expect![[r#"
+            IrEntrypoint {
+              parameters: []
+              body: {
+                If(condition: true) {
+                  Write("true == true")
+                }
+                If(condition: true) {
+                  Write("false == false")
+                }
+                If(condition: false) {
+                  Write("Should not appear")
+                }
+              }
+            }
+        "#]],
+        );
+    }
+
+    #[test]
+    fn test_complex_equality_with_negations() {
+        let t = IrTestBuilder::new();
+        check(
+            IrEntrypoint {
+                parameters: vec![],
+                body: vec![
+                    // (!!false == !false) => (false == true) => false
+                    t.if_stmt(
+                        t.eq(t.not(t.not(t.boolean(false))), t.not(t.boolean(false))),
+                        vec![t.write("Should not appear")],
+                    ),
+                ],
+            },
+            expect![[r#"
+            IrEntrypoint {
+              parameters: []
+              body: {
+                If(condition: false) {
+                  Write("Should not appear")
                 }
               }
             }
