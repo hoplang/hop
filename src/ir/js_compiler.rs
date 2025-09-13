@@ -1,6 +1,6 @@
 use super::{
     ast::{IrEntrypoint, IrModule, IrNode},
-    expr::{BinaryOp, IrExpr, UnaryOp},
+    expr::{BinaryOp, IrExpr, IrExprValue, UnaryOp},
 };
 use crate::dop::r#type::Type;
 
@@ -196,15 +196,15 @@ impl JsCompiler {
     }
 
     fn compile_expr(expr: &IrExpr) -> String {
-        match expr {
-            IrExpr::Var(name) => name.clone(),
+        match &expr.value {
+            IrExprValue::Var(name) => name.clone(),
 
-            IrExpr::PropertyAccess { object, property } => {
+            IrExprValue::PropertyAccess { object, property } => {
                 let obj = Self::compile_expr(object);
                 format!("{}.{}", obj, property)
             }
 
-            IrExpr::String(value) => {
+            IrExprValue::String(value) => {
                 // Escape for JavaScript string literal
                 let escaped = value
                     .replace('\\', "\\\\")
@@ -215,16 +215,16 @@ impl JsCompiler {
                 format!("\"{}\"", escaped)
             }
 
-            IrExpr::Boolean(value) => value.to_string(),
+            IrExprValue::Boolean(value) => value.to_string(),
 
-            IrExpr::Number(value) => value.to_string(),
+            IrExprValue::Number(value) => value.to_string(),
 
-            IrExpr::Array(elements) => {
+            IrExprValue::Array(elements) => {
                 let items: Vec<String> = elements.iter().map(Self::compile_expr).collect();
                 format!("[{}]", items.join(", "))
             }
 
-            IrExpr::Object(properties) => {
+            IrExprValue::Object(properties) => {
                 let props: Vec<String> = properties
                     .iter()
                     .map(|(key, value)| format!("{}: {}", key, Self::compile_expr(value)))
@@ -232,7 +232,7 @@ impl JsCompiler {
                 format!("{{{}}}", props.join(", "))
             }
 
-            IrExpr::BinaryOp { left, op, right } => {
+            IrExprValue::BinaryOp { left, op, right } => {
                 let l = Self::compile_expr(left);
                 let r = Self::compile_expr(right);
                 match op {
@@ -240,7 +240,7 @@ impl JsCompiler {
                 }
             }
 
-            IrExpr::UnaryOp { op, operand } => {
+            IrExprValue::UnaryOp { op, operand } => {
                 let compiled_op = Self::compile_expr(operand);
                 match op {
                     UnaryOp::Not => format!("!({})", compiled_op),

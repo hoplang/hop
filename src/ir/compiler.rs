@@ -7,7 +7,7 @@ use crate::ir::passes::PassManager;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::ast::{IrEntrypoint, IrModule, IrNode};
-use super::expr::{BinaryOp, IrExpr, UnaryOp};
+use super::expr::{BinaryOp, IrExpr, IrExprValue, UnaryOp, ExprId};
 
 pub struct Compiler<'a> {
     asts: &'a HashMap<ModuleName, Ast>,
@@ -17,6 +17,9 @@ pub struct Compiler<'a> {
     var_counter: usize,
     scope_stack: Vec<HashMap<String, String>>, // Stack of scopes (original → renamed)
     all_used_names: HashSet<String>,           // Track all variable names ever used
+
+    // Expression ID generation
+    expr_id_counter: u32,
 }
 
 impl Compiler<'_> {
@@ -27,6 +30,7 @@ impl Compiler<'_> {
             var_counter: 0,
             scope_stack: vec![],
             all_used_names: HashSet::new(),
+            expr_id_counter: 0,
         };
 
         // Compile all entrypoint components
@@ -82,7 +86,7 @@ impl Compiler<'_> {
     }
 
     fn create_param_bindings(
-        &self,
+        &mut self,
         original_params: &[String],
         renamed_params: &[String],
         body: Vec<IrNode>,
@@ -95,7 +99,10 @@ impl Compiler<'_> {
             if original != renamed {
                 result = vec![IrNode::Let {
                     var: renamed.clone(),
-                    value: IrExpr::Var(original.clone()),
+                    value: IrExpr {
+                        id: self.next_expr_id(),
+                        value: IrExprValue::Var(original.clone()),
+                    },
                     body: result,
                 }];
             }
@@ -560,15 +567,21 @@ impl Compiler<'_> {
         name.to_string() // Global or undefined
     }
 
-    fn rename_expr(&self, expr: &Expr) -> IrExpr {
-        match expr {
+    fn next_expr_id(&mut self) -> ExprId {
+        let id = self.expr_id_counter;
+        self.expr_id_counter += 1;
+        id
+    }
+
+    fn rename_expr(&mut self, expr: &Expr) -> IrExpr {
+        let value = match expr {
             Expr::Variable { value } => {
                 let renamed = self.lookup_var(value.as_str());
-                IrExpr::Var(renamed)
+                IrExprValue::Var(renamed)
             }
             Expr::PropertyAccess {
                 object, property, ..
-            } => IrExpr::PropertyAccess {
+            } => IrExprValue::PropertyAccess {
                 object: Box::new(self.rename_expr(object)),
                 property: property.as_str().to_string(),
             },
@@ -581,7 +594,7 @@ impl Compiler<'_> {
                 let ir_op = match operator {
                     dop::ast::BinaryOp::Equal => BinaryOp::Equal,
                 };
-                IrExpr::BinaryOp {
+                IrExprValue::BinaryOp {
                     left: Box::new(self.rename_expr(left)),
                     op: ir_op,
                     right: Box::new(self.rename_expr(right)),
@@ -593,23 +606,28 @@ impl Compiler<'_> {
                 let ir_op = match operator {
                     dop::ast::UnaryOp::Not => UnaryOp::Not,
                 };
-                IrExpr::UnaryOp {
+                IrExprValue::UnaryOp {
                     op: ir_op,
                     operand: Box::new(self.rename_expr(operand)),
                 }
             }
             Expr::ArrayLiteral { elements, .. } => {
-                IrExpr::Array(elements.iter().map(|e| self.rename_expr(e)).collect())
+                IrExprValue::Array(elements.iter().map(|e| self.rename_expr(e)).collect())
             }
-            Expr::ObjectLiteral { properties, .. } => IrExpr::Object(
+            Expr::ObjectLiteral { properties, .. } => IrExprValue::Object(
                 properties
                     .iter()
                     .map(|(k, v)| (k.as_str().to_string(), self.rename_expr(v)))
                     .collect(),
             ),
-            Expr::StringLiteral { value, .. } => IrExpr::String(value.to_string()),
-            Expr::BooleanLiteral { value, .. } => IrExpr::Boolean(*value),
-            Expr::NumberLiteral { value, .. } => IrExpr::Number(value.as_f64().unwrap_or(0.0)),
+            Expr::StringLiteral { value, .. } => IrExprValue::String(value.to_string()),
+            Expr::BooleanLiteral { value, .. } => IrExprValue::Boolean(*value),
+            Expr::NumberLiteral { value, .. } => IrExprValue::Number(value.as_f64().unwrap_or(0.0)),
+        };
+
+        IrExpr {
+            id: self.next_expr_id(),
+            value,
         }
     }
 }

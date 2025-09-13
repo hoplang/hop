@@ -93,7 +93,36 @@ impl Pass for WriteCoalescingPass {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::IrExpr;
+    use crate::ir::{IrExpr, expr::IrExprValue};
+
+    // Helper functions to create IrExpr for tests
+    fn make_string(s: &str) -> IrExpr {
+        IrExpr {
+            id: 0,
+            value: IrExprValue::String(s.to_string()),
+        }
+    }
+
+    fn make_boolean(b: bool) -> IrExpr {
+        IrExpr {
+            id: 0,
+            value: IrExprValue::Boolean(b),
+        }
+    }
+
+    fn make_var(name: &str) -> IrExpr {
+        IrExpr {
+            id: 0,
+            value: IrExprValue::Var(name.to_string()),
+        }
+    }
+
+    fn make_array(elements: Vec<IrExpr>) -> IrExpr {
+        IrExpr {
+            id: 0,
+            value: IrExprValue::Array(elements),
+        }
+    }
 
     #[test]
     fn test_coalesce_consecutive_writes() {
@@ -122,7 +151,7 @@ mod tests {
                 IrNode::Write("Before".to_string()),
                 IrNode::Write(" if".to_string()),
                 IrNode::If {
-                    condition: IrExpr::Boolean(true),
+                    condition: make_boolean(true),
                     body: vec![IrNode::Write("Inside if".to_string())],
                 },
                 IrNode::Write("After".to_string()),
@@ -136,7 +165,7 @@ mod tests {
         let expected = vec![
             IrNode::Write("Before if".to_string()),
             IrNode::If {
-                condition: IrExpr::Boolean(true),
+                condition: make_boolean(true),
                 body: vec![IrNode::Write("Inside if".to_string())],
             },
             IrNode::Write("After if".to_string()),
@@ -149,7 +178,7 @@ mod tests {
         let entrypoint = IrEntrypoint {
             parameters: vec![],
             body: vec![IrNode::If {
-                condition: IrExpr::Boolean(true),
+                condition: make_boolean(true),
                 body: vec![
                     IrNode::Write("Line".to_string()),
                     IrNode::Write(" ".to_string()),
@@ -162,7 +191,7 @@ mod tests {
         let result = pass.run(entrypoint);
 
         let expected = vec![IrNode::If {
-            condition: IrExpr::Boolean(true),
+            condition: make_boolean(true),
             body: vec![IrNode::Write("Line one".to_string())],
         }];
         assert_eq!(result.body, expected);
@@ -174,12 +203,12 @@ mod tests {
             parameters: vec![],
             body: vec![IrNode::For {
                 var: "item".to_string(),
-                array: IrExpr::Array(vec![IrExpr::String("x".to_string())]),
+                array: make_array(vec![make_string("x")]),
                 body: vec![
                     IrNode::Write("Item".to_string()),
                     IrNode::Write(": ".to_string()),
                     IrNode::WriteExpr {
-                        expr: IrExpr::Var("item".to_string()),
+                        expr: make_var("item"),
                         escape: true,
                     },
                     IrNode::Write(" - ".to_string()),
@@ -193,11 +222,11 @@ mod tests {
 
         let expected = vec![IrNode::For {
             var: "item".to_string(),
-            array: IrExpr::Array(vec![IrExpr::String("x".to_string())]),
+            array: make_array(vec![make_string("x")]),
             body: vec![
                 IrNode::Write("Item: ".to_string()),
                 IrNode::WriteExpr {
-                    expr: IrExpr::Var("item".to_string()),
+                    expr: make_var("item"),
                     escape: true,
                 },
                 IrNode::Write(" - Done".to_string()),
@@ -212,7 +241,7 @@ mod tests {
             parameters: vec![],
             body: vec![IrNode::Let {
                 var: "x".to_string(),
-                value: IrExpr::String("value".to_string()),
+                value: make_string("value"),
                 body: vec![
                     IrNode::Write("The".to_string()),
                     IrNode::Write(" value".to_string()),
@@ -226,7 +255,7 @@ mod tests {
 
         let expected = vec![IrNode::Let {
             var: "x".to_string(),
-            value: IrExpr::String("value".to_string()),
+            value: make_string("value"),
             body: vec![IrNode::Write("The value is".to_string())],
         }];
         assert_eq!(result.body, expected);
@@ -240,13 +269,13 @@ mod tests {
                 IrNode::Write("Start".to_string()),
                 IrNode::Write(": ".to_string()),
                 IrNode::If {
-                    condition: IrExpr::Boolean(true),
+                    condition: make_boolean(true),
                     body: vec![
                         IrNode::Write("In".to_string()),
                         IrNode::Write(" if".to_string()),
                         IrNode::For {
                             var: "i".to_string(),
-                            array: IrExpr::Array(vec![]),
+                            array: make_array(vec![]),
                             body: vec![
                                 IrNode::Write("Loop".to_string()),
                                 IrNode::Write(" body".to_string()),
@@ -267,12 +296,12 @@ mod tests {
         let expected = vec![
             IrNode::Write("Start: ".to_string()),
             IrNode::If {
-                condition: IrExpr::Boolean(true),
+                condition: make_boolean(true),
                 body: vec![
                     IrNode::Write("In if".to_string()),
                     IrNode::For {
                         var: "i".to_string(),
-                        array: IrExpr::Array(vec![]),
+                        array: make_array(vec![]),
                         body: vec![IrNode::Write("Loop body".to_string())],
                     },
                     IrNode::Write("After loop".to_string()),
@@ -291,7 +320,7 @@ mod tests {
                 IrNode::Write("Value".to_string()),
                 IrNode::Write(": ".to_string()),
                 IrNode::WriteExpr {
-                    expr: IrExpr::Var("x".to_string()),
+                    expr: make_var("x"),
                     escape: true,
                 },
                 IrNode::Write(" - ".to_string()),
@@ -305,7 +334,7 @@ mod tests {
         let expected = vec![
             IrNode::Write("Value: ".to_string()),
             IrNode::WriteExpr {
-                expr: IrExpr::Var("x".to_string()),
+                expr: make_var("x"),
                 escape: true,
             },
             IrNode::Write(" - done".to_string()),

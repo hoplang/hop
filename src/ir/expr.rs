@@ -1,5 +1,8 @@
 use std::fmt;
 
+/// Unique identifier for each expression in the IR
+pub type ExprId = u32;
+
 /// Binary operators in IR
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
@@ -29,7 +32,13 @@ impl fmt::Display for UnaryOp {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum IrExpr {
+pub struct IrExpr {
+    pub id: ExprId,
+    pub value: IrExprValue,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum IrExprValue {
     /// Variable reference
     Var(String),
 
@@ -67,15 +76,15 @@ pub enum IrExpr {
 
 impl fmt::Display for IrExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            IrExpr::Var(name) => write!(f, "{}", name),
-            IrExpr::PropertyAccess { object, property } => {
+        match &self.value {
+            IrExprValue::Var(name) => write!(f, "{}", name),
+            IrExprValue::PropertyAccess { object, property } => {
                 write!(f, "{}.{}", object, property)
             }
-            IrExpr::String(s) => write!(f, "{:?}", s),
-            IrExpr::Boolean(b) => write!(f, "{}", b),
-            IrExpr::Number(n) => write!(f, "{}", n),
-            IrExpr::Array(elements) => {
+            IrExprValue::String(s) => write!(f, "{:?}", s),
+            IrExprValue::Boolean(b) => write!(f, "{}", b),
+            IrExprValue::Number(n) => write!(f, "{}", n),
+            IrExprValue::Array(elements) => {
                 write!(f, "[")?;
                 for (i, elem) in elements.iter().enumerate() {
                     if i > 0 {
@@ -85,7 +94,7 @@ impl fmt::Display for IrExpr {
                 }
                 write!(f, "]")
             }
-            IrExpr::Object(props) => {
+            IrExprValue::Object(props) => {
                 write!(f, "{{")?;
                 for (i, (key, value)) in props.iter().enumerate() {
                     if i > 0 {
@@ -95,10 +104,10 @@ impl fmt::Display for IrExpr {
                 }
                 write!(f, "}}")
             }
-            IrExpr::BinaryOp { left, op, right } => {
+            IrExprValue::BinaryOp { left, op, right } => {
                 write!(f, "({} {} {})", left, op, right)
             }
-            IrExpr::UnaryOp { op, operand } => {
+            IrExprValue::UnaryOp { op, operand } => {
                 write!(f, "{}{}", op, operand)
             }
         }

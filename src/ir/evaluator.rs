@@ -7,17 +7,17 @@ use std::collections::HashMap;
 
 use super::{
     ast::{IrEntrypoint, IrNode},
-    expr::{BinaryOp, UnaryOp},
+    expr::{BinaryOp, UnaryOp, IrExprValue},
 };
 
 /// Evaluate an IrExpr expression
 fn evaluate_ir_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
-    match expr {
-        IrExpr::Var(name) => env
+    match &expr.value {
+        IrExprValue::Var(name) => env
             .lookup(name)
             .cloned()
             .ok_or_else(|| anyhow!("Undefined variable: {}", name)),
-        IrExpr::PropertyAccess { object, property } => {
+        IrExprValue::PropertyAccess { object, property } => {
             let obj_value = evaluate_ir_expr(object, env)?;
             if let Some(obj) = obj_value.as_object() {
                 Ok(obj.get(property).cloned().unwrap_or(Value::Null))
@@ -25,33 +25,33 @@ fn evaluate_ir_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value
                 Ok(Value::Null)
             }
         }
-        IrExpr::String(s) => Ok(Value::String(s.clone())),
-        IrExpr::Boolean(b) => Ok(Value::Bool(*b)),
-        IrExpr::Number(n) => Ok(Value::Number(
+        IrExprValue::String(s) => Ok(Value::String(s.clone())),
+        IrExprValue::Boolean(b) => Ok(Value::Bool(*b)),
+        IrExprValue::Number(n) => Ok(Value::Number(
             serde_json::Number::from_f64(*n).unwrap_or_else(|| serde_json::Number::from(0)),
         )),
-        IrExpr::Array(elements) => {
+        IrExprValue::Array(elements) => {
             let mut array = Vec::new();
             for elem in elements {
                 array.push(evaluate_ir_expr(elem, env)?);
             }
             Ok(Value::Array(array))
         }
-        IrExpr::Object(properties) => {
+        IrExprValue::Object(properties) => {
             let mut obj = serde_json::Map::new();
             for (key, value) in properties {
                 obj.insert(key.clone(), evaluate_ir_expr(value, env)?);
             }
             Ok(Value::Object(obj))
         }
-        IrExpr::BinaryOp { left, op, right } => {
+        IrExprValue::BinaryOp { left, op, right } => {
             let left_val = evaluate_ir_expr(left, env)?;
             let right_val = evaluate_ir_expr(right, env)?;
             match op {
                 BinaryOp::Equal => Ok(Value::Bool(left_val == right_val)),
             }
         }
-        IrExpr::UnaryOp { op, operand } => {
+        IrExprValue::UnaryOp { op, operand } => {
             let val = evaluate_ir_expr(operand, env)?;
             match op {
                 UnaryOp::Not => {
