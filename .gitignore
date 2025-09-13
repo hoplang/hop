@@ -3,6 +3,7 @@ node_modules
 CLAUDE.md
 *.ts
 dist
+datafrog
 www
 output
 *.dot

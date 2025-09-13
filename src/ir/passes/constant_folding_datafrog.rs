@@ -19,7 +19,7 @@ impl DatafrogConstantFoldingPass {
     fn compute_constants(expr: &IrExpr) -> HashMap<ExprId, IrExprValue> {
         let mut iteration = Iteration::new();
 
-        // Variables - (expr_id, boolean_value)
+        // Boolean values of expressions: (expr_id => boolean_value)
         let bool_value = iteration.variable::<(ExprId, bool)>("bool_value");
         bool_value.extend(expr.dfs_iter().filter_map(|n| match n.value {
             IrExprValue::Boolean(b) => Some((n.id, b)),
@@ -27,9 +27,6 @@ impl DatafrogConstantFoldingPass {
         }));
 
         // Not operations keyed by operand: (operand_id => expr_id)
-        // I.e. !(...)
-        //      ^^^^^^ expr_id
-        //       ^^^^^ operand_id
         let not_rel = Relation::from_iter(expr.dfs_iter().filter_map(|n| match &n.value {
             IrExprValue::UnaryOp {
                 op: UnaryOp::Not,
@@ -39,16 +36,11 @@ impl DatafrogConstantFoldingPass {
         }));
 
         while iteration.changed() {
-            // bool_value(Y, !V) :- not_rel(X, Y), bool_value(X, V).
+            // bool_value(exp, !b) :- not_rel(op, exp), bool_value(op, b).
             bool_value.from_join(
                 &bool_value,
                 &not_rel,
-                |_operand_id: &ExprId, bool_val: &bool, expr_id: &ExprId| {
-                    // _operand_id is the join key (matches between both relations)
-                    // bool_val is the value from bool_value
-                    // result_id is the value from not_rel
-                    (*expr_id, !bool_val)
-                },
+                |_: &ExprId, bool_val: &bool, expr_id: &ExprId| (*expr_id, !bool_val),
             );
         }
 
