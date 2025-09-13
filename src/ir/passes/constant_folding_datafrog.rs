@@ -16,6 +16,7 @@ impl DatafrogConstantFoldingPass {
     }
 
     /// Collect all expressions and variable definitions with proper scoping
+    /// Returns (expressions, var_bindings) where var_bindings are (def_expr_id, var_expr_id) pairs
     fn collect_data(entrypoint: &IrEntrypoint) -> (Vec<&IrExpr>, Vec<(ExprId, ExprId)>) {
         let mut expressions = Vec::new();
         let mut var_bindings = Vec::new();
@@ -81,8 +82,8 @@ impl DatafrogConstantFoldingPass {
             // If this is a variable reference, record its binding
             if let IrExprValue::Var(name) = &e.value {
                 if let Some(&def_expr_id) = scope_stack.get(name) {
-                    // Record: (var_expr_id, defining_expr_id)
-                    var_bindings.push((e.id, def_expr_id));
+                    // Record: (defining_expr_id, var_expr_id) - already in the right order for joining
+                    var_bindings.push((def_expr_id, e.id));
                 }
             }
             expressions.push(e);
@@ -136,12 +137,8 @@ impl DatafrogConstantFoldingPass {
             _ => None,
         }));
 
-        // Variable bindings: (var_expr_id => defining_expr_id)
-        let var_def = iteration.variable::<(ExprId, ExprId)>("var_def");
-        var_def.extend(var_bindings.iter().cloned());
-
-        // We need to swap var_def to (def_expr, var_expr) to join with bool_value
-        let var_def_swapped = iteration.variable::<(ExprId, ExprId)>("var_def_swapped");
+        // Variable bindings: (defining_expr_id => var_expr_id)
+        let var_def = Relation::from_iter(var_bindings.iter().cloned());
 
         while iteration.changed() {
             // bool_value(exp, !b) :- not_rel(op, exp), bool_value(op, b).
@@ -175,15 +172,11 @@ impl DatafrogConstantFoldingPass {
             );
 
             // Propagate constants through variable bindings
-            // Populate var_def_swapped from var_def: swap (var_expr, def_expr) to (def_expr, var_expr)
-            var_def_swapped.from_map(&var_def, |&(var_expr, def_expr)| (def_expr, var_expr));
-
-            // bool_value(var_expr, val) :- var_def_swapped(def_expr, var_expr), bool_value(def_expr, val).
-            // Join var_def_swapped with bool_value where def_expr matches
+            // bool_value(var_expr, val) :- bool_value(def_expr, val), var_def(def_expr, var_expr).
             bool_value.from_join(
-                &var_def_swapped,
                 &bool_value,
-                |def_expr: &ExprId, var_expr: &ExprId, val: &bool| (*var_expr, *val),
+                &var_def,
+                |_def_expr: &ExprId, val: &bool, var_expr: &ExprId| (*var_expr, *val),
             );
         }
 
