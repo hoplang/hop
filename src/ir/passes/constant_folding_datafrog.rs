@@ -15,13 +15,88 @@ impl DatafrogConstantFoldingPass {
         Self
     }
 
-    /// Run datafrog to compute which expressions are constants
-    fn compute_constants(expr: &IrExpr) -> HashMap<ExprId, IrExprValue> {
+    /// Collect all expressions and variable definitions with proper scoping
+    fn collect_data(entrypoint: &IrEntrypoint) -> (Vec<&IrExpr>, Vec<(ExprId, ExprId)>) {
+        let mut expressions = Vec::new();
+        let mut var_bindings = Vec::new();
+        let mut scope_stack: HashMap<String, ExprId> = HashMap::new();
+
+        Self::collect_from_nodes(
+            &entrypoint.body,
+            &mut expressions,
+            &mut var_bindings,
+            &mut scope_stack,
+        );
+        (expressions, var_bindings)
+    }
+
+    fn collect_from_nodes<'a>(
+        nodes: &'a [IrNode],
+        expressions: &mut Vec<&'a IrExpr>,
+        var_bindings: &mut Vec<(ExprId, ExprId)>,
+        scope_stack: &mut HashMap<String, ExprId>,
+    ) {
+        for node in nodes {
+            match node {
+                IrNode::If {
+                    condition, body, ..
+                } => {
+                    Self::collect_from_expr(condition, expressions, var_bindings, scope_stack);
+                    Self::collect_from_nodes(body, expressions, var_bindings, scope_stack);
+                }
+                IrNode::WriteExpr { expr, .. } => {
+                    Self::collect_from_expr(expr, expressions, var_bindings, scope_stack);
+                }
+                IrNode::For { array, body, .. } => {
+                    Self::collect_from_expr(array, expressions, var_bindings, scope_stack);
+                    Self::collect_from_nodes(body, expressions, var_bindings, scope_stack);
+                }
+                IrNode::Let {
+                    var, value, body, ..
+                } => {
+                    // First, collect from the value expression (before the variable is in scope)
+                    Self::collect_from_expr(value, expressions, var_bindings, scope_stack);
+
+                    // Add the variable binding to the scope
+                    scope_stack.insert(var.clone(), value.id);
+
+                    // Process the body with the new binding in scope
+                    Self::collect_from_nodes(body, expressions, var_bindings, scope_stack);
+
+                    // Remove the variable binding when leaving the scope
+                    scope_stack.remove(var);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn collect_from_expr<'a>(
+        expr: &'a IrExpr,
+        expressions: &mut Vec<&'a IrExpr>,
+        var_bindings: &mut Vec<(ExprId, ExprId)>,
+        scope_stack: &HashMap<String, ExprId>,
+    ) {
+        for e in expr.dfs_iter() {
+            // If this is a variable reference, record its binding
+            if let IrExprValue::Var(name) = &e.value {
+                if let Some(&def_expr_id) = scope_stack.get(name) {
+                    // Record: (var_expr_id, defining_expr_id)
+                    var_bindings.push((e.id, def_expr_id));
+                }
+            }
+            expressions.push(e);
+        }
+    }
+
+    /// Run datafrog to compute which expressions are constants across the entire entrypoint
+    fn compute_constants(entrypoint: &IrEntrypoint) -> HashMap<ExprId, IrExprValue> {
+        let (all_expressions, var_bindings) = Self::collect_data(entrypoint);
         let mut iteration = Iteration::new();
 
         // Boolean values of expressions: (expr_id => boolean_value)
         let bool_value = iteration.variable::<(ExprId, bool)>("bool_value");
-        bool_value.extend(expr.dfs_iter().filter_map(|n| match n.value {
+        bool_value.extend(all_expressions.iter().filter_map(|n| match n.value {
             IrExprValue::Boolean(b) => Some((n.id, b)),
             _ => None,
         }));
@@ -33,7 +108,7 @@ impl DatafrogConstantFoldingPass {
         let eq_right_value = iteration.variable::<(ExprId, bool)>("eq_right_value");
 
         // Not operations keyed by operand: (operand_id => expr_id)
-        let not_rel = Relation::from_iter(expr.dfs_iter().filter_map(|n| match &n.value {
+        let not_rel = Relation::from_iter(all_expressions.iter().filter_map(|n| match &n.value {
             IrExprValue::UnaryOp {
                 op: UnaryOp::Not,
                 operand,
@@ -42,7 +117,7 @@ impl DatafrogConstantFoldingPass {
         }));
 
         // Equality operations - left operand: (left_operand_id => expr_id)
-        let eq_left = Relation::from_iter(expr.dfs_iter().filter_map(|n| match &n.value {
+        let eq_left = Relation::from_iter(all_expressions.iter().filter_map(|n| match &n.value {
             IrExprValue::BinaryOp {
                 op: BinaryOp::Eq,
                 left,
@@ -52,7 +127,7 @@ impl DatafrogConstantFoldingPass {
         }));
 
         // Equality operations - right operand: (right_operand_id => expr_id)
-        let eq_right = Relation::from_iter(expr.dfs_iter().filter_map(|n| match &n.value {
+        let eq_right = Relation::from_iter(all_expressions.iter().filter_map(|n| match &n.value {
             IrExprValue::BinaryOp {
                 op: BinaryOp::Eq,
                 left: _,
@@ -60,6 +135,13 @@ impl DatafrogConstantFoldingPass {
             } => Some((right.id, n.id)),
             _ => None,
         }));
+
+        // Variable bindings: (var_expr_id => defining_expr_id)
+        let var_def = iteration.variable::<(ExprId, ExprId)>("var_def");
+        var_def.extend(var_bindings.iter().cloned());
+
+        // We need to swap var_def to (def_expr, var_expr) to join with bool_value
+        let var_def_swapped = iteration.variable::<(ExprId, ExprId)>("var_def_swapped");
 
         while iteration.changed() {
             // bool_value(exp, !b) :- not_rel(op, exp), bool_value(op, b).
@@ -91,6 +173,18 @@ impl DatafrogConstantFoldingPass {
                     (*eq_expr, left_val == right_val)
                 },
             );
+
+            // Propagate constants through variable bindings
+            // Populate var_def_swapped from var_def: swap (var_expr, def_expr) to (def_expr, var_expr)
+            var_def_swapped.from_map(&var_def, |&(var_expr, def_expr)| (def_expr, var_expr));
+
+            // bool_value(var_expr, val) :- var_def_swapped(def_expr, var_expr), bool_value(def_expr, val).
+            // Join var_def_swapped with bool_value where def_expr matches
+            bool_value.from_join(
+                &var_def_swapped,
+                &bool_value,
+                |def_expr: &ExprId, var_expr: &ExprId, val: &bool| (*var_expr, *val),
+            );
         }
 
         // Convert results to IrExprValue
@@ -101,13 +195,7 @@ impl DatafrogConstantFoldingPass {
         results
     }
 
-    /// Transform an expression using computed constants
-    fn transform_expr(expr: IrExpr) -> IrExpr {
-        let constants = Self::compute_constants(&expr);
-        Self::apply_constants(expr, &constants)
-    }
-
-    fn apply_constants(expr: IrExpr, constants: &HashMap<ExprId, IrExprValue>) -> IrExpr {
+    fn transform_expr(expr: IrExpr, constants: &HashMap<ExprId, IrExprValue>) -> IrExpr {
         if let Some(const_val) = constants.get(&expr.id) {
             IrExpr {
                 id: expr.id,
@@ -118,12 +206,12 @@ impl DatafrogConstantFoldingPass {
             let value = match expr.value {
                 IrExprValue::UnaryOp { op, operand } => IrExprValue::UnaryOp {
                     op,
-                    operand: Box::new(Self::apply_constants(*operand, constants)),
+                    operand: Box::new(Self::transform_expr(*operand, constants)),
                 },
                 IrExprValue::BinaryOp { op, left, right } => IrExprValue::BinaryOp {
                     op,
-                    left: Box::new(Self::apply_constants(*left, constants)),
-                    right: Box::new(Self::apply_constants(*right, constants)),
+                    left: Box::new(Self::transform_expr(*left, constants)),
+                    right: Box::new(Self::transform_expr(*right, constants)),
                 },
                 other => other,
             };
@@ -132,7 +220,10 @@ impl DatafrogConstantFoldingPass {
     }
 
     /// Transform nodes, applying constant folding to expressions
-    fn transform_nodes(nodes: Vec<IrNode>) -> Vec<IrNode> {
+    fn transform_nodes(
+        nodes: Vec<IrNode>,
+        constants: &HashMap<ExprId, IrExprValue>,
+    ) -> Vec<IrNode> {
         nodes
             .into_iter()
             .map(|node| match node {
@@ -142,12 +233,12 @@ impl DatafrogConstantFoldingPass {
                     body,
                 } => IrNode::If {
                     id,
-                    condition: Self::transform_expr(condition),
-                    body: Self::transform_nodes(body),
+                    condition: Self::transform_expr(condition, constants),
+                    body: Self::transform_nodes(body, constants),
                 },
                 IrNode::WriteExpr { id, expr, escape } => IrNode::WriteExpr {
                     id,
-                    expr: Self::transform_expr(expr),
+                    expr: Self::transform_expr(expr, constants),
                     escape,
                 },
                 IrNode::For {
@@ -158,8 +249,8 @@ impl DatafrogConstantFoldingPass {
                 } => IrNode::For {
                     id,
                     var,
-                    array: Self::transform_expr(array),
-                    body: Self::transform_nodes(body),
+                    array: Self::transform_expr(array, constants),
+                    body: Self::transform_nodes(body, constants),
                 },
                 IrNode::Let {
                     id,
@@ -169,8 +260,8 @@ impl DatafrogConstantFoldingPass {
                 } => IrNode::Let {
                     id,
                     var,
-                    value: Self::transform_expr(value),
-                    body: Self::transform_nodes(body),
+                    value: Self::transform_expr(value, constants),
+                    body: Self::transform_nodes(body, constants),
                 },
                 other => other,
             })
@@ -180,7 +271,11 @@ impl DatafrogConstantFoldingPass {
 
 impl Pass for DatafrogConstantFoldingPass {
     fn run(&mut self, mut entrypoint: IrEntrypoint) -> IrEntrypoint {
-        entrypoint.body = Self::transform_nodes(entrypoint.body);
+        // Compute constants once for the entire entrypoint
+        let constants = Self::compute_constants(&entrypoint);
+
+        // Apply transformations using the computed constants
+        entrypoint.body = Self::transform_nodes(entrypoint.body, &constants);
         entrypoint
     }
 }
@@ -343,6 +438,88 @@ mod tests {
               }
             }
         "#]],
+        );
+    }
+
+    #[test]
+    fn test_variable_constant_propagation() {
+        let t = IrTestBuilder::new();
+        check(
+            IrEntrypoint {
+                parameters: vec![],
+                body: vec![
+                    // let x = !!true
+                    t.let_stmt(
+                        "x",
+                        t.not(t.not(t.boolean(true))),
+                        vec![
+                            // if x => if true
+                            t.if_stmt(t.var("x"), vec![t.write("x is true")]),
+                            // if !x => if false
+                            t.if_stmt(t.not(t.var("x")), vec![t.write("x is false")]),
+                        ],
+                    ),
+                ],
+            },
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: []
+                  body: {
+                    Let(var: x, value: true) {
+                      If(condition: true) {
+                        Write("x is true")
+                      }
+                      If(condition: false) {
+                        Write("x is false")
+                      }
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_variable_in_equality() {
+        let t = IrTestBuilder::new();
+        check(
+            IrEntrypoint {
+                parameters: vec![],
+                body: vec![t.let_stmt(
+                    "x",
+                    t.boolean(true),
+                    vec![t.let_stmt(
+                        "y",
+                        t.not(t.boolean(true)),
+                        vec![
+                            // x == y => true == false => false
+                            t.if_stmt(t.eq(t.var("x"), t.var("y")), vec![t.write("x equals y")]),
+                            // x == !y => true == true => true
+                            t.if_stmt(
+                                t.eq(t.var("x"), t.not(t.var("y"))),
+                                vec![t.write("x equals not y")],
+                            ),
+                        ],
+                    )],
+                )],
+            },
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: []
+                  body: {
+                    Let(var: x, value: true) {
+                      Let(var: y, value: false) {
+                        If(condition: false) {
+                          Write("x equals y")
+                        }
+                        If(condition: true) {
+                          Write("x equals not y")
+                        }
+                      }
+                    }
+                  }
+                }
+            "#]],
         );
     }
 }
