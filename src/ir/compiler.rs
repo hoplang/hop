@@ -6,7 +6,7 @@ use crate::hop::module_name::ModuleName;
 use crate::ir::passes::PassManager;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use super::ast::{BinaryOp, ExprId, IrEntrypoint, IrExpr, IrExprValue, IrModule, IrNode, UnaryOp};
+use super::ast::{BinaryOp, ExprId, IrEntrypoint, IrExpr, IrExprValue, IrModule, IrNode, NodeId, UnaryOp};
 
 pub struct Compiler<'a> {
     asts: &'a HashMap<ModuleName, Ast>,
@@ -19,6 +19,9 @@ pub struct Compiler<'a> {
 
     // Expression ID generation
     expr_id_counter: u32,
+
+    // Node ID generation
+    node_id_counter: u32,
 }
 
 impl Compiler<'_> {
@@ -30,6 +33,7 @@ impl Compiler<'_> {
             scope_stack: vec![],
             all_used_names: HashSet::new(),
             expr_id_counter: 0,
+            node_id_counter: 0,
         };
 
         // Compile all entrypoint components
@@ -97,6 +101,7 @@ impl Compiler<'_> {
             // Only create a Let binding if the name was actually renamed
             if original != renamed {
                 result = vec![IrNode::Let {
+                    id: self.next_node_id(),
                     var: renamed.clone(),
                     value: IrExpr {
                         id: self.next_expr_id(),
@@ -125,11 +130,15 @@ impl Compiler<'_> {
     ) {
         match node {
             Node::Text { range } => {
-                output.push(IrNode::Write { content: range.as_str().to_string() });
+                output.push(IrNode::Write {
+                    id: self.next_node_id(),
+                    content: range.as_str().to_string()
+                });
             }
 
             Node::TextExpression { expression, .. } => {
                 output.push(IrNode::WriteExpr {
+                    id: self.next_node_id(),
                     expr: self.rename_expr(expression),
                     escape: true,
                 });
@@ -155,6 +164,7 @@ impl Compiler<'_> {
                 self.pop_scope();
 
                 output.push(IrNode::If {
+                    id: self.next_node_id(),
                     condition: renamed_condition,
                     body,
                 });
@@ -173,6 +183,7 @@ impl Compiler<'_> {
                 self.pop_scope();
 
                 output.push(IrNode::For {
+                    id: self.next_node_id(),
                     var: renamed_var,
                     array: renamed_array,
                     body,
@@ -206,7 +217,10 @@ impl Compiler<'_> {
             }
 
             Node::Doctype { .. } => {
-                output.push(IrNode::Write { content: "<!DOCTYPE html>".to_string() });
+                output.push(IrNode::Write {
+                    id: self.next_node_id(),
+                    content: "<!DOCTYPE html>".to_string()
+                });
             }
 
             Node::Placeholder { .. } => {
@@ -232,41 +246,42 @@ impl Compiler<'_> {
         }
 
         // Push opening tag
-        output.push(IrNode::Write { content: format!("<{}", tag_name.as_str()) });
+        output.push(IrNode::Write { id: self.next_node_id(), content: format!("<{}", tag_name.as_str()) });
 
         // Push attributes
         for (name, attr) in attributes {
             if let Some(val) = &attr.value {
                 match val {
                     AttributeValue::String(s) => {
-                        output.push(IrNode::Write { content: format!(
+                        output.push(IrNode::Write { id: self.next_node_id(), content: format!(
                             " {}=\"{}\"",
                             name.as_str(),
                             s.as_str()
                         ) });
                     }
                     AttributeValue::Expression(expr) => {
-                        output.push(IrNode::Write { content: format!(" {}=\"", name.as_str()) });
+                        output.push(IrNode::Write { id: self.next_node_id(), content: format!(" {}=\"", name.as_str()) });
                         output.push(IrNode::WriteExpr {
+                            id: self.next_node_id(),
                             expr: self.rename_expr(expr),
                             escape: true,
                         });
-                        output.push(IrNode::Write { content: "\"".to_string() });
+                        output.push(IrNode::Write { id: self.next_node_id(), content: "\"".to_string() });
                     }
                 }
             } else {
                 // Boolean attribute
-                output.push(IrNode::Write { content: format!(" {}", name.as_str()) });
+                output.push(IrNode::Write { id: self.next_node_id(), content: format!(" {}", name.as_str()) });
             }
         }
 
-        output.push(IrNode::Write { content: ">".to_string() });
+        output.push(IrNode::Write { id: self.next_node_id(), content: ">".to_string() });
 
         // Compile children
         if !is_void_element(tag_name.as_str()) {
             let child_nodes = self.compile_nodes(children, slot_content.cloned());
             output.extend(child_nodes);
-            output.push(IrNode::Write { content: format!("</{}>", tag_name.as_str()) });
+            output.push(IrNode::Write { id: self.next_node_id(), content: format!("</{}>", tag_name.as_str()) });
         }
     }
 
@@ -295,7 +310,7 @@ impl Compiler<'_> {
             .unwrap_or("div");
 
         // Push opening tag with data-hop-id
-        output.push(IrNode::Write { content: format!(
+        output.push(IrNode::Write { id: self.next_node_id(), content: format!(
             "<{} data-hop-id=\"{}/{}\"",
             wrapper_tag,
             module.as_str(),
@@ -317,19 +332,20 @@ impl Compiler<'_> {
                     // Attribute exists in both reference and definition
                     if name.as_str() == "class" {
                         // Special handling for class attribute - concatenate values
-                        output.push(IrNode::Write { content: " class=\"".to_string() });
+                        output.push(IrNode::Write { id: self.next_node_id(), content: " class=\"".to_string() });
 
                         // First add the definition's class (if any)
                         let mut has_def_class = false;
                         if let Some(def_val) = &def_attr.value {
                             match def_val {
                                 AttributeValue::String(s) => {
-                                    output.push(IrNode::Write { content: s.as_str().to_string() });
+                                    output.push(IrNode::Write { id: self.next_node_id(), content: s.as_str().to_string() });
                                     has_def_class = true;
                                 }
                                 AttributeValue::Expression(expr) => {
                                     // Dynamic class from definition
                                     output.push(IrNode::WriteExpr {
+                                        id: self.next_node_id(),
                                         expr: self.rename_expr(expr),
                                         escape: true,
                                     });
@@ -341,15 +357,16 @@ impl Compiler<'_> {
                         // Then add the reference's class (if any)
                         if let Some(ref_val) = &ref_attr.value {
                             if has_def_class {
-                                output.push(IrNode::Write { content: " ".to_string() });
+                                output.push(IrNode::Write { id: self.next_node_id(), content: " ".to_string() });
                             }
                             match ref_val {
                                 AttributeValue::String(s) => {
-                                    output.push(IrNode::Write { content: s.as_str().to_string() });
+                                    output.push(IrNode::Write { id: self.next_node_id(), content: s.as_str().to_string() });
                                 }
                                 AttributeValue::Expression(expr) => {
                                     // Dynamic class from reference
                                     output.push(IrNode::WriteExpr {
+                                        id: self.next_node_id(),
                                         expr: self.rename_expr(expr),
                                         escape: true,
                                     });
@@ -357,30 +374,31 @@ impl Compiler<'_> {
                             }
                         }
 
-                        output.push(IrNode::Write { content: "\"".to_string() });
+                        output.push(IrNode::Write { id: self.next_node_id(), content: "\"".to_string() });
                     } else {
                         // For other attributes, reference overrides definition
                         if let Some(ref_val) = &ref_attr.value {
                             match ref_val {
                                 AttributeValue::String(s) => {
-                                    output.push(IrNode::Write { content: format!(
+                                    output.push(IrNode::Write { id: self.next_node_id(), content: format!(
                                         " {}=\"{}\"",
                                         name.as_str(),
                                         s.as_str()
                                     ) });
                                 }
                                 AttributeValue::Expression(expr) => {
-                                    output.push(IrNode::Write { content: format!(" {}=\"", name.as_str()) });
+                                    output.push(IrNode::Write { id: self.next_node_id(), content: format!(" {}=\"", name.as_str()) });
                                     output.push(IrNode::WriteExpr {
+                                        id: self.next_node_id(),
                                         expr: self.rename_expr(expr),
                                         escape: true,
                                     });
-                                    output.push(IrNode::Write { content: "\"".to_string() });
+                                    output.push(IrNode::Write { id: self.next_node_id(), content: "\"".to_string() });
                                 }
                             }
                         } else {
                             // Boolean attribute
-                            output.push(IrNode::Write { content: format!(" {}", name.as_str()) });
+                            output.push(IrNode::Write { id: self.next_node_id(), content: format!(" {}", name.as_str()) });
                         }
                     }
                 }
@@ -389,24 +407,25 @@ impl Compiler<'_> {
                     if let Some(val) = &ref_attr.value {
                         match val {
                             AttributeValue::String(s) => {
-                                output.push(IrNode::Write { content: format!(
+                                output.push(IrNode::Write { id: self.next_node_id(), content: format!(
                                     " {}=\"{}\"",
                                     name.as_str(),
                                     s.as_str()
                                 ) });
                             }
                             AttributeValue::Expression(expr) => {
-                                output.push(IrNode::Write { content: format!(" {}=\"", name.as_str()) });
+                                output.push(IrNode::Write { id: self.next_node_id(), content: format!(" {}=\"", name.as_str()) });
                                 output.push(IrNode::WriteExpr {
+                                    id: self.next_node_id(),
                                     expr: self.rename_expr(expr),
                                     escape: true,
                                 });
-                                output.push(IrNode::Write { content: "\"".to_string() });
+                                output.push(IrNode::Write { id: self.next_node_id(), content: "\"".to_string() });
                             }
                         }
                     } else {
                         // Boolean attribute
-                        output.push(IrNode::Write { content: format!(" {}", name.as_str()) });
+                        output.push(IrNode::Write { id: self.next_node_id(), content: format!(" {}", name.as_str()) });
                     }
                 }
                 EitherOrBoth::Right((name, def_attr)) => {
@@ -414,30 +433,31 @@ impl Compiler<'_> {
                     if let Some(val) = &def_attr.value {
                         match val {
                             AttributeValue::String(s) => {
-                                output.push(IrNode::Write { content: format!(
+                                output.push(IrNode::Write { id: self.next_node_id(), content: format!(
                                     " {}=\"{}\"",
                                     name.as_str(),
                                     s.as_str()
                                 ) });
                             }
                             AttributeValue::Expression(expr) => {
-                                output.push(IrNode::Write { content: format!(" {}=\"", name.as_str()) });
+                                output.push(IrNode::Write { id: self.next_node_id(), content: format!(" {}=\"", name.as_str()) });
                                 output.push(IrNode::WriteExpr {
+                                    id: self.next_node_id(),
                                     expr: self.rename_expr(expr),
                                     escape: true,
                                 });
-                                output.push(IrNode::Write { content: "\"".to_string() });
+                                output.push(IrNode::Write { id: self.next_node_id(), content: "\"".to_string() });
                             }
                         }
                     } else {
                         // Boolean attribute
-                        output.push(IrNode::Write { content: format!(" {}", name.as_str()) });
+                        output.push(IrNode::Write { id: self.next_node_id(), content: format!(" {}", name.as_str()) });
                     }
                 }
             }
         }
 
-        output.push(IrNode::Write { content: ">".to_string() });
+        output.push(IrNode::Write { id: self.next_node_id(), content: ">".to_string() });
 
         // Build bindings for component parameters.
         //
@@ -503,6 +523,7 @@ impl Compiler<'_> {
         // Wrap body with Let bindings (in reverse order for nesting)
         for (renamed_var, (_, value)) in renamed_params.into_iter().zip(param_bindings).rev() {
             component_body = vec![IrNode::Let {
+                id: self.next_node_id(),
                 var: renamed_var,
                 value,
                 body: component_body,
@@ -510,7 +531,7 @@ impl Compiler<'_> {
         }
 
         output.extend(component_body);
-        output.push(IrNode::Write { content: format!("</{}>", wrapper_tag) });
+        output.push(IrNode::Write { id: self.next_node_id(), content: format!("</{}>", wrapper_tag) });
     }
 
     // Alpha-renaming helpers
@@ -569,6 +590,12 @@ impl Compiler<'_> {
     fn next_expr_id(&mut self) -> ExprId {
         let id = self.expr_id_counter;
         self.expr_id_counter += 1;
+        id
+    }
+
+    fn next_node_id(&mut self) -> NodeId {
+        let id = self.node_id_counter;
+        self.node_id_counter += 1;
         id
     }
 

@@ -1,4 +1,4 @@
-use crate::ir::ast::{IrEntrypoint, IrNode};
+use crate::ir::ast::{IrEntrypoint, IrNode, NodeId};
 
 use super::Pass;
 
@@ -10,14 +10,20 @@ impl WriteCoalescingPass {
         Self
     }
 
+    fn next_id(next_id: &mut NodeId) -> NodeId {
+        let id = *next_id;
+        *next_id += 1;
+        id
+    }
+
     /// Transform a list of IR nodes, coalescing consecutive Write nodes
-    fn transform_nodes(nodes: Vec<IrNode>) -> Vec<IrNode> {
+    fn transform_nodes(nodes: Vec<IrNode>, next_id: &mut NodeId) -> Vec<IrNode> {
         let mut result = Vec::new();
         let mut pending_write: Option<String> = None;
 
         for node in nodes {
             match node {
-                IrNode::Write { content: text } => {
+                IrNode::Write { id: _, content: text } => {
                     // Accumulate consecutive writes
                     match pending_write {
                         Some(ref mut accumulated) => {
@@ -28,46 +34,49 @@ impl WriteCoalescingPass {
                         }
                     }
                 }
-                IrNode::If { condition, body } => {
+                IrNode::If { id, condition, body } => {
                     // Flush any pending write before a control flow node
                     if let Some(text) = pending_write.take() {
-                        result.push(IrNode::Write { content: text });
+                        result.push(IrNode::Write { id: Self::next_id(next_id), content: text });
                     }
                     // Recursively transform the body
                     result.push(IrNode::If {
+                        id,
                         condition,
-                        body: Self::transform_nodes(body),
+                        body: Self::transform_nodes(body, next_id),
                     });
                 }
-                IrNode::For { var, array, body } => {
+                IrNode::For { id, var, array, body } => {
                     // Flush any pending write before a control flow node
                     if let Some(text) = pending_write.take() {
-                        result.push(IrNode::Write { content: text });
+                        result.push(IrNode::Write { id: Self::next_id(next_id), content: text });
                     }
                     // Recursively transform the body
                     result.push(IrNode::For {
+                        id,
                         var,
                         array,
-                        body: Self::transform_nodes(body),
+                        body: Self::transform_nodes(body, next_id),
                     });
                 }
-                IrNode::Let { var, value, body } => {
+                IrNode::Let { id, var, value, body } => {
                     // Flush any pending write before a control flow node
                     if let Some(text) = pending_write.take() {
-                        result.push(IrNode::Write { content: text });
+                        result.push(IrNode::Write { id: Self::next_id(next_id), content: text });
                     }
                     // Recursively transform the body
                     result.push(IrNode::Let {
+                        id,
                         var,
                         value,
-                        body: Self::transform_nodes(body),
+                        body: Self::transform_nodes(body, next_id),
                     });
                 }
                 IrNode::WriteExpr { .. } => {
                     // WriteExpr can't be coalesced with Write nodes
                     // Flush any pending write
                     if let Some(text) = pending_write.take() {
-                        result.push(IrNode::Write { content: text });
+                        result.push(IrNode::Write { id: Self::next_id(next_id), content: text });
                     }
                     result.push(node);
                 }
@@ -76,7 +85,7 @@ impl WriteCoalescingPass {
 
         // Flush any remaining pending write
         if let Some(text) = pending_write {
-            result.push(IrNode::Write { content: text });
+            result.push(IrNode::Write { id: Self::next_id(next_id), content: text });
         }
 
         result
@@ -85,7 +94,8 @@ impl WriteCoalescingPass {
 
 impl Pass for WriteCoalescingPass {
     fn run(&mut self, mut entrypoint: IrEntrypoint) -> IrEntrypoint {
-        entrypoint.body = Self::transform_nodes(entrypoint.body);
+        let mut next_id = 1;
+        entrypoint.body = Self::transform_nodes(entrypoint.body, &mut next_id);
         entrypoint
     }
 }

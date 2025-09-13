@@ -146,7 +146,7 @@ impl JsCompiler {
 
     fn compile_node(&mut self, node: &IrNode) {
         match node {
-            IrNode::Write { content } => {
+            IrNode::Write { id: _, content } => {
                 // Escape the string for JavaScript string literal
                 let escaped = content
                     .replace('\\', "\\\\")
@@ -157,7 +157,7 @@ impl JsCompiler {
                 self.write_line(&format!("output += \"{}\";", escaped));
             }
 
-            IrNode::WriteExpr { expr, escape } => {
+            IrNode::WriteExpr { id: _, expr, escape } => {
                 let js_expr = Self::compile_expr(expr);
                 if *escape {
                     self.write_line(&format!("output += escapeHtml({});", js_expr));
@@ -166,7 +166,7 @@ impl JsCompiler {
                 }
             }
 
-            IrNode::If { condition, body } => {
+            IrNode::If { id: _, condition, body } => {
                 let js_cond = Self::compile_expr(condition);
                 self.write_line(&format!("if ({}) {{", js_cond));
                 self.indent();
@@ -175,7 +175,7 @@ impl JsCompiler {
                 self.write_line("}");
             }
 
-            IrNode::For { var, array, body } => {
+            IrNode::For { id: _, var, array, body } => {
                 let js_array = Self::compile_expr(array);
                 self.write_line(&format!("for (const {} of {}) {{", var, js_array));
                 self.indent();
@@ -184,7 +184,7 @@ impl JsCompiler {
                 self.write_line("}");
             }
 
-            IrNode::Let { var, value, body } => {
+            IrNode::Let { id: _, var, value, body } => {
                 let js_value = Self::compile_expr(value);
                 self.write_line(&format!("const {} = {};", var, js_value));
                 self.compile_nodes(body);

@@ -26,7 +26,7 @@ impl DeadCodeEliminationPass {
         let mut result = Vec::new();
         for node in nodes {
             match node {
-                IrNode::If { condition, body } => {
+                IrNode::If { id, condition, body } => {
                     // Check if the condition is a constant boolean
                     if let Some(const_bool) = Self::is_constant_boolean(&condition) {
                         if const_bool {
@@ -37,22 +37,25 @@ impl DeadCodeEliminationPass {
                     } else {
                         // Can't evaluate at compile time, keep the if but transform body
                         result.push(IrNode::If {
+                            id,
                             condition,
                             body: Self::transform_nodes(body),
                         });
                     }
                 }
-                IrNode::For { var, array, body } => {
+                IrNode::For { id, var, array, body } => {
                     // Transform the body of the for loop
                     result.push(IrNode::For {
+                        id,
                         var,
                         array,
                         body: Self::transform_nodes(body),
                     });
                 }
-                IrNode::Let { var, value, body } => {
+                IrNode::Let { id, var, value, body } => {
                     // Transform the body of the let
                     result.push(IrNode::Let {
+                        id,
                         var,
                         value,
                         body: Self::transform_nodes(body),

@@ -95,12 +95,12 @@ pub fn eval_ir(nodes: &[IrNode], env: &mut Environment<Value>, output: &mut Stri
 /// Evaluate a single IR node
 fn eval_node(node: &IrNode, env: &mut Environment<Value>, output: &mut String) -> Result<()> {
     match node {
-        IrNode::Write { content } => {
+        IrNode::Write { id: _, content } => {
             output.push_str(content);
             Ok(())
         }
 
-        IrNode::WriteExpr { expr, escape } => {
+        IrNode::WriteExpr { id: _, expr, escape } => {
             let value = evaluate_ir_expr(expr, env)?;
             let s = value.as_str().unwrap_or("");
             if *escape {
@@ -111,7 +111,7 @@ fn eval_node(node: &IrNode, env: &mut Environment<Value>, output: &mut String) -
             Ok(())
         }
 
-        IrNode::If { condition, body } => {
+        IrNode::If { id: _, condition, body } => {
             let cond_value = evaluate_ir_expr(condition, env)?;
             if cond_value.as_bool().unwrap_or(false) {
                 eval_ir(body, env, output)?;
@@ -119,7 +119,7 @@ fn eval_node(node: &IrNode, env: &mut Environment<Value>, output: &mut String) -
             Ok(())
         }
 
-        IrNode::For { var, array, body } => {
+        IrNode::For { id: _, var, array, body } => {
             let array_value = evaluate_ir_expr(array, env)?;
             let items = array_value.as_array().cloned().unwrap_or_default();
 
@@ -131,7 +131,7 @@ fn eval_node(node: &IrNode, env: &mut Environment<Value>, output: &mut String) -
             Ok(())
         }
 
-        IrNode::Let { var, value, body } => {
+        IrNode::Let { id: _, var, value, body } => {
             let val = evaluate_ir_expr(value, env)?;
             let _ = env.push(var.clone(), val);
             eval_ir(body, env, output)?;
