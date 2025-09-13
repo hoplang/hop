@@ -1,5 +1,6 @@
+use crate::ir::ast::{IrEntrypoint, IrNode};
+
 use super::Pass;
-use crate::ir::{IrEntrypoint, IrNode};
 
 /// A pass that concatenates consecutive Write nodes into a single Write node
 pub struct WriteCoalescingPass;

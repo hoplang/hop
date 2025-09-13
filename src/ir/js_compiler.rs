@@ -1,6 +1,7 @@
-use crate::ir::{IrEntrypoint, IrExpr, IrModule, IrNode};
-
-use super::expr::{BinaryOp, UnaryOp};
+use super::{
+    ast::{IrEntrypoint, IrModule, IrNode},
+    expr::{BinaryOp, IrExpr, UnaryOp},
+};
 
 /// Compiles an IR module to JavaScript code
 pub struct JsCompiler {

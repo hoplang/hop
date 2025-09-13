@@ -1,6 +1,7 @@
 use super::Pass;
 use crate::ir::{
-    IrEntrypoint, IrExpr, IrNode,
+    IrExpr,
+    ast::{IrEntrypoint, IrNode},
     expr::{BinaryOp, UnaryOp},
 };
 
@@ -131,7 +132,6 @@ impl Pass for ConstantFoldingPass {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::IrEntrypoint;
 
     #[test]
     fn test_constant_folding_removes_always_true_if() {

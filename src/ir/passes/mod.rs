@@ -4,7 +4,7 @@ mod write_coalescing;
 pub use constant_folding::ConstantFoldingPass;
 pub use write_coalescing::WriteCoalescingPass;
 
-use crate::ir::{IrEntrypoint, IrModule};
+use super::ast::{IrEntrypoint, IrModule};
 
 /// Trait for IR optimization passes that operate on individual entrypoints
 ///

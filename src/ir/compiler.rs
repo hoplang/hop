@@ -4,10 +4,10 @@ use crate::dop::{self, Argument, Expr};
 use crate::hop::ast::{Ast, Attribute, AttributeValue, ComponentDefinition, Node};
 use crate::hop::module_name::ModuleName;
 use crate::ir::passes::PassManager;
-use crate::ir::{IrEntrypoint, IrExpr, IrModule, IrNode};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use super::expr::{BinaryOp, UnaryOp};
+use super::ast::{IrEntrypoint, IrModule, IrNode};
+use super::expr::{BinaryOp, IrExpr, UnaryOp};
 
 pub struct Compiler<'a> {
     asts: &'a HashMap<ModuleName, Ast>,
