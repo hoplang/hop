@@ -315,7 +315,7 @@ mod tests {
         compiler.compile_module(ir_module)
     }
 
-    fn check_js_output(ir_module: &IrModule, expected: Expect) {
+    fn check(ir_module: &IrModule, expected: Expect) {
         let js = compile_ir_to_js(ir_module);
         expected.assert_eq(&js);
     }
@@ -338,7 +338,7 @@ mod tests {
             },
         );
 
-        check_js_output(
+        check(
             &ir_module,
             expect![[r#"
                 function escapeHtml(str) {
@@ -383,7 +383,7 @@ mod tests {
             },
         );
 
-        check_js_output(
+        check(
             &ir_module,
             expect![[r#"
                 function escapeHtml(str) {
@@ -423,7 +423,7 @@ mod tests {
             },
         );
 
-        check_js_output(
+        check(
             &ir_module,
             expect![[r#"
                 function escapeHtml(str) {
@@ -472,7 +472,7 @@ mod tests {
             },
         );
 
-        check_js_output(
+        check(
             &ir_module,
             expect![[r#"
                 function escapeHtml(str) {
@@ -525,7 +525,7 @@ mod tests {
             },
         );
 
-        check_js_output(
+        check(
             &ir_module,
             expect![[r#"
                 function escapeHtml(str) {
