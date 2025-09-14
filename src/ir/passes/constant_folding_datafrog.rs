@@ -1,7 +1,7 @@
 use super::Pass;
 use crate::ir::{
     IrExpr,
-    ast::{BinaryOp, ExprId, IrExprValue, UnaryOp, NodeEvent},
+    ast::{BinaryOp, ExprId, IrExprValue, NodeEvent, UnaryOp},
     ast::{IrEntrypoint, IrNode},
 };
 use datafrog::{Iteration, Relation};
@@ -111,6 +111,13 @@ impl DatafrogConstantFoldingPass {
             _ => None,
         }));
 
+        // String values of expressions: (expr_id => string_value)
+        let string_value = iteration.variable::<(ExprId, String)>("string_value");
+        string_value.extend(all_expressions.iter().filter_map(|n| match &n.value {
+            IrExprValue::String(s) => Some((n.id, s.clone())),
+            _ => None,
+        }));
+
         // Values of left operands in equality expressions: (eq_expr_id => left_value)
         let eq_left_value = iteration.variable::<(ExprId, bool)>("eq_left_value");
 
@@ -187,12 +194,22 @@ impl DatafrogConstantFoldingPass {
                 &var_def,
                 |_def_expr: &ExprId, val: &bool, var_expr: &ExprId| (*var_expr, *val),
             );
+
+            // string_value(var_expr, val) :- string_value(def_expr, val), var_def(def_expr, var_expr).
+            string_value.from_join(
+                &string_value,
+                &var_def,
+                |_def_expr: &ExprId, val: &String, var_expr: &ExprId| (*var_expr, val.clone()),
+            );
         }
 
         // Convert results to IrExprValue
         let mut results = HashMap::new();
         for (id, bool_val) in bool_value.complete().iter() {
             results.insert(*id, IrExprValue::Boolean(*bool_val));
+        }
+        for (id, string_val) in string_value.complete().iter() {
+            results.insert(*id, IrExprValue::String(string_val.clone()));
         }
         results
     }
@@ -454,6 +471,111 @@ mod tests {
                         If(condition: true) {
                           Write("x equals not y")
                         }
+                      }
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_string_constant_propagation() {
+        let t = IrTestBuilder::new();
+        check(
+            IrEntrypoint {
+                parameters: vec![],
+                body: vec![t.let_stmt(
+                    "message",
+                    t.str("Hello, World!"),
+                    vec![
+                        // Variable containing string should be replaced with the string constant
+                        t.write_expr(t.var("message"), true),
+                    ],
+                )],
+            },
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: []
+                  body: {
+                    Let(var: message, value: "Hello, World!") {
+                      WriteExpr(expr: "Hello, World!", escape: true)
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_nested_string_variable_propagation() {
+        let t = IrTestBuilder::new();
+        check(
+            IrEntrypoint {
+                parameters: vec![],
+                body: vec![t.let_stmt(
+                    "greeting",
+                    t.str("Hello"),
+                    vec![t.let_stmt(
+                        "name",
+                        t.str("World"),
+                        vec![
+                            // Both variables should be replaced with their string constants
+                            t.write_expr(t.var("greeting"), true),
+                            t.write_expr(t.var("name"), true),
+                        ],
+                    )],
+                )],
+            },
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: []
+                  body: {
+                    Let(var: greeting, value: "Hello") {
+                      Let(var: name, value: "World") {
+                        WriteExpr(expr: "Hello", escape: true)
+                        WriteExpr(expr: "World", escape: true)
+                      }
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_string_variable_multiple_uses() {
+        let t = IrTestBuilder::new();
+        check(
+            IrEntrypoint {
+                parameters: vec![],
+                body: vec![t.let_stmt(
+                    "title",
+                    t.str("Welcome"),
+                    vec![
+                        // Multiple uses of the same string variable
+                        t.write_expr(t.var("title"), true),
+                        t.write_expr(t.var("title"), true),
+                        t.let_stmt(
+                            "subtitle",
+                            t.var("title"),
+                            vec![
+                                // Transitive propagation through another variable
+                                t.write_expr(t.var("subtitle"), true),
+                            ],
+                        ),
+                    ],
+                )],
+            },
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: []
+                  body: {
+                    Let(var: title, value: "Welcome") {
+                      WriteExpr(expr: "Welcome", escape: true)
+                      WriteExpr(expr: "Welcome", escape: true)
+                      Let(var: subtitle, value: "Welcome") {
+                        WriteExpr(expr: "Welcome", escape: true)
                       }
                     }
                   }
