@@ -39,21 +39,6 @@ enum Commands {
         #[arg(long)]
         path: Option<String>,
     },
-    ///// Build hop templates from a manifest to files
-    //Build {
-    //    /// Path to project root
-    //    #[arg(long)]
-    //    projectdir: Option<String>,
-    //    /// Output directory
-    //    #[arg(long)]
-    //    outdir: String,
-    //    /// Optional script file name to output collected scripts
-    //    #[arg(long)]
-    //    scriptfile: Option<String>,
-    //    /// Directory to copy static files from
-    //    #[arg(long)]
-    //    staticdir: Option<String>,
-    //},
     /// Compile hop templates to the specified language
     Compile {
         /// Target language (currently only 'js' is supported)
@@ -166,7 +151,11 @@ async fn main() -> anyhow::Result<()> {
         //    println!("  {:<50} {}", "total", format_file_size(total_size));
         //    println!();
         //}
-        Some(Commands::Compile { language, projectdir, output }) => {
+        Some(Commands::Compile {
+            language,
+            projectdir,
+            output,
+        }) => {
             use std::time::Instant;
             let start_time = Instant::now();
 

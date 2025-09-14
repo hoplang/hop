@@ -268,7 +268,11 @@ impl IrNode {
                 expr: expr.map_expr(f),
                 escape,
             },
-            IrNode::If { id, condition, body } => IrNode::If {
+            IrNode::If {
+                id,
+                condition,
+                body,
+            } => IrNode::If {
                 id,
                 condition: condition.map_expr(f),
                 body: body.into_iter().map(|n| n.map_expressions(f)).collect(),
@@ -362,7 +366,11 @@ impl IrEntrypoint {
     where
         F: Fn(IrExpr) -> IrExpr,
     {
-        self.body = self.body.into_iter().map(|n| n.map_expressions(&f)).collect();
+        self.body = self
+            .body
+            .into_iter()
+            .map(|n| n.map_expressions(&f))
+            .collect();
         self
     }
 

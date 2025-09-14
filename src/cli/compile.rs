@@ -2,7 +2,7 @@ use crate::CompileLanguage;
 use crate::document::DocumentAnnotator;
 use crate::filesystem::files::ProjectRoot;
 use crate::hop::program::Program;
-use crate::ir::{optimizer::Optimizer, Compiler, JsCompiler, LanguageMode};
+use crate::ir::{Compiler, JsCompiler, LanguageMode, optimizer::Optimizer};
 use crate::tui::timing;
 use anyhow::{Context, Result};
 use std::fs;
