@@ -903,9 +903,7 @@ mod tests {
                   body: {
                     Write("<div data-hop-id=\"test/card-comp\">")
                     Let(var: title, value: "Hello") {
-                      Write("<h2>")
-                      WriteExpr(expr: "Hello", escape: true)
-                      Write("</h2>")
+                      Write("<h2>Hello</h2>")
                     }
                     Write("</div>")
                   }
@@ -1121,9 +1119,7 @@ mod tests {
                     Let(var: text, value: "Hello") {
                       Write("<div data-hop-id=\"test/inner-comp\">")
                       Let(var: msg, value: "Hello") {
-                        Write("<span>")
-                        WriteExpr(expr: "Hello", escape: true)
-                        Write("</span>")
+                        Write("<span>Hello</span>")
                       }
                       Write("</div>")
                     }

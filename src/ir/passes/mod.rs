@@ -1,10 +1,12 @@
 mod constant_propagation;
 mod dead_code_elimination;
 mod write_coalescing;
+mod write_expr_simplification;
 
 pub use constant_propagation::ConstantPropagationPass;
 pub use dead_code_elimination::DeadCodeEliminationPass;
 pub use write_coalescing::WriteCoalescingPass;
+pub use write_expr_simplification::WriteExprSimplificationPass;
 
 use super::ast::{IrEntrypoint, IrModule};
 
@@ -50,6 +52,7 @@ impl PassManager {
     pub fn default_optimization_pipeline() -> Self {
         let mut manager = Self::new();
         manager.add_pass(Box::new(ConstantPropagationPass::new()));
+        manager.add_pass(Box::new(WriteExprSimplificationPass::new()));
         manager.add_pass(Box::new(DeadCodeEliminationPass::new()));
         manager.add_pass(Box::new(WriteCoalescingPass::new()));
         manager
