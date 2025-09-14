@@ -44,27 +44,6 @@ pub struct CssConfig {
     pub mode: Option<String>,
 }
 
-impl HopConfig {
-    pub fn load_from_project_root(project_root: &Path) -> anyhow::Result<Option<HopConfig>> {
-        let config_path = project_root.join("hop.toml");
-
-        if !config_path.exists() {
-            return Ok(None);
-        }
-
-        let config_str = fs::read_to_string(&config_path)
-            .with_context(|| format!("Failed to read hop.toml at {:?}", config_path))?;
-
-        let config: HopConfig = toml::from_str(&config_str)
-            .with_context(|| format!("Failed to parse hop.toml at {:?}", config_path))?;
-
-        Ok(Some(config))
-    }
-
-    pub fn load_or_default(project_root: &Path) -> anyhow::Result<HopConfig> {
-        Ok(Self::load_from_project_root(project_root)?.unwrap_or_default())
-    }
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProjectRoot(PathBuf);
@@ -190,6 +169,23 @@ impl ProjectRoot {
         }
 
         Ok(hop_files)
+    }
+
+    /// Load the hop.toml configuration file from this project root
+    pub fn load_config(&self) -> anyhow::Result<HopConfig> {
+        let config_path = self.0.join("hop.toml");
+
+        if !config_path.exists() {
+            anyhow::bail!("hop.toml not found at {:?}. Every hop project must have a hop.toml configuration file.", config_path);
+        }
+
+        let config_str = fs::read_to_string(&config_path)
+            .with_context(|| format!("Failed to read hop.toml at {:?}", config_path))?;
+
+        let config: HopConfig = toml::from_str(&config_str)
+            .with_context(|| format!("Failed to parse hop.toml at {:?}", config_path))?;
+
+        Ok(config)
     }
 }
 
@@ -434,8 +430,9 @@ mod tests {
             mode = "tailwind4"
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
+        let root = ProjectRoot::from(&temp_dir).unwrap();
 
-        let config = HopConfig::load_from_project_root(&temp_dir).unwrap().unwrap();
+        let config = root.load_config().unwrap();
 
         assert_eq!(config.css.mode, Some("tailwind4".to_string()));
 
@@ -443,28 +440,37 @@ mod tests {
     }
 
     #[test]
-    fn test_load_nonexistent_config() {
+    fn test_load_config_missing_hop_toml_error() {
         let archive = Archive::from(indoc! {r#"
+            -- hop.toml --
+            [css]
+            mode = "tailwind4"
             -- main.hop --
             <main-component>Test</main-component>
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
+        let root = ProjectRoot::from(&temp_dir).unwrap();
 
-        let config = HopConfig::load_from_project_root(&temp_dir).unwrap();
-        assert!(config.is_none());
+        // Delete the hop.toml to test the error case
+        fs::remove_file(temp_dir.join("hop.toml")).unwrap();
+
+        let result = root.load_config();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("hop.toml not found"));
 
         fs::remove_dir_all(&temp_dir).unwrap();
     }
 
     #[test]
-    fn test_load_or_default() {
+    fn test_load_config_with_empty_hop_toml() {
         let archive = Archive::from(indoc! {r#"
-            -- main.hop --
-            <main-component>Test</main-component>
+            -- hop.toml --
+            # Empty config file
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
+        let root = ProjectRoot::from(&temp_dir).unwrap();
 
-        let config = HopConfig::load_or_default(&temp_dir).unwrap();
+        let config = root.load_config().unwrap();
         assert!(config.css.mode.is_none());
 
         fs::remove_dir_all(&temp_dir).unwrap();

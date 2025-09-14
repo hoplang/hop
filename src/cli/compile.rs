@@ -1,6 +1,6 @@
 use crate::CompileLanguage;
 use crate::document::DocumentAnnotator;
-use crate::filesystem::files::{HopConfig, ProjectRoot};
+use crate::filesystem::files::ProjectRoot;
 use crate::hop::program::Program;
 use crate::ir::{Compiler, JsCompiler, LanguageMode, optimizer::Optimizer};
 use crate::tui::timing;
@@ -28,7 +28,7 @@ pub fn execute(
     };
 
     // Load configuration
-    let config = HopConfig::load_or_default(project_root.get_path())?;
+    let config = project_root.load_config()?;
 
     // Log CSS mode if configured
     if let Some(css_mode) = &config.css.mode {
