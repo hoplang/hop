@@ -118,6 +118,96 @@ impl IrModule {
     }
 }
 
+impl fmt::Display for IrModule {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "IrModule {{")?;
+        writeln!(f, "  entry_points: {{")?;
+        
+        // Sort entry points by name for consistent output
+        let mut sorted_entries: Vec<_> = self.entry_points.iter().collect();
+        sorted_entries.sort_by_key(|(name, _)| name.as_str());
+        
+        for (name, entrypoint) in sorted_entries {
+            writeln!(f, "    {}: {{", name)?;
+            
+            // Format parameters
+            write!(f, "      parameters: [")?;
+            for (i, (param_name, param_type)) in entrypoint.parameters.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}: {}", param_name, param_type)?;
+            }
+            writeln!(f, "]")?;
+            
+            // Format body
+            writeln!(f, "      body: {{")?;
+            fn fmt_nodes(nodes: &[IrNode], f: &mut fmt::Formatter<'_>, indent: usize) -> fmt::Result {
+                for node in nodes {
+                    for _ in 0..indent {
+                        write!(f, "  ")?;
+                    }
+                    match node {
+                        IrNode::Write { id: _, content } => writeln!(f, "Write({:?})", content)?,
+                        IrNode::WriteExpr {
+                            id: _,
+                            expr,
+                            escape,
+                        } => writeln!(f, "WriteExpr(expr: {}, escape: {})", expr, escape)?,
+                        IrNode::If {
+                            id: _,
+                            condition,
+                            body,
+                        } => {
+                            writeln!(f, "If(condition: {}) {{", condition)?;
+                            fmt_nodes(body, f, indent + 1)?;
+                            for _ in 0..indent {
+                                write!(f, "  ")?;
+                            }
+                            writeln!(f, "}}")?;
+                        }
+                        IrNode::For {
+                            id: _,
+                            var,
+                            array,
+                            body,
+                        } => {
+                            writeln!(f, "For(var: {}, array: {}) {{", var, array)?;
+                            fmt_nodes(body, f, indent + 1)?;
+                            for _ in 0..indent {
+                                write!(f, "  ")?;
+                            }
+                            writeln!(f, "}}")?;
+                        }
+                        IrNode::Let {
+                            id: _,
+                            var,
+                            value,
+                            body,
+                        } => {
+                            writeln!(f, "Let(var: {}, value: {}) {{", var, value)?;
+                            fmt_nodes(body, f, indent + 1)?;
+                            for _ in 0..indent {
+                                write!(f, "  ")?;
+                            }
+                            writeln!(f, "}}")?;
+                        }
+                    }
+                }
+                Ok(())
+            }
+            
+            fmt_nodes(&entrypoint.body, f, 4)?;
+            writeln!(f, "      }}")?;
+            writeln!(f, "    }}")?;
+        }
+        
+        writeln!(f, "  }}")?;
+        writeln!(f, "}}")?;
+        Ok(())
+    }
+}
+
 impl fmt::Display for IrNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fn fmt_nodes(nodes: &[IrNode], f: &mut fmt::Formatter<'_>, indent: usize) -> fmt::Result {

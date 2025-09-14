@@ -757,18 +757,9 @@ mod tests {
         Compiler::compile(&asts)
     }
 
-    fn get_entrypoint(ir_module: &IrModule) -> &IrEntrypoint {
-        ir_module
-            .entry_points
-            .values()
-            .next()
-            .expect("Should have an entrypoint")
-    }
-
     fn check_ir(source: &str, expected: Expect) {
         let ir_module = compile_hop_to_ir(source);
-        let entrypoint = get_entrypoint(&ir_module);
-        expected.assert_eq(&entrypoint.to_string());
+        expected.assert_eq(&ir_module.to_string());
     }
 
     #[test]
@@ -776,10 +767,14 @@ mod tests {
         check_ir(
             &["<main-comp entrypoint>", "Hello World", "</main-comp>"].join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("Hello World")
+                IrModule {
+                  entry_points: {
+                    test/main-comp: {
+                      parameters: []
+                      body: {
+                        Write("Hello World")
+                      }
+                    }
                   }
                 }
             "#]],
@@ -796,11 +791,15 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [name: string]
-                  body: {
-                    Write("Hello ")
-                    WriteExpr(expr: name, escape: true)
+                IrModule {
+                  entry_points: {
+                    test/main-comp: {
+                      parameters: [name: string]
+                      body: {
+                        Write("Hello ")
+                        WriteExpr(expr: name, escape: true)
+                      }
+                    }
                   }
                 }
             "#]],
@@ -819,13 +818,17 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("<div")
-                    Write(">")
-                    Write("Content")
-                    Write("</div>")
+                IrModule {
+                  entry_points: {
+                    test/main-comp: {
+                      parameters: []
+                      body: {
+                        Write("<div")
+                        Write(">")
+                        Write("Content")
+                        Write("</div>")
+                      }
+                    }
                   }
                 }
             "#]],
@@ -844,14 +847,18 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [show: boolean]
-                  body: {
-                    If(condition: show) {
-                      Write("<div")
-                      Write(">")
-                      Write("Visible")
-                      Write("</div>")
+                IrModule {
+                  entry_points: {
+                    test/main-comp: {
+                      parameters: [show: boolean]
+                      body: {
+                        If(condition: show) {
+                          Write("<div")
+                          Write(">")
+                          Write("Visible")
+                          Write("</div>")
+                        }
+                      }
                     }
                   }
                 }
@@ -871,14 +878,18 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [items: array[string]]
-                  body: {
-                    For(var: item, array: items) {
-                      Write("<li")
-                      Write(">")
-                      WriteExpr(expr: item, escape: true)
-                      Write("</li>")
+                IrModule {
+                  entry_points: {
+                    test/main-comp: {
+                      parameters: [items: array[string]]
+                      body: {
+                        For(var: item, array: items) {
+                          Write("<li")
+                          Write(">")
+                          WriteExpr(expr: item, escape: true)
+                          Write("</li>")
+                        }
+                      }
                     }
                   }
                 }
@@ -900,18 +911,22 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("<div data-hop-id=\"test/card-comp\"")
-                    Write(">")
-                    Let(var: title, value: "Hello") {
-                      Write("<h2")
-                      Write(">")
-                      WriteExpr(expr: title, escape: true)
-                      Write("</h2>")
+                IrModule {
+                  entry_points: {
+                    test/main-comp: {
+                      parameters: []
+                      body: {
+                        Write("<div data-hop-id=\"test/card-comp\"")
+                        Write(">")
+                        Let(var: title, value: "Hello") {
+                          Write("<h2")
+                          Write(">")
+                          WriteExpr(expr: title, escape: true)
+                          Write("</h2>")
+                        }
+                        Write("</div>")
+                      }
                     }
-                    Write("</div>")
                   }
                 }
             "#]],
@@ -928,15 +943,19 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("<div")
-                    Write(" class=\"base\"")
-                    Write(" id=\"test\"")
-                    Write(">")
-                    Write("Content")
-                    Write("</div>")
+                IrModule {
+                  entry_points: {
+                    test/main-comp: {
+                      parameters: []
+                      body: {
+                        Write("<div")
+                        Write(" class=\"base\"")
+                        Write(" id=\"test\"")
+                        Write(">")
+                        Write("Content")
+                        Write("</div>")
+                      }
+                    }
                   }
                 }
             "#]],
@@ -953,17 +972,21 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [cls: string]
-                  body: {
-                    Write("<div")
-                    Write(" class=\"base\"")
-                    Write(" data-value=\"")
-                    WriteExpr(expr: cls, escape: true)
-                    Write("\"")
-                    Write(">")
-                    Write("Content")
-                    Write("</div>")
+                IrModule {
+                  entry_points: {
+                    test/main-comp: {
+                      parameters: [cls: string]
+                      body: {
+                        Write("<div")
+                        Write(" class=\"base\"")
+                        Write(" data-value=\"")
+                        WriteExpr(expr: cls, escape: true)
+                        Write("\"")
+                        Write(">")
+                        Write("Content")
+                        Write("</div>")
+                      }
+                    }
                   }
                 }
             "#]],
@@ -983,13 +1006,17 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [y: string]
-                  body: {
-                    For(var: x, array: ["a", "b"]) {
-                      WriteExpr(expr: x, escape: true)
+                IrModule {
+                  entry_points: {
+                    test/main-comp: {
+                      parameters: [y: string]
+                      body: {
+                        For(var: x, array: ["a", "b"]) {
+                          WriteExpr(expr: x, escape: true)
+                        }
+                        WriteExpr(expr: y, escape: true)
+                      }
                     }
-                    WriteExpr(expr: y, escape: true)
                   }
                 }
             "#]],
@@ -1007,14 +1034,18 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("<!DOCTYPE html>")
-                    Write("<html")
-                    Write(">")
-                    Write("Content")
-                    Write("</html>")
+                IrModule {
+                  entry_points: {
+                    test/main-comp: {
+                      parameters: []
+                      body: {
+                        Write("<!DOCTYPE html>")
+                        Write("<html")
+                        Write(">")
+                        Write("Content")
+                        Write("</html>")
+                      }
+                    }
                   }
                 }
             "#]],
@@ -1032,15 +1063,19 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("<img")
-                    Write(" alt=\"test\"")
-                    Write(" src=\"test.jpg\"")
-                    Write(">")
-                    Write("<br")
-                    Write(">")
+                IrModule {
+                  entry_points: {
+                    test/main-comp: {
+                      parameters: []
+                      body: {
+                        Write("<img")
+                        Write(" alt=\"test\"")
+                        Write(" src=\"test.jpg\"")
+                        Write(">")
+                        Write("<br")
+                        Write(">")
+                      }
+                    }
                   }
                 }
             "#]],
@@ -1060,17 +1095,21 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("<div")
-                    Write(">")
-                    Write("Before")
-                    Write("</div>")
-                    Write("<div")
-                    Write(">")
-                    Write("After")
-                    Write("</div>")
+                IrModule {
+                  entry_points: {
+                    test/main-comp: {
+                      parameters: []
+                      body: {
+                        Write("<div")
+                        Write(">")
+                        Write("Before")
+                        Write("</div>")
+                        Write("<div")
+                        Write(">")
+                        Write("After")
+                        Write("</div>")
+                      }
+                    }
                   }
                 }
             "#]],
@@ -1087,11 +1126,15 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [user: {name: string}]
-                  body: {
-                    Write("Hello ")
-                    WriteExpr(expr: user.name, escape: true)
+                IrModule {
+                  entry_points: {
+                    test/main-comp: {
+                      parameters: [user: {name: string}]
+                      body: {
+                        Write("Hello ")
+                        WriteExpr(expr: user.name, escape: true)
+                      }
+                    }
                   }
                 }
             "#]],
@@ -1116,20 +1159,24 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("<div data-hop-id=\"test/card-comp\"")
-                    Write(">")
-                    Write("<div")
-                    Write(" class=\"card\"")
-                    Write(">")
-                    Write("<p")
-                    Write(">")
-                    Write("Slot content")
-                    Write("</p>")
-                    Write("</div>")
-                    Write("</div>")
+                IrModule {
+                  entry_points: {
+                    test/main-comp: {
+                      parameters: []
+                      body: {
+                        Write("<div data-hop-id=\"test/card-comp\"")
+                        Write(">")
+                        Write("<div")
+                        Write(" class=\"card\"")
+                        Write(">")
+                        Write("<p")
+                        Write(">")
+                        Write("Slot content")
+                        Write("</p>")
+                        Write("</div>")
+                        Write("</div>")
+                      }
+                    }
                   }
                 }
             "#]],
@@ -1154,23 +1201,27 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("<div data-hop-id=\"test/outer-comp\"")
-                    Write(">")
-                    Let(var: text, value: "Hello") {
-                      Write("<div data-hop-id=\"test/inner-comp\"")
-                      Write(">")
-                      Let(var: msg, value: text) {
-                        Write("<span")
+                IrModule {
+                  entry_points: {
+                    test/main-comp: {
+                      parameters: []
+                      body: {
+                        Write("<div data-hop-id=\"test/outer-comp\"")
                         Write(">")
-                        WriteExpr(expr: msg, escape: true)
-                        Write("</span>")
+                        Let(var: text, value: "Hello") {
+                          Write("<div data-hop-id=\"test/inner-comp\"")
+                          Write(">")
+                          Let(var: msg, value: text) {
+                            Write("<span")
+                            Write(">")
+                            WriteExpr(expr: msg, escape: true)
+                            Write("</span>")
+                          }
+                          Write("</div>")
+                        }
+                        Write("</div>")
                       }
-                      Write("</div>")
                     }
-                    Write("</div>")
                   }
                 }
             "#]],
@@ -1191,19 +1242,23 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [x: string]
-                  body: {
-                    Write("<div data-hop-id=\"test/child-comp\"")
-                    Write(">")
-                    Let(var: x_1, value: x) {
-                      Write("<div")
-                      Write(">")
-                      Write("Value: ")
-                      WriteExpr(expr: x_1, escape: true)
-                      Write("</div>")
+                IrModule {
+                  entry_points: {
+                    test/main-comp: {
+                      parameters: [x: string]
+                      body: {
+                        Write("<div data-hop-id=\"test/child-comp\"")
+                        Write(">")
+                        Let(var: x_1, value: x) {
+                          Write("<div")
+                          Write(">")
+                          Write("Value: ")
+                          WriteExpr(expr: x_1, escape: true)
+                          Write("</div>")
+                        }
+                        Write("</div>")
+                      }
                     }
-                    Write("</div>")
                   }
                 }
             "#]],
@@ -1225,29 +1280,75 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [x: string]
-                  body: {
-                    Write("<div data-hop-id=\"test/child-comp\"")
-                    Write(">")
-                    Let(var: x_1, value: x) {
-                      Write("<div")
-                      Write(">")
-                      Write("Value: ")
-                      WriteExpr(expr: x_1, escape: true)
-                      Write("</div>")
+                IrModule {
+                  entry_points: {
+                    test/main-comp: {
+                      parameters: [x: string]
+                      body: {
+                        Write("<div data-hop-id=\"test/child-comp\"")
+                        Write(">")
+                        Let(var: x_1, value: x) {
+                          Write("<div")
+                          Write(">")
+                          Write("Value: ")
+                          WriteExpr(expr: x_1, escape: true)
+                          Write("</div>")
+                        }
+                        Write("</div>")
+                        Write("<div data-hop-id=\"test/child-comp\"")
+                        Write(">")
+                        Let(var: x_2, value: x) {
+                          Write("<div")
+                          Write(">")
+                          Write("Value: ")
+                          WriteExpr(expr: x_2, escape: true)
+                          Write("</div>")
+                        }
+                        Write("</div>")
+                      }
                     }
-                    Write("</div>")
-                    Write("<div data-hop-id=\"test/child-comp\"")
-                    Write(">")
-                    Let(var: x_2, value: x) {
-                      Write("<div")
-                      Write(">")
-                      Write("Value: ")
-                      WriteExpr(expr: x_2, escape: true)
-                      Write("</div>")
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_multiple_entrypoints() {
+        // Test that IrModule properly displays multiple entrypoints
+        check_ir(
+            &[
+                "<first-comp entrypoint {x: string}>",
+                "<div>{x}</div>",
+                "</first-comp>",
+                "",
+                "<second-comp entrypoint {y: string}>",
+                "<span>Value: {y}</span>",
+                "</second-comp>",
+            ]
+            .join(""),
+            expect![[r#"
+                IrModule {
+                  entry_points: {
+                    test/first-comp: {
+                      parameters: [x: string]
+                      body: {
+                        Write("<div")
+                        Write(">")
+                        WriteExpr(expr: x, escape: true)
+                        Write("</div>")
+                      }
                     }
-                    Write("</div>")
+                    test/second-comp: {
+                      parameters: [y: string]
+                      body: {
+                        Write("<span")
+                        Write(">")
+                        Write("Value: ")
+                        WriteExpr(expr: y, escape: true)
+                        Write("</span>")
+                      }
+                    }
                   }
                 }
             "#]],
@@ -1274,20 +1375,24 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    For(var: x, array: ["a", "b"]) {
-                      Write("<div")
-                      Write(">")
-                      WriteExpr(expr: x, escape: true)
-                      Write("</div>")
-                    }
-                    For(var: x_1, array: ["c", "d"]) {
-                      Write("<span")
-                      Write(">")
-                      WriteExpr(expr: x_1, escape: true)
-                      Write("</span>")
+                IrModule {
+                  entry_points: {
+                    test/main-comp: {
+                      parameters: []
+                      body: {
+                        For(var: x, array: ["a", "b"]) {
+                          Write("<div")
+                          Write(">")
+                          WriteExpr(expr: x, escape: true)
+                          Write("</div>")
+                        }
+                        For(var: x_1, array: ["c", "d"]) {
+                          Write("<span")
+                          Write(">")
+                          WriteExpr(expr: x_1, escape: true)
+                          Write("</span>")
+                        }
+                      }
                     }
                   }
                 }
