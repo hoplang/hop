@@ -2,7 +2,7 @@ use crate::CompileLanguage;
 use crate::document::DocumentAnnotator;
 use crate::filesystem::files::ProjectRoot;
 use crate::hop::program::Program;
-use crate::ir::{Compiler, JsCompiler, LanguageMode};
+use crate::ir::{optimizer::Optimizer, Compiler, JsCompiler, LanguageMode};
 use crate::tui::timing;
 use anyhow::{Context, Result};
 use std::fs;
@@ -71,7 +71,12 @@ pub fn execute(
     }
 
     // Compile to IR
-    let ir_module = Compiler::compile(program.get_modules());
+    let mut ir_module = Compiler::compile(program.get_modules());
+
+    timer.start_phase("optimizing");
+    // Run optimization passes
+    let mut optimizer = Optimizer::default_optimization_pipeline();
+    optimizer.run(&mut ir_module);
 
     // Generate code based on target language
     let generated_code = match language {

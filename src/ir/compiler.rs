@@ -3,7 +3,6 @@ use crate::document::document_cursor::{DocumentRange, StringSpan};
 use crate::dop::{self, Argument, Expr};
 use crate::hop::ast::{Ast, Attribute, AttributeValue, ComponentDefinition, Node};
 use crate::hop::module_name::ModuleName;
-use crate::ir::optimizer::Optimizer;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::ast::{
@@ -46,10 +45,6 @@ impl Compiler<'_> {
                 }
             }
         }
-
-        // Run optimization passes
-        let mut optimizer = Optimizer::default_optimization_pipeline();
-        optimizer.run(&mut compiler.ir_module);
 
         compiler.ir_module
     }
@@ -827,7 +822,10 @@ mod tests {
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("<div>Content</div>")
+                    Write("<div")
+                    Write(">")
+                    Write("Content")
+                    Write("</div>")
                   }
                 }
             "#]],
@@ -850,7 +848,10 @@ mod tests {
                   parameters: [show: boolean]
                   body: {
                     If(condition: show) {
-                      Write("<div>Visible</div>")
+                      Write("<div")
+                      Write(">")
+                      Write("Visible")
+                      Write("</div>")
                     }
                   }
                 }
@@ -874,7 +875,8 @@ mod tests {
                   parameters: [items: array[string]]
                   body: {
                     For(var: item, array: items) {
-                      Write("<li>")
+                      Write("<li")
+                      Write(">")
                       WriteExpr(expr: item, escape: true)
                       Write("</li>")
                     }
@@ -901,7 +903,15 @@ mod tests {
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("<div data-hop-id=\"test/card-comp\"><h2>Hello</h2></div>")
+                    Write("<div data-hop-id=\"test/card-comp\"")
+                    Write(">")
+                    Let(var: title, value: "Hello") {
+                      Write("<h2")
+                      Write(">")
+                      WriteExpr(expr: title, escape: true)
+                      Write("</h2>")
+                    }
+                    Write("</div>")
                   }
                 }
             "#]],
@@ -921,7 +931,12 @@ mod tests {
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("<div class=\"base\" id=\"test\">Content</div>")
+                    Write("<div")
+                    Write(" class=\"base\"")
+                    Write(" id=\"test\"")
+                    Write(">")
+                    Write("Content")
+                    Write("</div>")
                   }
                 }
             "#]],
@@ -941,9 +956,14 @@ mod tests {
                 IrEntrypoint {
                   parameters: [cls: string]
                   body: {
-                    Write("<div class=\"base\" data-value=\"")
+                    Write("<div")
+                    Write(" class=\"base\"")
+                    Write(" data-value=\"")
                     WriteExpr(expr: cls, escape: true)
-                    Write("\">Content</div>")
+                    Write("\"")
+                    Write(">")
+                    Write("Content")
+                    Write("</div>")
                   }
                 }
             "#]],
@@ -990,7 +1010,11 @@ mod tests {
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("<!DOCTYPE html><html>Content</html>")
+                    Write("<!DOCTYPE html>")
+                    Write("<html")
+                    Write(">")
+                    Write("Content")
+                    Write("</html>")
                   }
                 }
             "#]],
@@ -1011,7 +1035,12 @@ mod tests {
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("<img alt=\"test\" src=\"test.jpg\"><br>")
+                    Write("<img")
+                    Write(" alt=\"test\"")
+                    Write(" src=\"test.jpg\"")
+                    Write(">")
+                    Write("<br")
+                    Write(">")
                   }
                 }
             "#]],
@@ -1034,7 +1063,14 @@ mod tests {
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("<div>Before</div><div>After</div>")
+                    Write("<div")
+                    Write(">")
+                    Write("Before")
+                    Write("</div>")
+                    Write("<div")
+                    Write(">")
+                    Write("After")
+                    Write("</div>")
                   }
                 }
             "#]],
@@ -1083,7 +1119,17 @@ mod tests {
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("<div data-hop-id=\"test/card-comp\"><div class=\"card\"><p>Slot content</p></div></div>")
+                    Write("<div data-hop-id=\"test/card-comp\"")
+                    Write(">")
+                    Write("<div")
+                    Write(" class=\"card\"")
+                    Write(">")
+                    Write("<p")
+                    Write(">")
+                    Write("Slot content")
+                    Write("</p>")
+                    Write("</div>")
+                    Write("</div>")
                   }
                 }
             "#]],
@@ -1111,7 +1157,20 @@ mod tests {
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("<div data-hop-id=\"test/outer-comp\"><div data-hop-id=\"test/inner-comp\"><span>Hello</span></div></div>")
+                    Write("<div data-hop-id=\"test/outer-comp\"")
+                    Write(">")
+                    Let(var: text, value: "Hello") {
+                      Write("<div data-hop-id=\"test/inner-comp\"")
+                      Write(">")
+                      Let(var: msg, value: text) {
+                        Write("<span")
+                        Write(">")
+                        WriteExpr(expr: msg, escape: true)
+                        Write("</span>")
+                      }
+                      Write("</div>")
+                    }
+                    Write("</div>")
                   }
                 }
             "#]],
@@ -1135,9 +1194,12 @@ mod tests {
                 IrEntrypoint {
                   parameters: [x: string]
                   body: {
-                    Write("<div data-hop-id=\"test/child-comp\">")
+                    Write("<div data-hop-id=\"test/child-comp\"")
+                    Write(">")
                     Let(var: x_1, value: x) {
-                      Write("<div>Value: ")
+                      Write("<div")
+                      Write(">")
+                      Write("Value: ")
                       WriteExpr(expr: x_1, escape: true)
                       Write("</div>")
                     }
@@ -1166,15 +1228,22 @@ mod tests {
                 IrEntrypoint {
                   parameters: [x: string]
                   body: {
-                    Write("<div data-hop-id=\"test/child-comp\">")
+                    Write("<div data-hop-id=\"test/child-comp\"")
+                    Write(">")
                     Let(var: x_1, value: x) {
-                      Write("<div>Value: ")
+                      Write("<div")
+                      Write(">")
+                      Write("Value: ")
                       WriteExpr(expr: x_1, escape: true)
                       Write("</div>")
                     }
-                    Write("</div><div data-hop-id=\"test/child-comp\">")
+                    Write("</div>")
+                    Write("<div data-hop-id=\"test/child-comp\"")
+                    Write(">")
                     Let(var: x_2, value: x) {
-                      Write("<div>Value: ")
+                      Write("<div")
+                      Write(">")
+                      Write("Value: ")
                       WriteExpr(expr: x_2, escape: true)
                       Write("</div>")
                     }
@@ -1209,12 +1278,14 @@ mod tests {
                   parameters: []
                   body: {
                     For(var: x, array: ["a", "b"]) {
-                      Write("<div>")
+                      Write("<div")
+                      Write(">")
                       WriteExpr(expr: x, escape: true)
                       Write("</div>")
                     }
                     For(var: x_1, array: ["c", "d"]) {
-                      Write("<span>")
+                      Write("<span")
+                      Write(">")
                       WriteExpr(expr: x_1, escape: true)
                       Write("</span>")
                     }
