@@ -14,10 +14,10 @@ enum Const {
     String(String),
 }
 
-/// A datafrog-based constant folding pass for unary expressions
-pub struct DatafrogConstantFoldingPass;
+/// A datafrog-based constant propagation pass that tracks and propagates constant values
+pub struct ConstantPropagationPass;
 
-impl DatafrogConstantFoldingPass {
+impl ConstantPropagationPass {
     pub fn new() -> Self {
         Self
     }
@@ -224,7 +224,7 @@ impl DatafrogConstantFoldingPass {
     }
 }
 
-impl Pass for DatafrogConstantFoldingPass {
+impl Pass for ConstantPropagationPass {
     fn run(&mut self, entrypoint: IrEntrypoint) -> IrEntrypoint {
         // Compute constants once for the entire entrypoint
         let constants = Self::compute_constants(&entrypoint);
@@ -242,7 +242,7 @@ mod tests {
     use super::*;
 
     fn check(entrypoint: IrEntrypoint, expected: Expect) {
-        let mut pass = DatafrogConstantFoldingPass::new();
+        let mut pass = ConstantPropagationPass::new();
         let result = pass.run(entrypoint);
         expected.assert_eq(&result.to_string());
     }
@@ -603,19 +603,17 @@ mod tests {
                     t.let_stmt(
                         "greeting",
                         t.str("hello"),
-                        vec![
-                            t.let_stmt(
-                                "message",
-                                t.str("hello"),
-                                vec![
-                                    // greeting == message => "hello" == "hello" => true
-                                    t.if_stmt(
-                                        t.eq(t.var("greeting"), t.var("message")),
-                                        vec![t.write("Variables are equal")],
-                                    ),
-                                ],
-                            ),
-                        ],
+                        vec![t.let_stmt(
+                            "message",
+                            t.str("hello"),
+                            vec![
+                                // greeting == message => "hello" == "hello" => true
+                                t.if_stmt(
+                                    t.eq(t.var("greeting"), t.var("message")),
+                                    vec![t.write("Variables are equal")],
+                                ),
+                            ],
+                        )],
                     ),
                 ],
             },

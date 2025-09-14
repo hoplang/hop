@@ -1,8 +1,8 @@
 use super::Pass;
 use crate::ir::{
     IrExpr,
-    ast::{BinaryOp, IrExprValue, UnaryOp},
     ast::IrEntrypoint,
+    ast::{BinaryOp, IrExprValue, UnaryOp},
 };
 
 /// Represents a compile-time constant value
@@ -163,7 +163,6 @@ impl ConstantFoldingPass {
 
         IrExpr { id, value }
     }
-
 }
 
 impl Pass for ConstantFoldingPass {
