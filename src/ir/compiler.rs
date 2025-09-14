@@ -3,7 +3,7 @@ use crate::document::document_cursor::{DocumentRange, StringSpan};
 use crate::dop::{self, Argument, Expr};
 use crate::hop::ast::{Ast, Attribute, AttributeValue, ComponentDefinition, Node};
 use crate::hop::module_name::ModuleName;
-use crate::ir::passes::PassManager;
+use crate::ir::optimizer::Optimizer;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::ast::{
@@ -48,8 +48,8 @@ impl Compiler<'_> {
         }
 
         // Run optimization passes
-        let mut pass_manager = PassManager::default_optimization_pipeline();
-        pass_manager.run(&mut compiler.ir_module);
+        let mut optimizer = Optimizer::default_optimization_pipeline();
+        optimizer.run(&mut compiler.ir_module);
 
         compiler.ir_module
     }

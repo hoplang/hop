@@ -2,6 +2,7 @@ mod ast;
 mod compiler;
 mod evaluator;
 pub mod js_compiler;
+pub mod optimizer;
 pub mod passes;
 #[cfg(test)]
 pub mod test_utils;

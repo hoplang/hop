@@ -10,7 +10,7 @@ pub use unused_let_elimination::UnusedLetEliminationPass;
 pub use write_coalescing::WriteCoalescingPass;
 pub use write_expr_simplification::WriteExprSimplificationPass;
 
-use super::ast::{IrEntrypoint, IrModule};
+use super::ast::IrEntrypoint;
 
 /// Trait for IR optimization passes that operate on individual entrypoints
 ///
@@ -20,44 +20,4 @@ use super::ast::{IrEntrypoint, IrModule};
 pub trait Pass {
     /// Run the pass on a single IR entrypoint, transforming it into a new entrypoint
     fn run(&mut self, entrypoint: IrEntrypoint) -> IrEntrypoint;
-}
-
-/// A pass manager that runs optimization passes on IR modules
-pub struct PassManager {
-    passes: Vec<Box<dyn Pass>>,
-}
-
-impl PassManager {
-    pub fn new() -> Self {
-        Self { passes: Vec::new() }
-    }
-
-    /// Add a pass to the manager
-    pub fn add_pass(&mut self, pass: Box<dyn Pass>) {
-        self.passes.push(pass);
-    }
-
-    /// Run all passes on the module
-    pub fn run(&mut self, module: &mut IrModule) {
-        // Iterate over each entrypoint in the module
-        for entrypoint in module.entry_points.values_mut() {
-            // Take ownership of the entrypoint, run passes, then put it back
-            let mut current = std::mem::take(entrypoint);
-            for pass in &mut self.passes {
-                current = pass.run(current);
-            }
-            *entrypoint = current;
-        }
-    }
-
-    /// Create a default optimization pipeline
-    pub fn default_optimization_pipeline() -> Self {
-        let mut manager = Self::new();
-        manager.add_pass(Box::new(ConstantPropagationPass::new()));
-        manager.add_pass(Box::new(UnusedLetEliminationPass::new()));
-        manager.add_pass(Box::new(DeadCodeEliminationPass::new()));
-        manager.add_pass(Box::new(WriteExprSimplificationPass::new()));
-        manager.add_pass(Box::new(WriteCoalescingPass::new()));
-        manager
-    }
 }
