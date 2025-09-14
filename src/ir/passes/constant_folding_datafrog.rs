@@ -7,6 +7,13 @@ use crate::ir::{
 use datafrog::{Iteration, Relation};
 use std::collections::HashMap;
 
+/// Constant values that can be tracked during constant folding
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+enum Const {
+    Bool(bool),
+    String(String),
+}
+
 /// A datafrog-based constant folding pass for unary expressions
 pub struct DatafrogConstantFoldingPass;
 
@@ -104,25 +111,19 @@ impl DatafrogConstantFoldingPass {
         let var_bindings = Self::collect_variable_bindings(entrypoint);
         let mut iteration = Iteration::new();
 
-        // Boolean values of expressions: (expr_id => boolean_value)
-        let bool_value = iteration.variable::<(ExprId, bool)>("bool_value");
-        bool_value.extend(all_expressions.iter().filter_map(|n| match n.value {
-            IrExprValue::Boolean(b) => Some((n.id, b)),
-            _ => None,
-        }));
-
-        // String values of expressions: (expr_id => string_value)
-        let string_value = iteration.variable::<(ExprId, String)>("string_value");
-        string_value.extend(all_expressions.iter().filter_map(|n| match &n.value {
-            IrExprValue::String(s) => Some((n.id, s.clone())),
+        // Constant values of expressions: (expr_id => const_value)
+        let const_value = iteration.variable::<(ExprId, Const)>("const_value");
+        const_value.extend(all_expressions.iter().filter_map(|n| match &n.value {
+            IrExprValue::Boolean(b) => Some((n.id, Const::Bool(*b))),
+            IrExprValue::String(s) => Some((n.id, Const::String(s.clone()))),
             _ => None,
         }));
 
         // Values of left operands in equality expressions: (eq_expr_id => left_value)
-        let eq_left_value = iteration.variable::<(ExprId, bool)>("eq_left_value");
+        let eq_left_value = iteration.variable::<(ExprId, Const)>("eq_left_value");
 
         // Values of right operands in equality expressions: (eq_expr_id => right_value)
-        let eq_right_value = iteration.variable::<(ExprId, bool)>("eq_right_value");
+        let eq_right_value = iteration.variable::<(ExprId, Const)>("eq_right_value");
 
         // Not operations keyed by operand: (operand_id => expr_id)
         let not_rel = Relation::from_iter(all_expressions.iter().filter_map(|n| match &n.value {
@@ -157,59 +158,56 @@ impl DatafrogConstantFoldingPass {
         let var_def = Relation::from_iter(var_bindings.iter().cloned());
 
         while iteration.changed() {
-            // bool_value(exp, !b) :- not_rel(op, exp), bool_value(op, b).
-            bool_value.from_join(
-                &bool_value,
+            // const_value(exp, !b) :- not_rel(op, exp), const_value(op, Bool(b)).
+            const_value.from_join(
+                &const_value,
                 &not_rel,
-                |_: &ExprId, bool_val: &bool, expr_id: &ExprId| (*expr_id, !bool_val),
+                |_: &ExprId, const_val: &Const, expr_id: &ExprId| match const_val {
+                    Const::Bool(b) => (*expr_id, Const::Bool(!b)),
+                    _ => panic!("Type error: NOT operator applied to non-boolean value"),
+                },
             );
 
-            // eq_left_value(eq_expr, left_val) :- eq_left(left_op, eq_expr), bool_value(left_op, left_val).
+            // eq_left_value(eq_expr, left_val) :- eq_left(left_op, eq_expr), const_value(left_op, left_val).
             eq_left_value.from_join(
-                &bool_value,
+                &const_value,
                 &eq_left,
-                |_: &ExprId, left_val: &bool, eq_expr: &ExprId| (*eq_expr, *left_val),
+                |_: &ExprId, const_val: &Const, eq_expr: &ExprId| (*eq_expr, const_val.clone()),
             );
 
-            // eq_right_value(eq_expr, right_val) :- eq_right(right_op, eq_expr), bool_value(right_op, right_val).
+            // eq_right_value(eq_expr, right_val) :- eq_right(right_op, eq_expr), const_value(right_op, right_val).
             eq_right_value.from_join(
-                &bool_value,
+                &const_value,
                 &eq_right,
-                |_: &ExprId, right_val: &bool, eq_expr: &ExprId| (*eq_expr, *right_val),
+                |_: &ExprId, const_val: &Const, eq_expr: &ExprId| (*eq_expr, const_val.clone()),
             );
 
-            // bool_value(eq, lv == rv) :- eq_left_value(eq, lv), eq_right_value(eq, rv).
-            bool_value.from_join(
+            // const_value(eq, Bool(lv == rv)) :- eq_left_value(eq, lv), eq_right_value(eq, rv).
+            const_value.from_join(
                 &eq_left_value,
                 &eq_right_value,
-                |eq_expr: &ExprId, left_val: &bool, right_val: &bool| {
-                    (*eq_expr, left_val == right_val)
+                |eq_expr: &ExprId, left_val: &Const, right_val: &Const| {
+                    (*eq_expr, Const::Bool(left_val == right_val))
                 },
             );
 
             // Propagate constants through variable bindings
-            // bool_value(var_expr, val) :- bool_value(def_expr, val), var_def(def_expr, var_expr).
-            bool_value.from_join(
-                &bool_value,
+            // const_value(var_expr, val) :- const_value(def_expr, val), var_def(def_expr, var_expr).
+            const_value.from_join(
+                &const_value,
                 &var_def,
-                |_def_expr: &ExprId, val: &bool, var_expr: &ExprId| (*var_expr, *val),
-            );
-
-            // string_value(var_expr, val) :- string_value(def_expr, val), var_def(def_expr, var_expr).
-            string_value.from_join(
-                &string_value,
-                &var_def,
-                |_def_expr: &ExprId, val: &String, var_expr: &ExprId| (*var_expr, val.clone()),
+                |_def_expr: &ExprId, val: &Const, var_expr: &ExprId| (*var_expr, val.clone()),
             );
         }
 
         // Convert results to IrExprValue
         let mut results = HashMap::new();
-        for (id, bool_val) in bool_value.complete().iter() {
-            results.insert(*id, IrExprValue::Boolean(*bool_val));
-        }
-        for (id, string_val) in string_value.complete().iter() {
-            results.insert(*id, IrExprValue::String(string_val.clone()));
+        for (id, const_val) in const_value.complete().iter() {
+            let expr_value = match const_val {
+                Const::Bool(b) => IrExprValue::Boolean(*b),
+                Const::String(s) => IrExprValue::String(s.clone()),
+            };
+            results.insert(*id, expr_value);
         }
         results
     }
@@ -576,6 +574,66 @@ mod tests {
                       WriteExpr(expr: "Welcome", escape: true)
                       Let(var: subtitle, value: "Welcome") {
                         WriteExpr(expr: "Welcome", escape: true)
+                      }
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_string_equality_folding() {
+        let t = IrTestBuilder::new();
+        check(
+            IrEntrypoint {
+                parameters: vec![],
+                body: vec![
+                    // "hello" == "hello" => true
+                    t.if_stmt(
+                        t.eq(t.str("hello"), t.str("hello")),
+                        vec![t.write("Strings are equal")],
+                    ),
+                    // "hello" == "world" => false
+                    t.if_stmt(
+                        t.eq(t.str("hello"), t.str("world")),
+                        vec![t.write("Should not appear")],
+                    ),
+                    // Test with variables containing strings
+                    t.let_stmt(
+                        "greeting",
+                        t.str("hello"),
+                        vec![
+                            t.let_stmt(
+                                "message",
+                                t.str("hello"),
+                                vec![
+                                    // greeting == message => "hello" == "hello" => true
+                                    t.if_stmt(
+                                        t.eq(t.var("greeting"), t.var("message")),
+                                        vec![t.write("Variables are equal")],
+                                    ),
+                                ],
+                            ),
+                        ],
+                    ),
+                ],
+            },
+            expect![[r#"
+                IrEntrypoint {
+                  parameters: []
+                  body: {
+                    If(condition: true) {
+                      Write("Strings are equal")
+                    }
+                    If(condition: false) {
+                      Write("Should not appear")
+                    }
+                    Let(var: greeting, value: "hello") {
+                      Let(var: message, value: "hello") {
+                        If(condition: true) {
+                          Write("Variables are equal")
+                        }
                       }
                     }
                   }
