@@ -1,9 +1,7 @@
-mod constant_folding;
 mod constant_propagation;
 mod dead_code_elimination;
 mod write_coalescing;
 
-pub use constant_folding::ConstantFoldingPass;
 pub use constant_propagation::ConstantPropagationPass;
 pub use dead_code_elimination::DeadCodeEliminationPass;
 pub use write_coalescing::WriteCoalescingPass;
@@ -51,7 +49,7 @@ impl PassManager {
     /// Create a default optimization pipeline
     pub fn default_optimization_pipeline() -> Self {
         let mut manager = Self::new();
-        manager.add_pass(Box::new(ConstantFoldingPass::new()));
+        manager.add_pass(Box::new(ConstantPropagationPass::new()));
         manager.add_pass(Box::new(DeadCodeEliminationPass::new()));
         manager.add_pass(Box::new(WriteCoalescingPass::new()));
         manager
