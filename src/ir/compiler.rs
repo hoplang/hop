@@ -901,11 +901,7 @@ mod tests {
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("<div data-hop-id=\"test/card-comp\">")
-                    Let(var: title, value: "Hello") {
-                      Write("<h2>Hello</h2>")
-                    }
-                    Write("</div>")
+                    Write("<div data-hop-id=\"test/card-comp\"><h2>Hello</h2></div>")
                   }
                 }
             "#]],
@@ -1115,15 +1111,7 @@ mod tests {
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("<div data-hop-id=\"test/outer-comp\">")
-                    Let(var: text, value: "Hello") {
-                      Write("<div data-hop-id=\"test/inner-comp\">")
-                      Let(var: msg, value: "Hello") {
-                        Write("<span>Hello</span>")
-                      }
-                      Write("</div>")
-                    }
-                    Write("</div>")
+                    Write("<div data-hop-id=\"test/outer-comp\"><div data-hop-id=\"test/inner-comp\"><span>Hello</span></div></div>")
                   }
                 }
             "#]],

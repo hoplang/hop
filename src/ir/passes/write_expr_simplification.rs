@@ -16,11 +16,7 @@ impl WriteExprSimplificationPass {
                 // If the expression is a constant string, convert to Write node
                 if let IrExprValue::String(s) = &expr.value {
                     // Apply HTML escaping if needed
-                    let content = if escape {
-                        escape_html(s)
-                    } else {
-                        s.clone()
-                    };
+                    let content = if escape { escape_html(s) } else { s.clone() };
                     IrNode::Write { id, content }
                 } else {
                     IrNode::WriteExpr { id, expr, escape }
@@ -81,7 +77,7 @@ impl Pass for WriteExprSimplificationPass {
 mod tests {
     use super::*;
     use crate::ir::test_utils::IrTestBuilder;
-    use expect_test::{expect, Expect};
+    use expect_test::{Expect, expect};
 
     fn check(entrypoint: IrEntrypoint, expected: Expect) {
         let mut pass = WriteExprSimplificationPass::new();
