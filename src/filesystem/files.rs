@@ -1,6 +1,8 @@
 use anyhow::Context;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
+    fs,
     path::{Path, PathBuf},
 };
 
@@ -31,6 +33,39 @@ fn should_skip_directory(dir_name: &str) -> bool {
     )
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct HopConfig {
+    #[serde(default)]
+    pub css: CssConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CssConfig {
+    pub mode: Option<String>,
+}
+
+impl HopConfig {
+    pub fn load_from_project_root(project_root: &Path) -> anyhow::Result<Option<HopConfig>> {
+        let config_path = project_root.join("hop.toml");
+
+        if !config_path.exists() {
+            return Ok(None);
+        }
+
+        let config_str = fs::read_to_string(&config_path)
+            .with_context(|| format!("Failed to read hop.toml at {:?}", config_path))?;
+
+        let config: HopConfig = toml::from_str(&config_str)
+            .with_context(|| format!("Failed to parse hop.toml at {:?}", config_path))?;
+
+        Ok(Some(config))
+    }
+
+    pub fn load_or_default(project_root: &Path) -> anyhow::Result<HopConfig> {
+        Ok(Self::load_from_project_root(project_root)?.unwrap_or_default())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProjectRoot(PathBuf);
 
@@ -49,13 +84,13 @@ impl ProjectRoot {
         };
 
         loop {
-            let build_file = current_dir.join("build.hop");
-            if build_file.exists() {
+            let config_file = current_dir.join("hop.toml");
+            if config_file.exists() {
                 return Ok(ProjectRoot(current_dir.to_path_buf()));
             }
             current_dir = current_dir.parent().ok_or_else(|| {
                 anyhow::anyhow!(
-                    "Failed to locate build.hop file in {:?} or any parent directory",
+                    "Failed to locate hop.toml file in {:?} or any parent directory",
                     &start_path
                 )
             })?
@@ -64,7 +99,7 @@ impl ProjectRoot {
 
     /// Construct the project root from a path.
     ///
-    /// The path should be a directory and contain the build file.
+    /// The path should be a directory and contain the config file.
     pub fn from(path: &Path) -> anyhow::Result<ProjectRoot> {
         if !path.is_dir() {
             anyhow::bail!("{:?} is not a directory", &path)
@@ -72,9 +107,9 @@ impl ProjectRoot {
         let canonicalized = path
             .canonicalize()
             .with_context(|| format!("Failed to canonicalize path {:?}", &path))?;
-        let build_file = canonicalized.join("build.hop");
-        if !build_file.exists() {
-            anyhow::bail!("Expected to find build.hop in {:?}", &path)
+        let config_file = canonicalized.join("hop.toml");
+        if !config_file.exists() {
+            anyhow::bail!("Expected to find hop.toml in {:?}", &path)
         }
         Ok(ProjectRoot(canonicalized.to_path_buf()))
     }
@@ -167,14 +202,13 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn test_find_build_file() {
+    fn test_find_config_file() {
         let archive = Archive::from(indoc! {r#"
-            -- build.hop --
-            <render file="index.html">
-              Test content
-            </render>
+            -- hop.toml --
+            [css]
+            mode = "tailwind4"
             -- src/components/.gitkeep --
-            
+
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
 
@@ -188,7 +222,7 @@ mod tests {
     }
 
     #[test]
-    fn test_find_build_file_not_found() {
+    fn test_find_config_file_not_found() {
         let archive = Archive::from(indoc! {r#"
             -- src/components/test.hop --
             <test-comp>Hello</test-comp>
@@ -197,13 +231,13 @@ mod tests {
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
 
-        // Test that find_upwards fails when no build.hop exists
+        // Test that find_upwards fails when no hop.toml exists
         let nested_dir = temp_dir.join("src").join("components");
         let result = ProjectRoot::find_upwards(&nested_dir);
         assert!(result.is_err());
 
         let error_message = result.unwrap_err().to_string();
-        assert!(error_message.contains("Failed to locate build.hop"));
+        assert!(error_message.contains("Failed to locate hop.toml"));
 
         // Clean up
         fs::remove_dir_all(&temp_dir).unwrap();
@@ -212,8 +246,11 @@ mod tests {
     #[test]
     fn test_path_to_module_name() {
         let archive = Archive::from(indoc! {r#"
-            -- build.hop --
-            <render file="index.html">Test</render>
+            -- hop.toml --
+            [css]
+            mode = "tailwind4"
+            -- main.hop --
+            <main-component>Test</main-component>
             -- src/components/button.hop --
             <button-comp>Click</button-comp>
         "#});
@@ -225,9 +262,9 @@ mod tests {
         let module_name = root.path_to_module_name(&button_path).unwrap();
         assert_eq!(module_name.as_str(), "src/components/button");
 
-        let build_path = temp_dir.join("build.hop");
-        let build_module = root.path_to_module_name(&build_path).unwrap();
-        assert_eq!(build_module.as_str(), "build");
+        let main_path = temp_dir.join("main.hop");
+        let main_module = root.path_to_module_name(&main_path).unwrap();
+        assert_eq!(main_module.as_str(), "main");
 
         // Clean up
         fs::remove_dir_all(&temp_dir).unwrap();
@@ -236,8 +273,9 @@ mod tests {
     #[test]
     fn test_module_name_to_path() {
         let archive = Archive::from(indoc! {r#"
-            -- build.hop --
-            <render file="index.html">Test</render>
+            -- hop.toml --
+            [css]
+            mode = "tailwind4"
         "#});
         let temp_dir = temp_dir_from_archive(&archive).unwrap();
         let root = ProjectRoot::from(&temp_dir).unwrap();
@@ -260,10 +298,9 @@ mod tests {
     #[test]
     fn test_load_all_hop_modules() {
         let archive = Archive::from(indoc! {r#"
-            -- build.hop --
-            <render file="index.html">
-              <main-comp />
-            </render>
+            -- hop.toml --
+            [css]
+            mode = "tailwind4"
             -- src/main.hop --
             <main-comp>
               <button-comp />
@@ -279,11 +316,10 @@ mod tests {
 
         let modules = root.load_all_hop_modules().unwrap();
 
-        // Should load exactly 4 modules
-        assert_eq!(modules.len(), 4);
+        // Should load exactly 3 modules
+        assert_eq!(modules.len(), 3);
 
         // Check that specific modules are loaded with correct content
-        assert!(modules.contains_key(&ModuleName::new("build".to_string()).unwrap()));
         assert!(modules.contains_key(&ModuleName::new("src/main".to_string()).unwrap()));
         assert!(
             modules.contains_key(&ModuleName::new("src/components/button".to_string()).unwrap())
@@ -305,8 +341,9 @@ mod tests {
     #[test]
     fn test_files_with_dots_in_names_are_rejected() {
         let archive = Archive::from(indoc! {r#"
-            -- build.hop --
-            <render file="index.html">Test</render>
+            -- hop.toml --
+            [css]
+            mode = "tailwind4"
             -- src/foo.bar.hop --
             <foo-bar-comp>Component with dots</foo-bar-comp>
             -- src/utils/helper_test.hop --
@@ -355,8 +392,9 @@ mod tests {
     #[test]
     fn test_skip_directories() {
         let archive = Archive::from(indoc! {r#"
-            -- build.hop --
-            <render file="index.html">Test</render>
+            -- hop.toml --
+            [css]
+            mode = "tailwind4"
             -- src/main.hop --
             <main-comp>Main</main-comp>
             -- node_modules/package/index.hop --
@@ -372,11 +410,10 @@ mod tests {
         // Test that load_all_hop_modules correctly skips certain directories
         let modules = root.load_all_hop_modules().unwrap();
 
-        // Should only load 2 modules (from build.hop and src/main.hop)
-        assert_eq!(modules.len(), 2);
+        // Should only load 1 module (from src/main.hop)
+        assert_eq!(modules.len(), 1);
 
         // Check which modules were loaded
-        assert!(modules.contains_key(&ModuleName::new("build".to_string()).unwrap()));
         assert!(modules.contains_key(&ModuleName::new("src/main".to_string()).unwrap()));
 
         // Should NOT contain modules from skipped directories
@@ -386,6 +423,50 @@ mod tests {
         assert!(!module_names.iter().any(|m| m.contains("target")));
 
         // Clean up
+        fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[test]
+    fn test_load_css_config() {
+        let archive = Archive::from(indoc! {r#"
+            -- hop.toml --
+            [css]
+            mode = "tailwind4"
+        "#});
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+
+        let config = HopConfig::load_from_project_root(&temp_dir).unwrap().unwrap();
+
+        assert_eq!(config.css.mode, Some("tailwind4".to_string()));
+
+        fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[test]
+    fn test_load_nonexistent_config() {
+        let archive = Archive::from(indoc! {r#"
+            -- main.hop --
+            <main-component>Test</main-component>
+        "#});
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+
+        let config = HopConfig::load_from_project_root(&temp_dir).unwrap();
+        assert!(config.is_none());
+
+        fs::remove_dir_all(&temp_dir).unwrap();
+    }
+
+    #[test]
+    fn test_load_or_default() {
+        let archive = Archive::from(indoc! {r#"
+            -- main.hop --
+            <main-component>Test</main-component>
+        "#});
+        let temp_dir = temp_dir_from_archive(&archive).unwrap();
+
+        let config = HopConfig::load_or_default(&temp_dir).unwrap();
+        assert!(config.css.mode.is_none());
+
         fs::remove_dir_all(&temp_dir).unwrap();
     }
 }

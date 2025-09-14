@@ -1,6 +1,6 @@
 use crate::CompileLanguage;
 use crate::document::DocumentAnnotator;
-use crate::filesystem::files::ProjectRoot;
+use crate::filesystem::files::{HopConfig, ProjectRoot};
 use crate::hop::program::Program;
 use crate::ir::{Compiler, JsCompiler, LanguageMode, optimizer::Optimizer};
 use crate::tui::timing;
@@ -26,6 +26,14 @@ pub fn execute(
         Some(dir) => ProjectRoot::find_upwards(Path::new(dir))?,
         None => ProjectRoot::find_upwards(Path::new("."))?,
     };
+
+    // Load configuration
+    let config = HopConfig::load_or_default(project_root.get_path())?;
+
+    // Log CSS mode if configured
+    if let Some(css_mode) = &config.css.mode {
+        eprintln!("Using CSS mode: {}", css_mode);
+    }
 
     // Load all .hop files
     let hop_modules = project_root.load_all_hop_modules()?;
