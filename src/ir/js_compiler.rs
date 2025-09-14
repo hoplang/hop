@@ -26,6 +26,26 @@ impl JsCompiler {
         }
     }
 
+    /// Convert kebab-case to camelCase
+    /// e.g., "my-component-name" -> "myComponentName"
+    fn kebab_to_camel_case(name: &str) -> String {
+        let mut result = String::new();
+        let mut capitalize_next = false;
+        
+        for ch in name.chars() {
+            if ch == '-' {
+                capitalize_next = true;
+            } else if capitalize_next {
+                result.push(ch.to_ascii_uppercase());
+                capitalize_next = false;
+            } else {
+                result.push(ch);
+            }
+        }
+        
+        result
+    }
+
     pub fn compile_module(&mut self, ir_module: &IrModule) -> String {
         // Add the escape HTML helper function
         match self.mode {
@@ -78,12 +98,14 @@ impl JsCompiler {
     }
 
     fn compile_entrypoint(&mut self, name: &str, entrypoint: &IrEntrypoint) {
-        // Generate function property name (keep original name, don't replace characters)
+        // Convert kebab-case to camelCase for JavaScript property name
+        let camel_case_name = Self::kebab_to_camel_case(name);
+        
         // Write the function property with proper indentation
         for _ in 0..self.indent_level {
             self.output.push_str("    ");
         }
-        self.output.push_str(name);
+        self.output.push_str(&camel_case_name);
         self.output.push_str(": ");
 
         if entrypoint.parameters.is_empty() {
@@ -356,7 +378,7 @@ mod tests {
 
         let mut ir_module = IrModule::new();
         ir_module.entry_points.insert(
-            "test_main_comp".to_string(),
+            "test-main-comp".to_string(),
             IrEntrypoint {
                 parameters: vec![],
                 body: vec![t.write("<div>Hello World</div>\n")],
@@ -378,7 +400,7 @@ mod tests {
 
                 export default {
                     production: {
-                        test_main_comp: () => {
+                        testMainComp: () => {
                             let output = "";
                             output += "<div>Hello World</div>\n";
                             return output;
@@ -395,7 +417,7 @@ mod tests {
 
         let mut ir_module = IrModule::new();
         ir_module.entry_points.insert(
-            "test_greeting_comp".to_string(),
+            "test-greeting-comp".to_string(),
             IrEntrypoint {
                 parameters: vec![
                     ("name".to_string(), Type::String),
@@ -426,7 +448,7 @@ mod tests {
 
                 export default {
                     production: {
-                        test_greeting_comp: ({ name, message }) => {
+                        testGreetingComp: ({ name, message }) => {
                             let output = "";
                             output += "<h1>Hello ";
                             output += escapeHtml(name);
@@ -447,7 +469,7 @@ mod tests {
 
         let mut ir_module = IrModule::new();
         ir_module.entry_points.insert(
-            "test_main_comp".to_string(),
+            "test-main-comp".to_string(),
             IrEntrypoint {
                 parameters: vec![("show".to_string(), Type::Bool)],
                 body: vec![t.if_stmt(t.var("show"), vec![t.write("<div>Visible</div>\n")])],
@@ -469,7 +491,7 @@ mod tests {
 
                 export default {
                     production: {
-                        test_main_comp: ({ show }) => {
+                        testMainComp: ({ show }) => {
                             let output = "";
                             if (show) {
                                 output += "<div>Visible</div>\n";
@@ -488,7 +510,7 @@ mod tests {
 
         let mut ir_module = IrModule::new();
         ir_module.entry_points.insert(
-            "test_main_comp".to_string(),
+            "test-main-comp".to_string(),
             IrEntrypoint {
                 parameters: vec![(
                     "items".to_string(),
@@ -521,7 +543,7 @@ mod tests {
 
                 export default {
                     production: {
-                        test_main_comp: ({ items }) => {
+                        testMainComp: ({ items }) => {
                             let output = "";
                             for (const item of items) {
                                 output += "<li>";
@@ -543,7 +565,7 @@ mod tests {
         let mut ir_module = IrModule::new();
         // Note: In the IR, nested components are already inlined, so we simulate the result
         ir_module.entry_points.insert(
-            "test_main_comp".to_string(),
+            "test-main-comp".to_string(),
             IrEntrypoint {
                 parameters: vec![],
                 body: vec![
@@ -577,7 +599,7 @@ mod tests {
 
                 export default {
                     production: {
-                        test_main_comp: () => {
+                        testMainComp: () => {
                             let output = "";
                             output += "<div data-hop-id=\"test/card-comp\">";
                             const title = "Hello World";
@@ -599,7 +621,7 @@ mod tests {
 
         let mut ir_module = IrModule::new();
         ir_module.entry_points.insert(
-            "test_user_list".to_string(),
+            "test-user-list".to_string(),
             IrEntrypoint {
                 parameters: vec![
                     (
@@ -658,7 +680,7 @@ mod tests {
 
                 export default {
                     production: {
-                        test_user_list: ({ users, title }: { users: { active: boolean, id: string, name: string }[], title: string }): string => {
+                        testUserList: ({ users, title }: { users: { active: boolean, id: string, name: string }[], title: string }): string => {
                             let output: string = "";
                             output += "<div>\n";
                             output += "<h1>\n";
