@@ -33,7 +33,7 @@ impl Optimizer {
     pub fn default_optimization_pipeline() -> Self {
         use super::passes::{
             ConstantPropagationPass, DeadCodeEliminationPass, UnusedLetEliminationPass,
-            WriteCoalescingPass, WriteExprSimplificationPass,
+            WriteExprSimplificationPass,
         };
 
         let mut optimizer = Self::new();
@@ -41,7 +41,9 @@ impl Optimizer {
         optimizer.add_pass(Box::new(UnusedLetEliminationPass::new()));
         optimizer.add_pass(Box::new(DeadCodeEliminationPass::new()));
         optimizer.add_pass(Box::new(WriteExprSimplificationPass::new()));
-        optimizer.add_pass(Box::new(WriteCoalescingPass::new()));
+        // Skip the WriteCoalescingPass for now, since typescript-language-server can't handle long
+        // strings very well.
+        //optimizer.add_pass(Box::new(WriteCoalescingPass::new()));
         optimizer
     }
 }

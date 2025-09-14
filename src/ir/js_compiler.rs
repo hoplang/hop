@@ -87,16 +87,94 @@ impl JsCompiler {
             self.compile_entrypoint(name, entrypoint);
         }
 
-        // Close the production object and export default
+        // Close the production object
+        self.write_line("");
+        self.dedent();
+        self.write_line("},");
+        
+        // Add development object with same signature
+        self.write_line("development: {");
+        self.indent();
+        
+        // Generate development mode functions with same signatures
+        let mut first = true;
+        for (name, entrypoint) in &ir_module.entry_points {
+            if !first {
+                self.output.push_str(",\n");
+            }
+            first = false;
+            self.compile_development_entrypoint(name, entrypoint);
+        }
+        
+        // Close the development object
         self.write_line("");
         self.dedent();
         self.write_line("}");
+        
+        // Close export default
         self.dedent();
         self.write_line("}");
 
         self.output.clone()
     }
 
+    fn compile_development_entrypoint(&mut self, name: &str, entrypoint: &IrEntrypoint) {
+        // Convert kebab-case to camelCase for JavaScript property name
+        let camel_case_name = Self::kebab_to_camel_case(name);
+        
+        // Write the function property with proper indentation
+        for _ in 0..self.indent_level {
+            self.output.push_str("    ");
+        }
+        self.output.push_str(&camel_case_name);
+        self.output.push_str(": ");
+        
+        // Generate function signature matching production
+        if entrypoint.parameters.is_empty() {
+            match self.mode {
+                LanguageMode::JavaScript => {
+                    self.output.push_str("() => ");
+                }
+                LanguageMode::TypeScript => {
+                    self.output.push_str("(): string => ");
+                }
+            }
+        } else {
+            // Build parameter list
+            let params: Vec<String> = entrypoint
+                .parameters
+                .iter()
+                .map(|(name, _)| name.clone())
+                .collect();
+
+            match self.mode {
+                LanguageMode::JavaScript => {
+                    // Destructure parameters from input object
+                    let params_str = params.join(", ");
+                    self.output.push_str(&format!("({{ {} }}) => ", params_str));
+                }
+                LanguageMode::TypeScript => {
+                    // Generate TypeScript interface for parameters
+                    let type_params: Vec<String> = entrypoint
+                        .parameters
+                        .iter()
+                        .map(|(name, ty)| format!("{}: {}", name, Self::type_to_typescript(ty)))
+                        .collect();
+                    let params_str = params.join(", ");
+                    let type_params_str = type_params.join(", ");
+
+                    self.output.push_str(&format!(
+                        "({{ {} }}: {{ {} }}): string => ",
+                        params_str, type_params_str
+                    ));
+                }
+            }
+        }
+        
+        // Simply return "development mode"
+        self.output.push_str("\"development mode\"");
+    }
+    
     fn compile_entrypoint(&mut self, name: &str, entrypoint: &IrEntrypoint) {
         // Convert kebab-case to camelCase for JavaScript property name
         let camel_case_name = Self::kebab_to_camel_case(name);
@@ -405,6 +483,9 @@ mod tests {
                             output += "<div>Hello World</div>\n";
                             return output;
                         }
+                    },
+                    development: {
+                        testMainComp: () => "development mode"
                     }
                 }
             "#]],
@@ -457,6 +538,9 @@ mod tests {
                             output += "</h1>\n";
                             return output;
                         }
+                    },
+                    development: {
+                        testGreetingComp: ({ name, message }) => "development mode"
                     }
                 }
             "#]],
@@ -498,6 +582,9 @@ mod tests {
                             }
                             return output;
                         }
+                    },
+                    development: {
+                        testMainComp: ({ show }) => "development mode"
                     }
                 }
             "#]],
@@ -552,6 +639,9 @@ mod tests {
                             }
                             return output;
                         }
+                    },
+                    development: {
+                        testMainComp: ({ items }) => "development mode"
                     }
                 }
             "#]],
@@ -609,6 +699,9 @@ mod tests {
                             output += "</div>";
                             return output;
                         }
+                    },
+                    development: {
+                        testMainComp: () => "development mode"
                     }
                 }
             "#]],
@@ -702,6 +795,9 @@ mod tests {
                             output += "</div>\n";
                             return output;
                         }
+                    },
+                    development: {
+                        testUserList: ({ users, title }: { users: { active: boolean, id: string, name: string }[], title: string }): string => "development mode"
                     }
                 }
             "#]],
