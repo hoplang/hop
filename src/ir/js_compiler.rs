@@ -51,26 +51,48 @@ impl JsCompiler {
         self.write_line("}");
         self.write_line("");
 
-        // Compile each entrypoint as an exported function
+        // Start export default object
+        self.write_line("export default {");
+        self.indent();
+        self.write_line("production: {");
+        self.indent();
+
+        // Compile each entrypoint as a function property
+        let mut first = true;
         for (name, entrypoint) in &ir_module.entry_points {
+            if !first {
+                self.output.push_str(",\n");
+            }
+            first = false;
             self.compile_entrypoint(name, entrypoint);
-            self.write_line("");
         }
+
+        // Close the production object and export default
+        self.write_line("");
+        self.dedent();
+        self.write_line("}");
+        self.dedent();
+        self.write_line("}");
 
         self.output.clone()
     }
 
     fn compile_entrypoint(&mut self, name: &str, entrypoint: &IrEntrypoint) {
-        // Generate function signature
-        let func_name = name.replace(['/', '-'], "_");
+        // Generate function property name (keep original name, don't replace characters)
+        // Write the function property with proper indentation
+        for _ in 0..self.indent_level {
+            self.output.push_str("    ");
+        }
+        self.output.push_str(name);
+        self.output.push_str(": ");
 
         if entrypoint.parameters.is_empty() {
             match self.mode {
                 LanguageMode::JavaScript => {
-                    self.write_line(&format!("export function {}() {{", func_name));
+                    self.output.push_str("() => {");
                 }
                 LanguageMode::TypeScript => {
-                    self.write_line(&format!("export function {}(): string {{", func_name));
+                    self.output.push_str("(): string => {");
                 }
             }
         } else {
@@ -85,10 +107,7 @@ impl JsCompiler {
                 LanguageMode::JavaScript => {
                     // Destructure parameters from input object
                     let params_str = params.join(", ");
-                    self.write_line(&format!(
-                        "export function {}({{ {} }}) {{",
-                        func_name, params_str
-                    ));
+                    self.output.push_str(&format!("({{ {} }}) => {{", params_str));
                 }
                 LanguageMode::TypeScript => {
                     // Generate TypeScript interface for parameters
@@ -100,13 +119,14 @@ impl JsCompiler {
                     let params_str = params.join(", ");
                     let type_params_str = type_params.join(", ");
 
-                    self.write_line(&format!(
-                        "export function {}({{ {} }}: {{ {} }}): string {{",
-                        func_name, params_str, type_params_str
+                    self.output.push_str(&format!(
+                        "({{ {} }}: {{ {} }}): string => {{",
+                        params_str, type_params_str
                     ));
                 }
             }
         }
+        self.output.push('\n');
 
         self.indent();
         match self.mode {
@@ -119,7 +139,12 @@ impl JsCompiler {
 
         self.write_line("return output;");
         self.dedent();
-        self.write_line("}");
+        
+        // Write closing brace with proper indentation
+        for _ in 0..self.indent_level {
+            self.output.push_str("    ");
+        }
+        self.output.push('}');
     }
 
     fn type_to_typescript(ty: &Type) -> String {
@@ -351,12 +376,15 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function test_main_comp() {
-                    let output = "";
-                    output += "<div>Hello World</div>\n";
-                    return output;
+                export default {
+                    production: {
+                        test_main_comp: () => {
+                            let output = "";
+                            output += "<div>Hello World</div>\n";
+                            return output;
+                        }
+                    }
                 }
-
             "#]],
         );
     }
@@ -396,16 +424,19 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function test_greeting_comp({ name, message }) {
-                    let output = "";
-                    output += "<h1>Hello ";
-                    output += escapeHtml(name);
-                    output += ", ";
-                    output += escapeHtml(message);
-                    output += "</h1>\n";
-                    return output;
+                export default {
+                    production: {
+                        test_greeting_comp: ({ name, message }) => {
+                            let output = "";
+                            output += "<h1>Hello ";
+                            output += escapeHtml(name);
+                            output += ", ";
+                            output += escapeHtml(message);
+                            output += "</h1>\n";
+                            return output;
+                        }
+                    }
                 }
-
             "#]],
         );
     }
@@ -436,14 +467,17 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function test_main_comp({ show }) {
-                    let output = "";
-                    if (show) {
-                        output += "<div>Visible</div>\n";
+                export default {
+                    production: {
+                        test_main_comp: ({ show }) => {
+                            let output = "";
+                            if (show) {
+                                output += "<div>Visible</div>\n";
+                            }
+                            return output;
+                        }
                     }
-                    return output;
                 }
-
             "#]],
         );
     }
@@ -485,16 +519,19 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function test_main_comp({ items }) {
-                    let output = "";
-                    for (const item of items) {
-                        output += "<li>";
-                        output += escapeHtml(item);
-                        output += "</li>\n";
+                export default {
+                    production: {
+                        test_main_comp: ({ items }) => {
+                            let output = "";
+                            for (const item of items) {
+                                output += "<li>";
+                                output += escapeHtml(item);
+                                output += "</li>\n";
+                            }
+                            return output;
+                        }
                     }
-                    return output;
                 }
-
             "#]],
         );
     }
@@ -538,17 +575,20 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function test_main_comp() {
-                    let output = "";
-                    output += "<div data-hop-id=\"test/card-comp\">";
-                    const title = "Hello World";
-                    output += "<h2>";
-                    output += escapeHtml(title);
-                    output += "</h2>";
-                    output += "</div>";
-                    return output;
+                export default {
+                    production: {
+                        test_main_comp: () => {
+                            let output = "";
+                            output += "<div data-hop-id=\"test/card-comp\">";
+                            const title = "Hello World";
+                            output += "<h2>";
+                            output += escapeHtml(title);
+                            output += "</h2>";
+                            output += "</div>";
+                            return output;
+                        }
+                    }
                 }
-
             "#]],
         );
     }
@@ -616,29 +656,32 @@ mod tests {
                         .replace(/'/g, '&#39;');
                 }
 
-                export function test_user_list({ users, title }: { users: { active: boolean, id: string, name: string }[], title: string }): string {
-                    let output: string = "";
-                    output += "<div>\n";
-                    output += "<h1>\n";
-                    output += escapeHtml(title);
-                    output += "</h1>\n";
-                    output += "<ul>\n";
-                    for (const user of users) {
-                        output += "\n";
-                        if (user.active) {
-                            output += "\n<li>User ";
-                            output += escapeHtml(user.id);
-                            output += ": ";
-                            output += escapeHtml(user.name);
-                            output += "</li>\n";
+                export default {
+                    production: {
+                        test_user_list: ({ users, title }: { users: { active: boolean, id: string, name: string }[], title: string }): string => {
+                            let output: string = "";
+                            output += "<div>\n";
+                            output += "<h1>\n";
+                            output += escapeHtml(title);
+                            output += "</h1>\n";
+                            output += "<ul>\n";
+                            for (const user of users) {
+                                output += "\n";
+                                if (user.active) {
+                                    output += "\n<li>User ";
+                                    output += escapeHtml(user.id);
+                                    output += ": ";
+                                    output += escapeHtml(user.name);
+                                    output += "</li>\n";
+                                }
+                                output += "\n";
+                            }
+                            output += "</ul>\n";
+                            output += "</div>\n";
+                            return output;
                         }
-                        output += "\n";
                     }
-                    output += "</ul>\n";
-                    output += "</div>\n";
-                    return output;
                 }
-
             "#]],
         );
     }
