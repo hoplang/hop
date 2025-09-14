@@ -35,6 +35,8 @@ pub struct ComponentTypeInformation {
     parameter_types: Option<Vec<Parameter>>,
     // Track whether the component has a slot-default.
     has_slot: bool,
+    // Track whether this component is an entrypoint.
+    is_entrypoint: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -86,6 +88,27 @@ impl State {
             .entry(module_name.clone())
             .or_default()
             .set_component_type_info(component_name, type_info);
+    }
+    
+    /// Check if an entrypoint with the given name already exists in any module.
+    /// Returns the module name if a duplicate is found.
+    fn find_duplicate_entrypoint(
+        &self,
+        component_name: &str,
+        current_module: &ModuleName,
+    ) -> Option<ModuleName> {
+        for (module_name, module_info) in &self.modules {
+            if module_name == current_module {
+                continue;
+            }
+            
+            if let Some(component_info) = module_info.components.get(component_name) {
+                if component_info.is_entrypoint {
+                    return Some(module_name.clone());
+                }
+            }
+        }
+        None
     }
 }
 
@@ -163,9 +186,22 @@ fn typecheck_module(
         params,
         children,
         has_slot,
+        is_entrypoint,
         ..
     } in module.get_component_definitions()
     {
+        // Check for duplicate entrypoints before processing
+        if *is_entrypoint {
+            if let Some(previous_module) = state.find_duplicate_entrypoint(name.as_str(), &module.name) {
+                errors.push(TypeError::DuplicateEntrypoint {
+                    component: name.as_str().to_string(),
+                    module: module.name.as_str().to_string(),
+                    previous_module: previous_module.as_str().to_string(),
+                    range: name.clone(),
+                });
+            }
+        }
+        
         if let Some((params, _)) = params {
             for param in params {
                 annotations.push(TypeAnnotation {
@@ -199,6 +235,7 @@ fn typecheck_module(
             ComponentTypeInformation {
                 parameter_types: params.clone().map(|(params, _)| params),
                 has_slot: *has_slot,
+                is_entrypoint: *is_entrypoint,
             },
         );
     }
@@ -4079,6 +4116,111 @@ mod tests {
                 2 |     {false}
                   |     ^^^^^^^
             "#]],
+        );
+    }
+
+    // Test that duplicate entrypoints with different component names but same entrypoint are detected
+    #[test]
+    fn test_duplicate_entrypoint_same_name_different_modules() {
+        check(
+            indoc! {r#"
+                -- main.hop --
+                <app-main entrypoint>
+                    <div>First entrypoint</div>
+                </app-main>
+                
+                -- other.hop --
+                <app-main entrypoint>
+                    <div>Duplicate entrypoint</div>
+                </app-main>
+            "#},
+            expect![[r#"
+                error: Duplicate entrypoint: component 'app-main' in module 'other' is already defined as an entrypoint in module 'main'
+                  --> other.hop (line 1, col 2)
+                1 | <app-main entrypoint>
+                  |  ^^^^^^^^
+            "#]],
+        );
+    }
+
+    // Test that duplicate entrypoints across different modules are detected
+    #[test]
+    fn test_duplicate_entrypoint_different_modules() {
+        check(
+            indoc! {r#"
+                -- module1.hop --
+                <app-comp entrypoint>
+                    <div>Module 1 entrypoint</div>
+                </app-comp>
+                
+                -- module2.hop --
+                <app-comp entrypoint>
+                    <div>Module 2 entrypoint</div>
+                </app-comp>
+            "#},
+            expect![[r#"
+                error: Duplicate entrypoint: component 'app-comp' in module 'module2' is already defined as an entrypoint in module 'module1'
+                  --> module2.hop (line 1, col 2)
+                1 | <app-comp entrypoint>
+                  |  ^^^^^^^^
+            "#]],
+        );
+    }
+
+    // Test that non-entrypoint components with the same name are allowed
+    #[test]
+    fn test_same_name_non_entrypoint_allowed() {
+        check(
+            indoc! {r#"
+                -- module1.hop --
+                <card-comp>
+                    <div>Module 1 card</div>
+                </card-comp>
+                
+                -- module2.hop --
+                <card-comp>
+                    <div>Module 2 card</div>
+                </card-comp>
+            "#},
+            expect![""],
+        );
+    }
+
+    // Test mixed entrypoint and non-entrypoint with same name
+    #[test]
+    fn test_entrypoint_and_non_entrypoint_same_name() {
+        check(
+            indoc! {r#"
+                -- module1.hop --
+                <main-comp entrypoint>
+                    <div>Entrypoint component</div>
+                </main-comp>
+                
+                -- module2.hop --
+                <main-comp>
+                    <div>Regular component</div>
+                </main-comp>
+            "#},
+            expect![""],
+        );
+    }
+
+    // Test multiple entrypoints with different names are allowed
+    #[test]
+    fn test_multiple_different_entrypoints_allowed() {
+        check(
+            indoc! {r#"
+                -- module1.hop --
+                <first-app entrypoint>
+                    <div>First app</div>
+                </first-app>
+                
+                -- module2.hop --
+                <second-app entrypoint>
+                    <div>Second app</div>
+                </second-app>
+            "#},
+            expect![""],
         );
     }
 }

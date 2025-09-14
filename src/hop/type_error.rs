@@ -105,6 +105,14 @@ pub enum TypeError {
         found: String,
         range: DocumentRange,
     },
+
+    #[error("Duplicate entrypoint: component '{component}' in module '{module}' is already defined as an entrypoint in module '{previous_module}'")]
+    DuplicateEntrypoint {
+        component: String,
+        module: String,
+        previous_module: String,
+        range: DocumentRange,
+    },
 }
 
 impl TypeError {
@@ -168,7 +176,8 @@ impl Ranged for TypeError {
             | TypeError::CannotUseAsObject { range, .. }
             | TypeError::CannotCompareTypes { range, .. }
             | TypeError::NegationRequiresBoolean { range, .. }
-            | TypeError::ArrayTypeMismatch { range, .. } => range,
+            | TypeError::ArrayTypeMismatch { range, .. }
+            | TypeError::DuplicateEntrypoint { range, .. } => range,
         }
     }
 }
