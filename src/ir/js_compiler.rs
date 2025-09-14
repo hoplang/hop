@@ -12,6 +12,8 @@ pub struct JsCompiler {
     output: String,
     indent_level: usize,
     mode: LanguageMode,
+    /// Internal flag to use template literals instead of double quotes
+    use_template_literals: bool,
 }
 
 impl JsCompiler {
@@ -20,6 +22,7 @@ impl JsCompiler {
             output: String::new(),
             indent_level: 0,
             mode,
+            use_template_literals: false,
         }
     }
 
@@ -147,14 +150,8 @@ impl JsCompiler {
     fn compile_node(&mut self, node: &IrNode) {
         match node {
             IrNode::Write { id: _, content } => {
-                // Escape the string for JavaScript string literal
-                let escaped = content
-                    .replace('\\', "\\\\")
-                    .replace('"', "\\\"")
-                    .replace('\n', "\\n")
-                    .replace('\r', "\\r")
-                    .replace('\t', "\\t");
-                self.write_line(&format!("output += \"{}\";", escaped));
+                let quoted = self.quote_string(content);
+                self.write_line(&format!("output += {};", quoted));
             }
 
             IrNode::WriteExpr {
@@ -162,7 +159,7 @@ impl JsCompiler {
                 expr,
                 escape,
             } => {
-                let js_expr = Self::compile_expr(expr);
+                let js_expr = self.compile_expr(expr);
                 if *escape {
                     self.write_line(&format!("output += escapeHtml({});", js_expr));
                 } else {
@@ -175,7 +172,7 @@ impl JsCompiler {
                 condition,
                 body,
             } => {
-                let js_cond = Self::compile_expr(condition);
+                let js_cond = self.compile_expr(condition);
                 self.write_line(&format!("if ({}) {{", js_cond));
                 self.indent();
                 self.compile_nodes(body);
@@ -189,7 +186,7 @@ impl JsCompiler {
                 array,
                 body,
             } => {
-                let js_array = Self::compile_expr(array);
+                let js_array = self.compile_expr(array);
                 self.write_line(&format!("for (const {} of {}) {{", var, js_array));
                 self.indent();
                 self.compile_nodes(body);
@@ -203,64 +200,81 @@ impl JsCompiler {
                 value,
                 body,
             } => {
-                let js_value = Self::compile_expr(value);
+                let js_value = self.compile_expr(value);
                 self.write_line(&format!("const {} = {};", var, js_value));
                 self.compile_nodes(body);
             }
         }
     }
 
-    fn compile_expr(expr: &IrExpr) -> String {
+    fn compile_expr(&self, expr: &IrExpr) -> String {
         match &expr.value {
             IrExprValue::Var(name) => name.clone(),
 
             IrExprValue::PropertyAccess { object, property } => {
-                let obj = Self::compile_expr(object);
+                let obj = self.compile_expr(object);
                 format!("{}.{}", obj, property)
             }
 
-            IrExprValue::String(value) => {
-                // Escape for JavaScript string literal
-                let escaped = value
-                    .replace('\\', "\\\\")
-                    .replace('"', "\\\"")
-                    .replace('\n', "\\n")
-                    .replace('\r', "\\r")
-                    .replace('\t', "\\t");
-                format!("\"{}\"", escaped)
-            }
+            IrExprValue::String(value) => self.quote_string(value),
 
             IrExprValue::Boolean(value) => value.to_string(),
 
             IrExprValue::Number(value) => value.to_string(),
 
             IrExprValue::Array(elements) => {
-                let items: Vec<String> = elements.iter().map(Self::compile_expr).collect();
+                let items: Vec<String> = elements.iter().map(|e| self.compile_expr(e)).collect();
                 format!("[{}]", items.join(", "))
             }
 
             IrExprValue::Object(properties) => {
                 let props: Vec<String> = properties
                     .iter()
-                    .map(|(key, value)| format!("{}: {}", key, Self::compile_expr(value)))
+                    .map(|(key, value)| format!("{}: {}", key, self.compile_expr(value)))
                     .collect();
                 format!("{{{}}}", props.join(", "))
             }
 
             IrExprValue::BinaryOp { left, op, right } => {
-                let l = Self::compile_expr(left);
-                let r = Self::compile_expr(right);
+                let l = self.compile_expr(left);
+                let r = self.compile_expr(right);
                 match op {
                     BinaryOp::Eq => format!("({} === {})", l, r),
                 }
             }
 
             IrExprValue::UnaryOp { op, operand } => {
-                let compiled_op = Self::compile_expr(operand);
+                let compiled_op = self.compile_expr(operand);
                 match op {
                     UnaryOp::Not => format!("!({})", compiled_op),
                 }
             }
+        }
+    }
+
+    // Helper method to escape strings for JavaScript literals
+    fn escape_string(&self, s: &str) -> String {
+        if self.use_template_literals {
+            // For template literals, only escape backticks and ${
+            s.replace('\\', "\\\\")
+                .replace('`', "\\`")
+                .replace("${", "\\${")
+        } else {
+            // For regular strings, escape double quotes and common escape sequences
+            s.replace('\\', "\\\\")
+                .replace('"', "\\\"")
+                .replace('\n', "\\n")
+                .replace('\r', "\\r")
+                .replace('\t', "\\t")
+        }
+    }
+
+    // Helper method to wrap a string in the appropriate quotes
+    fn quote_string(&self, s: &str) -> String {
+        if self.use_template_literals {
+            format!("`{}`", self.escape_string(s))
+        } else {
+            format!("\"{}\"", self.escape_string(s))
         }
     }
 
