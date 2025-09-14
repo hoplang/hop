@@ -10,3 +10,4 @@ output
 *.dot
 *.pdf
 html
+.envrc
