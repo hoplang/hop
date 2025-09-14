@@ -49,7 +49,7 @@ impl Compiler<'_> {
         compiler.ir_module
     }
 
-    fn compile_entrypoint(&mut self, ast: &Ast, component: &ComponentDefinition) {
+    fn compile_entrypoint(&mut self, _ast: &Ast, component: &ComponentDefinition) {
         self.push_scope();
 
         // Extract and rename parameters with types
@@ -81,7 +81,8 @@ impl Compiler<'_> {
             body: body_with_bindings,
         };
 
-        let name = format!("{}/{}", ast.name, component.tag_name.as_str());
+        // Use just the component name since entrypoints are globally unique
+        let name = component.tag_name.as_str().to_string();
         self.ir_module.entry_points.insert(name, entrypoint);
     }
 
@@ -769,7 +770,7 @@ mod tests {
             expect![[r#"
                 IrModule {
                   entry_points: {
-                    test/main-comp: {
+                    main-comp: {
                       parameters: []
                       body: {
                         Write("Hello World")
@@ -793,7 +794,7 @@ mod tests {
             expect![[r#"
                 IrModule {
                   entry_points: {
-                    test/main-comp: {
+                    main-comp: {
                       parameters: [name: string]
                       body: {
                         Write("Hello ")
@@ -820,7 +821,7 @@ mod tests {
             expect![[r#"
                 IrModule {
                   entry_points: {
-                    test/main-comp: {
+                    main-comp: {
                       parameters: []
                       body: {
                         Write("<div")
@@ -849,7 +850,7 @@ mod tests {
             expect![[r#"
                 IrModule {
                   entry_points: {
-                    test/main-comp: {
+                    main-comp: {
                       parameters: [show: boolean]
                       body: {
                         If(condition: show) {
@@ -880,7 +881,7 @@ mod tests {
             expect![[r#"
                 IrModule {
                   entry_points: {
-                    test/main-comp: {
+                    main-comp: {
                       parameters: [items: array[string]]
                       body: {
                         For(var: item, array: items) {
@@ -913,7 +914,7 @@ mod tests {
             expect![[r#"
                 IrModule {
                   entry_points: {
-                    test/main-comp: {
+                    main-comp: {
                       parameters: []
                       body: {
                         Write("<div data-hop-id=\"test/card-comp\"")
@@ -945,7 +946,7 @@ mod tests {
             expect![[r#"
                 IrModule {
                   entry_points: {
-                    test/main-comp: {
+                    main-comp: {
                       parameters: []
                       body: {
                         Write("<div")
@@ -974,7 +975,7 @@ mod tests {
             expect![[r#"
                 IrModule {
                   entry_points: {
-                    test/main-comp: {
+                    main-comp: {
                       parameters: [cls: string]
                       body: {
                         Write("<div")
@@ -1008,7 +1009,7 @@ mod tests {
             expect![[r#"
                 IrModule {
                   entry_points: {
-                    test/main-comp: {
+                    main-comp: {
                       parameters: [y: string]
                       body: {
                         For(var: x, array: ["a", "b"]) {
@@ -1036,7 +1037,7 @@ mod tests {
             expect![[r#"
                 IrModule {
                   entry_points: {
-                    test/main-comp: {
+                    main-comp: {
                       parameters: []
                       body: {
                         Write("<!DOCTYPE html>")
@@ -1065,7 +1066,7 @@ mod tests {
             expect![[r#"
                 IrModule {
                   entry_points: {
-                    test/main-comp: {
+                    main-comp: {
                       parameters: []
                       body: {
                         Write("<img")
@@ -1097,7 +1098,7 @@ mod tests {
             expect![[r#"
                 IrModule {
                   entry_points: {
-                    test/main-comp: {
+                    main-comp: {
                       parameters: []
                       body: {
                         Write("<div")
@@ -1128,7 +1129,7 @@ mod tests {
             expect![[r#"
                 IrModule {
                   entry_points: {
-                    test/main-comp: {
+                    main-comp: {
                       parameters: [user: {name: string}]
                       body: {
                         Write("Hello ")
@@ -1161,7 +1162,7 @@ mod tests {
             expect![[r#"
                 IrModule {
                   entry_points: {
-                    test/main-comp: {
+                    main-comp: {
                       parameters: []
                       body: {
                         Write("<div data-hop-id=\"test/card-comp\"")
@@ -1203,7 +1204,7 @@ mod tests {
             expect![[r#"
                 IrModule {
                   entry_points: {
-                    test/main-comp: {
+                    main-comp: {
                       parameters: []
                       body: {
                         Write("<div data-hop-id=\"test/outer-comp\"")
@@ -1244,7 +1245,7 @@ mod tests {
             expect![[r#"
                 IrModule {
                   entry_points: {
-                    test/main-comp: {
+                    main-comp: {
                       parameters: [x: string]
                       body: {
                         Write("<div data-hop-id=\"test/child-comp\"")
@@ -1282,7 +1283,7 @@ mod tests {
             expect![[r#"
                 IrModule {
                   entry_points: {
-                    test/main-comp: {
+                    main-comp: {
                       parameters: [x: string]
                       body: {
                         Write("<div data-hop-id=\"test/child-comp\"")
@@ -1330,7 +1331,7 @@ mod tests {
             expect![[r#"
                 IrModule {
                   entry_points: {
-                    test/first-comp: {
+                    first-comp: {
                       parameters: [x: string]
                       body: {
                         Write("<div")
@@ -1339,7 +1340,7 @@ mod tests {
                         Write("</div>")
                       }
                     }
-                    test/second-comp: {
+                    second-comp: {
                       parameters: [y: string]
                       body: {
                         Write("<span")
@@ -1377,7 +1378,7 @@ mod tests {
             expect![[r#"
                 IrModule {
                   entry_points: {
-                    test/main-comp: {
+                    main-comp: {
                       parameters: []
                       body: {
                         For(var: x, array: ["a", "b"]) {

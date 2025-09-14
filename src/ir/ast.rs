@@ -16,7 +16,7 @@ pub type NodeId = u32;
 
 #[derive(Debug, Default)]
 pub struct IrModule {
-    /// Map from component name to its IR representation
+    /// Map from component name (e.g. my-component) to its IR representation
     pub entry_points: HashMap<String, IrEntrypoint>,
 }
 
@@ -122,14 +122,14 @@ impl fmt::Display for IrModule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "IrModule {{")?;
         writeln!(f, "  entry_points: {{")?;
-        
+
         // Sort entry points by name for consistent output
         let mut sorted_entries: Vec<_> = self.entry_points.iter().collect();
         sorted_entries.sort_by_key(|(name, _)| name.as_str());
-        
+
         for (name, entrypoint) in sorted_entries {
             writeln!(f, "    {}: {{", name)?;
-            
+
             // Format parameters
             write!(f, "      parameters: [")?;
             for (i, (param_name, param_type)) in entrypoint.parameters.iter().enumerate() {
@@ -139,10 +139,14 @@ impl fmt::Display for IrModule {
                 write!(f, "{}: {}", param_name, param_type)?;
             }
             writeln!(f, "]")?;
-            
+
             // Format body
             writeln!(f, "      body: {{")?;
-            fn fmt_nodes(nodes: &[IrNode], f: &mut fmt::Formatter<'_>, indent: usize) -> fmt::Result {
+            fn fmt_nodes(
+                nodes: &[IrNode],
+                f: &mut fmt::Formatter<'_>,
+                indent: usize,
+            ) -> fmt::Result {
                 for node in nodes {
                     for _ in 0..indent {
                         write!(f, "  ")?;
@@ -196,12 +200,12 @@ impl fmt::Display for IrModule {
                 }
                 Ok(())
             }
-            
+
             fmt_nodes(&entrypoint.body, f, 4)?;
             writeln!(f, "      }}")?;
             writeln!(f, "    }}")?;
         }
-        
+
         writeln!(f, "  }}")?;
         writeln!(f, "}}")?;
         Ok(())
