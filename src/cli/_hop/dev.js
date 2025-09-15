@@ -3,7 +3,7 @@
 // It fetches the actual component HTML from the dev server and renders it
 // It also handles hot module reloading by listening to SSE events
 
-import Idiomorph from '/_hop/idiomorph.js';
+import Idiomorph from './idiomorph.js';
 
 // Parse configuration from JSON script tag
 const configScript = document.getElementById('hop-config');

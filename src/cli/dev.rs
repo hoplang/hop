@@ -148,7 +148,7 @@ pub async fn execute(
     let watcher = create_file_watcher(root, app_state.clone())?;
 
     let router = axum::Router::new()
-        .route("/_hop/idiomorph.js", get(handle_idiomorph))
+        .route("/idiomorph.js", get(handle_idiomorph))
         .route("/dev.js", get(handle_dev_js))
         .route("/_hop/event_source", get(handle_event_source))
         .route("/render", get(handle_render));

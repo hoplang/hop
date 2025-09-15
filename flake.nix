@@ -19,6 +19,7 @@
             pkgs.clippy
             pkgs.rust-analyzer
             pkgs.rustfmt
+            pkgs.typescript-language-server
             pkgs.just
           ];
         };
