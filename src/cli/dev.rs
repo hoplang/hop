@@ -17,6 +17,7 @@ struct AppState {
 async fn handle_idiomorph() -> Response<Body> {
     Response::builder()
         .header("Content-Type", "application/javascript")
+        .header("Cache-Control", "public, max-age=31536000, immutable")
         .body(Body::from(include_str!("_hop/idiomorph.js")))
         .unwrap()
 }
@@ -25,6 +26,7 @@ async fn handle_bootstrap() -> Response<Body> {
     Response::builder()
         .header("Content-Type", "application/javascript")
         .header("Access-Control-Allow-Origin", "*")
+        .header("Cache-Control", "public, max-age=31536000, immutable")
         .body(Body::from(include_str!("_hop/bootstrap.js")))
         .unwrap()
 }
