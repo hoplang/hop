@@ -1,5 +1,6 @@
 use super::Type;
 use super::ast::{BinaryOp, Expr, UnaryOp};
+use super::typed_ast::TypedExpr;
 use crate::document::document_cursor::Ranged as _;
 use crate::hop::environment::Environment;
 use crate::hop::type_error::TypeError;
@@ -10,7 +11,7 @@ pub fn typecheck_expr(
     expr: &Expr,
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
-) -> Result<Type, TypeError> {
+) -> Result<TypedExpr, TypeError> {
     match expr {
         Expr::Variable { value: name, .. } => {
             if let Some(var_type) = env.lookup(name.as_str()) {
@@ -19,7 +20,10 @@ pub fn typecheck_expr(
                     typ: var_type.clone(),
                     name: name.to_string(),
                 });
-                Ok(var_type.clone())
+                Ok(TypedExpr::Variable {
+                    value: name.clone(),
+                    typ: var_type.clone(),
+                })
             } else {
                 Err(TypeError::UndefinedVariable {
                     name: name.as_str().to_string(),
@@ -27,20 +31,35 @@ pub fn typecheck_expr(
                 })
             }
         }
-        Expr::BooleanLiteral { .. } => Ok(Type::Bool),
-        Expr::StringLiteral { .. } => Ok(Type::String),
-        Expr::NumberLiteral { .. } => Ok(Type::Number),
+        Expr::BooleanLiteral { value, range } => Ok(TypedExpr::BooleanLiteral {
+            value: *value,
+            range: range.clone(),
+        }),
+        Expr::StringLiteral { value, range } => Ok(TypedExpr::StringLiteral {
+            value: value.clone(),
+            range: range.clone(),
+        }),
+        Expr::NumberLiteral { value, range } => Ok(TypedExpr::NumberLiteral {
+            value: value.clone(),
+            range: range.clone(),
+        }),
         Expr::PropertyAccess {
             object: base_expr,
             property,
-            ..
+            range,
         } => {
-            let base_type = typecheck_expr(base_expr, env, annotations)?;
+            let typed_base = typecheck_expr(base_expr, env, annotations)?;
+            let base_type = typed_base.get_type();
 
             match &base_type {
                 Type::Object(props) => {
                     if let Some(prop_type) = props.get(property.as_str()) {
-                        Ok(prop_type.clone())
+                        Ok(TypedExpr::PropertyAccess {
+                            object: Box::new(typed_base),
+                            property: property.clone(),
+                            range: range.clone(),
+                            typ: prop_type.clone(),
+                        })
                     } else {
                         Err(TypeError::PropertyNotFoundInObject {
                             property: property.as_str().to_string(),
@@ -59,10 +78,12 @@ pub fn typecheck_expr(
             left,
             operator: BinaryOp::Equal,
             right,
-            ..
+            range,
         } => {
-            let left_type = typecheck_expr(left, env, annotations)?;
-            let right_type = typecheck_expr(right, env, annotations)?;
+            let typed_left = typecheck_expr(left, env, annotations)?;
+            let typed_right = typecheck_expr(right, env, annotations)?;
+            let left_type = typed_left.get_type();
+            let right_type = typed_right.get_type();
 
             // Both operands should have the same type for equality comparison
             if left_type != right_type {
@@ -74,36 +95,57 @@ pub fn typecheck_expr(
             }
 
             // The result of == is always boolean
-            Ok(Type::Bool)
+            Ok(TypedExpr::BinaryOp {
+                left: Box::new(typed_left),
+                operator: BinaryOp::Equal,
+                right: Box::new(typed_right),
+                range: range.clone(),
+                typ: Type::Bool,
+            })
         }
         Expr::UnaryOp {
             operator: UnaryOp::Not,
-            operand: expr,
-            ..
+            operand,
+            range,
         } => {
-            let expr_type = typecheck_expr(expr, env, annotations)?;
+            let typed_operand = typecheck_expr(operand, env, annotations)?;
+            let operand_type = typed_operand.get_type();
 
             // Negation only works on boolean expressions
-            if !expr_type.is_subtype(&Type::Bool) {
+            if !operand_type.is_subtype(&Type::Bool) {
                 return Err(TypeError::NegationRequiresBoolean {
-                    range: expr.range().clone(),
+                    range: operand.range().clone(),
                 });
             }
 
             // The result of ! is always boolean
-            Ok(Type::Bool)
+            Ok(TypedExpr::UnaryOp {
+                operator: UnaryOp::Not,
+                operand: Box::new(typed_operand),
+                range: range.clone(),
+                typ: Type::Bool,
+            })
         }
-        Expr::ArrayLiteral { elements, .. } => {
+        Expr::ArrayLiteral { elements, range } => {
             if elements.is_empty() {
                 // Empty array has unknown element type
-                Ok(Type::Array(None))
+                Ok(TypedExpr::ArrayLiteral {
+                    elements: vec![],
+                    range: range.clone(),
+                    element_type: None,
+                })
             } else {
+                let mut typed_elements = Vec::new();
+
                 // Check the type of the first element
-                let first_type = typecheck_expr(&elements[0], env, annotations)?;
+                let first_typed = typecheck_expr(&elements[0], env, annotations)?;
+                let first_type = first_typed.get_type();
+                typed_elements.push(first_typed);
 
                 // Check that all elements have the same type
                 for element in elements.iter().skip(1) {
-                    let element_type = typecheck_expr(element, env, annotations)?;
+                    let typed_element = typecheck_expr(element, env, annotations)?;
+                    let element_type = typed_element.get_type();
                     if element_type != first_type {
                         return Err(TypeError::ArrayTypeMismatch {
                             expected: first_type.to_string(),
@@ -111,20 +153,32 @@ pub fn typecheck_expr(
                             range: element.range().clone(),
                         });
                     }
+                    typed_elements.push(typed_element);
                 }
 
-                Ok(Type::Array(Some(Box::new(first_type))))
+                Ok(TypedExpr::ArrayLiteral {
+                    elements: typed_elements,
+                    range: range.clone(),
+                    element_type: Some(first_type),
+                })
             }
         }
-        Expr::ObjectLiteral { properties, .. } => {
+        Expr::ObjectLiteral { properties, range } => {
             let mut object_properties = BTreeMap::new();
+            let mut typed_properties = Vec::new();
 
             for (key, value_expr) in properties {
-                let value_type = typecheck_expr(value_expr, env, annotations)?;
+                let typed_value = typecheck_expr(value_expr, env, annotations)?;
+                let value_type = typed_value.get_type();
                 object_properties.insert(key.to_string(), value_type);
+                typed_properties.push((key.clone(), typed_value));
             }
 
-            Ok(Type::Object(object_properties))
+            Ok(TypedExpr::ObjectLiteral {
+                properties: typed_properties,
+                range: range.clone(),
+                typ: Type::Object(object_properties),
+            })
         }
     }
 }
@@ -156,7 +210,7 @@ mod tests {
         let mut annotations = Vec::new();
 
         let actual = match typecheck_expr(&expr, &mut env, &mut annotations) {
-            Ok(typ) => typ.to_string(),
+            Ok(typed_expr) => typed_expr.get_type().to_string(),
             Err(e) => DocumentAnnotator::new()
                 .with_label("error")
                 .without_location()

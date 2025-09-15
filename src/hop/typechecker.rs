@@ -260,7 +260,8 @@ fn typecheck_node(
                 typecheck_node(child, state, env, annotations, errors);
             }
             match dop::typecheck_expr(condition, env, annotations) {
-                Ok(condition_type) => {
+                Ok(typed_condition) => {
+                    let condition_type = typed_condition.get_type();
                     if !condition_type.is_subtype(&Type::Bool) {
                         errors.push(TypeError::ExpectedBooleanCondition {
                             found: condition_type.to_string(),
@@ -280,13 +281,14 @@ fn typecheck_node(
             children,
             ..
         } => {
-            let array_type = match dop::typecheck_expr(array_expr, env, annotations) {
+            let typed_array = match dop::typecheck_expr(array_expr, env, annotations) {
                 Ok(t) => t,
                 Err(err) => {
                     errors.push(err);
                     return;
                 }
             };
+            let array_type = typed_array.get_type();
             let element_type = match &array_type {
                 Type::Array(Some(inner)) => *inner.clone(),
                 Type::Array(None) => {
@@ -408,18 +410,19 @@ fn typecheck_node(
                             Some(param) => param,
                         };
 
-                        let arg_type = match dop::typecheck_expr(&arg.var_expr, env, annotations) {
+                        let typed_arg = match dop::typecheck_expr(&arg.var_expr, env, annotations) {
                             Ok(t) => t,
                             Err(err) => {
                                 errors.push(err);
                                 continue;
                             }
                         };
+                        let arg_type = typed_arg.get_type();
 
                         if !arg_type.is_subtype(&param.var_type) {
                             errors.push(TypeError::ArgumentIsIncompatible {
                                 expected: param.var_type.clone(),
-                                found: arg_type,
+                                found: arg_type.clone(),
                                 arg_name: arg.var_name.range().clone(),
                                 expr_range: arg.var_expr.range().clone(),
                             });
@@ -443,13 +446,14 @@ fn typecheck_node(
         } => {
             for attr in attributes.values() {
                 if let Some(AttributeValue::Expression(expr)) = &attr.value {
-                    let expr_type = match dop::typecheck_expr(expr, env, annotations) {
+                    let typed_expr = match dop::typecheck_expr(expr, env, annotations) {
                         Ok(t) => t,
                         Err(err) => {
                             errors.push(err);
                             continue; // Skip this attribute
                         }
                     };
+                    let expr_type = typed_expr.get_type();
 
                     if !expr_type.is_subtype(&Type::String) {
                         errors.push(TypeError::ExpectedStringAttribute {
@@ -468,7 +472,8 @@ fn typecheck_node(
 
         Node::TextExpression { expression, range } => {
             match dop::typecheck_expr(expression, env, annotations) {
-                Ok(expr_type) => {
+                Ok(typed_expr) => {
+                    let expr_type = typed_expr.get_type();
                     if !expr_type.is_subtype(&Type::String) {
                         errors.push(TypeError::ExpectedStringExpression {
                             found: expr_type,
