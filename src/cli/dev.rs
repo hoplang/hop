@@ -7,7 +7,6 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::{Arc, OnceLock, RwLock};
 
 #[derive(Clone)]
@@ -54,14 +53,12 @@ fn get_ui_program() -> &'static Program {
     })
 }
 
-
 async fn handle_idiomorph() -> Response<Body> {
     Response::builder()
         .header("Content-Type", "application/javascript")
         .body(Body::from(include_str!("_hop/idiomorph.js")))
         .unwrap()
 }
-
 
 async fn handle_bootstrap() -> Response<Body> {
     Response::builder()
@@ -104,7 +101,7 @@ async fn handle_render(
     Query(query): Query<RenderParams>,
 ) -> Response<Body> {
     let program = state.program.read().unwrap();
-    
+
     // Parse the JSON params
     let params: HashMap<String, serde_json::Value> = match serde_json::from_str(&query.params) {
         Ok(p) => p,
@@ -114,10 +111,10 @@ async fn handle_render(
                 .header("Access-Control-Allow-Origin", "*")
                 .header("Content-Type", "text/html")
                 .body(Body::from(format!("Invalid JSON parameters: {}", e)))
-                .unwrap()
+                .unwrap();
         }
     };
-    
+
     // Find the module containing the entrypoint
     // The entrypoint name is just the component name, we need to find which module it's in
     let mut found_module = None;
@@ -132,7 +129,7 @@ async fn handle_render(
             break;
         }
     }
-    
+
     let module_name = match found_module {
         Some(m) => m,
         None => {
@@ -140,11 +137,14 @@ async fn handle_render(
                 .status(StatusCode::NOT_FOUND)
                 .header("Access-Control-Allow-Origin", "*")
                 .header("Content-Type", "text/html")
-                .body(Body::from(format!("Entrypoint '{}' not found", query.entrypoint)))
-                .unwrap()
+                .body(Body::from(format!(
+                    "Entrypoint '{}' not found",
+                    query.entrypoint
+                )))
+                .unwrap();
         }
     };
-    
+
     // Render the component
     let mut html = String::new();
     match program.evaluate_component(
@@ -169,7 +169,6 @@ async fn handle_render(
     }
 }
 
-
 #[allow(dead_code)]
 fn create_error_page(error: &anyhow::Error) -> String {
     let program = get_ui_program();
@@ -185,28 +184,6 @@ fn create_error_page(error: &anyhow::Error) -> String {
     match program.evaluate_component(
         &ModuleName::new("hop/error_pages".to_string()).unwrap(),
         "generic-error",
-        args,
-        HopMode::Dev,
-        &mut html,
-    ) {
-        Ok(()) => html,
-        Err(e) => format!("Error rendering template: {}", e),
-    }
-}
-
-fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
-    let program = get_ui_program();
-
-    let mut args = HashMap::new();
-    args.insert("path".to_string(), serde_json::json!(path));
-    args.insert(
-        "available_routes".to_string(),
-        serde_json::json!(available_routes),
-    );
-    let mut html = String::new();
-    match program.evaluate_component(
-        &ModuleName::new("hop/error_pages".to_string()).unwrap(),
-        "not-found-error",
         args,
         HopMode::Dev,
         &mut html,
@@ -264,17 +241,13 @@ fn create_file_watcher(
 /// script on in all `html` files that listens to SSE-events on that route and performs
 /// hot-reloading when an event is emitted.
 ///
-/// If `static_dir` is specified the server serves static files from the given directory as well.
-///
 /// The client may change the build.hop file while the server is running as the server will reread the
 /// build file whenever a new request comes in.
 pub async fn execute(
     root: &ProjectRoot,
-    static_dir: Option<&Path>,
     script_file: Option<&str>,
 ) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher)> {
     use axum::routing::get;
-    use tower_http::services::ServeDir;
 
     let modules = root.load_all_hop_modules()?;
 
@@ -297,13 +270,5 @@ pub async fn execute(
         router = router.route(&format!("/{}", script_filename), get(handle_script));
     }
 
-    if let Some(static_dir) = static_dir {
-        if !static_dir.is_dir() {
-            anyhow::bail!("servedir '{}' is not a directory", static_dir.display());
-        }
-        router = router.fallback_service(ServeDir::new(static_dir));
-    }
-
     Ok((router.with_state(app_state), watcher))
 }
-

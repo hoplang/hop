@@ -62,9 +62,6 @@ enum Commands {
         /// Host to bind to
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
-        /// Directory to serve static files from
-        #[arg(long)]
-        staticdir: Option<String>,
         /// Optional script file name to make scripts available over HTTP
         #[arg(long)]
         scriptfile: Option<String>,
@@ -195,7 +192,6 @@ async fn main() -> anyhow::Result<()> {
             projectdir,
             port,
             host,
-            staticdir,
             scriptfile,
         }) => {
             use colored::*;
@@ -206,12 +202,7 @@ async fn main() -> anyhow::Result<()> {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
-            let (router, _watcher) = cli::dev::execute(
-                &root,
-                staticdir.as_deref().map(Path::new),
-                scriptfile.as_deref(),
-            )
-            .await?;
+            let (router, _watcher) = cli::dev::execute(&root, scriptfile.as_deref()).await?;
             let elapsed = start_time.elapsed();
             let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port)).await?;
 
