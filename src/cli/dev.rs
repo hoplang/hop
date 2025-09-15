@@ -94,51 +94,11 @@ async fn handle_hmr() -> Response<Body> {
         .unwrap()
 }
 
-async fn handle_bootstrap(Query(params): Query<HashMap<String, String>>) -> Response<Body> {
-    let entrypoint = params.get("entrypoint").unwrap_or(&String::new()).clone();
-    let params_json = params.get("params").unwrap_or(&String::from("{}")).clone();
-    
-    let script = format!(
-        r#"
-        (async function() {{
-            try {{
-                const entrypoint = '{}';
-                const params = {};
-                
-                const url = new URL('http://localhost:33861/render');
-                url.searchParams.set('entrypoint', entrypoint);
-                url.searchParams.set('params', JSON.stringify(params));
-                
-                const response = await fetch(url);
-                if (!response.ok) {{
-                    throw new Error('HTTP error! status: ' + response.status);
-                }}
-                
-                const html = await response.text();
-                document.write(html);
-                document.close();
-            }} catch (error) {{
-                console.error('Failed to load from development server:', error);
-                document.write(
-                    '<div style="color: red; padding: 20px;">' +
-                    '<h2>Development Server Error</h2>' +
-                    '<p>Failed to connect to localhost:33861</p>' +
-                    '<p>Make sure the Hop development server is running.</p>' +
-                    '<pre>' + error.message + '</pre>' +
-                    '</div>'
-                );
-                document.close();
-            }}
-        }})();
-        "#,
-        entrypoint,
-        params_json
-    );
-    
+async fn handle_bootstrap() -> Response<Body> {
     Response::builder()
         .header("Content-Type", "application/javascript")
         .header("Access-Control-Allow-Origin", "*")
-        .body(Body::from(script))
+        .body(Body::from(include_str!("_hop/bootstrap.js")))
         .unwrap()
 }
 
