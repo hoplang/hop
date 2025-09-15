@@ -192,20 +192,22 @@ impl JsCompiler {
         self.write_line("return `<!DOCTYPE html>");
         self.write_line("<html>");
         self.write_line("<head>");
-        self.write_line("    <meta charset=\"UTF-8\">");
+        self.write_line("<meta charset=\"UTF-8\">");
         self.write_line(
-            "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">",
+            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">",
         );
-        self.write_line(&format!("    <title>{} - Development Mode</title>", name));
+        self.write_line(&format!("<title>{} - Development Mode</title>", name));
         self.write_line("</head>");
         self.write_line("<body>");
-        self.write_line("    <script id=\"hop-config\" type=\"application/json\">");
+        self.write_line("<script id=\"hop-config\" type=\"application/json\">");
         self.write_line(&format!(
-            "        {{\"entrypoint\": \"{}\", \"params\": ${{JSON.stringify(params)}}}}",
+            "{{\"entrypoint\": \"{}\", \"params\": ${{JSON.stringify(params)}}}}",
             name
         ));
-        self.write_line("    </script>");
-        self.write_line("    <script type=\"module\" src=\"http://localhost:33861/_hop/bootstrap.js\"></script>");
+        self.write_line("</script>");
+        self.write_line(
+            "<script type=\"module\" src=\"http://localhost:33861/_hop/bootstrap.js\"></script>",
+        );
         self.write_line("</body>");
         self.write_line("</html>`;");
 
@@ -529,15 +531,15 @@ mod tests {
                             return `<!DOCTYPE html>
                             <html>
                             <head>
-                                <meta charset="UTF-8">
-                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                                <title>test-main-comp - Development Mode</title>
+                            <meta charset="UTF-8">
+                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                            <title>test-main-comp - Development Mode</title>
                             </head>
                             <body>
-                                <script id="hop-config" type="application/json">
-                                    {"entrypoint": "test-main-comp", "params": ${JSON.stringify(params)}}
-                                </script>
-                                <script type="module" src="http://localhost:33861/_hop/bootstrap.js"></script>
+                            <script id="hop-config" type="application/json">
+                            {"entrypoint": "test-main-comp", "params": ${JSON.stringify(params)}}
+                            </script>
+                            <script type="module" src="http://localhost:33861/_hop/bootstrap.js"></script>
                             </body>
                             </html>`;
                         }
@@ -601,15 +603,15 @@ mod tests {
                             return `<!DOCTYPE html>
                             <html>
                             <head>
-                                <meta charset="UTF-8">
-                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                                <title>test-greeting-comp - Development Mode</title>
+                            <meta charset="UTF-8">
+                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                            <title>test-greeting-comp - Development Mode</title>
                             </head>
                             <body>
-                                <script id="hop-config" type="application/json">
-                                    {"entrypoint": "test-greeting-comp", "params": ${JSON.stringify(params)}}
-                                </script>
-                                <script type="module" src="http://localhost:33861/_hop/bootstrap.js"></script>
+                            <script id="hop-config" type="application/json">
+                            {"entrypoint": "test-greeting-comp", "params": ${JSON.stringify(params)}}
+                            </script>
+                            <script type="module" src="http://localhost:33861/_hop/bootstrap.js"></script>
                             </body>
                             </html>`;
                         }
@@ -662,15 +664,15 @@ mod tests {
                             return `<!DOCTYPE html>
                             <html>
                             <head>
-                                <meta charset="UTF-8">
-                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                                <title>test-main-comp - Development Mode</title>
+                            <meta charset="UTF-8">
+                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                            <title>test-main-comp - Development Mode</title>
                             </head>
                             <body>
-                                <script id="hop-config" type="application/json">
-                                    {"entrypoint": "test-main-comp", "params": ${JSON.stringify(params)}}
-                                </script>
-                                <script type="module" src="http://localhost:33861/_hop/bootstrap.js"></script>
+                            <script id="hop-config" type="application/json">
+                            {"entrypoint": "test-main-comp", "params": ${JSON.stringify(params)}}
+                            </script>
+                            <script type="module" src="http://localhost:33861/_hop/bootstrap.js"></script>
                             </body>
                             </html>`;
                         }
@@ -736,15 +738,15 @@ mod tests {
                             return `<!DOCTYPE html>
                             <html>
                             <head>
-                                <meta charset="UTF-8">
-                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                                <title>test-main-comp - Development Mode</title>
+                            <meta charset="UTF-8">
+                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                            <title>test-main-comp - Development Mode</title>
                             </head>
                             <body>
-                                <script id="hop-config" type="application/json">
-                                    {"entrypoint": "test-main-comp", "params": ${JSON.stringify(params)}}
-                                </script>
-                                <script type="module" src="http://localhost:33861/_hop/bootstrap.js"></script>
+                            <script id="hop-config" type="application/json">
+                            {"entrypoint": "test-main-comp", "params": ${JSON.stringify(params)}}
+                            </script>
+                            <script type="module" src="http://localhost:33861/_hop/bootstrap.js"></script>
                             </body>
                             </html>`;
                         }
@@ -813,15 +815,15 @@ mod tests {
                             return `<!DOCTYPE html>
                             <html>
                             <head>
-                                <meta charset="UTF-8">
-                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                                <title>test-main-comp - Development Mode</title>
+                            <meta charset="UTF-8">
+                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                            <title>test-main-comp - Development Mode</title>
                             </head>
                             <body>
-                                <script id="hop-config" type="application/json">
-                                    {"entrypoint": "test-main-comp", "params": ${JSON.stringify(params)}}
-                                </script>
-                                <script type="module" src="http://localhost:33861/_hop/bootstrap.js"></script>
+                            <script id="hop-config" type="application/json">
+                            {"entrypoint": "test-main-comp", "params": ${JSON.stringify(params)}}
+                            </script>
+                            <script type="module" src="http://localhost:33861/_hop/bootstrap.js"></script>
                             </body>
                             </html>`;
                         }
@@ -926,15 +928,15 @@ mod tests {
                             return `<!DOCTYPE html>
                             <html>
                             <head>
-                                <meta charset="UTF-8">
-                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                                <title>test-user-list - Development Mode</title>
+                            <meta charset="UTF-8">
+                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                            <title>test-user-list - Development Mode</title>
                             </head>
                             <body>
-                                <script id="hop-config" type="application/json">
-                                    {"entrypoint": "test-user-list", "params": ${JSON.stringify(params)}}
-                                </script>
-                                <script type="module" src="http://localhost:33861/_hop/bootstrap.js"></script>
+                            <script id="hop-config" type="application/json">
+                            {"entrypoint": "test-user-list", "params": ${JSON.stringify(params)}}
+                            </script>
+                            <script type="module" src="http://localhost:33861/_hop/bootstrap.js"></script>
                             </body>
                             </html>`;
                         }
