@@ -9,6 +9,7 @@ use crate::hop::script_collector::ScriptCollector;
 use crate::hop::tokenizer::Tokenizer;
 use crate::hop::toposorter::TopoSorter;
 use crate::hop::type_error::TypeError;
+use crate::ir;
 use anyhow::Result;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -417,6 +418,26 @@ impl Program {
             BTreeMap::new(),
             output,
         )
+    }
+
+    /// Evaluate an IR entrypoint by name
+    pub fn evaluate_ir_entrypoint(
+        &self,
+        entrypoint_name: &str,
+        args: HashMap<String, serde_json::Value>,
+        hop_mode: &str,
+    ) -> Result<String> {
+        // Compile to IR
+        let ir_module = ir::Compiler::compile(&self.modules);
+
+        // Get the entrypoint
+        let entrypoint = ir_module
+            .entry_points
+            .get(entrypoint_name)
+            .ok_or_else(|| anyhow::anyhow!("Entrypoint '{}' not found", entrypoint_name))?;
+
+        // Evaluate the entrypoint
+        ir::evaluator::evaluate_entrypoint(entrypoint, args, hop_mode)
     }
 
     /// Get all modules for compilation
@@ -1323,5 +1344,44 @@ mod tests {
         );
         // Type errors should now be empty
         check_type_errors(&program, expect![""]);
+    }
+
+    #[test]
+    fn test_evaluate_ir_entrypoint() {
+        let program = program_from_txtar(indoc! {r#"
+            -- main.hop --
+            <hello-world entrypoint {name: string}>
+              <h1>Hello {name}!</h1>
+            </hello-world>
+
+            <another-comp entrypoint>
+              <p>Static content</p>
+            </another-comp>
+        "#});
+
+        // Test evaluating hello-world entrypoint with a name parameter
+        let mut args = HashMap::new();
+        args.insert("name".to_string(), serde_json::json!("Alice"));
+
+        let result = program
+            .evaluate_ir_entrypoint("hello-world", args, "dev")
+            .expect("Should evaluate successfully");
+
+        assert!(result.contains("<h1>Hello Alice!</h1>"));
+
+        // Test evaluating another-comp entrypoint without parameters
+        let result = program
+            .evaluate_ir_entrypoint("another-comp", HashMap::new(), "dev")
+            .expect("Should evaluate successfully");
+
+        assert!(result.contains("<p>Static content</p>"));
+
+        // Test error when entrypoint doesn't exist
+        let result = program.evaluate_ir_entrypoint("non-existent", HashMap::new(), "dev");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Entrypoint 'non-existent' not found"));
     }
 }

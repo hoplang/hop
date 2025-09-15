@@ -1,5 +1,4 @@
 use crate::filesystem::files::ProjectRoot;
-use crate::hop::evaluator::HopMode;
 use crate::hop::program::Program;
 use axum::body::Body;
 use axum::extract::{Query, State};
@@ -70,46 +69,9 @@ async fn handle_render(
         }
     };
 
-    // Find the module containing the entrypoint
-    // The entrypoint name is just the component name, we need to find which module it's in
-    let mut found_module = None;
-    for (module_name, ast) in program.get_modules() {
-        for component in ast.get_component_definitions() {
-            if component.is_entrypoint && component.tag_name.as_str() == query.entrypoint {
-                found_module = Some(module_name.clone());
-                break;
-            }
-        }
-        if found_module.is_some() {
-            break;
-        }
-    }
-
-    let module_name = match found_module {
-        Some(m) => m,
-        None => {
-            return Response::builder()
-                .status(StatusCode::NOT_FOUND)
-                .header("Access-Control-Allow-Origin", "*")
-                .header("Content-Type", "text/html")
-                .body(Body::from(format!(
-                    "Entrypoint '{}' not found",
-                    query.entrypoint
-                )))
-                .unwrap();
-        }
-    };
-
-    // Render the component
-    let mut html = String::new();
-    match program.evaluate_component(
-        &module_name,
-        &query.entrypoint,
-        params,
-        HopMode::Dev,
-        &mut html,
-    ) {
-        Ok(()) => Response::builder()
+    // Render the component using IR evaluation
+    match program.evaluate_ir_entrypoint(&query.entrypoint, params, "dev") {
+        Ok(html) => Response::builder()
             .status(StatusCode::OK)
             .header("Access-Control-Allow-Origin", "*")
             .header("Content-Type", "text/html")
@@ -192,4 +154,117 @@ pub async fn execute(
         .route("/render", get(handle_render));
 
     Ok((router.with_state(app_state), watcher))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::to_bytes;
+    use axum::http::Request;
+    use expect_test::expect;
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn test_handle_render_with_ir_entrypoint() {
+        // Create a test program with an entrypoint
+        let mut modules = HashMap::new();
+        modules.insert(
+            crate::hop::module_name::ModuleName::new("test".to_string()).unwrap(),
+            r#"
+            <greeting-comp entrypoint {name: string, title: string}><h1>{title}</h1><p>Hello, {name}!</p></greeting-comp>
+
+            <simple-comp entrypoint><div>Simple content</div></simple-comp>
+            "#
+            .to_string(),
+        );
+
+        let program = Program::new(modules);
+        let (reload_channel, _) = tokio::sync::broadcast::channel::<()>(100);
+
+        let app_state = AppState {
+            program: Arc::new(RwLock::new(program)),
+            reload_channel,
+        };
+
+        let app = axum::Router::new()
+            .route("/render", axum::routing::get(handle_render))
+            .with_state(app_state);
+
+        // Test rendering with parameters
+        let params = serde_json::json!({
+            "name": "Alice",
+            "title": "Welcome"
+        });
+
+        let encoded_params = params
+            .to_string()
+            .replace('"', "%22")
+            .replace(' ', "%20")
+            .replace('{', "%7B")
+            .replace('}', "%7D")
+            .replace(':', "%3A")
+            .replace(',', "%2C");
+        let request = Request::builder()
+            .uri(format!(
+                "/render?entrypoint=greeting-comp&params={}",
+                encoded_params
+            ))
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let html = String::from_utf8(body.to_vec()).unwrap();
+
+        expect!["<h1>Welcome</h1><p>Hello, Alice!</p>"]
+        .assert_eq(&html);
+
+        // Test rendering without parameters
+        let request = Request::builder()
+            .uri("/render?entrypoint=simple-comp&params={}")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let html = String::from_utf8(body.to_vec()).unwrap();
+
+        expect!["<div>Simple content</div>"]
+        .assert_eq(&html);
+
+        // Test non-existent entrypoint
+        let request = Request::builder()
+            .uri("/render?entrypoint=nonexistent&params={}")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let error_msg = String::from_utf8(body.to_vec()).unwrap();
+
+        expect![[r#"Error rendering component: Entrypoint 'nonexistent' not found"#]]
+            .assert_eq(&error_msg);
+
+        // Test invalid JSON parameters
+        let request = Request::builder()
+            .uri("/render?entrypoint=simple-comp&params=invalid-json")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let error_msg = String::from_utf8(body.to_vec()).unwrap();
+
+        // The error message will include details about the JSON parse error
+        // so we just check that it starts with the expected prefix
+        assert!(error_msg.starts_with("Invalid JSON parameters:"));
+    }
 }

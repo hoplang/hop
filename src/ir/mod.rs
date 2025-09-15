@@ -1,6 +1,6 @@
 mod ast;
 mod compiler;
-mod evaluator;
+pub mod evaluator;
 pub mod js_compiler;
 pub mod optimizer;
 pub mod passes;
