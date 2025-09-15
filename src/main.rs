@@ -114,37 +114,6 @@ async fn main() -> anyhow::Result<()> {
             );
             println!();
         }
-        //Some(Commands::Build {
-        //    projectdir,
-        //    outdir,
-        //    scriptfile,
-        //    staticdir,
-        //}) => {
-        //    use std::time::Instant;
-        //    let start_time = Instant::now();
-        //    let root = match projectdir {
-        //        Some(d) => ProjectRoot::from(Path::new(d))?,
-        //        None => ProjectRoot::find_upwards(Path::new("."))?,
-        //    };
-        //    let mut outputs = cli::build::execute(
-        //        &root,
-        //        Path::new(outdir),
-        //        scriptfile.as_deref(),
-        //        staticdir.as_deref(),
-        //    )?;
-        //    let elapsed = start_time.elapsed();
-        //
-        //    print_header("built", elapsed.as_millis());
-        //    outputs.sort_by(|a, b| a.0.cmp(&b.0));
-        //    let mut total_size = 0;
-        //    for (file_path, size) in outputs {
-        //        println!("  {:<50} {}", file_path, format_file_size(size));
-        //        total_size += size;
-        //    }
-        //    println!();
-        //    println!("  {:<50} {}", "total", format_file_size(total_size));
-        //    println!();
-        //}
         Some(Commands::Compile {
             language,
             projectdir,

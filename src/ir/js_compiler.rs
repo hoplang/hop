@@ -200,7 +200,10 @@ impl JsCompiler {
         self.write_line("</head>");
         self.write_line("<body>");
         self.write_line("    <script id=\"hop-config\" type=\"application/json\">");
-        self.write_line(&format!("        {{\"entrypoint\": \"{}\", \"params\": ${{JSON.stringify(params)}}}}", name));
+        self.write_line(&format!(
+            "        {{\"entrypoint\": \"{}\", \"params\": ${{JSON.stringify(params)}}}}",
+            name
+        ));
         self.write_line("    </script>");
         self.write_line("    <script type=\"module\" src=\"http://localhost:33861/_hop/bootstrap.js\"></script>");
         self.write_line("</body>");
