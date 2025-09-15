@@ -44,7 +44,6 @@ pub struct CssConfig {
     pub mode: Option<String>,
 }
 
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProjectRoot(PathBuf);
 
@@ -176,7 +175,10 @@ impl ProjectRoot {
         let config_path = self.0.join("hop.toml");
 
         if !config_path.exists() {
-            anyhow::bail!("hop.toml not found at {:?}. Every hop project must have a hop.toml configuration file.", config_path);
+            anyhow::bail!(
+                "hop.toml not found at {:?}. Every hop project must have a hop.toml configuration file.",
+                config_path
+            );
         }
 
         let config_str = fs::read_to_string(&config_path)
@@ -456,7 +458,12 @@ mod tests {
 
         let result = root.load_config();
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("hop.toml not found"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("hop.toml not found")
+        );
 
         fs::remove_dir_all(&temp_dir).unwrap();
     }

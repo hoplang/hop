@@ -31,7 +31,7 @@ impl JsCompiler {
     fn kebab_to_camel_case(name: &str) -> String {
         let mut result = String::new();
         let mut capitalize_next = false;
-        
+
         for ch in name.chars() {
             if ch == '-' {
                 capitalize_next = true;
@@ -42,7 +42,7 @@ impl JsCompiler {
                 result.push(ch);
             }
         }
-        
+
         result
     }
 
@@ -91,11 +91,11 @@ impl JsCompiler {
         self.write_line("");
         self.dedent();
         self.write_line("},");
-        
+
         // Add development object with same signature
         self.write_line("development: {");
         self.indent();
-        
+
         // Generate development mode functions with same signatures
         let mut first = true;
         for (name, entrypoint) in &ir_module.entry_points {
@@ -105,12 +105,12 @@ impl JsCompiler {
             first = false;
             self.compile_development_entrypoint(name, entrypoint);
         }
-        
+
         // Close the development object
         self.write_line("");
         self.dedent();
         self.write_line("}");
-        
+
         // Close export default
         self.dedent();
         self.write_line("}");
@@ -121,14 +121,14 @@ impl JsCompiler {
     fn compile_development_entrypoint(&mut self, name: &str, entrypoint: &IrEntrypoint) {
         // Convert kebab-case to camelCase for JavaScript property name
         let camel_case_name = Self::kebab_to_camel_case(name);
-        
+
         // Write the function property with proper indentation
         for _ in 0..self.indent_level {
             self.output.push_str("    ");
         }
         self.output.push_str(&camel_case_name);
         self.output.push_str(": ");
-        
+
         // Generate function signature matching production
         if entrypoint.parameters.is_empty() {
             match self.mode {
@@ -151,7 +151,8 @@ impl JsCompiler {
                 LanguageMode::JavaScript => {
                     // Destructure parameters from input object
                     let params_str = params.join(", ");
-                    self.output.push_str(&format!("({{ {} }}) => {{", params_str));
+                    self.output
+                        .push_str(&format!("({{ {} }}) => {{", params_str));
                 }
                 LanguageMode::TypeScript => {
                     // Generate TypeScript interface for parameters
@@ -170,10 +171,10 @@ impl JsCompiler {
                 }
             }
         }
-        
+
         self.write_line("");
         self.indent();
-        
+
         // Build parameter collection for passing to dev server
         if entrypoint.parameters.is_empty() {
             self.write_line("const params = {};");
@@ -186,28 +187,30 @@ impl JsCompiler {
             let params_str = params.join(", ");
             self.write_line(&format!("const params = {{ {} }};", params_str));
         }
-        
+
         // Generate a minimal bootstrap HTML that loads the script from dev server
         self.write_line("return `<!DOCTYPE html>");
         self.write_line("<html>");
         self.write_line("<head>");
         self.write_line("    <meta charset=\"UTF-8\">");
-        self.write_line("    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
+        self.write_line(
+            "    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">",
+        );
         self.write_line(&format!("    <title>{} - Development Mode</title>", name));
         self.write_line("</head>");
         self.write_line("<body>");
         self.write_line(&format!("    <script type=\"module\" src=\"http://localhost:33861/_hop/bootstrap.js?entrypoint={}&params=${{encodeURIComponent(JSON.stringify(params))}}\"></script>", name));
         self.write_line("</body>");
         self.write_line("</html>`;");
-        
+
         self.dedent();
         self.write_line("}");
     }
-    
+
     fn compile_entrypoint(&mut self, name: &str, entrypoint: &IrEntrypoint) {
         // Convert kebab-case to camelCase for JavaScript property name
         let camel_case_name = Self::kebab_to_camel_case(name);
-        
+
         // Write the function property with proper indentation
         for _ in 0..self.indent_level {
             self.output.push_str("    ");
@@ -236,7 +239,8 @@ impl JsCompiler {
                 LanguageMode::JavaScript => {
                     // Destructure parameters from input object
                     let params_str = params.join(", ");
-                    self.output.push_str(&format!("({{ {} }}) => {{", params_str));
+                    self.output
+                        .push_str(&format!("({{ {} }}) => {{", params_str));
                 }
                 LanguageMode::TypeScript => {
                     // Generate TypeScript interface for parameters
@@ -268,7 +272,7 @@ impl JsCompiler {
 
         self.write_line("return output;");
         self.dedent();
-        
+
         // Write closing brace with proper indentation
         for _ in 0..self.indent_level {
             self.output.push_str("    ");

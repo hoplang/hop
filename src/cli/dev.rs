@@ -1,56 +1,17 @@
 use crate::filesystem::files::ProjectRoot;
 use crate::hop::evaluator::HopMode;
-use crate::hop::module_name::ModuleName;
 use crate::hop::program::Program;
 use axum::body::Body;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use std::collections::HashMap;
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::{Arc, RwLock};
 
 #[derive(Clone)]
 struct AppState {
     program: Arc<RwLock<Program>>,
     reload_channel: tokio::sync::broadcast::Sender<()>,
-}
-
-const ERROR_TEMPLATES: &str = include_str!("../../hop/error_pages.hop");
-const UI_TEMPLATES: &str = include_str!("../../hop/ui.hop");
-const ICONS_TEMPLATES: &str = include_str!("../../hop/icons.hop");
-
-static CACHED_UI_SERVER: OnceLock<Program> = OnceLock::new();
-
-fn get_ui_program() -> &'static Program {
-    CACHED_UI_SERVER.get_or_init(|| {
-        let mut program = Program::default();
-
-        program.update_module(
-            ModuleName::new("hop/error_pages".to_string()).unwrap(),
-            ERROR_TEMPLATES.to_string(),
-        );
-        program.update_module(
-            ModuleName::new("hop/ui".to_string()).unwrap(),
-            UI_TEMPLATES.to_string(),
-        );
-        program.update_module(
-            ModuleName::new("hop/icons".to_string()).unwrap(),
-            ICONS_TEMPLATES.to_string(),
-        );
-
-        // Check for any errors in the UI templates
-        let parse_errors = program.get_parse_errors();
-        let type_errors = program.get_type_errors();
-
-        if parse_errors.values().any(|errors| !errors.is_empty()) {
-            panic!("Parse errors in UI templates: {:#?}", parse_errors);
-        }
-        if type_errors.values().any(|errors| !errors.is_empty()) {
-            panic!("Type errors in UI templates: {:#?}", type_errors);
-        }
-
-        program
-    })
 }
 
 async fn handle_idiomorph() -> Response<Body> {
@@ -80,14 +41,6 @@ async fn handle_event_source(
         tokio_stream::wrappers::BroadcastStream::new(state.reload_channel.subscribe())
             .map(|_| Ok::<Event, axum::Error>(Event::default().data("reload"))),
     )
-}
-
-async fn handle_script(State(state): State<AppState>) -> Response<Body> {
-    let program = state.program.read().unwrap();
-    Response::builder()
-        .header("Content-Type", "application/javascript")
-        .body(Body::from(program.get_scripts().to_string()))
-        .unwrap()
 }
 
 #[derive(serde::Deserialize)]
@@ -221,7 +174,6 @@ fn create_file_watcher(
 /// build file whenever a new request comes in.
 pub async fn execute(
     root: &ProjectRoot,
-    script_file: Option<&str>,
 ) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher)> {
     use axum::routing::get;
 
@@ -236,15 +188,11 @@ pub async fn execute(
 
     let watcher = create_file_watcher(root, app_state.clone())?;
 
-    let mut router = axum::Router::new()
+    let router = axum::Router::new()
         .route("/_hop/idiomorph.js", get(handle_idiomorph))
         .route("/_hop/bootstrap.js", get(handle_bootstrap))
         .route("/_hop/event_source", get(handle_event_source))
         .route("/render", get(handle_render));
-
-    if let Some(script_filename) = script_file {
-        router = router.route(&format!("/{}", script_filename), get(handle_script));
-    }
 
     Ok((router.with_state(app_state), watcher))
 }

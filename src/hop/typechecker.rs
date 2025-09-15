@@ -89,7 +89,7 @@ impl State {
             .or_default()
             .set_component_type_info(component_name, type_info);
     }
-    
+
     /// Check if an entrypoint with the given name already exists in any module.
     /// Returns the module name if a duplicate is found.
     fn find_duplicate_entrypoint(
@@ -101,7 +101,7 @@ impl State {
             if module_name == current_module {
                 continue;
             }
-            
+
             if let Some(component_info) = module_info.components.get(component_name) {
                 if component_info.is_entrypoint {
                     return Some(module_name.clone());
@@ -192,7 +192,9 @@ fn typecheck_module(
     {
         // Check for duplicate entrypoints before processing
         if *is_entrypoint {
-            if let Some(previous_module) = state.find_duplicate_entrypoint(name.as_str(), &module.name) {
+            if let Some(previous_module) =
+                state.find_duplicate_entrypoint(name.as_str(), &module.name)
+            {
                 errors.push(TypeError::DuplicateEntrypoint {
                     component: name.as_str().to_string(),
                     module: module.name.as_str().to_string(),
@@ -201,7 +203,7 @@ fn typecheck_module(
                 });
             }
         }
-        
+
         if let Some((params, _)) = params {
             for param in params {
                 annotations.push(TypeAnnotation {

@@ -62,9 +62,6 @@ enum Commands {
         /// Host to bind to
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
-        /// Optional script file name to make scripts available over HTTP
-        #[arg(long)]
-        scriptfile: Option<String>,
     },
     /// Format a hop file
     Fmt {
@@ -192,7 +189,6 @@ async fn main() -> anyhow::Result<()> {
             projectdir,
             port,
             host,
-            scriptfile,
         }) => {
             use colored::*;
             use filesystem::files::ProjectRoot;
@@ -202,14 +198,17 @@ async fn main() -> anyhow::Result<()> {
                 Some(d) => ProjectRoot::from(Path::new(d))?,
                 None => ProjectRoot::find_upwards(Path::new("."))?,
             };
-            let (router, _watcher) = cli::dev::execute(&root, scriptfile.as_deref()).await?;
+            let (router, _watcher) = cli::dev::execute(&root).await?;
             let elapsed = start_time.elapsed();
             let listener = tokio::net::TcpListener::bind(&format!("{}:{}", host, port)).await?;
 
             print_header("ready", elapsed.as_millis());
             println!("  {} http://{}:{}/", "➜".green(), host, port);
             println!();
-            println!("  Development server running on port {}", port.to_string().green());
+            println!(
+                "  Development server running on port {}",
+                port.to_string().green()
+            );
             println!("  /render endpoint available for component rendering");
             println!();
             axum::serve(listener, router).await?;

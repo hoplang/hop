@@ -106,7 +106,9 @@ pub enum TypeError {
         range: DocumentRange,
     },
 
-    #[error("Duplicate entrypoint: component '{component}' in module '{module}' is already defined as an entrypoint in module '{previous_module}'")]
+    #[error(
+        "Duplicate entrypoint: component '{component}' in module '{module}' is already defined as an entrypoint in module '{previous_module}'"
+    )]
     DuplicateEntrypoint {
         component: String,
         module: String,
