@@ -5,20 +5,21 @@
 
 import Idiomorph from '/_hop/idiomorph.js';
 
-// Parse query parameters from script src
-const scriptTag = document.currentScript || document.querySelector('script[src*="bootstrap.js"]');
-const url = new URL(scriptTag.src);
-const entrypoint = url.searchParams.get('entrypoint');
-const paramsEncoded = url.searchParams.get('params');
-
-// Decode the parameters
+// Parse configuration from JSON script tag
+const configScript = document.getElementById('hop-config');
+let entrypoint = '';
 let params = {};
-if (paramsEncoded) {
+
+if (configScript) {
     try {
-        params = JSON.parse(decodeURIComponent(paramsEncoded));
+        const config = JSON.parse(configScript.textContent);
+        entrypoint = config.entrypoint || '';
+        params = config.params || {};
     } catch (e) {
-        console.error('Failed to parse parameters:', e);
+        console.error('Failed to parse hop-config:', e);
     }
+} else {
+    console.error('hop-config script tag not found');
 }
 
 // Function to fetch the rendered component
