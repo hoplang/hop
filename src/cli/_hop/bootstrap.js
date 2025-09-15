@@ -1,6 +1,9 @@
 // Hop Development Mode Bootstrap Script
 // This script is loaded when a component is rendered in development mode
 // It fetches the actual component HTML from the dev server and renders it
+// It also handles hot module reloading by listening to SSE events
+
+import Idiomorph from '/_hop/idiomorph.js';
 
 // Parse query parameters from script src
 const scriptTag = document.currentScript || document.querySelector('script[src*="bootstrap.js"]');
@@ -18,24 +21,81 @@ if (paramsEncoded) {
     }
 }
 
+// Function to fetch the rendered component
+async function fetchComponent() {
+    const renderUrl = new URL('http://localhost:33861/render');
+    renderUrl.searchParams.set('entrypoint', entrypoint);
+    renderUrl.searchParams.set('params', JSON.stringify(params));
+    
+    const response = await fetch(renderUrl);
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    return await response.text();
+}
+
+// Setup hot module reloading
+function setupHMR() {
+    const eventSource = new EventSource('http://localhost:33861/_hop/event_source');
+    
+    eventSource.onmessage = function(event) {
+        if (event.data === 'reload') {
+            fetchComponent()
+                .then(html => {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    // Morph the entire document to enable head merging
+                    Idiomorph.morph(document.documentElement, doc.documentElement, {
+                        head: {
+                            shouldPreserve: function(elt) {
+                                // Preserve elements with im-preserve attribute (default behavior)
+                                if (elt.getAttribute('im-preserve') === 'true') {
+                                    return true;
+                                }
+                                // Preserve Tailwind CSS style tags
+                                if (elt.tagName === 'STYLE' && elt.textContent && 
+                                    elt.textContent.includes('/*! tailwindcss')) {
+                                    return true;
+                                }
+                                return false;
+                            }
+                        }
+                    });
+                })
+                .catch(error => {
+                    console.error('Hot reload fetch error:', error);
+                });
+        }
+    };
+    
+    eventSource.onerror = function(event) {
+        console.log('Hot reload connection error:', event);
+        setTimeout(() => {
+            eventSource.close();
+            location.reload();
+        }, 1000);
+    };
+    
+    window.addEventListener("beforeunload", function() {
+        // This is important on chrome, not closing the event source will leave it open even when the
+        // user navigates away.
+        eventSource.close();
+    });
+}
+
 // Main bootstrap function
 async function bootstrap() {
     try {
-        // Fetch the rendered component from the dev server
-        const renderUrl = new URL('http://localhost:33861/render');
-        renderUrl.searchParams.set('entrypoint', entrypoint);
-        renderUrl.searchParams.set('params', JSON.stringify(params));
-        
-        const response = await fetch(renderUrl);
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const html = await response.text();
+        // Fetch and render the initial component
+        const html = await fetchComponent();
         
         // Write the HTML to the document
         document.write(html);
         document.close();
+        
+        // Setup hot module reloading after initial render
+        setupHMR();
     } catch (error) {
         console.error('Failed to load from development server:', error);
         

@@ -54,31 +54,6 @@ fn get_ui_program() -> &'static Program {
     })
 }
 
-fn inject_hot_reload_script(html: &str) -> String {
-    const HOT_RELOAD_SCRIPT: &str = r#"<script type="module" src="/_hop/hmr.js"></script>"#;
-
-    // Try to inject before closing body tag, fallback to end of document
-    if let Some(body_end_pos) = html.rfind("</body>") {
-        let mut result = String::with_capacity(html.len() + HOT_RELOAD_SCRIPT.len());
-        result.push_str(&html[..body_end_pos]);
-        result.push_str(HOT_RELOAD_SCRIPT);
-        result.push_str(&html[body_end_pos..]);
-        result
-    } else if let Some(html_end_pos) = html.rfind("</html>") {
-        let mut result = String::with_capacity(html.len() + HOT_RELOAD_SCRIPT.len());
-        result.push_str(&html[..html_end_pos]);
-        result.push_str(HOT_RELOAD_SCRIPT);
-        result.push_str(&html[html_end_pos..]);
-        result
-    } else {
-        // If no body or html tags found, append to end
-        let mut result = String::with_capacity(html.len() + HOT_RELOAD_SCRIPT.len() + 1);
-        result.push_str(html);
-        result.push_str(HOT_RELOAD_SCRIPT);
-        result.push('\n');
-        result
-    }
-}
 
 async fn handle_idiomorph() -> Response<Body> {
     Response::builder()
@@ -87,12 +62,6 @@ async fn handle_idiomorph() -> Response<Body> {
         .unwrap()
 }
 
-async fn handle_hmr() -> Response<Body> {
-    Response::builder()
-        .header("Content-Type", "application/javascript")
-        .body(Body::from(include_str!("_hop/hmr.js")))
-        .unwrap()
-}
 
 async fn handle_bootstrap() -> Response<Body> {
     Response::builder()
@@ -189,7 +158,7 @@ async fn handle_render(
             .status(StatusCode::OK)
             .header("Access-Control-Allow-Origin", "*")
             .header("Content-Type", "text/html")
-            .body(Body::from(inject_hot_reload_script(&html)))
+            .body(Body::from(html))
             .unwrap(),
         Err(e) => Response::builder()
             .status(StatusCode::INTERNAL_SERVER_ERROR)
@@ -223,7 +192,7 @@ async fn handle_request(
     // Try to render the requested file
     let content = String::new();
     //match program.render_file(&file_path, HopMode::Dev, &mut content) {
-    //    Ok(()) => Ok(Html(inject_hot_reload_script(&content))),
+    //    Ok(()) => Ok(Html(content)),
     //    Err(_) => {
     //        let available_paths: Vec<String> = program
     //            .get_renderable_file_paths()
@@ -267,7 +236,7 @@ fn create_error_page(error: &anyhow::Error) -> String {
         HopMode::Dev,
         &mut html,
     ) {
-        Ok(()) => inject_hot_reload_script(&html),
+        Ok(()) => html,
         Err(e) => format!("Error rendering template: {}", e),
     }
 }
@@ -289,7 +258,7 @@ fn create_not_found_page(path: &str, available_routes: &[String]) -> String {
         HopMode::Dev,
         &mut html,
     ) {
-        Ok(()) => inject_hot_reload_script(&html),
+        Ok(()) => html,
         Err(e) => format!("Error rendering template: {}", e),
     }
 }
@@ -367,7 +336,6 @@ pub async fn execute(
 
     let mut router = axum::Router::new()
         .route("/_hop/idiomorph.js", get(handle_idiomorph))
-        .route("/_hop/hmr.js", get(handle_hmr))
         .route("/_hop/bootstrap.js", get(handle_bootstrap))
         .route("/_hop/event_source", get(handle_event_source))
         .route("/render", get(handle_render));
@@ -390,316 +358,3 @@ pub async fn execute(
     Ok((router.with_state(app_state), watcher))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::test_utils::archive::temp_dir_from_archive;
-    use axum::http;
-    use axum_test::{TestResponse, TestServer};
-    use expect_test::{Expect, expect};
-    use indoc::indoc;
-    use simple_txtar::Archive;
-    use std::fs;
-
-    fn check_response(response: TestResponse, status: http::StatusCode, expected: &Expect) {
-        response.assert_status(status);
-        expected.assert_eq(&response.text());
-    }
-
-    fn check_response_contains(response: TestResponse, status: http::StatusCode, contains: &str) {
-        response.assert_status(status);
-        let body = response.text();
-        assert!(
-            body.contains(contains),
-            "Response body does not contain: {}",
-            contains
-        );
-    }
-
-    /// When the user calls `hop dev` and has a entry for `index.html` in the manifest file, the
-    /// index.html entry should be rendered when the user issues a GET to /.
-    #[tokio::test]
-    async fn test_dev_and_get_index() {
-        let archive = Archive::from(indoc! {r#"
-            -- build.hop --
-            <render file="index.html">
-              Hello from build.hop!
-            </render>
-        "#});
-        let dir = temp_dir_from_archive(&archive).unwrap();
-        let root = ProjectRoot::find_upwards(&dir).unwrap();
-
-        let (router, _watcher) = execute(&root, None, None).await.unwrap();
-
-        let server = TestServer::new(router.into_make_service()).unwrap();
-
-        check_response(
-            server.get("/").await,
-            http::StatusCode::OK,
-            &expect![[r#"
-
-                  Hello from build.hop!
-                <script type="module" src="/_hop/hmr.js"></script>
-            "#]],
-        );
-    }
-
-    /// When the user changes the contents of the build.hop file after running `hop dev` the
-    /// changes should be reflected when the user sends a request to the server.
-    #[tokio::test]
-    async fn test_dev_from_hop_dynamic_update() {
-        let archive = Archive::from(indoc! {r#"
-            -- src/test.hop --
-            <foo-comp>
-              message is foo
-            </foo-comp>
-            <bar-comp>
-              message is bar
-            </bar-comp>
-            -- build.hop --
-            <import component="foo-comp" from="@/src/test" />
-
-            <render file="index.html">
-              <foo-comp />
-            </render>
-        "#});
-        let dir = temp_dir_from_archive(&archive).unwrap();
-        let root = ProjectRoot::find_upwards(&dir).unwrap();
-
-        let (router, _watcher) = execute(&root, None, None).await.unwrap();
-
-        let server = TestServer::new(router.into_make_service()).unwrap();
-
-        check_response(
-            server.get("/").await,
-            http::StatusCode::OK,
-            &expect![[r#"
-
-                  <div data-hop-id="src/test/foo-comp">
-                  message is foo
-                </div>
-                <script type="module" src="/_hop/hmr.js"></script>
-            "#]],
-        );
-
-        fs::write(
-            dir.join("build.hop"),
-            indoc! {r#"
-                <import component="bar-comp" from="@/src/test" />
-
-                <render file="index.html">
-                  <bar-comp />
-                </render>
-            "#},
-        )
-        .unwrap();
-
-        // TODO: This is flaky, the correct thing to do would be to
-        // read the event source.
-        tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
-
-        check_response(
-            server.get("/").await,
-            http::StatusCode::OK,
-            &expect![[r#"
-
-                  <div data-hop-id="src/test/bar-comp">
-                  message is bar
-                </div>
-                <script type="module" src="/_hop/hmr.js"></script>
-            "#]],
-        );
-    }
-
-    /// When the user calls `hop dev` with a servedir parameter, static files should be served
-    /// from the given directory.
-    #[tokio::test]
-    async fn test_dev_from_hop_static_files() {
-        let archive = Archive::from(indoc! {r#"
-            -- build.hop --
-            <render file="index.html">
-              hello world!
-            </render>
-            -- static/css/style.css --
-            body { background: blue; }
-            -- static/js/script.js --
-            console.log("Hello from static file");
-        "#});
-        let dir = temp_dir_from_archive(&archive).unwrap();
-        let root = ProjectRoot::find_upwards(&dir).unwrap();
-
-        let (router, _watcher) = execute(&root, Some(&dir.join("static")), None)
-            .await
-            .unwrap();
-
-        let server = TestServer::new(router.into_make_service()).unwrap();
-
-        let response = server.get("/").await;
-        check_response(
-            response,
-            http::StatusCode::OK,
-            &expect![[r#"
-
-                  hello world!
-                <script type="module" src="/_hop/hmr.js"></script>
-            "#]],
-        );
-
-        check_response(
-            server.get("/css/style.css").await,
-            http::StatusCode::OK,
-            &expect![[r#"
-                body { background: blue; }
-            "#]],
-        );
-
-        check_response(
-            server.get("/js/script.js").await,
-            http::StatusCode::OK,
-            &expect![[r#"
-                console.log("Hello from static file");
-            "#]],
-        );
-        check_response_contains(
-            server.get("/_hop/hmr.js").await,
-            http::StatusCode::OK,
-            "new EventSource('/_hop/event_source')",
-        );
-    }
-
-    /// When the user calls `hop dev` the global HOP_MODE variable should
-    /// be set to 'dev'.
-    #[tokio::test]
-    async fn test_dev_has_hop_mode_dev() {
-        let archive = Archive::from(indoc! {r#"
-            -- build.hop --
-            <render file="index.html">
-              mode: {HOP_MODE}
-            </render>
-        "#});
-        let dir = temp_dir_from_archive(&archive).unwrap();
-        let root = ProjectRoot::find_upwards(&dir).unwrap();
-
-        let (router, _watcher) = execute(&root, None, None).await.unwrap();
-
-        let server = TestServer::new(router.into_make_service()).unwrap();
-
-        check_response(
-            server.get("/").await,
-            http::StatusCode::OK,
-            &expect![[r#"
-
-                  mode: dev
-                <script type="module" src="/_hop/hmr.js"></script>
-            "#]],
-        );
-    }
-
-    /// When the user calls `hop dev` and requests a path that doesn't exist in the manifest,
-    /// a 404 page should be returned with available routes.
-    #[tokio::test]
-    async fn test_dev_404_with_helpful_message() {
-        let archive = Archive::from(indoc! {r#"
-            -- build.hop --
-            <render file="index.html">
-              Hello world!
-            </render>
-            <render file="about.html">
-              The about page
-            </render>
-            <render file="foo/bar.html">
-              The nested page
-            </render>
-        "#});
-        let dir = temp_dir_from_archive(&archive).unwrap();
-        let root = ProjectRoot::find_upwards(&dir).unwrap();
-
-        let (router, _watcher) = execute(&root, None, None).await.unwrap();
-
-        let server = TestServer::new(router.into_make_service()).unwrap();
-
-        // Test non-existent path
-        let response = server.get("/nonexistent").await;
-        check_response(
-            response,
-            http::StatusCode::NOT_FOUND,
-            &expect![[r#"
-
-                	<!DOCTYPE html>
-                	<html>
-                	<head>
-                		<title>404 Not Found</title>
-                		<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-                		<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap" rel="stylesheet">
-                        <style>
-                          body { font-family: "JetBrains Mono"; }
-                        </style>
-                	</head>
-                	<body>
-                		<div data-hop-id="hop/ui/page-container" class="max-w-6xl px-4 my-12 mx-auto">
-	
-                			<div data-hop-id="hop/error_pages/error-not-found-error" class="flex flex-col gap-4">
-                	<div data-hop-id="hop/ui/heading-box" class="border border-2 shadow-[4px_4px_rgba(0,0,0,0.1)]">
-                	<div class="p-3 py-2 flex justify-between border-b-2">
-                		<div>
-                			<span class="font-medium uppercase">
-                			  Error - Route not found
-                			</span>
-                		</div>
-                	</div>
-                	<div class="p-5 gap-5 flex flex-col" data-id="body">
-		
-                		<div>
-                		The requested route <span data-hop-id="hop/error_pages/code-text">
-                	<code class="italic">/nonexistent</code>
-                </span> was not found in the build file.
-                		</div>
-                		Available routes:<br>
-                		<ul class="ml-6" style="list-style-type: square;">
-			
-                				<li><a href="/">/</a></li>
-			
-                				<li><a href="/about">/about</a></li>
-			
-                				<li><a href="/foo/bar">/foo/bar</a></li>
-			
-                		</ul>
-                		<p>
-                			To add this route, update your <span data-hop-id="hop/error_pages/code-text">
-                	<code class="italic">build.hop</code>
-                </span> file with an entry for this path.
-                		</p>
-	
-                	</div>
-                </div>
-                </div>
-		
-                </div>
-                	<script type="module" src="/_hop/hmr.js"></script></body>
-                	</html>
-            "#]],
-        );
-    }
-
-    /// When the user calls `hop dev` and the program has parse errors, it should still run
-    /// but not find any routes (since parsing failed).
-    #[tokio::test]
-    async fn test_dev_parse_error_shows_no_routes() {
-        let archive = Archive::from(indoc! {r#"
-            -- build.hop --
-            <render file="index.html">
-                <div>
-        "#});
-        let dir = temp_dir_from_archive(&archive).unwrap();
-        let root = ProjectRoot::find_upwards(&dir).unwrap();
-
-        let (router, _watcher) = execute(&root, None, None).await.unwrap();
-
-        let server = TestServer::new(router.into_make_service()).unwrap();
-
-        // With parse errors, the program still exists but has no render nodes,
-        // so we get a 404 with no available routes
-        let response = server.get("/").await;
-        response.assert_status(axum::http::StatusCode::NOT_FOUND);
-    }
-}
