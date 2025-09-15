@@ -187,7 +187,7 @@ impl JsCompiler {
             self.write_line(&format!("const params = {{ {} }};", params_str));
         }
         
-        // Generate the bootstrap HTML with script that loads from dev server
+        // Generate a minimal bootstrap HTML that loads the script from dev server
         self.write_line("return `<!DOCTYPE html>");
         self.write_line("<html>");
         self.write_line("<head>");
@@ -196,36 +196,7 @@ impl JsCompiler {
         self.write_line(&format!("    <title>{} - Development Mode</title>", name));
         self.write_line("</head>");
         self.write_line("<body>");
-        self.write_line("    <div id=\"hop-dev-root\">Loading...</div>");
-        self.write_line("    <script>");
-        self.write_line("        (async function() {");
-        self.write_line("            try {");
-        self.write_line(&format!("                const entrypoint = '{}';", name));
-        self.write_line("                const params = ${JSON.stringify(params)};");
-        self.write_line("                ");
-        self.write_line("                const url = new URL('http://localhost:33861/render');");
-        self.write_line("                url.searchParams.set('entrypoint', entrypoint);");
-        self.write_line("                url.searchParams.set('params', JSON.stringify(params));");
-        self.write_line("                ");
-        self.write_line("                const response = await fetch(url);");
-        self.write_line("                if (!response.ok) {");
-        self.write_line("                    throw new Error('HTTP error! status: ' + response.status);");
-        self.write_line("                }");
-        self.write_line("                ");
-        self.write_line("                const html = await response.text();");
-        self.write_line("                document.getElementById('hop-dev-root').innerHTML = html;");
-        self.write_line("            } catch (error) {");
-        self.write_line("                console.error('Failed to load from development server:', error);");
-        self.write_line("                document.getElementById('hop-dev-root').innerHTML = ");
-        self.write_line("                    '<div style=\"color: red; padding: 20px;\">' +");
-        self.write_line("                    '<h2>Development Server Error</h2>' +");
-        self.write_line("                    '<p>Failed to connect to localhost:33861</p>' +");
-        self.write_line("                    '<p>Make sure the Hop development server is running.</p>' +");
-        self.write_line("                    '<pre>' + error.message + '</pre>' +");
-        self.write_line("                    '</div>';");
-        self.write_line("            }");
-        self.write_line("        })();");
-        self.write_line("    </script>");
+        self.write_line(&format!("    <script src=\"http://localhost:33861/_hop/bootstrap.js?entrypoint={}&params=${{encodeURIComponent(JSON.stringify(params))}}\"></script>", name));
         self.write_line("</body>");
         self.write_line("</html>`;");
         
@@ -553,36 +524,7 @@ mod tests {
                                 <title>test-main-comp - Development Mode</title>
                             </head>
                             <body>
-                                <div id="hop-dev-root">Loading...</div>
-                                <script>
-                                    (async function() {
-                                        try {
-                                            const entrypoint = 'test-main-comp';
-                                            const params = ${JSON.stringify(params)};
-                            
-                                            const url = new URL('http://localhost:33861/render');
-                                            url.searchParams.set('entrypoint', entrypoint);
-                                            url.searchParams.set('params', JSON.stringify(params));
-                            
-                                            const response = await fetch(url);
-                                            if (!response.ok) {
-                                                throw new Error('HTTP error! status: ' + response.status);
-                                            }
-                            
-                                            const html = await response.text();
-                                            document.getElementById('hop-dev-root').innerHTML = html;
-                                        } catch (error) {
-                                            console.error('Failed to load from development server:', error);
-                                            document.getElementById('hop-dev-root').innerHTML = 
-                                                '<div style="color: red; padding: 20px;">' +
-                                                '<h2>Development Server Error</h2>' +
-                                                '<p>Failed to connect to localhost:33861</p>' +
-                                                '<p>Make sure the Hop development server is running.</p>' +
-                                                '<pre>' + error.message + '</pre>' +
-                                                '</div>';
-                                        }
-                                    })();
-                                </script>
+                                <script src="http://localhost:33861/_hop/bootstrap.js?entrypoint=test-main-comp&params=${encodeURIComponent(JSON.stringify(params))}"></script>
                             </body>
                             </html>`;
                         }
@@ -651,36 +593,7 @@ mod tests {
                                 <title>test-greeting-comp - Development Mode</title>
                             </head>
                             <body>
-                                <div id="hop-dev-root">Loading...</div>
-                                <script>
-                                    (async function() {
-                                        try {
-                                            const entrypoint = 'test-greeting-comp';
-                                            const params = ${JSON.stringify(params)};
-                            
-                                            const url = new URL('http://localhost:33861/render');
-                                            url.searchParams.set('entrypoint', entrypoint);
-                                            url.searchParams.set('params', JSON.stringify(params));
-                            
-                                            const response = await fetch(url);
-                                            if (!response.ok) {
-                                                throw new Error('HTTP error! status: ' + response.status);
-                                            }
-                            
-                                            const html = await response.text();
-                                            document.getElementById('hop-dev-root').innerHTML = html;
-                                        } catch (error) {
-                                            console.error('Failed to load from development server:', error);
-                                            document.getElementById('hop-dev-root').innerHTML = 
-                                                '<div style="color: red; padding: 20px;">' +
-                                                '<h2>Development Server Error</h2>' +
-                                                '<p>Failed to connect to localhost:33861</p>' +
-                                                '<p>Make sure the Hop development server is running.</p>' +
-                                                '<pre>' + error.message + '</pre>' +
-                                                '</div>';
-                                        }
-                                    })();
-                                </script>
+                                <script src="http://localhost:33861/_hop/bootstrap.js?entrypoint=test-greeting-comp&params=${encodeURIComponent(JSON.stringify(params))}"></script>
                             </body>
                             </html>`;
                         }
@@ -738,36 +651,7 @@ mod tests {
                                 <title>test-main-comp - Development Mode</title>
                             </head>
                             <body>
-                                <div id="hop-dev-root">Loading...</div>
-                                <script>
-                                    (async function() {
-                                        try {
-                                            const entrypoint = 'test-main-comp';
-                                            const params = ${JSON.stringify(params)};
-                            
-                                            const url = new URL('http://localhost:33861/render');
-                                            url.searchParams.set('entrypoint', entrypoint);
-                                            url.searchParams.set('params', JSON.stringify(params));
-                            
-                                            const response = await fetch(url);
-                                            if (!response.ok) {
-                                                throw new Error('HTTP error! status: ' + response.status);
-                                            }
-                            
-                                            const html = await response.text();
-                                            document.getElementById('hop-dev-root').innerHTML = html;
-                                        } catch (error) {
-                                            console.error('Failed to load from development server:', error);
-                                            document.getElementById('hop-dev-root').innerHTML = 
-                                                '<div style="color: red; padding: 20px;">' +
-                                                '<h2>Development Server Error</h2>' +
-                                                '<p>Failed to connect to localhost:33861</p>' +
-                                                '<p>Make sure the Hop development server is running.</p>' +
-                                                '<pre>' + error.message + '</pre>' +
-                                                '</div>';
-                                        }
-                                    })();
-                                </script>
+                                <script src="http://localhost:33861/_hop/bootstrap.js?entrypoint=test-main-comp&params=${encodeURIComponent(JSON.stringify(params))}"></script>
                             </body>
                             </html>`;
                         }
@@ -838,36 +722,7 @@ mod tests {
                                 <title>test-main-comp - Development Mode</title>
                             </head>
                             <body>
-                                <div id="hop-dev-root">Loading...</div>
-                                <script>
-                                    (async function() {
-                                        try {
-                                            const entrypoint = 'test-main-comp';
-                                            const params = ${JSON.stringify(params)};
-                            
-                                            const url = new URL('http://localhost:33861/render');
-                                            url.searchParams.set('entrypoint', entrypoint);
-                                            url.searchParams.set('params', JSON.stringify(params));
-                            
-                                            const response = await fetch(url);
-                                            if (!response.ok) {
-                                                throw new Error('HTTP error! status: ' + response.status);
-                                            }
-                            
-                                            const html = await response.text();
-                                            document.getElementById('hop-dev-root').innerHTML = html;
-                                        } catch (error) {
-                                            console.error('Failed to load from development server:', error);
-                                            document.getElementById('hop-dev-root').innerHTML = 
-                                                '<div style="color: red; padding: 20px;">' +
-                                                '<h2>Development Server Error</h2>' +
-                                                '<p>Failed to connect to localhost:33861</p>' +
-                                                '<p>Make sure the Hop development server is running.</p>' +
-                                                '<pre>' + error.message + '</pre>' +
-                                                '</div>';
-                                        }
-                                    })();
-                                </script>
+                                <script src="http://localhost:33861/_hop/bootstrap.js?entrypoint=test-main-comp&params=${encodeURIComponent(JSON.stringify(params))}"></script>
                             </body>
                             </html>`;
                         }
@@ -941,36 +796,7 @@ mod tests {
                                 <title>test-main-comp - Development Mode</title>
                             </head>
                             <body>
-                                <div id="hop-dev-root">Loading...</div>
-                                <script>
-                                    (async function() {
-                                        try {
-                                            const entrypoint = 'test-main-comp';
-                                            const params = ${JSON.stringify(params)};
-                            
-                                            const url = new URL('http://localhost:33861/render');
-                                            url.searchParams.set('entrypoint', entrypoint);
-                                            url.searchParams.set('params', JSON.stringify(params));
-                            
-                                            const response = await fetch(url);
-                                            if (!response.ok) {
-                                                throw new Error('HTTP error! status: ' + response.status);
-                                            }
-                            
-                                            const html = await response.text();
-                                            document.getElementById('hop-dev-root').innerHTML = html;
-                                        } catch (error) {
-                                            console.error('Failed to load from development server:', error);
-                                            document.getElementById('hop-dev-root').innerHTML = 
-                                                '<div style="color: red; padding: 20px;">' +
-                                                '<h2>Development Server Error</h2>' +
-                                                '<p>Failed to connect to localhost:33861</p>' +
-                                                '<p>Make sure the Hop development server is running.</p>' +
-                                                '<pre>' + error.message + '</pre>' +
-                                                '</div>';
-                                        }
-                                    })();
-                                </script>
+                                <script src="http://localhost:33861/_hop/bootstrap.js?entrypoint=test-main-comp&params=${encodeURIComponent(JSON.stringify(params))}"></script>
                             </body>
                             </html>`;
                         }
@@ -1080,36 +906,7 @@ mod tests {
                                 <title>test-user-list - Development Mode</title>
                             </head>
                             <body>
-                                <div id="hop-dev-root">Loading...</div>
-                                <script>
-                                    (async function() {
-                                        try {
-                                            const entrypoint = 'test-user-list';
-                                            const params = ${JSON.stringify(params)};
-                            
-                                            const url = new URL('http://localhost:33861/render');
-                                            url.searchParams.set('entrypoint', entrypoint);
-                                            url.searchParams.set('params', JSON.stringify(params));
-                            
-                                            const response = await fetch(url);
-                                            if (!response.ok) {
-                                                throw new Error('HTTP error! status: ' + response.status);
-                                            }
-                            
-                                            const html = await response.text();
-                                            document.getElementById('hop-dev-root').innerHTML = html;
-                                        } catch (error) {
-                                            console.error('Failed to load from development server:', error);
-                                            document.getElementById('hop-dev-root').innerHTML = 
-                                                '<div style="color: red; padding: 20px;">' +
-                                                '<h2>Development Server Error</h2>' +
-                                                '<p>Failed to connect to localhost:33861</p>' +
-                                                '<p>Make sure the Hop development server is running.</p>' +
-                                                '<pre>' + error.message + '</pre>' +
-                                                '</div>';
-                                        }
-                                    })();
-                                </script>
+                                <script src="http://localhost:33861/_hop/bootstrap.js?entrypoint=test-user-list&params=${encodeURIComponent(JSON.stringify(params))}"></script>
                             </body>
                             </html>`;
                         }
