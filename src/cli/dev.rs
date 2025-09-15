@@ -3,9 +3,9 @@ use crate::hop::evaluator::HopMode;
 use crate::hop::module_name::ModuleName;
 use crate::hop::program::Program;
 use axum::body::Body;
-use axum::extract::{Query, Request, State};
+use axum::extract::{Query, State};
 use axum::http::StatusCode;
-use axum::response::{Html, Response};
+use axum::response::Response;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, OnceLock, RwLock};
@@ -169,53 +169,6 @@ async fn handle_render(
     }
 }
 
-async fn handle_request(
-    State(state): State<AppState>,
-    req: Request,
-) -> Result<Html<String>, (StatusCode, Html<String>)> {
-    // Get the program from shared state
-    let _program = state.program.read().unwrap();
-
-    let path = req.uri().path();
-
-    // Convert request path to file path format
-    let mut file_path = match path {
-        "/" => "index.html".to_string(),
-        path if path.starts_with('/') => path[1..].to_string(),
-        path => path.to_string(),
-    };
-
-    if !file_path.ends_with(".html") {
-        file_path += ".html";
-    }
-
-    // Try to render the requested file
-    let content = String::new();
-    //match program.render_file(&file_path, HopMode::Dev, &mut content) {
-    //    Ok(()) => Ok(Html(content)),
-    //    Err(_) => {
-    //        let available_paths: Vec<String> = program
-    //            .get_renderable_file_paths()
-    //            .iter()
-    //            .map(|file_path| {
-    //                if file_path == "index.html" {
-    //                    "/".to_string()
-    //                } else if file_path.ends_with(".html") {
-    //                    format!("/{}", file_path.strip_suffix(".html").unwrap())
-    //                } else {
-    //                    format!("/{}", file_path)
-    //                }
-    //            })
-    //            .collect();
-    //
-    //        Err((
-    //            StatusCode::NOT_FOUND,
-    //            Html(create_not_found_page(req.uri().path(), &available_paths)),
-    //        ))
-    //    }
-    //}
-    Ok(Html(content))
-}
 
 #[allow(dead_code)]
 fn create_error_page(error: &anyhow::Error) -> String {
@@ -348,11 +301,7 @@ pub async fn execute(
         if !static_dir.is_dir() {
             anyhow::bail!("servedir '{}' is not a directory", static_dir.display());
         }
-        router = router.fallback_service(
-            ServeDir::new(static_dir).fallback(get(handle_request).with_state(app_state.clone())),
-        );
-    } else {
-        router = router.fallback(handle_request);
+        router = router.fallback_service(ServeDir::new(static_dir));
     }
 
     Ok((router.with_state(app_state), watcher))
