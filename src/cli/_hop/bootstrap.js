@@ -36,6 +36,29 @@ async function fetchComponent() {
     return await response.text();
 }
 
+// Function to update the DOM with new HTML
+function updateDOM(html) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    // Morph the entire document to enable head merging
+    Idiomorph.morph(document.documentElement, doc.documentElement, {
+        head: {
+            shouldPreserve: function(elt) {
+                // Preserve elements with im-preserve attribute (default behavior)
+                if (elt.getAttribute('im-preserve') === 'true') {
+                    return true;
+                }
+                // Preserve Tailwind CSS style tags
+                if (elt.tagName === 'STYLE' && elt.textContent && 
+                    elt.textContent.includes('/*! tailwindcss')) {
+                    return true;
+                }
+                return false;
+            }
+        }
+    });
+}
+
 // Setup hot module reloading
 function setupHMR() {
     const eventSource = new EventSource('http://localhost:33861/_hop/event_source');
@@ -43,27 +66,7 @@ function setupHMR() {
     eventSource.onmessage = function(event) {
         if (event.data === 'reload') {
             fetchComponent()
-                .then(html => {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    // Morph the entire document to enable head merging
-                    Idiomorph.morph(document.documentElement, doc.documentElement, {
-                        head: {
-                            shouldPreserve: function(elt) {
-                                // Preserve elements with im-preserve attribute (default behavior)
-                                if (elt.getAttribute('im-preserve') === 'true') {
-                                    return true;
-                                }
-                                // Preserve Tailwind CSS style tags
-                                if (elt.tagName === 'STYLE' && elt.textContent && 
-                                    elt.textContent.includes('/*! tailwindcss')) {
-                                    return true;
-                                }
-                                return false;
-                            }
-                        }
-                    });
-                })
+                .then(html => updateDOM(html))
                 .catch(error => {
                     console.error('Hot reload fetch error:', error);
                 });
@@ -91,9 +94,8 @@ async function bootstrap() {
         // Fetch and render the initial component
         const html = await fetchComponent();
         
-        // Write the HTML to the document
-        document.write(html);
-        document.close();
+        // Update the DOM with the fetched HTML
+        updateDOM(html);
         
         // Setup hot module reloading after initial render
         setupHMR();
