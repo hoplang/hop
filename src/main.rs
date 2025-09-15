@@ -44,6 +44,9 @@ enum Commands {
         /// Output file (defaults to output.{ext})
         #[arg(short, long)]
         output: Option<String>,
+        /// Compile for development mode (generates bootstrap HTML)
+        #[arg(long, default_value = "false")]
+        development: bool,
     },
     /// Start development server for serving hop templates from a manifest
     Dev {
@@ -94,6 +97,7 @@ async fn main() -> anyhow::Result<()> {
             language,
             projectdir,
             output,
+            development,
         }) => {
             use std::time::Instant;
             let start_time = Instant::now();
@@ -104,7 +108,7 @@ async fn main() -> anyhow::Result<()> {
                 CompileLanguage::Ts => "output.ts",
             });
 
-            let result = cli::compile::execute(projectdir.as_deref(), output_path, language)?;
+            let result = cli::compile::execute(projectdir.as_deref(), output_path, language, *development)?;
             let elapsed = start_time.elapsed();
 
             print_header("compiled", elapsed.as_millis());

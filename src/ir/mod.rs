@@ -9,4 +9,4 @@ pub mod test_utils;
 
 pub use ast::IrExpr;
 pub use compiler::Compiler;
-pub use js_compiler::{JsCompiler, LanguageMode};
+pub use js_compiler::{JsCompiler, LanguageMode, CompilationMode};

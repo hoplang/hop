@@ -2,7 +2,7 @@ use crate::CompileLanguage;
 use crate::document::DocumentAnnotator;
 use crate::filesystem::files::ProjectRoot;
 use crate::hop::program::Program;
-use crate::ir::{Compiler, JsCompiler, LanguageMode, optimizer::Optimizer};
+use crate::ir::{CompilationMode, Compiler, JsCompiler, LanguageMode, optimizer::Optimizer};
 use crate::tui::timing;
 use anyhow::{Context, Result};
 use std::fs;
@@ -18,6 +18,7 @@ pub fn execute(
     projectdir: Option<&str>,
     output_path: &str,
     language: &CompileLanguage,
+    development: bool,
 ) -> Result<CompileResult> {
     let mut timer = timing::TimingCollector::new();
 
@@ -87,15 +88,21 @@ pub fn execute(
     optimizer.run(&mut ir_module);
 
     // Generate code based on target language
+    let compilation_mode = if development {
+        CompilationMode::Development
+    } else {
+        CompilationMode::Production
+    };
+
     let generated_code = match language {
         CompileLanguage::Js => {
             timer.start_phase("generating js");
-            let mut compiler = JsCompiler::new(LanguageMode::JavaScript);
+            let mut compiler = JsCompiler::new(LanguageMode::JavaScript, compilation_mode);
             compiler.compile_module(&ir_module)
         }
         CompileLanguage::Ts => {
             timer.start_phase("generating ts");
-            let mut compiler = JsCompiler::new(LanguageMode::TypeScript);
+            let mut compiler = JsCompiler::new(LanguageMode::TypeScript, compilation_mode);
             compiler.compile_module(&ir_module)
         }
     };

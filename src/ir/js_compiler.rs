@@ -7,21 +7,29 @@ pub enum LanguageMode {
     TypeScript,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum CompilationMode {
+    Production,
+    Development,
+}
+
 /// Compiles an IR module to JavaScript or TypeScript code
 pub struct JsCompiler {
     output: String,
     indent_level: usize,
     mode: LanguageMode,
+    compilation_mode: CompilationMode,
     /// Internal flag to use template literals instead of double quotes
     use_template_literals: bool,
 }
 
 impl JsCompiler {
-    pub fn new(mode: LanguageMode) -> Self {
+    pub fn new(mode: LanguageMode, compilation_mode: CompilationMode) -> Self {
         Self {
             output: String::new(),
             indent_level: 0,
             mode,
+            compilation_mode,
             use_template_literals: false,
         }
     }
@@ -47,34 +55,39 @@ impl JsCompiler {
     }
 
     pub fn compile_module(&mut self, ir_module: &IrModule) -> String {
-        // Add the escape HTML helper function
-        match self.mode {
-            LanguageMode::JavaScript => {
-                self.write_line("function escapeHtml(str) {");
+        match self.compilation_mode {
+            CompilationMode::Production => {
+                // Add the escape HTML helper function for production mode
+                match self.mode {
+                    LanguageMode::JavaScript => {
+                        self.write_line("function escapeHtml(str) {");
+                        self.indent();
+                        self.write_line("if (typeof str !== 'string') return str;");
+                    }
+                    LanguageMode::TypeScript => {
+                        self.write_line("function escapeHtml(str: string): string {");
+                        self.indent();
+                    }
+                }
+                self.write_line("return str");
                 self.indent();
-                self.write_line("if (typeof str !== 'string') return str;");
+                self.write_line(".replace(/&/g, '&amp;')");
+                self.write_line(".replace(/</g, '&lt;')");
+                self.write_line(".replace(/>/g, '&gt;')");
+                self.write_line(".replace(/\"/g, '&quot;')");
+                self.write_line(".replace(/'/g, '&#39;');");
+                self.dedent();
+                self.dedent();
+                self.write_line("}");
+                self.write_line("");
             }
-            LanguageMode::TypeScript => {
-                self.write_line("function escapeHtml(str: string): string {");
-                self.indent();
+            CompilationMode::Development => {
+                // No escapeHtml needed for development mode
             }
         }
-        self.write_line("return str");
-        self.indent();
-        self.write_line(".replace(/&/g, '&amp;')");
-        self.write_line(".replace(/</g, '&lt;')");
-        self.write_line(".replace(/>/g, '&gt;')");
-        self.write_line(".replace(/\"/g, '&quot;')");
-        self.write_line(".replace(/'/g, '&#39;');");
-        self.dedent();
-        self.dedent();
-        self.write_line("}");
-        self.write_line("");
 
         // Start export default object
         self.write_line("export default {");
-        self.indent();
-        self.write_line("production: {");
         self.indent();
 
         // Compile each entrypoint as a function property
@@ -84,34 +97,19 @@ impl JsCompiler {
                 self.output.push_str(",\n");
             }
             first = false;
-            self.compile_entrypoint(name, entrypoint);
-        }
 
-        // Close the production object
-        self.write_line("");
-        self.dedent();
-        self.write_line("},");
-
-        // Add development object with same signature
-        self.write_line("development: {");
-        self.indent();
-
-        // Generate development mode functions with same signatures
-        let mut first = true;
-        for (name, entrypoint) in &ir_module.entry_points {
-            if !first {
-                self.output.push_str(",\n");
+            match self.compilation_mode {
+                CompilationMode::Production => {
+                    self.compile_entrypoint(name, entrypoint);
+                }
+                CompilationMode::Development => {
+                    self.compile_development_entrypoint(name, entrypoint);
+                }
             }
-            first = false;
-            self.compile_development_entrypoint(name, entrypoint);
         }
 
-        // Close the development object
+        // Close the export default object
         self.write_line("");
-        self.dedent();
-        self.write_line("}");
-
-        // Close export default
         self.dedent();
         self.write_line("}");
 
@@ -470,12 +468,12 @@ mod tests {
     use std::collections::BTreeMap;
 
     fn compile_ir_to_js(ir_module: &IrModule) -> String {
-        let mut compiler = JsCompiler::new(LanguageMode::JavaScript);
+        let mut compiler = JsCompiler::new(LanguageMode::JavaScript, CompilationMode::Production);
         compiler.compile_module(ir_module)
     }
 
     fn compile_ir_to_ts(ir_module: &IrModule) -> String {
-        let mut compiler = JsCompiler::new(LanguageMode::TypeScript);
+        let mut compiler = JsCompiler::new(LanguageMode::TypeScript, CompilationMode::Production);
         compiler.compile_module(ir_module)
     }
 
@@ -516,32 +514,10 @@ mod tests {
                 }
 
                 export default {
-                    production: {
-                        testMainComp: () => {
-                            let output = "";
-                            output += "<div>Hello World</div>\n";
-                            return output;
-                        }
-                    },
-                    development: {
-                        testMainComp: () => {
-                            const params = {};
-                            return `<!DOCTYPE html>
-                            <html>
-                            <head>
-                            <meta charset="UTF-8">
-                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                            <title>test-main-comp - Development Mode</title>
-                            </head>
-                            <body>
-                            <script id="hop-config" type="application/json">
-                            {"entrypoint": "test-main-comp", "params": ${JSON.stringify(params)}}
-                            </script>
-                            <script type="module" src="http://localhost:33861/dev.js"></script>
-                            </body>
-                            </html>`;
-                        }
-
+                    testMainComp: () => {
+                        let output = "";
+                        output += "<div>Hello World</div>\n";
+                        return output;
                     }
                 }
             "#]],
@@ -584,36 +560,14 @@ mod tests {
                 }
 
                 export default {
-                    production: {
-                        testGreetingComp: ({ name, message }) => {
-                            let output = "";
-                            output += "<h1>Hello ";
-                            output += escapeHtml(name);
-                            output += ", ";
-                            output += escapeHtml(message);
-                            output += "</h1>\n";
-                            return output;
-                        }
-                    },
-                    development: {
-                        testGreetingComp: ({ name, message }) => {
-                            const params = { name, message };
-                            return `<!DOCTYPE html>
-                            <html>
-                            <head>
-                            <meta charset="UTF-8">
-                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                            <title>test-greeting-comp - Development Mode</title>
-                            </head>
-                            <body>
-                            <script id="hop-config" type="application/json">
-                            {"entrypoint": "test-greeting-comp", "params": ${JSON.stringify(params)}}
-                            </script>
-                            <script type="module" src="http://localhost:33861/dev.js"></script>
-                            </body>
-                            </html>`;
-                        }
-
+                    testGreetingComp: ({ name, message }) => {
+                        let output = "";
+                        output += "<h1>Hello ";
+                        output += escapeHtml(name);
+                        output += ", ";
+                        output += escapeHtml(message);
+                        output += "</h1>\n";
+                        return output;
                     }
                 }
             "#]],
@@ -647,34 +601,12 @@ mod tests {
                 }
 
                 export default {
-                    production: {
-                        testMainComp: ({ show }) => {
-                            let output = "";
-                            if (show) {
-                                output += "<div>Visible</div>\n";
-                            }
-                            return output;
+                    testMainComp: ({ show }) => {
+                        let output = "";
+                        if (show) {
+                            output += "<div>Visible</div>\n";
                         }
-                    },
-                    development: {
-                        testMainComp: ({ show }) => {
-                            const params = { show };
-                            return `<!DOCTYPE html>
-                            <html>
-                            <head>
-                            <meta charset="UTF-8">
-                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                            <title>test-main-comp - Development Mode</title>
-                            </head>
-                            <body>
-                            <script id="hop-config" type="application/json">
-                            {"entrypoint": "test-main-comp", "params": ${JSON.stringify(params)}}
-                            </script>
-                            <script type="module" src="http://localhost:33861/dev.js"></script>
-                            </body>
-                            </html>`;
-                        }
-
+                        return output;
                     }
                 }
             "#]],
@@ -719,36 +651,14 @@ mod tests {
                 }
 
                 export default {
-                    production: {
-                        testMainComp: ({ items }) => {
-                            let output = "";
-                            for (const item of items) {
-                                output += "<li>";
-                                output += escapeHtml(item);
-                                output += "</li>\n";
-                            }
-                            return output;
+                    testMainComp: ({ items }) => {
+                        let output = "";
+                        for (const item of items) {
+                            output += "<li>";
+                            output += escapeHtml(item);
+                            output += "</li>\n";
                         }
-                    },
-                    development: {
-                        testMainComp: ({ items }) => {
-                            const params = { items };
-                            return `<!DOCTYPE html>
-                            <html>
-                            <head>
-                            <meta charset="UTF-8">
-                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                            <title>test-main-comp - Development Mode</title>
-                            </head>
-                            <body>
-                            <script id="hop-config" type="application/json">
-                            {"entrypoint": "test-main-comp", "params": ${JSON.stringify(params)}}
-                            </script>
-                            <script type="module" src="http://localhost:33861/dev.js"></script>
-                            </body>
-                            </html>`;
-                        }
-
+                        return output;
                     }
                 }
             "#]],
@@ -795,37 +705,15 @@ mod tests {
                 }
 
                 export default {
-                    production: {
-                        testMainComp: () => {
-                            let output = "";
-                            output += "<div data-hop-id=\"test/card-comp\">";
-                            const title = "Hello World";
-                            output += "<h2>";
-                            output += escapeHtml(title);
-                            output += "</h2>";
-                            output += "</div>";
-                            return output;
-                        }
-                    },
-                    development: {
-                        testMainComp: () => {
-                            const params = {};
-                            return `<!DOCTYPE html>
-                            <html>
-                            <head>
-                            <meta charset="UTF-8">
-                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                            <title>test-main-comp - Development Mode</title>
-                            </head>
-                            <body>
-                            <script id="hop-config" type="application/json">
-                            {"entrypoint": "test-main-comp", "params": ${JSON.stringify(params)}}
-                            </script>
-                            <script type="module" src="http://localhost:33861/dev.js"></script>
-                            </body>
-                            </html>`;
-                        }
-
+                    testMainComp: () => {
+                        let output = "";
+                        output += "<div data-hop-id=\"test/card-comp\">";
+                        const title = "Hello World";
+                        output += "<h2>";
+                        output += escapeHtml(title);
+                        output += "</h2>";
+                        output += "</div>";
+                        return output;
                     }
                 }
             "#]],
@@ -896,49 +784,27 @@ mod tests {
                 }
 
                 export default {
-                    production: {
-                        testUserList: ({ users, title }: { users: { active: boolean, id: string, name: string }[], title: string }): string => {
-                            let output: string = "";
-                            output += "<div>\n";
-                            output += "<h1>\n";
-                            output += escapeHtml(title);
-                            output += "</h1>\n";
-                            output += "<ul>\n";
-                            for (const user of users) {
-                                output += "\n";
-                                if (user.active) {
-                                    output += "\n<li>User ";
-                                    output += escapeHtml(user.id);
-                                    output += ": ";
-                                    output += escapeHtml(user.name);
-                                    output += "</li>\n";
-                                }
-                                output += "\n";
+                    testUserList: ({ users, title }: { users: { active: boolean, id: string, name: string }[], title: string }): string => {
+                        let output: string = "";
+                        output += "<div>\n";
+                        output += "<h1>\n";
+                        output += escapeHtml(title);
+                        output += "</h1>\n";
+                        output += "<ul>\n";
+                        for (const user of users) {
+                            output += "\n";
+                            if (user.active) {
+                                output += "\n<li>User ";
+                                output += escapeHtml(user.id);
+                                output += ": ";
+                                output += escapeHtml(user.name);
+                                output += "</li>\n";
                             }
-                            output += "</ul>\n";
-                            output += "</div>\n";
-                            return output;
+                            output += "\n";
                         }
-                    },
-                    development: {
-                        testUserList: ({ users, title }: { users: { active: boolean, id: string, name: string }[], title: string }): string => {
-                            const params = { users, title };
-                            return `<!DOCTYPE html>
-                            <html>
-                            <head>
-                            <meta charset="UTF-8">
-                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                            <title>test-user-list - Development Mode</title>
-                            </head>
-                            <body>
-                            <script id="hop-config" type="application/json">
-                            {"entrypoint": "test-user-list", "params": ${JSON.stringify(params)}}
-                            </script>
-                            <script type="module" src="http://localhost:33861/dev.js"></script>
-                            </body>
-                            </html>`;
-                        }
-
+                        output += "</ul>\n";
+                        output += "</div>\n";
+                        return output;
                     }
                 }
             "#]],
