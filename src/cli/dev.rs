@@ -169,30 +169,6 @@ async fn handle_render(
     }
 }
 
-#[allow(dead_code)]
-fn create_error_page(error: &anyhow::Error) -> String {
-    let program = get_ui_program();
-
-    let mut args = HashMap::new();
-    args.insert(
-        "error".to_string(),
-        serde_json::json!({
-            "message": format!("{:#}", error).to_string()
-        }),
-    );
-    let mut html = String::new();
-    match program.evaluate_component(
-        &ModuleName::new("hop/error_pages".to_string()).unwrap(),
-        "generic-error",
-        args,
-        HopMode::Dev,
-        &mut html,
-    ) {
-        Ok(()) => html,
-        Err(e) => format!("Error rendering template: {}", e),
-    }
-}
-
 fn create_file_watcher(
     root: &ProjectRoot,
     state: AppState,
