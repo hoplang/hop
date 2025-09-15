@@ -411,6 +411,11 @@ impl JsCompiler {
                     UnaryOp::Not => format!("!({})", compiled_op),
                 }
             }
+
+            IrExprValue::JsonEncode { value } => {
+                let compiled_value = self.compile_expr(value);
+                format!("JSON.stringify({})", compiled_value)
+            }
         }
     }
 

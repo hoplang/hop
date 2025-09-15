@@ -57,6 +57,11 @@ fn evaluate_ir_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value
                 }
             }
         }
+        IrExprValue::JsonEncode { value } => {
+            let val = evaluate_ir_expr(value, env)?;
+            let json_str = serde_json::to_string(&val)?;
+            Ok(Value::String(json_str))
+        }
     }
 }
 

@@ -99,6 +99,10 @@ pub enum IrExprValue {
         op: UnaryOp,
         operand: Box<IrExpr>,
     },
+
+    JsonEncode {
+        value: Box<IrExpr>,
+    },
 }
 
 /// Binary operators in IR
@@ -570,6 +574,12 @@ impl IrExpr {
                 id: self.id,
                 value: IrExprValue::Number(n),
             },
+            IrExprValue::JsonEncode { value } => IrExpr {
+                id: self.id,
+                value: IrExprValue::JsonEncode {
+                    value: Box::new(value.map_expr(f)),
+                },
+            },
         };
         // Then apply the function to this node
         f(transformed)
@@ -607,6 +617,9 @@ impl<'a> Iterator for DfsIter<'a> {
                     for (_, value) in properties.iter().rev() {
                         self.stack.push(value);
                     }
+                }
+                IrExprValue::JsonEncode { value } => {
+                    self.stack.push(value);
                 }
                 // Explicitly list all leaf nodes (no children to traverse)
                 IrExprValue::Var(_) => {}
@@ -653,6 +666,9 @@ impl fmt::Display for IrExpr {
             }
             IrExprValue::UnaryOp { op, operand } => {
                 write!(f, "{}{}", op, operand)
+            }
+            IrExprValue::JsonEncode { value } => {
+                write!(f, "JsonEncode({})", value)
             }
         }
     }
