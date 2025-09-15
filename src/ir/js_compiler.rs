@@ -205,9 +205,7 @@ impl JsCompiler {
             name
         ));
         self.write_line("</script>");
-        self.write_line(
-            "<script type=\"module\" src=\"http://localhost:33861/_hop/bootstrap.js\"></script>",
-        );
+        self.write_line("<script type=\"module\" src=\"http://localhost:33861/dev.js\"></script>");
         self.write_line("</body>");
         self.write_line("</html>`;");
 
@@ -539,7 +537,7 @@ mod tests {
                             <script id="hop-config" type="application/json">
                             {"entrypoint": "test-main-comp", "params": ${JSON.stringify(params)}}
                             </script>
-                            <script type="module" src="http://localhost:33861/_hop/bootstrap.js"></script>
+                            <script type="module" src="http://localhost:33861/dev.js"></script>
                             </body>
                             </html>`;
                         }
@@ -611,7 +609,7 @@ mod tests {
                             <script id="hop-config" type="application/json">
                             {"entrypoint": "test-greeting-comp", "params": ${JSON.stringify(params)}}
                             </script>
-                            <script type="module" src="http://localhost:33861/_hop/bootstrap.js"></script>
+                            <script type="module" src="http://localhost:33861/dev.js"></script>
                             </body>
                             </html>`;
                         }
@@ -672,7 +670,7 @@ mod tests {
                             <script id="hop-config" type="application/json">
                             {"entrypoint": "test-main-comp", "params": ${JSON.stringify(params)}}
                             </script>
-                            <script type="module" src="http://localhost:33861/_hop/bootstrap.js"></script>
+                            <script type="module" src="http://localhost:33861/dev.js"></script>
                             </body>
                             </html>`;
                         }
@@ -746,7 +744,7 @@ mod tests {
                             <script id="hop-config" type="application/json">
                             {"entrypoint": "test-main-comp", "params": ${JSON.stringify(params)}}
                             </script>
-                            <script type="module" src="http://localhost:33861/_hop/bootstrap.js"></script>
+                            <script type="module" src="http://localhost:33861/dev.js"></script>
                             </body>
                             </html>`;
                         }
@@ -823,7 +821,7 @@ mod tests {
                             <script id="hop-config" type="application/json">
                             {"entrypoint": "test-main-comp", "params": ${JSON.stringify(params)}}
                             </script>
-                            <script type="module" src="http://localhost:33861/_hop/bootstrap.js"></script>
+                            <script type="module" src="http://localhost:33861/dev.js"></script>
                             </body>
                             </html>`;
                         }
@@ -936,7 +934,7 @@ mod tests {
                             <script id="hop-config" type="application/json">
                             {"entrypoint": "test-user-list", "params": ${JSON.stringify(params)}}
                             </script>
-                            <script type="module" src="http://localhost:33861/_hop/bootstrap.js"></script>
+                            <script type="module" src="http://localhost:33861/dev.js"></script>
                             </body>
                             </html>`;
                         }

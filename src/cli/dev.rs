@@ -21,12 +21,12 @@ async fn handle_idiomorph() -> Response<Body> {
         .unwrap()
 }
 
-async fn handle_bootstrap() -> Response<Body> {
+async fn handle_dev_js() -> Response<Body> {
     Response::builder()
         .header("Content-Type", "application/javascript")
         .header("Access-Control-Allow-Origin", "*")
         .header("Cache-Control", "public, max-age=31536000, immutable")
-        .body(Body::from(include_str!("_hop/bootstrap.js")))
+        .body(Body::from(include_str!("_hop/dev.js")))
         .unwrap()
 }
 
@@ -149,7 +149,7 @@ pub async fn execute(
 
     let router = axum::Router::new()
         .route("/_hop/idiomorph.js", get(handle_idiomorph))
-        .route("/_hop/bootstrap.js", get(handle_bootstrap))
+        .route("/dev.js", get(handle_dev_js))
         .route("/_hop/event_source", get(handle_event_source))
         .route("/render", get(handle_render));
 
