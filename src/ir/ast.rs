@@ -575,7 +575,7 @@ impl<'a> Iterator for DfsIter<'a> {
     type Item = &'a IrExpr;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.stack.pop().map(|expr| {
+        self.stack.pop().inspect(|expr| {
             // Push children onto stack in reverse order for left-to-right DFS
             match &expr.value {
                 IrExprValue::PropertyAccess { object, .. } => {
@@ -604,7 +604,6 @@ impl<'a> Iterator for DfsIter<'a> {
                 IrExprValue::Boolean(_) => {}
                 IrExprValue::Number(_) => {}
             }
-            expr
         })
     }
 }

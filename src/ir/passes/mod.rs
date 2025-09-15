@@ -7,7 +7,6 @@ mod write_expr_simplification;
 pub use constant_propagation::ConstantPropagationPass;
 pub use dead_code_elimination::DeadCodeEliminationPass;
 pub use unused_let_elimination::UnusedLetEliminationPass;
-pub use write_coalescing::WriteCoalescingPass;
 pub use write_expr_simplification::WriteExprSimplificationPass;
 
 use super::ast::IrEntrypoint;

@@ -1,6 +1,5 @@
 pub mod ast;
 pub mod environment;
-pub mod evaluator;
 pub mod module_name;
 pub mod parse_error;
 pub mod parser;

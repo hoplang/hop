@@ -2,7 +2,6 @@ use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::error_collector::ErrorCollector;
 use crate::hop::ast::Ast;
-use crate::hop::evaluator;
 use crate::hop::parse_error::ParseError;
 use crate::hop::parser::parse;
 use crate::hop::script_collector::ScriptCollector;
@@ -11,10 +10,9 @@ use crate::hop::toposorter::TopoSorter;
 use crate::hop::type_error::TypeError;
 use crate::ir;
 use anyhow::Result;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 
 use super::ast::Node;
-use super::evaluator::HopMode;
 use super::module_name::ModuleName;
 use super::typechecker::TypeChecker;
 
@@ -398,26 +396,6 @@ impl Program {
             script_collector.process_module(ast);
         }
         script_collector.build()
-    }
-
-    pub fn evaluate_component(
-        &self,
-        module_name: &ModuleName,
-        component_name: &str,
-        args: HashMap<String, serde_json::Value>,
-        hop_mode: HopMode,
-        output: &mut String,
-    ) -> Result<()> {
-        evaluator::evaluate_component(
-            &self.modules,
-            hop_mode,
-            module_name,
-            component_name,
-            args,
-            None,
-            BTreeMap::new(),
-            output,
-        )
     }
 
     /// Evaluate an IR entrypoint by name
@@ -1379,9 +1357,11 @@ mod tests {
         // Test error when entrypoint doesn't exist
         let result = program.evaluate_ir_entrypoint("non-existent", HashMap::new(), "dev");
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Entrypoint 'non-existent' not found"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Entrypoint 'non-existent' not found")
+        );
     }
 }
