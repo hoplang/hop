@@ -1,8 +1,9 @@
 use super::Pass;
 use crate::common::escape_html;
-use crate::ir::ast::{IrEntrypoint, IrExprValue, IrNode};
+use crate::ir::ast::{IrEntrypoint, IrExprValue, IrStatement};
 
-/// A pass that simplifies WriteExpr nodes with constant string expressions into Write nodes
+/// A pass that simplifies WriteExpr statements with constant string expressions into a Write
+/// statement
 pub struct WriteExprSimplificationPass;
 
 impl WriteExprSimplificationPass {
@@ -10,52 +11,52 @@ impl WriteExprSimplificationPass {
         Self
     }
 
-    fn transform_node(node: IrNode) -> IrNode {
-        match node {
-            IrNode::WriteExpr { id, expr, escape } => {
-                // If the expression is a constant string, convert to Write node
+    fn transform_statement(statement: IrStatement) -> IrStatement {
+        match statement {
+            IrStatement::WriteExpr { id, expr, escape } => {
+                // If the expression is a constant string, convert to Write statement
                 if let IrExprValue::String(s) = &expr.value {
                     // Apply HTML escaping if needed
                     let content = if escape { escape_html(s) } else { s.clone() };
-                    IrNode::Write { id, content }
+                    IrStatement::Write { id, content }
                 } else {
-                    IrNode::WriteExpr { id, expr, escape }
+                    IrStatement::WriteExpr { id, expr, escape }
                 }
             }
-            // Recursively transform child nodes
-            IrNode::If {
+            // Recursively transform child statements
+            IrStatement::If {
                 id,
                 condition,
                 body,
-            } => IrNode::If {
+            } => IrStatement::If {
                 id,
                 condition,
-                body: body.into_iter().map(Self::transform_node).collect(),
+                body: body.into_iter().map(Self::transform_statement).collect(),
             },
-            IrNode::For {
+            IrStatement::For {
                 id,
                 var,
                 array,
                 body,
-            } => IrNode::For {
+            } => IrStatement::For {
                 id,
                 var,
                 array,
-                body: body.into_iter().map(Self::transform_node).collect(),
+                body: body.into_iter().map(Self::transform_statement).collect(),
             },
-            IrNode::Let {
+            IrStatement::Let {
                 id,
                 var,
                 value,
                 body,
-            } => IrNode::Let {
+            } => IrStatement::Let {
                 id,
                 var,
                 value,
-                body: body.into_iter().map(Self::transform_node).collect(),
+                body: body.into_iter().map(Self::transform_statement).collect(),
             },
-            // Write nodes remain unchanged
-            node @ IrNode::Write { .. } => node,
+            // Write statements remain unchanged
+            statement @ IrStatement::Write { .. } => statement,
         }
     }
 }
@@ -67,7 +68,7 @@ impl Pass for WriteExprSimplificationPass {
             body: entrypoint
                 .body
                 .into_iter()
-                .map(Self::transform_node)
+                .map(Self::transform_statement)
                 .collect(),
         }
     }
@@ -205,7 +206,7 @@ mod tests {
             IrEntrypoint {
                 parameters: vec![],
                 body: vec![
-                    t.write("Already a Write node"),
+                    t.write("Already a Write statement"),
                     t.write_expr(t.str("Will become Write"), false),
                     t.write_expr(t.var("stays_as_WriteExpr"), false),
                 ],
@@ -214,7 +215,7 @@ mod tests {
                 IrEntrypoint {
                   parameters: []
                   body: {
-                    Write("Already a Write node")
+                    Write("Already a Write statement")
                     Write("Will become Write")
                     WriteExpr(expr: stays_as_WriteExpr, escape: false)
                   }

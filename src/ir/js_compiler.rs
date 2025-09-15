@@ -1,4 +1,4 @@
-use super::ast::{BinaryOp, IrEntrypoint, IrExpr, IrExprValue, IrModule, IrNode, UnaryOp};
+use super::ast::{BinaryOp, IrEntrypoint, IrExpr, IrExprValue, IrModule, IrStatement, UnaryOp};
 use crate::dop::r#type::Type;
 
 #[derive(Debug, Clone, Copy)]
@@ -274,7 +274,7 @@ impl JsCompiler {
         }
 
         // Compile the body
-        self.compile_nodes(&entrypoint.body);
+        self.compile_statements(&entrypoint.body);
 
         self.write_line("return output;");
         self.dedent();
@@ -305,20 +305,20 @@ impl JsCompiler {
         }
     }
 
-    fn compile_nodes(&mut self, nodes: &[IrNode]) {
-        for node in nodes {
-            self.compile_node(node);
+    fn compile_statements(&mut self, statements: &[IrStatement]) {
+        for node in statements {
+            self.compile_statement(node);
         }
     }
 
-    fn compile_node(&mut self, node: &IrNode) {
-        match node {
-            IrNode::Write { id: _, content } => {
+    fn compile_statement(&mut self, statement: &IrStatement) {
+        match statement {
+            IrStatement::Write { id: _, content } => {
                 let quoted = self.quote_string(content);
                 self.write_line(&format!("output += {};", quoted));
             }
 
-            IrNode::WriteExpr {
+            IrStatement::WriteExpr {
                 id: _,
                 expr,
                 escape,
@@ -331,7 +331,7 @@ impl JsCompiler {
                 }
             }
 
-            IrNode::If {
+            IrStatement::If {
                 id: _,
                 condition,
                 body,
@@ -339,12 +339,12 @@ impl JsCompiler {
                 let js_cond = self.compile_expr(condition);
                 self.write_line(&format!("if ({}) {{", js_cond));
                 self.indent();
-                self.compile_nodes(body);
+                self.compile_statements(body);
                 self.dedent();
                 self.write_line("}");
             }
 
-            IrNode::For {
+            IrStatement::For {
                 id: _,
                 var,
                 array,
@@ -353,12 +353,12 @@ impl JsCompiler {
                 let js_array = self.compile_expr(array);
                 self.write_line(&format!("for (const {} of {}) {{", var, js_array));
                 self.indent();
-                self.compile_nodes(body);
+                self.compile_statements(body);
                 self.dedent();
                 self.write_line("}");
             }
 
-            IrNode::Let {
+            IrStatement::Let {
                 id: _,
                 var,
                 value,
@@ -366,7 +366,7 @@ impl JsCompiler {
             } => {
                 let js_value = self.compile_expr(value);
                 self.write_line(&format!("const {} = {};", var, js_value));
-                self.compile_nodes(body);
+                self.compile_statements(body);
             }
         }
     }

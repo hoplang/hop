@@ -6,7 +6,8 @@ use crate::hop::module_name::ModuleName;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use super::ast::{
-    BinaryOp, ExprId, IrEntrypoint, IrExpr, IrExprValue, IrModule, IrNode, NodeId, UnaryOp,
+    BinaryOp, ExprId, IrEntrypoint, IrExpr, IrExprValue, IrModule, IrStatement, StatementId,
+    UnaryOp,
 };
 
 pub struct Compiler<'a> {
@@ -90,15 +91,15 @@ impl Compiler<'_> {
         &mut self,
         original_params: &[String],
         renamed_params: &[String],
-        body: Vec<IrNode>,
-    ) -> Vec<IrNode> {
+        body: Vec<IrStatement>,
+    ) -> Vec<IrStatement> {
         // For entrypoints, we need to bind renamed params to original param names
         // that will be passed in from outside
         let mut result = body;
         for (original, renamed) in original_params.iter().zip(renamed_params.iter()).rev() {
             // Only create a Let binding if the name was actually renamed
             if original != renamed {
-                result = vec![IrNode::Let {
+                result = vec![IrStatement::Let {
                     id: self.next_node_id(),
                     var: renamed.clone(),
                     value: IrExpr {
@@ -112,7 +113,11 @@ impl Compiler<'_> {
         result
     }
 
-    fn compile_nodes(&mut self, nodes: &[Node], slot_content: Option<Vec<IrNode>>) -> Vec<IrNode> {
+    fn compile_nodes(
+        &mut self,
+        nodes: &[Node],
+        slot_content: Option<Vec<IrStatement>>,
+    ) -> Vec<IrStatement> {
         let mut result = Vec::new();
         for node in nodes {
             self.compile_node(node, slot_content.as_ref(), &mut result);
@@ -123,19 +128,19 @@ impl Compiler<'_> {
     fn compile_node(
         &mut self,
         node: &Node,
-        slot_content: Option<&Vec<IrNode>>,
-        output: &mut Vec<IrNode>,
+        slot_content: Option<&Vec<IrStatement>>,
+        output: &mut Vec<IrStatement>,
     ) {
         match node {
             Node::Text { range } => {
-                output.push(IrNode::Write {
+                output.push(IrStatement::Write {
                     id: self.next_node_id(),
                     content: range.as_str().to_string(),
                 });
             }
 
             Node::TextExpression { expression, .. } => {
-                output.push(IrNode::WriteExpr {
+                output.push(IrStatement::WriteExpr {
                     id: self.next_node_id(),
                     expr: self.rename_expr(expression),
                     escape: true,
@@ -161,7 +166,7 @@ impl Compiler<'_> {
                 let renamed_condition = self.rename_expr(condition);
                 self.pop_scope();
 
-                output.push(IrNode::If {
+                output.push(IrStatement::If {
                     id: self.next_node_id(),
                     condition: renamed_condition,
                     body,
@@ -180,7 +185,7 @@ impl Compiler<'_> {
                 let renamed_array = self.rename_expr(array_expr);
                 self.pop_scope();
 
-                output.push(IrNode::For {
+                output.push(IrStatement::For {
                     id: self.next_node_id(),
                     var: renamed_var,
                     array: renamed_array,
@@ -215,7 +220,7 @@ impl Compiler<'_> {
             }
 
             Node::Doctype { .. } => {
-                output.push(IrNode::Write {
+                output.push(IrStatement::Write {
                     id: self.next_node_id(),
                     content: "<!DOCTYPE html>".to_string(),
                 });
@@ -232,8 +237,8 @@ impl Compiler<'_> {
         tag_name: &DocumentRange,
         attributes: &BTreeMap<StringSpan, Attribute>,
         children: &[Node],
-        slot_content: Option<&Vec<IrNode>>,
-        output: &mut Vec<IrNode>,
+        slot_content: Option<&Vec<IrStatement>>,
+        output: &mut Vec<IrStatement>,
     ) {
         // Skip style and script tags without src
         if tag_name.as_str() == "style" {
@@ -244,7 +249,7 @@ impl Compiler<'_> {
         }
 
         // Push opening tag
-        output.push(IrNode::Write {
+        output.push(IrStatement::Write {
             id: self.next_node_id(),
             content: format!("<{}", tag_name.as_str()),
         });
@@ -254,22 +259,22 @@ impl Compiler<'_> {
             if let Some(val) = &attr.value {
                 match val {
                     AttributeValue::String(s) => {
-                        output.push(IrNode::Write {
+                        output.push(IrStatement::Write {
                             id: self.next_node_id(),
                             content: format!(" {}=\"{}\"", name.as_str(), s.as_str()),
                         });
                     }
                     AttributeValue::Expression(expr) => {
-                        output.push(IrNode::Write {
+                        output.push(IrStatement::Write {
                             id: self.next_node_id(),
                             content: format!(" {}=\"", name.as_str()),
                         });
-                        output.push(IrNode::WriteExpr {
+                        output.push(IrStatement::WriteExpr {
                             id: self.next_node_id(),
                             expr: self.rename_expr(expr),
                             escape: true,
                         });
-                        output.push(IrNode::Write {
+                        output.push(IrStatement::Write {
                             id: self.next_node_id(),
                             content: "\"".to_string(),
                         });
@@ -277,14 +282,14 @@ impl Compiler<'_> {
                 }
             } else {
                 // Boolean attribute
-                output.push(IrNode::Write {
+                output.push(IrStatement::Write {
                     id: self.next_node_id(),
                     content: format!(" {}", name.as_str()),
                 });
             }
         }
 
-        output.push(IrNode::Write {
+        output.push(IrStatement::Write {
             id: self.next_node_id(),
             content: ">".to_string(),
         });
@@ -293,7 +298,7 @@ impl Compiler<'_> {
         if !is_void_element(tag_name.as_str()) {
             let child_nodes = self.compile_nodes(children, slot_content.cloned());
             output.extend(child_nodes);
-            output.push(IrNode::Write {
+            output.push(IrStatement::Write {
                 id: self.next_node_id(),
                 content: format!("</{}>", tag_name.as_str()),
             });
@@ -307,7 +312,7 @@ impl Compiler<'_> {
         args: Option<&(Vec<Argument>, DocumentRange)>,
         extra_attributes: &BTreeMap<StringSpan, Attribute>,
         children: &[Node],
-        output: &mut Vec<IrNode>,
+        output: &mut Vec<IrStatement>,
     ) {
         let ast = self
             .asts
@@ -325,7 +330,7 @@ impl Compiler<'_> {
             .unwrap_or("div");
 
         // Push opening tag with data-hop-id
-        output.push(IrNode::Write {
+        output.push(IrStatement::Write {
             id: self.next_node_id(),
             content: format!(
                 "<{} data-hop-id=\"{}/{}\"",
@@ -350,7 +355,7 @@ impl Compiler<'_> {
                     // Attribute exists in both reference and definition
                     if name.as_str() == "class" {
                         // Special handling for class attribute - concatenate values
-                        output.push(IrNode::Write {
+                        output.push(IrStatement::Write {
                             id: self.next_node_id(),
                             content: " class=\"".to_string(),
                         });
@@ -360,7 +365,7 @@ impl Compiler<'_> {
                         if let Some(def_val) = &def_attr.value {
                             match def_val {
                                 AttributeValue::String(s) => {
-                                    output.push(IrNode::Write {
+                                    output.push(IrStatement::Write {
                                         id: self.next_node_id(),
                                         content: s.as_str().to_string(),
                                     });
@@ -368,7 +373,7 @@ impl Compiler<'_> {
                                 }
                                 AttributeValue::Expression(expr) => {
                                     // Dynamic class from definition
-                                    output.push(IrNode::WriteExpr {
+                                    output.push(IrStatement::WriteExpr {
                                         id: self.next_node_id(),
                                         expr: self.rename_expr(expr),
                                         escape: true,
@@ -381,21 +386,21 @@ impl Compiler<'_> {
                         // Then add the reference's class (if any)
                         if let Some(ref_val) = &ref_attr.value {
                             if has_def_class {
-                                output.push(IrNode::Write {
+                                output.push(IrStatement::Write {
                                     id: self.next_node_id(),
                                     content: " ".to_string(),
                                 });
                             }
                             match ref_val {
                                 AttributeValue::String(s) => {
-                                    output.push(IrNode::Write {
+                                    output.push(IrStatement::Write {
                                         id: self.next_node_id(),
                                         content: s.as_str().to_string(),
                                     });
                                 }
                                 AttributeValue::Expression(expr) => {
                                     // Dynamic class from reference
-                                    output.push(IrNode::WriteExpr {
+                                    output.push(IrStatement::WriteExpr {
                                         id: self.next_node_id(),
                                         expr: self.rename_expr(expr),
                                         escape: true,
@@ -404,7 +409,7 @@ impl Compiler<'_> {
                             }
                         }
 
-                        output.push(IrNode::Write {
+                        output.push(IrStatement::Write {
                             id: self.next_node_id(),
                             content: "\"".to_string(),
                         });
@@ -413,22 +418,22 @@ impl Compiler<'_> {
                         if let Some(ref_val) = &ref_attr.value {
                             match ref_val {
                                 AttributeValue::String(s) => {
-                                    output.push(IrNode::Write {
+                                    output.push(IrStatement::Write {
                                         id: self.next_node_id(),
                                         content: format!(" {}=\"{}\"", name.as_str(), s.as_str()),
                                     });
                                 }
                                 AttributeValue::Expression(expr) => {
-                                    output.push(IrNode::Write {
+                                    output.push(IrStatement::Write {
                                         id: self.next_node_id(),
                                         content: format!(" {}=\"", name.as_str()),
                                     });
-                                    output.push(IrNode::WriteExpr {
+                                    output.push(IrStatement::WriteExpr {
                                         id: self.next_node_id(),
                                         expr: self.rename_expr(expr),
                                         escape: true,
                                     });
-                                    output.push(IrNode::Write {
+                                    output.push(IrStatement::Write {
                                         id: self.next_node_id(),
                                         content: "\"".to_string(),
                                     });
@@ -436,7 +441,7 @@ impl Compiler<'_> {
                             }
                         } else {
                             // Boolean attribute
-                            output.push(IrNode::Write {
+                            output.push(IrStatement::Write {
                                 id: self.next_node_id(),
                                 content: format!(" {}", name.as_str()),
                             });
@@ -448,22 +453,22 @@ impl Compiler<'_> {
                     if let Some(val) = &ref_attr.value {
                         match val {
                             AttributeValue::String(s) => {
-                                output.push(IrNode::Write {
+                                output.push(IrStatement::Write {
                                     id: self.next_node_id(),
                                     content: format!(" {}=\"{}\"", name.as_str(), s.as_str()),
                                 });
                             }
                             AttributeValue::Expression(expr) => {
-                                output.push(IrNode::Write {
+                                output.push(IrStatement::Write {
                                     id: self.next_node_id(),
                                     content: format!(" {}=\"", name.as_str()),
                                 });
-                                output.push(IrNode::WriteExpr {
+                                output.push(IrStatement::WriteExpr {
                                     id: self.next_node_id(),
                                     expr: self.rename_expr(expr),
                                     escape: true,
                                 });
-                                output.push(IrNode::Write {
+                                output.push(IrStatement::Write {
                                     id: self.next_node_id(),
                                     content: "\"".to_string(),
                                 });
@@ -471,7 +476,7 @@ impl Compiler<'_> {
                         }
                     } else {
                         // Boolean attribute
-                        output.push(IrNode::Write {
+                        output.push(IrStatement::Write {
                             id: self.next_node_id(),
                             content: format!(" {}", name.as_str()),
                         });
@@ -482,22 +487,22 @@ impl Compiler<'_> {
                     if let Some(val) = &def_attr.value {
                         match val {
                             AttributeValue::String(s) => {
-                                output.push(IrNode::Write {
+                                output.push(IrStatement::Write {
                                     id: self.next_node_id(),
                                     content: format!(" {}=\"{}\"", name.as_str(), s.as_str()),
                                 });
                             }
                             AttributeValue::Expression(expr) => {
-                                output.push(IrNode::Write {
+                                output.push(IrStatement::Write {
                                     id: self.next_node_id(),
                                     content: format!(" {}=\"", name.as_str()),
                                 });
-                                output.push(IrNode::WriteExpr {
+                                output.push(IrStatement::WriteExpr {
                                     id: self.next_node_id(),
                                     expr: self.rename_expr(expr),
                                     escape: true,
                                 });
-                                output.push(IrNode::Write {
+                                output.push(IrStatement::Write {
                                     id: self.next_node_id(),
                                     content: "\"".to_string(),
                                 });
@@ -505,7 +510,7 @@ impl Compiler<'_> {
                         }
                     } else {
                         // Boolean attribute
-                        output.push(IrNode::Write {
+                        output.push(IrStatement::Write {
                             id: self.next_node_id(),
                             content: format!(" {}", name.as_str()),
                         });
@@ -514,7 +519,7 @@ impl Compiler<'_> {
             }
         }
 
-        output.push(IrNode::Write {
+        output.push(IrStatement::Write {
             id: self.next_node_id(),
             content: ">".to_string(),
         });
@@ -582,7 +587,7 @@ impl Compiler<'_> {
 
         // Wrap body with Let bindings (in reverse order for nesting)
         for (renamed_var, (_, value)) in renamed_params.into_iter().zip(param_bindings).rev() {
-            component_body = vec![IrNode::Let {
+            component_body = vec![IrStatement::Let {
                 id: self.next_node_id(),
                 var: renamed_var,
                 value,
@@ -591,7 +596,7 @@ impl Compiler<'_> {
         }
 
         output.extend(component_body);
-        output.push(IrNode::Write {
+        output.push(IrStatement::Write {
             id: self.next_node_id(),
             content: format!("</{}>", wrapper_tag),
         });
@@ -656,7 +661,7 @@ impl Compiler<'_> {
         id
     }
 
-    fn next_node_id(&mut self) -> NodeId {
+    fn next_node_id(&mut self) -> StatementId {
         let id = self.node_id_counter;
         self.node_id_counter += 1;
         id

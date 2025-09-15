@@ -6,13 +6,13 @@ use crate::dop::r#type::Type;
 // the IR.
 //
 // The AST structure is:
-// * IrModule -> IrEntryPoint -> IrNode -> IrExpr
+// * IrModule -> IrEntryPoint -> IrStatement -> IrExpr
 
 /// Unique identifier for each expression in the IR
 pub type ExprId = u32;
 
 /// Unique identifier for each node in the IR
-pub type NodeId = u32;
+pub type StatementId = u32;
 
 #[derive(Debug, Default)]
 pub struct IrModule {
@@ -25,42 +25,42 @@ pub struct IrEntrypoint {
     /// Original parameter names with their types (for function signature)
     pub parameters: Vec<(String, Type)>,
     /// IR nodes for the entrypoint body
-    pub body: Vec<IrNode>,
+    pub body: Vec<IrStatement>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum IrNode {
+pub enum IrStatement {
     /// Output a pre-computed string
-    Write { id: NodeId, content: String },
+    Write { id: StatementId, content: String },
 
     /// Evaluate expression and output as string
     WriteExpr {
-        id: NodeId,
+        id: StatementId,
         expr: IrExpr,
         escape: bool,
     },
 
     /// Conditional execution
     If {
-        id: NodeId,
+        id: StatementId,
         condition: IrExpr,
-        body: Vec<IrNode>,
+        body: Vec<IrStatement>,
     },
 
     /// Loop over array
     For {
-        id: NodeId,
+        id: StatementId,
         var: String,
         array: IrExpr,
-        body: Vec<IrNode>,
+        body: Vec<IrStatement>,
     },
 
     /// Variable binding
     Let {
-        id: NodeId,
+        id: StatementId,
         var: String,
         value: IrExpr,
-        body: Vec<IrNode>,
+        body: Vec<IrStatement>,
     },
 }
 
@@ -142,55 +142,57 @@ impl fmt::Display for IrModule {
 
             // Format body
             writeln!(f, "      body: {{")?;
-            fn fmt_nodes(
-                nodes: &[IrNode],
+            fn fmt_stmts(
+                statements: &[IrStatement],
                 f: &mut fmt::Formatter<'_>,
                 indent: usize,
             ) -> fmt::Result {
-                for node in nodes {
+                for statement in statements {
                     for _ in 0..indent {
                         write!(f, "  ")?;
                     }
-                    match node {
-                        IrNode::Write { id: _, content } => writeln!(f, "Write({:?})", content)?,
-                        IrNode::WriteExpr {
+                    match statement {
+                        IrStatement::Write { id: _, content } => {
+                            writeln!(f, "Write({:?})", content)?
+                        }
+                        IrStatement::WriteExpr {
                             id: _,
                             expr,
                             escape,
                         } => writeln!(f, "WriteExpr(expr: {}, escape: {})", expr, escape)?,
-                        IrNode::If {
+                        IrStatement::If {
                             id: _,
                             condition,
                             body,
                         } => {
                             writeln!(f, "If(condition: {}) {{", condition)?;
-                            fmt_nodes(body, f, indent + 1)?;
+                            fmt_stmts(body, f, indent + 1)?;
                             for _ in 0..indent {
                                 write!(f, "  ")?;
                             }
                             writeln!(f, "}}")?;
                         }
-                        IrNode::For {
+                        IrStatement::For {
                             id: _,
                             var,
                             array,
                             body,
                         } => {
                             writeln!(f, "For(var: {}, array: {}) {{", var, array)?;
-                            fmt_nodes(body, f, indent + 1)?;
+                            fmt_stmts(body, f, indent + 1)?;
                             for _ in 0..indent {
                                 write!(f, "  ")?;
                             }
                             writeln!(f, "}}")?;
                         }
-                        IrNode::Let {
+                        IrStatement::Let {
                             id: _,
                             var,
                             value,
                             body,
                         } => {
                             writeln!(f, "Let(var: {}, value: {}) {{", var, value)?;
-                            fmt_nodes(body, f, indent + 1)?;
+                            fmt_stmts(body, f, indent + 1)?;
                             for _ in 0..indent {
                                 write!(f, "  ")?;
                             }
@@ -201,7 +203,7 @@ impl fmt::Display for IrModule {
                 Ok(())
             }
 
-            fmt_nodes(&entrypoint.body, f, 4)?;
+            fmt_stmts(&entrypoint.body, f, 4)?;
             writeln!(f, "      }}")?;
             writeln!(f, "    }}")?;
         }
@@ -212,53 +214,57 @@ impl fmt::Display for IrModule {
     }
 }
 
-impl fmt::Display for IrNode {
+impl fmt::Display for IrStatement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fn fmt_nodes(nodes: &[IrNode], f: &mut fmt::Formatter<'_>, indent: usize) -> fmt::Result {
-            for node in nodes {
+        fn fmt_stmts(
+            statements: &[IrStatement],
+            f: &mut fmt::Formatter<'_>,
+            indent: usize,
+        ) -> fmt::Result {
+            for statement in statements {
                 for _ in 0..indent {
                     write!(f, "  ")?;
                 }
-                match node {
-                    IrNode::Write { id: _, content } => writeln!(f, "Write({:?})", content)?,
-                    IrNode::WriteExpr {
+                match statement {
+                    IrStatement::Write { id: _, content } => writeln!(f, "Write({:?})", content)?,
+                    IrStatement::WriteExpr {
                         id: _,
                         expr,
                         escape,
                     } => writeln!(f, "WriteExpr(expr: {}, escape: {})", expr, escape)?,
-                    IrNode::If {
+                    IrStatement::If {
                         id: _,
                         condition,
                         body,
                     } => {
                         writeln!(f, "If(condition: {}) {{", condition)?;
-                        fmt_nodes(body, f, indent + 1)?;
+                        fmt_stmts(body, f, indent + 1)?;
                         for _ in 0..indent {
                             write!(f, "  ")?;
                         }
                         writeln!(f, "}}")?;
                     }
-                    IrNode::For {
+                    IrStatement::For {
                         id: _,
                         var,
                         array,
                         body,
                     } => {
                         writeln!(f, "For(var: {}, array: {}) {{", var, array)?;
-                        fmt_nodes(body, f, indent + 1)?;
+                        fmt_stmts(body, f, indent + 1)?;
                         for _ in 0..indent {
                             write!(f, "  ")?;
                         }
                         writeln!(f, "}}")?;
                     }
-                    IrNode::Let {
+                    IrStatement::Let {
                         id: _,
                         var,
                         value,
                         body,
                     } => {
                         writeln!(f, "Let(var: {}, value: {}) {{", var, value)?;
-                        fmt_nodes(body, f, indent + 1)?;
+                        fmt_stmts(body, f, indent + 1)?;
                         for _ in 0..indent {
                             write!(f, "  ")?;
                         }
@@ -269,7 +275,7 @@ impl fmt::Display for IrNode {
             Ok(())
         }
 
-        fmt_nodes(&[self.clone()], f, 0)?;
+        fmt_stmts(&[self.clone()], f, 0)?;
         Ok(())
     }
 }
@@ -287,51 +293,55 @@ impl fmt::Display for IrEntrypoint {
         writeln!(f, "]")?;
         writeln!(f, "  body: {{")?;
 
-        fn fmt_nodes(nodes: &[IrNode], f: &mut fmt::Formatter<'_>, indent: usize) -> fmt::Result {
-            for node in nodes {
+        fn fmt_stmts(
+            statements: &[IrStatement],
+            f: &mut fmt::Formatter<'_>,
+            indent: usize,
+        ) -> fmt::Result {
+            for statement in statements {
                 for _ in 0..indent {
                     write!(f, "  ")?;
                 }
-                match node {
-                    IrNode::Write { id: _, content } => writeln!(f, "Write({:?})", content)?,
-                    IrNode::WriteExpr {
+                match statement {
+                    IrStatement::Write { id: _, content } => writeln!(f, "Write({:?})", content)?,
+                    IrStatement::WriteExpr {
                         id: _,
                         expr,
                         escape,
                     } => writeln!(f, "WriteExpr(expr: {}, escape: {})", expr, escape)?,
-                    IrNode::If {
+                    IrStatement::If {
                         id: _,
                         condition,
                         body,
                     } => {
                         writeln!(f, "If(condition: {}) {{", condition)?;
-                        fmt_nodes(body, f, indent + 1)?;
+                        fmt_stmts(body, f, indent + 1)?;
                         for _ in 0..indent {
                             write!(f, "  ")?;
                         }
                         writeln!(f, "}}")?;
                     }
-                    IrNode::For {
+                    IrStatement::For {
                         id: _,
                         var,
                         array,
                         body,
                     } => {
                         writeln!(f, "For(var: {}, array: {}) {{", var, array)?;
-                        fmt_nodes(body, f, indent + 1)?;
+                        fmt_stmts(body, f, indent + 1)?;
                         for _ in 0..indent {
                             write!(f, "  ")?;
                         }
                         writeln!(f, "}}")?;
                     }
-                    IrNode::Let {
+                    IrStatement::Let {
                         id: _,
                         var,
                         value,
                         body,
                     } => {
                         writeln!(f, "Let(var: {}, value: {}) {{", var, value)?;
-                        fmt_nodes(body, f, indent + 1)?;
+                        fmt_stmts(body, f, indent + 1)?;
                         for _ in 0..indent {
                             write!(f, "  ")?;
                         }
@@ -342,52 +352,52 @@ impl fmt::Display for IrEntrypoint {
             Ok(())
         }
 
-        fmt_nodes(&self.body, f, 2)?;
+        fmt_stmts(&self.body, f, 2)?;
         writeln!(f, "  }}")?;
         writeln!(f, "}}")?;
         Ok(())
     }
 }
 
-impl IrNode {
+impl IrStatement {
     /// Transform all expressions in this node and its children
-    pub fn map_expressions<F>(self, f: &F) -> IrNode
+    pub fn map_expressions<F>(self, f: &F) -> IrStatement
     where
         F: Fn(IrExpr) -> IrExpr,
     {
         match self {
-            IrNode::Write { id, content } => IrNode::Write { id, content },
-            IrNode::WriteExpr { id, expr, escape } => IrNode::WriteExpr {
+            IrStatement::Write { id, content } => IrStatement::Write { id, content },
+            IrStatement::WriteExpr { id, expr, escape } => IrStatement::WriteExpr {
                 id,
                 expr: expr.map_expr(f),
                 escape,
             },
-            IrNode::If {
+            IrStatement::If {
                 id,
                 condition,
                 body,
-            } => IrNode::If {
+            } => IrStatement::If {
                 id,
                 condition: condition.map_expr(f),
                 body: body.into_iter().map(|n| n.map_expressions(f)).collect(),
             },
-            IrNode::For {
+            IrStatement::For {
                 id,
                 var,
                 array,
                 body,
-            } => IrNode::For {
+            } => IrStatement::For {
                 id,
                 var,
                 array: array.map_expr(f),
                 body: body.into_iter().map(|n| n.map_expressions(f)).collect(),
             },
-            IrNode::Let {
+            IrStatement::Let {
                 id,
                 var,
                 value,
                 body,
-            } => IrNode::Let {
+            } => IrStatement::Let {
                 id,
                 var,
                 value: value.map_expr(f),
@@ -399,24 +409,24 @@ impl IrNode {
 
 /// Event for node traversal
 #[derive(Debug, Clone)]
-pub enum NodeEvent<'a> {
-    Enter(&'a IrNode),
-    Exit(&'a IrNode),
+pub enum StatementEvent<'a> {
+    Enter(&'a IrStatement),
+    Exit(&'a IrStatement),
 }
 
-/// Iterator over nodes with enter/exit events
-pub struct NodeVisitor<'a> {
+/// Iterator over statements with enter/exit events
+pub struct StatementVisitor<'a> {
     stack: Vec<NodeVisitState<'a>>,
 }
 
 enum NodeVisitState<'a> {
-    Enter(&'a IrNode),
-    Exit(&'a IrNode),
-    VisitChildren(&'a [IrNode]),
+    Enter(&'a IrStatement),
+    Exit(&'a IrStatement),
+    VisitChildren(&'a [IrStatement]),
 }
 
-impl<'a> Iterator for NodeVisitor<'a> {
-    type Item = NodeEvent<'a>;
+impl<'a> Iterator for StatementVisitor<'a> {
+    type Item = StatementEvent<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(state) = self.stack.pop() {
@@ -427,25 +437,25 @@ impl<'a> Iterator for NodeVisitor<'a> {
 
                     // Push children to visit
                     match node {
-                        IrNode::If { body, .. }
-                        | IrNode::For { body, .. }
-                        | IrNode::Let { body, .. } => {
+                        IrStatement::If { body, .. }
+                        | IrStatement::For { body, .. }
+                        | IrStatement::Let { body, .. } => {
                             self.stack.push(NodeVisitState::VisitChildren(body));
                         }
-                        IrNode::Write { .. } | IrNode::WriteExpr { .. } => {
+                        IrStatement::Write { .. } | IrStatement::WriteExpr { .. } => {
                             // Leaf nodes - no children
                         }
                     }
 
-                    return Some(NodeEvent::Enter(node));
+                    return Some(StatementEvent::Enter(node));
                 }
                 NodeVisitState::Exit(node) => {
-                    return Some(NodeEvent::Exit(node));
+                    return Some(StatementEvent::Exit(node));
                 }
-                NodeVisitState::VisitChildren(nodes) => {
+                NodeVisitState::VisitChildren(statements) => {
                     // Push children in reverse order so they're visited in correct order
-                    for node in nodes.iter().rev() {
-                        self.stack.push(NodeVisitState::Enter(node));
+                    for statement in statements.iter().rev() {
+                        self.stack.push(NodeVisitState::Enter(statement));
                     }
                 }
             }
@@ -468,14 +478,14 @@ impl IrEntrypoint {
         self
     }
 
-    /// Returns an iterator over all nodes with enter/exit events
-    pub fn visit_nodes(&self) -> NodeVisitor {
+    /// Returns an iterator over all statements with enter/exit events
+    pub fn visit_statements(&self) -> StatementVisitor {
         let mut stack = Vec::new();
         // Push children in reverse order
         for node in self.body.iter().rev() {
             stack.push(NodeVisitState::Enter(node));
         }
-        NodeVisitor { stack }
+        StatementVisitor { stack }
     }
 }
 

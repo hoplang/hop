@@ -1,8 +1,8 @@
 use super::Pass;
 use crate::ir::{
     IrExpr,
-    ast::{BinaryOp, ExprId, IrExprValue, NodeEvent, UnaryOp},
-    ast::{IrEntrypoint, IrNode},
+    ast::{BinaryOp, ExprId, IrExprValue, StatementEvent, UnaryOp},
+    ast::{IrEntrypoint, IrStatement},
 };
 use datafrog::{Iteration, Relation};
 use std::collections::HashMap;
@@ -26,22 +26,22 @@ impl ConstantPropagationPass {
     fn collect_all_expressions(entrypoint: &IrEntrypoint) -> Vec<&IrExpr> {
         let mut expressions = Vec::new();
 
-        for event in entrypoint.visit_nodes() {
-            if let NodeEvent::Enter(node) = event {
-                match node {
-                    IrNode::If { condition, .. } => {
+        for event in entrypoint.visit_statements() {
+            if let StatementEvent::Enter(statment) = event {
+                match statment {
+                    IrStatement::If { condition, .. } => {
                         expressions.extend(condition.dfs_iter());
                     }
-                    IrNode::WriteExpr { expr, .. } => {
+                    IrStatement::WriteExpr { expr, .. } => {
                         expressions.extend(expr.dfs_iter());
                     }
-                    IrNode::For { array, .. } => {
+                    IrStatement::For { array, .. } => {
                         expressions.extend(array.dfs_iter());
                     }
-                    IrNode::Let { value, .. } => {
+                    IrStatement::Let { value, .. } => {
                         expressions.extend(value.dfs_iter());
                     }
-                    IrNode::Write { .. } => {}
+                    IrStatement::Write { .. } => {}
                 }
             }
         }
@@ -55,30 +55,30 @@ impl ConstantPropagationPass {
         let mut var_bindings = Vec::new();
         let mut scope_stack: HashMap<String, ExprId> = HashMap::new();
 
-        for event in entrypoint.visit_nodes() {
+        for event in entrypoint.visit_statements() {
             match event {
-                NodeEvent::Enter(node) => {
-                    match node {
-                        IrNode::If { condition, .. } => {
+                StatementEvent::Enter(statement) => {
+                    match statement {
+                        IrStatement::If { condition, .. } => {
                             Self::collect_var_uses(condition, &mut var_bindings, &scope_stack);
                         }
-                        IrNode::WriteExpr { expr, .. } => {
+                        IrStatement::WriteExpr { expr, .. } => {
                             Self::collect_var_uses(expr, &mut var_bindings, &scope_stack);
                         }
-                        IrNode::For { array, .. } => {
+                        IrStatement::For { array, .. } => {
                             Self::collect_var_uses(array, &mut var_bindings, &scope_stack);
                         }
-                        IrNode::Let { var, value, .. } => {
+                        IrStatement::Let { var, value, .. } => {
                             // Collect variable uses from the value expression (before the variable is in scope)
                             Self::collect_var_uses(value, &mut var_bindings, &scope_stack);
                             // Add the variable binding to the scope
                             scope_stack.insert(var.clone(), value.id);
                         }
-                        IrNode::Write { .. } => {}
+                        IrStatement::Write { .. } => {}
                     }
                 }
-                NodeEvent::Exit(node) => {
-                    if let IrNode::Let { var, .. } = node {
+                StatementEvent::Exit(statement) => {
+                    if let IrStatement::Let { var, .. } = statement {
                         // Remove the variable binding when leaving the scope
                         scope_stack.remove(var);
                     }

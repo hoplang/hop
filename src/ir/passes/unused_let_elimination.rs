@@ -1,5 +1,5 @@
 use super::Pass;
-use crate::ir::ast::{IrEntrypoint, IrExpr, IrExprValue, IrNode, NodeEvent, NodeId};
+use crate::ir::ast::{IrEntrypoint, IrExpr, IrExprValue, IrStatement, StatementEvent, StatementId};
 use std::collections::{HashMap, HashSet};
 
 /// A pass that eliminates unused let statements
@@ -12,34 +12,34 @@ impl UnusedLetEliminationPass {
     }
 
     /// Collect which let statements have unused variables
-    fn collect_unused_lets(entrypoint: &IrEntrypoint) -> HashSet<NodeId> {
+    fn collect_unused_lets(entrypoint: &IrEntrypoint) -> HashSet<StatementId> {
         let mut unused_lets = HashSet::new();
         let mut scope_stack: HashMap<String, bool> = HashMap::new();
 
-        for event in entrypoint.visit_nodes() {
+        for event in entrypoint.visit_statements() {
             match event {
-                NodeEvent::Enter(node) => {
-                    match node {
-                        IrNode::If { condition, .. } => {
+                StatementEvent::Enter(statement) => {
+                    match statement {
+                        IrStatement::If { condition, .. } => {
                             Self::mark_vars_used_in_expr(condition, &mut scope_stack);
                         }
-                        IrNode::WriteExpr { expr, .. } => {
+                        IrStatement::WriteExpr { expr, .. } => {
                             Self::mark_vars_used_in_expr(expr, &mut scope_stack);
                         }
-                        IrNode::For { array, .. } => {
+                        IrStatement::For { array, .. } => {
                             Self::mark_vars_used_in_expr(array, &mut scope_stack);
                         }
-                        IrNode::Let { var, value, .. } => {
+                        IrStatement::Let { var, value, .. } => {
                             // Mark variables used in the value expression (before the new variable is in scope)
                             Self::mark_vars_used_in_expr(value, &mut scope_stack);
                             // Add this variable to scope, initially unused
                             scope_stack.insert(var.clone(), false);
                         }
-                        IrNode::Write { .. } => {}
+                        IrStatement::Write { .. } => {}
                     }
                 }
-                NodeEvent::Exit(node) => {
-                    if let IrNode::Let { id, var, .. } = node {
+                StatementEvent::Exit(statement) => {
+                    if let IrStatement::Let { id, var, .. } = statement {
                         // Check if this variable was used
                         if let Some(&used) = scope_stack.get(var) {
                             if !used {
@@ -70,18 +70,24 @@ impl UnusedLetEliminationPass {
         }
     }
 
-    /// Transform a list of nodes, eliminating unused lets
-    fn transform_nodes(nodes: Vec<IrNode>, unused_lets: &HashSet<NodeId>) -> Vec<IrNode> {
-        nodes
+    /// Transform a list of statements, eliminating unused lets
+    fn transform_statements(
+        statements: Vec<IrStatement>,
+        unused_lets: &HashSet<StatementId>,
+    ) -> Vec<IrStatement> {
+        statements
             .into_iter()
-            .flat_map(|node| Self::transform_node(node, unused_lets))
+            .flat_map(|statement| Self::transform_statement(statement, unused_lets))
             .collect()
     }
 
-    /// Transform a single node, returning a list of nodes (to allow flattening)
-    fn transform_node(node: IrNode, unused_lets: &HashSet<NodeId>) -> Vec<IrNode> {
-        match node {
-            IrNode::Let {
+    /// Transform a single statement, returning a list of statements (to allow flattening)
+    fn transform_statement(
+        statement: IrStatement,
+        unused_lets: &HashSet<StatementId>,
+    ) -> Vec<IrStatement> {
+        match statement {
+            IrStatement::Let {
                 var,
                 value,
                 body,
@@ -90,43 +96,45 @@ impl UnusedLetEliminationPass {
                 // Check if this let is marked as unused
                 if unused_lets.contains(&id) {
                     // Variable is unused, eliminate the let and just return the transformed body
-                    Self::transform_nodes(body, unused_lets)
+                    Self::transform_statements(body, unused_lets)
                 } else {
                     // Variable is used, keep the let but transform the body
-                    vec![IrNode::Let {
+                    vec![IrStatement::Let {
                         id,
                         var,
                         value,
-                        body: Self::transform_nodes(body, unused_lets),
+                        body: Self::transform_statements(body, unused_lets),
                     }]
                 }
             }
-            IrNode::If {
+            IrStatement::If {
                 id,
                 condition,
                 body,
             } => {
-                vec![IrNode::If {
+                vec![IrStatement::If {
                     id,
                     condition,
-                    body: Self::transform_nodes(body, unused_lets),
+                    body: Self::transform_statements(body, unused_lets),
                 }]
             }
-            IrNode::For {
+            IrStatement::For {
                 id,
                 var,
                 array,
                 body,
             } => {
-                vec![IrNode::For {
+                vec![IrStatement::For {
                     id,
                     var,
                     array,
-                    body: Self::transform_nodes(body, unused_lets),
+                    body: Self::transform_statements(body, unused_lets),
                 }]
             }
-            // Write and WriteExpr nodes remain unchanged
-            node @ (IrNode::Write { .. } | IrNode::WriteExpr { .. }) => vec![node],
+            // Write and WriteExpr statements remain unchanged
+            statement @ (IrStatement::Write { .. } | IrStatement::WriteExpr { .. }) => {
+                vec![statement]
+            }
         }
     }
 }
@@ -139,7 +147,7 @@ impl Pass for UnusedLetEliminationPass {
         // Then transform the entrypoint, eliminating unused lets
         IrEntrypoint {
             parameters: entrypoint.parameters,
-            body: Self::transform_nodes(entrypoint.body, &unused_lets),
+            body: Self::transform_statements(entrypoint.body, &unused_lets),
         }
     }
 }

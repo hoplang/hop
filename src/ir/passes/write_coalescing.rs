@@ -1,8 +1,8 @@
-use crate::ir::ast::{IrEntrypoint, IrNode, NodeId};
+use crate::ir::ast::{IrEntrypoint, IrStatement, StatementId};
 
 use super::Pass;
 
-/// A pass that concatenates consecutive Write nodes into a single Write node
+/// A pass that concatenates consecutive Write statements into a single Write statement
 pub struct WriteCoalescingPass;
 
 impl WriteCoalescingPass {
@@ -10,20 +10,23 @@ impl WriteCoalescingPass {
         Self
     }
 
-    fn next_id(next_id: &mut NodeId) -> NodeId {
+    fn next_id(next_id: &mut StatementId) -> StatementId {
         let id = *next_id;
         *next_id += 1;
         id
     }
 
-    /// Transform a list of IR nodes, coalescing consecutive Write nodes
-    fn transform_nodes(nodes: Vec<IrNode>, next_id: &mut NodeId) -> Vec<IrNode> {
+    /// Transform a list of statements, coalescing consecutive Write statements
+    fn transform_statements(
+        statements: Vec<IrStatement>,
+        next_id: &mut StatementId,
+    ) -> Vec<IrStatement> {
         let mut result = Vec::new();
         let mut pending_write: Option<String> = None;
 
-        for node in nodes {
-            match node {
-                IrNode::Write {
+        for statement in statements {
+            match statement {
+                IrStatement::Write {
                     id: _,
                     content: text,
                 } => {
@@ -37,84 +40,84 @@ impl WriteCoalescingPass {
                         }
                     }
                 }
-                IrNode::If {
+                IrStatement::If {
                     id,
                     condition,
                     body,
                 } => {
-                    // Flush any pending write before a control flow node
+                    // Flush any pending write before a control flow statement
                     if let Some(text) = pending_write.take() {
-                        result.push(IrNode::Write {
+                        result.push(IrStatement::Write {
                             id: Self::next_id(next_id),
                             content: text,
                         });
                     }
                     // Recursively transform the body
-                    result.push(IrNode::If {
+                    result.push(IrStatement::If {
                         id,
                         condition,
-                        body: Self::transform_nodes(body, next_id),
+                        body: Self::transform_statements(body, next_id),
                     });
                 }
-                IrNode::For {
+                IrStatement::For {
                     id,
                     var,
                     array,
                     body,
                 } => {
-                    // Flush any pending write before a control flow node
+                    // Flush any pending write before a control flow statement
                     if let Some(text) = pending_write.take() {
-                        result.push(IrNode::Write {
+                        result.push(IrStatement::Write {
                             id: Self::next_id(next_id),
                             content: text,
                         });
                     }
                     // Recursively transform the body
-                    result.push(IrNode::For {
+                    result.push(IrStatement::For {
                         id,
                         var,
                         array,
-                        body: Self::transform_nodes(body, next_id),
+                        body: Self::transform_statements(body, next_id),
                     });
                 }
-                IrNode::Let {
+                IrStatement::Let {
                     id,
                     var,
                     value,
                     body,
                 } => {
-                    // Flush any pending write before a control flow node
+                    // Flush any pending write before a control flow statement
                     if let Some(text) = pending_write.take() {
-                        result.push(IrNode::Write {
+                        result.push(IrStatement::Write {
                             id: Self::next_id(next_id),
                             content: text,
                         });
                     }
                     // Recursively transform the body
-                    result.push(IrNode::Let {
+                    result.push(IrStatement::Let {
                         id,
                         var,
                         value,
-                        body: Self::transform_nodes(body, next_id),
+                        body: Self::transform_statements(body, next_id),
                     });
                 }
-                IrNode::WriteExpr { .. } => {
-                    // WriteExpr can't be coalesced with Write nodes
+                IrStatement::WriteExpr { .. } => {
+                    // WriteExpr can't be coalesced with Write statements
                     // Flush any pending write
                     if let Some(text) = pending_write.take() {
-                        result.push(IrNode::Write {
+                        result.push(IrStatement::Write {
                             id: Self::next_id(next_id),
                             content: text,
                         });
                     }
-                    result.push(node);
+                    result.push(statement);
                 }
             }
         }
 
         // Flush any remaining pending write
         if let Some(text) = pending_write {
-            result.push(IrNode::Write {
+            result.push(IrStatement::Write {
                 id: Self::next_id(next_id),
                 content: text,
             });
@@ -127,7 +130,7 @@ impl WriteCoalescingPass {
 impl Pass for WriteCoalescingPass {
     fn run(&mut self, mut entrypoint: IrEntrypoint) -> IrEntrypoint {
         let mut next_id = 1;
-        entrypoint.body = Self::transform_nodes(entrypoint.body, &mut next_id);
+        entrypoint.body = Self::transform_statements(entrypoint.body, &mut next_id);
         entrypoint
     }
 }

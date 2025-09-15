@@ -1,9 +1,9 @@
-use super::ast::{BinaryOp, ExprId, IrExpr, IrExprValue, IrNode, NodeId, UnaryOp};
+use super::ast::{BinaryOp, ExprId, IrExpr, IrExprValue, IrStatement, StatementId, UnaryOp};
 use std::cell::RefCell;
 
 pub struct IrTestBuilder {
     next_expr_id: RefCell<ExprId>,
-    next_node_id: RefCell<NodeId>,
+    next_node_id: RefCell<StatementId>,
 }
 
 impl IrTestBuilder {
@@ -20,7 +20,7 @@ impl IrTestBuilder {
         id
     }
 
-    fn next_node_id(&self) -> NodeId {
+    fn next_node_id(&self) -> StatementId {
         let id = *self.next_node_id.borrow();
         *self.next_node_id.borrow_mut() = id + 1;
         id
@@ -103,31 +103,31 @@ impl IrTestBuilder {
     }
 
     // Node builders
-    pub fn write(&self, s: &str) -> IrNode {
-        IrNode::Write {
+    pub fn write(&self, s: &str) -> IrStatement {
+        IrStatement::Write {
             id: self.next_node_id(),
             content: s.to_string(),
         }
     }
 
-    pub fn write_expr(&self, expr: IrExpr, escape: bool) -> IrNode {
-        IrNode::WriteExpr {
+    pub fn write_expr(&self, expr: IrExpr, escape: bool) -> IrStatement {
+        IrStatement::WriteExpr {
             id: self.next_node_id(),
             expr,
             escape,
         }
     }
 
-    pub fn if_stmt(&self, cond: IrExpr, body: Vec<IrNode>) -> IrNode {
-        IrNode::If {
+    pub fn if_stmt(&self, cond: IrExpr, body: Vec<IrStatement>) -> IrStatement {
+        IrStatement::If {
             id: self.next_node_id(),
             condition: cond,
             body,
         }
     }
 
-    pub fn for_loop(&self, var: &str, array: IrExpr, body: Vec<IrNode>) -> IrNode {
-        IrNode::For {
+    pub fn for_loop(&self, var: &str, array: IrExpr, body: Vec<IrStatement>) -> IrStatement {
+        IrStatement::For {
             id: self.next_node_id(),
             var: var.to_string(),
             array,
@@ -135,8 +135,8 @@ impl IrTestBuilder {
         }
     }
 
-    pub fn let_stmt(&self, var: &str, value: IrExpr, body: Vec<IrNode>) -> IrNode {
-        IrNode::Let {
+    pub fn let_stmt(&self, var: &str, value: IrExpr, body: Vec<IrStatement>) -> IrStatement {
+        IrStatement::Let {
             id: self.next_node_id(),
             var: var.to_string(),
             value,

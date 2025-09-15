@@ -5,7 +5,7 @@ use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::collections::HashMap;
 
-use super::ast::{BinaryOp, IrEntrypoint, IrExprValue, IrNode, UnaryOp};
+use super::ast::{BinaryOp, IrEntrypoint, IrExprValue, IrStatement, UnaryOp};
 
 /// Evaluate an IrExpr expression
 fn evaluate_ir_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
@@ -84,23 +84,31 @@ pub fn evaluate_entrypoint(
     Ok(output)
 }
 
-/// Evaluate a slice of IR nodes
-pub fn eval_ir(nodes: &[IrNode], env: &mut Environment<Value>, output: &mut String) -> Result<()> {
-    for node in nodes {
-        eval_node(node, env, output)?;
+/// Evaluate a slice of IR statements
+pub fn eval_ir(
+    statements: &[IrStatement],
+    env: &mut Environment<Value>,
+    output: &mut String,
+) -> Result<()> {
+    for statement in statements {
+        eval_statement(statement, env, output)?;
     }
     Ok(())
 }
 
 /// Evaluate a single IR node
-fn eval_node(node: &IrNode, env: &mut Environment<Value>, output: &mut String) -> Result<()> {
+fn eval_statement(
+    node: &IrStatement,
+    env: &mut Environment<Value>,
+    output: &mut String,
+) -> Result<()> {
     match node {
-        IrNode::Write { id: _, content } => {
+        IrStatement::Write { id: _, content } => {
             output.push_str(content);
             Ok(())
         }
 
-        IrNode::WriteExpr {
+        IrStatement::WriteExpr {
             id: _,
             expr,
             escape,
@@ -115,7 +123,7 @@ fn eval_node(node: &IrNode, env: &mut Environment<Value>, output: &mut String) -
             Ok(())
         }
 
-        IrNode::If {
+        IrStatement::If {
             id: _,
             condition,
             body,
@@ -127,7 +135,7 @@ fn eval_node(node: &IrNode, env: &mut Environment<Value>, output: &mut String) -
             Ok(())
         }
 
-        IrNode::For {
+        IrStatement::For {
             id: _,
             var,
             array,
@@ -144,7 +152,7 @@ fn eval_node(node: &IrNode, env: &mut Environment<Value>, output: &mut String) -
             Ok(())
         }
 
-        IrNode::Let {
+        IrStatement::Let {
             id: _,
             var,
             value,

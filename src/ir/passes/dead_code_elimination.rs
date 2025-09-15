@@ -2,7 +2,7 @@ use super::Pass;
 use crate::ir::{
     IrExpr,
     ast::IrExprValue,
-    ast::{IrEntrypoint, IrNode},
+    ast::{IrEntrypoint, IrStatement},
 };
 
 /// A pass that eliminates dead code, particularly unreachable If branches
@@ -21,12 +21,12 @@ impl DeadCodeEliminationPass {
         }
     }
 
-    /// Transform a list of IR nodes, eliminating dead code
-    fn transform_nodes(nodes: Vec<IrNode>) -> Vec<IrNode> {
+    /// Transform a list of statements, eliminating dead code
+    fn transform_statements(statements: Vec<IrStatement>) -> Vec<IrStatement> {
         let mut result = Vec::new();
-        for node in nodes {
-            match node {
-                IrNode::If {
+        for statement in statements {
+            match statement {
+                IrStatement::If {
                     id,
                     condition,
                     body,
@@ -35,49 +35,49 @@ impl DeadCodeEliminationPass {
                     if let Some(const_bool) = Self::is_constant_boolean(&condition) {
                         if const_bool {
                             // Condition is always true, replace with body
-                            result.extend(Self::transform_nodes(body));
+                            result.extend(Self::transform_statements(body));
                         }
-                        // If false, do nothing - effectively removes this node
+                        // If false, do nothing - effectively removes this statement
                     } else {
                         // Can't evaluate at compile time, keep the if but transform body
-                        result.push(IrNode::If {
+                        result.push(IrStatement::If {
                             id,
                             condition,
-                            body: Self::transform_nodes(body),
+                            body: Self::transform_statements(body),
                         });
                     }
                 }
-                IrNode::For {
+                IrStatement::For {
                     id,
                     var,
                     array,
                     body,
                 } => {
                     // Transform the body of the for loop
-                    result.push(IrNode::For {
+                    result.push(IrStatement::For {
                         id,
                         var,
                         array,
-                        body: Self::transform_nodes(body),
+                        body: Self::transform_statements(body),
                     });
                 }
-                IrNode::Let {
+                IrStatement::Let {
                     id,
                     var,
                     value,
                     body,
                 } => {
                     // Transform the body of the let
-                    result.push(IrNode::Let {
+                    result.push(IrStatement::Let {
                         id,
                         var,
                         value,
-                        body: Self::transform_nodes(body),
+                        body: Self::transform_statements(body),
                     });
                 }
                 _ => {
-                    // All other nodes are preserved as-is
-                    result.push(node);
+                    // All other statements are preserved as-is
+                    result.push(statement);
                 }
             }
         }
@@ -87,7 +87,7 @@ impl DeadCodeEliminationPass {
 
 impl Pass for DeadCodeEliminationPass {
     fn run(&mut self, mut entrypoint: IrEntrypoint) -> IrEntrypoint {
-        entrypoint.body = Self::transform_nodes(entrypoint.body);
+        entrypoint.body = Self::transform_statements(entrypoint.body);
         entrypoint
     }
 }
