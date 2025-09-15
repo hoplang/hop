@@ -277,17 +277,6 @@ fn parse_top_level_node(
                     }))
                 }
 
-                // <render ...>
-                //"render" => {
-                //    let file_attr = errors.ok_or_add(validator.require_static("file"))?;
-                //    errors.extend(validator.disallow_unrecognized());
-                //    Some(TopLevelNode::Render(Render {
-                //        file_attr,
-                //        range: tree.range.clone(),
-                //        children,
-                //    }))
-                //}
-
                 // <component-definition ...>
                 name => {
                     // Validate component name

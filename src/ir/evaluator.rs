@@ -85,7 +85,7 @@ pub fn evaluate_entrypoint(
 }
 
 /// Evaluate a slice of IR statements
-pub fn eval_ir(
+fn eval_ir(
     statements: &[IrStatement],
     env: &mut Environment<Value>,
     output: &mut String,
