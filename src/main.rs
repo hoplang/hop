@@ -33,12 +33,6 @@ struct Cli {
 enum Commands {
     /// Run the Language Server Protocol (LSP) server
     Lsp,
-    /// Initialize a new hop project with a build.hop file
-    Init {
-        /// Path to initialize the project in (defaults to current directory)
-        #[arg(long)]
-        path: Option<String>,
-    },
     /// Compile hop templates to the specified language
     Compile {
         /// Target language (currently only 'js' is supported)
@@ -95,24 +89,6 @@ async fn main() -> anyhow::Result<()> {
     match &cli.command {
         Some(Commands::Lsp) => {
             cli::lsp::execute().await;
-        }
-        Some(Commands::Init { path }) => {
-            let init_path = match path {
-                Some(p) => Path::new(p),
-                None => Path::new("."),
-            };
-            cli::init::execute(init_path)?;
-            use colored::*;
-            println!();
-            println!("  {} | Initialized new hop project", "hop".bold());
-            println!();
-            println!("  Created build.hop with a basic template");
-            println!();
-            println!(
-                "  Run {} to start the development server",
-                "hop dev".green()
-            );
-            println!();
         }
         Some(Commands::Compile {
             language,
