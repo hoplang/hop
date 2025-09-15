@@ -165,15 +165,10 @@ fn create_file_watcher(
     Ok(watcher)
 }
 
-/// Create a router that responds to requests for the output files specified in the build.hop file.
+/// Create a router that responds to render requests.
 ///
 /// Also sets up a watcher that watches all source files used to construct the output files.
-/// The watcher emits SSE-events on the `/_hop/event_source` route. There is also an injected
-/// script on in all `html` files that listens to SSE-events on that route and performs
-/// hot-reloading when an event is emitted.
-///
-/// The client may change the build.hop file while the server is running as the server will reread the
-/// build file whenever a new request comes in.
+/// The watcher emits SSE-events on the `/_hop/event_source` route.
 pub async fn execute(
     root: &ProjectRoot,
 ) -> anyhow::Result<(axum::Router, notify::RecommendedWatcher)> {
