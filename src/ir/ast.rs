@@ -30,24 +30,27 @@ pub struct IrEntrypoint {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum IrStatement {
-    /// Output a pre-computed string
+    /// Write literal string to the output stream.
     Write { id: StatementId, content: String },
 
-    /// Evaluate expression and output as string
+    /// Write an expression to the output stream.
+    ///
+    /// The typechecker guarantees that the value of the expression
+    /// will always be a string.
     WriteExpr {
         id: StatementId,
         expr: IrExpr,
         escape: bool,
     },
 
-    /// Conditional execution
+    /// Execute the body if a condition holds.
     If {
         id: StatementId,
         condition: IrExpr,
         body: Vec<IrStatement>,
     },
 
-    /// Loop over array
+    /// Loop over an array.
     For {
         id: StatementId,
         var: String,
@@ -55,7 +58,7 @@ pub enum IrStatement {
         body: Vec<IrStatement>,
     },
 
-    /// Variable binding
+    /// Bind a variable to the value of an expression.
     Let {
         id: StatementId,
         var: String,
