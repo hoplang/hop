@@ -250,15 +250,12 @@ mod tests {
 
     #[test]
     fn test_simple_not_folding() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![
-                    // !false => true
-                    t.if_stmt(t.not(t.bool(false)), vec![t.write("Should be true")]),
-                ],
-            },
+            t.build(vec![
+                // !false => true
+                t.if_stmt(t.not(t.bool(false)), vec![t.write("Should be true")]),
+            ]),
             expect![[r#"
             IrEntrypoint {
               parameters: []
@@ -274,15 +271,12 @@ mod tests {
 
     #[test]
     fn test_double_not_folding() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![
-                    // !!true => true
-                    t.if_stmt(t.not(t.not(t.bool(true))), vec![t.write("Double negation")]),
-                ],
-            },
+            t.build(vec![
+                // !!true => true
+                t.if_stmt(t.not(t.not(t.bool(true))), vec![t.write("Double negation")]),
+            ]),
             expect![[r#"
             IrEntrypoint {
               parameters: []
@@ -298,18 +292,15 @@ mod tests {
 
     #[test]
     fn test_triple_not_folding() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![
-                    // !!!false => true
-                    t.if_stmt(
-                        t.not(t.not(t.not(t.bool(false)))),
-                        vec![t.write("Triple negation")],
-                    ),
-                ],
-            },
+            t.build(vec![
+                // !!!false => true
+                t.if_stmt(
+                    t.not(t.not(t.not(t.bool(false)))),
+                    vec![t.write("Triple negation")],
+                ),
+            ]),
             expect![[r#"
             IrEntrypoint {
               parameters: []
@@ -325,28 +316,25 @@ mod tests {
 
     #[test]
     fn test_equality_folding() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![
-                    // true == true => true
-                    t.if_stmt(
-                        t.eq(t.bool(true), t.bool(true)),
-                        vec![t.write("true == true")],
-                    ),
-                    // false == false => true
-                    t.if_stmt(
-                        t.eq(t.bool(false), t.bool(false)),
-                        vec![t.write("false == false")],
-                    ),
-                    // true == false => false
-                    t.if_stmt(
-                        t.eq(t.bool(true), t.bool(false)),
-                        vec![t.write("Should not appear")],
-                    ),
-                ],
-            },
+            t.build(vec![
+                // true == true => true
+                t.if_stmt(
+                    t.eq(t.bool(true), t.bool(true)),
+                    vec![t.write("true == true")],
+                ),
+                // false == false => true
+                t.if_stmt(
+                    t.eq(t.bool(false), t.bool(false)),
+                    vec![t.write("false == false")],
+                ),
+                // true == false => false
+                t.if_stmt(
+                    t.eq(t.bool(true), t.bool(false)),
+                    vec![t.write("Should not appear")],
+                ),
+            ]),
             expect![[r#"
             IrEntrypoint {
               parameters: []
@@ -368,18 +356,15 @@ mod tests {
 
     #[test]
     fn test_complex_equality_with_negations() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![
-                    // (!!false == !false) => (false == true) => false
-                    t.if_stmt(
-                        t.eq(t.not(t.not(t.bool(false))), t.not(t.bool(false))),
-                        vec![t.write("Should not appear")],
-                    ),
-                ],
-            },
+            t.build(vec![
+                // (!!false == !false) => (false == true) => false
+                t.if_stmt(
+                    t.eq(t.not(t.not(t.bool(false))), t.not(t.bool(false))),
+                    vec![t.write("Should not appear")],
+                ),
+            ]),
             expect![[r#"
             IrEntrypoint {
               parameters: []
@@ -395,24 +380,19 @@ mod tests {
 
     #[test]
     fn test_variable_constant_propagation() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![
-                    // let x = !!true
-                    t.let_stmt(
-                        "x",
-                        t.not(t.not(t.bool(true))),
-                        vec![
-                            // if x => if true
-                            t.if_stmt(t.var("x"), vec![t.write("x is true")]),
-                            // if !x => if false
-                            t.if_stmt(t.not(t.var("x")), vec![t.write("x is false")]),
-                        ],
-                    ),
-                ],
-            },
+            t.build(vec![
+                // let x = !!true
+                t.let_stmt("x", t.not(t.not(t.bool(true))), |t| {
+                    vec![
+                        // if x => if true
+                        t.if_stmt(t.var("x"), vec![t.write("x is true")]),
+                        // if !x => if false
+                        t.if_stmt(t.not(t.var("x")), vec![t.write("x is false")]),
+                    ]
+                }),
+            ]),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
@@ -433,28 +413,21 @@ mod tests {
 
     #[test]
     fn test_variable_in_equality() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![t.let_stmt(
-                    "x",
-                    t.bool(true),
-                    vec![t.let_stmt(
-                        "y",
-                        t.not(t.bool(true)),
-                        vec![
-                            // x == y => true == false => false
-                            t.if_stmt(t.eq(t.var("x"), t.var("y")), vec![t.write("x equals y")]),
-                            // x == !y => true == true => true
-                            t.if_stmt(
-                                t.eq(t.var("x"), t.not(t.var("y"))),
-                                vec![t.write("x equals not y")],
-                            ),
-                        ],
-                    )],
-                )],
-            },
+            t.build(vec![t.let_stmt("x", t.bool(true), |t| {
+                vec![t.let_stmt("y", t.not(t.bool(true)), |t| {
+                    vec![
+                        // x == y => true == false => false
+                        t.if_stmt(t.eq(t.var("x"), t.var("y")), vec![t.write("x equals y")]),
+                        // x == !y => true == true => true
+                        t.if_stmt(
+                            t.eq(t.var("x"), t.not(t.var("y"))),
+                            vec![t.write("x equals not y")],
+                        ),
+                    ]
+                })]
+            })]),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
@@ -477,19 +450,14 @@ mod tests {
 
     #[test]
     fn test_string_constant_propagation() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![t.let_stmt(
-                    "message",
-                    t.str("Hello, World!"),
-                    vec![
-                        // Variable containing string should be replaced with the string constant
-                        t.write_expr(t.var("message"), true),
-                    ],
-                )],
-            },
+            t.build(vec![t.let_stmt("message", t.str("Hello, World!"), |t| {
+                vec![
+                    // Variable containing string should be replaced with the string constant
+                    t.write_expr(t.var("message"), true),
+                ]
+            })]),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
@@ -505,24 +473,17 @@ mod tests {
 
     #[test]
     fn test_nested_string_variable_propagation() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![t.let_stmt(
-                    "greeting",
-                    t.str("Hello"),
-                    vec![t.let_stmt(
-                        "name",
-                        t.str("World"),
-                        vec![
-                            // Both variables should be replaced with their string constants
-                            t.write_expr(t.var("greeting"), true),
-                            t.write_expr(t.var("name"), true),
-                        ],
-                    )],
-                )],
-            },
+            t.build(vec![t.let_stmt("greeting", t.str("Hello"), |t| {
+                vec![t.let_stmt("name", t.str("World"), |t| {
+                    vec![
+                        // Both variables should be replaced with their string constants
+                        t.write_expr(t.var("greeting"), true),
+                        t.write_expr(t.var("name"), true),
+                    ]
+                })]
+            })]),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
@@ -541,28 +502,21 @@ mod tests {
 
     #[test]
     fn test_string_variable_multiple_uses() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![t.let_stmt(
-                    "title",
-                    t.str("Welcome"),
-                    vec![
-                        // Multiple uses of the same string variable
-                        t.write_expr(t.var("title"), true),
-                        t.write_expr(t.var("title"), true),
-                        t.let_stmt(
-                            "subtitle",
-                            t.var("title"),
-                            vec![
-                                // Transitive propagation through another variable
-                                t.write_expr(t.var("subtitle"), true),
-                            ],
-                        ),
-                    ],
-                )],
-            },
+            t.build(vec![t.let_stmt("title", t.str("Welcome"), |t| {
+                vec![
+                    // Multiple uses of the same string variable
+                    t.write_expr(t.var("title"), true),
+                    t.write_expr(t.var("title"), true),
+                    t.let_stmt("subtitle", t.var("title"), |t| {
+                        vec![
+                            // Transitive propagation through another variable
+                            t.write_expr(t.var("subtitle"), true),
+                        ]
+                    }),
+                ]
+            })]),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
@@ -582,39 +536,32 @@ mod tests {
 
     #[test]
     fn test_string_equality_folding() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![
-                    // "hello" == "hello" => true
-                    t.if_stmt(
-                        t.eq(t.str("hello"), t.str("hello")),
-                        vec![t.write("Strings are equal")],
-                    ),
-                    // "hello" == "world" => false
-                    t.if_stmt(
-                        t.eq(t.str("hello"), t.str("world")),
-                        vec![t.write("Should not appear")],
-                    ),
-                    // Test with variables containing strings
-                    t.let_stmt(
-                        "greeting",
-                        t.str("hello"),
-                        vec![t.let_stmt(
-                            "message",
-                            t.str("hello"),
-                            vec![
-                                // greeting == message => "hello" == "hello" => true
-                                t.if_stmt(
-                                    t.eq(t.var("greeting"), t.var("message")),
-                                    vec![t.write("Variables are equal")],
-                                ),
-                            ],
-                        )],
-                    ),
-                ],
-            },
+            t.build(vec![
+                // "hello" == "hello" => true
+                t.if_stmt(
+                    t.eq(t.str("hello"), t.str("hello")),
+                    vec![t.write("Strings are equal")],
+                ),
+                // "hello" == "world" => false
+                t.if_stmt(
+                    t.eq(t.str("hello"), t.str("world")),
+                    vec![t.write("Should not appear")],
+                ),
+                // Test with variables containing strings
+                t.let_stmt("greeting", t.str("hello"), |t| {
+                    vec![t.let_stmt("message", t.str("hello"), |t| {
+                        vec![
+                            // greeting == message => "hello" == "hello" => true
+                            t.if_stmt(
+                                t.eq(t.var("greeting"), t.var("message")),
+                                vec![t.write("Variables are equal")],
+                            ),
+                        ]
+                    })]
+                }),
+            ]),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []

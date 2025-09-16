@@ -197,12 +197,9 @@ mod tests {
 
     #[test]
     fn test_simple_write() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
 
-        let entrypoint = IrEntrypoint {
-            parameters: vec![],
-            body: vec![t.write("<div>Hello World</div>")],
-        };
+        let entrypoint = t.build(vec![t.write("<div>Hello World</div>")]);
 
         check_eval(
             entrypoint,
@@ -213,16 +210,13 @@ mod tests {
 
     #[test]
     fn test_write_expr() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![("name".to_string(), Type::String)]);
 
-        let entrypoint = IrEntrypoint {
-            parameters: vec![("name".to_string(), Type::String)],
-            body: vec![
-                t.write("<h1>Hello "),
-                t.write_expr(t.var("name"), true),
-                t.write("</h1>"),
-            ],
-        };
+        let entrypoint = t.build(vec![
+            t.write("<h1>Hello "),
+            t.write_expr(t.var("name"), true),
+            t.write("</h1>"),
+        ]);
 
         let mut args = HashMap::new();
         args.insert("name".to_string(), json!("Alice"));
@@ -232,12 +226,9 @@ mod tests {
 
     #[test]
     fn test_escape_html() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![("content".to_string(), Type::String)]);
 
-        let entrypoint = IrEntrypoint {
-            parameters: vec![("content".to_string(), Type::String)],
-            body: vec![t.write_expr(t.var("content"), true)],
-        };
+        let entrypoint = t.build(vec![t.write_expr(t.var("content"), true)]);
 
         let mut args = HashMap::new();
         args.insert(
@@ -254,12 +245,11 @@ mod tests {
 
     #[test]
     fn test_if_true() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![("show".to_string(), Type::Bool)]);
 
-        let entrypoint = IrEntrypoint {
-            parameters: vec![("show".to_string(), Type::Bool)],
-            body: vec![t.if_stmt(t.var("show"), vec![t.write("<div>Visible</div>")])],
-        };
+        let entrypoint = t.build(vec![
+            t.if_stmt(t.var("show"), vec![t.write("<div>Visible</div>")]),
+        ]);
 
         let mut args = HashMap::new();
         args.insert("show".to_string(), json!(true));
@@ -269,12 +259,11 @@ mod tests {
 
     #[test]
     fn test_if_false() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![("show".to_string(), Type::Bool)]);
 
-        let entrypoint = IrEntrypoint {
-            parameters: vec![("show".to_string(), Type::Bool)],
-            body: vec![t.if_stmt(t.var("show"), vec![t.write("<div>Hidden</div>")])],
-        };
+        let entrypoint = t.build(vec![
+            t.if_stmt(t.var("show"), vec![t.write("<div>Hidden</div>")]),
+        ]);
 
         let mut args = HashMap::new();
         args.insert("show".to_string(), json!(false));
@@ -284,23 +273,18 @@ mod tests {
 
     #[test]
     fn test_for_loop() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![(
+            "items".to_string(),
+            Type::Array(Some(Box::new(Type::String))),
+        )]);
 
-        let entrypoint = IrEntrypoint {
-            parameters: vec![(
-                "items".to_string(),
-                Type::Array(Some(Box::new(Type::String))),
-            )],
-            body: vec![t.for_loop(
-                "item",
-                t.var("items"),
-                vec![
-                    t.write("<li>"),
-                    t.write_expr(t.var("item"), true),
-                    t.write("</li>\n"),
-                ],
-            )],
-        };
+        let entrypoint = t.build(vec![t.for_loop("item", t.var("items"), |t| {
+            vec![
+                t.write("<li>"),
+                t.write_expr(t.var("item"), true),
+                t.write("</li>\n"),
+            ]
+        })]);
 
         let mut args = HashMap::new();
         args.insert("items".to_string(), json!(["Apple", "Banana", "Cherry"]));
@@ -317,25 +301,20 @@ mod tests {
 
     #[test]
     fn test_component_with_parameter() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
 
         // In IR, nested components are inlined with Let bindings
-        let entrypoint = IrEntrypoint {
-            parameters: vec![],
-            body: vec![
-                t.write("<div data-hop-id=\"test/card-comp\">\n"),
-                t.let_stmt(
-                    "title",
-                    t.str("Hello World"),
-                    vec![
-                        t.write("<p>"),
-                        t.write_expr(t.var("title"), true),
-                        t.write("</p>\n"),
-                    ],
-                ),
-                t.write("</div>"),
-            ],
-        };
+        let entrypoint = t.build(vec![
+            t.write("<div data-hop-id=\"test/card-comp\">\n"),
+            t.let_stmt("title", t.str("Hello World"), |t| {
+                vec![
+                    t.write("<p>"),
+                    t.write_expr(t.var("title"), true),
+                    t.write("</p>\n"),
+                ]
+            }),
+            t.write("</div>"),
+        ]);
 
         check_eval(
             entrypoint,
@@ -349,17 +328,16 @@ mod tests {
 
     #[test]
     fn test_attribute_merging() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
 
         // In IR, attributes are already merged
-        let entrypoint = IrEntrypoint {
-            parameters: vec![],
-            body: vec![
-                t.write("<div data-hop-id=\"test/button-comp\" class=\"btn btn-default btn-primary\">\n"),
-                t.write("Click me\n"),
-                t.write("</div>"),
-            ],
-        };
+        let entrypoint = t.build(vec![
+            t.write(
+                "<div data-hop-id=\"test/button-comp\" class=\"btn btn-default btn-primary\">\n",
+            ),
+            t.write("Click me\n"),
+            t.write("</div>"),
+        ]);
 
         check_eval(
             entrypoint,
@@ -373,19 +351,14 @@ mod tests {
 
     #[test]
     fn test_attribute_override() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
 
         // In IR, attributes are already processed (overridden for non-class)
-        let entrypoint = IrEntrypoint {
-            parameters: vec![],
-            body: vec![
-                t.write(
-                    "<div data-hop-id=\"test/button-comp\" class=\"btn\" data-id=\"custom\">\n",
-                ),
-                t.write("Click me\n"),
-                t.write("</div>"),
-            ],
-        };
+        let entrypoint = t.build(vec![
+            t.write("<div data-hop-id=\"test/button-comp\" class=\"btn\" data-id=\"custom\">\n"),
+            t.write("Click me\n"),
+            t.write("</div>"),
+        ]);
 
         check_eval(
             entrypoint,
@@ -399,38 +372,29 @@ mod tests {
 
     #[test]
     fn test_nested_components() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
 
         // In IR, nested components are fully inlined with Let bindings
-        let entrypoint = IrEntrypoint {
-            parameters: vec![],
-            body: vec![
-                t.write("<div data-hop-id=\"test/outer-comp\">\n"),
-                t.let_stmt(
-                    "a",
-                    t.str("outer"),
-                    vec![
-                        t.write("<div data-hop-id=\"test/inner-comp\">\n"),
-                        t.let_stmt(
-                            "x",
-                            t.var("a"),
-                            vec![t.let_stmt(
-                                "y",
-                                t.str("inner"),
-                                vec![
-                                    t.write_expr(t.var("x"), true),
-                                    t.write(" "),
-                                    t.write_expr(t.var("y"), true),
-                                    t.write("\n"),
-                                ],
-                            )],
-                        ),
-                        t.write("</div>\n"),
-                    ],
-                ),
-                t.write("</div>"),
-            ],
-        };
+        let entrypoint = t.build(vec![
+            t.write("<div data-hop-id=\"test/outer-comp\">\n"),
+            t.let_stmt("a", t.str("outer"), |t| {
+                vec![
+                    t.write("<div data-hop-id=\"test/inner-comp\">\n"),
+                    t.let_stmt("x", t.var("a"), |t| {
+                        vec![t.let_stmt("y", t.str("inner"), |t| {
+                            vec![
+                                t.write_expr(t.var("x"), true),
+                                t.write(" "),
+                                t.write_expr(t.var("y"), true),
+                                t.write("\n"),
+                            ]
+                        })]
+                    }),
+                    t.write("</div>\n"),
+                ]
+            }),
+            t.write("</div>"),
+        ]);
 
         check_eval(
             entrypoint,

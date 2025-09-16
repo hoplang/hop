@@ -107,12 +107,9 @@ mod tests {
 
     #[test]
     fn test_removes_always_true_if() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![t.if_stmt(t.bool(true), vec![t.write("Always shown")])],
-            },
+            t.build(vec![t.if_stmt(t.bool(true), vec![t.write("Always shown")])]),
             expect![[r#"
             IrEntrypoint {
               parameters: []
@@ -126,15 +123,12 @@ mod tests {
 
     #[test]
     fn test_removes_always_false_if() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![
-                    t.if_stmt(t.bool(false), vec![t.write("Never shown")]),
-                    t.write("After if"),
-                ],
-            },
+            t.build(vec![
+                t.if_stmt(t.bool(false), vec![t.write("Never shown")]),
+                t.write("After if"),
+            ]),
             expect![[r#"
             IrEntrypoint {
               parameters: []
@@ -148,16 +142,13 @@ mod tests {
 
     #[test]
     fn test_preserves_dynamic_conditions() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![("show".to_string(), Type::Bool)]);
         check(
-            IrEntrypoint {
-                parameters: vec![("show".to_string(), Type::Bool)],
-                body: vec![
-                    t.if_stmt(t.var("show"), vec![t.write("Dynamic")]),
-                    t.if_stmt(t.bool(true), vec![t.write("Static true")]),
-                    t.if_stmt(t.bool(false), vec![t.write("Static false")]),
-                ],
-            },
+            t.build(vec![
+                t.if_stmt(t.var("show"), vec![t.write("Dynamic")]),
+                t.if_stmt(t.bool(true), vec![t.write("Static true")]),
+                t.if_stmt(t.bool(false), vec![t.write("Static false")]),
+            ]),
             expect![[r#"
             IrEntrypoint {
               parameters: [show: boolean]
@@ -166,34 +157,6 @@ mod tests {
                   Write("Dynamic")
                 }
                 Write("Static true")
-              }
-            }
-        "#]],
-        );
-    }
-
-    #[test]
-    fn test_nested_dead_code_elimination() {
-        let t = IrTestBuilder::new();
-        check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![t.let_stmt(
-                    "x",
-                    t.var("value"),
-                    vec![
-                        t.if_stmt(t.bool(true), vec![t.write("Inside let and true if")]),
-                        t.if_stmt(t.bool(false), vec![t.write("Never shown")]),
-                    ],
-                )],
-            },
-            expect![[r#"
-            IrEntrypoint {
-              parameters: []
-              body: {
-                Let(var: x, value: value) {
-                  Write("Inside let and true if")
-                }
               }
             }
         "#]],

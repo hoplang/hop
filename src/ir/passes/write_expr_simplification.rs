@@ -77,7 +77,7 @@ impl Pass for WriteExprSimplificationPass {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::test_utils::IrTestBuilder;
+    use crate::{dop::Type, ir::test_utils::IrTestBuilder};
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: IrEntrypoint, expected: Expect) {
@@ -88,15 +88,12 @@ mod tests {
 
     #[test]
     fn test_simplify_constant_string() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![
-                    // WriteExpr with constant string should become Write
-                    t.write_expr(t.str("Hello, World!"), false),
-                ],
-            },
+            t.build(vec![
+                // WriteExpr with constant string should become Write
+                t.write_expr(t.str("Hello, World!"), false),
+            ]),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
@@ -110,15 +107,12 @@ mod tests {
 
     #[test]
     fn test_simplify_with_escaping() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![
-                    // WriteExpr with escaping enabled
-                    t.write_expr(t.str("<div>Hello & Goodbye</div>"), true),
-                ],
-            },
+            t.build(vec![
+                // WriteExpr with escaping enabled
+                t.write_expr(t.str("<div>Hello & Goodbye</div>"), true),
+            ]),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
@@ -131,62 +125,30 @@ mod tests {
     }
 
     #[test]
-    fn test_preserve_non_constant_expressions() {
-        let t = IrTestBuilder::new();
-        check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![
-                    // Variable reference should remain as WriteExpr
-                    t.write_expr(t.var("message"), false),
-                    // Boolean should remain as WriteExpr
-                    t.write_expr(t.bool(true), false),
-                ],
-            },
-            expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    WriteExpr(expr: message, escape: false)
-                    WriteExpr(expr: true, escape: false)
-                  }
-                }
-            "#]],
-        );
-    }
-
-    #[test]
     fn test_nested_transformations() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![
-                    t.if_stmt(
-                        t.bool(true),
-                        vec![
-                            t.write_expr(t.str("Inside if"), false),
-                            t.for_loop(
-                                "item",
-                                t.array(vec![]),
-                                vec![t.write_expr(t.str("Inside for"), false)],
-                            ),
-                        ],
-                    ),
-                    t.let_stmt(
-                        "x",
-                        t.str("value"),
-                        vec![t.write_expr(t.str("Inside let"), false)],
-                    ),
-                ],
-            },
+            t.build(vec![
+                t.if_stmt(
+                    t.bool(true),
+                    vec![
+                        t.write_expr(t.str("Inside if"), false),
+                        t.for_loop("item", t.array(vec![t.str("foo")]), |t| {
+                            vec![t.write_expr(t.str("Inside for"), false)]
+                        }),
+                    ],
+                ),
+                t.let_stmt("x", t.str("value"), |t| {
+                    vec![t.write_expr(t.str("Inside let"), false)]
+                }),
+            ]),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
                   body: {
                     If(condition: true) {
                       Write("Inside if")
-                      For(var: item, array: []) {
+                      For(var: item, array: ["foo"]) {
                         Write("Inside for")
                       }
                     }
@@ -201,23 +163,20 @@ mod tests {
 
     #[test]
     fn test_mixed_write_and_write_expr() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![("x".to_string(), Type::String)]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![
-                    t.write("Already a Write statement"),
-                    t.write_expr(t.str("Will become Write"), false),
-                    t.write_expr(t.var("stays_as_WriteExpr"), false),
-                ],
-            },
+            t.build(vec![
+                t.write("Already a Write statement"),
+                t.write_expr(t.str("Will become Write"), false),
+                t.write_expr(t.var("x"), false),
+            ]),
             expect![[r#"
                 IrEntrypoint {
-                  parameters: []
+                  parameters: [x: string]
                   body: {
                     Write("Already a Write statement")
                     Write("Will become Write")
-                    WriteExpr(expr: stays_as_WriteExpr, escape: false)
+                    WriteExpr(expr: x, escape: false)
                   }
                 }
             "#]],

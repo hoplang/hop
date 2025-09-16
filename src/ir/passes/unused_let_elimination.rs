@@ -166,15 +166,12 @@ mod tests {
 
     #[test]
     fn test_eliminate_unused_let() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![
-                    // Unused let should be eliminated
-                    t.let_stmt("unused", t.str("value"), vec![t.write("Hello")]),
-                ],
-            },
+            t.build(vec![
+                // Unused let should be eliminated
+                t.let_stmt("unused", t.str("value"), |t| vec![t.write("Hello")]),
+            ]),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
@@ -188,19 +185,14 @@ mod tests {
 
     #[test]
     fn test_preserve_used_let() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![
-                    // Used let should be preserved
-                    t.let_stmt(
-                        "message",
-                        t.str("Hello"),
-                        vec![t.write_expr(t.var("message"), false)],
-                    ),
-                ],
-            },
+            t.build(vec![
+                // Used let should be preserved
+                t.let_stmt("message", t.str("Hello"), |t| {
+                    vec![t.write_expr(t.var("message"), false)]
+                }),
+            ]),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
@@ -216,20 +208,13 @@ mod tests {
 
     #[test]
     fn test_nested_unused_lets() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![t.let_stmt(
-                    "outer",
-                    t.str("outer_value"),
-                    vec![t.let_stmt(
-                        "inner",
-                        t.str("inner_value"),
-                        vec![t.write("No variables used")],
-                    )],
-                )],
-            },
+            t.build(vec![t.let_stmt("outer", t.str("outer_value"), |t| {
+                vec![t.let_stmt("inner", t.str("inner_value"), |t| {
+                    vec![t.write("No variables used")]
+                })]
+            })]),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
@@ -243,16 +228,11 @@ mod tests {
 
     #[test]
     fn test_used_in_nested_structure() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![t.let_stmt(
-                    "cond",
-                    t.bool(true),
-                    vec![t.if_stmt(t.var("cond"), vec![t.write("Condition is true")])],
-                )],
-            },
+            t.build(vec![t.let_stmt("cond", t.bool(true), |t| {
+                vec![t.if_stmt(t.var("cond"), vec![t.write("Condition is true")])]
+            })]),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
@@ -270,15 +250,12 @@ mod tests {
 
     #[test]
     fn test_eliminate_in_if_body() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![t.if_stmt(
-                    t.bool(true),
-                    vec![t.let_stmt("unused", t.str("value"), vec![t.write("Inside if")])],
-                )],
-            },
+            t.build(vec![t.if_stmt(
+                t.bool(true),
+                vec![t.let_stmt("unused", t.str("value"), |t| vec![t.write("Inside if")])],
+            )]),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
@@ -294,20 +271,17 @@ mod tests {
 
     #[test]
     fn test_eliminate_in_for_body() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![t.for_loop(
-                    "item",
-                    t.array(vec![t.str("a"), t.str("b")]),
-                    vec![t.let_stmt(
-                        "unused",
-                        t.str("value"),
-                        vec![t.write_expr(t.var("item"), false)],
-                    )],
-                )],
-            },
+            t.build(vec![t.for_loop(
+                "item",
+                t.array(vec![t.str("a"), t.str("b")]),
+                |t| {
+                    vec![t.let_stmt("unused", t.str("value"), |t| {
+                        vec![t.write_expr(t.var("item"), false)]
+                    })]
+                },
+            )]),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
@@ -323,20 +297,13 @@ mod tests {
 
     #[test]
     fn test_used_in_binary_op() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![t.let_stmt(
-                    "x",
-                    t.bool(true),
-                    vec![t.let_stmt(
-                        "y",
-                        t.bool(false),
-                        vec![t.if_stmt(t.eq(t.var("x"), t.var("y")), vec![t.write("Equal")])],
-                    )],
-                )],
-            },
+            t.build(vec![t.let_stmt("x", t.bool(true), |t| {
+                vec![t.let_stmt("y", t.bool(false), |t| {
+                    vec![t.if_stmt(t.eq(t.var("x"), t.var("y")), vec![t.write("Equal")])]
+                })]
+            })]),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
@@ -356,16 +323,13 @@ mod tests {
 
     #[test]
     fn test_multiple_unused_lets_in_sequence() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![
-                    t.let_stmt("a", t.str("a_value"), vec![t.write("First")]),
-                    t.let_stmt("b", t.str("b_value"), vec![t.write("Second")]),
-                    t.write("Third"),
-                ],
-            },
+            t.build(vec![
+                t.let_stmt("a", t.str("a_value"), |t| vec![t.write("First")]),
+                t.let_stmt("b", t.str("b_value"), |t| vec![t.write("Second")]),
+                t.write("Third"),
+            ]),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
@@ -381,20 +345,17 @@ mod tests {
 
     #[test]
     fn test_variable_used_in_array() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![t.let_stmt(
-                    "items",
-                    t.array(vec![t.str("a"), t.str("b")]),
-                    vec![t.for_loop(
-                        "item",
-                        t.var("items"),
-                        vec![t.write_expr(t.var("item"), false)],
-                    )],
-                )],
-            },
+            t.build(vec![t.let_stmt(
+                "items",
+                t.array(vec![t.str("a"), t.str("b")]),
+                |t| {
+                    vec![t.for_loop("item", t.var("items"), |t| {
+                        vec![t.write_expr(t.var("item"), false)]
+                    })]
+                },
+            )]),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
@@ -412,16 +373,13 @@ mod tests {
 
     #[test]
     fn test_variable_used_in_property_access() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![t.let_stmt(
-                    "obj",
-                    t.object(vec![("name", t.str("value"))]),
-                    vec![t.write_expr(t.prop_access(t.var("obj"), "name"), false)],
-                )],
-            },
+            t.build(vec![t.let_stmt(
+                "obj",
+                t.object(vec![("name", t.str("value"))]),
+                |t| vec![t.write_expr(t.prop_access(t.var("obj"), "name"), false)],
+            )]),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []
@@ -437,19 +395,16 @@ mod tests {
 
     #[test]
     fn test_sibling_lets_same_name_first_used() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
         check(
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![
-                    t.let_stmt("x", t.str("first x"), vec![t.write_expr(t.var("x"), false)]),
-                    t.let_stmt(
-                        "x",
-                        t.str("second x"),
-                        vec![t.write("No reference to x here")],
-                    ),
-                ],
-            },
+            t.build(vec![
+                t.let_stmt("x", t.str("first x"), |t| {
+                    vec![t.write_expr(t.var("x"), false)]
+                }),
+                t.let_stmt("x", t.str("second x"), |t| {
+                    vec![t.write("No reference to x here")]
+                }),
+            ]),
             expect![[r#"
                 IrEntrypoint {
                   parameters: []

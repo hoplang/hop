@@ -1,18 +1,36 @@
+use super::ast::IrEntrypoint;
 use super::ast::{BinaryOp, ExprId, IrExpr, IrExprValue, IrStatement, StatementId, UnaryOp};
 use crate::dop::Type;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 pub struct IrTestBuilder {
     next_expr_id: RefCell<ExprId>,
     next_node_id: RefCell<StatementId>,
+    var_types: RefCell<HashMap<String, Type>>,
+    params: Vec<(String, Type)>,
 }
 
 impl IrTestBuilder {
-    pub fn new() -> Self {
+    pub fn new(params: Vec<(String, Type)>) -> Self {
+        let mut var_types = HashMap::new();
+        for (name, typ) in &params {
+            var_types.insert(name.clone(), typ.clone());
+        }
+
         Self {
             next_expr_id: RefCell::new(1),
             next_node_id: RefCell::new(1),
+            var_types: RefCell::new(var_types),
+            params,
+        }
+    }
+
+    pub fn build(&self, body: Vec<IrStatement>) -> IrEntrypoint {
+        IrEntrypoint {
+            parameters: self.params.clone(),
+            body,
         }
     }
 
@@ -54,11 +72,17 @@ impl IrTestBuilder {
     }
 
     pub fn var(&self, name: &str) -> IrExpr {
+        let typ = self
+            .var_types
+            .borrow()
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| panic!("Variable '{}' not found in type environment", name));
+
         IrExpr {
             id: self.next_expr_id(),
             value: IrExprValue::Var(name.to_string()),
-            // TODO: Do we need to construct the correct type here?
-            typ: Type::String,
+            typ,
         }
     }
 
@@ -113,10 +137,12 @@ impl IrTestBuilder {
     }
 
     pub fn prop_access(&self, object: IrExpr, property: &str) -> IrExpr {
-        // TODO: Do we need to construct the correct type here?
         let property_type = match &object.typ {
-            Type::Object(type_map) => type_map.get(property).cloned().unwrap_or(Type::String),
-            _ => Type::String,
+            Type::Object(type_map) => type_map
+                .get(property)
+                .cloned()
+                .unwrap_or_else(|| panic!("Property '{}' not found in object type", property)),
+            _ => panic!("Cannot access property '{}' on non-object type", property),
         };
 
         IrExpr {
@@ -138,6 +164,7 @@ impl IrTestBuilder {
     }
 
     pub fn write_expr(&self, expr: IrExpr, escape: bool) -> IrStatement {
+        assert_eq!(expr.typ, Type::String, "{}", expr);
         IrStatement::WriteExpr {
             id: self.next_node_id(),
             expr,
@@ -146,6 +173,7 @@ impl IrTestBuilder {
     }
 
     pub fn if_stmt(&self, cond: IrExpr, body: Vec<IrStatement>) -> IrStatement {
+        assert_eq!(cond.typ, Type::Bool, "{}", cond);
         IrStatement::If {
             id: self.next_node_id(),
             condition: cond,
@@ -153,7 +181,28 @@ impl IrTestBuilder {
         }
     }
 
-    pub fn for_loop(&self, var: &str, array: IrExpr, body: Vec<IrStatement>) -> IrStatement {
+    pub fn for_loop<F>(&self, var: &str, array: IrExpr, body_fn: F) -> IrStatement
+    where
+        F: FnOnce(&Self) -> Vec<IrStatement>,
+    {
+        // Extract element type from array
+        let element_type = match &array.typ {
+            Type::Array(Some(elem_type)) => *elem_type.clone(),
+            Type::Array(None) => panic!("Cannot iterate over array with unknown element type"),
+            _ => panic!("Cannot iterate over non-array type"),
+        };
+
+        // Register the loop variable with its type
+        self.var_types
+            .borrow_mut()
+            .insert(var.to_string(), element_type);
+
+        // Evaluate the body with the variable registered
+        let body = body_fn(self);
+
+        // Clean up the loop variable from scope
+        self.var_types.borrow_mut().remove(var);
+
         IrStatement::For {
             id: self.next_node_id(),
             var: var.to_string(),
@@ -162,7 +211,22 @@ impl IrTestBuilder {
         }
     }
 
-    pub fn let_stmt(&self, var: &str, value: IrExpr, body: Vec<IrStatement>) -> IrStatement {
+    pub fn let_stmt<F>(&self, var: &str, value: IrExpr, body_fn: F) -> IrStatement
+    where
+        F: FnOnce(&Self) -> Vec<IrStatement>,
+    {
+        // Register the variable with its type from the value expression
+        let value_type = value.typ.clone();
+        self.var_types
+            .borrow_mut()
+            .insert(var.to_string(), value_type);
+
+        // Evaluate the body with the variable registered
+        let body = body_fn(self);
+
+        // Clean up the variable from scope
+        self.var_types.borrow_mut().remove(var);
+
         IrStatement::Let {
             id: self.next_node_id(),
             var: var.to_string(),

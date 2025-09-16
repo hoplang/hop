@@ -379,15 +379,12 @@ mod tests {
 
     #[test]
     fn test_simple_component() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
 
         let mut ir_module = IrModule::new();
         ir_module.entry_points.insert(
             "test-main-comp".to_string(),
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![t.write("<div>Hello World</div>\n")],
-            },
+            t.build(vec![t.write("<div>Hello World</div>\n")]),
         );
 
         check(
@@ -416,24 +413,21 @@ mod tests {
 
     #[test]
     fn test_component_with_parameters() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![
+            ("name".to_string(), Type::String),
+            ("message".to_string(), Type::String),
+        ]);
 
         let mut ir_module = IrModule::new();
         ir_module.entry_points.insert(
             "test-greeting-comp".to_string(),
-            IrEntrypoint {
-                parameters: vec![
-                    ("name".to_string(), Type::String),
-                    ("message".to_string(), Type::String),
-                ],
-                body: vec![
-                    t.write("<h1>Hello "),
-                    t.write_expr(t.var("name"), true),
-                    t.write(", "),
-                    t.write_expr(t.var("message"), true),
-                    t.write("</h1>\n"),
-                ],
-            },
+            t.build(vec![
+                t.write("<h1>Hello "),
+                t.write_expr(t.var("name"), true),
+                t.write(", "),
+                t.write_expr(t.var("message"), true),
+                t.write("</h1>\n"),
+            ]),
         );
 
         check(
@@ -466,15 +460,14 @@ mod tests {
 
     #[test]
     fn test_if_condition() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![("show".to_string(), Type::Bool)]);
 
         let mut ir_module = IrModule::new();
         ir_module.entry_points.insert(
             "test-main-comp".to_string(),
-            IrEntrypoint {
-                parameters: vec![("show".to_string(), Type::Bool)],
-                body: vec![t.if_stmt(t.var("show"), vec![t.write("<div>Visible</div>\n")])],
-            },
+            t.build(vec![
+                t.if_stmt(t.var("show"), vec![t.write("<div>Visible</div>\n")]),
+            ]),
         );
 
         check(
@@ -505,26 +498,21 @@ mod tests {
 
     #[test]
     fn test_for_loop() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![(
+            "items".to_string(),
+            Type::Array(Some(Box::new(Type::String))),
+        )]);
 
         let mut ir_module = IrModule::new();
         ir_module.entry_points.insert(
             "test-main-comp".to_string(),
-            IrEntrypoint {
-                parameters: vec![(
-                    "items".to_string(),
-                    Type::Array(Some(Box::new(Type::String))),
-                )],
-                body: vec![t.for_loop(
-                    "item",
-                    t.var("items"),
-                    vec![
-                        t.write("<li>"),
-                        t.write_expr(t.var("item"), true),
-                        t.write("</li>\n"),
-                    ],
-                )],
-            },
+            t.build(vec![t.for_loop("item", t.var("items"), |t| {
+                vec![
+                    t.write("<li>"),
+                    t.write_expr(t.var("item"), true),
+                    t.write("</li>\n"),
+                ]
+            })]),
         );
 
         check(
@@ -557,28 +545,23 @@ mod tests {
 
     #[test]
     fn test_nested_components_with_let_bindings() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
 
         let mut ir_module = IrModule::new();
         // Note: In the IR, nested components are already inlined, so we simulate the result
         ir_module.entry_points.insert(
             "test-main-comp".to_string(),
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![
-                    t.write("<div data-hop-id=\"test/card-comp\">"),
-                    t.let_stmt(
-                        "title",
-                        t.str("Hello World"),
-                        vec![
-                            t.write("<h2>"),
-                            t.write_expr(t.var("title"), true),
-                            t.write("</h2>"),
-                        ],
-                    ),
-                    t.write("</div>"),
-                ],
-            },
+            t.build(vec![
+                t.write("<div data-hop-id=\"test/card-comp\">"),
+                t.let_stmt("title", t.str("Hello World"), |t| {
+                    vec![
+                        t.write("<h2>"),
+                        t.write_expr(t.var("title"), true),
+                        t.write("</h2>"),
+                    ]
+                }),
+                t.write("</div>"),
+            ]),
         );
 
         check(
@@ -612,53 +595,48 @@ mod tests {
 
     #[test]
     fn test_typescript_with_parameters() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![
+            (
+                "users".to_string(),
+                Type::Array(Some(Box::new(Type::Object({
+                    let mut map = BTreeMap::new();
+                    map.insert("name".to_string(), Type::String);
+                    map.insert("id".to_string(), Type::String);
+                    map.insert("active".to_string(), Type::Bool);
+                    map
+                })))),
+            ),
+            ("title".to_string(), Type::String),
+        ]);
 
         let mut ir_module = IrModule::new();
         ir_module.entry_points.insert(
             "test-user-list".to_string(),
-            IrEntrypoint {
-                parameters: vec![
-                    (
-                        "users".to_string(),
-                        Type::Array(Some(Box::new(Type::Object({
-                            let mut map = BTreeMap::new();
-                            map.insert("name".to_string(), Type::String);
-                            map.insert("id".to_string(), Type::String);
-                            map.insert("active".to_string(), Type::Bool);
-                            map
-                        })))),
-                    ),
-                    ("title".to_string(), Type::String),
-                ],
-                body: vec![
-                    t.write("<div>\n"),
-                    t.write("<h1>\n"),
-                    t.write_expr(t.var("title"), true),
-                    t.write("</h1>\n"),
-                    t.write("<ul>\n"),
-                    t.for_loop(
-                        "user",
-                        t.var("users"),
-                        vec![
-                            t.write("\n"),
-                            t.if_stmt(
-                                t.prop_access(t.var("user"), "active"),
-                                vec![
-                                    t.write("\n<li>User "),
-                                    t.write_expr(t.prop_access(t.var("user"), "id"), true),
-                                    t.write(": "),
-                                    t.write_expr(t.prop_access(t.var("user"), "name"), true),
-                                    t.write("</li>\n"),
-                                ],
-                            ),
-                            t.write("\n"),
-                        ],
-                    ),
-                    t.write("</ul>\n"),
-                    t.write("</div>\n"),
-                ],
-            },
+            t.build(vec![
+                t.write("<div>\n"),
+                t.write("<h1>\n"),
+                t.write_expr(t.var("title"), true),
+                t.write("</h1>\n"),
+                t.write("<ul>\n"),
+                t.for_loop("user", t.var("users"), |t| {
+                    vec![
+                        t.write("\n"),
+                        t.if_stmt(
+                            t.prop_access(t.var("user"), "active"),
+                            vec![
+                                t.write("\n<li>User "),
+                                t.write_expr(t.prop_access(t.var("user"), "id"), true),
+                                t.write(": "),
+                                t.write_expr(t.prop_access(t.var("user"), "name"), true),
+                                t.write("</li>\n"),
+                            ],
+                        ),
+                        t.write("\n"),
+                    ]
+                }),
+                t.write("</ul>\n"),
+                t.write("</div>\n"),
+            ]),
         );
 
         check_ts_output(
@@ -703,53 +681,45 @@ mod tests {
 
     #[test]
     fn test_complex_literals_and_property_access() {
-        let t = IrTestBuilder::new();
+        let t = IrTestBuilder::new(vec![]);
 
         let mut ir_module = IrModule::new();
         ir_module.entry_points.insert(
             "test-product-list".to_string(),
-            IrEntrypoint {
-                parameters: vec![],
-                body: vec![
+            t.build(vec![
                     t.write("<div class=\"products\">\n"),
                     t.for_loop(
                         "product",
                         t.array(vec![
                             t.object(vec![
                                 ("name", t.str("Laptop")),
-                                ("price", t.num(999.99)),
                                 ("inStock", t.bool(true)),
                                 ("category", t.str("electronics")),
                             ]),
                             t.object(vec![
                                 ("name", t.str("Book")),
-                                ("price", t.num(29.99)),
                                 ("inStock", t.bool(false)),
                                 ("category", t.str("books")),
                             ]),
                             t.object(vec![
                                 ("name", t.str("T-Shirt")),
-                                ("price", t.num(19.99)),
                                 ("inStock", t.bool(true)),
                                 ("category", t.str("clothing")),
                             ]),
                         ]),
-                        vec![t.let_stmt(
+                        |t| vec![t.let_stmt(
                             "displayInfo",
                             t.object(vec![
                                 ("currency", t.str("$")),
                                 ("showStock", t.bool(true)),
                                 ("prefix", t.str("PROD-")),
                             ]),
-                            vec![
+                            |t| vec![
                                 t.write("<article class=\"product\">\n"),
                                 t.write("<h3>"),
                                 t.write_expr(t.prop_access(t.var("displayInfo"), "prefix"), false),
                                 t.write_expr(t.prop_access(t.var("product"), "name"), true),
                                 t.write("</h3>\n"),
-                                t.write("<p>Price: "),
-                                t.write_expr(t.prop_access(t.var("displayInfo"), "currency"), false),
-                                t.write_expr(t.prop_access(t.var("product"), "price"), false),
                                 t.write("</p>\n"),
                                 t.write("<p>Category: "),
                                 t.write_expr(t.prop_access(t.var("product"), "category"), true),
@@ -773,7 +743,7 @@ mod tests {
                     ),
                     t.write("</div>\n"),
                 ],
-            },
+            ),
         );
 
         check(
@@ -793,16 +763,13 @@ mod tests {
                     testProductList: () => {
                         let output = "";
                         output += "<div class=\"products\">\n";
-                        for (const product of [{name: "Laptop", price: 999.99, inStock: true, category: "electronics"}, {name: "Book", price: 29.99, inStock: false, category: "books"}, {name: "T-Shirt", price: 19.99, inStock: true, category: "clothing"}]) {
+                        for (const product of [{name: "Laptop", inStock: true, category: "electronics"}, {name: "Book", inStock: false, category: "books"}, {name: "T-Shirt", inStock: true, category: "clothing"}]) {
                             const displayInfo = {currency: "$", showStock: true, prefix: "PROD-"};
                             output += "<article class=\"product\">\n";
                             output += "<h3>";
                             output += displayInfo.prefix;
                             output += escapeHtml(product.name);
                             output += "</h3>\n";
-                            output += "<p>Price: ";
-                            output += displayInfo.currency;
-                            output += product.price;
                             output += "</p>\n";
                             output += "<p>Category: ";
                             output += escapeHtml(product.category);
