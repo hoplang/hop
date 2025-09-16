@@ -118,6 +118,7 @@ pub struct TypeChecker {
     state: State,
     pub type_errors: HashMap<ModuleName, ErrorCollector<TypeError>>,
     pub type_annotations: HashMap<ModuleName, Vec<TypeAnnotation>>,
+    pub typed_asts: HashMap<ModuleName, Ast<Type>>,
 }
 
 impl TypeChecker {
@@ -134,7 +135,8 @@ impl TypeChecker {
             type_errors.clear();
             type_annotations.clear();
 
-            typecheck_module(module, &mut self.state, type_errors, type_annotations);
+            let typed_ast = typecheck_module(module, &mut self.state, type_errors, type_annotations);
+            self.typed_asts.insert(module.name.clone(), typed_ast);
 
             if modules.len() > 1 {
                 type_errors.clear();
@@ -153,6 +155,11 @@ impl TypeChecker {
             }
         }
     }
+
+    /// Get the typed AST for a given module name, if it exists
+    pub fn get_typed_ast(&self, module_name: &ModuleName) -> Option<&Ast<Type>> {
+        self.typed_asts.get(module_name)
+    }
 }
 
 fn typecheck_module(
@@ -160,7 +167,8 @@ fn typecheck_module(
     state: &mut State,
     errors: &mut ErrorCollector<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
-) {
+) -> Ast<Type> {
+    // Validate imports
     for import in module.get_imports() {
         let imported_module = import.imported_module();
         let imported_component = import.imported_component();
@@ -178,19 +186,25 @@ fn typecheck_module(
             });
         }
     }
-    let mut env = Environment::new();
 
+    let mut env = Environment::new();
     let _ = env.push("HOP_MODE".to_string(), Type::String);
 
-    for ComponentDefinition {
-        tag_name: name,
-        params,
-        children,
-        has_slot,
-        is_entrypoint,
-        ..
-    } in module.get_component_definitions()
-    {
+    // Build typed component definitions
+    let mut typed_component_definitions = Vec::new();
+
+    for component_def in module.get_component_definitions() {
+        let ComponentDefinition {
+            tag_name: name,
+            params,
+            children,
+            has_slot,
+            is_entrypoint,
+            as_attr,
+            attributes,
+            range,
+            closing_tag_name,
+        } = component_def;
         // Check for duplicate entrypoints before processing
         if *is_entrypoint {
             if let Some(previous_module) =
@@ -205,6 +219,7 @@ fn typecheck_module(
             }
         }
 
+        // Push parameters to environment
         if let Some((params, _)) = params {
             for param in params {
                 annotations.push(TypeAnnotation {
@@ -216,10 +231,16 @@ fn typecheck_module(
             }
         }
 
-        for child in children {
-            typecheck_node(child, state, &mut env, annotations, errors);
-        }
+        // Typecheck attributes
+        let typed_attributes = typecheck_attributes(attributes, &mut env, annotations, errors);
 
+        // Typecheck children and collect typed versions
+        let typed_children: Vec<Node<Type>> = children
+            .iter()
+            .filter_map(|child| typecheck_node(child, state, &mut env, annotations, errors))
+            .collect();
+
+        // Pop parameters from environment
         if let Some((params, _)) = params {
             // iterate in reverse to pop in right order
             for param in params.iter().rev() {
@@ -232,6 +253,7 @@ fn typecheck_module(
             }
         }
 
+        // Store type information in state
         state.set_type_info(
             &module.name,
             name.as_str(),
@@ -241,7 +263,27 @@ fn typecheck_module(
                 is_entrypoint: *is_entrypoint,
             },
         );
+
+        // Build typed ComponentDefinition
+        typed_component_definitions.push(ComponentDefinition {
+            tag_name: name.clone(),
+            closing_tag_name: closing_tag_name.clone(),
+            params: params.clone(),
+            as_attr: as_attr.clone(),
+            attributes: typed_attributes,
+            range: range.clone(),
+            children: typed_children,
+            is_entrypoint: *is_entrypoint,
+            has_slot: *has_slot,
+        });
     }
+
+    // Build and return the typed AST
+    Ast::new(
+        module.name.clone(),
+        typed_component_definitions,
+        module.get_imports().to_vec(),
+    )
 }
 
 fn typecheck_node(
@@ -593,6 +635,7 @@ mod tests {
     use crate::document::DocumentAnnotator;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
+    use crate::hop::module_name::ModuleName;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use simple_txtar::Archive;

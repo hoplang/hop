@@ -106,7 +106,7 @@ impl<T> Ast<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Import {
     pub component_attr: StaticAttribute,
     pub from_attr: StaticAttribute,
