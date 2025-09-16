@@ -351,13 +351,20 @@ fn typecheck_node(
         Node::ComponentReference {
             tag_name,
             definition_module,
+            closing_tag_name,
             args,
+            attributes,
             children,
-            ..
+            range,
         } => {
-            for child in children {
-                typecheck_node(child, state, env, annotations, errors);
-            }
+            // Transform attributes
+            let typed_attributes = typecheck_attributes(attributes, env, annotations, errors);
+
+            // Transform children
+            let typed_children = children
+                .iter()
+                .filter_map(|child| typecheck_node(child, state, env, annotations, errors))
+                .collect();
 
             let module_info = match definition_module
                 .as_ref()
@@ -446,7 +453,17 @@ fn typecheck_node(
                     }
                 }
             }
-            None
+
+            // For now, set args to None until we handle the transformation
+            Some(Node::ComponentReference {
+                tag_name: tag_name.clone(),
+                definition_module: definition_module.clone(),
+                closing_tag_name: closing_tag_name.clone(),
+                args: None,
+                attributes: typed_attributes,
+                range: range.clone(),
+                children: typed_children,
+            })
         }
 
         Node::Html {
