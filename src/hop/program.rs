@@ -405,8 +405,8 @@ impl Program {
         args: HashMap<String, serde_json::Value>,
         hop_mode: &str,
     ) -> Result<String> {
-        // Compile to IR
-        let ir_module = ir::Compiler::compile(&self.modules);
+        // Compile to IR - use Production mode for evaluation
+        let ir_module = ir::Compiler::compile(&self.modules, ir::CompilationMode::Production);
 
         // Get the entrypoint
         let entrypoint = ir_module

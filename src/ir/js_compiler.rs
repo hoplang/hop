@@ -7,29 +7,21 @@ pub enum LanguageMode {
     TypeScript,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum CompilationMode {
-    Production,
-    Development,
-}
-
 /// Compiles an IR module to JavaScript or TypeScript code
 pub struct JsCompiler {
     output: String,
     indent_level: usize,
     mode: LanguageMode,
-    compilation_mode: CompilationMode,
     /// Internal flag to use template literals instead of double quotes
     use_template_literals: bool,
 }
 
 impl JsCompiler {
-    pub fn new(mode: LanguageMode, compilation_mode: CompilationMode) -> Self {
+    pub fn new(mode: LanguageMode) -> Self {
         Self {
             output: String::new(),
             indent_level: 0,
             mode,
-            compilation_mode,
             use_template_literals: false,
         }
     }
@@ -54,36 +46,31 @@ impl JsCompiler {
         result
     }
 
-    pub fn compile_module(&mut self, ir_module: &IrModule) -> String {
-        match self.compilation_mode {
-            CompilationMode::Production => {
-                // Add the escape HTML helper function for production mode
-                match self.mode {
-                    LanguageMode::JavaScript => {
-                        self.write_line("function escapeHtml(str) {");
-                        self.indent();
-                        self.write_line("if (typeof str !== 'string') return str;");
-                    }
-                    LanguageMode::TypeScript => {
-                        self.write_line("function escapeHtml(str: string): string {");
-                        self.indent();
-                    }
+    pub fn compile_module(&mut self, ir_module: &IrModule, needs_escape_html: bool) -> String {
+        if needs_escape_html {
+            // Add the escape HTML helper function
+            match self.mode {
+                LanguageMode::JavaScript => {
+                    self.write_line("function escapeHtml(str) {");
+                    self.indent();
+                    self.write_line("if (typeof str !== 'string') return str;");
                 }
-                self.write_line("return str");
-                self.indent();
-                self.write_line(".replace(/&/g, '&amp;')");
-                self.write_line(".replace(/</g, '&lt;')");
-                self.write_line(".replace(/>/g, '&gt;')");
-                self.write_line(".replace(/\"/g, '&quot;')");
-                self.write_line(".replace(/'/g, '&#39;');");
-                self.dedent();
-                self.dedent();
-                self.write_line("}");
-                self.write_line("");
+                LanguageMode::TypeScript => {
+                    self.write_line("function escapeHtml(str: string): string {");
+                    self.indent();
+                }
             }
-            CompilationMode::Development => {
-                // No escapeHtml needed for development mode
-            }
+            self.write_line("return str");
+            self.indent();
+            self.write_line(".replace(/&/g, '&amp;')");
+            self.write_line(".replace(/</g, '&lt;')");
+            self.write_line(".replace(/>/g, '&gt;')");
+            self.write_line(".replace(/\"/g, '&quot;')");
+            self.write_line(".replace(/'/g, '&#39;');");
+            self.dedent();
+            self.dedent();
+            self.write_line("}");
+            self.write_line("");
         }
 
         // Start export default object
@@ -98,14 +85,7 @@ impl JsCompiler {
             }
             first = false;
 
-            match self.compilation_mode {
-                CompilationMode::Production => {
-                    self.compile_entrypoint(name, entrypoint);
-                }
-                CompilationMode::Development => {
-                    self.compile_development_entrypoint(name, entrypoint);
-                }
-            }
+            self.compile_entrypoint(name, entrypoint);
         }
 
         // Close the export default object
@@ -114,101 +94,6 @@ impl JsCompiler {
         self.write_line("}");
 
         self.output.clone()
-    }
-
-    fn compile_development_entrypoint(&mut self, name: &str, entrypoint: &IrEntrypoint) {
-        // Convert kebab-case to camelCase for JavaScript property name
-        let camel_case_name = Self::kebab_to_camel_case(name);
-
-        // Write the function property with proper indentation
-        for _ in 0..self.indent_level {
-            self.output.push_str("    ");
-        }
-        self.output.push_str(&camel_case_name);
-        self.output.push_str(": ");
-
-        // Generate function signature matching production
-        if entrypoint.parameters.is_empty() {
-            match self.mode {
-                LanguageMode::JavaScript => {
-                    self.output.push_str("() => {");
-                }
-                LanguageMode::TypeScript => {
-                    self.output.push_str("(): string => {");
-                }
-            }
-        } else {
-            // Build parameter list
-            let params: Vec<String> = entrypoint
-                .parameters
-                .iter()
-                .map(|(name, _)| name.clone())
-                .collect();
-
-            match self.mode {
-                LanguageMode::JavaScript => {
-                    // Destructure parameters from input object
-                    let params_str = params.join(", ");
-                    self.output
-                        .push_str(&format!("({{ {} }}) => {{", params_str));
-                }
-                LanguageMode::TypeScript => {
-                    // Generate TypeScript interface for parameters
-                    let type_params: Vec<String> = entrypoint
-                        .parameters
-                        .iter()
-                        .map(|(name, ty)| format!("{}: {}", name, Self::type_to_typescript(ty)))
-                        .collect();
-                    let params_str = params.join(", ");
-                    let type_params_str = type_params.join(", ");
-
-                    self.output.push_str(&format!(
-                        "({{ {} }}: {{ {} }}): string => {{",
-                        params_str, type_params_str
-                    ));
-                }
-            }
-        }
-
-        self.write_line("");
-        self.indent();
-
-        // Build parameter collection for passing to dev server
-        if entrypoint.parameters.is_empty() {
-            self.write_line("const params = {};");
-        } else {
-            let params: Vec<String> = entrypoint
-                .parameters
-                .iter()
-                .map(|(name, _)| name.clone())
-                .collect();
-            let params_str = params.join(", ");
-            self.write_line(&format!("const params = {{ {} }};", params_str));
-        }
-
-        // Generate a minimal bootstrap HTML that loads the script from dev server
-        self.write_line("return `<!DOCTYPE html>");
-        self.write_line("<html>");
-        self.write_line("<head>");
-        self.write_line("<meta charset=\"UTF-8\">");
-        self.write_line(
-            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">",
-        );
-        self.write_line(&format!("<title>{} - Development Mode</title>", name));
-        self.write_line("</head>");
-        self.write_line("<body>");
-        self.write_line("<script id=\"hop-config\" type=\"application/json\">");
-        self.write_line(&format!(
-            "{{\"entrypoint\": \"{}\", \"params\": ${{JSON.stringify(params)}}}}",
-            name
-        ));
-        self.write_line("</script>");
-        self.write_line("<script type=\"module\" src=\"http://localhost:33861/dev.js\"></script>");
-        self.write_line("</body>");
-        self.write_line("</html>`;");
-
-        self.dedent();
-        self.write_line("}");
     }
 
     fn compile_entrypoint(&mut self, name: &str, entrypoint: &IrEntrypoint) {
@@ -473,13 +358,13 @@ mod tests {
     use std::collections::BTreeMap;
 
     fn compile_ir_to_js(ir_module: &IrModule) -> String {
-        let mut compiler = JsCompiler::new(LanguageMode::JavaScript, CompilationMode::Production);
-        compiler.compile_module(ir_module)
+        let mut compiler = JsCompiler::new(LanguageMode::JavaScript);
+        compiler.compile_module(ir_module, true) // needs_escape_html = true for tests
     }
 
     fn compile_ir_to_ts(ir_module: &IrModule) -> String {
-        let mut compiler = JsCompiler::new(LanguageMode::TypeScript, CompilationMode::Production);
-        compiler.compile_module(ir_module)
+        let mut compiler = JsCompiler::new(LanguageMode::TypeScript);
+        compiler.compile_module(ir_module, true) // needs_escape_html = true for tests
     }
 
     fn check(ir_module: &IrModule, expected: Expect) {

@@ -79,8 +79,15 @@ pub fn execute(
         ));
     }
 
-    // Compile to IR
-    let mut ir_module = Compiler::compile(program.get_modules());
+    // Determine compilation mode
+    let compilation_mode = if development {
+        CompilationMode::Development
+    } else {
+        CompilationMode::Production
+    };
+
+    // Compile to IR with the appropriate mode
+    let mut ir_module = Compiler::compile(program.get_modules(), compilation_mode);
 
     timer.start_phase("optimizing");
     // Run optimization passes
@@ -88,22 +95,18 @@ pub fn execute(
     optimizer.run(&mut ir_module);
 
     // Generate code based on target language
-    let compilation_mode = if development {
-        CompilationMode::Development
-    } else {
-        CompilationMode::Production
-    };
-
     let generated_code = match language {
         CompileLanguage::Js => {
             timer.start_phase("generating js");
-            let mut compiler = JsCompiler::new(LanguageMode::JavaScript, compilation_mode);
-            compiler.compile_module(&ir_module)
+            let mut compiler = JsCompiler::new(LanguageMode::JavaScript);
+            // In development mode, we don't need escapeHtml since we're just outputting bootstrap HTML
+            compiler.compile_module(&ir_module, compilation_mode == CompilationMode::Production)
         }
         CompileLanguage::Ts => {
             timer.start_phase("generating ts");
-            let mut compiler = JsCompiler::new(LanguageMode::TypeScript, compilation_mode);
-            compiler.compile_module(&ir_module)
+            let mut compiler = JsCompiler::new(LanguageMode::TypeScript);
+            // In development mode, we don't need escapeHtml since we're just outputting bootstrap HTML
+            compiler.compile_module(&ir_module, compilation_mode == CompilationMode::Production)
         }
     };
 

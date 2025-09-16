@@ -8,5 +8,5 @@ pub mod passes;
 pub mod test_utils;
 
 pub use ast::IrExpr;
-pub use compiler::Compiler;
-pub use js_compiler::{JsCompiler, LanguageMode, CompilationMode};
+pub use compiler::{Compiler, CompilationMode};
+pub use js_compiler::{JsCompiler, LanguageMode};

@@ -10,9 +10,16 @@ use super::ast::{
     UnaryOp,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CompilationMode {
+    Production,
+    Development,
+}
+
 pub struct Compiler<'a> {
     asts: &'a HashMap<ModuleName, Ast>,
     ir_module: IrModule,
+    compilation_mode: CompilationMode,
 
     // Alpha-renaming state
     var_counter: usize,
@@ -27,10 +34,11 @@ pub struct Compiler<'a> {
 }
 
 impl Compiler<'_> {
-    pub fn compile(asts: &HashMap<ModuleName, Ast>) -> IrModule {
+    pub fn compile(asts: &HashMap<ModuleName, Ast>, compilation_mode: CompilationMode) -> IrModule {
         let mut compiler = Compiler {
             asts,
             ir_module: IrModule::new(),
+            compilation_mode,
             var_counter: 0,
             scope_stack: vec![],
             all_used_names: HashSet::new(),
@@ -68,23 +76,100 @@ impl Compiler<'_> {
             }
         }
 
-        // Compile component body (already has renamed params in scope)
-        let body = self.compile_nodes(&component.children, None);
-
-        // Wrap body with parameter bindings
-        // For entrypoints, parameters come from outside, so we bind them
-        let body_with_bindings = self.create_param_bindings(&param_names, &renamed_params, body);
+        let body = match self.compilation_mode {
+            CompilationMode::Production => {
+                // Compile component body normally for production
+                let body = self.compile_nodes(&component.children, None);
+                // Wrap body with parameter bindings
+                self.create_param_bindings(&param_names, &renamed_params, body)
+            }
+            CompilationMode::Development => {
+                // Generate development mode bootstrap HTML
+                let component_name = component.tag_name.as_str();
+                let body = self.generate_development_body(component_name, &param_names);
+                // Wrap body with parameter bindings
+                self.create_param_bindings(&param_names, &renamed_params, body)
+            }
+        };
 
         self.pop_scope();
 
         let entrypoint = IrEntrypoint {
             parameters: param_info, // Original names with types for function signature
-            body: body_with_bindings,
+            body,
         };
 
         // Use just the component name since entrypoints are globally unique
         let name = component.tag_name.as_str().to_string();
         self.ir_module.entry_points.insert(name, entrypoint);
+    }
+
+    fn generate_development_body(&mut self, component_name: &str, param_names: &[String]) -> Vec<IrStatement> {
+        let mut body = Vec::new();
+
+        // Generate the HTML bootstrap
+        body.push(IrStatement::Write {
+            id: self.next_node_id(),
+            content: "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<title>".to_string(),
+        });
+
+        body.push(IrStatement::Write {
+            id: self.next_node_id(),
+            content: format!("{} - Development Mode", component_name),
+        });
+
+        body.push(IrStatement::Write {
+            id: self.next_node_id(),
+            content: "</title>\n</head>\n<body>\n<script id=\"hop-config\" type=\"application/json\">\n{\"entrypoint\": \"".to_string(),
+        });
+
+        body.push(IrStatement::Write {
+            id: self.next_node_id(),
+            content: component_name.to_string(),
+        });
+
+        body.push(IrStatement::Write {
+            id: self.next_node_id(),
+            content: "\", \"params\": ".to_string(),
+        });
+
+        // Create params object
+        if param_names.is_empty() {
+            body.push(IrStatement::Write {
+                id: self.next_node_id(),
+                content: "{}".to_string(),
+            });
+        } else {
+            // Build object with all parameters
+            let mut props = Vec::new();
+            for name in param_names {
+                props.push((name.clone(), IrExpr {
+                    id: self.next_expr_id(),
+                    value: IrExprValue::Var(name.clone()),
+                }));
+            }
+
+            body.push(IrStatement::WriteExpr {
+                id: self.next_node_id(),
+                expr: IrExpr {
+                    id: self.next_expr_id(),
+                    value: IrExprValue::JsonEncode {
+                        value: Box::new(IrExpr {
+                            id: self.next_expr_id(),
+                            value: IrExprValue::Object(props),
+                        }),
+                    },
+                },
+                escape: false,
+            });
+        }
+
+        body.push(IrStatement::Write {
+            id: self.next_node_id(),
+            content: "}\n</script>\n<script type=\"module\" src=\"http://localhost:33861/dev.js\"></script>\n</body>\n</html>".to_string(),
+        });
+
+        body
     }
 
     fn create_param_bindings(
@@ -736,7 +821,7 @@ mod tests {
     use crate::hop::typechecker::TypeChecker;
     use expect_test::{Expect, expect};
 
-    fn compile_hop_to_ir(source: &str) -> IrModule {
+    fn compile_hop_to_ir(source: &str, mode: CompilationMode) -> IrModule {
         let mut errors = ErrorCollector::new();
         let module_name = ModuleName::new("test".to_string()).unwrap();
         let tokenizer = Tokenizer::new(source.to_string());
@@ -757,14 +842,19 @@ mod tests {
             typechecker.type_errors
         );
 
-        // Compile to IR
+        // Compile to IR with specified mode
         let mut asts = HashMap::new();
         asts.insert(module_name.clone(), ast);
-        Compiler::compile(&asts)
+        Compiler::compile(&asts, mode)
     }
 
     fn check_ir(source: &str, expected: Expect) {
-        let ir_module = compile_hop_to_ir(source);
+        let ir_module = compile_hop_to_ir(source, CompilationMode::Production);
+        expected.assert_eq(&ir_module.to_string());
+    }
+
+    fn check_ir_with_mode(source: &str, mode: CompilationMode, expected: Expect) {
+        let ir_module = compile_hop_to_ir(source, mode);
         expected.assert_eq(&ir_module.to_string());
     }
 
@@ -1398,6 +1488,68 @@ mod tests {
                           WriteExpr(expr: x_1, escape: true)
                           Write("</span>")
                         }
+                      }
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_development_mode_compilation() {
+        check_ir_with_mode(
+            &[
+                "<test-comp entrypoint {name: string, count: string}>",
+                "<div>Hello {name}, count: {count}</div>",
+                "</test-comp>",
+            ]
+            .join(""),
+            CompilationMode::Development,
+            expect![[r#"
+                IrModule {
+                  entry_points: {
+                    test-comp: {
+                      parameters: [name: string, count: string]
+                      body: {
+                        Write("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<title>")
+                        Write("test-comp - Development Mode")
+                        Write("</title>\n</head>\n<body>\n<script id=\"hop-config\" type=\"application/json\">\n{\"entrypoint\": \"")
+                        Write("test-comp")
+                        Write("\", \"params\": ")
+                        WriteExpr(expr: JsonEncode({name: name, count: count}), escape: false)
+                        Write("}\n</script>\n<script type=\"module\" src=\"http://localhost:33861/dev.js\"></script>\n</body>\n</html>")
+                      }
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_development_mode_no_params() {
+        check_ir_with_mode(
+            &[
+                "<simple-comp entrypoint>",
+                "<div>Hello World</div>",
+                "</simple-comp>",
+            ]
+            .join(""),
+            CompilationMode::Development,
+            expect![[r#"
+                IrModule {
+                  entry_points: {
+                    simple-comp: {
+                      parameters: []
+                      body: {
+                        Write("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<title>")
+                        Write("simple-comp - Development Mode")
+                        Write("</title>\n</head>\n<body>\n<script id=\"hop-config\" type=\"application/json\">\n{\"entrypoint\": \"")
+                        Write("simple-comp")
+                        Write("\", \"params\": ")
+                        Write("{}")
+                        Write("}\n</script>\n<script type=\"module\" src=\"http://localhost:33861/dev.js\"></script>\n</body>\n</html>")
                       }
                     }
                   }
