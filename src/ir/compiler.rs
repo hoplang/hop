@@ -54,7 +54,7 @@ impl Compiler<'_> {
         for ast in asts.values() {
             for component_def in ast.get_component_definitions() {
                 if component_def.is_entrypoint {
-                    compiler.compile_entrypoint(ast, component_def);
+                    compiler.compile_entrypoint(component_def);
                 }
             }
         }
@@ -62,7 +62,7 @@ impl Compiler<'_> {
         compiler.ir_module
     }
 
-    fn compile_entrypoint(&mut self, _ast: &Ast<Type>, component: &ComponentDefinition<Type>) {
+    fn compile_entrypoint(&mut self, component: &ComponentDefinition<Type>) {
         self.push_scope();
 
         // Extract and rename parameters with types
