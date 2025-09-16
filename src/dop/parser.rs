@@ -366,6 +366,7 @@ impl Parser {
                 left: Box::new(expr),
                 operator: BinaryOp::Equal,
                 right: Box::new(right),
+                typ: (),
             };
         }
         Ok(expr)
@@ -379,6 +380,7 @@ impl Parser {
                 range: operator_range.to(expr.range().clone()),
                 operator: UnaryOp::Not,
                 operand: Box::new(expr),
+                typ: (),
             })
         } else {
             self.parse_primary()
@@ -396,6 +398,7 @@ impl Parser {
         Ok(Expr::ArrayLiteral {
             elements,
             range: left_bracket.to(right_bracket),
+            typ: (),
         })
     }
 
@@ -417,12 +420,16 @@ impl Parser {
         Ok(Expr::ObjectLiteral {
             properties,
             range: left_brace.to(right_brace),
+            typ: (),
         })
     }
 
     fn parse_property_access(&mut self, identifier: DocumentRange) -> Result<Expr, ParseError> {
         let var_name = VarName::new(identifier)?;
-        let mut expr = Expr::Variable { value: var_name };
+        let mut expr = Expr::Variable {
+            value: var_name,
+            typ: (),
+        };
 
         while let Some(dot) = self.advance_if(Token::Dot) {
             match self.iter.next().transpose()? {
@@ -431,6 +438,7 @@ impl Parser {
                         range: expr.range().clone().to(prop.clone()),
                         object: Box::new(expr),
                         property: prop,
+                        typ: (),
                     };
                 }
                 Some((_, range)) => {

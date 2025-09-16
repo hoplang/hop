@@ -761,7 +761,7 @@ impl Compiler<'_> {
 
     fn rename_expr(&mut self, expr: &Expr) -> IrExpr {
         let value = match expr {
-            Expr::Variable { value } => {
+            Expr::Variable { value, .. } => {
                 let renamed = self.lookup_var(value.as_str());
                 IrExprValue::Var(renamed)
             }

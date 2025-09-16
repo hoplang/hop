@@ -5,6 +5,8 @@ use crate::dop::parser::VarName;
 use crate::hop::pretty::Pretty;
 use pretty::RcDoc;
 
+use super::Type;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
     Equal,
@@ -32,14 +34,15 @@ impl Display for UnaryOp {
 }
 
 #[derive(Debug, Clone)]
-pub enum Expr {
+pub enum Expr<T = ()> {
     /// A variable expression, e.g. foo
-    Variable { value: VarName },
+    Variable { value: VarName, typ: T },
     /// A property access expression, e.g. foo.bar
     PropertyAccess {
-        object: Box<Expr>,
+        object: Box<Expr<T>>,
         property: DocumentRange,
         range: DocumentRange,
+        typ: T,
     },
     /// A string literal expression, e.g. "foo bar"
     StringLiteral { value: String, range: DocumentRange },
@@ -52,27 +55,31 @@ pub enum Expr {
     },
     /// An array literal expression, e.g. [1, 2, 3]
     ArrayLiteral {
-        elements: Vec<Expr>,
+        elements: Vec<Expr<T>>,
         range: DocumentRange,
+        typ: T,
     },
     ObjectLiteral {
-        properties: Vec<(DocumentRange, Expr)>,
+        properties: Vec<(DocumentRange, Expr<T>)>,
         range: DocumentRange,
+        typ: T,
     },
     BinaryOp {
-        left: Box<Expr>,
+        left: Box<Expr<T>>,
         operator: BinaryOp,
-        right: Box<Expr>,
+        right: Box<Expr<T>>,
         range: DocumentRange,
+        typ: T,
     },
     UnaryOp {
         operator: UnaryOp,
-        operand: Box<Expr>,
+        operand: Box<Expr<T>>,
         range: DocumentRange,
+        typ: T,
     },
 }
 
-impl Ranged for Expr {
+impl<T> Ranged for Expr<T> {
     fn range(&self) -> &DocumentRange {
         match self {
             Expr::Variable { value, .. } => value.range(),
@@ -88,22 +95,20 @@ impl Ranged for Expr {
     }
 }
 
-impl Pretty for Expr {
+impl<T> Pretty for Expr<T> {
     fn to_doc(&self) -> RcDoc<'static> {
         match self {
-            Expr::Variable { value } => RcDoc::text(value.to_string()),
+            Expr::Variable { value, .. } => RcDoc::text(value.to_string()),
             Expr::PropertyAccess {
-                object,
-                property,
-                range: _,
+                object, property, ..
             } => object
                 .to_doc()
                 .append(RcDoc::text("."))
                 .append(RcDoc::text(property.to_string())),
-            Expr::StringLiteral { value, range: _ } => RcDoc::text(format!("\"{}\"", value)),
-            Expr::BooleanLiteral { value, range: _ } => RcDoc::text(value.to_string()),
-            Expr::NumberLiteral { value, range: _ } => RcDoc::text(value.to_string()),
-            Expr::ArrayLiteral { elements, range: _ } => {
+            Expr::StringLiteral { value, .. } => RcDoc::text(format!("\"{}\"", value)),
+            Expr::BooleanLiteral { value, .. } => RcDoc::text(value.to_string()),
+            Expr::NumberLiteral { value, .. } => RcDoc::text(value.to_string()),
+            Expr::ArrayLiteral { elements, .. } => {
                 if elements.is_empty() {
                     RcDoc::text("[]")
                 } else {
@@ -122,10 +127,7 @@ impl Pretty for Expr {
                         .append(RcDoc::text("]"))
                 }
             }
-            Expr::ObjectLiteral {
-                properties,
-                range: _,
-            } => {
+            Expr::ObjectLiteral { properties, .. } => {
                 if properties.is_empty() {
                     RcDoc::text("{}")
                 } else {
@@ -153,7 +155,7 @@ impl Pretty for Expr {
                 left,
                 operator,
                 right,
-                range: _,
+                ..
             } => RcDoc::nil()
                 .append(RcDoc::text("("))
                 .append(left.to_doc())
@@ -161,9 +163,7 @@ impl Pretty for Expr {
                 .append(right.to_doc())
                 .append(RcDoc::text(")")),
             Expr::UnaryOp {
-                operator,
-                operand,
-                range: _,
+                operator, operand, ..
             } => RcDoc::nil()
                 .append(RcDoc::text("("))
                 .append(RcDoc::text(operator.to_string()))
@@ -173,8 +173,28 @@ impl Pretty for Expr {
     }
 }
 
-impl Display for Expr {
+impl<T> Display for Expr<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.to_doc().pretty(60))
+    }
+}
+
+/// Type alias for typed expressions
+pub type TypedExpr = Expr<Type>;
+
+impl TypedExpr {
+    /// Get the type of a typed expression
+    pub fn get_type(&self) -> Type {
+        match self {
+            Expr::Variable { typ, .. } => typ.clone(),
+            Expr::PropertyAccess { typ, .. } => typ.clone(),
+            Expr::StringLiteral { .. } => Type::String,
+            Expr::BooleanLiteral { .. } => Type::Bool,
+            Expr::NumberLiteral { .. } => Type::Number,
+            Expr::ArrayLiteral { typ, .. } => typ.clone(),
+            Expr::ObjectLiteral { typ, .. } => typ.clone(),
+            Expr::BinaryOp { typ, .. } => typ.clone(),
+            Expr::UnaryOp { typ, .. } => typ.clone(),
+        }
     }
 }

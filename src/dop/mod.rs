@@ -6,7 +6,6 @@ pub mod tokenizer;
 pub mod r#type;
 pub mod type_error;
 pub mod typechecker;
-pub mod typed_ast;
 
 pub use ast::Expr;
 pub use parser::{Argument, Parameter, Parser, VarName};

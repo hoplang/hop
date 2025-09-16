@@ -1,7 +1,6 @@
 use super::Type;
-use super::ast::{BinaryOp, Expr, UnaryOp};
+use super::ast::{BinaryOp, Expr, TypedExpr, UnaryOp};
 use super::type_error::TypeError;
-use super::typed_ast::TypedExpr;
 use crate::document::document_cursor::Ranged as _;
 use crate::hop::environment::Environment;
 use crate::hop::typechecker::TypeAnnotation;
@@ -20,7 +19,7 @@ pub fn typecheck_expr(
                     typ: var_type.clone(),
                     name: name.to_string(),
                 });
-                Ok(TypedExpr::Variable {
+                Ok(Expr::Variable {
                     value: name.clone(),
                     typ: var_type.clone(),
                 })
@@ -31,15 +30,15 @@ pub fn typecheck_expr(
                 })
             }
         }
-        Expr::BooleanLiteral { value, range } => Ok(TypedExpr::BooleanLiteral {
+        Expr::BooleanLiteral { value, range } => Ok(Expr::BooleanLiteral {
             value: *value,
             range: range.clone(),
         }),
-        Expr::StringLiteral { value, range } => Ok(TypedExpr::StringLiteral {
+        Expr::StringLiteral { value, range } => Ok(Expr::StringLiteral {
             value: value.clone(),
             range: range.clone(),
         }),
-        Expr::NumberLiteral { value, range } => Ok(TypedExpr::NumberLiteral {
+        Expr::NumberLiteral { value, range } => Ok(Expr::NumberLiteral {
             value: value.clone(),
             range: range.clone(),
         }),
@@ -47,6 +46,7 @@ pub fn typecheck_expr(
             object: base_expr,
             property,
             range,
+            ..
         } => {
             let typed_base = typecheck_expr(base_expr, env, annotations)?;
             let base_type = typed_base.get_type();
@@ -54,7 +54,7 @@ pub fn typecheck_expr(
             match &base_type {
                 Type::Object(props) => {
                     if let Some(prop_type) = props.get(property.as_str()) {
-                        Ok(TypedExpr::PropertyAccess {
+                        Ok(Expr::PropertyAccess {
                             object: Box::new(typed_base),
                             property: property.clone(),
                             range: range.clone(),
@@ -79,6 +79,7 @@ pub fn typecheck_expr(
             operator: BinaryOp::Equal,
             right,
             range,
+            ..
         } => {
             let typed_left = typecheck_expr(left, env, annotations)?;
             let typed_right = typecheck_expr(right, env, annotations)?;
@@ -95,7 +96,7 @@ pub fn typecheck_expr(
             }
 
             // The result of == is always boolean
-            Ok(TypedExpr::BinaryOp {
+            Ok(Expr::BinaryOp {
                 left: Box::new(typed_left),
                 operator: BinaryOp::Equal,
                 right: Box::new(typed_right),
@@ -107,6 +108,7 @@ pub fn typecheck_expr(
             operator: UnaryOp::Not,
             operand,
             range,
+            ..
         } => {
             let typed_operand = typecheck_expr(operand, env, annotations)?;
             let operand_type = typed_operand.get_type();
@@ -119,20 +121,22 @@ pub fn typecheck_expr(
             }
 
             // The result of ! is always boolean
-            Ok(TypedExpr::UnaryOp {
+            Ok(Expr::UnaryOp {
                 operator: UnaryOp::Not,
                 operand: Box::new(typed_operand),
                 range: range.clone(),
                 typ: Type::Bool,
             })
         }
-        Expr::ArrayLiteral { elements, range } => {
+        Expr::ArrayLiteral {
+            elements, range, ..
+        } => {
             if elements.is_empty() {
                 // Empty array has unknown element type
-                Ok(TypedExpr::ArrayLiteral {
+                Ok(Expr::ArrayLiteral {
                     elements: vec![],
                     range: range.clone(),
-                    element_type: None,
+                    typ: Type::Array(None),
                 })
             } else {
                 let mut typed_elements = Vec::new();
@@ -156,14 +160,16 @@ pub fn typecheck_expr(
                     typed_elements.push(typed_element);
                 }
 
-                Ok(TypedExpr::ArrayLiteral {
+                Ok(Expr::ArrayLiteral {
                     elements: typed_elements,
                     range: range.clone(),
-                    element_type: Some(first_type),
+                    typ: Type::Array(Some(Box::new(first_type))),
                 })
             }
         }
-        Expr::ObjectLiteral { properties, range } => {
+        Expr::ObjectLiteral {
+            properties, range, ..
+        } => {
             let mut object_properties = BTreeMap::new();
             let mut typed_properties = Vec::new();
 
@@ -174,7 +180,7 @@ pub fn typecheck_expr(
                 typed_properties.push((key.clone(), typed_value));
             }
 
-            Ok(TypedExpr::ObjectLiteral {
+            Ok(Expr::ObjectLiteral {
                 properties: typed_properties,
                 range: range.clone(),
                 typ: Type::Object(object_properties),
