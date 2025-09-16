@@ -439,16 +439,26 @@ fn typecheck_node(
         }
 
         Node::Html {
+            tag_name,
+            closing_tag_name,
             attributes,
             children,
-            ..
+            range,
         } => {
-            let _typed_attributes = typecheck_attributes(attributes, env, annotations, errors);
+            let typed_attributes = typecheck_attributes(attributes, env, annotations, errors);
 
-            for child in children {
-                typecheck_node(child, state, env, annotations, errors);
-            }
-            None
+            let typed_children: Vec<_> = children
+                .iter()
+                .filter_map(|child| typecheck_node(child, state, env, annotations, errors))
+                .collect();
+
+            Some(Node::Html {
+                tag_name: tag_name.clone(),
+                closing_tag_name: closing_tag_name.clone(),
+                attributes: typed_attributes,
+                range: range.clone(),
+                children: typed_children,
+            })
         }
 
         Node::TextExpression { expression, range } => {
