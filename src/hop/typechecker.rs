@@ -304,20 +304,19 @@ fn typecheck_node(
                 .filter_map(|child| typecheck_node(child, state, env, annotations, errors))
                 .collect();
 
-            if let Some(typed_condition) = errors
-                .ok_or_add(dop::typecheck_expr(condition, env, annotations).map_err(Into::into))
-            {
-                let condition_type = typed_condition.get_type();
-                if !condition_type.is_subtype(&Type::Bool) {
-                    errors.push(TypeError::ExpectedBooleanCondition {
-                        found: condition_type.to_string(),
-                        range: condition.range().clone(),
-                    })
-                }
+            let typed_condition = errors
+                .ok_or_add(dop::typecheck_expr(condition, env, annotations).map_err(Into::into))?;
+
+            let condition_type = typed_condition.get_type();
+            if !condition_type.is_subtype(&Type::Bool) {
+                errors.push(TypeError::ExpectedBooleanCondition {
+                    found: condition_type.to_string(),
+                    range: condition.range().clone(),
+                })
             }
 
             Some(Node::If {
-                condition: condition.clone(),
+                condition: typed_condition,
                 range: range.clone(),
                 children: typed_children,
             })
@@ -384,7 +383,7 @@ fn typecheck_node(
 
             Some(Node::For {
                 var_name: var_name.clone(),
-                array_expr: array_expr.clone(),
+                array_expr: typed_array,
                 range: range.clone(),
                 children: typed_children,
             })

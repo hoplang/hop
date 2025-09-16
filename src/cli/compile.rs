@@ -87,7 +87,7 @@ pub fn execute(
     };
 
     // Compile to IR with the appropriate mode
-    let mut ir_module = Compiler::compile(program.get_modules(), compilation_mode);
+    let mut ir_module = Compiler::compile(program.get_typed_modules(), compilation_mode);
 
     timer.start_phase("optimizing");
     // Run optimization passes

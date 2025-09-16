@@ -195,7 +195,7 @@ pub enum Node<T = ()> {
     /// An If node contains content that is only evaluated when its condition
     /// expression evaluates to true.
     If {
-        condition: Expr,
+        condition: Expr<T>,
         range: DocumentRange,
         children: Vec<Node<T>>,
     },
@@ -204,7 +204,7 @@ pub enum Node<T = ()> {
     /// an array.
     For {
         var_name: VarName,
-        array_expr: Expr,
+        array_expr: Expr<T>,
         range: DocumentRange,
         children: Vec<Node<T>>,
     },

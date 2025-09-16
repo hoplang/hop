@@ -1,5 +1,6 @@
 use crate::document::DocumentPosition;
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
+use crate::dop::Type;
 use crate::error_collector::ErrorCollector;
 use crate::hop::ast::Ast;
 use crate::hop::parse_error::ParseError;
@@ -406,7 +407,7 @@ impl Program {
         hop_mode: &str,
     ) -> Result<String> {
         // Compile to IR - use Production mode for evaluation
-        let ir_module = ir::Compiler::compile(&self.modules, ir::CompilationMode::Production);
+        let ir_module = ir::Compiler::compile(self.get_typed_modules(), ir::CompilationMode::Production);
 
         // Get the entrypoint
         let entrypoint = ir_module
@@ -421,6 +422,11 @@ impl Program {
     /// Get all modules for compilation
     pub fn get_modules(&self) -> &HashMap<ModuleName, Ast> {
         &self.modules
+    }
+
+    /// Get all typed modules for compilation
+    pub fn get_typed_modules(&self) -> &HashMap<ModuleName, Ast<Type>> {
+        &self.type_checker.typed_asts
     }
 }
 

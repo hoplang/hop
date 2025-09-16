@@ -2,6 +2,7 @@ use crate::common::is_void_element;
 use crate::document::document_cursor::{DocumentRange, StringSpan};
 use crate::dop::{self, Argument, Expr};
 use crate::hop::ast::{Ast, Attribute, AttributeValue, ComponentDefinition, Node};
+use crate::dop::Type;
 use crate::hop::module_name::ModuleName;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -17,7 +18,7 @@ pub enum CompilationMode {
 }
 
 pub struct Compiler<'a> {
-    asts: &'a HashMap<ModuleName, Ast>,
+    asts: &'a HashMap<ModuleName, Ast<Type>>,
     ir_module: IrModule,
     compilation_mode: CompilationMode,
 
@@ -34,7 +35,7 @@ pub struct Compiler<'a> {
 }
 
 impl Compiler<'_> {
-    pub fn compile(asts: &HashMap<ModuleName, Ast>, compilation_mode: CompilationMode) -> IrModule {
+    pub fn compile(asts: &HashMap<ModuleName, Ast<Type>>, compilation_mode: CompilationMode) -> IrModule {
         let mut compiler = Compiler {
             asts,
             ir_module: IrModule::new(),
@@ -58,7 +59,7 @@ impl Compiler<'_> {
         compiler.ir_module
     }
 
-    fn compile_entrypoint(&mut self, _ast: &Ast, component: &ComponentDefinition) {
+    fn compile_entrypoint(&mut self, _ast: &Ast<Type>, component: &ComponentDefinition<Type>) {
         self.push_scope();
 
         // Extract and rename parameters with types
@@ -207,7 +208,7 @@ impl Compiler<'_> {
 
     fn compile_nodes(
         &mut self,
-        nodes: &[Node],
+        nodes: &[Node<Type>],
         slot_content: Option<Vec<IrStatement>>,
     ) -> Vec<IrStatement> {
         let mut result = Vec::new();
@@ -219,7 +220,7 @@ impl Compiler<'_> {
 
     fn compile_node(
         &mut self,
-        node: &Node,
+        node: &Node<Type>,
         slot_content: Option<&Vec<IrStatement>>,
         output: &mut Vec<IrStatement>,
     ) {
@@ -327,8 +328,8 @@ impl Compiler<'_> {
     fn compile_html_node(
         &mut self,
         tag_name: &DocumentRange,
-        attributes: &BTreeMap<StringSpan, Attribute>,
-        children: &[Node],
+        attributes: &BTreeMap<StringSpan, Attribute<Type>>,
+        children: &[Node<Type>],
         slot_content: Option<&Vec<IrStatement>>,
         output: &mut Vec<IrStatement>,
     ) {
@@ -401,9 +402,9 @@ impl Compiler<'_> {
         &mut self,
         tag_name: &str,
         module: &ModuleName,
-        args: Option<&(Vec<Argument>, DocumentRange)>,
-        extra_attributes: &BTreeMap<StringSpan, Attribute>,
-        children: &[Node],
+        args: Option<&(Vec<Argument<Type>>, DocumentRange)>,
+        extra_attributes: &BTreeMap<StringSpan, Attribute<Type>>,
+        children: &[Node<Type>],
         output: &mut Vec<IrStatement>,
     ) {
         let ast = self
@@ -759,7 +760,7 @@ impl Compiler<'_> {
         id
     }
 
-    fn rename_expr(&mut self, expr: &Expr) -> IrExpr {
+    fn rename_expr(&mut self, expr: &Expr<Type>) -> IrExpr {
         let value = match expr {
             Expr::Variable { value, .. } => {
                 let renamed = self.lookup_var(value.as_str());
@@ -851,10 +852,8 @@ mod tests {
             typechecker.type_errors
         );
 
-        // Compile to IR with specified mode
-        let mut asts = HashMap::new();
-        asts.insert(module_name.clone(), ast);
-        Compiler::compile(&asts, mode)
+        // Compile to IR with specified mode using typed AST
+        Compiler::compile(&typechecker.typed_asts, mode)
     }
 
     fn check_ir(source: &str, expected: Expect) {
