@@ -1,5 +1,6 @@
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::{self, Parameter, Type};
+use crate::error_collector::ErrorCollector;
 use crate::hop::ast::Ast;
 use crate::hop::ast::{Attribute, ComponentDefinition, Node};
 use crate::hop::environment::Environment;
@@ -115,7 +116,7 @@ impl State {
 #[derive(Default, Debug)]
 pub struct TypeChecker {
     state: State,
-    pub type_errors: HashMap<ModuleName, Vec<TypeError>>,
+    pub type_errors: HashMap<ModuleName, ErrorCollector<TypeError>>,
     pub type_annotations: HashMap<ModuleName, Vec<TypeAnnotation>>,
 }
 
@@ -157,7 +158,7 @@ impl TypeChecker {
 fn typecheck_module(
     module: &Ast,
     state: &mut State,
-    errors: &mut Vec<TypeError>,
+    errors: &mut ErrorCollector<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
 ) {
     for import in module.get_imports() {
@@ -248,7 +249,7 @@ fn typecheck_node(
     state: &State,
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
-    errors: &mut Vec<TypeError>,
+    errors: &mut ErrorCollector<TypeError>,
 ) {
     match node {
         Node::If {
@@ -484,7 +485,7 @@ fn typecheck_attributes(
     attributes: &BTreeMap<StringSpan, Attribute<()>>,
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
-    errors: &mut Vec<TypeError>,
+    errors: &mut ErrorCollector<TypeError>,
 ) -> BTreeMap<StringSpan, Attribute<Type>> {
     let mut typed_attributes = BTreeMap::new();
 

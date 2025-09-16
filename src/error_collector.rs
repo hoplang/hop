@@ -46,3 +46,12 @@ impl<E> Deref for ErrorCollector<E> {
         &self.errors
     }
 }
+
+impl<'a, E> IntoIterator for &'a ErrorCollector<E> {
+    type Item = &'a E;
+    type IntoIter = std::slice::Iter<'a, E>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.errors.iter()
+    }
+}

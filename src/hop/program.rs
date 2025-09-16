@@ -110,7 +110,7 @@ impl Program {
         &self.parse_errors
     }
 
-    pub fn get_type_errors(&self) -> &HashMap<ModuleName, Vec<TypeError>> {
+    pub fn get_type_errors(&self) -> &HashMap<ModuleName, ErrorCollector<TypeError>> {
         &self.type_checker.type_errors
     }
 
