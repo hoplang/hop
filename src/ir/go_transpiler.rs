@@ -1,4 +1,5 @@
 use super::ast::{BinaryOp, IrEntrypoint, IrExpr, IrExprValue, IrModule, IrStatement, UnaryOp};
+use crate::cased_string::CasedString;
 use crate::dop::r#type::Type;
 use std::collections::BTreeSet;
 
@@ -19,25 +20,6 @@ impl GoTranspiler {
         }
     }
 
-    /// Convert kebab-case to PascalCase for Go function names
-    /// e.g., "my-component-name" -> "MyComponentName"
-    fn kebab_to_pascal_case(name: &str) -> String {
-        let mut result = String::new();
-        let mut capitalize_next = true;
-
-        for ch in name.chars() {
-            if ch == '-' {
-                capitalize_next = true;
-            } else if capitalize_next {
-                result.push(ch.to_ascii_uppercase());
-                capitalize_next = false;
-            } else {
-                result.push(ch);
-            }
-        }
-
-        result
-    }
 
     pub fn transpile_module(&mut self, ir_module: &IrModule) -> String {
         // Reset state
@@ -86,12 +68,12 @@ impl GoTranspiler {
         // Generate parameter structs for entrypoints that have parameters
         for (name, entrypoint) in &ir_module.entry_points {
             if !entrypoint.parameters.is_empty() {
-                let struct_name = format!("{}Params", Self::kebab_to_pascal_case(name));
+                let struct_name = format!("{}Params", CasedString::from_kebab_case(name).to_pascal_case());
                 self.write_line(&format!("type {} struct {{", struct_name));
                 self.indent();
                 for (param_name, param_type) in &entrypoint.parameters {
                     let go_type = Self::type_to_go(param_type);
-                    let field_name = Self::snake_to_pascal_case(param_name);
+                    let field_name = CasedString::from_snake_case(param_name).to_pascal_case();
                     self.write_line(&format!(
                         "{} {} `json:\"{}\"`",
                         field_name, go_type, param_name
@@ -189,7 +171,7 @@ impl GoTranspiler {
 
     fn transpile_entrypoint(&mut self, name: &str, entrypoint: &IrEntrypoint) {
         // Convert kebab-case to PascalCase for Go function name
-        let func_name = Self::kebab_to_pascal_case(name);
+        let func_name = CasedString::from_kebab_case(name).to_pascal_case();
 
         if entrypoint.parameters.is_empty() {
             self.write_line(&format!("func {}() string {{", func_name));
@@ -203,7 +185,7 @@ impl GoTranspiler {
             // Extract parameters into local variables
             self.indent();
             for (param_name, _) in &entrypoint.parameters {
-                let field_name = Self::snake_to_pascal_case(param_name);
+                let field_name = CasedString::from_snake_case(param_name).to_pascal_case();
                 self.write_line(&format!("{} := params.{}", param_name, field_name));
             }
             self.dedent();
@@ -220,23 +202,6 @@ impl GoTranspiler {
         self.write_line("}");
     }
 
-    fn snake_to_pascal_case(name: &str) -> String {
-        let mut result = String::new();
-        let mut capitalize_next = true;
-
-        for ch in name.chars() {
-            if ch == '_' {
-                capitalize_next = true;
-            } else if capitalize_next {
-                result.push(ch.to_ascii_uppercase());
-                capitalize_next = false;
-            } else {
-                result.push(ch);
-            }
-        }
-
-        result
-    }
 
     fn type_to_go(ty: &Type) -> String {
         match ty {
@@ -251,7 +216,7 @@ impl GoTranspiler {
                 // Generate anonymous struct type
                 let mut struct_def = "struct{".to_string();
                 for (field_name, field_type) in fields {
-                    let go_field = Self::snake_to_pascal_case(field_name);
+                    let go_field = CasedString::from_snake_case(field_name).to_pascal_case();
                     let go_type = Self::type_to_go(field_type);
                     struct_def.push_str(&format!(
                         "{} {} `json:\"{}\"`; ",
@@ -355,7 +320,7 @@ impl GoTranspiler {
             IrExprValue::PropertyAccess { object, property } => {
                 let obj = self.transpile_expr(object);
                 // Go struct field access with PascalCase field names
-                let prop_name = Self::snake_to_pascal_case(property);
+                let prop_name = CasedString::from_snake_case(property).to_pascal_case();
                 format!("{}.{}", obj, prop_name)
             }
 
@@ -410,7 +375,7 @@ impl GoTranspiler {
                         Type::Object(fields) => {
                             let mut def = "struct{".to_string();
                             for (field_name, field_type) in fields {
-                                let go_field = Self::snake_to_pascal_case(field_name);
+                                let go_field = CasedString::from_snake_case(field_name).to_pascal_case();
                                 let go_type = Self::type_to_go(field_type);
                                 def.push_str(&format!(
                                     "{} {} `json:\"{}\"`; ",
@@ -427,7 +392,7 @@ impl GoTranspiler {
                     let values: Vec<String> = properties
                         .iter()
                         .map(|(key, value)| {
-                            let field_name = Self::snake_to_pascal_case(key);
+                            let field_name = CasedString::from_snake_case(key).to_pascal_case();
                             format!("{}: {}", field_name, self.transpile_expr(value))
                         })
                         .collect();

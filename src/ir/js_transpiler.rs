@@ -1,4 +1,5 @@
 use super::ast::{BinaryOp, IrEntrypoint, IrExpr, IrExprValue, IrModule, IrStatement, UnaryOp};
+use crate::cased_string::CasedString;
 use crate::dop::r#type::Type;
 
 #[derive(Debug, Clone, Copy)]
@@ -26,25 +27,6 @@ impl JsTranspiler {
         }
     }
 
-    /// Convert kebab-case to camelCase
-    /// e.g., "my-component-name" -> "myComponentName"
-    fn kebab_to_camel_case(name: &str) -> String {
-        let mut result = String::new();
-        let mut capitalize_next = false;
-
-        for ch in name.chars() {
-            if ch == '-' {
-                capitalize_next = true;
-            } else if capitalize_next {
-                result.push(ch.to_ascii_uppercase());
-                capitalize_next = false;
-            } else {
-                result.push(ch);
-            }
-        }
-
-        result
-    }
 
     pub fn transpile_module(&mut self, ir_module: &IrModule, needs_escape_html: bool) -> String {
         if needs_escape_html {
@@ -98,7 +80,7 @@ impl JsTranspiler {
 
     fn transpile_entrypoint(&mut self, name: &str, entrypoint: &IrEntrypoint) {
         // Convert kebab-case to camelCase for JavaScript property name
-        let camel_case_name = Self::kebab_to_camel_case(name);
+        let camel_case_name = CasedString::from_kebab_case(name).to_camel_case();
 
         // Write the function property with proper indentation
         for _ in 0..self.indent_level {
