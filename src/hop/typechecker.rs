@@ -250,7 +250,7 @@ fn typecheck_node(
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut ErrorCollector<TypeError>,
-) {
+) -> Option<Node<Type>> {
     match node {
         Node::If {
             condition,
@@ -271,6 +271,7 @@ fn typecheck_node(
                     })
                 }
             }
+            None
         }
 
         Node::For {
@@ -282,7 +283,7 @@ fn typecheck_node(
             let Some(typed_array) = errors.ok_or_add(
                 dop::typecheck_expr(array_expr, env, annotations).map_err(Into::into)
             ) else {
-                return;
+                return None;
             };
             let array_type = typed_array.get_type();
             let element_type = match &array_type {
@@ -291,14 +292,14 @@ fn typecheck_node(
                     errors.push(TypeError::CannotIterateEmptyArray {
                         range: array_expr.range().clone(),
                     });
-                    return;
+                    return None;
                 }
                 _ => {
                     errors.push(TypeError::CannotIterateOver {
                         typ: array_type.to_string(),
                         range: array_expr.range().clone(),
                     });
-                    return;
+                    return None;
                 }
             };
 
@@ -333,6 +334,7 @@ fn typecheck_node(
                     })
                 }
             }
+            None
         }
 
         Node::ComponentReference {
@@ -355,7 +357,7 @@ fn typecheck_node(
                     errors.push(TypeError::UndefinedComponent {
                         tag_name: tag_name.clone(),
                     });
-                    return;
+                    return None;
                 }
             };
 
@@ -433,6 +435,7 @@ fn typecheck_node(
                     }
                 }
             }
+            None
         }
 
         Node::Html {
@@ -445,6 +448,7 @@ fn typecheck_node(
             for child in children {
                 typecheck_node(child, state, env, annotations, errors);
             }
+            None
         }
 
         Node::TextExpression { expression, range } => {
@@ -459,16 +463,19 @@ fn typecheck_node(
                     });
                 }
             }
+            None
         }
 
         Node::Placeholder { children, .. } => {
             for child in children {
                 typecheck_node(child, state, env, annotations, errors);
             }
+            None
         }
 
         Node::SlotDefinition { .. } | Node::Text { .. } | Node::Doctype { .. } => {
             // No typechecking needed
+            None
         }
     }
 }
