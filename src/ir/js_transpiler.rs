@@ -7,8 +7,8 @@ pub enum LanguageMode {
     TypeScript,
 }
 
-/// Compiles an IR module to JavaScript or TypeScript code
-pub struct JsCompiler {
+/// Transpiles an IR module to JavaScript or TypeScript code
+pub struct JsTranspiler {
     output: String,
     indent_level: usize,
     mode: LanguageMode,
@@ -16,7 +16,7 @@ pub struct JsCompiler {
     use_template_literals: bool,
 }
 
-impl JsCompiler {
+impl JsTranspiler {
     pub fn new(mode: LanguageMode) -> Self {
         Self {
             output: String::new(),
@@ -46,7 +46,7 @@ impl JsCompiler {
         result
     }
 
-    pub fn compile_module(&mut self, ir_module: &IrModule, needs_escape_html: bool) -> String {
+    pub fn transpile_module(&mut self, ir_module: &IrModule, needs_escape_html: bool) -> String {
         if needs_escape_html {
             // Add the escape HTML helper function
             match self.mode {
@@ -77,7 +77,7 @@ impl JsCompiler {
         self.write_line("export default {");
         self.indent();
 
-        // Compile each entrypoint as a function property
+        // Transpile each entrypoint as a function property
         let mut first = true;
         for (name, entrypoint) in &ir_module.entry_points {
             if !first {
@@ -85,7 +85,7 @@ impl JsCompiler {
             }
             first = false;
 
-            self.compile_entrypoint(name, entrypoint);
+            self.transpile_entrypoint(name, entrypoint);
         }
 
         // Close the export default object
@@ -96,7 +96,7 @@ impl JsCompiler {
         self.output.clone()
     }
 
-    fn compile_entrypoint(&mut self, name: &str, entrypoint: &IrEntrypoint) {
+    fn transpile_entrypoint(&mut self, name: &str, entrypoint: &IrEntrypoint) {
         // Convert kebab-case to camelCase for JavaScript property name
         let camel_case_name = Self::kebab_to_camel_case(name);
 
@@ -156,8 +156,8 @@ impl JsCompiler {
             LanguageMode::TypeScript => self.write_line("let output: string = \"\";"),
         }
 
-        // Compile the body
-        self.compile_statements(&entrypoint.body);
+        // Transpile the body
+        self.transpile_statements(&entrypoint.body);
 
         self.write_line("return output;");
         self.dedent();
@@ -188,13 +188,13 @@ impl JsCompiler {
         }
     }
 
-    fn compile_statements(&mut self, statements: &[IrStatement]) {
+    fn transpile_statements(&mut self, statements: &[IrStatement]) {
         for node in statements {
-            self.compile_statement(node);
+            self.transpile_statement(node);
         }
     }
 
-    fn compile_statement(&mut self, statement: &IrStatement) {
+    fn transpile_statement(&mut self, statement: &IrStatement) {
         match statement {
             IrStatement::Write { id: _, content } => {
                 let quoted = self.quote_string(content);
@@ -206,7 +206,7 @@ impl JsCompiler {
                 expr,
                 escape,
             } => {
-                let js_expr = self.compile_expr(expr);
+                let js_expr = self.transpile_expr(expr);
                 if *escape {
                     self.write_line(&format!("output += escapeHtml({});", js_expr));
                 } else {
@@ -219,10 +219,10 @@ impl JsCompiler {
                 condition,
                 body,
             } => {
-                let js_cond = self.compile_expr(condition);
+                let js_cond = self.transpile_expr(condition);
                 self.write_line(&format!("if ({}) {{", js_cond));
                 self.indent();
-                self.compile_statements(body);
+                self.transpile_statements(body);
                 self.dedent();
                 self.write_line("}");
             }
@@ -233,10 +233,10 @@ impl JsCompiler {
                 array,
                 body,
             } => {
-                let js_array = self.compile_expr(array);
+                let js_array = self.transpile_expr(array);
                 self.write_line(&format!("for (const {} of {}) {{", var, js_array));
                 self.indent();
-                self.compile_statements(body);
+                self.transpile_statements(body);
                 self.dedent();
                 self.write_line("}");
             }
@@ -247,19 +247,19 @@ impl JsCompiler {
                 value,
                 body,
             } => {
-                let js_value = self.compile_expr(value);
+                let js_value = self.transpile_expr(value);
                 self.write_line(&format!("const {} = {};", var, js_value));
-                self.compile_statements(body);
+                self.transpile_statements(body);
             }
         }
     }
 
-    fn compile_expr(&self, expr: &IrExpr) -> String {
+    fn transpile_expr(&self, expr: &IrExpr) -> String {
         match &expr.value {
             IrExprValue::Var(name) => name.clone(),
 
             IrExprValue::PropertyAccess { object, property } => {
-                let obj = self.compile_expr(object);
+                let obj = self.transpile_expr(object);
                 format!("{}.{}", obj, property)
             }
 
@@ -270,36 +270,36 @@ impl JsCompiler {
             IrExprValue::Number(value) => value.to_string(),
 
             IrExprValue::Array(elements) => {
-                let items: Vec<String> = elements.iter().map(|e| self.compile_expr(e)).collect();
+                let items: Vec<String> = elements.iter().map(|e| self.transpile_expr(e)).collect();
                 format!("[{}]", items.join(", "))
             }
 
             IrExprValue::Object(properties) => {
                 let props: Vec<String> = properties
                     .iter()
-                    .map(|(key, value)| format!("{}: {}", key, self.compile_expr(value)))
+                    .map(|(key, value)| format!("{}: {}", key, self.transpile_expr(value)))
                     .collect();
                 format!("{{{}}}", props.join(", "))
             }
 
             IrExprValue::BinaryOp { left, op, right } => {
-                let l = self.compile_expr(left);
-                let r = self.compile_expr(right);
+                let l = self.transpile_expr(left);
+                let r = self.transpile_expr(right);
                 match op {
                     BinaryOp::Eq => format!("({} === {})", l, r),
                 }
             }
 
             IrExprValue::UnaryOp { op, operand } => {
-                let compiled_op = self.compile_expr(operand);
+                let transpiled_op = self.transpile_expr(operand);
                 match op {
-                    UnaryOp::Not => format!("!({})", compiled_op),
+                    UnaryOp::Not => format!("!({})", transpiled_op),
                 }
             }
 
             IrExprValue::JsonEncode { value } => {
-                let compiled_value = self.compile_expr(value);
-                format!("JSON.stringify({})", compiled_value)
+                let transpiled_value = self.transpile_expr(value);
+                format!("JSON.stringify({})", transpiled_value)
             }
         }
     }
@@ -357,23 +357,23 @@ mod tests {
     use expect_test::{Expect, expect};
     use std::collections::BTreeMap;
 
-    fn compile_ir_to_js(ir_module: &IrModule) -> String {
-        let mut compiler = JsCompiler::new(LanguageMode::JavaScript);
-        compiler.compile_module(ir_module, true) // needs_escape_html = true for tests
+    fn transpile_ir_to_js(ir_module: &IrModule) -> String {
+        let mut transpiler = JsTranspiler::new(LanguageMode::JavaScript);
+        transpiler.transpile_module(ir_module, true) // needs_escape_html = true for tests
     }
 
-    fn compile_ir_to_ts(ir_module: &IrModule) -> String {
-        let mut compiler = JsCompiler::new(LanguageMode::TypeScript);
-        compiler.compile_module(ir_module, true) // needs_escape_html = true for tests
+    fn transpile_ir_to_ts(ir_module: &IrModule) -> String {
+        let mut transpiler = JsTranspiler::new(LanguageMode::TypeScript);
+        transpiler.transpile_module(ir_module, true) // needs_escape_html = true for tests
     }
 
     fn check(ir_module: &IrModule, expected: Expect) {
-        let js = compile_ir_to_js(ir_module);
+        let js = transpile_ir_to_js(ir_module);
         expected.assert_eq(&js);
     }
 
     fn check_ts_output(ir_module: &IrModule, expected: Expect) {
-        let ts = compile_ir_to_ts(ir_module);
+        let ts = transpile_ir_to_ts(ir_module);
         expected.assert_eq(&ts);
     }
 

@@ -104,7 +104,11 @@ impl Compiler<'_> {
         self.ir_module.entry_points.insert(name, entrypoint);
     }
 
-    fn generate_development_body(&mut self, component_name: &str, param_names: &[String]) -> Vec<IrStatement> {
+    fn generate_development_body(
+        &mut self,
+        component_name: &str,
+        param_names: &[String],
+    ) -> Vec<IrStatement> {
         let mut body = Vec::new();
 
         // Generate the HTML bootstrap
@@ -143,10 +147,13 @@ impl Compiler<'_> {
             // Build object with all parameters
             let mut props = Vec::new();
             for name in param_names {
-                props.push((name.clone(), IrExpr {
-                    id: self.next_expr_id(),
-                    value: IrExprValue::Var(name.clone()),
-                }));
+                props.push((
+                    name.clone(),
+                    IrExpr {
+                        id: self.next_expr_id(),
+                        value: IrExprValue::Var(name.clone()),
+                    },
+                ));
             }
 
             body.push(IrStatement::WriteExpr {

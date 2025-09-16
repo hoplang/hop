@@ -2,7 +2,7 @@ use crate::CompileLanguage;
 use crate::document::DocumentAnnotator;
 use crate::filesystem::files::ProjectRoot;
 use crate::hop::program::Program;
-use crate::ir::{CompilationMode, Compiler, JsCompiler, LanguageMode, optimizer::Optimizer};
+use crate::ir::{CompilationMode, Compiler, JsTranspiler, LanguageMode, optimizer::Optimizer};
 use crate::tui::timing;
 use anyhow::{Context, Result};
 use std::fs;
@@ -97,16 +97,16 @@ pub fn execute(
     // Generate code based on target language
     let generated_code = match language {
         CompileLanguage::Js => {
-            timer.start_phase("generating js");
-            let mut compiler = JsCompiler::new(LanguageMode::JavaScript);
+            timer.start_phase("transpiling to js");
+            let mut transpiler = JsTranspiler::new(LanguageMode::JavaScript);
             // In development mode, we don't need escapeHtml since we're just outputting bootstrap HTML
-            compiler.compile_module(&ir_module, compilation_mode == CompilationMode::Production)
+            transpiler.transpile_module(&ir_module, compilation_mode == CompilationMode::Production)
         }
         CompileLanguage::Ts => {
-            timer.start_phase("generating ts");
-            let mut compiler = JsCompiler::new(LanguageMode::TypeScript);
+            timer.start_phase("transpiling to ts");
+            let mut transpiler = JsTranspiler::new(LanguageMode::TypeScript);
             // In development mode, we don't need escapeHtml since we're just outputting bootstrap HTML
-            compiler.compile_module(&ir_module, compilation_mode == CompilationMode::Production)
+            transpiler.transpile_module(&ir_module, compilation_mode == CompilationMode::Production)
         }
     };
 
