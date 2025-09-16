@@ -1,5 +1,5 @@
 use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
-use crate::dop::{self, Parameter, Type};
+use crate::dop::{self, Argument, Parameter, Type};
 use crate::error_collector::ErrorCollector;
 use crate::hop::ast::Ast;
 use crate::hop::ast::{Attribute, ComponentDefinition, Node};
@@ -387,18 +387,21 @@ fn typecheck_node(
                 });
             }
 
-            // Validate arguments
-            match (module_info.get_parameter_types(tag_name.as_str()), args) {
-                (None, None) => {}
+            // Validate arguments and build typed versions
+            let typed_args = match (module_info.get_parameter_types(tag_name.as_str()), args) {
+                (None, None) => None,
                 (None, Some((_, args_range))) => {
                     errors.push(TypeError::UnexpectedArguments {
                         range: args_range.clone(),
                     });
+                    None
                 }
                 (Some(params), None) => {
                     errors.push(TypeError::missing_arguments(params, tag_name.clone()));
+                    None
                 }
                 (Some(params), Some((args, args_range))) => {
+                    let mut typed_arguments = Vec::new();
                     for param in params {
                         if !args
                             .iter()
@@ -426,14 +429,14 @@ fn typecheck_node(
                             Some(param) => param,
                         };
 
-                        let typed_arg = match dop::typecheck_expr(&arg.var_expr, env, annotations) {
+                        let typed_expr = match dop::typecheck_expr(&arg.var_expr, env, annotations) {
                             Ok(t) => t,
                             Err(err) => {
                                 errors.push(err.into());
                                 continue;
                             }
                         };
-                        let arg_type = typed_arg.get_type();
+                        let arg_type = typed_expr.get_type();
 
                         if !arg_type.is_subtype(&param.var_type) {
                             errors.push(TypeError::ArgumentIsIncompatible {
@@ -445,21 +448,28 @@ fn typecheck_node(
                             continue;
                         }
 
+                        // Build the typed argument
+                        typed_arguments.push(Argument {
+                            var_name: arg.var_name.clone(),
+                            var_expr: typed_expr,
+                        });
+
                         annotations.push(TypeAnnotation {
                             range: arg.var_expr.range().clone(),
                             typ: arg_type,
                             name: arg.var_name.to_string(),
                         });
                     }
-                }
-            }
 
-            // For now, set args to None until we handle the transformation
+                    Some((typed_arguments, args_range.clone()))
+                }
+            };
+
             Some(Node::ComponentReference {
                 tag_name: tag_name.clone(),
                 definition_module: definition_module.clone(),
                 closing_tag_name: closing_tag_name.clone(),
-                args: None,
+                args: typed_args,
                 attributes: typed_attributes,
                 range: range.clone(),
                 children: typed_children,
