@@ -325,12 +325,6 @@ impl Parser {
         })
     }
 
-    // type = TypeString
-    //      | TypeNumber
-    //      | TypeBoolean
-    //      | TypeVoid
-    //      | TypeArray "[" type "]"
-    //      | "{" (Identifier ":" type ("," Identifier ":" type)*)? "}"
     fn parse_type(&mut self) -> Result<RangedType, ParseError> {
         match self.iter.next().transpose()? {
             Some((Token::TypeString, range)) => Ok(RangedType {

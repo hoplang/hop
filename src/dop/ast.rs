@@ -33,27 +33,24 @@ impl Display for UnaryOp {
 
 #[derive(Debug, Clone)]
 pub enum Expr {
-    Variable {
-        value: VarName,
-    },
+    /// A variable expression, e.g. foo
+    Variable { value: VarName },
+    /// A property access expression, e.g. foo.bar
     PropertyAccess {
         object: Box<Expr>,
         property: DocumentRange,
         range: DocumentRange,
     },
-    StringLiteral {
-        value: String,
-        range: DocumentRange,
-    },
-    BooleanLiteral {
-        value: bool,
-        range: DocumentRange,
-    },
+    /// A string literal expression, e.g. "foo bar"
+    StringLiteral { value: String, range: DocumentRange },
+    /// A boolean literal expression, e.g. true
+    BooleanLiteral { value: bool, range: DocumentRange },
+    /// A number literal expression, e.g. 2.5
     NumberLiteral {
         value: serde_json::Number,
         range: DocumentRange,
     },
-    /// An array literal, e.g. [1, 2, 3]
+    /// An array literal expression, e.g. [1, 2, 3]
     ArrayLiteral {
         elements: Vec<Expr>,
         range: DocumentRange,
