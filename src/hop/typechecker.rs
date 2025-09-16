@@ -1,10 +1,10 @@
-use crate::document::document_cursor::{DocumentRange, Ranged};
+use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use crate::dop::{self, Parameter, Type};
 use crate::hop::ast::Ast;
-use crate::hop::ast::{ComponentDefinition, Node};
+use crate::hop::ast::{Attribute, ComponentDefinition, Node};
 use crate::hop::environment::Environment;
 use crate::hop::type_error::TypeError;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
 use super::ast::AttributeValue;
@@ -444,26 +444,7 @@ fn typecheck_node(
             children,
             ..
         } => {
-            for attr in attributes.values() {
-                if let Some(AttributeValue::Expression(expr)) = &attr.value {
-                    let typed_expr = match dop::typecheck_expr(expr, env, annotations) {
-                        Ok(t) => t,
-                        Err(err) => {
-                            errors.push(err.into());
-                            continue; // Skip this attribute
-                        }
-                    };
-                    let expr_type = typed_expr.get_type();
-
-                    if !expr_type.is_subtype(&Type::String) {
-                        errors.push(TypeError::ExpectedStringAttribute {
-                            found: expr_type.to_string(),
-                            range: expr.range().clone(),
-                        });
-                        continue;
-                    }
-                };
-            }
+            let _typed_attributes = typecheck_attributes(attributes, env, annotations, errors);
 
             for child in children {
                 typecheck_node(child, state, env, annotations, errors);
@@ -497,6 +478,52 @@ fn typecheck_node(
             // No typechecking needed
         }
     }
+}
+
+fn typecheck_attributes(
+    attributes: &BTreeMap<StringSpan, Attribute<()>>,
+    env: &mut Environment<Type>,
+    annotations: &mut Vec<TypeAnnotation>,
+    errors: &mut Vec<TypeError>,
+) -> BTreeMap<StringSpan, Attribute<Type>> {
+    let mut typed_attributes = BTreeMap::new();
+
+    for (key, attr) in attributes {
+        let typed_value = match &attr.value {
+            Some(AttributeValue::Expression(expr)) => {
+                match dop::typecheck_expr(expr, env, annotations) {
+                    Ok(typed_expr) => {
+                        // Check that HTML attributes are strings
+                        let expr_type = typed_expr.get_type();
+                        if !expr_type.is_subtype(&Type::String) {
+                            errors.push(TypeError::ExpectedStringAttribute {
+                                found: expr_type.to_string(),
+                                range: typed_expr.range().clone(),
+                            });
+                        }
+                        Some(AttributeValue::Expression(typed_expr))
+                    }
+                    Err(err) => {
+                        errors.push(err.into());
+                        None
+                    }
+                }
+            }
+            Some(AttributeValue::String(s)) => Some(AttributeValue::String(s.clone())),
+            None => None,
+        };
+
+        typed_attributes.insert(
+            key.clone(),
+            Attribute {
+                name: attr.name.clone(),
+                value: typed_value,
+                range: attr.range.clone(),
+            },
+        );
+    }
+
+    typed_attributes
 }
 
 #[cfg(test)]
