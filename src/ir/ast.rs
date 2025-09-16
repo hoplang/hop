@@ -82,15 +82,15 @@ pub enum IrExprValue {
         property: String,
     },
 
-    String(String),
+    StringLiteral(String),
 
-    Boolean(bool),
+    BooleanLiteral(bool),
 
-    Number(f64),
+    NumberLiteral(f64),
 
-    Array(Vec<IrExpr>),
+    ArrayLiteral(Vec<IrExpr>),
 
-    Object(Vec<(String, IrExpr)>),
+    ObjectLiteral(Vec<(String, IrExpr)>),
 
     BinaryOp {
         left: Box<IrExpr>,
@@ -547,13 +547,15 @@ impl IrExpr {
                     property,
                 },
             },
-            IrExprValue::Array(elements) => IrExpr {
+            IrExprValue::ArrayLiteral(elements) => IrExpr {
                 id: self.id,
-                value: IrExprValue::Array(elements.into_iter().map(|e| e.map_expr(f)).collect()),
+                value: IrExprValue::ArrayLiteral(
+                    elements.into_iter().map(|e| e.map_expr(f)).collect(),
+                ),
             },
-            IrExprValue::Object(properties) => IrExpr {
+            IrExprValue::ObjectLiteral(properties) => IrExpr {
                 id: self.id,
-                value: IrExprValue::Object(
+                value: IrExprValue::ObjectLiteral(
                     properties
                         .into_iter()
                         .map(|(k, v)| (k, v.map_expr(f)))
@@ -565,17 +567,17 @@ impl IrExpr {
                 id: self.id,
                 value: IrExprValue::Var(name),
             },
-            IrExprValue::String(s) => IrExpr {
+            IrExprValue::StringLiteral(s) => IrExpr {
                 id: self.id,
-                value: IrExprValue::String(s),
+                value: IrExprValue::StringLiteral(s),
             },
-            IrExprValue::Boolean(b) => IrExpr {
+            IrExprValue::BooleanLiteral(b) => IrExpr {
                 id: self.id,
-                value: IrExprValue::Boolean(b),
+                value: IrExprValue::BooleanLiteral(b),
             },
-            IrExprValue::Number(n) => IrExpr {
+            IrExprValue::NumberLiteral(n) => IrExpr {
                 id: self.id,
-                value: IrExprValue::Number(n),
+                value: IrExprValue::NumberLiteral(n),
             },
             IrExprValue::JsonEncode { value } => IrExpr {
                 id: self.id,
@@ -611,12 +613,12 @@ impl<'a> Iterator for DfsIter<'a> {
                 IrExprValue::UnaryOp { operand, .. } => {
                     self.stack.push(operand);
                 }
-                IrExprValue::Array(elements) => {
+                IrExprValue::ArrayLiteral(elements) => {
                     for elem in elements.iter().rev() {
                         self.stack.push(elem);
                     }
                 }
-                IrExprValue::Object(properties) => {
+                IrExprValue::ObjectLiteral(properties) => {
                     for (_, value) in properties.iter().rev() {
                         self.stack.push(value);
                     }
@@ -626,9 +628,9 @@ impl<'a> Iterator for DfsIter<'a> {
                 }
                 // Explicitly list all leaf nodes (no children to traverse)
                 IrExprValue::Var(_) => {}
-                IrExprValue::String(_) => {}
-                IrExprValue::Boolean(_) => {}
-                IrExprValue::Number(_) => {}
+                IrExprValue::StringLiteral(_) => {}
+                IrExprValue::BooleanLiteral(_) => {}
+                IrExprValue::NumberLiteral(_) => {}
             }
         })
     }
@@ -641,10 +643,10 @@ impl fmt::Display for IrExpr {
             IrExprValue::PropertyAccess { object, property } => {
                 write!(f, "{}.{}", object, property)
             }
-            IrExprValue::String(s) => write!(f, "{:?}", s),
-            IrExprValue::Boolean(b) => write!(f, "{}", b),
-            IrExprValue::Number(n) => write!(f, "{}", n),
-            IrExprValue::Array(elements) => {
+            IrExprValue::StringLiteral(s) => write!(f, "{:?}", s),
+            IrExprValue::BooleanLiteral(b) => write!(f, "{}", b),
+            IrExprValue::NumberLiteral(n) => write!(f, "{}", n),
+            IrExprValue::ArrayLiteral(elements) => {
                 write!(f, "[")?;
                 for (i, elem) in elements.iter().enumerate() {
                     if i > 0 {
@@ -654,7 +656,7 @@ impl fmt::Display for IrExpr {
                 }
                 write!(f, "]")
             }
-            IrExprValue::Object(props) => {
+            IrExprValue::ObjectLiteral(props) => {
                 write!(f, "{{")?;
                 for (i, (key, value)) in props.iter().enumerate() {
                     if i > 0 {

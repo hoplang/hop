@@ -15,7 +15,7 @@ impl WriteExprSimplificationPass {
         match statement {
             IrStatement::WriteExpr { id, expr, escape } => {
                 // If the expression is a constant string, convert to Write statement
-                if let IrExprValue::String(s) = &expr.value {
+                if let IrExprValue::StringLiteral(s) = &expr.value {
                     // Apply HTML escaping if needed
                     let content = if escape { escape_html(s) } else { s.clone() };
                     IrStatement::Write { id, content }

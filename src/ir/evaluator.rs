@@ -22,19 +22,19 @@ fn evaluate_ir_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value
                 Ok(Value::Null)
             }
         }
-        IrExprValue::String(s) => Ok(Value::String(s.clone())),
-        IrExprValue::Boolean(b) => Ok(Value::Bool(*b)),
-        IrExprValue::Number(n) => Ok(Value::Number(
+        IrExprValue::StringLiteral(s) => Ok(Value::String(s.clone())),
+        IrExprValue::BooleanLiteral(b) => Ok(Value::Bool(*b)),
+        IrExprValue::NumberLiteral(n) => Ok(Value::Number(
             serde_json::Number::from_f64(*n).unwrap_or_else(|| serde_json::Number::from(0)),
         )),
-        IrExprValue::Array(elements) => {
+        IrExprValue::ArrayLiteral(elements) => {
             let mut array = Vec::new();
             for elem in elements {
                 array.push(evaluate_ir_expr(elem, env)?);
             }
             Ok(Value::Array(array))
         }
-        IrExprValue::Object(properties) => {
+        IrExprValue::ObjectLiteral(properties) => {
             let mut obj = serde_json::Map::new();
             for (key, value) in properties {
                 obj.insert(key.clone(), evaluate_ir_expr(value, env)?);

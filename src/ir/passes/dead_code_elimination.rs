@@ -16,7 +16,7 @@ impl DeadCodeEliminationPass {
     /// Check if an expression is a constant boolean value
     fn is_constant_boolean(expr: &IrExpr) -> Option<bool> {
         match &expr.value {
-            IrExprValue::Boolean(b) => Some(*b),
+            IrExprValue::BooleanLiteral(b) => Some(*b),
             _ => None,
         }
     }

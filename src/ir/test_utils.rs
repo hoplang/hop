@@ -30,21 +30,21 @@ impl IrTestBuilder {
     pub fn str(&self, s: &str) -> IrExpr {
         IrExpr {
             id: self.next_expr_id(),
-            value: IrExprValue::String(s.to_string()),
+            value: IrExprValue::StringLiteral(s.to_string()),
         }
     }
 
     pub fn num(&self, n: f64) -> IrExpr {
         IrExpr {
             id: self.next_expr_id(),
-            value: IrExprValue::Number(n),
+            value: IrExprValue::NumberLiteral(n),
         }
     }
 
     pub fn bool(&self, b: bool) -> IrExpr {
         IrExpr {
             id: self.next_expr_id(),
-            value: IrExprValue::Boolean(b),
+            value: IrExprValue::BooleanLiteral(b),
         }
     }
 
@@ -79,14 +79,14 @@ impl IrTestBuilder {
     pub fn array(&self, elements: Vec<IrExpr>) -> IrExpr {
         IrExpr {
             id: self.next_expr_id(),
-            value: IrExprValue::Array(elements),
+            value: IrExprValue::ArrayLiteral(elements),
         }
     }
 
     pub fn object(&self, props: Vec<(&str, IrExpr)>) -> IrExpr {
         IrExpr {
             id: self.next_expr_id(),
-            value: IrExprValue::Object(
+            value: IrExprValue::ObjectLiteral(
                 props.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
             ),
         }

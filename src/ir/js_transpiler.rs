@@ -263,18 +263,18 @@ impl JsTranspiler {
                 format!("{}.{}", obj, property)
             }
 
-            IrExprValue::String(value) => self.quote_string(value),
+            IrExprValue::StringLiteral(value) => self.quote_string(value),
 
-            IrExprValue::Boolean(value) => value.to_string(),
+            IrExprValue::BooleanLiteral(value) => value.to_string(),
 
-            IrExprValue::Number(value) => value.to_string(),
+            IrExprValue::NumberLiteral(value) => value.to_string(),
 
-            IrExprValue::Array(elements) => {
+            IrExprValue::ArrayLiteral(elements) => {
                 let items: Vec<String> = elements.iter().map(|e| self.transpile_expr(e)).collect();
                 format!("[{}]", items.join(", "))
             }
 
-            IrExprValue::Object(properties) => {
+            IrExprValue::ObjectLiteral(properties) => {
                 let props: Vec<String> = properties
                     .iter()
                     .map(|(key, value)| format!("{}: {}", key, self.transpile_expr(value)))

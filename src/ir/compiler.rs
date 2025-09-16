@@ -163,7 +163,7 @@ impl Compiler<'_> {
                     value: IrExprValue::JsonEncode {
                         value: Box::new(IrExpr {
                             id: self.next_expr_id(),
-                            value: IrExprValue::Object(props),
+                            value: IrExprValue::ObjectLiteral(props),
                         }),
                     },
                 },
@@ -798,17 +798,19 @@ impl Compiler<'_> {
                 }
             }
             Expr::ArrayLiteral { elements, .. } => {
-                IrExprValue::Array(elements.iter().map(|e| self.rename_expr(e)).collect())
+                IrExprValue::ArrayLiteral(elements.iter().map(|e| self.rename_expr(e)).collect())
             }
-            Expr::ObjectLiteral { properties, .. } => IrExprValue::Object(
+            Expr::ObjectLiteral { properties, .. } => IrExprValue::ObjectLiteral(
                 properties
                     .iter()
                     .map(|(k, v)| (k.as_str().to_string(), self.rename_expr(v)))
                     .collect(),
             ),
-            Expr::StringLiteral { value, .. } => IrExprValue::String(value.to_string()),
-            Expr::BooleanLiteral { value, .. } => IrExprValue::Boolean(*value),
-            Expr::NumberLiteral { value, .. } => IrExprValue::Number(value.as_f64().unwrap_or(0.0)),
+            Expr::StringLiteral { value, .. } => IrExprValue::StringLiteral(value.to_string()),
+            Expr::BooleanLiteral { value, .. } => IrExprValue::BooleanLiteral(*value),
+            Expr::NumberLiteral { value, .. } => {
+                IrExprValue::NumberLiteral(value.as_f64().unwrap_or(0.0))
+            }
         };
 
         IrExpr {

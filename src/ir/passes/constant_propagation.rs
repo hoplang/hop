@@ -114,8 +114,8 @@ impl ConstantPropagationPass {
         // Constant values of expressions: (expr_id => const_value)
         let const_value = iteration.variable::<(ExprId, Const)>("const_value");
         const_value.extend(all_expressions.iter().filter_map(|n| match &n.value {
-            IrExprValue::Boolean(b) => Some((n.id, Const::Bool(*b))),
-            IrExprValue::String(s) => Some((n.id, Const::String(s.clone()))),
+            IrExprValue::BooleanLiteral(b) => Some((n.id, Const::Bool(*b))),
+            IrExprValue::StringLiteral(s) => Some((n.id, Const::String(s.clone()))),
             _ => None,
         }));
 
@@ -204,8 +204,8 @@ impl ConstantPropagationPass {
         let mut results = HashMap::new();
         for (id, const_val) in const_value.complete().iter() {
             let expr_value = match const_val {
-                Const::Bool(b) => IrExprValue::Boolean(*b),
-                Const::String(s) => IrExprValue::String(s.clone()),
+                Const::Bool(b) => IrExprValue::BooleanLiteral(*b),
+                Const::String(s) => IrExprValue::StringLiteral(s.clone()),
             };
             results.insert(*id, expr_value);
         }
