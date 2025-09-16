@@ -140,7 +140,7 @@ mod tests {
                     // Variable reference should remain as WriteExpr
                     t.write_expr(t.var("message"), false),
                     // Boolean should remain as WriteExpr
-                    t.write_expr(t.boolean(true), false),
+                    t.write_expr(t.bool(true), false),
                 ],
             },
             expect![[r#"
@@ -163,7 +163,7 @@ mod tests {
                 parameters: vec![],
                 body: vec![
                     t.if_stmt(
-                        t.boolean(true),
+                        t.bool(true),
                         vec![
                             t.write_expr(t.str("Inside if"), false),
                             t.for_loop(

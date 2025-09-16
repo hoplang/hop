@@ -700,4 +700,128 @@ mod tests {
             "#]],
         );
     }
+
+    #[test]
+    fn test_complex_literals_and_property_access() {
+        let t = IrTestBuilder::new();
+
+        let mut ir_module = IrModule::new();
+        ir_module.entry_points.insert(
+            "test-product-list".to_string(),
+            IrEntrypoint {
+                parameters: vec![],
+                body: vec![
+                    t.write("<div class=\"products\">\n"),
+                    t.for_loop(
+                        "product",
+                        t.array(vec![
+                            t.object(vec![
+                                ("name", t.str("Laptop")),
+                                ("price", t.num(999.99)),
+                                ("inStock", t.bool(true)),
+                                ("category", t.str("electronics")),
+                            ]),
+                            t.object(vec![
+                                ("name", t.str("Book")),
+                                ("price", t.num(29.99)),
+                                ("inStock", t.bool(false)),
+                                ("category", t.str("books")),
+                            ]),
+                            t.object(vec![
+                                ("name", t.str("T-Shirt")),
+                                ("price", t.num(19.99)),
+                                ("inStock", t.bool(true)),
+                                ("category", t.str("clothing")),
+                            ]),
+                        ]),
+                        vec![t.let_stmt(
+                            "displayInfo",
+                            t.object(vec![
+                                ("currency", t.str("$")),
+                                ("showStock", t.bool(true)),
+                                ("prefix", t.str("PROD-")),
+                            ]),
+                            vec![
+                                t.write("<article class=\"product\">\n"),
+                                t.write("<h3>"),
+                                t.write_expr(t.prop_access(t.var("displayInfo"), "prefix"), false),
+                                t.write_expr(t.prop_access(t.var("product"), "name"), true),
+                                t.write("</h3>\n"),
+                                t.write("<p>Price: "),
+                                t.write_expr(t.prop_access(t.var("displayInfo"), "currency"), false),
+                                t.write_expr(t.prop_access(t.var("product"), "price"), false),
+                                t.write("</p>\n"),
+                                t.write("<p>Category: "),
+                                t.write_expr(t.prop_access(t.var("product"), "category"), true),
+                                t.write("</p>\n"),
+                                t.if_stmt(
+                                    t.prop_access(t.var("displayInfo"), "showStock"),
+                                    vec![
+                                        t.if_stmt(
+                                            t.prop_access(t.var("product"), "inStock"),
+                                            vec![t.write("<span class=\"in-stock\">✓ In Stock</span>\n")],
+                                        ),
+                                        t.if_stmt(
+                                            t.not(t.prop_access(t.var("product"), "inStock")),
+                                            vec![t.write("<span class=\"out-of-stock\">✗ Out of Stock</span>\n")],
+                                        ),
+                                    ],
+                                ),
+                                t.write("</article>\n"),
+                            ],
+                        )],
+                    ),
+                    t.write("</div>\n"),
+                ],
+            },
+        );
+
+        check(
+            &ir_module,
+            expect![[r#"
+                function escapeHtml(str) {
+                    if (typeof str !== 'string') return str;
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export default {
+                    testProductList: () => {
+                        let output = "";
+                        output += "<div class=\"products\">\n";
+                        for (const product of [{name: "Laptop", price: 999.99, inStock: true, category: "electronics"}, {name: "Book", price: 29.99, inStock: false, category: "books"}, {name: "T-Shirt", price: 19.99, inStock: true, category: "clothing"}]) {
+                            const displayInfo = {currency: "$", showStock: true, prefix: "PROD-"};
+                            output += "<article class=\"product\">\n";
+                            output += "<h3>";
+                            output += displayInfo.prefix;
+                            output += escapeHtml(product.name);
+                            output += "</h3>\n";
+                            output += "<p>Price: ";
+                            output += displayInfo.currency;
+                            output += product.price;
+                            output += "</p>\n";
+                            output += "<p>Category: ";
+                            output += escapeHtml(product.category);
+                            output += "</p>\n";
+                            if (displayInfo.showStock) {
+                                if (product.inStock) {
+                                    output += "<span class=\"in-stock\">✓ In Stock</span>\n";
+                                }
+                                if (!(product.inStock)) {
+                                    output += "<span class=\"out-of-stock\">✗ Out of Stock</span>\n";
+                                }
+                            }
+                            output += "</article>\n";
+                        }
+                        output += "</div>\n";
+                        return output;
+                    }
+                }
+            "#]],
+        );
+    }
 }

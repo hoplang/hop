@@ -249,7 +249,7 @@ mod tests {
                 parameters: vec![],
                 body: vec![t.let_stmt(
                     "cond",
-                    t.boolean(true),
+                    t.bool(true),
                     vec![t.if_stmt(t.var("cond"), vec![t.write("Condition is true")])],
                 )],
             },
@@ -275,7 +275,7 @@ mod tests {
             IrEntrypoint {
                 parameters: vec![],
                 body: vec![t.if_stmt(
-                    t.boolean(true),
+                    t.bool(true),
                     vec![t.let_stmt("unused", t.str("value"), vec![t.write("Inside if")])],
                 )],
             },
@@ -329,10 +329,10 @@ mod tests {
                 parameters: vec![],
                 body: vec![t.let_stmt(
                     "x",
-                    t.boolean(true),
+                    t.bool(true),
                     vec![t.let_stmt(
                         "y",
-                        t.boolean(false),
+                        t.bool(false),
                         vec![t.if_stmt(t.eq(t.var("x"), t.var("y")), vec![t.write("Equal")])],
                     )],
                 )],

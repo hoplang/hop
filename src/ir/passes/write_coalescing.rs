@@ -183,7 +183,7 @@ mod tests {
             body: vec![
                 t.write("Before"),
                 t.write(" if"),
-                t.if_stmt(t.boolean(true), vec![t.write("Inside if")]),
+                t.if_stmt(t.bool(true), vec![t.write("Inside if")]),
                 t.write("After"),
                 t.write(" if"),
             ],
@@ -213,7 +213,7 @@ mod tests {
         let entrypoint = IrEntrypoint {
             parameters: vec![],
             body: vec![t.if_stmt(
-                t.boolean(true),
+                t.bool(true),
                 vec![t.write("Line"), t.write(" "), t.write("one")],
             )],
         };
@@ -307,7 +307,7 @@ mod tests {
                 t.write("Start"),
                 t.write(": "),
                 t.if_stmt(
-                    t.boolean(true),
+                    t.bool(true),
                     vec![
                         t.write("In"),
                         t.write(" if"),

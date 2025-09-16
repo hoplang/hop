@@ -41,7 +41,7 @@ impl IrTestBuilder {
         }
     }
 
-    pub fn boolean(&self, b: bool) -> IrExpr {
+    pub fn bool(&self, b: bool) -> IrExpr {
         IrExpr {
             id: self.next_expr_id(),
             value: IrExprValue::Boolean(b),

@@ -255,7 +255,7 @@ mod tests {
                 parameters: vec![],
                 body: vec![
                     // !false => true
-                    t.if_stmt(t.not(t.boolean(false)), vec![t.write("Should be true")]),
+                    t.if_stmt(t.not(t.bool(false)), vec![t.write("Should be true")]),
                 ],
             },
             expect![[r#"
@@ -279,10 +279,7 @@ mod tests {
                 parameters: vec![],
                 body: vec![
                     // !!true => true
-                    t.if_stmt(
-                        t.not(t.not(t.boolean(true))),
-                        vec![t.write("Double negation")],
-                    ),
+                    t.if_stmt(t.not(t.not(t.bool(true))), vec![t.write("Double negation")]),
                 ],
             },
             expect![[r#"
@@ -307,7 +304,7 @@ mod tests {
                 body: vec![
                     // !!!false => true
                     t.if_stmt(
-                        t.not(t.not(t.not(t.boolean(false)))),
+                        t.not(t.not(t.not(t.bool(false)))),
                         vec![t.write("Triple negation")],
                     ),
                 ],
@@ -334,17 +331,17 @@ mod tests {
                 body: vec![
                     // true == true => true
                     t.if_stmt(
-                        t.eq(t.boolean(true), t.boolean(true)),
+                        t.eq(t.bool(true), t.bool(true)),
                         vec![t.write("true == true")],
                     ),
                     // false == false => true
                     t.if_stmt(
-                        t.eq(t.boolean(false), t.boolean(false)),
+                        t.eq(t.bool(false), t.bool(false)),
                         vec![t.write("false == false")],
                     ),
                     // true == false => false
                     t.if_stmt(
-                        t.eq(t.boolean(true), t.boolean(false)),
+                        t.eq(t.bool(true), t.bool(false)),
                         vec![t.write("Should not appear")],
                     ),
                 ],
@@ -377,7 +374,7 @@ mod tests {
                 body: vec![
                     // (!!false == !false) => (false == true) => false
                     t.if_stmt(
-                        t.eq(t.not(t.not(t.boolean(false))), t.not(t.boolean(false))),
+                        t.eq(t.not(t.not(t.bool(false))), t.not(t.bool(false))),
                         vec![t.write("Should not appear")],
                     ),
                 ],
@@ -405,7 +402,7 @@ mod tests {
                     // let x = !!true
                     t.let_stmt(
                         "x",
-                        t.not(t.not(t.boolean(true))),
+                        t.not(t.not(t.bool(true))),
                         vec![
                             // if x => if true
                             t.if_stmt(t.var("x"), vec![t.write("x is true")]),
@@ -441,10 +438,10 @@ mod tests {
                 parameters: vec![],
                 body: vec![t.let_stmt(
                     "x",
-                    t.boolean(true),
+                    t.bool(true),
                     vec![t.let_stmt(
                         "y",
-                        t.not(t.boolean(true)),
+                        t.not(t.bool(true)),
                         vec![
                             // x == y => true == false => false
                             t.if_stmt(t.eq(t.var("x"), t.var("y")), vec![t.write("x equals y")]),

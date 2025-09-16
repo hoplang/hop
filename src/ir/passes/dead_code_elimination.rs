@@ -111,7 +111,7 @@ mod tests {
         check(
             IrEntrypoint {
                 parameters: vec![],
-                body: vec![t.if_stmt(t.boolean(true), vec![t.write("Always shown")])],
+                body: vec![t.if_stmt(t.bool(true), vec![t.write("Always shown")])],
             },
             expect![[r#"
             IrEntrypoint {
@@ -131,7 +131,7 @@ mod tests {
             IrEntrypoint {
                 parameters: vec![],
                 body: vec![
-                    t.if_stmt(t.boolean(false), vec![t.write("Never shown")]),
+                    t.if_stmt(t.bool(false), vec![t.write("Never shown")]),
                     t.write("After if"),
                 ],
             },
@@ -154,8 +154,8 @@ mod tests {
                 parameters: vec![("show".to_string(), Type::Bool)],
                 body: vec![
                     t.if_stmt(t.var("show"), vec![t.write("Dynamic")]),
-                    t.if_stmt(t.boolean(true), vec![t.write("Static true")]),
-                    t.if_stmt(t.boolean(false), vec![t.write("Static false")]),
+                    t.if_stmt(t.bool(true), vec![t.write("Static true")]),
+                    t.if_stmt(t.bool(false), vec![t.write("Static false")]),
                 ],
             },
             expect![[r#"
@@ -182,8 +182,8 @@ mod tests {
                     "x",
                     t.var("value"),
                     vec![
-                        t.if_stmt(t.boolean(true), vec![t.write("Inside let and true if")]),
-                        t.if_stmt(t.boolean(false), vec![t.write("Never shown")]),
+                        t.if_stmt(t.bool(true), vec![t.write("Inside let and true if")]),
+                        t.if_stmt(t.bool(false), vec![t.write("Never shown")]),
                     ],
                 )],
             },
