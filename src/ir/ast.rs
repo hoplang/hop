@@ -71,6 +71,7 @@ pub enum IrStatement {
 pub struct IrExpr {
     pub id: ExprId,
     pub value: IrExprValue,
+    pub typ: Type,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -531,6 +532,7 @@ impl IrExpr {
                     op,
                     operand: Box::new(operand.map_expr(f)),
                 },
+                typ: self.typ.clone(),
             },
             IrExprValue::BinaryOp { op, left, right } => IrExpr {
                 id: self.id,
@@ -539,6 +541,7 @@ impl IrExpr {
                     left: Box::new(left.map_expr(f)),
                     right: Box::new(right.map_expr(f)),
                 },
+                typ: self.typ.clone(),
             },
             IrExprValue::PropertyAccess { object, property } => IrExpr {
                 id: self.id,
@@ -546,12 +549,14 @@ impl IrExpr {
                     object: Box::new(object.map_expr(f)),
                     property,
                 },
+                typ: self.typ.clone(),
             },
             IrExprValue::ArrayLiteral(elements) => IrExpr {
                 id: self.id,
                 value: IrExprValue::ArrayLiteral(
                     elements.into_iter().map(|e| e.map_expr(f)).collect(),
                 ),
+                typ: self.typ.clone(),
             },
             IrExprValue::ObjectLiteral(properties) => IrExpr {
                 id: self.id,
@@ -561,29 +566,35 @@ impl IrExpr {
                         .map(|(k, v)| (k, v.map_expr(f)))
                         .collect(),
                 ),
+                typ: self.typ.clone(),
             },
             // Leaf nodes - no children to transform
             IrExprValue::Var(name) => IrExpr {
                 id: self.id,
                 value: IrExprValue::Var(name),
+                typ: self.typ.clone(),
             },
             IrExprValue::StringLiteral(s) => IrExpr {
                 id: self.id,
                 value: IrExprValue::StringLiteral(s),
+                typ: self.typ.clone(),
             },
             IrExprValue::BooleanLiteral(b) => IrExpr {
                 id: self.id,
                 value: IrExprValue::BooleanLiteral(b),
+                typ: self.typ.clone(),
             },
             IrExprValue::NumberLiteral(n) => IrExpr {
                 id: self.id,
                 value: IrExprValue::NumberLiteral(n),
+                typ: self.typ.clone(),
             },
             IrExprValue::JsonEncode { value } => IrExpr {
                 id: self.id,
                 value: IrExprValue::JsonEncode {
                     value: Box::new(value.map_expr(f)),
                 },
+                typ: self.typ.clone(),
             },
         };
         // Then apply the function to this node

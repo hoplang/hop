@@ -1,8 +1,8 @@
 use crate::common::is_void_element;
 use crate::document::document_cursor::{DocumentRange, StringSpan};
+use crate::dop::Type;
 use crate::dop::{self, Argument, Expr};
 use crate::hop::ast::{Ast, Attribute, AttributeValue, ComponentDefinition, Node};
-use crate::dop::Type;
 use crate::hop::module_name::ModuleName;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -35,7 +35,10 @@ pub struct Compiler<'a> {
 }
 
 impl Compiler<'_> {
-    pub fn compile(asts: &HashMap<ModuleName, Ast<Type>>, compilation_mode: CompilationMode) -> IrModule {
+    pub fn compile(
+        asts: &HashMap<ModuleName, Ast<Type>>,
+        compilation_mode: CompilationMode,
+    ) -> IrModule {
         let mut compiler = Compiler {
             asts,
             ir_module: IrModule::new(),
@@ -153,6 +156,8 @@ impl Compiler<'_> {
                     IrExpr {
                         id: self.next_expr_id(),
                         value: IrExprValue::Var(name.clone()),
+                        // TODO: Do we need to construct the correct type here?
+                        typ: Type::String,
                     },
                 ));
             }
@@ -165,8 +170,11 @@ impl Compiler<'_> {
                         value: Box::new(IrExpr {
                             id: self.next_expr_id(),
                             value: IrExprValue::ObjectLiteral(props),
+                            // TODO: Do we need to construct the correct type here?
+                            typ: Type::Object(BTreeMap::new()),
                         }),
                     },
+                    typ: Type::String,
                 },
                 escape: false,
             });
@@ -198,6 +206,8 @@ impl Compiler<'_> {
                     value: IrExpr {
                         id: self.next_expr_id(),
                         value: IrExprValue::Var(original.clone()),
+                        // TODO: We need to construct the correct type here
+                        typ: Type::String,
                     },
                     body: result,
                 }];
@@ -817,6 +827,7 @@ impl Compiler<'_> {
         IrExpr {
             id: self.next_expr_id(),
             value,
+            typ: expr.get_type(),
         }
     }
 }

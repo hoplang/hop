@@ -1,5 +1,7 @@
 use super::ast::{BinaryOp, ExprId, IrExpr, IrExprValue, IrStatement, StatementId, UnaryOp};
+use crate::dop::Type;
 use std::cell::RefCell;
+use std::collections::BTreeMap;
 
 pub struct IrTestBuilder {
     next_expr_id: RefCell<ExprId>,
@@ -31,6 +33,7 @@ impl IrTestBuilder {
         IrExpr {
             id: self.next_expr_id(),
             value: IrExprValue::StringLiteral(s.to_string()),
+            typ: Type::String,
         }
     }
 
@@ -38,6 +41,7 @@ impl IrTestBuilder {
         IrExpr {
             id: self.next_expr_id(),
             value: IrExprValue::NumberLiteral(n),
+            typ: Type::Number,
         }
     }
 
@@ -45,6 +49,7 @@ impl IrTestBuilder {
         IrExpr {
             id: self.next_expr_id(),
             value: IrExprValue::BooleanLiteral(b),
+            typ: Type::Bool,
         }
     }
 
@@ -52,6 +57,8 @@ impl IrTestBuilder {
         IrExpr {
             id: self.next_expr_id(),
             value: IrExprValue::Var(name.to_string()),
+            // TODO: Do we need to construct the correct type here?
+            typ: Type::String,
         }
     }
 
@@ -63,6 +70,7 @@ impl IrTestBuilder {
                 op: BinaryOp::Eq,
                 right: Box::new(right),
             },
+            typ: Type::Bool,
         }
     }
 
@@ -73,32 +81,51 @@ impl IrTestBuilder {
                 op: UnaryOp::Not,
                 operand: Box::new(operand),
             },
+            typ: Type::Bool,
         }
     }
 
     pub fn array(&self, elements: Vec<IrExpr>) -> IrExpr {
+        // Determine the array element type from the first element
+        let element_type = elements.first().map(|first| Box::new(first.typ.clone()));
+
         IrExpr {
             id: self.next_expr_id(),
             value: IrExprValue::ArrayLiteral(elements),
+            typ: Type::Array(element_type),
         }
     }
 
     pub fn object(&self, props: Vec<(&str, IrExpr)>) -> IrExpr {
+        // Build a type map from the property types
+        let mut type_map = BTreeMap::new();
+        for (key, expr) in &props {
+            type_map.insert(key.to_string(), expr.typ.clone());
+        }
+
         IrExpr {
             id: self.next_expr_id(),
             value: IrExprValue::ObjectLiteral(
                 props.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
             ),
+            typ: Type::Object(type_map),
         }
     }
 
     pub fn prop_access(&self, object: IrExpr, property: &str) -> IrExpr {
+        // TODO: Do we need to construct the correct type here?
+        let property_type = match &object.typ {
+            Type::Object(type_map) => type_map.get(property).cloned().unwrap_or(Type::String),
+            _ => Type::String,
+        };
+
         IrExpr {
             id: self.next_expr_id(),
             value: IrExprValue::PropertyAccess {
                 object: Box::new(object),
                 property: property.to_string(),
             },
+            typ: property_type,
         }
     }
 

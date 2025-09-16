@@ -217,6 +217,7 @@ impl ConstantPropagationPass {
             IrExpr {
                 id: expr.id,
                 value: const_val.clone(),
+                typ: expr.typ,
             }
         } else {
             expr
