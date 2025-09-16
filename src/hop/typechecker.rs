@@ -262,9 +262,9 @@ fn typecheck_node(
                 .filter_map(|child| typecheck_node(child, state, env, annotations, errors))
                 .collect();
 
-            if let Some(typed_condition) = errors.ok_or_add(
-                dop::typecheck_expr(condition, env, annotations).map_err(Into::into)
-            ) {
+            if let Some(typed_condition) = errors
+                .ok_or_add(dop::typecheck_expr(condition, env, annotations).map_err(Into::into))
+            {
                 let condition_type = typed_condition.get_type();
                 if !condition_type.is_subtype(&Type::Bool) {
                     errors.push(TypeError::ExpectedBooleanCondition {
@@ -287,11 +287,8 @@ fn typecheck_node(
             children,
             range,
         } => {
-            let Some(typed_array) = errors.ok_or_add(
-                dop::typecheck_expr(array_expr, env, annotations).map_err(Into::into)
-            ) else {
-                return None;
-            };
+            let typed_array = errors
+                .ok_or_add(dop::typecheck_expr(array_expr, env, annotations).map_err(Into::into))?;
             let array_type = typed_array.get_type();
             let element_type = match &array_type {
                 Type::Array(Some(inner)) => *inner.clone(),
@@ -476,9 +473,9 @@ fn typecheck_node(
         }
 
         Node::TextExpression { expression, range } => {
-            if let Some(typed_expr) = errors.ok_or_add(
-                dop::typecheck_expr(expression, env, annotations).map_err(Into::into)
-            ) {
+            if let Some(typed_expr) = errors
+                .ok_or_add(dop::typecheck_expr(expression, env, annotations).map_err(Into::into))
+            {
                 let expr_type = typed_expr.get_type();
                 if !expr_type.is_subtype(&Type::String) {
                     errors.push(TypeError::ExpectedStringExpression {
@@ -507,10 +504,17 @@ fn typecheck_node(
             })
         }
 
-        Node::SlotDefinition { .. } | Node::Text { .. } | Node::Doctype { .. } => {
-            // No typechecking needed
-            None
-        }
+        Node::SlotDefinition { range } => Some(Node::SlotDefinition {
+            range: range.clone(),
+        }),
+
+        Node::Text { range } => Some(Node::Text {
+            range: range.clone(),
+        }),
+
+        Node::Doctype { range } => Some(Node::Doctype {
+            range: range.clone(),
+        }),
     }
 }
 
@@ -525,19 +529,19 @@ fn typecheck_attributes(
     for (key, attr) in attributes {
         let typed_value = match &attr.value {
             Some(AttributeValue::Expression(expr)) => {
-                errors.ok_or_add(
-                    dop::typecheck_expr(expr, env, annotations).map_err(Into::into)
-                ).map(|typed_expr| {
-                    // Check that HTML attributes are strings
-                    let expr_type = typed_expr.get_type();
-                    if !expr_type.is_subtype(&Type::String) {
-                        errors.push(TypeError::ExpectedStringAttribute {
-                            found: expr_type.to_string(),
-                            range: typed_expr.range().clone(),
-                        });
-                    }
-                    AttributeValue::Expression(typed_expr)
-                })
+                errors
+                    .ok_or_add(dop::typecheck_expr(expr, env, annotations).map_err(Into::into))
+                    .map(|typed_expr| {
+                        // Check that HTML attributes are strings
+                        let expr_type = typed_expr.get_type();
+                        if !expr_type.is_subtype(&Type::String) {
+                            errors.push(TypeError::ExpectedStringAttribute {
+                                found: expr_type.to_string(),
+                                range: typed_expr.range().clone(),
+                            });
+                        }
+                        AttributeValue::Expression(typed_expr)
+                    })
             }
             Some(AttributeValue::String(s)) => Some(AttributeValue::String(s.clone())),
             None => None,

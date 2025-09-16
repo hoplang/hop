@@ -178,7 +178,7 @@ pub enum Node<T = ()> {
         tag_name: DocumentRange,
         definition_module: Option<ModuleName>,
         closing_tag_name: Option<DocumentRange>,
-        args: Option<(Vec<Argument>, DocumentRange)>,
+        args: Option<(Vec<Argument<T>>, DocumentRange)>,
         attributes: BTreeMap<StringSpan, Attribute<T>>,
         range: DocumentRange,
         children: Vec<Node<T>>,
