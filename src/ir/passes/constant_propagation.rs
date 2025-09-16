@@ -50,37 +50,32 @@ impl ConstantPropagationPass {
     }
 
     /// Collect variable bindings with proper scoping
-    /// Returns (def_expr_id, var_expr_id) pairs
-    fn collect_variable_bindings(entrypoint: &IrEntrypoint) -> Vec<(ExprId, ExprId)> {
+    /// Returns (defining_expr_id, referencing_expr_id) pairs
+    fn collect_variable_references(entrypoint: &IrEntrypoint) -> Vec<(ExprId, ExprId)> {
         let mut var_bindings = Vec::new();
-        let mut scope_stack: HashMap<String, ExprId> = HashMap::new();
+        let mut scope: HashMap<String, ExprId> = HashMap::new();
 
         for event in entrypoint.visit_statements() {
             match event {
-                StatementEvent::Enter(statement) => {
-                    match statement {
-                        IrStatement::If { condition, .. } => {
-                            Self::collect_var_uses(condition, &mut var_bindings, &scope_stack);
-                        }
-                        IrStatement::WriteExpr { expr, .. } => {
-                            Self::collect_var_uses(expr, &mut var_bindings, &scope_stack);
-                        }
-                        IrStatement::For { array, .. } => {
-                            Self::collect_var_uses(array, &mut var_bindings, &scope_stack);
-                        }
-                        IrStatement::Let { var, value, .. } => {
-                            // Collect variable uses from the value expression (before the variable is in scope)
-                            Self::collect_var_uses(value, &mut var_bindings, &scope_stack);
-                            // Add the variable binding to the scope
-                            scope_stack.insert(var.clone(), value.id);
-                        }
-                        IrStatement::Write { .. } => {}
+                StatementEvent::Enter(statement) => match statement {
+                    IrStatement::If { condition, .. } => {
+                        Self::collect_var_refs(condition, &mut var_bindings, &scope);
                     }
-                }
+                    IrStatement::WriteExpr { expr, .. } => {
+                        Self::collect_var_refs(expr, &mut var_bindings, &scope);
+                    }
+                    IrStatement::For { array, .. } => {
+                        Self::collect_var_refs(array, &mut var_bindings, &scope);
+                    }
+                    IrStatement::Let { var, value, .. } => {
+                        Self::collect_var_refs(value, &mut var_bindings, &scope);
+                        scope.insert(var.clone(), value.id);
+                    }
+                    IrStatement::Write { .. } => {}
+                },
                 StatementEvent::Exit(statement) => {
                     if let IrStatement::Let { var, .. } = statement {
-                        // Remove the variable binding when leaving the scope
-                        scope_stack.remove(var);
+                        scope.remove(var);
                     }
                 }
             }
@@ -89,17 +84,17 @@ impl ConstantPropagationPass {
         var_bindings
     }
 
-    fn collect_var_uses(
+    fn collect_var_refs(
         expr: &IrExpr,
         var_bindings: &mut Vec<(ExprId, ExprId)>,
         scope_stack: &HashMap<String, ExprId>,
     ) {
-        for e in expr.dfs_iter() {
+        for ref_expr in expr.dfs_iter() {
             // If this is a variable reference, record its binding
-            if let IrExprValue::Var(name) = &e.value {
+            if let IrExprValue::Var(name) = &ref_expr.value {
                 if let Some(&def_expr_id) = scope_stack.get(name) {
-                    // Record: (defining_expr_id, var_expr_id) - already in the right order for joining
-                    var_bindings.push((def_expr_id, e.id));
+                    // Record: (defining_expr_id, referencing_expr_id)
+                    var_bindings.push((def_expr_id, ref_expr.id));
                 }
             }
         }
@@ -108,7 +103,7 @@ impl ConstantPropagationPass {
     /// Run datafrog to compute which expressions are constants across the entire entrypoint
     fn compute_constants(entrypoint: &IrEntrypoint) -> HashMap<ExprId, IrExprValue> {
         let all_expressions = Self::collect_all_expressions(entrypoint);
-        let var_bindings = Self::collect_variable_bindings(entrypoint);
+        let references = Self::collect_variable_references(entrypoint);
         let mut iteration = Iteration::new();
 
         // Constant values of expressions: (expr_id => const_value)
@@ -154,8 +149,8 @@ impl ConstantPropagationPass {
             _ => None,
         }));
 
-        // Variable bindings: (defining_expr_id => var_expr_id)
-        let var_def = Relation::from_iter(var_bindings.iter().cloned());
+        // Variable bindings: (defining_expr_id => referencing_expr_id)
+        let def_to_ref = Relation::from_iter(references.iter().cloned());
 
         while iteration.changed() {
             // const_value(exp, !b) :- not_rel(op, exp), const_value(op, Bool(b)).
@@ -192,10 +187,10 @@ impl ConstantPropagationPass {
             );
 
             // Propagate constants through variable bindings
-            // const_value(var_expr, val) :- const_value(def_expr, val), var_def(def_expr, var_expr).
+            // const_value(referencing_expr, val) :- const_value(defining_expr, val), def_to_ref(defining_expr, referencing_expr).
             const_value.from_join(
                 &const_value,
-                &var_def,
+                &def_to_ref,
                 |_def_expr: &ExprId, val: &Const, var_expr: &ExprId| (*var_expr, val.clone()),
             );
         }

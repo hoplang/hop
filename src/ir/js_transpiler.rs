@@ -78,10 +78,8 @@ impl JsTranspiler {
     }
 
     fn transpile_entrypoint(&mut self, name: &str, entrypoint: &IrEntrypoint) {
-        // Convert kebab-case to camelCase for JavaScript property name
         let camel_case_name = CasedString::from_kebab_case(name).to_camel_case();
 
-        // Write the function property with proper indentation
         for _ in 0..self.indent_level {
             self.output.push_str("    ");
         }
