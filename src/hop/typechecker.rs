@@ -255,11 +255,13 @@ fn typecheck_node(
         Node::If {
             condition,
             children,
-            ..
+            range,
         } => {
-            for child in children {
-                typecheck_node(child, state, env, annotations, errors);
-            }
+            let typed_children = children
+                .iter()
+                .filter_map(|child| typecheck_node(child, state, env, annotations, errors))
+                .collect();
+
             if let Some(typed_condition) = errors.ok_or_add(
                 dop::typecheck_expr(condition, env, annotations).map_err(Into::into)
             ) {
@@ -271,14 +273,19 @@ fn typecheck_node(
                     })
                 }
             }
-            None
+
+            Some(Node::If {
+                condition: condition.clone(),
+                range: range.clone(),
+                children: typed_children,
+            })
         }
 
         Node::For {
             var_name,
             array_expr,
             children,
-            ..
+            range,
         } => {
             let Some(typed_array) = errors.ok_or_add(
                 dop::typecheck_expr(array_expr, env, annotations).map_err(Into::into)
@@ -322,9 +329,10 @@ fn typecheck_node(
                 }
             };
 
-            for child in children {
-                typecheck_node(child, state, env, annotations, errors);
-            }
+            let typed_children = children
+                .iter()
+                .filter_map(|child| typecheck_node(child, state, env, annotations, errors))
+                .collect();
 
             if pushed {
                 let (_, _, accessed) = env.pop();
@@ -334,7 +342,13 @@ fn typecheck_node(
                     })
                 }
             }
-            None
+
+            Some(Node::For {
+                var_name: var_name.clone(),
+                array_expr: array_expr.clone(),
+                range: range.clone(),
+                children: typed_children,
+            })
         }
 
         Node::ComponentReference {
@@ -447,7 +461,7 @@ fn typecheck_node(
         } => {
             let typed_attributes = typecheck_attributes(attributes, env, annotations, errors);
 
-            let typed_children: Vec<_> = children
+            let typed_children = children
                 .iter()
                 .filter_map(|child| typecheck_node(child, state, env, annotations, errors))
                 .collect();
