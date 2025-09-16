@@ -13,8 +13,8 @@ pub struct StaticAttribute {
 }
 
 #[derive(Debug, Clone)]
-pub enum AttributeValue {
-    Expression(Expr),
+pub enum AttributeValue<T = ()> {
+    Expression(Expr<T>),
     String(DocumentRange),
 }
 
@@ -22,23 +22,23 @@ pub enum AttributeValue {
 /// be empty, an expression or a string value.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub struct Attribute {
+pub struct Attribute<T = ()> {
     pub name: DocumentRange,
-    pub value: Option<AttributeValue>,
+    pub value: Option<AttributeValue<T>>,
     pub range: DocumentRange,
 }
 
 #[derive(Debug)]
-pub struct Ast {
+pub struct Ast<T = ()> {
     pub name: ModuleName,
     imports: Vec<Import>,
-    component_definitions: Vec<ComponentDefinition>,
+    component_definitions: Vec<ComponentDefinition<T>>,
 }
 
-impl Ast {
+impl<T> Ast<T> {
     pub fn new(
         name: ModuleName,
-        component_definitions: Vec<ComponentDefinition>,
+        component_definitions: Vec<ComponentDefinition<T>>,
         imports: Vec<Import>,
     ) -> Self {
         Self {
@@ -48,14 +48,14 @@ impl Ast {
         }
     }
 
-    pub fn get_component_definition(&self, name: &str) -> Option<&ComponentDefinition> {
+    pub fn get_component_definition(&self, name: &str) -> Option<&ComponentDefinition<T>> {
         self.component_definitions
             .iter()
             .find(|&n| n.tag_name.as_str() == name)
     }
 
     /// Returns a reference to all component definition nodes in the AST.
-    pub fn get_component_definitions(&self) -> &[ComponentDefinition] {
+    pub fn get_component_definitions(&self) -> &[ComponentDefinition<T>] {
         &self.component_definitions
     }
 
@@ -65,7 +65,7 @@ impl Ast {
     }
 
     /// Returns an iterator over all nodes in the AST, iterating depth-first.
-    pub fn iter_all_nodes(&self) -> impl Iterator<Item = &Node> {
+    pub fn iter_all_nodes(&self) -> impl Iterator<Item = &Node<T>> {
         self.component_definitions
             .iter()
             .flat_map(|n| &n.children)
@@ -90,7 +90,7 @@ impl Ast {
     ///     ^^^^^^^^^^^^^^^^^
     /// </div>
     ///
-    pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&Node> {
+    pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&Node<T>> {
         for n in &self.component_definitions {
             if n.range.contains_position(position) {
                 for child in &n.children {
@@ -129,32 +129,32 @@ impl Import {
 }
 
 #[derive(Debug)]
-pub struct ComponentDefinition {
+pub struct ComponentDefinition<T = ()> {
     pub tag_name: DocumentRange,
     pub closing_tag_name: Option<DocumentRange>,
     pub params: Option<(Vec<Parameter>, DocumentRange)>,
     pub as_attr: Option<StaticAttribute>,
-    pub attributes: BTreeMap<StringSpan, Attribute>,
+    pub attributes: BTreeMap<StringSpan, Attribute<T>>,
     pub range: DocumentRange,
-    pub children: Vec<Node>,
+    pub children: Vec<Node<T>>,
     pub is_entrypoint: bool,
     pub has_slot: bool,
 }
 
-impl Ranged for ComponentDefinition {
+impl<T> Ranged for ComponentDefinition<T> {
     fn range(&self) -> &DocumentRange {
         &self.range
     }
 }
 
-impl ComponentDefinition {
+impl<T> ComponentDefinition<T> {
     pub fn tag_name_ranges(&self) -> impl Iterator<Item = &DocumentRange> {
         self.closing_tag_name.iter().chain(Some(&self.tag_name))
     }
 }
 
 #[derive(Debug)]
-pub enum Node {
+pub enum Node<T = ()> {
     /// A Text node represents text in the document.
     /// E.g. <div>hello world</div>
     ///           ^^^^^^^^^^^
@@ -179,9 +179,9 @@ pub enum Node {
         definition_module: Option<ModuleName>,
         closing_tag_name: Option<DocumentRange>,
         args: Option<(Vec<Argument>, DocumentRange)>,
-        attributes: BTreeMap<StringSpan, Attribute>,
+        attributes: BTreeMap<StringSpan, Attribute<T>>,
         range: DocumentRange,
-        children: Vec<Node>,
+        children: Vec<Node<T>>,
     },
 
     /// A SlotDefinition node represents the definition of a slot, e.g.
@@ -197,7 +197,7 @@ pub enum Node {
     If {
         condition: Expr,
         range: DocumentRange,
-        children: Vec<Node>,
+        children: Vec<Node<T>>,
     },
 
     /// A For node contains content that is evaluated once for each item of
@@ -206,7 +206,7 @@ pub enum Node {
         var_name: VarName,
         array_expr: Expr,
         range: DocumentRange,
-        children: Vec<Node>,
+        children: Vec<Node<T>>,
     },
 
     /// A Doctype node represents a doctype, e.g. a <!DOCTYPE html>
@@ -218,9 +218,9 @@ pub enum Node {
     Html {
         tag_name: DocumentRange,
         closing_tag_name: Option<DocumentRange>,
-        attributes: BTreeMap<StringSpan, Attribute>,
+        attributes: BTreeMap<StringSpan, Attribute<T>>,
         range: DocumentRange,
-        children: Vec<Node>,
+        children: Vec<Node<T>>,
     },
 
     /// A Placeholder node represents a node that could not be constructed (because
@@ -230,13 +230,13 @@ pub enum Node {
     /// constructed. This is useful for e.g. go-to-definition in the language server.
     Placeholder {
         range: DocumentRange,
-        children: Vec<Node>,
+        children: Vec<Node<T>>,
     },
 }
 
-impl Node {
+impl<T> Node<T> {
     /// Get the direct children of a node.
-    pub fn children(&self) -> &[Node] {
+    pub fn children(&self) -> &[Node<T>] {
         match self {
             Node::ComponentReference { children, .. } => children,
             Node::If { children, .. } => children,
@@ -250,11 +250,11 @@ impl Node {
         }
     }
 
-    pub fn iter_depth_first(&self) -> DepthFirstIterator {
+    pub fn iter_depth_first(&self) -> DepthFirstIterator<T> {
         DepthFirstIterator::new(self)
     }
 
-    pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&Node> {
+    pub fn find_node_at_position(&self, position: DocumentPosition) -> Option<&Node<T>> {
         if !self.range().contains_position(position) {
             return None;
         }
@@ -306,7 +306,7 @@ impl Node {
     }
 }
 
-impl Ranged for Node {
+impl<T> Ranged for Node<T> {
     fn range(&self) -> &DocumentRange {
         match self {
             Node::Text { range, .. }
@@ -322,18 +322,18 @@ impl Ranged for Node {
     }
 }
 
-pub struct DepthFirstIterator<'a> {
-    stack: Vec<&'a Node>,
+pub struct DepthFirstIterator<'a, T> {
+    stack: Vec<&'a Node<T>>,
 }
 
-impl<'a> DepthFirstIterator<'a> {
-    fn new(root: &'a Node) -> Self {
+impl<'a, T> DepthFirstIterator<'a, T> {
+    fn new(root: &'a Node<T>) -> Self {
         Self { stack: vec![root] }
     }
 }
 
-impl<'a> Iterator for DepthFirstIterator<'a> {
-    type Item = &'a Node;
+impl<'a, T> Iterator for DepthFirstIterator<'a, T> {
+    type Item = &'a Node<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let current = self.stack.pop()?;
