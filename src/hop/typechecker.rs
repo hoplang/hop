@@ -486,15 +486,25 @@ fn typecheck_node(
                         range: range.clone(),
                     });
                 }
+                Some(Node::TextExpression {
+                    expression: typed_expr,
+                    range: range.clone(),
+                })
+            } else {
+                None
             }
-            None
         }
 
-        Node::Placeholder { children, .. } => {
-            for child in children {
-                typecheck_node(child, state, env, annotations, errors);
-            }
-            None
+        Node::Placeholder { children, range } => {
+            let typed_children = children
+                .iter()
+                .filter_map(|child| typecheck_node(child, state, env, annotations, errors))
+                .collect();
+
+            Some(Node::Placeholder {
+                range: range.clone(),
+                children: typed_children,
+            })
         }
 
         Node::SlotDefinition { .. } | Node::Text { .. } | Node::Doctype { .. } => {

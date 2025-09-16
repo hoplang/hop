@@ -164,7 +164,7 @@ pub enum Node<T = ()> {
     /// E.g. <div>hello {world}</div>
     ///                 ^^^^^^^
     TextExpression {
-        expression: Expr,
+        expression: Expr<T>,
         range: DocumentRange,
     },
 
