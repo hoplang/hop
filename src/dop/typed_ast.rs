@@ -96,9 +96,7 @@ impl Pretty for TypedExpr {
         match self {
             TypedExpr::Variable { value, .. } => RcDoc::text(value.to_string()),
             TypedExpr::PropertyAccess {
-                object,
-                property,
-                ..
+                object, property, ..
             } => object
                 .to_doc()
                 .append(RcDoc::text("."))

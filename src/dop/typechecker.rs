@@ -1,9 +1,9 @@
 use super::Type;
 use super::ast::{BinaryOp, Expr, UnaryOp};
+use super::type_error::TypeError;
 use super::typed_ast::TypedExpr;
 use crate::document::document_cursor::Ranged as _;
 use crate::hop::environment::Environment;
-use crate::hop::type_error::TypeError;
 use crate::hop::typechecker::TypeAnnotation;
 use std::collections::BTreeMap;
 

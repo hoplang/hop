@@ -270,7 +270,7 @@ fn typecheck_node(
                     }
                 }
                 Err(err) => {
-                    errors.push(err);
+                    errors.push(err.into());
                 }
             }
         }
@@ -284,7 +284,7 @@ fn typecheck_node(
             let typed_array = match dop::typecheck_expr(array_expr, env, annotations) {
                 Ok(t) => t,
                 Err(err) => {
-                    errors.push(err);
+                    errors.push(err.into());
                     return;
                 }
             };
@@ -413,7 +413,7 @@ fn typecheck_node(
                         let typed_arg = match dop::typecheck_expr(&arg.var_expr, env, annotations) {
                             Ok(t) => t,
                             Err(err) => {
-                                errors.push(err);
+                                errors.push(err.into());
                                 continue;
                             }
                         };
@@ -449,7 +449,7 @@ fn typecheck_node(
                     let typed_expr = match dop::typecheck_expr(expr, env, annotations) {
                         Ok(t) => t,
                         Err(err) => {
-                            errors.push(err);
+                            errors.push(err.into());
                             continue; // Skip this attribute
                         }
                     };
@@ -482,7 +482,7 @@ fn typecheck_node(
                     }
                 }
                 Err(err) => {
-                    errors.push(err);
+                    errors.push(err.into());
                 }
             };
         }

@@ -1,5 +1,5 @@
 use crate::document::document_cursor::{DocumentRange, Ranged};
-use crate::dop::{Parameter, Type};
+use crate::dop::{self, Parameter, Type};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
@@ -76,36 +76,6 @@ pub enum TypeError {
     #[error("Expected string for text expression, got {found}")]
     ExpectedStringExpression { found: Type, range: DocumentRange },
 
-    #[error("Undefined variable: {name}")]
-    UndefinedVariable { name: String, range: DocumentRange },
-
-    #[error("Property {property} not found in object {dop_type}")]
-    PropertyNotFoundInObject {
-        property: String,
-        dop_type: Type,
-        range: DocumentRange,
-    },
-
-    #[error("{typ} can not be used as an object")]
-    CannotUseAsObject { typ: String, range: DocumentRange },
-
-    #[error("Can not compare {left} to {right}")]
-    CannotCompareTypes {
-        left: String,
-        right: String,
-        range: DocumentRange,
-    },
-
-    #[error("Negation operator can only be applied to boolean values")]
-    NegationRequiresBoolean { range: DocumentRange },
-
-    #[error("Array elements must all have the same type, found {expected} and {found}")]
-    ArrayTypeMismatch {
-        expected: String,
-        found: String,
-        range: DocumentRange,
-    },
-
     #[error(
         "Duplicate entrypoint: component '{component}' in module '{module}' is already defined as an entrypoint in module '{previous_module}'"
     )]
@@ -115,6 +85,15 @@ pub enum TypeError {
         previous_module: String,
         range: DocumentRange,
     },
+
+    #[error("{err}")]
+    DopError { err: dop::type_error::TypeError },
+}
+
+impl From<dop::type_error::TypeError> for TypeError {
+    fn from(err: dop::type_error::TypeError) -> Self {
+        Self::DopError { err }
+    }
 }
 
 impl TypeError {
@@ -173,13 +152,8 @@ impl Ranged for TypeError {
             | TypeError::CannotIterateEmptyArray { range, .. }
             | TypeError::CannotIterateOver { range, .. }
             | TypeError::ExpectedStringExpression { range, .. }
-            | TypeError::UndefinedVariable { range, .. }
-            | TypeError::PropertyNotFoundInObject { range, .. }
-            | TypeError::CannotUseAsObject { range, .. }
-            | TypeError::CannotCompareTypes { range, .. }
-            | TypeError::NegationRequiresBoolean { range, .. }
-            | TypeError::ArrayTypeMismatch { range, .. }
             | TypeError::DuplicateEntrypoint { range, .. } => range,
+            TypeError::DopError { err } => err.range(),
         }
     }
 }
