@@ -572,8 +572,7 @@ impl Compiler<'_> {
                         .map(|a| self.rename_expr(&a.var_expr))
                         .unwrap_or_else(|| {
                             panic!(
-                                "Missing required parameter '{}' for component '{}' in module '{}'. \
-                                This should have been caught by the typechecker.",
+                                "Missing required parameter '{}' for component '{}' in module '{}'.",
                                 param_name,
                                 tag_name,
                                 module.as_str()
@@ -581,9 +580,7 @@ impl Compiler<'_> {
                         })
                 } else {
                     panic!(
-                        "No arguments provided for component '{}' in module '{}', \
-                        but it requires parameter '{}'. \
-                        This should have been caught by the typechecker.",
+                        "No arguments provided for component '{}' in module '{}', but it requires parameter '{}'.",
                         tag_name,
                         module.as_str(),
                         param_name
