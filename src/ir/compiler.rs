@@ -322,15 +322,15 @@ impl Compiler<'_> {
                 );
             }
 
-            Node::Doctype { .. } => {
+            Node::Doctype { range } => {
                 output.push(IrStatement::Write {
                     id: self.next_node_id(),
-                    content: "<!DOCTYPE html>".to_string(),
+                    content: range.to_string(),
                 });
             }
 
             Node::Placeholder { .. } => {
-                // Skip placeholders - they represent errors
+                panic!("Found placeholder node in IR compiler")
             }
         }
     }
@@ -1071,7 +1071,7 @@ mod tests {
         check_ir(
             &[
                 "<main-comp entrypoint>",
-                "<!doctype html>",
+                "<!DOCTYPE html>",
                 "<html>Content</html>",
                 "</main-comp>",
             ]
