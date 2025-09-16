@@ -27,7 +27,6 @@ impl JsTranspiler {
         }
     }
 
-
     pub fn transpile_module(&mut self, ir_module: &IrModule, needs_escape_html: bool) -> String {
         if needs_escape_html {
             // Add the escape HTML helper function

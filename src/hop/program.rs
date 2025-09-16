@@ -407,7 +407,8 @@ impl Program {
         hop_mode: &str,
     ) -> Result<String> {
         // Compile to IR - use Production mode for evaluation
-        let ir_module = ir::Compiler::compile(self.get_typed_modules(), ir::CompilationMode::Production);
+        let ir_module =
+            ir::Compiler::compile(self.get_typed_modules(), ir::CompilationMode::Production);
 
         // Get the entrypoint
         let entrypoint = ir_module

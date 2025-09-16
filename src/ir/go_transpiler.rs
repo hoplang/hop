@@ -20,7 +20,6 @@ impl GoTranspiler {
         }
     }
 
-
     pub fn transpile_module(&mut self, ir_module: &IrModule) -> String {
         // Reset state
         self.imports.clear();
@@ -68,7 +67,10 @@ impl GoTranspiler {
         // Generate parameter structs for entrypoints that have parameters
         for (name, entrypoint) in &ir_module.entry_points {
             if !entrypoint.parameters.is_empty() {
-                let struct_name = format!("{}Params", CasedString::from_kebab_case(name).to_pascal_case());
+                let struct_name = format!(
+                    "{}Params",
+                    CasedString::from_kebab_case(name).to_pascal_case()
+                );
                 self.write_line(&format!("type {} struct {{", struct_name));
                 self.indent();
                 for (param_name, param_type) in &entrypoint.parameters {
@@ -201,7 +203,6 @@ impl GoTranspiler {
         self.dedent();
         self.write_line("}");
     }
-
 
     fn type_to_go(ty: &Type) -> String {
         match ty {
@@ -375,7 +376,8 @@ impl GoTranspiler {
                         Type::Object(fields) => {
                             let mut def = "struct{".to_string();
                             for (field_name, field_type) in fields {
-                                let go_field = CasedString::from_snake_case(field_name).to_pascal_case();
+                                let go_field =
+                                    CasedString::from_snake_case(field_name).to_pascal_case();
                                 let go_type = Self::type_to_go(field_type);
                                 def.push_str(&format!(
                                     "{} {} `json:\"{}\"`; ",

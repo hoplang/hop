@@ -135,7 +135,8 @@ impl TypeChecker {
             type_errors.clear();
             type_annotations.clear();
 
-            let typed_ast = typecheck_module(module, &mut self.state, type_errors, type_annotations);
+            let typed_ast =
+                typecheck_module(module, &mut self.state, type_errors, type_annotations);
             self.typed_asts.insert(module.name.clone(), typed_ast);
 
             if modules.len() > 1 {
@@ -470,7 +471,8 @@ fn typecheck_node(
                             Some(param) => param,
                         };
 
-                        let typed_expr = match dop::typecheck_expr(&arg.var_expr, env, annotations) {
+                        let typed_expr = match dop::typecheck_expr(&arg.var_expr, env, annotations)
+                        {
                             Ok(t) => t,
                             Err(err) => {
                                 errors.push(err.into());
@@ -632,9 +634,9 @@ fn typecheck_attributes(
 mod tests {
     use super::*;
     use crate::document::DocumentAnnotator;
+    use crate::hop::module_name::ModuleName;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
-    use crate::hop::module_name::ModuleName;
     use expect_test::{Expect, expect};
     use indoc::indoc;
     use simple_txtar::Archive;
