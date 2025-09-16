@@ -234,4 +234,14 @@ impl IrTestBuilder {
             body,
         }
     }
+
+    pub fn json_encode(&self, value: IrExpr) -> IrExpr {
+        IrExpr {
+            id: self.next_expr_id(),
+            value: IrExprValue::JsonEncode {
+                value: Box::new(value),
+            },
+            typ: Type::String,
+        }
+    }
 }

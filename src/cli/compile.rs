@@ -2,7 +2,7 @@ use crate::CompileLanguage;
 use crate::document::DocumentAnnotator;
 use crate::filesystem::files::ProjectRoot;
 use crate::hop::program::Program;
-use crate::ir::{CompilationMode, Compiler, JsTranspiler, LanguageMode, optimizer::Optimizer};
+use crate::ir::{CompilationMode, Compiler, GoTranspiler, JsTranspiler, LanguageMode, optimizer::Optimizer};
 use crate::tui::timing;
 use anyhow::{Context, Result};
 use std::fs;
@@ -107,6 +107,11 @@ pub fn execute(
             let mut transpiler = JsTranspiler::new(LanguageMode::TypeScript);
             // In development mode, we don't need escapeHtml since we're just outputting bootstrap HTML
             transpiler.transpile_module(&ir_module, compilation_mode == CompilationMode::Production)
+        }
+        CompileLanguage::Go => {
+            timer.start_phase("transpiling to go");
+            let mut transpiler = GoTranspiler::new();
+            transpiler.transpile_module(&ir_module)
         }
     };
 

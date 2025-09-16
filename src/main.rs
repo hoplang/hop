@@ -18,6 +18,8 @@ enum CompileLanguage {
     Js,
     /// TypeScript
     Ts,
+    /// Go
+    Go,
 }
 
 #[derive(Parser)]
@@ -106,6 +108,7 @@ async fn main() -> anyhow::Result<()> {
             let output_path = output.as_deref().unwrap_or(match language {
                 CompileLanguage::Js => "output.js",
                 CompileLanguage::Ts => "output.ts",
+                CompileLanguage::Go => "output.go",
             });
 
             let result = cli::compile::execute(projectdir.as_deref(), output_path, language, *development)?;
