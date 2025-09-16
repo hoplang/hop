@@ -1,3 +1,4 @@
+mod alpha_renaming;
 mod ast;
 mod compiler;
 pub mod evaluator;

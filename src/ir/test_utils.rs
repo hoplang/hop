@@ -3,26 +3,22 @@ use super::ast::{BinaryOp, ExprId, IrExpr, IrExprValue, IrStatement, StatementId
 use crate::dop::Type;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::collections::HashMap;
 
 pub struct IrTestBuilder {
     next_expr_id: RefCell<ExprId>,
     next_node_id: RefCell<StatementId>,
-    var_types: RefCell<HashMap<String, Type>>,
+    var_stack: RefCell<Vec<(String, Type)>>,
     params: Vec<(String, Type)>,
 }
 
 impl IrTestBuilder {
     pub fn new(params: Vec<(String, Type)>) -> Self {
-        let mut var_types = HashMap::new();
-        for (name, typ) in &params {
-            var_types.insert(name.clone(), typ.clone());
-        }
+        let initial_vars = params.clone();
 
         Self {
             next_expr_id: RefCell::new(1),
             next_node_id: RefCell::new(1),
-            var_types: RefCell::new(var_types),
+            var_stack: RefCell::new(initial_vars),
             params,
         }
     }
@@ -72,12 +68,25 @@ impl IrTestBuilder {
     }
 
     pub fn var(&self, name: &str) -> IrExpr {
+        // Look up variable in the stack (search from end to beginning for most recent binding)
         let typ = self
-            .var_types
+            .var_stack
             .borrow()
-            .get(name)
-            .cloned()
-            .unwrap_or_else(|| panic!("Variable '{}' not found in type environment", name));
+            .iter()
+            .rev()
+            .find(|(var_name, _)| var_name == name)
+            .map(|(_, typ)| typ.clone())
+            .unwrap_or_else(|| {
+                panic!(
+                    "Variable '{}' not found in scope. Available variables: {:?}",
+                    name,
+                    self.var_stack
+                        .borrow()
+                        .iter()
+                        .map(|(n, _)| n.as_str())
+                        .collect::<Vec<_>>()
+                )
+            });
 
         IrExpr {
             id: self.next_expr_id(),
@@ -192,16 +201,16 @@ impl IrTestBuilder {
             _ => panic!("Cannot iterate over non-array type"),
         };
 
-        // Register the loop variable with its type
-        self.var_types
+        // Push the loop variable onto the stack
+        self.var_stack
             .borrow_mut()
-            .insert(var.to_string(), element_type);
+            .push((var.to_string(), element_type));
 
-        // Evaluate the body with the variable registered
+        // Evaluate the body with the variable in scope
         let body = body_fn(self);
 
-        // Clean up the loop variable from scope
-        self.var_types.borrow_mut().remove(var);
+        // Pop the loop variable from the stack
+        self.var_stack.borrow_mut().pop();
 
         IrStatement::For {
             id: self.next_node_id(),
@@ -215,17 +224,19 @@ impl IrTestBuilder {
     where
         F: FnOnce(&Self) -> Vec<IrStatement>,
     {
-        // Register the variable with its type from the value expression
+        // Get the type from the value expression
         let value_type = value.typ.clone();
-        self.var_types
-            .borrow_mut()
-            .insert(var.to_string(), value_type);
 
-        // Evaluate the body with the variable registered
+        // Push the variable onto the stack
+        self.var_stack
+            .borrow_mut()
+            .push((var.to_string(), value_type));
+
+        // Evaluate the body with the variable in scope
         let body = body_fn(self);
 
-        // Clean up the variable from scope
-        self.var_types.borrow_mut().remove(var);
+        // Pop the variable from the stack
+        self.var_stack.borrow_mut().pop();
 
         IrStatement::Let {
             id: self.next_node_id(),

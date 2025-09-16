@@ -4,7 +4,7 @@ use crate::dop::Type;
 use crate::dop::{self, Argument, Expr};
 use crate::hop::ast::{Ast, Attribute, AttributeValue, ComponentDefinition, Node};
 use crate::hop::module_name::ModuleName;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 
 use super::ast::{
     BinaryOp, ExprId, IrEntrypoint, IrExpr, IrExprValue, IrModule, IrStatement, StatementId,
@@ -22,11 +22,6 @@ pub struct Compiler<'a> {
     ir_module: IrModule,
     compilation_mode: CompilationMode,
 
-    // Alpha-renaming state
-    var_counter: usize,
-    scope_stack: Vec<HashMap<String, String>>, // Stack of scopes (original → renamed)
-    all_used_names: HashSet<String>,           // Track all variable names ever used
-
     // Expression ID generation
     expr_id_counter: u32,
 
@@ -43,9 +38,6 @@ impl Compiler<'_> {
             asts,
             ir_module: IrModule::new(),
             compilation_mode,
-            var_counter: 0,
-            scope_stack: vec![],
-            all_used_names: HashSet::new(),
             expr_id_counter: 0,
             node_id_counter: 0,
         };
@@ -59,47 +51,38 @@ impl Compiler<'_> {
             }
         }
 
-        compiler.ir_module
+        // Apply alpha renaming as a separate pass
+        let renamer = super::alpha_renaming::AlphaRenamer::new();
+        renamer.rename_module(compiler.ir_module)
     }
 
     fn compile_entrypoint(&mut self, component: &ComponentDefinition<Type>) {
-        self.push_scope();
-
-        // Extract and rename parameters with types
+        // Extract parameter information
         let mut param_info = Vec::new();
         let mut param_names = Vec::new();
-        let mut renamed_params = Vec::new();
 
         if let Some((params, _)) = &component.params {
             for param in params {
-                let original = param.var_name.to_string();
-                let renamed = self.bind_var(&original);
-                param_info.push((original.clone(), param.var_type.clone()));
-                param_names.push(original);
-                renamed_params.push(renamed);
+                let name = param.var_name.to_string();
+                param_info.push((name.clone(), param.var_type.clone()));
+                param_names.push(name);
             }
         }
 
         let body = match self.compilation_mode {
             CompilationMode::Production => {
                 // Compile component body normally for production
-                let body = self.compile_nodes(&component.children, None);
-                // Wrap body with parameter bindings
-                self.create_param_bindings(&param_names, &renamed_params, body)
+                self.compile_nodes(&component.children, None)
             }
             CompilationMode::Development => {
                 // Generate development mode bootstrap HTML
                 let component_name = component.tag_name.as_str();
-                let body = self.generate_development_body(component_name, &param_names);
-                // Wrap body with parameter bindings
-                self.create_param_bindings(&param_names, &renamed_params, body)
+                self.generate_development_body(component_name, &param_names)
             }
         };
 
-        self.pop_scope();
-
         let entrypoint = IrEntrypoint {
-            parameters: param_info, // Original names with types for function signature
+            parameters: param_info,
             body,
         };
 
@@ -188,33 +171,6 @@ impl Compiler<'_> {
         body
     }
 
-    fn create_param_bindings(
-        &mut self,
-        original_params: &[String],
-        renamed_params: &[String],
-        body: Vec<IrStatement>,
-    ) -> Vec<IrStatement> {
-        // For entrypoints, we need to bind renamed params to original param names
-        // that will be passed in from outside
-        let mut result = body;
-        for (original, renamed) in original_params.iter().zip(renamed_params.iter()).rev() {
-            // Only create a Let binding if the name was actually renamed
-            if original != renamed {
-                result = vec![IrStatement::Let {
-                    id: self.next_node_id(),
-                    var: renamed.clone(),
-                    value: IrExpr {
-                        id: self.next_expr_id(),
-                        value: IrExprValue::Var(original.clone()),
-                        // TODO: We need to construct the correct type here
-                        typ: Type::String,
-                    },
-                    body: result,
-                }];
-            }
-        }
-        result
-    }
 
     fn compile_nodes(
         &mut self,
@@ -245,7 +201,7 @@ impl Compiler<'_> {
             Node::TextExpression { expression, .. } => {
                 output.push(IrStatement::WriteExpr {
                     id: self.next_node_id(),
-                    expr: self.rename_expr(expression),
+                    expr: self.compile_expr(expression),
                     escape: true,
                 });
             }
@@ -264,14 +220,10 @@ impl Compiler<'_> {
                 children,
                 ..
             } => {
-                self.push_scope();
                 let body = self.compile_nodes(children, slot_content.cloned());
-                let renamed_condition = self.rename_expr(condition);
-                self.pop_scope();
-
                 output.push(IrStatement::If {
                     id: self.next_node_id(),
-                    condition: renamed_condition,
+                    condition: self.compile_expr(condition),
                     body,
                 });
             }
@@ -282,16 +234,11 @@ impl Compiler<'_> {
                 children,
                 ..
             } => {
-                self.push_scope();
-                let renamed_var = self.bind_var(var_name.as_str());
                 let body = self.compile_nodes(children, slot_content.cloned());
-                let renamed_array = self.rename_expr(array_expr);
-                self.pop_scope();
-
                 output.push(IrStatement::For {
                     id: self.next_node_id(),
-                    var: renamed_var,
-                    array: renamed_array,
+                    var: var_name.as_str().to_string(),
+                    array: self.compile_expr(array_expr),
                     body,
                 });
             }
@@ -374,7 +321,7 @@ impl Compiler<'_> {
                         });
                         output.push(IrStatement::WriteExpr {
                             id: self.next_node_id(),
-                            expr: self.rename_expr(expr),
+                            expr: self.compile_expr(expr),
                             escape: true,
                         });
                         output.push(IrStatement::Write {
@@ -474,7 +421,7 @@ impl Compiler<'_> {
                                 // Dynamic class from definition
                                 output.push(IrStatement::WriteExpr {
                                     id: self.next_node_id(),
-                                    expr: self.rename_expr(expr),
+                                    expr: self.compile_expr(expr),
                                     escape: true,
                                 });
                             }
@@ -500,7 +447,7 @@ impl Compiler<'_> {
                                 // Dynamic class from reference
                                 output.push(IrStatement::WriteExpr {
                                     id: self.next_node_id(),
-                                    expr: self.rename_expr(expr),
+                                    expr: self.compile_expr(expr),
                                     escape: true,
                                 });
                             }
@@ -530,7 +477,7 @@ impl Compiler<'_> {
                                 });
                                 output.push(IrStatement::WriteExpr {
                                     id: self.next_node_id(),
-                                    expr: self.rename_expr(expr),
+                                    expr: self.compile_expr(expr),
                                     escape: true,
                                 });
                                 output.push(IrStatement::Write {
@@ -555,21 +502,18 @@ impl Compiler<'_> {
             content: ">".to_string(),
         });
 
-        // Build bindings for component parameters.
-        //
-        // We need to evaluate argument expressions in the current scope,
-        // before pushing a new scope for the component body.
+        // Build bindings for component parameters
         let mut param_bindings = Vec::new();
 
         if let Some((params, _)) = &component.params {
             for param in params {
                 let param_name = param.var_name.to_string();
 
-                // Find corresponding argument value and evaluate it in current scope
+                // Find corresponding argument value
                 let value = if let Some((args, _)) = args {
                     args.iter()
                         .find(|a| a.var_name.as_str() == param_name)
-                        .map(|a| self.rename_expr(&a.var_expr))
+                        .map(|a| self.compile_expr(&a.var_expr))
                         .unwrap_or_else(|| {
                             panic!(
                                 "Missing required parameter '{}' for component '{}' in module '{}'.",
@@ -591,16 +535,6 @@ impl Compiler<'_> {
             }
         }
 
-        // Now push new scope for component parameters
-        self.push_scope();
-
-        // Bind parameters in the new scope
-        let mut renamed_params = Vec::new();
-        for (param_name, _) in &param_bindings {
-            let renamed = self.bind_var(param_name);
-            renamed_params.push(renamed);
-        }
-
         // Compile slot content if needed
         let slot_content = if component.has_slot && !children.is_empty() {
             Some(self.compile_nodes(children, None))
@@ -608,16 +542,14 @@ impl Compiler<'_> {
             None
         };
 
-        // Compile component body with parameters in scope
+        // Compile component body
         let mut component_body = self.compile_nodes(&component.children, slot_content);
 
-        self.pop_scope();
-
         // Wrap body with Let bindings (in reverse order for nesting)
-        for (renamed_var, (_, value)) in renamed_params.into_iter().zip(param_bindings).rev() {
+        for (param_name, value) in param_bindings.into_iter().rev() {
             component_body = vec![IrStatement::Let {
                 id: self.next_node_id(),
-                var: renamed_var,
+                var: param_name,
                 value,
                 body: component_body,
             }];
@@ -630,58 +562,6 @@ impl Compiler<'_> {
         });
     }
 
-    // Alpha-renaming helpers
-    fn push_scope(&mut self) {
-        self.scope_stack.push(HashMap::new());
-    }
-
-    fn pop_scope(&mut self) {
-        self.scope_stack.pop();
-    }
-
-    fn fresh_var(&mut self, name: &str) -> String {
-        self.var_counter += 1;
-        format!("{}_{}", name, self.var_counter)
-    }
-
-    fn bind_var(&mut self, name: &str) -> String {
-        // Check if this name would shadow an existing binding OR has been used before
-        let needs_renaming = self.is_name_in_scope(name) || self.all_used_names.contains(name);
-
-        let renamed = if needs_renaming {
-            self.fresh_var(name)
-        } else {
-            name.to_string()
-        };
-
-        // Track this name as used
-        self.all_used_names.insert(renamed.clone());
-
-        self.scope_stack
-            .last_mut()
-            .expect("Scope stack should not be empty")
-            .insert(name.to_string(), renamed.clone());
-        renamed
-    }
-
-    fn is_name_in_scope(&self, name: &str) -> bool {
-        // Check if name exists in any parent scope (not the current one)
-        for scope in self.scope_stack.iter().rev().skip(1) {
-            if scope.contains_key(name) {
-                return true;
-            }
-        }
-        false
-    }
-
-    fn lookup_var(&self, name: &str) -> String {
-        for scope in self.scope_stack.iter().rev() {
-            if let Some(renamed) = scope.get(name) {
-                return renamed.clone();
-            }
-        }
-        name.to_string() // Global or undefined
-    }
 
     fn next_expr_id(&mut self) -> ExprId {
         let id = self.expr_id_counter;
@@ -695,16 +575,15 @@ impl Compiler<'_> {
         id
     }
 
-    fn rename_expr(&mut self, expr: &Expr<Type>) -> IrExpr {
+    fn compile_expr(&mut self, expr: &Expr<Type>) -> IrExpr {
         let value = match expr {
             Expr::Variable { value, .. } => {
-                let renamed = self.lookup_var(value.as_str());
-                IrExprValue::Var(renamed)
+                IrExprValue::Var(value.as_str().to_string())
             }
             Expr::PropertyAccess {
                 object, property, ..
             } => IrExprValue::PropertyAccess {
-                object: Box::new(self.rename_expr(object)),
+                object: Box::new(self.compile_expr(object)),
                 property: property.as_str().to_string(),
             },
             Expr::BinaryOp {
@@ -717,9 +596,9 @@ impl Compiler<'_> {
                     dop::ast::BinaryOp::Equal => BinaryOp::Eq,
                 };
                 IrExprValue::BinaryOp {
-                    left: Box::new(self.rename_expr(left)),
+                    left: Box::new(self.compile_expr(left)),
                     op: ir_op,
-                    right: Box::new(self.rename_expr(right)),
+                    right: Box::new(self.compile_expr(right)),
                 }
             }
             Expr::UnaryOp {
@@ -730,16 +609,16 @@ impl Compiler<'_> {
                 };
                 IrExprValue::UnaryOp {
                     op: ir_op,
-                    operand: Box::new(self.rename_expr(operand)),
+                    operand: Box::new(self.compile_expr(operand)),
                 }
             }
             Expr::ArrayLiteral { elements, .. } => {
-                IrExprValue::ArrayLiteral(elements.iter().map(|e| self.rename_expr(e)).collect())
+                IrExprValue::ArrayLiteral(elements.iter().map(|e| self.compile_expr(e)).collect())
             }
             Expr::ObjectLiteral { properties, .. } => IrExprValue::ObjectLiteral(
                 properties
                     .iter()
-                    .map(|(k, v)| (k.as_str().to_string(), self.rename_expr(v)))
+                    .map(|(k, v)| (k.as_str().to_string(), self.compile_expr(v)))
                     .collect(),
             ),
             Expr::StringLiteral { value, .. } => IrExprValue::StringLiteral(value.to_string()),
