@@ -260,18 +260,15 @@ fn typecheck_node(
             for child in children {
                 typecheck_node(child, state, env, annotations, errors);
             }
-            match dop::typecheck_expr(condition, env, annotations) {
-                Ok(typed_condition) => {
-                    let condition_type = typed_condition.get_type();
-                    if !condition_type.is_subtype(&Type::Bool) {
-                        errors.push(TypeError::ExpectedBooleanCondition {
-                            found: condition_type.to_string(),
-                            range: condition.range().clone(),
-                        })
-                    }
-                }
-                Err(err) => {
-                    errors.push(err.into());
+            if let Some(typed_condition) = errors.ok_or_add(
+                dop::typecheck_expr(condition, env, annotations).map_err(Into::into)
+            ) {
+                let condition_type = typed_condition.get_type();
+                if !condition_type.is_subtype(&Type::Bool) {
+                    errors.push(TypeError::ExpectedBooleanCondition {
+                        found: condition_type.to_string(),
+                        range: condition.range().clone(),
+                    })
                 }
             }
         }
@@ -282,12 +279,10 @@ fn typecheck_node(
             children,
             ..
         } => {
-            let typed_array = match dop::typecheck_expr(array_expr, env, annotations) {
-                Ok(t) => t,
-                Err(err) => {
-                    errors.push(err.into());
-                    return;
-                }
+            let Some(typed_array) = errors.ok_or_add(
+                dop::typecheck_expr(array_expr, env, annotations).map_err(Into::into)
+            ) else {
+                return;
             };
             let array_type = typed_array.get_type();
             let element_type = match &array_type {
@@ -453,20 +448,17 @@ fn typecheck_node(
         }
 
         Node::TextExpression { expression, range } => {
-            match dop::typecheck_expr(expression, env, annotations) {
-                Ok(typed_expr) => {
-                    let expr_type = typed_expr.get_type();
-                    if !expr_type.is_subtype(&Type::String) {
-                        errors.push(TypeError::ExpectedStringExpression {
-                            found: expr_type,
-                            range: range.clone(),
-                        });
-                    }
+            if let Some(typed_expr) = errors.ok_or_add(
+                dop::typecheck_expr(expression, env, annotations).map_err(Into::into)
+            ) {
+                let expr_type = typed_expr.get_type();
+                if !expr_type.is_subtype(&Type::String) {
+                    errors.push(TypeError::ExpectedStringExpression {
+                        found: expr_type,
+                        range: range.clone(),
+                    });
                 }
-                Err(err) => {
-                    errors.push(err.into());
-                }
-            };
+            }
         }
 
         Node::Placeholder { children, .. } => {
@@ -492,23 +484,19 @@ fn typecheck_attributes(
     for (key, attr) in attributes {
         let typed_value = match &attr.value {
             Some(AttributeValue::Expression(expr)) => {
-                match dop::typecheck_expr(expr, env, annotations) {
-                    Ok(typed_expr) => {
-                        // Check that HTML attributes are strings
-                        let expr_type = typed_expr.get_type();
-                        if !expr_type.is_subtype(&Type::String) {
-                            errors.push(TypeError::ExpectedStringAttribute {
-                                found: expr_type.to_string(),
-                                range: typed_expr.range().clone(),
-                            });
-                        }
-                        Some(AttributeValue::Expression(typed_expr))
+                errors.ok_or_add(
+                    dop::typecheck_expr(expr, env, annotations).map_err(Into::into)
+                ).map(|typed_expr| {
+                    // Check that HTML attributes are strings
+                    let expr_type = typed_expr.get_type();
+                    if !expr_type.is_subtype(&Type::String) {
+                        errors.push(TypeError::ExpectedStringAttribute {
+                            found: expr_type.to_string(),
+                            range: typed_expr.range().clone(),
+                        });
                     }
-                    Err(err) => {
-                        errors.push(err.into());
-                        None
-                    }
-                }
+                    AttributeValue::Expression(typed_expr)
+                })
             }
             Some(AttributeValue::String(s)) => Some(AttributeValue::String(s.clone())),
             None => None,
