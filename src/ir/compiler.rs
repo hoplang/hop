@@ -454,140 +454,68 @@ impl Compiler<'_> {
 
         for attr_pair in merged_attrs {
             match attr_pair {
-                EitherOrBoth::Both((name, ref_attr), (_, def_attr)) => {
-                    // Attribute exists in both reference and definition
-                    if name.as_str() == "class" {
-                        // Special handling for class attribute - concatenate values
-                        output.push(IrStatement::Write {
-                            id: self.next_node_id(),
-                            content: " class=\"".to_string(),
-                        });
+                EitherOrBoth::Both((name, ref_attr), (_, def_attr)) if name.as_str() == "class" => {
+                    // Special handling for class attribute - concatenate values
+                    output.push(IrStatement::Write {
+                        id: self.next_node_id(),
+                        content: " class=\"".to_string(),
+                    });
 
-                        // First add the definition's class (if any)
-                        let mut has_def_class = false;
-                        if let Some(def_val) = &def_attr.value {
-                            match def_val {
-                                AttributeValue::String(s) => {
-                                    output.push(IrStatement::Write {
-                                        id: self.next_node_id(),
-                                        content: s.as_str().to_string(),
-                                    });
-                                    has_def_class = true;
-                                }
-                                AttributeValue::Expression(expr) => {
-                                    // Dynamic class from definition
-                                    output.push(IrStatement::WriteExpr {
-                                        id: self.next_node_id(),
-                                        expr: self.rename_expr(expr),
-                                        escape: true,
-                                    });
-                                    has_def_class = true;
-                                }
-                            }
-                        }
-
-                        // Then add the reference's class (if any)
-                        if let Some(ref_val) = &ref_attr.value {
-                            if has_def_class {
-                                output.push(IrStatement::Write {
-                                    id: self.next_node_id(),
-                                    content: " ".to_string(),
-                                });
-                            }
-                            match ref_val {
-                                AttributeValue::String(s) => {
-                                    output.push(IrStatement::Write {
-                                        id: self.next_node_id(),
-                                        content: s.as_str().to_string(),
-                                    });
-                                }
-                                AttributeValue::Expression(expr) => {
-                                    // Dynamic class from reference
-                                    output.push(IrStatement::WriteExpr {
-                                        id: self.next_node_id(),
-                                        expr: self.rename_expr(expr),
-                                        escape: true,
-                                    });
-                                }
-                            }
-                        }
-
-                        output.push(IrStatement::Write {
-                            id: self.next_node_id(),
-                            content: "\"".to_string(),
-                        });
-                    } else {
-                        // For other attributes, reference overrides definition
-                        if let Some(ref_val) = &ref_attr.value {
-                            match ref_val {
-                                AttributeValue::String(s) => {
-                                    output.push(IrStatement::Write {
-                                        id: self.next_node_id(),
-                                        content: format!(" {}=\"{}\"", name.as_str(), s.as_str()),
-                                    });
-                                }
-                                AttributeValue::Expression(expr) => {
-                                    output.push(IrStatement::Write {
-                                        id: self.next_node_id(),
-                                        content: format!(" {}=\"", name.as_str()),
-                                    });
-                                    output.push(IrStatement::WriteExpr {
-                                        id: self.next_node_id(),
-                                        expr: self.rename_expr(expr),
-                                        escape: true,
-                                    });
-                                    output.push(IrStatement::Write {
-                                        id: self.next_node_id(),
-                                        content: "\"".to_string(),
-                                    });
-                                }
-                            }
-                        } else {
-                            // Boolean attribute
-                            output.push(IrStatement::Write {
-                                id: self.next_node_id(),
-                                content: format!(" {}", name.as_str()),
-                            });
-                        }
-                    }
-                }
-                EitherOrBoth::Left((name, ref_attr)) => {
-                    // Attribute only in reference
-                    if let Some(val) = &ref_attr.value {
-                        match val {
+                    // First add the definition's class (if any)
+                    if let Some(def_val) = &def_attr.value {
+                        match def_val {
                             AttributeValue::String(s) => {
                                 output.push(IrStatement::Write {
                                     id: self.next_node_id(),
-                                    content: format!(" {}=\"{}\"", name.as_str(), s.as_str()),
+                                    content: s.as_str().to_string(),
                                 });
                             }
                             AttributeValue::Expression(expr) => {
-                                output.push(IrStatement::Write {
-                                    id: self.next_node_id(),
-                                    content: format!(" {}=\"", name.as_str()),
-                                });
+                                // Dynamic class from definition
                                 output.push(IrStatement::WriteExpr {
                                     id: self.next_node_id(),
                                     expr: self.rename_expr(expr),
                                     escape: true,
                                 });
+                            }
+                        }
+                    }
+
+                    // Then add the reference's class (if any)
+                    if let Some(ref_val) = &ref_attr.value {
+                        if def_attr.value.is_some() {
+                            output.push(IrStatement::Write {
+                                id: self.next_node_id(),
+                                content: " ".to_string(),
+                            });
+                        }
+                        match ref_val {
+                            AttributeValue::String(s) => {
                                 output.push(IrStatement::Write {
                                     id: self.next_node_id(),
-                                    content: "\"".to_string(),
+                                    content: s.as_str().to_string(),
+                                });
+                            }
+                            AttributeValue::Expression(expr) => {
+                                // Dynamic class from reference
+                                output.push(IrStatement::WriteExpr {
+                                    id: self.next_node_id(),
+                                    expr: self.rename_expr(expr),
+                                    escape: true,
                                 });
                             }
                         }
-                    } else {
-                        // Boolean attribute
-                        output.push(IrStatement::Write {
-                            id: self.next_node_id(),
-                            content: format!(" {}", name.as_str()),
-                        });
                     }
+
+                    output.push(IrStatement::Write {
+                        id: self.next_node_id(),
+                        content: "\"".to_string(),
+                    });
                 }
-                EitherOrBoth::Right((name, def_attr)) => {
-                    // Attribute only in definition
-                    if let Some(val) = &def_attr.value {
+                EitherOrBoth::Both((name, attr), (_, _))
+                | EitherOrBoth::Left((name, attr))
+                | EitherOrBoth::Right((name, attr)) => {
+                    if let Some(val) = &attr.value {
                         match val {
                             AttributeValue::String(s) => {
                                 output.push(IrStatement::Write {
