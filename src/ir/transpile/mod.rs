@@ -305,6 +305,59 @@ pub trait ExpressionTranspiler {
     }
 }
 
+/// Trait for transpiling statements using pretty-printing
+pub trait PrettyStatementTranspiler: PrettyExpressionTranspiler {
+    /// Transpile a Write statement (literal string output)
+    fn transpile_write<'a>(&self, content: &'a str) -> BoxDoc<'a>;
+
+    /// Transpile a WriteExpr statement (expression output with optional escaping)
+    fn transpile_write_expr<'a>(&self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a>;
+
+    /// Transpile an If statement (conditional execution)
+    fn transpile_if<'a>(&self, condition: &'a IrExpr, body: &'a [IrStatement]) -> BoxDoc<'a>;
+
+    /// Transpile a For loop (iteration over array)
+    fn transpile_for<'a>(&self, var: &'a str, array: &'a IrExpr, body: &'a [IrStatement]) -> BoxDoc<'a>;
+
+    /// Transpile a Let statement (variable binding with scope)
+    fn transpile_let<'a>(&self, var: &'a str, value: &'a IrExpr, body: &'a [IrStatement]) -> BoxDoc<'a>;
+
+    /// Main dispatcher for transpiling statements
+    fn transpile_statement<'a>(&self, statement: &'a IrStatement) -> BoxDoc<'a> {
+        match statement {
+            IrStatement::Write { content, .. } => {
+                self.transpile_write(content)
+            }
+            IrStatement::WriteExpr { expr, escape, .. } => {
+                self.transpile_write_expr(expr, *escape)
+            }
+            IrStatement::If {
+                condition, body, ..
+            } => {
+                self.transpile_if(condition, body)
+            }
+            IrStatement::For {
+                var, array, body, ..
+            } => {
+                self.transpile_for(var.as_str(), array, body)
+            }
+            IrStatement::Let {
+                var, value, body, ..
+            } => {
+                self.transpile_let(var.as_str(), value, body)
+            }
+        }
+    }
+
+    /// Transpile multiple statements
+    fn transpile_statements<'a>(&self, statements: &'a [IrStatement]) -> BoxDoc<'a> {
+        BoxDoc::intersperse(
+            statements.iter().map(|stmt| self.transpile_statement(stmt)),
+            BoxDoc::hardline()
+        )
+    }
+}
+
 /// Trait for transpiling statements to language-specific representations
 pub trait StatementTranspiler: ExpressionTranspiler {
     /// Transpile a Write statement (literal string output)
@@ -355,6 +408,15 @@ pub trait StatementTranspiler: ExpressionTranspiler {
             self.transpile_statement(doc, statement);
         }
     }
+}
+
+/// Main pretty-printing transpiler trait for complete IR module transpilation
+pub trait PrettyTranspiler: PrettyStatementTranspiler {
+    /// Transpile an entrypoint to a function/method in the target language
+    fn transpile_entrypoint<'a>(&self, name: &'a str, entrypoint: &'a IrEntrypoint) -> BoxDoc<'a>;
+
+    /// Transpile a complete IR module to the target language
+    fn transpile_module(&self, ir_module: &IrModule) -> String;
 }
 
 /// Main transpiler trait for complete IR module transpilation

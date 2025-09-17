@@ -1,8 +1,11 @@
 use pretty::BoxDoc;
 
-use super::{Doc, PrettyExpressionTranspiler, PrettyTypeTranspiler};
+use super::{
+    PrettyExpressionTranspiler, PrettyStatementTranspiler, PrettyTranspiler, PrettyTypeTranspiler,
+};
+use crate::cased_string::CasedString;
 use crate::dop::r#type::Type;
-use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
+use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy)]
@@ -27,7 +30,6 @@ impl PrettyJsTranspiler {
     }
 
     fn scan_for_escape_html(&self, entrypoint: &IrEntrypoint) -> bool {
-        // Use visitor pattern to scan for HTML escaping
         let mut needs_escape = false;
         for stmt in &entrypoint.body {
             stmt.visit(&mut |s| {
@@ -40,32 +42,6 @@ impl PrettyJsTranspiler {
             }
         }
         needs_escape
-    }
-
-    fn emit_escape_html_helper(&mut self, doc: &mut Doc) {
-        // Add the escape HTML helper function
-        match self.mode {
-            LanguageMode::JavaScript => {
-                doc.write_line("function escapeHtml(str) {");
-                doc.indent();
-                doc.write_line("if (typeof str !== 'string') return str;");
-            }
-            LanguageMode::TypeScript => {
-                doc.write_line("function escapeHtml(str: string): string {");
-                doc.indent();
-            }
-        }
-        doc.write_line("return str");
-        doc.indent();
-        doc.write_line(".replace(/&/g, '&amp;')");
-        doc.write_line(".replace(/</g, '&lt;')");
-        doc.write_line(".replace(/>/g, '&gt;')");
-        doc.write_line(".replace(/\"/g, '&quot;')");
-        doc.write_line(".replace(/'/g, '&#39;');");
-        doc.dedent();
-        doc.dedent();
-        doc.write_line("}");
-        doc.write_line("");
     }
 
     // Helper method to escape strings for JavaScript literals
@@ -92,6 +68,140 @@ impl PrettyJsTranspiler {
         } else {
             format!("\"{}\"", self.escape_string(s))
         }
+    }
+}
+
+impl PrettyTranspiler for PrettyJsTranspiler {
+    fn transpile_module(&self, ir_module: &IrModule) -> String {
+        let mut needs_escape_html = false;
+        for entrypoint in ir_module.entry_points.values() {
+            if self.scan_for_escape_html(entrypoint) {
+                needs_escape_html = true;
+                break;
+            }
+        }
+
+        // Build the module content using BoxDoc
+        let mut result = BoxDoc::nil();
+
+        // Add escape HTML helper if needed
+        if needs_escape_html {
+            result = result
+                .append(match self.mode {
+                    LanguageMode::JavaScript => BoxDoc::text("function escapeHtml(str) {"),
+                    LanguageMode::TypeScript => {
+                        BoxDoc::text("function escapeHtml(str: string): string {")
+                    }
+                })
+                .append(
+                    BoxDoc::nil()
+                        .append(BoxDoc::line())
+                        .append(BoxDoc::text("return str"))
+                        .append(
+                            BoxDoc::nil()
+                                .append(BoxDoc::line())
+                                .append(BoxDoc::intersperse(
+                                    [
+                                        BoxDoc::text(".replace(/&/g, '&amp;')"),
+                                        BoxDoc::text(".replace(/</g, '&lt;')"),
+                                        BoxDoc::text(".replace(/>/g, '&gt;')"),
+                                        BoxDoc::text(".replace(/\"/g, '&quot;')"),
+                                        BoxDoc::text(".replace(/'/g, '&#39;');"),
+                                    ],
+                                    BoxDoc::line(),
+                                ))
+                                .append(BoxDoc::line())
+                                .nest(4),
+                        )
+                        .append(BoxDoc::line())
+                        .nest(4),
+                )
+                .append(BoxDoc::text("}"))
+                .append(BoxDoc::line())
+                .append(BoxDoc::line());
+        }
+
+        result = result
+            .append(BoxDoc::text("export default {"))
+            .append(
+                BoxDoc::nil()
+                    .append(BoxDoc::hardline())
+                    .append(BoxDoc::intersperse(
+                        ir_module
+                            .entry_points
+                            .iter()
+                            .map(|(name, entrypoint)| self.transpile_entrypoint(name, entrypoint)),
+                        BoxDoc::text(",").append(BoxDoc::hardline()),
+                    ))
+                    .append(BoxDoc::hardline())
+                    .nest(4),
+            )
+            .append(BoxDoc::text("}"))
+            .append(BoxDoc::line());
+
+        // Render to string
+        let mut buffer = Vec::new();
+        result.render(80, &mut buffer).unwrap();
+        String::from_utf8(buffer).unwrap()
+    }
+
+    fn transpile_entrypoint<'a>(&self, name: &'a str, entrypoint: &'a IrEntrypoint) -> BoxDoc<'a> {
+        let camel_case_name = CasedString::from_kebab_case(name).to_camel_case();
+
+        let mut result = BoxDoc::as_string(camel_case_name).append(BoxDoc::text(": ("));
+
+        if !entrypoint.parameters.is_empty() {
+            result = result
+                .append(BoxDoc::text("{ "))
+                .append(BoxDoc::intersperse(
+                    entrypoint
+                        .parameters
+                        .iter()
+                        .map(|(name, _)| BoxDoc::text(name.as_str())),
+                    BoxDoc::text(", "),
+                ))
+                .append(BoxDoc::text(" }"));
+
+            // Generate TypeScript interface for parameters
+            if matches!(self.mode, LanguageMode::TypeScript) {
+                result = result
+                    .append(BoxDoc::text(": { "))
+                    .append(BoxDoc::intersperse(
+                        entrypoint.parameters.iter().map(|(name, ty)| {
+                            BoxDoc::text(name.as_str())
+                                .append(BoxDoc::text(": "))
+                                .append(self.transpile_type(ty))
+                        }),
+                        BoxDoc::text(", "),
+                    ))
+                    .append(BoxDoc::text(" }"));
+            }
+        }
+
+        // Function body
+        result
+            .append(BoxDoc::text(")"))
+            .append(if matches!(self.mode, LanguageMode::TypeScript) {
+                BoxDoc::text(": string")
+            } else {
+                BoxDoc::nil()
+            })
+            .append(BoxDoc::text(" => {"))
+            .append(
+                BoxDoc::nil()
+                    .append(BoxDoc::line())
+                    .append(match self.mode {
+                        LanguageMode::JavaScript => BoxDoc::text("let output = \"\";"),
+                        LanguageMode::TypeScript => BoxDoc::text("let output: string = \"\";"),
+                    })
+                    .append(BoxDoc::line())
+                    .append(self.transpile_statements(&entrypoint.body))
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::text("return output;"))
+                    .append(BoxDoc::line())
+                    .nest(4),
+            )
+            .append(BoxDoc::text("}"))
     }
 }
 
@@ -223,5 +333,331 @@ impl PrettyTypeTranspiler for PrettyJsTranspiler {
                 BoxDoc::text(", "),
             ))
             .append(BoxDoc::text(" }"))
+    }
+}
+
+impl PrettyStatementTranspiler for PrettyJsTranspiler {
+    fn transpile_write<'a>(&self, content: &'a str) -> BoxDoc<'a> {
+        BoxDoc::nil()
+            .append(BoxDoc::text("output += "))
+            .append(BoxDoc::as_string(self.quote_string(content)))
+            .append(BoxDoc::text(";"))
+    }
+
+    fn transpile_write_expr<'a>(&self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a> {
+        if escape {
+            BoxDoc::nil()
+                .append(BoxDoc::text("output += escapeHtml("))
+                .append(self.transpile_expr(expr))
+                .append(BoxDoc::text(");"))
+        } else {
+            BoxDoc::nil()
+                .append(BoxDoc::text("output += "))
+                .append(self.transpile_expr(expr))
+                .append(BoxDoc::text(";"))
+        }
+    }
+
+    fn transpile_if<'a>(&self, condition: &'a IrExpr, body: &'a [IrStatement]) -> BoxDoc<'a> {
+        BoxDoc::nil()
+            .append(BoxDoc::text("if ("))
+            .append(self.transpile_expr(condition))
+            .append(BoxDoc::text(") {"))
+            .append(
+                BoxDoc::nil()
+                    .append(BoxDoc::hardline())
+                    .append(self.transpile_statements(body))
+                    .append(BoxDoc::hardline())
+                    .nest(4),
+            )
+            .append(BoxDoc::text("}"))
+    }
+
+    fn transpile_for<'a>(
+        &self,
+        var: &'a str,
+        array: &'a IrExpr,
+        body: &'a [IrStatement],
+    ) -> BoxDoc<'a> {
+        BoxDoc::nil()
+            .append(BoxDoc::text("for (const "))
+            .append(BoxDoc::text(var))
+            .append(BoxDoc::text(" of "))
+            .append(self.transpile_expr(array))
+            .append(BoxDoc::text(") {"))
+            .append(
+                BoxDoc::nil()
+                    .append(BoxDoc::hardline())
+                    .append(self.transpile_statements(body))
+                    .append(BoxDoc::hardline())
+                    .nest(4),
+            )
+            .append(BoxDoc::text("}"))
+    }
+
+    fn transpile_let<'a>(
+        &self,
+        var: &'a str,
+        value: &'a IrExpr,
+        body: &'a [IrStatement],
+    ) -> BoxDoc<'a> {
+        BoxDoc::text("const ")
+            .append(BoxDoc::text(var))
+            .append(BoxDoc::text(" = "))
+            .append(self.transpile_expr(value))
+            .append(BoxDoc::text(";"))
+            .append(BoxDoc::hardline())
+            .append(self.transpile_statements(body))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ir::test_utils::IrTestBuilder;
+    use expect_test::{Expect, expect};
+
+    fn transpile_with_pretty(ir_module: &IrModule, mode: LanguageMode) -> String {
+        let transpiler = PrettyJsTranspiler::new(mode);
+        transpiler.transpile_module(ir_module)
+    }
+
+    fn check_js(ir_module: &IrModule, expected: Expect) {
+        let js = transpile_with_pretty(ir_module, LanguageMode::JavaScript);
+        expected.assert_eq(&js);
+    }
+
+    fn check_ts(ir_module: &IrModule, expected: Expect) {
+        let ts = transpile_with_pretty(ir_module, LanguageMode::TypeScript);
+        expected.assert_eq(&ts);
+    }
+
+    #[test]
+    fn test_simple_component() {
+        let t = IrTestBuilder::new(vec![]);
+
+        let mut ir_module = IrModule::new();
+        ir_module.entry_points.insert(
+            "hello-world".to_string(),
+            t.build(vec![t.write("<h1>Hello, World!</h1>\n")]),
+        );
+
+        check_js(
+            &ir_module,
+            expect![[r#"
+                export default {
+                    helloWorld: () => {
+                        let output = "";
+                        output += "<h1>Hello, World!</h1>\n";
+                        return output;
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_component_with_params_and_escaping() {
+        let t = IrTestBuilder::new(vec![
+            ("name".to_string(), Type::String),
+            ("age".to_string(), Type::String),
+        ]);
+
+        let mut ir_module = IrModule::new();
+        ir_module.entry_points.insert(
+            "user-info".to_string(),
+            t.build(vec![
+                t.write("<div>\n"),
+                t.write("<h2>Name: "),
+                t.write_expr(t.var("name"), true),
+                t.write("</h2>\n"),
+                t.write("<p>Age: "),
+                t.write_expr(t.var("age"), false),
+                t.write("</p>\n"),
+                t.write("</div>\n"),
+            ]),
+        );
+
+        check_js(
+            &ir_module,
+            expect![[r#"
+                function escapeHtml(str) {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+    
+                }
+
+                export default {
+                    userInfo: ({ name, age }) => {
+                        let output = "";
+                        output += "<div>\n";
+                        output += "<h2>Name: ";
+                        output += escapeHtml(name);
+                        output += "</h2>\n";
+                        output += "<p>Age: ";
+                        output += age;
+                        output += "</p>\n";
+                        output += "</div>\n";
+                        return output;
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_typescript_with_types() {
+        let t = IrTestBuilder::new(vec![
+            ("title".to_string(), Type::String),
+            ("show".to_string(), Type::Bool),
+        ]);
+
+        let mut ir_module = IrModule::new();
+        ir_module.entry_points.insert(
+            "conditional-display".to_string(),
+            t.build(vec![t.if_stmt(
+                t.var("show"),
+                vec![
+                    t.write("<h1>"),
+                    t.write_expr(t.var("title"), true),
+                    t.write("</h1>\n"),
+                ],
+            )]),
+        );
+
+        check_ts(
+            &ir_module,
+            expect![[r#"
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+    
+                }
+
+                export default {
+                    conditionalDisplay: ({ title, show }: { title: string, show: boolean }): string => {
+                        let output: string = "";
+                        if (show) {
+                            output += "<h1>";
+                            output += escapeHtml(title);
+                            output += "</h1>\n";
+                        }
+                        return output;
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_for_loop_with_array() {
+        let t = IrTestBuilder::new(vec![(
+            "items".to_string(),
+            Type::Array(Some(Box::new(Type::String))),
+        )]);
+
+        let mut ir_module = IrModule::new();
+        ir_module.entry_points.insert(
+            "list-items".to_string(),
+            t.build(vec![
+                t.write("<ul>\n"),
+                t.for_loop("item", t.var("items"), |t| {
+                    vec![
+                        t.write("<li>"),
+                        t.write_expr(t.var("item"), true),
+                        t.write("</li>\n"),
+                    ]
+                }),
+                t.write("</ul>\n"),
+            ]),
+        );
+
+        check_js(
+            &ir_module,
+            expect![[r#"
+                function escapeHtml(str) {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+    
+                }
+
+                export default {
+                    listItems: ({ items }) => {
+                        let output = "";
+                        output += "<ul>\n";
+                        for (const item of items) {
+                            output += "<li>";
+                            output += escapeHtml(item);
+                            output += "</li>\n";
+                        }
+                        output += "</ul>\n";
+                        return output;
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_let_binding() {
+        let t = IrTestBuilder::new(vec![]);
+
+        let mut ir_module = IrModule::new();
+        ir_module.entry_points.insert(
+            "greeting-card".to_string(),
+            t.build(vec![t.let_stmt(
+                "greeting",
+                t.str("Hello from Hop!"),
+                |t| {
+                    vec![
+                        t.write("<div class=\"card\">\n"),
+                        t.write("<p>"),
+                        t.write_expr(t.var("greeting"), true),
+                        t.write("</p>\n"),
+                        t.write("</div>\n"),
+                    ]
+                },
+            )]),
+        );
+
+        check_js(
+            &ir_module,
+            expect![[r#"
+                function escapeHtml(str) {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+    
+                }
+
+                export default {
+                    greetingCard: () => {
+                        let output = "";
+                        const greeting = "Hello from Hop!";
+                        output += "<div class=\"card\">\n";
+                        output += "<p>";
+                        output += escapeHtml(greeting);
+                        output += "</p>\n";
+                        output += "</div>\n";
+                        return output;
+                    }
+                }
+            "#]],
+        );
     }
 }
