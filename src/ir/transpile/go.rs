@@ -7,19 +7,14 @@ use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Transpiles an IR module to Go code using pretty printing
-pub struct GoTranspiler {
-    /// Track packages we need to import
-    imports: BTreeSet<String>,
-}
+pub struct GoTranspiler {}
 
 impl GoTranspiler {
     pub fn new() -> Self {
-        Self {
-            imports: BTreeSet::new(),
-        }
+        Self {}
     }
 
-    fn scan_for_imports(&mut self, entrypoint: &IrEntrypoint) {
+    fn scan_for_imports(imports: &mut BTreeSet<String>, entrypoint: &IrEntrypoint) {
         // Use visitor pattern to scan statements for imports
         for stmt in &entrypoint.body {
             // Check for HTML escaping in WriteExpr statements
@@ -28,12 +23,12 @@ impl GoTranspiler {
                     expr, escape: true, ..
                 } = s
                 {
-                    self.imports.insert("html".to_string());
+                    imports.insert("html".to_string());
                     // Check if we need fmt for type conversion
                     match expr.typ() {
                         Type::String => {}
                         _ => {
-                            self.imports.insert("fmt".to_string());
+                            imports.insert("fmt".to_string());
                         }
                     }
                 } else if let IrStatement::WriteExpr {
@@ -46,7 +41,7 @@ impl GoTranspiler {
                     match expr.typ() {
                         Type::String => {}
                         _ => {
-                            self.imports.insert("fmt".to_string());
+                            imports.insert("fmt".to_string());
                         }
                     }
                 }
@@ -55,7 +50,7 @@ impl GoTranspiler {
             // Check expressions for other imports (like json)
             stmt.visit_exprs(&mut |expr| {
                 if let IrExpr::JsonEncode { .. } = expr {
-                    self.imports.insert("json".to_string());
+                    imports.insert("encoding/json".to_string());
                 }
             });
         }
@@ -73,16 +68,17 @@ impl GoTranspiler {
 
 impl Transpiler for GoTranspiler {
     fn transpile_module(&self, ir_module: &IrModule) -> String {
+        let mut imports = BTreeSet::new();
         // Clone self to get a mutable version for scanning
         let mut scanner = Self::new();
 
         // First pass: scan to determine what imports we need
         for entrypoint in ir_module.entry_points.values() {
-            scanner.scan_for_imports(entrypoint);
+            Self::scan_for_imports(&mut imports, entrypoint);
         }
 
         // We always need strings.Builder for output
-        scanner.imports.insert("strings".to_string());
+        imports.insert("strings".to_string());
 
         // Build the module content using BoxDoc
         let mut result = BoxDoc::nil();
@@ -94,26 +90,20 @@ impl Transpiler for GoTranspiler {
             .append(BoxDoc::line());
 
         // Write imports if needed
-        if !scanner.imports.is_empty() {
-            let imports: Vec<_> = scanner
-                .imports
-                .iter()
-                .map(|import| {
-                    if import == "json" {
-                        BoxDoc::text("\"encoding/json\"")
-                    } else {
-                        BoxDoc::text("\"")
-                            .append(BoxDoc::text(import.as_str()))
-                            .append(BoxDoc::text("\""))
-                    }
-                })
-                .collect();
-
+        if !imports.is_empty() {
             result = result
                 .append(BoxDoc::text("import ("))
                 .append(
                     BoxDoc::line()
-                        .append(BoxDoc::intersperse(imports, BoxDoc::line()))
+                        .append(BoxDoc::intersperse(
+                            imports.iter().map(|import| {
+                                BoxDoc::nil()
+                                    .append(BoxDoc::text("\""))
+                                    .append(BoxDoc::text(import.as_str()))
+                                    .append(BoxDoc::text("\""))
+                            }),
+                            BoxDoc::line(),
+                        ))
                         .nest(1),
                 )
                 .append(BoxDoc::line())
@@ -123,7 +113,7 @@ impl Transpiler for GoTranspiler {
         }
 
         // Add JSON helper if needed
-        if scanner.imports.contains("json") {
+        if imports.contains("encoding/json") {
             result = result
                 .append(BoxDoc::text("func mustJSONMarshal(v any) string {"))
                 .append(
@@ -415,36 +405,26 @@ impl TypeTranspiler for GoTranspiler {
 
 impl StatementTranspiler for GoTranspiler {
     fn transpile_write<'a>(&self, content: &'a str) -> BoxDoc<'a> {
-        BoxDoc::text("output.WriteString(")
-            .append(BoxDoc::as_string(format!(
-                "\"{}\"",
-                self.escape_string(content)
-            )))
-            .append(BoxDoc::text(")"))
+        BoxDoc::text("output.WriteString(\"")
+            .append(BoxDoc::text(self.escape_string(content)))
+            .append(BoxDoc::text("\")"))
     }
 
     fn transpile_write_expr<'a>(&self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a> {
-        // Handle type conversion to string based on expression type
-        let string_expr = match expr.typ() {
-            Type::String => self.transpile_expr(expr),
-            Type::Number | Type::Bool | _ => BoxDoc::text("fmt.Sprintf(\"%v\", ")
-                .append(self.transpile_expr(expr))
-                .append(BoxDoc::text(")")),
-        };
-
         if escape {
             BoxDoc::text("output.WriteString(html.EscapeString(")
-                .append(string_expr)
+                .append(self.transpile_expr(expr))
                 .append(BoxDoc::text("))"))
         } else {
             BoxDoc::text("output.WriteString(")
-                .append(string_expr)
+                .append(self.transpile_expr(expr))
                 .append(BoxDoc::text(")"))
         }
     }
 
     fn transpile_if<'a>(&self, condition: &'a IrExpr, body: &'a [IrStatement]) -> BoxDoc<'a> {
-        BoxDoc::text("if ")
+        BoxDoc::nil()
+            .append(BoxDoc::text("if "))
             .append(self.transpile_expr(condition))
             .append(BoxDoc::text(" {"))
             .append(
