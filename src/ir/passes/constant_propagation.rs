@@ -92,7 +92,9 @@ impl ConstantPropagationPass {
         for ref_expr in expr.dfs_iter() {
             // If this is a variable reference, record its binding
             if let IrExpr::Var {
-                value: name, annotation, ..
+                value: name,
+                annotation,
+                ..
             } = ref_expr
             {
                 if let Some(&def_expr_id) = scope_stack.get(name.as_str()) {
@@ -112,8 +114,16 @@ impl ConstantPropagationPass {
         // Constant values of expressions: (expr_id => const_value)
         let const_value = iteration.variable::<(ExprId, Const)>("const_value");
         const_value.extend(all_expressions.iter().filter_map(|n| match n {
-            IrExpr::BooleanLiteral { value, annotation, .. } => Some((annotation.0, Const::Bool(*value))),
-            IrExpr::StringLiteral { value, annotation, .. } => Some((annotation.0, Const::String(value.clone()))),
+            IrExpr::BooleanLiteral {
+                value,
+                annotation: (id, _),
+                ..
+            } => Some((*id, Const::Bool(*value))),
+            IrExpr::StringLiteral {
+                value,
+                annotation: (id, _),
+                ..
+            } => Some((*id, Const::String(value.clone()))),
             _ => None,
         }));
 
@@ -224,14 +234,6 @@ impl ConstantPropagationPass {
         }
         results
     }
-
-    fn transform_expr(expr: IrExpr, constants: &HashMap<ExprId, IrExpr>) -> IrExpr {
-        if let Some(const_expr) = constants.get(&expr.id()) {
-            const_expr.clone()
-        } else {
-            expr
-        }
-    }
 }
 
 impl Pass for ConstantPropagationPass {
@@ -240,7 +242,13 @@ impl Pass for ConstantPropagationPass {
         let constants = Self::compute_constants(&entrypoint);
 
         // Apply transformations using the computed constants
-        entrypoint.map_expressions(|expr| Self::transform_expr(expr, &constants))
+        entrypoint.map_expressions(|expr| {
+            if let Some(const_expr) = constants.get(&expr.id()) {
+                const_expr.clone()
+            } else {
+                expr
+            }
+        })
     }
 }
 
