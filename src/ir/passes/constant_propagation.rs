@@ -104,9 +104,10 @@ impl ConstantPropagationPass {
             }
         }
     }
+}
 
-    /// Run datafrog to compute constants and transform the entrypoint
-    fn compute_constants(entrypoint: IrEntrypoint) -> IrEntrypoint {
+impl Pass for ConstantPropagationPass {
+    fn run(&mut self, entrypoint: IrEntrypoint) -> IrEntrypoint {
         let all_expressions = Self::collect_all_expressions(&entrypoint);
         let references = Self::collect_variable_references(&entrypoint);
         let mut iteration = Iteration::new();
@@ -178,7 +179,7 @@ impl ConstantPropagationPass {
                 &not_rel,
                 |_: &ExprId, const_val: &Const, expr_id: &ExprId| match const_val {
                     Const::Bool(b) => (*expr_id, Const::Bool(!b)),
-                    _ => panic!("Type error: NOT operator applied to non-boolean value"),
+                    _ => unreachable!(),
                 },
             );
 
@@ -214,7 +215,11 @@ impl ConstantPropagationPass {
             );
         }
 
-        let const_map: HashMap<ExprId, Const> = const_value.complete().iter().cloned().collect();
+        let const_map = const_value
+            .complete()
+            .iter()
+            .cloned()
+            .collect::<HashMap<_, _>>();
 
         entrypoint.map_expressions(|expr| {
             if let Some(const_val) = const_map.get(&expr.id()) {
@@ -232,12 +237,6 @@ impl ConstantPropagationPass {
                 expr
             }
         })
-    }
-}
-
-impl Pass for ConstantPropagationPass {
-    fn run(&mut self, entrypoint: IrEntrypoint) -> IrEntrypoint {
-        Self::compute_constants(entrypoint)
     }
 }
 
