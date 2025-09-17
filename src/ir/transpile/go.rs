@@ -69,8 +69,6 @@ impl GoTranspiler {
 impl Transpiler for GoTranspiler {
     fn transpile_module(&self, ir_module: &IrModule) -> String {
         let mut imports = BTreeSet::new();
-        // Clone self to get a mutable version for scanning
-        let mut scanner = Self::new();
 
         // First pass: scan to determine what imports we need
         for entrypoint in ir_module.entry_points.values() {
