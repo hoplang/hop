@@ -308,7 +308,7 @@ fn typecheck_node(
             let typed_condition = errors
                 .ok_or_add(dop::typecheck_expr(condition, env, annotations).map_err(Into::into))?;
 
-            let condition_type = typed_condition.get_type();
+            let condition_type = typed_condition.annotation();
             if !condition_type.is_subtype(&Type::Bool) {
                 errors.push(TypeError::ExpectedBooleanCondition {
                     found: condition_type.to_string(),
@@ -331,7 +331,7 @@ fn typecheck_node(
         } => {
             let typed_array = errors
                 .ok_or_add(dop::typecheck_expr(array_expr, env, annotations).map_err(Into::into))?;
-            let array_type = typed_array.get_type();
+            let array_type = typed_array.annotation();
             let element_type = match &array_type {
                 Type::Array(Some(inner)) => *inner.clone(),
                 Type::Array(None) => {
@@ -479,7 +479,7 @@ fn typecheck_node(
                                 continue;
                             }
                         };
-                        let arg_type = typed_expr.get_type();
+                        let arg_type = typed_expr.annotation().clone();
 
                         if !arg_type.is_subtype(&param.var_type) {
                             errors.push(TypeError::ArgumentIsIncompatible {
@@ -546,10 +546,10 @@ fn typecheck_node(
             if let Some(typed_expr) = errors
                 .ok_or_add(dop::typecheck_expr(expression, env, annotations).map_err(Into::into))
             {
-                let expr_type = typed_expr.get_type();
+                let expr_type = typed_expr.annotation();
                 if !expr_type.is_subtype(&Type::String) {
                     errors.push(TypeError::ExpectedStringExpression {
-                        found: expr_type,
+                        found: expr_type.clone(),
                         range: range.clone(),
                     });
                 }
@@ -603,7 +603,7 @@ fn typecheck_attributes(
                     .ok_or_add(dop::typecheck_expr(expr, env, annotations).map_err(Into::into))
                     .map(|typed_expr| {
                         // Check that HTML attributes are strings
-                        let expr_type = typed_expr.get_type();
+                        let expr_type = typed_expr.annotation();
                         if !expr_type.is_subtype(&Type::String) {
                             errors.push(TypeError::ExpectedStringAttribute {
                                 found: expr_type.to_string(),

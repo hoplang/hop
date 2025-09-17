@@ -624,7 +624,7 @@ impl Compiler<'_> {
         IrExpr {
             id: self.next_expr_id(),
             value,
-            typ: expr.get_type(),
+            typ: expr.annotation().clone(),
         }
     }
 }

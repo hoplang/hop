@@ -366,7 +366,7 @@ impl Parser {
                 left: Box::new(expr),
                 operator: BinaryOp::Equal,
                 right: Box::new(right),
-                typ: (),
+                annotation: (),
             };
         }
         Ok(expr)
@@ -380,7 +380,7 @@ impl Parser {
                 range: operator_range.to(expr.range().clone()),
                 operator: UnaryOp::Not,
                 operand: Box::new(expr),
-                typ: (),
+                annotation: (),
             })
         } else {
             self.parse_primary()
@@ -398,7 +398,7 @@ impl Parser {
         Ok(Expr::ArrayLiteral {
             elements,
             range: left_bracket.to(right_bracket),
-            typ: (),
+            annotation: (),
         })
     }
 
@@ -420,7 +420,7 @@ impl Parser {
         Ok(Expr::ObjectLiteral {
             properties,
             range: left_brace.to(right_brace),
-            typ: (),
+            annotation: (),
         })
     }
 
@@ -428,7 +428,7 @@ impl Parser {
         let var_name = VarName::new(identifier)?;
         let mut expr = Expr::Variable {
             value: var_name,
-            typ: (),
+            annotation: (),
         };
 
         while let Some(dot) = self.advance_if(Token::Dot) {
@@ -438,7 +438,7 @@ impl Parser {
                         range: expr.range().clone().to(prop.clone()),
                         object: Box::new(expr),
                         property: prop,
-                        typ: (),
+                        annotation: (),
                     };
                 }
                 Some((_, range)) => {
@@ -457,11 +457,21 @@ impl Parser {
     fn parse_primary(&mut self) -> Result<Expr, ParseError> {
         match self.iter.next().transpose()? {
             Some((Token::Identifier(name), _)) => self.parse_property_access(name),
-            Some((Token::StringLiteral(value), range)) => Ok(Expr::StringLiteral { value, range }),
-            Some((Token::BooleanLiteral(value), range)) => {
-                Ok(Expr::BooleanLiteral { value, range })
-            }
-            Some((Token::NumberLiteral(value), range)) => Ok(Expr::NumberLiteral { value, range }),
+            Some((Token::StringLiteral(value), range)) => Ok(Expr::StringLiteral {
+                value,
+                range,
+                annotation: (),
+            }),
+            Some((Token::BooleanLiteral(value), range)) => Ok(Expr::BooleanLiteral {
+                value,
+                range,
+                annotation: (),
+            }),
+            Some((Token::NumberLiteral(value), range)) => Ok(Expr::NumberLiteral {
+                value,
+                range,
+                annotation: (),
+            }),
             Some((Token::LeftBracket, left_bracket)) => self.parse_array_literal(left_bracket),
             Some((Token::LeftBrace, left_brace)) => self.parse_object_literal(left_brace),
             Some((Token::LeftParen, left_paren)) => {

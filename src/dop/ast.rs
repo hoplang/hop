@@ -36,46 +36,55 @@ impl Display for UnaryOp {
 #[derive(Debug, Clone)]
 pub enum Expr<T = ()> {
     /// A variable expression, e.g. foo
-    Variable { value: VarName, typ: T },
+    Variable { value: VarName, annotation: T },
     /// A property access expression, e.g. foo.bar
     PropertyAccess {
         object: Box<Expr<T>>,
         property: DocumentRange,
         range: DocumentRange,
-        typ: T,
+        annotation: T,
     },
     /// A string literal expression, e.g. "foo bar"
-    StringLiteral { value: String, range: DocumentRange },
+    StringLiteral {
+        value: String,
+        range: DocumentRange,
+        annotation: T,
+    },
     /// A boolean literal expression, e.g. true
-    BooleanLiteral { value: bool, range: DocumentRange },
+    BooleanLiteral {
+        value: bool,
+        range: DocumentRange,
+        annotation: T,
+    },
     /// A number literal expression, e.g. 2.5
     NumberLiteral {
         value: serde_json::Number,
         range: DocumentRange,
+        annotation: T,
     },
     /// An array literal expression, e.g. [1, 2, 3]
     ArrayLiteral {
         elements: Vec<Expr<T>>,
         range: DocumentRange,
-        typ: T,
+        annotation: T,
     },
     ObjectLiteral {
         properties: Vec<(DocumentRange, Expr<T>)>,
         range: DocumentRange,
-        typ: T,
+        annotation: T,
     },
     BinaryOp {
         left: Box<Expr<T>>,
         operator: BinaryOp,
         right: Box<Expr<T>>,
         range: DocumentRange,
-        typ: T,
+        annotation: T,
     },
     UnaryOp {
         operator: UnaryOp,
         operand: Box<Expr<T>>,
         range: DocumentRange,
-        typ: T,
+        annotation: T,
     },
 }
 
@@ -179,22 +188,21 @@ impl<T> Display for Expr<T> {
     }
 }
 
-/// Type alias for typed expressions
-pub type TypedExpr = Expr<Type>;
-
-impl TypedExpr {
-    /// Get the type of a typed expression
-    pub fn get_type(&self) -> Type {
+impl<T> Expr<T> {
+    pub fn annotation(&self) -> &T {
         match self {
-            Expr::Variable { typ, .. } => typ.clone(),
-            Expr::PropertyAccess { typ, .. } => typ.clone(),
-            Expr::StringLiteral { .. } => Type::String,
-            Expr::BooleanLiteral { .. } => Type::Bool,
-            Expr::NumberLiteral { .. } => Type::Number,
-            Expr::ArrayLiteral { typ, .. } => typ.clone(),
-            Expr::ObjectLiteral { typ, .. } => typ.clone(),
-            Expr::BinaryOp { typ, .. } => typ.clone(),
-            Expr::UnaryOp { typ, .. } => typ.clone(),
+            Expr::Variable { annotation, .. }
+            | Expr::PropertyAccess { annotation, .. }
+            | Expr::StringLiteral { annotation, .. }
+            | Expr::BooleanLiteral { annotation, .. }
+            | Expr::NumberLiteral { annotation, .. }
+            | Expr::ArrayLiteral { annotation, .. }
+            | Expr::ObjectLiteral { annotation, .. }
+            | Expr::BinaryOp { annotation, .. }
+            | Expr::UnaryOp { annotation, .. } => annotation,
         }
     }
 }
+
+/// Type alias for typed expressions
+pub type TypedExpr = Expr<Type>;
