@@ -3,7 +3,7 @@ use crate::document::DocumentAnnotator;
 use crate::filesystem::files::ProjectRoot;
 use crate::hop::program::Program;
 use crate::ir::{
-    CompilationMode, Compiler, GoTranspiler, JsTranspiler, LanguageMode, optimizer::Optimizer,
+    CompilationMode, Compiler, GoTranspiler, JsTranspiler, LanguageMode, Transpiler, optimizer::Optimizer,
 };
 use crate::tui::timing;
 use anyhow::{Context, Result};
@@ -102,13 +102,13 @@ pub fn execute(
             timer.start_phase("transpiling to js");
             let mut transpiler = JsTranspiler::new(LanguageMode::JavaScript);
             // In development mode, we don't need escapeHtml since we're just outputting bootstrap HTML
-            transpiler.transpile_module(&ir_module, compilation_mode == CompilationMode::Production)
+            transpiler.transpile_module_with_escape(&ir_module, compilation_mode == CompilationMode::Production)
         }
         CompileLanguage::Ts => {
             timer.start_phase("transpiling to ts");
             let mut transpiler = JsTranspiler::new(LanguageMode::TypeScript);
             // In development mode, we don't need escapeHtml since we're just outputting bootstrap HTML
-            transpiler.transpile_module(&ir_module, compilation_mode == CompilationMode::Production)
+            transpiler.transpile_module_with_escape(&ir_module, compilation_mode == CompilationMode::Production)
         }
         CompileLanguage::Go => {
             timer.start_phase("transpiling to go");

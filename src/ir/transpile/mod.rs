@@ -4,7 +4,7 @@ pub mod js;
 pub use go::GoTranspiler;
 pub use js::{JsTranspiler, LanguageMode};
 
-use crate::ir::ast::{BinaryOp, IrExpr, IrStatement, UnaryOp};
+use crate::ir::ast::{BinaryOp, IrEntrypoint, IrExpr, IrModule, IrStatement, UnaryOp};
 use crate::dop::r#type::Type;
 use std::collections::BTreeMap;
 
@@ -156,4 +156,13 @@ pub trait StatementTranspiler: ExpressionTranspiler {
             self.transpile_statement(output, statement);
         }
     }
+}
+
+/// Main transpiler trait for complete IR module transpilation
+pub trait Transpiler: StatementTranspiler {
+    /// Transpile an entrypoint to a function/method in the target language
+    fn transpile_entrypoint(&mut self, output: &mut String, name: &str, entrypoint: &IrEntrypoint);
+
+    /// Transpile a complete IR module to the target language
+    fn transpile_module(&mut self, ir_module: &IrModule) -> String;
 }

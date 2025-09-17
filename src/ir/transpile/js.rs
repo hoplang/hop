@@ -1,4 +1,4 @@
-use super::{ExpressionTranspiler, StatementTranspiler, TypeTranspiler};
+use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
 use crate::cased_string::CasedString;
 use crate::dop::r#type::Type;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
@@ -27,7 +27,11 @@ impl JsTranspiler {
         }
     }
 
-    pub fn transpile_module(&mut self, ir_module: &IrModule, needs_escape_html: bool) -> String {
+    pub fn transpile_module_with_escape(
+        &mut self,
+        ir_module: &IrModule,
+        needs_escape_html: bool,
+    ) -> String {
         let mut output = String::new();
 
         if needs_escape_html {
@@ -68,7 +72,7 @@ impl JsTranspiler {
             }
             first = false;
 
-            self.transpile_entrypoint(&mut output, name, entrypoint);
+            self.transpile_entrypoint_internal(&mut output, name, entrypoint);
         }
 
         // Close the export default object
@@ -79,7 +83,12 @@ impl JsTranspiler {
         output
     }
 
-    fn transpile_entrypoint(&mut self, output: &mut String, name: &str, entrypoint: &IrEntrypoint) {
+    fn transpile_entrypoint_internal(
+        &mut self,
+        output: &mut String,
+        name: &str,
+        entrypoint: &IrEntrypoint,
+    ) {
         let camel_case_name = CasedString::from_kebab_case(name).to_camel_case();
 
         for _ in 0..self.indent_level {
@@ -184,6 +193,17 @@ impl JsTranspiler {
         }
         output.push_str(line);
         output.push('\n');
+    }
+}
+
+impl Transpiler for JsTranspiler {
+    fn transpile_entrypoint(&mut self, output: &mut String, name: &str, entrypoint: &IrEntrypoint) {
+        self.transpile_entrypoint_internal(output, name, entrypoint);
+    }
+
+    fn transpile_module(&mut self, ir_module: &IrModule) -> String {
+        // Default to enabling escape_html for backward compatibility
+        self.transpile_module_with_escape(ir_module, true)
     }
 }
 
@@ -377,12 +397,12 @@ mod tests {
 
     fn transpile_ir_to_js(ir_module: &IrModule) -> String {
         let mut transpiler = JsTranspiler::new(LanguageMode::JavaScript);
-        transpiler.transpile_module(ir_module, true) // needs_escape_html = true for tests
+        transpiler.transpile_module_with_escape(ir_module, true) // needs_escape_html = true for tests
     }
 
     fn transpile_ir_to_ts(ir_module: &IrModule) -> String {
         let mut transpiler = JsTranspiler::new(LanguageMode::TypeScript);
-        transpiler.transpile_module(ir_module, true) // needs_escape_html = true for tests
+        transpiler.transpile_module_with_escape(ir_module, true) // needs_escape_html = true for tests
     }
 
     fn check(ir_module: &IrModule, expected: Expect) {

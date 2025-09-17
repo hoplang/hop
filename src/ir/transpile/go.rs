@@ -1,4 +1,4 @@
-use super::{ExpressionTranspiler, StatementTranspiler, TypeTranspiler};
+use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
 use crate::cased_string::CasedString;
 use crate::dop::r#type::Type;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
@@ -17,86 +17,6 @@ impl GoTranspiler {
             indent_level: 0,
             imports: BTreeSet::new(),
         }
-    }
-
-    pub fn transpile_module(&mut self, ir_module: &IrModule) -> String {
-        let mut output = String::new();
-
-        // Reset state
-        self.imports.clear();
-
-        // First pass: scan to determine what imports we need
-        for entrypoint in ir_module.entry_points.values() {
-            self.scan_for_imports(entrypoint);
-        }
-
-        // We always need strings.Builder for output
-        self.imports.insert("strings".to_string());
-
-        // Write package declaration
-        self.write_line(&mut output, "package components");
-        self.write_line(&mut output, "");
-
-        // Write imports if needed
-        if !self.imports.is_empty() {
-            self.write_line(&mut output, "import (");
-            self.indent();
-            let imports: Vec<_> = self.imports.iter().cloned().collect();
-            for import in imports {
-                if import == "json" {
-                    self.write_line(&mut output, "\"encoding/json\"");
-                } else {
-                    self.write_line(&mut output, &format!("\"{}\"", import));
-                }
-            }
-            self.dedent();
-            self.write_line(&mut output, ")");
-            self.write_line(&mut output, "");
-        }
-
-        // Add JSON helper if needed
-        if self.imports.contains("json") {
-            self.write_line(&mut output, "func mustJSONMarshal(v any) string {");
-            self.indent();
-            self.write_line(&mut output, "data, _ := json.Marshal(v)");
-            self.write_line(&mut output, "return string(data)");
-            self.dedent();
-            self.write_line(&mut output, "}");
-            self.write_line(&mut output, "");
-        }
-
-        // Generate parameter structs for entrypoints that have parameters
-        for (name, entrypoint) in &ir_module.entry_points {
-            if !entrypoint.parameters.is_empty() {
-                let struct_name = format!(
-                    "{}Params",
-                    CasedString::from_kebab_case(name).to_pascal_case()
-                );
-                self.write_line(&mut output, &format!("type {} struct {{", struct_name));
-                self.indent();
-                for (param_name, param_type) in &entrypoint.parameters {
-                    let mut go_type = String::new();
-                    self.transpile_type(&mut go_type, param_type);
-                    let field_name =
-                        CasedString::from_snake_case(param_name.as_str()).to_pascal_case();
-                    self.write_line(
-                        &mut output,
-                        &format!("{} {} `json:\"{}\"`", field_name, go_type, param_name),
-                    );
-                }
-                self.dedent();
-                self.write_line(&mut output, "}");
-                self.write_line(&mut output, "");
-            }
-        }
-
-        // Transpile each entrypoint as a function
-        for (name, entrypoint) in &ir_module.entry_points {
-            self.transpile_entrypoint(&mut output, name, entrypoint);
-            self.write_line(&mut output, "");
-        }
-
-        output
     }
 
     fn scan_for_imports(&mut self, entrypoint: &IrEntrypoint) {
@@ -174,39 +94,6 @@ impl GoTranspiler {
         }
     }
 
-    fn transpile_entrypoint(&mut self, output: &mut String, name: &str, entrypoint: &IrEntrypoint) {
-        // Convert kebab-case to PascalCase for Go function name
-        let func_name = CasedString::from_kebab_case(name).to_pascal_case();
-
-        if entrypoint.parameters.is_empty() {
-            self.write_line(output, &format!("func {}() string {{", func_name));
-        } else {
-            let struct_name = format!("{}Params", func_name);
-            self.write_line(
-                output,
-                &format!("func {}(params {}) string {{", func_name, struct_name),
-            );
-
-            // Extract parameters into local variables
-            self.indent();
-            for (param_name, _) in &entrypoint.parameters {
-                let field_name = CasedString::from_snake_case(param_name.as_str()).to_pascal_case();
-                self.write_line(output, &format!("{} := params.{}", param_name, field_name));
-            }
-            self.dedent();
-        }
-
-        self.indent();
-
-        self.write_line(output, "var output strings.Builder");
-
-        self.transpile_statements(output, &entrypoint.body);
-
-        self.write_line(output, "return output.String()");
-        self.dedent();
-        self.write_line(output, "}");
-    }
-
     // Helper method to escape strings for Go string literals
     fn escape_string(&self, s: &str) -> String {
         s.replace('\\', "\\\\")
@@ -239,6 +126,161 @@ impl GoTranspiler {
         }
         output.push_str(line);
         output.push('\n');
+    }
+}
+
+impl Transpiler for GoTranspiler {
+    fn transpile_entrypoint(&mut self, output: &mut String, name: &str, entrypoint: &IrEntrypoint) {
+        {
+            // Convert kebab-case to PascalCase for Go function name
+            let func_name = CasedString::from_kebab_case(name).to_pascal_case();
+
+            if entrypoint.parameters.is_empty() {
+                self.write_line(output, &format!("func {}() string {{", func_name));
+            } else {
+                let struct_name = format!("{}Params", func_name);
+                self.write_line(
+                    output,
+                    &format!("func {}(params {}) string {{", func_name, struct_name),
+                );
+
+                // Extract parameters into local variables
+                self.indent();
+                for (param_name, _) in &entrypoint.parameters {
+                    let field_name =
+                        CasedString::from_snake_case(param_name.as_str()).to_pascal_case();
+                    self.write_line(output, &format!("{} := params.{}", param_name, field_name));
+                }
+                self.dedent();
+            }
+
+            self.indent();
+
+            self.write_line(output, "var output strings.Builder");
+
+            self.transpile_statements(output, &entrypoint.body);
+
+            self.write_line(output, "return output.String()");
+            self.dedent();
+            self.write_line(output, "}");
+        };
+    }
+
+    fn transpile_module(&mut self, ir_module: &IrModule) -> String {
+        let mut output = String::new();
+
+        // Reset state
+        self.imports.clear();
+
+        // First pass: scan to determine what imports we need
+        for entrypoint in ir_module.entry_points.values() {
+            self.scan_for_imports(entrypoint);
+        }
+
+        // We always need strings.Builder for output
+        self.imports.insert("strings".to_string());
+
+        // Write package declaration
+        self.write_line(&mut output, "package components");
+        self.write_line(&mut output, "");
+
+        // Write imports if needed
+        if !self.imports.is_empty() {
+            self.write_line(&mut output, "import (");
+            self.indent();
+            let imports: Vec<_> = self.imports.iter().cloned().collect();
+            for import in imports {
+                if import == "json" {
+                    self.write_line(&mut output, "\"encoding/json\"");
+                } else {
+                    self.write_line(&mut output, &format!("\"{}\"", import));
+                }
+            }
+            self.dedent();
+            self.write_line(&mut output, ")");
+            self.write_line(&mut output, "");
+        }
+
+        // Add JSON helper if needed
+        if self.imports.contains("json") {
+            self.write_line(&mut output, "func mustJSONMarshal(v any) string {");
+            self.indent();
+            self.write_line(&mut output, "data, _ := json.Marshal(v)");
+            self.write_line(&mut output, "return string(data)");
+            self.dedent();
+            self.write_line(&mut output, "}");
+            self.write_line(&mut output, "");
+        }
+
+        // Generate parameter structs for entrypoints that have parameters
+        for (name, entrypoint) in &ir_module.entry_points {
+            if !entrypoint.parameters.is_empty() {
+                let struct_name = format!(
+                    "{}Params",
+                    CasedString::from_kebab_case(name).to_pascal_case()
+                );
+                self.write_line(&mut output, &format!("type {} struct {{", struct_name));
+                self.indent();
+                for (param_name, param_type) in &entrypoint.parameters {
+                    let mut go_type = String::new();
+                    self.transpile_type(&mut go_type, param_type);
+                    let field_name =
+                        CasedString::from_snake_case(param_name.as_str()).to_pascal_case();
+                    self.write_line(
+                        &mut output,
+                        &format!("{} {} `json:\"{}\"`", field_name, go_type, param_name),
+                    );
+                }
+                self.dedent();
+                self.write_line(&mut output, "}");
+                self.write_line(&mut output, "");
+            }
+        }
+
+        // Transpile each entrypoint as a function
+        for (name, entrypoint) in &ir_module.entry_points {
+            {
+                let this = &mut *self;
+                let output: &mut String = &mut output;
+                // Convert kebab-case to PascalCase for Go function name
+                let func_name = CasedString::from_kebab_case(name).to_pascal_case();
+
+                if entrypoint.parameters.is_empty() {
+                    this.write_line(output, &format!("func {}() string {{", func_name));
+                } else {
+                    let struct_name = format!("{}Params", func_name);
+                    this.write_line(
+                        output,
+                        &format!("func {}(params {}) string {{", func_name, struct_name),
+                    );
+
+                    // Extract parameters into local variables
+                    this.indent();
+                    for (param_name, _) in &entrypoint.parameters {
+                        let field_name =
+                            CasedString::from_snake_case(param_name.as_str()).to_pascal_case();
+                        this.write_line(
+                            output,
+                            &format!("{} := params.{}", param_name, field_name),
+                        );
+                    }
+                    this.dedent();
+                }
+
+                this.indent();
+
+                this.write_line(output, "var output strings.Builder");
+
+                this.transpile_statements(output, &entrypoint.body);
+
+                this.write_line(output, "return output.String()");
+                this.dedent();
+                this.write_line(output, "}");
+            };
+            self.write_line(&mut output, "");
+        }
+
+        output
     }
 }
 
