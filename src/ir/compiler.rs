@@ -48,9 +48,7 @@ impl Compiler<'_> {
             }
         }
 
-        // Apply alpha renaming as a separate pass
-        let renamer = super::alpha_renaming::AlphaRenamer::new();
-        renamer.rename_module(compiler.ir_module)
+        compiler.ir_module
     }
 
     fn compile_entrypoint(&mut self, component: &ComponentDefinition<Type>) {
@@ -1163,11 +1161,11 @@ mod tests {
                       body: {
                         Write("<div data-hop-id=\"test/child-comp\"")
                         Write(">")
-                        Let(var: x_1, value: x) {
+                        Let(var: x, value: x) {
                           Write("<div")
                           Write(">")
                           Write("Value: ")
-                          WriteExpr(expr: x_1, escape: true)
+                          WriteExpr(expr: x, escape: true)
                           Write("</div>")
                         }
                         Write("</div>")
@@ -1201,21 +1199,21 @@ mod tests {
                       body: {
                         Write("<div data-hop-id=\"test/child-comp\"")
                         Write(">")
-                        Let(var: x_1, value: x) {
+                        Let(var: x, value: x) {
                           Write("<div")
                           Write(">")
                           Write("Value: ")
-                          WriteExpr(expr: x_1, escape: true)
+                          WriteExpr(expr: x, escape: true)
                           Write("</div>")
                         }
                         Write("</div>")
                         Write("<div data-hop-id=\"test/child-comp\"")
                         Write(">")
-                        Let(var: x_2, value: x) {
+                        Let(var: x, value: x) {
                           Write("<div")
                           Write(">")
                           Write("Value: ")
-                          WriteExpr(expr: x_2, escape: true)
+                          WriteExpr(expr: x, escape: true)
                           Write("</div>")
                         }
                         Write("</div>")
@@ -1300,10 +1298,10 @@ mod tests {
                           WriteExpr(expr: x, escape: true)
                           Write("</div>")
                         }
-                        For(var: x_1, array: ["c", "d"]) {
+                        For(var: x, array: ["c", "d"]) {
                           Write("<span")
                           Write(">")
-                          WriteExpr(expr: x_1, escape: true)
+                          WriteExpr(expr: x, escape: true)
                           Write("</span>")
                         }
                       }

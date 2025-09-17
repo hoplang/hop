@@ -2,12 +2,14 @@ use std::collections::{HashMap, HashSet};
 
 use crate::dop::VarName;
 
-use super::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
+use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 use crate::dop::expr::Expr;
+
+use super::Pass;
 
 /// Alpha renaming pass for the IR AST.
 /// This ensures all variable names are unique to avoid conflicts and shadowing.
-pub struct AlphaRenamer {
+pub struct AlphaRenamingPass {
     /// Counter for generating unique variable names
     var_counter: usize,
     /// Stack of scopes mapping original names to renamed names
@@ -16,59 +18,13 @@ pub struct AlphaRenamer {
     all_used_names: HashSet<String>,
 }
 
-impl AlphaRenamer {
+impl AlphaRenamingPass {
     pub fn new() -> Self {
         Self {
             var_counter: 0,
             scope_stack: vec![HashMap::new()],
             all_used_names: HashSet::new(),
         }
-    }
-
-    /// Perform alpha renaming on an entire IR module
-    pub fn rename_module(mut self, mut module: IrModule) -> IrModule {
-        // Process each entrypoint
-        for (_, entrypoint) in module.entry_points.iter_mut() {
-            *entrypoint = self.rename_entrypoint(std::mem::take(entrypoint));
-        }
-        module
-    }
-
-    /// Rename variables in an entrypoint
-    fn rename_entrypoint(&mut self, mut entrypoint: IrEntrypoint) -> IrEntrypoint {
-        self.push_scope();
-
-        // Create renamed parameter mappings
-        let mut renamed_params = Vec::new();
-        for (param_name, _) in &entrypoint.parameters {
-            let renamed = self.bind_var(param_name);
-            renamed_params.push(renamed);
-        }
-
-        // Rename the body
-        let body = self.rename_statements(entrypoint.body);
-
-        self.pop_scope();
-
-        // Create Let bindings for parameters if they were renamed
-        let mut result_body = body;
-        for (renamed, (original, _)) in renamed_params.into_iter().zip(&entrypoint.parameters).rev()
-        {
-            if renamed != *original {
-                result_body = vec![IrStatement::Let {
-                    id: 0, // ID will be assigned later if needed
-                    var: renamed,
-                    value: Expr::Var {
-                        value: original.clone(),
-                        annotation: (0, crate::dop::Type::String), // TODO: Get actual type
-                    },
-                    body: result_body,
-                }];
-            }
-        }
-
-        entrypoint.body = result_body;
-        entrypoint
     }
 
     /// Rename variables in a list of statements
@@ -271,7 +227,58 @@ impl AlphaRenamer {
                 return renamed.clone();
             }
         }
-        unreachable!()
+        // If we can't find the variable, it must be a parameter or external reference
+        // Return it unchanged
+        name.clone()
+    }
+
+    /// Reset the pass state for a new entrypoint
+    fn reset(&mut self) {
+        self.var_counter = 0;
+        self.scope_stack.clear();
+        self.scope_stack.push(HashMap::new());
+        self.all_used_names.clear();
+    }
+}
+
+impl Pass for AlphaRenamingPass {
+    fn run(&mut self, mut entrypoint: IrEntrypoint) -> IrEntrypoint {
+        // Reset state for each entrypoint
+        self.reset();
+
+        self.push_scope();
+
+        // Create renamed parameter mappings
+        let mut renamed_params = Vec::new();
+        for (param_name, _) in &entrypoint.parameters {
+            let renamed = self.bind_var(param_name);
+            renamed_params.push(renamed);
+        }
+
+        // Rename the body
+        let body = self.rename_statements(entrypoint.body);
+
+        self.pop_scope();
+
+        // Create Let bindings for parameters if they were renamed
+        let mut result_body = body;
+        for (renamed, (original, typ)) in renamed_params.into_iter().zip(&entrypoint.parameters).rev()
+        {
+            if renamed != *original {
+                result_body = vec![IrStatement::Let {
+                    id: 0, // ID will be assigned later if needed
+                    var: renamed,
+                    value: Expr::Var {
+                        value: original.clone(),
+                        annotation: (0, typ.clone()),
+                    },
+                    body: result_body,
+                }];
+            }
+        }
+
+        entrypoint.body = result_body;
+        entrypoint
     }
 }
 
@@ -282,32 +289,25 @@ mod tests {
     use crate::ir::test_utils::IrTestBuilder;
     use expect_test::{Expect, expect};
 
-    fn check_renaming(input_module: IrModule, expected: Expect) {
-        let renamer = AlphaRenamer::new();
-        let renamed = renamer.rename_module(input_module);
+    fn check_renaming(input_entrypoint: IrEntrypoint, expected: Expect) {
+        let mut pass = AlphaRenamingPass::new();
+        let renamed = pass.run(input_entrypoint);
         expected.assert_eq(&renamed.to_string());
     }
 
     #[test]
     fn test_simple_no_renaming() {
-        let mut module = IrModule::new();
         let builder = IrTestBuilder::new(vec![("x".to_string(), Type::String)]);
 
         let entrypoint = builder.build(vec![builder.write_expr(builder.var("x"), true)]);
 
-        module.entry_points.insert("test".to_string(), entrypoint);
-
         check_renaming(
-            module,
+            entrypoint,
             expect![[r#"
-                IrModule {
-                  entry_points: {
-                    test: {
-                      parameters: [x: string]
-                      body: {
-                        WriteExpr(expr: x, escape: true)
-                      }
-                    }
+                IrEntrypoint {
+                  parameters: [x: string]
+                  body: {
+                    WriteExpr(expr: x, escape: true)
                   }
                 }
             "#]],
@@ -316,7 +316,6 @@ mod tests {
 
     #[test]
     fn test_shadowing_in_for_loop() {
-        let mut module = IrModule::new();
         let builder = IrTestBuilder::new(vec![("x".to_string(), Type::String)]);
 
         let entrypoint = builder.build(vec![builder.for_loop(
@@ -325,20 +324,14 @@ mod tests {
             |b| vec![b.write_expr(b.var("x"), true)],
         )]);
 
-        module.entry_points.insert("test".to_string(), entrypoint);
-
         check_renaming(
-            module,
+            entrypoint,
             expect![[r#"
-                IrModule {
-                  entry_points: {
-                    test: {
-                      parameters: [x: string]
-                      body: {
-                        For(var: x_1, array: ["a"]) {
-                          WriteExpr(expr: x_1, escape: true)
-                        }
-                      }
+                IrEntrypoint {
+                  parameters: [x: string]
+                  body: {
+                    For(var: x_1, array: ["a"]) {
+                      WriteExpr(expr: x_1, escape: true)
                     }
                   }
                 }
@@ -348,7 +341,6 @@ mod tests {
 
     #[test]
     fn test_sibling_scopes() {
-        let mut module = IrModule::new();
         let builder = IrTestBuilder::new(vec![]);
 
         let entrypoint = builder.build(vec![
@@ -360,23 +352,17 @@ mod tests {
             }),
         ]);
 
-        module.entry_points.insert("test".to_string(), entrypoint);
-
         check_renaming(
-            module,
+            entrypoint,
             expect![[r#"
-                IrModule {
-                  entry_points: {
-                    test: {
-                      parameters: []
-                      body: {
-                        For(var: x, array: ["a"]) {
-                          WriteExpr(expr: x, escape: true)
-                        }
-                        For(var: x_1, array: ["b"]) {
-                          WriteExpr(expr: x_1, escape: true)
-                        }
-                      }
+                IrEntrypoint {
+                  parameters: []
+                  body: {
+                    For(var: x, array: ["a"]) {
+                      WriteExpr(expr: x, escape: true)
+                    }
+                    For(var: x_1, array: ["b"]) {
+                      WriteExpr(expr: x_1, escape: true)
                     }
                   }
                 }
@@ -386,7 +372,6 @@ mod tests {
 
     #[test]
     fn test_nested_let_bindings() {
-        let mut module = IrModule::new();
         let builder = IrTestBuilder::new(vec![]);
 
         let entrypoint = builder.build(vec![builder.let_stmt("x", builder.str("hello"), |b| {
@@ -398,22 +383,16 @@ mod tests {
             ]
         })]);
 
-        module.entry_points.insert("test".to_string(), entrypoint);
-
         check_renaming(
-            module,
+            entrypoint,
             expect![[r#"
-                IrModule {
-                  entry_points: {
-                    test: {
-                      parameters: []
-                      body: {
-                        Let(var: x, value: "hello") {
-                          WriteExpr(expr: x, escape: true)
-                          Let(var: x_1, value: "world") {
-                            WriteExpr(expr: x_1, escape: true)
-                          }
-                        }
+                IrEntrypoint {
+                  parameters: []
+                  body: {
+                    Let(var: x, value: "hello") {
+                      WriteExpr(expr: x, escape: true)
+                      Let(var: x_1, value: "world") {
+                        WriteExpr(expr: x_1, escape: true)
                       }
                     }
                   }
@@ -424,7 +403,6 @@ mod tests {
 
     #[test]
     fn test_multiple_parameters() {
-        let mut module = IrModule::new();
         let builder = IrTestBuilder::new(vec![
             ("x".to_string(), Type::String),
             ("y".to_string(), Type::String),
@@ -440,22 +418,16 @@ mod tests {
             }),
         ]);
 
-        module.entry_points.insert("test".to_string(), entrypoint);
-
         check_renaming(
-            module,
+            entrypoint,
             expect![[r#"
-                IrModule {
-                  entry_points: {
-                    test: {
-                      parameters: [x: string, y: string]
-                      body: {
-                        WriteExpr(expr: x, escape: true)
-                        For(var: y_1, array: ["a"]) {
-                          WriteExpr(expr: x, escape: true)
-                          WriteExpr(expr: y_1, escape: true)
-                        }
-                      }
+                IrEntrypoint {
+                  parameters: [x: string, y: string]
+                  body: {
+                    WriteExpr(expr: x, escape: true)
+                    For(var: y_1, array: ["a"]) {
+                      WriteExpr(expr: x, escape: true)
+                      WriteExpr(expr: y_1, escape: true)
                     }
                   }
                 }
@@ -465,7 +437,6 @@ mod tests {
 
     #[test]
     fn test_complex_nesting() {
-        let mut module = IrModule::new();
         let builder = IrTestBuilder::new(vec![(
             "items".to_string(),
             Type::Array(Some(Box::new(Type::String))),
@@ -487,28 +458,22 @@ mod tests {
             ]
         })]);
 
-        module.entry_points.insert("test".to_string(), entrypoint);
-
         check_renaming(
-            module,
+            entrypoint,
             expect![[r#"
-                IrModule {
-                  entry_points: {
-                    test: {
-                      parameters: [items: array[string]]
-                      body: {
-                        For(var: item, array: items) {
-                          Write("<div>")
-                          For(var: item_1, array: ["nested"]) {
-                            WriteExpr(expr: item_1, escape: true)
-                            Let(var: item_2, value: "let-value") {
-                              WriteExpr(expr: item_2, escape: true)
-                            }
-                          }
-                          WriteExpr(expr: item, escape: true)
-                          Write("</div>")
+                IrEntrypoint {
+                  parameters: [items: array[string]]
+                  body: {
+                    For(var: item, array: items) {
+                      Write("<div>")
+                      For(var: item_1, array: ["nested"]) {
+                        WriteExpr(expr: item_1, escape: true)
+                        Let(var: item_2, value: "let-value") {
+                          WriteExpr(expr: item_2, escape: true)
                         }
                       }
+                      WriteExpr(expr: item, escape: true)
+                      Write("</div>")
                     }
                   }
                 }

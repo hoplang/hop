@@ -32,11 +32,13 @@ impl Optimizer {
     /// Create a default optimization pipeline
     pub fn default_optimization_pipeline() -> Self {
         use super::passes::{
-            ConstantPropagationPass, DeadCodeEliminationPass, UnusedLetEliminationPass,
-            WriteExprSimplificationPass,
+            AlphaRenamingPass, ConstantPropagationPass, DeadCodeEliminationPass,
+            UnusedLetEliminationPass, WriteExprSimplificationPass,
         };
 
         let mut optimizer = Self::new();
+        // Alpha renaming should run first to ensure unique variable names
+        optimizer.add_pass(Box::new(AlphaRenamingPass::new()));
         optimizer.add_pass(Box::new(ConstantPropagationPass::new()));
         optimizer.add_pass(Box::new(UnusedLetEliminationPass::new()));
         optimizer.add_pass(Box::new(DeadCodeEliminationPass::new()));
