@@ -1,4 +1,4 @@
-use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
+use super::{Doc, ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
 use crate::cased_string::CasedString;
 use crate::dop::r#type::Type;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
@@ -12,7 +12,6 @@ pub enum LanguageMode {
 
 /// Transpiles an IR module to JavaScript or TypeScript code
 pub struct JsTranspiler {
-    indent_level: usize,
     mode: LanguageMode,
     /// Internal flag to use template literals instead of double quotes
     use_template_literals: bool,
@@ -21,7 +20,6 @@ pub struct JsTranspiler {
 impl JsTranspiler {
     pub fn new(mode: LanguageMode) -> Self {
         Self {
-            indent_level: 0,
             mode,
             use_template_literals: false,
         }
@@ -43,30 +41,30 @@ impl JsTranspiler {
         needs_escape
     }
 
-    fn emit_escape_html_helper(&mut self, output: &mut String) {
+    fn emit_escape_html_helper(&mut self, doc: &mut Doc) {
         // Add the escape HTML helper function
         match self.mode {
             LanguageMode::JavaScript => {
-                self.write_line(output, "function escapeHtml(str) {");
-                self.indent();
-                self.write_line(output, "if (typeof str !== 'string') return str;");
+                doc.write_line("function escapeHtml(str) {");
+                doc.indent();
+                doc.write_line("if (typeof str !== 'string') return str;");
             }
             LanguageMode::TypeScript => {
-                self.write_line(output, "function escapeHtml(str: string): string {");
-                self.indent();
+                doc.write_line("function escapeHtml(str: string): string {");
+                doc.indent();
             }
         }
-        self.write_line(output, "return str");
-        self.indent();
-        self.write_line(output, ".replace(/&/g, '&amp;')");
-        self.write_line(output, ".replace(/</g, '&lt;')");
-        self.write_line(output, ".replace(/>/g, '&gt;')");
-        self.write_line(output, ".replace(/\"/g, '&quot;')");
-        self.write_line(output, ".replace(/'/g, '&#39;');");
-        self.dedent();
-        self.dedent();
-        self.write_line(output, "}");
-        self.write_line(output, "");
+        doc.write_line("return str");
+        doc.indent();
+        doc.write_line(".replace(/&/g, '&amp;')");
+        doc.write_line(".replace(/</g, '&lt;')");
+        doc.write_line(".replace(/>/g, '&gt;')");
+        doc.write_line(".replace(/\"/g, '&quot;')");
+        doc.write_line(".replace(/'/g, '&#39;');");
+        doc.dedent();
+        doc.dedent();
+        doc.write_line("}");
+        doc.write_line("");
     }
 
     // Helper method to escape strings for JavaScript literals
@@ -95,38 +93,19 @@ impl JsTranspiler {
         }
     }
 
-    // Helper methods for indentation
-    fn indent(&mut self) {
-        self.indent_level += 1;
-    }
 
-    fn dedent(&mut self) {
-        self.indent_level = self.indent_level.saturating_sub(1);
-    }
-
-    fn write_line(&mut self, output: &mut String, line: &str) {
-        if !line.is_empty() {
-            for _ in 0..self.indent_level {
-                output.push_str("    ");
-            }
-        }
-        output.push_str(line);
-        output.push('\n');
-    }
 }
 
 impl Transpiler for JsTranspiler {
-    fn transpile_entrypoint(&mut self, output: &mut String, name: &str, entrypoint: &IrEntrypoint) {
+    fn transpile_entrypoint(&mut self, doc: &mut Doc, name: &str, entrypoint: &IrEntrypoint) {
         let camel_case_name = CasedString::from_kebab_case(name).to_camel_case();
 
-        for _ in 0..self.indent_level {
-            output.push_str("    ");
-        }
-        output.push_str(&camel_case_name);
-        output.push_str(": (");
+        doc.write_indent();
+        doc.write(&camel_case_name);
+        doc.write(": (");
 
         if !entrypoint.parameters.is_empty() {
-            output.push_str("{ ");
+            doc.write("{ ");
             // Build parameter list
             let params: Vec<String> = entrypoint
                 .parameters
@@ -134,52 +113,50 @@ impl Transpiler for JsTranspiler {
                 .map(|(name, _)| name.to_string())
                 .collect();
 
-            output.push_str(&params.join(", "));
-            output.push_str(" }");
+            doc.write(&params.join(", "));
+            doc.write(" }");
 
             // Generate TypeScript interface for parameters
             if matches!(self.mode, LanguageMode::TypeScript) {
-                output.push_str(": { ");
+                doc.write(": { ");
                 let type_params: Vec<String> = entrypoint
                     .parameters
                     .iter()
                     .map(|(name, ty)| {
-                        let mut type_str = String::new();
-                        self.transpile_type(&mut type_str, ty);
-                        format!("{}: {}", name, type_str)
+                        let mut type_doc = Doc::new_with_spaces();
+                        self.transpile_type(&mut type_doc, ty);
+                        format!("{}: {}", name, type_doc.as_str())
                     })
                     .collect();
-                output.push_str(&type_params.join(", "));
-                output.push_str(" }");
+                doc.write(&type_params.join(", "));
+                doc.write(" }");
             }
         }
-        output.push(')');
+        doc.write(")");
         if matches!(self.mode, LanguageMode::TypeScript) {
-            output.push_str(": string");
+            doc.write(": string");
         }
-        output.push_str(" => {\n");
+        doc.write(" => {\n");
 
-        self.indent();
+        doc.indent();
         match self.mode {
-            LanguageMode::JavaScript => self.write_line(output, "let output = \"\";"),
-            LanguageMode::TypeScript => self.write_line(output, "let output: string = \"\";"),
+            LanguageMode::JavaScript => doc.write_line("let output = \"\";"),
+            LanguageMode::TypeScript => doc.write_line("let output: string = \"\";"),
         }
 
         // Transpile the body
-        self.transpile_statements(output, &entrypoint.body);
+        self.transpile_statements(doc, &entrypoint.body);
 
-        self.write_line(output, "return output;");
-        self.dedent();
+        doc.write_line("return output;");
+        doc.dedent();
 
         // Write closing brace with proper indentation
-        for _ in 0..self.indent_level {
-            output.push_str("    ");
-        }
-        output.push('}');
+        doc.write_indent();
+        doc.write("}");
     }
 
     fn transpile_module(&mut self, ir_module: &IrModule) -> String {
-        let mut output = String::new();
+        let mut doc = Doc::new_with_spaces();
 
         // First pass: scan to determine if we need HTML escaping
         let mut needs_escape_html = false;
@@ -192,211 +169,211 @@ impl Transpiler for JsTranspiler {
 
         // Add escape HTML helper if needed
         if needs_escape_html {
-            self.emit_escape_html_helper(&mut output);
+            self.emit_escape_html_helper(&mut doc);
         }
 
         // Start export default object
-        self.write_line(&mut output, "export default {");
-        self.indent();
+        doc.write_line("export default {");
+        doc.indent();
 
         // Transpile each entrypoint as a function property
         let mut first = true;
         for (name, entrypoint) in &ir_module.entry_points {
             if !first {
-                output.push_str(",\n");
+                doc.write(",\n");
             }
             first = false;
 
-            self.transpile_entrypoint(&mut output, name, entrypoint);
+            self.transpile_entrypoint(&mut doc, name, entrypoint);
         }
 
         // Close the export default object
-        self.write_line(&mut output, "");
-        self.dedent();
-        self.write_line(&mut output, "}");
+        doc.write_line("");
+        doc.dedent();
+        doc.write_line("}");
 
-        output
+        doc.into_string()
     }
 }
 
 impl StatementTranspiler for JsTranspiler {
-    fn transpile_write(&mut self, output: &mut String, content: &str) {
+    fn transpile_write(&mut self, doc: &mut Doc, content: &str) {
         let quoted = self.quote_string(content);
-        self.write_line(output, &format!("output += {};", quoted));
+        doc.write_line(&format!("output += {};", quoted));
     }
 
-    fn transpile_write_expr(&mut self, output: &mut String, expr: &IrExpr, escape: bool) {
-        let mut js_expr = String::new();
-        self.transpile_expr(&mut js_expr, expr);
+    fn transpile_write_expr(&mut self, doc: &mut Doc, expr: &IrExpr, escape: bool) {
+        let mut expr_doc = Doc::new_with_spaces();
+        self.transpile_expr(&mut expr_doc, expr);
         if escape {
-            self.write_line(output, &format!("output += escapeHtml({});", js_expr));
+            doc.write_line(&format!("output += escapeHtml({});", expr_doc.as_str()));
         } else {
-            self.write_line(output, &format!("output += {};", js_expr));
+            doc.write_line(&format!("output += {};", expr_doc.as_str()));
         }
     }
 
-    fn transpile_if(&mut self, output: &mut String, condition: &IrExpr, body: &[IrStatement]) {
-        let mut js_cond = String::new();
-        self.transpile_expr(&mut js_cond, condition);
-        self.write_line(output, &format!("if ({}) {{", js_cond));
-        self.indent();
-        self.transpile_statements(output, body);
-        self.dedent();
-        self.write_line(output, "}");
+    fn transpile_if(&mut self, doc: &mut Doc, condition: &IrExpr, body: &[IrStatement]) {
+        let mut cond_doc = Doc::new_with_spaces();
+        self.transpile_expr(&mut cond_doc, condition);
+        doc.write_line(&format!("if ({}) {{", cond_doc.as_str()));
+        doc.indent();
+        self.transpile_statements(doc, body);
+        doc.dedent();
+        doc.write_line("}");
     }
 
     fn transpile_for(
         &mut self,
-        output: &mut String,
+        doc: &mut Doc,
         var: &str,
         array: &IrExpr,
         body: &[IrStatement],
     ) {
-        let mut js_array = String::new();
-        self.transpile_expr(&mut js_array, array);
-        self.write_line(output, &format!("for (const {} of {}) {{", var, js_array));
-        self.indent();
-        self.transpile_statements(output, body);
-        self.dedent();
-        self.write_line(output, "}");
+        let mut array_doc = Doc::new_with_spaces();
+        self.transpile_expr(&mut array_doc, array);
+        doc.write_line(&format!("for (const {} of {}) {{", var, array_doc.as_str()));
+        doc.indent();
+        self.transpile_statements(doc, body);
+        doc.dedent();
+        doc.write_line("}");
     }
 
     fn transpile_let(
         &mut self,
-        output: &mut String,
+        doc: &mut Doc,
         var: &str,
         value: &IrExpr,
         body: &[IrStatement],
     ) {
-        let mut js_value = String::new();
-        self.transpile_expr(&mut js_value, value);
-        self.write_line(output, &format!("const {} = {};", var, js_value));
-        self.transpile_statements(output, body);
+        let mut value_doc = Doc::new_with_spaces();
+        self.transpile_expr(&mut value_doc, value);
+        doc.write_line(&format!("const {} = {};", var, value_doc.as_str()));
+        self.transpile_statements(doc, body);
     }
 }
 
 impl ExpressionTranspiler for JsTranspiler {
-    fn transpile_var(&self, output: &mut String, name: &str) {
-        output.push_str(name);
+    fn transpile_var(&self, doc: &mut Doc, name: &str) {
+        doc.write(name);
     }
 
-    fn transpile_property_access(&self, output: &mut String, object: &IrExpr, property: &str) {
-        self.transpile_expr(output, object);
-        output.push('.');
-        output.push_str(property);
+    fn transpile_property_access(&self, doc: &mut Doc, object: &IrExpr, property: &str) {
+        self.transpile_expr(doc, object);
+        doc.write(".");
+        doc.write(property);
     }
 
-    fn transpile_string_literal(&self, output: &mut String, value: &str) {
+    fn transpile_string_literal(&self, doc: &mut Doc, value: &str) {
         let quoted = self.quote_string(value);
-        output.push_str(&quoted);
+        doc.write(&quoted);
     }
 
-    fn transpile_boolean_literal(&self, output: &mut String, value: bool) {
-        output.push_str(&value.to_string());
+    fn transpile_boolean_literal(&self, doc: &mut Doc, value: bool) {
+        doc.write(&value.to_string());
     }
 
-    fn transpile_number_literal(&self, output: &mut String, value: &serde_json::Number) {
-        output.push_str(&value.to_string());
+    fn transpile_number_literal(&self, doc: &mut Doc, value: &serde_json::Number) {
+        doc.write(&value.to_string());
     }
 
-    fn transpile_array_literal(&self, output: &mut String, elements: &[IrExpr], _elem_type: &Type) {
-        output.push('[');
+    fn transpile_array_literal(&self, doc: &mut Doc, elements: &[IrExpr], _elem_type: &Type) {
+        doc.write("[");
         let mut first = true;
         for elem in elements {
             if !first {
-                output.push_str(", ");
+                doc.write(", ");
             }
             first = false;
-            self.transpile_expr(output, elem);
+            self.transpile_expr(doc, elem);
         }
-        output.push(']');
+        doc.write("]");
     }
 
     fn transpile_object_literal(
         &self,
-        output: &mut String,
+        doc: &mut Doc,
         properties: &[(String, IrExpr)],
         _field_types: &BTreeMap<String, Type>,
     ) {
-        output.push('{');
+        doc.write("{");
         let mut first = true;
         for (key, value) in properties {
             if !first {
-                output.push_str(", ");
+                doc.write(", ");
             }
             first = false;
-            output.push_str(key);
-            output.push_str(": ");
-            self.transpile_expr(output, value);
+            doc.write(key);
+            doc.write(": ");
+            self.transpile_expr(doc, value);
         }
-        output.push('}');
+        doc.write("}");
     }
 
-    fn transpile_string_equality(&self, output: &mut String, left: &IrExpr, right: &IrExpr) {
-        output.push('(');
-        self.transpile_expr(output, left);
-        output.push_str(" === ");
-        self.transpile_expr(output, right);
-        output.push(')');
+    fn transpile_string_equality(&self, doc: &mut Doc, left: &IrExpr, right: &IrExpr) {
+        doc.write("(");
+        self.transpile_expr(doc, left);
+        doc.write(" === ");
+        self.transpile_expr(doc, right);
+        doc.write(")");
     }
 
-    fn transpile_bool_equality(&self, output: &mut String, left: &IrExpr, right: &IrExpr) {
-        output.push('(');
-        self.transpile_expr(output, left);
-        output.push_str(" === ");
-        self.transpile_expr(output, right);
-        output.push(')');
+    fn transpile_bool_equality(&self, doc: &mut Doc, left: &IrExpr, right: &IrExpr) {
+        doc.write("(");
+        self.transpile_expr(doc, left);
+        doc.write(" === ");
+        self.transpile_expr(doc, right);
+        doc.write(")");
     }
 
-    fn transpile_not(&self, output: &mut String, operand: &IrExpr) {
-        output.push_str("!(");
-        self.transpile_expr(output, operand);
-        output.push(')');
+    fn transpile_not(&self, doc: &mut Doc, operand: &IrExpr) {
+        doc.write("!(");
+        self.transpile_expr(doc, operand);
+        doc.write(")");
     }
 
-    fn transpile_json_encode(&self, output: &mut String, value: &IrExpr) {
-        output.push_str("JSON.stringify(");
-        self.transpile_expr(output, value);
-        output.push(')');
+    fn transpile_json_encode(&self, doc: &mut Doc, value: &IrExpr) {
+        doc.write("JSON.stringify(");
+        self.transpile_expr(doc, value);
+        doc.write(")");
     }
 }
 
 impl TypeTranspiler for JsTranspiler {
-    fn transpile_bool_type(&self, output: &mut String) {
-        output.push_str("boolean");
+    fn transpile_bool_type(&self, doc: &mut Doc) {
+        doc.write("boolean");
     }
 
-    fn transpile_string_type(&self, output: &mut String) {
-        output.push_str("string");
+    fn transpile_string_type(&self, doc: &mut Doc) {
+        doc.write("string");
     }
 
-    fn transpile_number_type(&self, output: &mut String) {
-        output.push_str("number");
+    fn transpile_number_type(&self, doc: &mut Doc) {
+        doc.write("number");
     }
 
-    fn transpile_array_type(&self, output: &mut String, element_type: Option<&Type>) {
+    fn transpile_array_type(&self, doc: &mut Doc, element_type: Option<&Type>) {
         match element_type {
             Some(elem) => {
-                self.transpile_type(output, elem);
-                output.push_str("[]");
+                self.transpile_type(doc, elem);
+                doc.write("[]");
             }
-            None => output.push_str("unknown[]"),
+            None => doc.write("unknown[]"),
         }
     }
 
-    fn transpile_object_type(&self, output: &mut String, fields: &BTreeMap<String, Type>) {
-        output.push_str("{ ");
+    fn transpile_object_type(&self, doc: &mut Doc, fields: &BTreeMap<String, Type>) {
+        doc.write("{ ");
         let mut first = true;
         for (name, ty) in fields {
             if !first {
-                output.push_str(", ");
+                doc.write(", ");
             }
             first = false;
-            output.push_str(name);
-            output.push_str(": ");
-            self.transpile_type(output, ty);
+            doc.write(name);
+            doc.write(": ");
+            self.transpile_type(doc, ty);
         }
-        output.push_str(" }");
+        doc.write(" }");
     }
 }
 

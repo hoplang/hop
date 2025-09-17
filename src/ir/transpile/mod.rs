@@ -8,31 +8,107 @@ use crate::ir::ast::{BinaryOp, IrEntrypoint, IrExpr, IrModule, IrStatement, Unar
 use crate::dop::r#type::Type;
 use std::collections::BTreeMap;
 
+/// Document builder for generating indented code
+pub struct Doc {
+    content: String,
+    indent_level: usize,
+    indent_str: String,
+}
+
+impl Doc {
+    /// Create a new Doc with the specified indentation string
+    pub fn new(indent_str: &str) -> Self {
+        Self {
+            content: String::new(),
+            indent_level: 0,
+            indent_str: indent_str.to_string(),
+        }
+    }
+
+    /// Create a new Doc with 4-space indentation
+    pub fn new_with_spaces() -> Self {
+        Self::new("    ")
+    }
+
+    /// Create a new Doc with tab indentation
+    pub fn new_with_tabs() -> Self {
+        Self::new("\t")
+    }
+
+    /// Write text without a newline
+    pub fn write(&mut self, text: &str) {
+        self.content.push_str(text);
+    }
+
+    /// Write a line with proper indentation
+    pub fn write_line(&mut self, line: &str) {
+        if !line.is_empty() {
+            for _ in 0..self.indent_level {
+                self.content.push_str(&self.indent_str);
+            }
+        }
+        self.content.push_str(line);
+        self.content.push('\n');
+    }
+
+    /// Write current indentation without content
+    pub fn write_indent(&mut self) {
+        for _ in 0..self.indent_level {
+            self.content.push_str(&self.indent_str);
+        }
+    }
+
+    /// Increase indentation level
+    pub fn indent(&mut self) {
+        self.indent_level += 1;
+    }
+
+    /// Decrease indentation level
+    pub fn dedent(&mut self) {
+        self.indent_level = self.indent_level.saturating_sub(1);
+    }
+
+    /// Get the current indent level
+    pub fn indent_level(&self) -> usize {
+        self.indent_level
+    }
+
+    /// Consume the Doc and return the built string
+    pub fn into_string(self) -> String {
+        self.content
+    }
+
+    /// Get a reference to the current content
+    pub fn as_str(&self) -> &str {
+        &self.content
+    }
+}
+
 /// Trait for transpiling types to language-specific representations
 pub trait TypeTranspiler {
     /// Transpile a primitive boolean type
-    fn transpile_bool_type(&self, output: &mut String);
+    fn transpile_bool_type(&self, doc: &mut Doc);
 
     /// Transpile a primitive string type
-    fn transpile_string_type(&self, output: &mut String);
+    fn transpile_string_type(&self, doc: &mut Doc);
 
     /// Transpile a primitive number type
-    fn transpile_number_type(&self, output: &mut String);
+    fn transpile_number_type(&self, doc: &mut Doc);
 
     /// Transpile an array type
-    fn transpile_array_type(&self, output: &mut String, element_type: Option<&Type>);
+    fn transpile_array_type(&self, doc: &mut Doc, element_type: Option<&Type>);
 
     /// Transpile an object/struct type
-    fn transpile_object_type(&self, output: &mut String, fields: &BTreeMap<String, Type>);
+    fn transpile_object_type(&self, doc: &mut Doc, fields: &BTreeMap<String, Type>);
 
     /// Main dispatcher for transpiling any type
-    fn transpile_type(&self, output: &mut String, ty: &Type) {
+    fn transpile_type(&self, doc: &mut Doc, ty: &Type) {
         match ty {
-            Type::Bool => self.transpile_bool_type(output),
-            Type::String => self.transpile_string_type(output),
-            Type::Number => self.transpile_number_type(output),
-            Type::Array(elem) => self.transpile_array_type(output, elem.as_deref()),
-            Type::Object(fields) => self.transpile_object_type(output, fields),
+            Type::Bool => self.transpile_bool_type(doc),
+            Type::String => self.transpile_string_type(doc),
+            Type::Number => self.transpile_number_type(doc),
+            Type::Array(elem) => self.transpile_array_type(doc, elem.as_deref()),
+            Type::Object(fields) => self.transpile_object_type(doc, fields),
         }
     }
 }
@@ -40,49 +116,49 @@ pub trait TypeTranspiler {
 /// Fine-grained expression transpilation trait
 pub trait ExpressionTranspiler {
     // Variables and property access
-    fn transpile_var(&self, output: &mut String, name: &str);
-    fn transpile_property_access(&self, output: &mut String, object: &IrExpr, property: &str);
+    fn transpile_var(&self, doc: &mut Doc, name: &str);
+    fn transpile_property_access(&self, doc: &mut Doc, object: &IrExpr, property: &str);
 
     // Literals
-    fn transpile_string_literal(&self, output: &mut String, value: &str);
-    fn transpile_boolean_literal(&self, output: &mut String, value: bool);
-    fn transpile_number_literal(&self, output: &mut String, value: &serde_json::Number);
+    fn transpile_string_literal(&self, doc: &mut Doc, value: &str);
+    fn transpile_boolean_literal(&self, doc: &mut Doc, value: bool);
+    fn transpile_number_literal(&self, doc: &mut Doc, value: &serde_json::Number);
 
     // Complex literals
-    fn transpile_array_literal(&self, output: &mut String, elements: &[IrExpr], elem_type: &Type);
-    fn transpile_object_literal(&self, output: &mut String, properties: &[(String, IrExpr)], field_types: &BTreeMap<String, Type>);
+    fn transpile_array_literal(&self, doc: &mut Doc, elements: &[IrExpr], elem_type: &Type);
+    fn transpile_object_literal(&self, doc: &mut Doc, properties: &[(String, IrExpr)], field_types: &BTreeMap<String, Type>);
 
     // Binary operations (type-specific)
-    fn transpile_string_equality(&self, output: &mut String, left: &IrExpr, right: &IrExpr);
-    fn transpile_bool_equality(&self, output: &mut String, left: &IrExpr, right: &IrExpr);
+    fn transpile_string_equality(&self, doc: &mut Doc, left: &IrExpr, right: &IrExpr);
+    fn transpile_bool_equality(&self, doc: &mut Doc, left: &IrExpr, right: &IrExpr);
 
     // Unary operations
-    fn transpile_not(&self, output: &mut String, operand: &IrExpr);
+    fn transpile_not(&self, doc: &mut Doc, operand: &IrExpr);
 
     // Special operations
-    fn transpile_json_encode(&self, output: &mut String, value: &IrExpr);
+    fn transpile_json_encode(&self, doc: &mut Doc, value: &IrExpr);
 
     // Main dispatcher (with default implementation)
-    fn transpile_expr(&self, output: &mut String, expr: &IrExpr) {
+    fn transpile_expr(&self, doc: &mut Doc, expr: &IrExpr) {
         match expr {
-            IrExpr::Var { value, .. } => self.transpile_var(output, value.as_str()),
+            IrExpr::Var { value, .. } => self.transpile_var(doc, value.as_str()),
             IrExpr::PropertyAccess {
                 object, property, ..
-            } => self.transpile_property_access(output, object, property),
-            IrExpr::StringLiteral { value, .. } => self.transpile_string_literal(output, value),
-            IrExpr::BooleanLiteral { value, .. } => self.transpile_boolean_literal(output, *value),
-            IrExpr::NumberLiteral { value, .. } => self.transpile_number_literal(output, value),
+            } => self.transpile_property_access(doc, object, property),
+            IrExpr::StringLiteral { value, .. } => self.transpile_string_literal(doc, value),
+            IrExpr::BooleanLiteral { value, .. } => self.transpile_boolean_literal(doc, *value),
+            IrExpr::NumberLiteral { value, .. } => self.transpile_number_literal(doc, value),
             IrExpr::ArrayLiteral {
                 elements,
                 annotation: (_, typ),
                 ..
-            } => self.transpile_array_literal(output, elements, typ),
+            } => self.transpile_array_literal(doc, elements, typ),
             IrExpr::ObjectLiteral {
                 properties,
                 annotation: (_, typ),
                 ..
             } => match typ {
-                Type::Object(fields) => self.transpile_object_literal(output, properties, fields),
+                Type::Object(fields) => self.transpile_object_literal(doc, properties, fields),
                 _ => panic!("Object literal must have object type"),
             },
             IrExpr::BinaryOp {
@@ -93,8 +169,8 @@ pub trait ExpressionTranspiler {
             } => {
                 // Check the types of both operands for safety
                 match (left.typ(), right.typ()) {
-                    (Type::Bool, Type::Bool) => self.transpile_bool_equality(output, left, right),
-                    (Type::String, Type::String) => self.transpile_string_equality(output, left, right),
+                    (Type::Bool, Type::Bool) => self.transpile_bool_equality(doc, left, right),
+                    (Type::String, Type::String) => self.transpile_string_equality(doc, left, right),
                     _ => panic!(
                         "Equality comparison only supported for matching bool or string types, got {:?} and {:?}",
                         left.typ(),
@@ -106,8 +182,8 @@ pub trait ExpressionTranspiler {
                 operator: UnaryOp::Not,
                 operand,
                 ..
-            } => self.transpile_not(output, operand),
-            IrExpr::JsonEncode { value, .. } => self.transpile_json_encode(output, value),
+            } => self.transpile_not(doc, operand),
+            IrExpr::JsonEncode { value, .. } => self.transpile_json_encode(doc, value),
         }
     }
 }
@@ -115,45 +191,45 @@ pub trait ExpressionTranspiler {
 /// Trait for transpiling statements to language-specific representations
 pub trait StatementTranspiler: ExpressionTranspiler {
     /// Transpile a Write statement (literal string output)
-    fn transpile_write(&mut self, output: &mut String, content: &str);
+    fn transpile_write(&mut self, doc: &mut Doc, content: &str);
 
     /// Transpile a WriteExpr statement (expression output with optional escaping)
-    fn transpile_write_expr(&mut self, output: &mut String, expr: &IrExpr, escape: bool);
+    fn transpile_write_expr(&mut self, doc: &mut Doc, expr: &IrExpr, escape: bool);
 
     /// Transpile an If statement (conditional execution)
-    fn transpile_if(&mut self, output: &mut String, condition: &IrExpr, body: &[IrStatement]);
+    fn transpile_if(&mut self, doc: &mut Doc, condition: &IrExpr, body: &[IrStatement]);
 
     /// Transpile a For loop (iteration over array)
-    fn transpile_for(&mut self, output: &mut String, var: &str, array: &IrExpr, body: &[IrStatement]);
+    fn transpile_for(&mut self, doc: &mut Doc, var: &str, array: &IrExpr, body: &[IrStatement]);
 
     /// Transpile a Let statement (variable binding with scope)
-    fn transpile_let(&mut self, output: &mut String, var: &str, value: &IrExpr, body: &[IrStatement]);
+    fn transpile_let(&mut self, doc: &mut Doc, var: &str, value: &IrExpr, body: &[IrStatement]);
 
     /// Main dispatcher for transpiling statements
-    fn transpile_statement(&mut self, output: &mut String, statement: &IrStatement) {
+    fn transpile_statement(&mut self, doc: &mut Doc, statement: &IrStatement) {
         match statement {
             IrStatement::Write { content, .. } => {
-                self.transpile_write(output, content);
+                self.transpile_write(doc, content);
             }
             IrStatement::WriteExpr { expr, escape, .. } => {
-                self.transpile_write_expr(output, expr, *escape);
+                self.transpile_write_expr(doc, expr, *escape);
             }
             IrStatement::If { condition, body, .. } => {
-                self.transpile_if(output, condition, body);
+                self.transpile_if(doc, condition, body);
             }
             IrStatement::For { var, array, body, .. } => {
-                self.transpile_for(output, var.as_str(), array, body);
+                self.transpile_for(doc, var.as_str(), array, body);
             }
             IrStatement::Let { var, value, body, .. } => {
-                self.transpile_let(output, var.as_str(), value, body);
+                self.transpile_let(doc, var.as_str(), value, body);
             }
         }
     }
 
     /// Transpile multiple statements
-    fn transpile_statements(&mut self, output: &mut String, statements: &[IrStatement]) {
+    fn transpile_statements(&mut self, doc: &mut Doc, statements: &[IrStatement]) {
         for statement in statements {
-            self.transpile_statement(output, statement);
+            self.transpile_statement(doc, statement);
         }
     }
 }
@@ -161,7 +237,7 @@ pub trait StatementTranspiler: ExpressionTranspiler {
 /// Main transpiler trait for complete IR module transpilation
 pub trait Transpiler: StatementTranspiler {
     /// Transpile an entrypoint to a function/method in the target language
-    fn transpile_entrypoint(&mut self, output: &mut String, name: &str, entrypoint: &IrEntrypoint);
+    fn transpile_entrypoint(&mut self, doc: &mut Doc, name: &str, entrypoint: &IrEntrypoint);
 
     /// Transpile a complete IR module to the target language
     fn transpile_module(&mut self, ir_module: &IrModule) -> String;

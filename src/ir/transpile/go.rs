@@ -1,4 +1,4 @@
-use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
+use super::{Doc, ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
 use crate::cased_string::CasedString;
 use crate::dop::r#type::Type;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
@@ -6,7 +6,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// Transpiles an IR module to Go code
 pub struct GoTranspiler {
-    indent_level: usize,
     /// Track packages we need to import
     imports: BTreeSet<String>,
 }
@@ -14,7 +13,6 @@ pub struct GoTranspiler {
 impl GoTranspiler {
     pub fn new() -> Self {
         Self {
-            indent_level: 0,
             imports: BTreeSet::new(),
         }
     }
@@ -62,71 +60,45 @@ impl GoTranspiler {
             .replace('\t', "\\t")
     }
 
-    // Helper methods for indentation
-    fn indent(&mut self) {
-        self.indent_level += 1;
-    }
 
-    fn dedent(&mut self) {
-        self.indent_level = self.indent_level.saturating_sub(1);
-    }
-
-    fn write_indent(&mut self, output: &mut String) {
-        for _ in 0..self.indent_level {
-            output.push('\t');
-        }
-    }
-
-    fn write_line(&mut self, output: &mut String, line: &str) {
-        if !line.is_empty() {
-            for _ in 0..self.indent_level {
-                output.push('\t');
-            }
-        }
-        output.push_str(line);
-        output.push('\n');
-    }
 }
 
 impl Transpiler for GoTranspiler {
-    fn transpile_entrypoint(&mut self, output: &mut String, name: &str, entrypoint: &IrEntrypoint) {
-        {
-            // Convert kebab-case to PascalCase for Go function name
-            let func_name = CasedString::from_kebab_case(name).to_pascal_case();
+    fn transpile_entrypoint(&mut self, doc: &mut Doc, name: &str, entrypoint: &IrEntrypoint) {
+        // Convert kebab-case to PascalCase for Go function name
+        let func_name = CasedString::from_kebab_case(name).to_pascal_case();
 
-            if entrypoint.parameters.is_empty() {
-                self.write_line(output, &format!("func {}() string {{", func_name));
-            } else {
-                let struct_name = format!("{}Params", func_name);
-                self.write_line(
-                    output,
-                    &format!("func {}(params {}) string {{", func_name, struct_name),
-                );
+        if entrypoint.parameters.is_empty() {
+            doc.write_line(&format!("func {}() string {{", func_name));
+        } else {
+            let struct_name = format!("{}Params", func_name);
+            doc.write_line(
+                &format!("func {}(params {}) string {{", func_name, struct_name),
+            );
 
-                // Extract parameters into local variables
-                self.indent();
-                for (param_name, _) in &entrypoint.parameters {
-                    let field_name =
-                        CasedString::from_snake_case(param_name.as_str()).to_pascal_case();
-                    self.write_line(output, &format!("{} := params.{}", param_name, field_name));
-                }
-                self.dedent();
+            // Extract parameters into local variables
+            doc.indent();
+            for (param_name, _) in &entrypoint.parameters {
+                let field_name =
+                    CasedString::from_snake_case(param_name.as_str()).to_pascal_case();
+                doc.write_line(&format!("{} := params.{}", param_name, field_name));
             }
+            doc.dedent();
+        }
 
-            self.indent();
+        doc.indent();
 
-            self.write_line(output, "var output strings.Builder");
+        doc.write_line("var output strings.Builder");
 
-            self.transpile_statements(output, &entrypoint.body);
+        self.transpile_statements(doc, &entrypoint.body);
 
-            self.write_line(output, "return output.String()");
-            self.dedent();
-            self.write_line(output, "}");
-        };
+        doc.write_line("return output.String()");
+        doc.dedent();
+        doc.write_line("}");
     }
 
     fn transpile_module(&mut self, ir_module: &IrModule) -> String {
-        let mut output = String::new();
+        let mut doc = Doc::new_with_tabs();
 
         // Reset state
         self.imports.clear();
@@ -140,35 +112,35 @@ impl Transpiler for GoTranspiler {
         self.imports.insert("strings".to_string());
 
         // Write package declaration
-        self.write_line(&mut output, "package components");
-        self.write_line(&mut output, "");
+        doc.write_line("package components");
+        doc.write_line("");
 
         // Write imports if needed
         if !self.imports.is_empty() {
-            self.write_line(&mut output, "import (");
-            self.indent();
+            doc.write_line("import (");
+            doc.indent();
             let imports: Vec<_> = self.imports.iter().cloned().collect();
             for import in imports {
                 if import == "json" {
-                    self.write_line(&mut output, "\"encoding/json\"");
+                    doc.write_line("\"encoding/json\"");
                 } else {
-                    self.write_line(&mut output, &format!("\"{}\"", import));
+                    doc.write_line(&format!("\"{}\"", import));
                 }
             }
-            self.dedent();
-            self.write_line(&mut output, ")");
-            self.write_line(&mut output, "");
+            doc.dedent();
+            doc.write_line(")");
+            doc.write_line("");
         }
 
         // Add JSON helper if needed
         if self.imports.contains("json") {
-            self.write_line(&mut output, "func mustJSONMarshal(v any) string {");
-            self.indent();
-            self.write_line(&mut output, "data, _ := json.Marshal(v)");
-            self.write_line(&mut output, "return string(data)");
-            self.dedent();
-            self.write_line(&mut output, "}");
-            self.write_line(&mut output, "");
+            doc.write_line("func mustJSONMarshal(v any) string {");
+            doc.indent();
+            doc.write_line("data, _ := json.Marshal(v)");
+            doc.write_line("return string(data)");
+            doc.dedent();
+            doc.write_line("}");
+            doc.write_line("");
         }
 
         // Generate parameter structs for entrypoints that have parameters
@@ -178,303 +150,265 @@ impl Transpiler for GoTranspiler {
                     "{}Params",
                     CasedString::from_kebab_case(name).to_pascal_case()
                 );
-                self.write_line(&mut output, &format!("type {} struct {{", struct_name));
-                self.indent();
+                doc.write_line(&format!("type {} struct {{", struct_name));
+                doc.indent();
                 for (param_name, param_type) in &entrypoint.parameters {
-                    let mut go_type = String::new();
-                    self.transpile_type(&mut go_type, param_type);
+                    let mut type_doc = Doc::new_with_tabs();
+                    self.transpile_type(&mut type_doc, param_type);
                     let field_name =
                         CasedString::from_snake_case(param_name.as_str()).to_pascal_case();
-                    self.write_line(
-                        &mut output,
-                        &format!("{} {} `json:\"{}\"`", field_name, go_type, param_name),
+                    doc.write_line(
+                        &format!("{} {} `json:\"{}\"`", field_name, type_doc.as_str(), param_name),
                     );
                 }
-                self.dedent();
-                self.write_line(&mut output, "}");
-                self.write_line(&mut output, "");
+                doc.dedent();
+                doc.write_line("}");
+                doc.write_line("");
             }
         }
 
         // Transpile each entrypoint as a function
         for (name, entrypoint) in &ir_module.entry_points {
-            {
-                let this = &mut *self;
-                let output: &mut String = &mut output;
-                // Convert kebab-case to PascalCase for Go function name
-                let func_name = CasedString::from_kebab_case(name).to_pascal_case();
-
-                if entrypoint.parameters.is_empty() {
-                    this.write_line(output, &format!("func {}() string {{", func_name));
-                } else {
-                    let struct_name = format!("{}Params", func_name);
-                    this.write_line(
-                        output,
-                        &format!("func {}(params {}) string {{", func_name, struct_name),
-                    );
-
-                    // Extract parameters into local variables
-                    this.indent();
-                    for (param_name, _) in &entrypoint.parameters {
-                        let field_name =
-                            CasedString::from_snake_case(param_name.as_str()).to_pascal_case();
-                        this.write_line(
-                            output,
-                            &format!("{} := params.{}", param_name, field_name),
-                        );
-                    }
-                    this.dedent();
-                }
-
-                this.indent();
-
-                this.write_line(output, "var output strings.Builder");
-
-                this.transpile_statements(output, &entrypoint.body);
-
-                this.write_line(output, "return output.String()");
-                this.dedent();
-                this.write_line(output, "}");
-            };
-            self.write_line(&mut output, "");
+            self.transpile_entrypoint(&mut doc, name, entrypoint);
+            doc.write_line("");
         }
 
-        output
+        doc.into_string()
     }
 }
 
 impl StatementTranspiler for GoTranspiler {
-    fn transpile_write(&mut self, output: &mut String, content: &str) {
-        self.write_indent(output);
+    fn transpile_write(&mut self, doc: &mut Doc, content: &str) {
+        doc.write_indent();
         let escaped = self.escape_string(content);
-        output.push_str(&format!("output.WriteString(\"{}\")\n", escaped));
+        doc.write(&format!("output.WriteString(\"{}\")\n", escaped));
     }
 
-    fn transpile_write_expr(&mut self, output: &mut String, expr: &IrExpr, escape: bool) {
-        self.write_indent(output);
-        let mut go_expr = String::new();
-        self.transpile_expr(&mut go_expr, expr);
+    fn transpile_write_expr(&mut self, doc: &mut Doc, expr: &IrExpr, escape: bool) {
+        doc.write_indent();
+        let mut expr_doc = Doc::new_with_tabs();
+        self.transpile_expr(&mut expr_doc, expr);
 
         // Handle type conversion to string based on expression type
         let string_expr = match expr.typ() {
-            Type::String => go_expr,
+            Type::String => expr_doc.as_str().to_string(),
             Type::Number => {
-                format!("fmt.Sprintf(\"%v\", {})", go_expr)
+                format!("fmt.Sprintf(\"%v\", {})", expr_doc.as_str())
             }
             Type::Bool => {
-                format!("fmt.Sprintf(\"%v\", {})", go_expr)
+                format!("fmt.Sprintf(\"%v\", {})", expr_doc.as_str())
             }
             _ => {
-                format!("fmt.Sprintf(\"%v\", {})", go_expr)
+                format!("fmt.Sprintf(\"%v\", {})", expr_doc.as_str())
             }
         };
 
         if escape {
-            output.push_str(&format!(
+            doc.write(&format!(
                 "output.WriteString(html.EscapeString({}))\n",
                 string_expr
             ));
         } else {
-            output.push_str(&format!("output.WriteString({})\n", string_expr));
+            doc.write(&format!("output.WriteString({})\n", string_expr));
         }
     }
 
-    fn transpile_if(&mut self, output: &mut String, condition: &IrExpr, body: &[IrStatement]) {
-        self.write_indent(output);
-        output.push_str("if ");
-        self.transpile_expr(output, condition);
-        output.push_str(" {\n");
-        self.indent();
-        self.transpile_statements(output, body);
-        self.dedent();
-        self.write_indent(output);
-        output.push_str("}\n");
+    fn transpile_if(&mut self, doc: &mut Doc, condition: &IrExpr, body: &[IrStatement]) {
+        doc.write_indent();
+        doc.write("if ");
+        self.transpile_expr(doc, condition);
+        doc.write(" {\n");
+        doc.indent();
+        self.transpile_statements(doc, body);
+        doc.dedent();
+        doc.write_indent();
+        doc.write("}\n");
     }
 
     fn transpile_for(
         &mut self,
-        output: &mut String,
+        doc: &mut Doc,
         var: &str,
         array: &IrExpr,
         body: &[IrStatement],
     ) {
-        self.write_indent(output);
-        output.push_str(&format!("for _, {} := range ", var));
-        self.transpile_expr(output, array);
-        output.push_str(" {\n");
-        self.indent();
-        self.transpile_statements(output, body);
-        self.dedent();
-        self.write_indent(output);
-        output.push_str("}\n");
+        doc.write_indent();
+        doc.write(&format!("for _, {} := range ", var));
+        self.transpile_expr(doc, array);
+        doc.write(" {\n");
+        doc.indent();
+        self.transpile_statements(doc, body);
+        doc.dedent();
+        doc.write_indent();
+        doc.write("}\n");
     }
 
     fn transpile_let(
         &mut self,
-        output: &mut String,
+        doc: &mut Doc,
         var: &str,
         value: &IrExpr,
         body: &[IrStatement],
     ) {
-        self.write_indent(output);
-        output.push_str(&format!("{} := ", var));
-        self.transpile_expr(output, value);
-        output.push('\n');
-        self.transpile_statements(output, body);
+        doc.write_indent();
+        doc.write(&format!("{} := ", var));
+        self.transpile_expr(doc, value);
+        doc.write("\n");
+        self.transpile_statements(doc, body);
     }
 }
 
 impl ExpressionTranspiler for GoTranspiler {
-    fn transpile_var(&self, output: &mut String, name: &str) {
-        output.push_str(name);
+    fn transpile_var(&self, doc: &mut Doc, name: &str) {
+        doc.write(name);
     }
 
-    fn transpile_property_access(&self, output: &mut String, object: &IrExpr, property: &str) {
-        self.transpile_expr(output, object);
-        output.push('.');
+    fn transpile_property_access(&self, doc: &mut Doc, object: &IrExpr, property: &str) {
+        self.transpile_expr(doc, object);
+        doc.write(".");
         // Go struct field access with PascalCase field names
         let prop_name = CasedString::from_snake_case(property).to_pascal_case();
-        output.push_str(&prop_name);
+        doc.write(&prop_name);
     }
 
-    fn transpile_string_literal(&self, output: &mut String, value: &str) {
-        output.push('"');
-        output.push_str(&self.escape_string(value));
-        output.push('"');
+    fn transpile_string_literal(&self, doc: &mut Doc, value: &str) {
+        doc.write("\"");
+        doc.write(&self.escape_string(value));
+        doc.write("\"");
     }
 
-    fn transpile_boolean_literal(&self, output: &mut String, value: bool) {
-        output.push_str(&value.to_string());
+    fn transpile_boolean_literal(&self, doc: &mut Doc, value: bool) {
+        doc.write(&value.to_string());
     }
 
-    fn transpile_number_literal(&self, output: &mut String, value: &serde_json::Number) {
+    fn transpile_number_literal(&self, doc: &mut Doc, value: &serde_json::Number) {
         // Go requires explicit float notation for decimals
         if let Some(f) = value.as_f64() {
             if f.fract() == 0.0 {
-                output.push_str(&format!("{}", f as i64));
+                doc.write(&format!("{}", f as i64));
             } else {
-                output.push_str(&format!("{}", f));
+                doc.write(&format!("{}", f));
             }
         } else {
-            output.push_str(&value.to_string());
+            doc.write(&value.to_string());
         }
     }
 
-    fn transpile_array_literal(&self, output: &mut String, elements: &[IrExpr], elem_type: &Type) {
+    fn transpile_array_literal(&self, doc: &mut Doc, elements: &[IrExpr], elem_type: &Type) {
         match elem_type {
             Type::Array(Some(inner_type)) => {
-                output.push_str("[]");
-                self.transpile_type(output, inner_type);
+                doc.write("[]");
+                self.transpile_type(doc, inner_type);
             }
-            _ => output.push_str("[]any"),
+            _ => doc.write("[]any"),
         }
-        output.push('{');
+        doc.write("{");
         let mut first = true;
         for elem in elements {
             if !first {
-                output.push_str(", ");
+                doc.write(", ");
             }
             first = false;
-            self.transpile_expr(output, elem);
+            self.transpile_expr(doc, elem);
         }
-        output.push('}');
+        doc.write("}");
     }
 
     fn transpile_object_literal(
         &self,
-        output: &mut String,
+        doc: &mut Doc,
         properties: &[(String, IrExpr)],
         field_types: &BTreeMap<String, Type>,
     ) {
         // Build the struct type definition from the field types
-        output.push_str("struct{");
+        doc.write("struct{");
         for (field_name, field_type) in field_types {
             let go_field = CasedString::from_snake_case(field_name.as_str()).to_pascal_case();
-            output.push_str(&go_field);
-            output.push(' ');
-            self.transpile_type(output, field_type);
-            output.push_str(&format!(" `json:\"{}\"`; ", field_name));
+            doc.write(&go_field);
+            doc.write(" ");
+            self.transpile_type(doc, field_type);
+            doc.write(&format!(" `json:\"{}\"`; ", field_name));
         }
-        output.push_str("}{");
+        doc.write("}{");
 
         // Build the struct literal values
         let mut first = true;
         for (key, value) in properties {
             if !first {
-                output.push_str(", ");
+                doc.write(", ");
             }
             first = false;
             let field_name = CasedString::from_snake_case(key).to_pascal_case();
-            output.push_str(&field_name);
-            output.push_str(": ");
-            self.transpile_expr(output, value);
+            doc.write(&field_name);
+            doc.write(": ");
+            self.transpile_expr(doc, value);
         }
-        output.push('}');
+        doc.write("}");
     }
 
-    fn transpile_string_equality(&self, output: &mut String, left: &IrExpr, right: &IrExpr) {
-        output.push('(');
-        self.transpile_expr(output, left);
-        output.push_str(" == ");
-        self.transpile_expr(output, right);
-        output.push(')');
+    fn transpile_string_equality(&self, doc: &mut Doc, left: &IrExpr, right: &IrExpr) {
+        doc.write("(");
+        self.transpile_expr(doc, left);
+        doc.write(" == ");
+        self.transpile_expr(doc, right);
+        doc.write(")");
     }
 
-    fn transpile_bool_equality(&self, output: &mut String, left: &IrExpr, right: &IrExpr) {
-        output.push('(');
-        self.transpile_expr(output, left);
-        output.push_str(" == ");
-        self.transpile_expr(output, right);
-        output.push(')');
+    fn transpile_bool_equality(&self, doc: &mut Doc, left: &IrExpr, right: &IrExpr) {
+        doc.write("(");
+        self.transpile_expr(doc, left);
+        doc.write(" == ");
+        self.transpile_expr(doc, right);
+        doc.write(")");
     }
 
-    fn transpile_not(&self, output: &mut String, operand: &IrExpr) {
-        output.push_str("!(");
-        self.transpile_expr(output, operand);
-        output.push(')');
+    fn transpile_not(&self, doc: &mut Doc, operand: &IrExpr) {
+        doc.write("!(");
+        self.transpile_expr(doc, operand);
+        doc.write(")");
     }
 
-    fn transpile_json_encode(&self, output: &mut String, value: &IrExpr) {
-        output.push_str("mustJSONMarshal(");
-        self.transpile_expr(output, value);
-        output.push(')');
+    fn transpile_json_encode(&self, doc: &mut Doc, value: &IrExpr) {
+        doc.write("mustJSONMarshal(");
+        self.transpile_expr(doc, value);
+        doc.write(")");
     }
 }
 
 impl TypeTranspiler for GoTranspiler {
-    fn transpile_bool_type(&self, output: &mut String) {
-        output.push_str("bool");
+    fn transpile_bool_type(&self, doc: &mut Doc) {
+        doc.write("bool");
     }
 
-    fn transpile_string_type(&self, output: &mut String) {
-        output.push_str("string");
+    fn transpile_string_type(&self, doc: &mut Doc) {
+        doc.write("string");
     }
 
-    fn transpile_number_type(&self, output: &mut String) {
-        output.push_str("float64");
+    fn transpile_number_type(&self, doc: &mut Doc) {
+        doc.write("float64");
     }
 
-    fn transpile_array_type(&self, output: &mut String, element_type: Option<&Type>) {
+    fn transpile_array_type(&self, doc: &mut Doc, element_type: Option<&Type>) {
         match element_type {
             Some(elem) => {
-                output.push_str("[]");
-                self.transpile_type(output, elem);
+                doc.write("[]");
+                self.transpile_type(doc, elem);
             }
-            None => output.push_str("[]any"),
+            None => doc.write("[]any"),
         }
     }
 
-    fn transpile_object_type(&self, output: &mut String, fields: &BTreeMap<String, Type>) {
+    fn transpile_object_type(&self, doc: &mut Doc, fields: &BTreeMap<String, Type>) {
         // Generate anonymous struct type
-        output.push_str("struct{");
+        doc.write("struct{");
         for (field_name, field_type) in fields {
             let go_field = CasedString::from_snake_case(field_name).to_pascal_case();
-            output.push_str(&go_field);
-            output.push(' ');
-            self.transpile_type(output, field_type);
-            output.push_str(&format!(" `json:\"{}\"`; ", field_name));
+            doc.write(&go_field);
+            doc.write(" ");
+            self.transpile_type(doc, field_type);
+            doc.write(&format!(" `json:\"{}\"`; ", field_name));
         }
-        output.push('}');
+        doc.write("}");
     }
 }
 
