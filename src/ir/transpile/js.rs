@@ -86,18 +86,10 @@ impl JsTranspiler {
             self.output.push_str("    ");
         }
         self.output.push_str(&camel_case_name);
-        self.output.push_str(": ");
+        self.output.push_str(": (");
 
-        if entrypoint.parameters.is_empty() {
-            match self.mode {
-                LanguageMode::JavaScript => {
-                    self.output.push_str("() => {");
-                }
-                LanguageMode::TypeScript => {
-                    self.output.push_str("(): string => {");
-                }
-            }
-        } else {
+        if !entrypoint.parameters.is_empty() {
+            self.output.push_str("{ ");
             // Build parameter list
             let params: Vec<String> = entrypoint
                 .parameters
@@ -105,31 +97,26 @@ impl JsTranspiler {
                 .map(|(name, _)| name.to_string())
                 .collect();
 
-            match self.mode {
-                LanguageMode::JavaScript => {
-                    // Destructure parameters from input object
-                    let params_str = params.join(", ");
-                    self.output
-                        .push_str(&format!("({{ {} }}) => {{", params_str));
-                }
-                LanguageMode::TypeScript => {
-                    // Generate TypeScript interface for parameters
-                    let type_params: Vec<String> = entrypoint
-                        .parameters
-                        .iter()
-                        .map(|(name, ty)| format!("{}: {}", name, self.transpile_type(ty)))
-                        .collect();
-                    let params_str = params.join(", ");
-                    let type_params_str = type_params.join(", ");
+            self.output.push_str(&params.join(", "));
+            self.output.push_str(" }");
 
-                    self.output.push_str(&format!(
-                        "({{ {} }}: {{ {} }}): string => {{",
-                        params_str, type_params_str
-                    ));
-                }
+            // Generate TypeScript interface for parameters
+            if matches!(self.mode, LanguageMode::TypeScript) {
+                self.output.push_str(": { ");
+                let type_params: Vec<String> = entrypoint
+                    .parameters
+                    .iter()
+                    .map(|(name, ty)| format!("{}: {}", name, self.transpile_type(ty)))
+                    .collect();
+                self.output.push_str(&type_params.join(", "));
+                self.output.push_str(" }");
             }
         }
-        self.output.push('\n');
+        self.output.push(')');
+        if matches!(self.mode, LanguageMode::TypeScript) {
+            self.output.push_str(": string");
+        }
+        self.output.push_str(" => {\n");
 
         self.indent();
         match self.mode {
