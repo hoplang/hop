@@ -45,6 +45,7 @@ pub fn typecheck_expr(
         Expr::PropertyAccess {
             object: base_expr,
             property,
+            annotation: range,
             ..
         } => {
             let typed_base = typecheck_expr(base_expr, env, annotations)?;
@@ -60,9 +61,9 @@ pub fn typecheck_expr(
                         })
                     } else {
                         Err(TypeError::PropertyNotFoundInObject {
-                            property: property.as_str().to_string(),
+                            property: property.to_string(),
                             dop_type: base_type.clone(),
-                            range: property.clone(),
+                            range: range.clone(),
                         })
                     }
                 }
@@ -339,7 +340,7 @@ mod tests {
             expect![[r#"
                 error: Property unknown not found in object {field: string}
                 data.unknown
-                     ^^^^^^^
+                ^^^^^^^^^^^^
             "#]],
         );
     }

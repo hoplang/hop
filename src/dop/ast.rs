@@ -41,7 +41,7 @@ pub enum Expr<T = DocumentRange> {
     /// A property access expression, e.g. foo.bar
     PropertyAccess {
         object: Box<Expr<T>>,
-        property: DocumentRange,
+        property: String,
         annotation: T,
     },
 
@@ -64,7 +64,7 @@ pub enum Expr<T = DocumentRange> {
     },
 
     ObjectLiteral {
-        properties: Vec<(DocumentRange, Expr<T>)>,
+        properties: Vec<(String, Expr<T>)>,
         annotation: T,
     },
 

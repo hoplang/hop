@@ -411,7 +411,7 @@ impl Parser {
                 });
             }
             this.expect_token(&Token::Colon)?;
-            properties.push((prop_name, this.parse_equality()?));
+            properties.push((prop_name.to_string(), this.parse_equality()?));
             Ok(())
         })?;
         Ok(Expr::ObjectLiteral {
@@ -433,7 +433,7 @@ impl Parser {
                     let range = expr.range().clone().to(prop.clone());
                     expr = Expr::PropertyAccess {
                         object: Box::new(expr),
-                        property: prop,
+                        property: prop.to_string(),
                         annotation: range,
                     };
                 }
