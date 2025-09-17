@@ -58,14 +58,16 @@ impl Compiler<'_> {
 
     fn compile_entrypoint(&mut self, component: &ComponentDefinition<Type>) {
         // Extract parameter information
-        let mut param_info = Vec::new();
-
-        if let Some((params, _)) = &component.params {
-            for param in params {
-                let name = param.var_name.to_string();
-                param_info.push((name.clone(), param.var_type.clone()));
-            }
-        }
+        let param_info = component
+            .params
+            .as_ref()
+            .map(|(params, _)| {
+                params
+                    .iter()
+                    .map(|param| (param.var_name.to_string(), param.var_type.clone()))
+                    .collect()
+            })
+            .unwrap_or_else(Vec::new);
 
         let body = match self.compilation_mode {
             CompilationMode::Production => {
@@ -84,9 +86,9 @@ impl Compiler<'_> {
             body,
         };
 
-        // Use just the component name since entrypoints are globally unique
-        let name = component.tag_name.as_str().to_string();
-        self.ir_module.entry_points.insert(name, entrypoint);
+        self.ir_module
+            .entry_points
+            .insert(component.tag_name.as_str().to_string(), entrypoint);
     }
 
     fn generate_development_body(
@@ -216,11 +218,10 @@ impl Compiler<'_> {
                 children,
                 ..
             } => {
-                let body = self.compile_nodes(children, slot_content.cloned());
                 output.push(IrStatement::If {
                     id: self.next_node_id(),
                     condition: self.compile_expr(condition),
-                    body,
+                    body: self.compile_nodes(children, slot_content.cloned()),
                 });
             }
 
@@ -230,12 +231,11 @@ impl Compiler<'_> {
                 children,
                 ..
             } => {
-                let body = self.compile_nodes(children, slot_content.cloned());
                 output.push(IrStatement::For {
                     id: self.next_node_id(),
                     var: var_name.as_str().to_string(),
                     array: self.compile_expr(array_expr),
-                    body,
+                    body: self.compile_nodes(children, slot_content.cloned()),
                 });
             }
 
