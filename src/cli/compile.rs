@@ -101,14 +101,12 @@ pub fn execute(
         CompileLanguage::Js => {
             timer.start_phase("transpiling to js");
             let mut transpiler = JsTranspiler::new(LanguageMode::JavaScript);
-            // In development mode, we don't need escapeHtml since we're just outputting bootstrap HTML
-            transpiler.transpile_module_with_escape(&ir_module, compilation_mode == CompilationMode::Production)
+            transpiler.transpile_module(&ir_module)
         }
         CompileLanguage::Ts => {
             timer.start_phase("transpiling to ts");
             let mut transpiler = JsTranspiler::new(LanguageMode::TypeScript);
-            // In development mode, we don't need escapeHtml since we're just outputting bootstrap HTML
-            transpiler.transpile_module_with_escape(&ir_module, compilation_mode == CompilationMode::Production)
+            transpiler.transpile_module(&ir_module)
         }
         CompileLanguage::Go => {
             timer.start_phase("transpiling to go");

@@ -27,60 +27,73 @@ impl JsTranspiler {
         }
     }
 
-    pub fn transpile_module_with_escape(
-        &mut self,
-        ir_module: &IrModule,
-        needs_escape_html: bool,
-    ) -> String {
-        let mut output = String::new();
+    fn scan_for_escape_html(&self, entrypoint: &IrEntrypoint) -> bool {
+        // Scan statements to see if we need HTML escaping
+        for stmt in &entrypoint.body {
+            if self.scan_statement_for_escape(stmt) {
+                return true;
+            }
+        }
+        false
+    }
 
-        if needs_escape_html {
-            // Add the escape HTML helper function
-            match self.mode {
-                LanguageMode::JavaScript => {
-                    self.write_line(&mut output, "function escapeHtml(str) {");
-                    self.indent();
-                    self.write_line(&mut output, "if (typeof str !== 'string') return str;");
-                }
-                LanguageMode::TypeScript => {
-                    self.write_line(&mut output, "function escapeHtml(str: string): string {");
-                    self.indent();
+    fn scan_statement_for_escape(&self, stmt: &IrStatement) -> bool {
+        match stmt {
+            IrStatement::WriteExpr { escape, .. } => {
+                if *escape {
+                    return true;
                 }
             }
-            self.write_line(&mut output, "return str");
-            self.indent();
-            self.write_line(&mut output, ".replace(/&/g, '&amp;')");
-            self.write_line(&mut output, ".replace(/</g, '&lt;')");
-            self.write_line(&mut output, ".replace(/>/g, '&gt;')");
-            self.write_line(&mut output, ".replace(/\"/g, '&quot;')");
-            self.write_line(&mut output, ".replace(/'/g, '&#39;');");
-            self.dedent();
-            self.dedent();
-            self.write_line(&mut output, "}");
-            self.write_line(&mut output, "");
+            IrStatement::If { body, .. } => {
+                for s in body {
+                    if self.scan_statement_for_escape(s) {
+                        return true;
+                    }
+                }
+            }
+            IrStatement::For { body, .. } => {
+                for s in body {
+                    if self.scan_statement_for_escape(s) {
+                        return true;
+                    }
+                }
+            }
+            IrStatement::Let { body, .. } => {
+                for s in body {
+                    if self.scan_statement_for_escape(s) {
+                        return true;
+                    }
+                }
+            }
+            _ => {}
         }
+        false
+    }
 
-        // Start export default object
-        self.write_line(&mut output, "export default {");
+    fn emit_escape_html_helper(&mut self, output: &mut String) {
+        // Add the escape HTML helper function
+        match self.mode {
+            LanguageMode::JavaScript => {
+                self.write_line(output, "function escapeHtml(str) {");
+                self.indent();
+                self.write_line(output, "if (typeof str !== 'string') return str;");
+            }
+            LanguageMode::TypeScript => {
+                self.write_line(output, "function escapeHtml(str: string): string {");
+                self.indent();
+            }
+        }
+        self.write_line(output, "return str");
         self.indent();
-
-        // Transpile each entrypoint as a function property
-        let mut first = true;
-        for (name, entrypoint) in &ir_module.entry_points {
-            if !first {
-                output.push_str(",\n");
-            }
-            first = false;
-
-            self.transpile_entrypoint(&mut output, name, entrypoint);
-        }
-
-        // Close the export default object
-        self.write_line(&mut output, "");
+        self.write_line(output, ".replace(/&/g, '&amp;')");
+        self.write_line(output, ".replace(/</g, '&lt;')");
+        self.write_line(output, ".replace(/>/g, '&gt;')");
+        self.write_line(output, ".replace(/\"/g, '&quot;')");
+        self.write_line(output, ".replace(/'/g, '&#39;');");
         self.dedent();
-        self.write_line(&mut output, "}");
-
-        output
+        self.dedent();
+        self.write_line(output, "}");
+        self.write_line(output, "");
     }
 
     // Helper method to escape strings for JavaScript literals
@@ -193,8 +206,43 @@ impl Transpiler for JsTranspiler {
     }
 
     fn transpile_module(&mut self, ir_module: &IrModule) -> String {
-        // Default to enabling escape_html for backward compatibility
-        self.transpile_module_with_escape(ir_module, true)
+        let mut output = String::new();
+
+        // First pass: scan to determine if we need HTML escaping
+        let mut needs_escape_html = false;
+        for entrypoint in ir_module.entry_points.values() {
+            if self.scan_for_escape_html(entrypoint) {
+                needs_escape_html = true;
+                break;
+            }
+        }
+
+        // Add escape HTML helper if needed
+        if needs_escape_html {
+            self.emit_escape_html_helper(&mut output);
+        }
+
+        // Start export default object
+        self.write_line(&mut output, "export default {");
+        self.indent();
+
+        // Transpile each entrypoint as a function property
+        let mut first = true;
+        for (name, entrypoint) in &ir_module.entry_points {
+            if !first {
+                output.push_str(",\n");
+            }
+            first = false;
+
+            self.transpile_entrypoint(&mut output, name, entrypoint);
+        }
+
+        // Close the export default object
+        self.write_line(&mut output, "");
+        self.dedent();
+        self.write_line(&mut output, "}");
+
+        output
     }
 }
 
@@ -388,12 +436,12 @@ mod tests {
 
     fn transpile_ir_to_js(ir_module: &IrModule) -> String {
         let mut transpiler = JsTranspiler::new(LanguageMode::JavaScript);
-        transpiler.transpile_module_with_escape(ir_module, true) // needs_escape_html = true for tests
+        transpiler.transpile_module(ir_module)
     }
 
     fn transpile_ir_to_ts(ir_module: &IrModule) -> String {
         let mut transpiler = JsTranspiler::new(LanguageMode::TypeScript);
-        transpiler.transpile_module_with_escape(ir_module, true) // needs_escape_html = true for tests
+        transpiler.transpile_module(ir_module)
     }
 
     fn check(ir_module: &IrModule, expected: Expect) {
@@ -419,16 +467,6 @@ mod tests {
         check(
             &ir_module,
             expect![[r#"
-                function escapeHtml(str) {
-                    if (typeof str !== 'string') return str;
-                    return str
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
-                }
-
                 export default {
                     testMainComp: () => {
                         let output = "";
@@ -502,16 +540,6 @@ mod tests {
         check(
             &ir_module,
             expect![[r#"
-                function escapeHtml(str) {
-                    if (typeof str !== 'string') return str;
-                    return str
-                        .replace(/&/g, '&amp;')
-                        .replace(/</g, '&lt;')
-                        .replace(/>/g, '&gt;')
-                        .replace(/"/g, '&quot;')
-                        .replace(/'/g, '&#39;');
-                }
-
                 export default {
                     testMainComp: ({ show }) => {
                         let output = "";
