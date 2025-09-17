@@ -22,7 +22,10 @@ impl GoTranspiler {
         for stmt in &entrypoint.body {
             // Check for HTML escaping in WriteExpr statements
             stmt.visit(&mut |s| {
-                if let IrStatement::WriteExpr { expr, escape: true, .. } = s {
+                if let IrStatement::WriteExpr {
+                    expr, escape: true, ..
+                } = s
+                {
                     self.imports.insert("html".to_string());
                     // Check if we need fmt for type conversion
                     match expr.typ() {
@@ -31,7 +34,12 @@ impl GoTranspiler {
                             self.imports.insert("fmt".to_string());
                         }
                     }
-                } else if let IrStatement::WriteExpr { expr, escape: false, .. } = s {
+                } else if let IrStatement::WriteExpr {
+                    expr,
+                    escape: false,
+                    ..
+                } = s
+                {
                     // Check if we need fmt for type conversion
                     match expr.typ() {
                         Type::String => {}
@@ -59,8 +67,6 @@ impl GoTranspiler {
             .replace('\r', "\\r")
             .replace('\t', "\\t")
     }
-
-
 }
 
 impl Transpiler for GoTranspiler {
@@ -72,15 +78,15 @@ impl Transpiler for GoTranspiler {
             doc.write_line(&format!("func {}() string {{", func_name));
         } else {
             let struct_name = format!("{}Params", func_name);
-            doc.write_line(
-                &format!("func {}(params {}) string {{", func_name, struct_name),
-            );
+            doc.write_line(&format!(
+                "func {}(params {}) string {{",
+                func_name, struct_name
+            ));
 
             // Extract parameters into local variables
             doc.indent();
             for (param_name, _) in &entrypoint.parameters {
-                let field_name =
-                    CasedString::from_snake_case(param_name.as_str()).to_pascal_case();
+                let field_name = CasedString::from_snake_case(param_name.as_str()).to_pascal_case();
                 doc.write_line(&format!("{} := params.{}", param_name, field_name));
             }
             doc.dedent();
@@ -157,9 +163,12 @@ impl Transpiler for GoTranspiler {
                     self.transpile_type(&mut type_doc, param_type);
                     let field_name =
                         CasedString::from_snake_case(param_name.as_str()).to_pascal_case();
-                    doc.write_line(
-                        &format!("{} {} `json:\"{}\"`", field_name, type_doc.as_str(), param_name),
-                    );
+                    doc.write_line(&format!(
+                        "{} {} `json:\"{}\"`",
+                        field_name,
+                        type_doc.as_str(),
+                        param_name
+                    ));
                 }
                 doc.dedent();
                 doc.write_line("}");
@@ -225,13 +234,7 @@ impl StatementTranspiler for GoTranspiler {
         doc.write("}\n");
     }
 
-    fn transpile_for(
-        &mut self,
-        doc: &mut Doc,
-        var: &str,
-        array: &IrExpr,
-        body: &[IrStatement],
-    ) {
+    fn transpile_for(&mut self, doc: &mut Doc, var: &str, array: &IrExpr, body: &[IrStatement]) {
         doc.write_indent();
         doc.write(&format!("for _, {} := range ", var));
         self.transpile_expr(doc, array);
@@ -243,13 +246,7 @@ impl StatementTranspiler for GoTranspiler {
         doc.write("}\n");
     }
 
-    fn transpile_let(
-        &mut self,
-        doc: &mut Doc,
-        var: &str,
-        value: &IrExpr,
-        body: &[IrStatement],
-    ) {
+    fn transpile_let(&mut self, doc: &mut Doc, var: &str, value: &IrExpr, body: &[IrStatement]) {
         doc.write_indent();
         doc.write(&format!("{} := ", var));
         self.transpile_expr(doc, value);

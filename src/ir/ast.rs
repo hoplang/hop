@@ -137,7 +137,9 @@ impl IrStatement {
             IrStatement::WriteExpr { expr, .. } => {
                 expr.visit(visitor);
             }
-            IrStatement::If { condition, body, .. } => {
+            IrStatement::If {
+                condition, body, ..
+            } => {
                 condition.visit(visitor);
                 for stmt in body {
                     stmt.visit_exprs(visitor);
@@ -168,7 +170,9 @@ impl IrStatement {
             IrStatement::WriteExpr { expr, .. } => {
                 expr.visit_mut(visitor);
             }
-            IrStatement::If { condition, body, .. } => {
+            IrStatement::If {
+                condition, body, ..
+            } => {
                 condition.visit_mut(visitor);
                 for stmt in body {
                     stmt.visit_exprs_mut(visitor);
@@ -648,7 +652,6 @@ impl IrEntrypoint {
 }
 
 impl IrExpr {
-
     /// Transform this expression by applying a function to it and all sub-expressions
     pub fn map_expr<F>(self, f: &F) -> IrExpr
     where

@@ -1,7 +1,7 @@
 use super::ast::IrEntrypoint;
 use super::ast::{BinaryOp, ExprId, IrExpr, IrStatement, StatementId, UnaryOp};
-use crate::dop::{Type, VarName};
 use crate::dop::expr::Expr;
+use crate::dop::{Type, VarName};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 

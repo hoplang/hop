@@ -1,7 +1,7 @@
 use super::Pass;
 use crate::common::escape_html;
-use crate::ir::ast::{IrEntrypoint, IrStatement};
 use crate::ir::IrExpr;
+use crate::ir::ast::{IrEntrypoint, IrStatement};
 
 /// A pass that simplifies WriteExpr statements with constant string expressions into a Write
 /// statement

@@ -3,7 +3,8 @@ use crate::document::DocumentAnnotator;
 use crate::filesystem::files::ProjectRoot;
 use crate::hop::program::Program;
 use crate::ir::{
-    CompilationMode, Compiler, GoTranspiler, JsTranspiler, LanguageMode, Transpiler, optimizer::Optimizer,
+    CompilationMode, Compiler, GoTranspiler, JsTranspiler, LanguageMode, Transpiler,
+    optimizer::Optimizer,
 };
 use crate::tui::timing;
 use anyhow::{Context, Result};

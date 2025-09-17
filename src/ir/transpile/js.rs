@@ -92,8 +92,6 @@ impl JsTranspiler {
             format!("\"{}\"", self.escape_string(s))
         }
     }
-
-
 }
 
 impl Transpiler for JsTranspiler {
@@ -222,13 +220,7 @@ impl StatementTranspiler for JsTranspiler {
         doc.write_line("}");
     }
 
-    fn transpile_for(
-        &mut self,
-        doc: &mut Doc,
-        var: &str,
-        array: &IrExpr,
-        body: &[IrStatement],
-    ) {
+    fn transpile_for(&mut self, doc: &mut Doc, var: &str, array: &IrExpr, body: &[IrStatement]) {
         let mut array_doc = Doc::new_with_spaces();
         self.transpile_expr(&mut array_doc, array);
         doc.write_line(&format!("for (const {} of {}) {{", var, array_doc.as_str()));
@@ -238,13 +230,7 @@ impl StatementTranspiler for JsTranspiler {
         doc.write_line("}");
     }
 
-    fn transpile_let(
-        &mut self,
-        doc: &mut Doc,
-        var: &str,
-        value: &IrExpr,
-        body: &[IrStatement],
-    ) {
+    fn transpile_let(&mut self, doc: &mut Doc, var: &str, value: &IrExpr, body: &[IrStatement]) {
         let mut value_doc = Doc::new_with_spaces();
         self.transpile_expr(&mut value_doc, value);
         doc.write_line(&format!("const {} = {};", var, value_doc.as_str()));

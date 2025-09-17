@@ -186,7 +186,10 @@ impl AlphaRenamer {
                 operand: Box::new(self.rename_expr(*operand)),
                 annotation,
             },
-            Expr::ArrayLiteral { elements, annotation } => Expr::ArrayLiteral {
+            Expr::ArrayLiteral {
+                elements,
+                annotation,
+            } => Expr::ArrayLiteral {
                 elements: elements.into_iter().map(|e| self.rename_expr(e)).collect(),
                 annotation,
             },

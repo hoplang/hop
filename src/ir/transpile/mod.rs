@@ -4,8 +4,8 @@ pub mod js;
 pub use go::GoTranspiler;
 pub use js::{JsTranspiler, LanguageMode};
 
-use crate::ir::ast::{BinaryOp, IrEntrypoint, IrExpr, IrModule, IrStatement, UnaryOp};
 use crate::dop::r#type::Type;
+use crate::ir::ast::{BinaryOp, IrEntrypoint, IrExpr, IrModule, IrStatement, UnaryOp};
 use std::collections::BTreeMap;
 
 /// Document builder for generating indented code
@@ -68,11 +68,6 @@ impl Doc {
         self.indent_level = self.indent_level.saturating_sub(1);
     }
 
-    /// Get the current indent level
-    pub fn indent_level(&self) -> usize {
-        self.indent_level
-    }
-
     /// Consume the Doc and return the built string
     pub fn into_string(self) -> String {
         self.content
@@ -126,7 +121,12 @@ pub trait ExpressionTranspiler {
 
     // Complex literals
     fn transpile_array_literal(&self, doc: &mut Doc, elements: &[IrExpr], elem_type: &Type);
-    fn transpile_object_literal(&self, doc: &mut Doc, properties: &[(String, IrExpr)], field_types: &BTreeMap<String, Type>);
+    fn transpile_object_literal(
+        &self,
+        doc: &mut Doc,
+        properties: &[(String, IrExpr)],
+        field_types: &BTreeMap<String, Type>,
+    );
 
     // Binary operations (type-specific)
     fn transpile_string_equality(&self, doc: &mut Doc, left: &IrExpr, right: &IrExpr);
@@ -170,7 +170,9 @@ pub trait ExpressionTranspiler {
                 // Check the types of both operands for safety
                 match (left.typ(), right.typ()) {
                     (Type::Bool, Type::Bool) => self.transpile_bool_equality(doc, left, right),
-                    (Type::String, Type::String) => self.transpile_string_equality(doc, left, right),
+                    (Type::String, Type::String) => {
+                        self.transpile_string_equality(doc, left, right)
+                    }
                     _ => panic!(
                         "Equality comparison only supported for matching bool or string types, got {:?} and {:?}",
                         left.typ(),
@@ -214,13 +216,19 @@ pub trait StatementTranspiler: ExpressionTranspiler {
             IrStatement::WriteExpr { expr, escape, .. } => {
                 self.transpile_write_expr(doc, expr, *escape);
             }
-            IrStatement::If { condition, body, .. } => {
+            IrStatement::If {
+                condition, body, ..
+            } => {
                 self.transpile_if(doc, condition, body);
             }
-            IrStatement::For { var, array, body, .. } => {
+            IrStatement::For {
+                var, array, body, ..
+            } => {
                 self.transpile_for(doc, var.as_str(), array, body);
             }
-            IrStatement::Let { var, value, body, .. } => {
+            IrStatement::Let {
+                var, value, body, ..
+            } => {
                 self.transpile_let(doc, var.as_str(), value, body);
             }
         }
