@@ -12,12 +12,11 @@ impl DeadCodeEliminationPass {
         Self
     }
 
-    /// Check if an expression is a constant boolean value
-    fn is_constant_boolean(expr: &IrExpr) -> Option<bool> {
-        match expr {
-            IrExpr::BooleanLiteral { value, .. } => Some(*value),
-            _ => None,
-        }
+    fn transform_statements(statements: Vec<IrStatement>) -> Vec<IrStatement> {
+        statements
+            .into_iter()
+            .flat_map(Self::transform_statement)
+            .collect()
     }
 
     fn transform_statement(statement: IrStatement) -> Vec<IrStatement> {
@@ -27,23 +26,24 @@ impl DeadCodeEliminationPass {
                 condition,
                 body,
             } => {
-                if let Some(const_bool) = Self::is_constant_boolean(&condition) {
-                    if const_bool {
-                        body.into_iter()
-                            .flat_map(Self::transform_statement)
-                            .collect()
-                    } else {
+                // Check if condition is a constant boolean
+                match &condition {
+                    IrExpr::BooleanLiteral { value: true, .. } => {
+                        // If always true, replace with body
+                        Self::transform_statements(body)
+                    }
+                    IrExpr::BooleanLiteral { value: false, .. } => {
+                        // If always false, remove entirely
                         vec![]
                     }
-                } else {
-                    vec![IrStatement::If {
-                        id,
-                        condition,
-                        body: body
-                            .into_iter()
-                            .flat_map(Self::transform_statement)
-                            .collect(),
-                    }]
+                    _ => {
+                        // Dynamic condition, keep if but transform body
+                        vec![IrStatement::If {
+                            id,
+                            condition,
+                            body: Self::transform_statements(body),
+                        }]
+                    }
                 }
             }
             IrStatement::For {
@@ -51,36 +51,25 @@ impl DeadCodeEliminationPass {
                 var,
                 array,
                 body,
-            } => {
-                vec![IrStatement::For {
-                    id,
-                    var,
-                    array,
-                    body: body
-                        .into_iter()
-                        .flat_map(Self::transform_statement)
-                        .collect(),
-                }]
-            }
+            } => vec![IrStatement::For {
+                id,
+                var,
+                array,
+                body: Self::transform_statements(body),
+            }],
             IrStatement::Let {
                 id,
                 var,
                 value,
                 body,
-            } => {
-                vec![IrStatement::Let {
-                    id,
-                    var,
-                    value,
-                    body: body
-                        .into_iter()
-                        .flat_map(Self::transform_statement)
-                        .collect(),
-                }]
-            }
-            _ => {
-                vec![statement]
-            }
+            } => vec![IrStatement::Let {
+                id,
+                var,
+                value,
+                body: Self::transform_statements(body),
+            }],
+            // Leaf statements (Write, WriteExpr) pass through unchanged
+            statement => vec![statement],
         }
     }
 }
@@ -89,11 +78,7 @@ impl Pass for DeadCodeEliminationPass {
     fn run(&mut self, entrypoint: IrEntrypoint) -> IrEntrypoint {
         IrEntrypoint {
             parameters: entrypoint.parameters,
-            body: entrypoint
-                .body
-                .into_iter()
-                .flat_map(Self::transform_statement)
-                .collect(),
+            body: Self::transform_statements(entrypoint.body),
         }
     }
 }
