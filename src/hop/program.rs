@@ -15,7 +15,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::ast::Node;
 use super::module_name::ModuleName;
-use super::typechecker::TypeChecker;
+use super::type_checker::TypeChecker;
 
 /// HoverInfo is a message that should be displayed when the user hovers
 /// a specific range in the source code.

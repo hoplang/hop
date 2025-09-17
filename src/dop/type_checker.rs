@@ -3,7 +3,7 @@ use super::ast::{BinaryOp, Expr, TypedExpr, UnaryOp};
 use super::type_error::TypeError;
 use crate::document::document_cursor::Ranged as _;
 use crate::hop::environment::Environment;
-use crate::hop::typechecker::TypeAnnotation;
+use crate::hop::type_checker::TypeAnnotation;
 use std::collections::BTreeMap;
 
 pub fn typecheck_expr(

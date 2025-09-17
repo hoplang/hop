@@ -10,5 +10,5 @@ pub mod script_collector;
 pub mod token_tree;
 pub mod tokenizer;
 pub mod toposorter;
+pub mod type_checker;
 pub mod type_error;
-pub mod typechecker;

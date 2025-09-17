@@ -654,7 +654,7 @@ mod tests {
     use crate::hop::module_name::ModuleName;
     use crate::hop::parser::parse;
     use crate::hop::tokenizer::Tokenizer;
-    use crate::hop::typechecker::TypeChecker;
+    use crate::hop::type_checker::TypeChecker;
     use expect_test::{Expect, expect};
 
     fn compile_hop_to_ir(source: &str, mode: CompilationMode) -> IrModule {
