@@ -208,7 +208,7 @@ impl StatementTranspiler for JsTranspiler {
         self.transpile_expr(&mut js_cond, condition);
         self.write_line(output, &format!("if ({}) {{", js_cond));
         self.indent();
-        Self::transpile_statements(self, output, body);
+        self.transpile_statements(output, body);
         self.dedent();
         self.write_line(output, "}");
     }
@@ -224,7 +224,7 @@ impl StatementTranspiler for JsTranspiler {
         self.transpile_expr(&mut js_array, array);
         self.write_line(output, &format!("for (const {} of {}) {{", var, js_array));
         self.indent();
-        Self::transpile_statements(self, output, body);
+        self.transpile_statements(output, body);
         self.dedent();
         self.write_line(output, "}");
     }
@@ -239,7 +239,7 @@ impl StatementTranspiler for JsTranspiler {
         let mut js_value = String::new();
         self.transpile_expr(&mut js_value, value);
         self.write_line(output, &format!("const {} = {};", var, js_value));
-        Self::transpile_statements(self, output, body);
+        self.transpile_statements(output, body);
     }
 }
 

@@ -200,7 +200,7 @@ impl GoTranspiler {
 
         self.write_line(output, "var output strings.Builder");
 
-        <Self as StatementTranspiler>::transpile_statements(self, output, &entrypoint.body);
+        self.transpile_statements(output, &entrypoint.body);
 
         self.write_line(output, "return output.String()");
         self.dedent();
@@ -225,6 +225,12 @@ impl GoTranspiler {
         self.indent_level = self.indent_level.saturating_sub(1);
     }
 
+    fn write_indent(&mut self, output: &mut String) {
+        for _ in 0..self.indent_level {
+            output.push('\t');
+        }
+    }
+
     fn write_line(&mut self, output: &mut String, line: &str) {
         if !line.is_empty() {
             for _ in 0..self.indent_level {
@@ -238,11 +244,13 @@ impl GoTranspiler {
 
 impl StatementTranspiler for GoTranspiler {
     fn transpile_write(&mut self, output: &mut String, content: &str) {
+        self.write_indent(output);
         let escaped = self.escape_string(content);
-        self.write_line(output, &format!("output.WriteString(\"{}\")", escaped));
+        output.push_str(&format!("output.WriteString(\"{}\")\n", escaped));
     }
 
     fn transpile_write_expr(&mut self, output: &mut String, expr: &IrExpr, escape: bool) {
+        self.write_indent(output);
         let mut go_expr = String::new();
         self.transpile_expr(&mut go_expr, expr);
 
@@ -261,23 +269,25 @@ impl StatementTranspiler for GoTranspiler {
         };
 
         if escape {
-            self.write_line(
-                output,
-                &format!("output.WriteString(html.EscapeString({}))", string_expr),
-            );
+            output.push_str(&format!(
+                "output.WriteString(html.EscapeString({}))\n",
+                string_expr
+            ));
         } else {
-            self.write_line(output, &format!("output.WriteString({})", string_expr));
+            output.push_str(&format!("output.WriteString({})\n", string_expr));
         }
     }
 
     fn transpile_if(&mut self, output: &mut String, condition: &IrExpr, body: &[IrStatement]) {
-        let mut go_cond = String::new();
-        self.transpile_expr(&mut go_cond, condition);
-        self.write_line(output, &format!("if {} {{", go_cond));
+        self.write_indent(output);
+        output.push_str("if ");
+        self.transpile_expr(output, condition);
+        output.push_str(" {\n");
         self.indent();
-        StatementTranspiler::transpile_statements(self, output, body);
+        self.transpile_statements(output, body);
         self.dedent();
-        self.write_line(output, "}");
+        self.write_indent(output);
+        output.push_str("}\n");
     }
 
     fn transpile_for(
@@ -287,13 +297,15 @@ impl StatementTranspiler for GoTranspiler {
         array: &IrExpr,
         body: &[IrStatement],
     ) {
-        let mut go_array = String::new();
-        self.transpile_expr(&mut go_array, array);
-        self.write_line(output, &format!("for _, {} := range {} {{", var, go_array));
+        self.write_indent(output);
+        output.push_str(&format!("for _, {} := range ", var));
+        self.transpile_expr(output, array);
+        output.push_str(" {\n");
         self.indent();
-        Self::transpile_statements(self, output, body);
+        self.transpile_statements(output, body);
         self.dedent();
-        self.write_line(output, "}");
+        self.write_indent(output);
+        output.push_str("}\n");
     }
 
     fn transpile_let(
@@ -303,10 +315,11 @@ impl StatementTranspiler for GoTranspiler {
         value: &IrExpr,
         body: &[IrStatement],
     ) {
-        let mut go_value = String::new();
-        self.transpile_expr(&mut go_value, value);
-        self.write_line(output, &format!("{} := {}", var, go_value));
-        Self::transpile_statements(self, output, body);
+        self.write_indent(output);
+        output.push_str(&format!("{} := ", var));
+        self.transpile_expr(output, value);
+        output.push('\n');
+        self.transpile_statements(output, body);
     }
 }
 
@@ -347,36 +360,23 @@ impl ExpressionTranspiler for GoTranspiler {
     }
 
     fn transpile_array_literal(&self, output: &mut String, elements: &[IrExpr], elem_type: &Type) {
-        if elements.is_empty() {
-            // Need type info for empty slices
-            match elem_type {
-                Type::Array(Some(inner_type)) => {
-                    output.push_str("[]");
-                    self.transpile_type(output, inner_type);
-                    output.push_str("{}");
-                }
-                _ => output.push_str("[]any{}"),
+        match elem_type {
+            Type::Array(Some(inner_type)) => {
+                output.push_str("[]");
+                self.transpile_type(output, inner_type);
             }
-        } else {
-            // Infer slice type from expression type
-            match elem_type {
-                Type::Array(Some(inner_type)) => {
-                    output.push_str("[]");
-                    self.transpile_type(output, inner_type);
-                }
-                _ => output.push_str("[]any"),
-            }
-            output.push('{');
-            let mut first = true;
-            for elem in elements {
-                if !first {
-                    output.push_str(", ");
-                }
-                first = false;
-                self.transpile_expr(output, elem);
-            }
-            output.push('}');
+            _ => output.push_str("[]any"),
         }
+        output.push('{');
+        let mut first = true;
+        for elem in elements {
+            if !first {
+                output.push_str(", ");
+            }
+            first = false;
+            self.transpile_expr(output, elem);
+        }
+        output.push('}');
     }
 
     fn transpile_object_literal(
@@ -385,36 +385,30 @@ impl ExpressionTranspiler for GoTranspiler {
         properties: &[(String, IrExpr)],
         field_types: &BTreeMap<String, Type>,
     ) {
-        // Generate anonymous struct literal with proper type
-        if properties.is_empty() {
-            // Empty struct
-            output.push_str("struct{}{}");
-        } else {
-            // Build the struct type definition from the field types
-            output.push_str("struct{");
-            for (field_name, field_type) in field_types {
-                let go_field = CasedString::from_snake_case(field_name.as_str()).to_pascal_case();
-                output.push_str(&go_field);
-                output.push(' ');
-                self.transpile_type(output, field_type);
-                output.push_str(&format!(" `json:\"{}\"`; ", field_name));
-            }
-            output.push_str("}{");
-
-            // Build the struct literal values
-            let mut first = true;
-            for (key, value) in properties {
-                if !first {
-                    output.push_str(", ");
-                }
-                first = false;
-                let field_name = CasedString::from_snake_case(key).to_pascal_case();
-                output.push_str(&field_name);
-                output.push_str(": ");
-                self.transpile_expr(output, value);
-            }
-            output.push('}');
+        // Build the struct type definition from the field types
+        output.push_str("struct{");
+        for (field_name, field_type) in field_types {
+            let go_field = CasedString::from_snake_case(field_name.as_str()).to_pascal_case();
+            output.push_str(&go_field);
+            output.push(' ');
+            self.transpile_type(output, field_type);
+            output.push_str(&format!(" `json:\"{}\"`; ", field_name));
         }
+        output.push_str("}{");
+
+        // Build the struct literal values
+        let mut first = true;
+        for (key, value) in properties {
+            if !first {
+                output.push_str(", ");
+            }
+            first = false;
+            let field_name = CasedString::from_snake_case(key).to_pascal_case();
+            output.push_str(&field_name);
+            output.push_str(": ");
+            self.transpile_expr(output, value);
+        }
+        output.push('}');
     }
 
     fn transpile_string_equality(&self, output: &mut String, left: &IrExpr, right: &IrExpr) {
