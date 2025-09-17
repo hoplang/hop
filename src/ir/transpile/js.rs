@@ -28,46 +28,19 @@ impl JsTranspiler {
     }
 
     fn scan_for_escape_html(&self, entrypoint: &IrEntrypoint) -> bool {
-        // Scan statements to see if we need HTML escaping
+        // Use visitor pattern to scan for HTML escaping
+        let mut needs_escape = false;
         for stmt in &entrypoint.body {
-            if self.scan_statement_for_escape(stmt) {
-                return true;
+            stmt.visit(&mut |s| {
+                if let IrStatement::WriteExpr { escape: true, .. } = s {
+                    needs_escape = true;
+                }
+            });
+            if needs_escape {
+                break;
             }
         }
-        false
-    }
-
-    fn scan_statement_for_escape(&self, stmt: &IrStatement) -> bool {
-        match stmt {
-            IrStatement::WriteExpr { escape, .. } => {
-                if *escape {
-                    return true;
-                }
-            }
-            IrStatement::If { body, .. } => {
-                for s in body {
-                    if self.scan_statement_for_escape(s) {
-                        return true;
-                    }
-                }
-            }
-            IrStatement::For { body, .. } => {
-                for s in body {
-                    if self.scan_statement_for_escape(s) {
-                        return true;
-                    }
-                }
-            }
-            IrStatement::Let { body, .. } => {
-                for s in body {
-                    if self.scan_statement_for_escape(s) {
-                        return true;
-                    }
-                }
-            }
-            _ => {}
-        }
-        false
+        needs_escape
     }
 
     fn emit_escape_html_helper(&mut self, output: &mut String) {

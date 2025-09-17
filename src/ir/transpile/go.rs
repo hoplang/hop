@@ -20,77 +20,36 @@ impl GoTranspiler {
     }
 
     fn scan_for_imports(&mut self, entrypoint: &IrEntrypoint) {
-        // Scan statements for what we need to import
+        // Use visitor pattern to scan statements for imports
         for stmt in &entrypoint.body {
-            self.scan_statement_for_imports(stmt);
-        }
-    }
-
-    fn scan_statement_for_imports(&mut self, stmt: &IrStatement) {
-        match stmt {
-            IrStatement::WriteExpr { expr, escape, .. } => {
-                if *escape {
+            // Check for HTML escaping in WriteExpr statements
+            stmt.visit(&mut |s| {
+                if let IrStatement::WriteExpr { expr, escape: true, .. } = s {
                     self.imports.insert("html".to_string());
-                }
-                // Check if we need fmt for type conversion
-                match expr.typ() {
-                    Type::String => {}
-                    _ => {
-                        self.imports.insert("fmt".to_string());
+                    // Check if we need fmt for type conversion
+                    match expr.typ() {
+                        Type::String => {}
+                        _ => {
+                            self.imports.insert("fmt".to_string());
+                        }
+                    }
+                } else if let IrStatement::WriteExpr { expr, escape: false, .. } = s {
+                    // Check if we need fmt for type conversion
+                    match expr.typ() {
+                        Type::String => {}
+                        _ => {
+                            self.imports.insert("fmt".to_string());
+                        }
                     }
                 }
-                self.scan_expr_for_imports(expr);
-            }
-            IrStatement::If {
-                condition, body, ..
-            } => {
-                self.scan_expr_for_imports(condition);
-                for s in body {
-                    self.scan_statement_for_imports(s);
-                }
-            }
-            IrStatement::For { array, body, .. } => {
-                self.scan_expr_for_imports(array);
-                for s in body {
-                    self.scan_statement_for_imports(s);
-                }
-            }
-            IrStatement::Let { value, body, .. } => {
-                self.scan_expr_for_imports(value);
-                for s in body {
-                    self.scan_statement_for_imports(s);
-                }
-            }
-            _ => {}
-        }
-    }
+            });
 
-    fn scan_expr_for_imports(&mut self, expr: &IrExpr) {
-        match expr {
-            IrExpr::JsonEncode { .. } => {
-                self.imports.insert("json".to_string());
-            }
-            IrExpr::PropertyAccess { object, .. } => {
-                self.scan_expr_for_imports(object);
-            }
-            IrExpr::BinaryOp { left, right, .. } => {
-                self.scan_expr_for_imports(left);
-                self.scan_expr_for_imports(right);
-            }
-            IrExpr::UnaryOp { operand, .. } => {
-                self.scan_expr_for_imports(operand);
-            }
-            IrExpr::ArrayLiteral { elements, .. } => {
-                for elem in elements {
-                    self.scan_expr_for_imports(elem);
+            // Check expressions for other imports (like json)
+            stmt.visit_exprs(&mut |expr| {
+                if let IrExpr::JsonEncode { .. } = expr {
+                    self.imports.insert("json".to_string());
                 }
-            }
-            IrExpr::ObjectLiteral { properties, .. } => {
-                for (_, value) in properties {
-                    self.scan_expr_for_imports(value);
-                }
-            }
-            _ => {}
+            });
         }
     }
 

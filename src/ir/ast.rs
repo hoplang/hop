@@ -72,6 +72,124 @@ pub enum IrStatement {
 /// Type alias for IR expressions with ExprId and Type annotations
 pub type IrExpr = Expr<(ExprId, Type)>;
 
+impl IrStatement {
+    /// Visit this statement and all nested statements with a closure
+    pub fn visit<F>(&self, visitor: &mut F)
+    where
+        F: FnMut(&IrStatement),
+    {
+        visitor(self);
+        match self {
+            IrStatement::Write { .. } => {}
+            IrStatement::WriteExpr { .. } => {}
+            IrStatement::If { body, .. } => {
+                for stmt in body {
+                    stmt.visit(visitor);
+                }
+            }
+            IrStatement::For { body, .. } => {
+                for stmt in body {
+                    stmt.visit(visitor);
+                }
+            }
+            IrStatement::Let { body, .. } => {
+                for stmt in body {
+                    stmt.visit(visitor);
+                }
+            }
+        }
+    }
+
+    /// Visit this statement and all nested statements with a mutable closure
+    pub fn visit_mut<F>(&mut self, visitor: &mut F)
+    where
+        F: FnMut(&mut IrStatement),
+    {
+        visitor(self);
+        match self {
+            IrStatement::Write { .. } => {}
+            IrStatement::WriteExpr { .. } => {}
+            IrStatement::If { body, .. } => {
+                for stmt in body {
+                    stmt.visit_mut(visitor);
+                }
+            }
+            IrStatement::For { body, .. } => {
+                for stmt in body {
+                    stmt.visit_mut(visitor);
+                }
+            }
+            IrStatement::Let { body, .. } => {
+                for stmt in body {
+                    stmt.visit_mut(visitor);
+                }
+            }
+        }
+    }
+
+    /// Visit all expressions in this statement and nested statements recursively
+    pub fn visit_exprs<F>(&self, visitor: &mut F)
+    where
+        F: FnMut(&IrExpr),
+    {
+        match self {
+            IrStatement::Write { .. } => {}
+            IrStatement::WriteExpr { expr, .. } => {
+                expr.visit(visitor);
+            }
+            IrStatement::If { condition, body, .. } => {
+                condition.visit(visitor);
+                for stmt in body {
+                    stmt.visit_exprs(visitor);
+                }
+            }
+            IrStatement::For { array, body, .. } => {
+                array.visit(visitor);
+                for stmt in body {
+                    stmt.visit_exprs(visitor);
+                }
+            }
+            IrStatement::Let { value, body, .. } => {
+                value.visit(visitor);
+                for stmt in body {
+                    stmt.visit_exprs(visitor);
+                }
+            }
+        }
+    }
+
+    /// Visit all expressions in this statement and nested statements with mutable access recursively
+    pub fn visit_exprs_mut<F>(&mut self, visitor: &mut F)
+    where
+        F: FnMut(&mut IrExpr),
+    {
+        match self {
+            IrStatement::Write { .. } => {}
+            IrStatement::WriteExpr { expr, .. } => {
+                expr.visit_mut(visitor);
+            }
+            IrStatement::If { condition, body, .. } => {
+                condition.visit_mut(visitor);
+                for stmt in body {
+                    stmt.visit_exprs_mut(visitor);
+                }
+            }
+            IrStatement::For { array, body, .. } => {
+                array.visit_mut(visitor);
+                for stmt in body {
+                    stmt.visit_exprs_mut(visitor);
+                }
+            }
+            IrStatement::Let { value, body, .. } => {
+                value.visit_mut(visitor);
+                for stmt in body {
+                    stmt.visit_exprs_mut(visitor);
+                }
+            }
+        }
+    }
+}
+
 impl IrExpr {
     /// Get the id of this expression
     pub fn id(&self) -> ExprId {
@@ -81,6 +199,74 @@ impl IrExpr {
     /// Get the type of this expression
     pub fn typ(&self) -> &Type {
         &self.annotation().1
+    }
+
+    /// Recursively visit this expression and all nested expressions
+    pub fn visit<F>(&self, visitor: &mut F)
+    where
+        F: FnMut(&IrExpr),
+    {
+        visitor(self);
+        match self {
+            Expr::PropertyAccess { object, .. } => {
+                object.visit(visitor);
+            }
+            Expr::ArrayLiteral { elements, .. } => {
+                for elem in elements {
+                    elem.visit(visitor);
+                }
+            }
+            Expr::ObjectLiteral { properties, .. } => {
+                for (_, value) in properties {
+                    value.visit(visitor);
+                }
+            }
+            Expr::BinaryOp { left, right, .. } => {
+                left.visit(visitor);
+                right.visit(visitor);
+            }
+            Expr::UnaryOp { operand, .. } => {
+                operand.visit(visitor);
+            }
+            Expr::JsonEncode { value, .. } => {
+                value.visit(visitor);
+            }
+            _ => {}
+        }
+    }
+
+    /// Recursively visit this expression and all nested expressions with mutable access
+    pub fn visit_mut<F>(&mut self, visitor: &mut F)
+    where
+        F: FnMut(&mut IrExpr),
+    {
+        visitor(self);
+        match self {
+            Expr::PropertyAccess { object, .. } => {
+                object.visit_mut(visitor);
+            }
+            Expr::ArrayLiteral { elements, .. } => {
+                for elem in elements {
+                    elem.visit_mut(visitor);
+                }
+            }
+            Expr::ObjectLiteral { properties, .. } => {
+                for (_, value) in properties {
+                    value.visit_mut(visitor);
+                }
+            }
+            Expr::BinaryOp { left, right, .. } => {
+                left.visit_mut(visitor);
+                right.visit_mut(visitor);
+            }
+            Expr::UnaryOp { operand, .. } => {
+                operand.visit_mut(visitor);
+            }
+            Expr::JsonEncode { value, .. } => {
+                value.visit_mut(visitor);
+            }
+            _ => {}
+        }
     }
 }
 
