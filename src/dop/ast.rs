@@ -36,37 +36,45 @@ impl Display for UnaryOp {
 #[derive(Debug, Clone)]
 pub enum Expr<T = DocumentRange> {
     /// A variable expression, e.g. foo
-    Variable { value: VarName, annotation: T },
+    Var { value: VarName, annotation: T },
+
     /// A property access expression, e.g. foo.bar
     PropertyAccess {
         object: Box<Expr<T>>,
         property: DocumentRange,
         annotation: T,
     },
+
     /// A string literal expression, e.g. "foo bar"
     StringLiteral { value: String, annotation: T },
+
     /// A boolean literal expression, e.g. true
     BooleanLiteral { value: bool, annotation: T },
+
     /// A number literal expression, e.g. 2.5
     NumberLiteral {
         value: serde_json::Number,
         annotation: T,
     },
+
     /// An array literal expression, e.g. [1, 2, 3]
     ArrayLiteral {
         elements: Vec<Expr<T>>,
         annotation: T,
     },
+
     ObjectLiteral {
         properties: Vec<(DocumentRange, Expr<T>)>,
         annotation: T,
     },
+
     BinaryOp {
         left: Box<Expr<T>>,
         operator: BinaryOp,
         right: Box<Expr<T>>,
         annotation: T,
     },
+
     UnaryOp {
         operator: UnaryOp,
         operand: Box<Expr<T>>,
@@ -83,7 +91,7 @@ impl Ranged for Expr<DocumentRange> {
 impl<T> Pretty for Expr<T> {
     fn to_doc(&self) -> RcDoc<'static> {
         match self {
-            Expr::Variable { value, .. } => RcDoc::text(value.to_string()),
+            Expr::Var { value, .. } => RcDoc::text(value.to_string()),
             Expr::PropertyAccess {
                 object, property, ..
             } => object
@@ -167,7 +175,7 @@ impl<T> Display for Expr<T> {
 impl<T> Expr<T> {
     pub fn annotation(&self) -> &T {
         match self {
-            Expr::Variable { annotation, .. }
+            Expr::Var { annotation, .. }
             | Expr::PropertyAccess { annotation, .. }
             | Expr::StringLiteral { annotation, .. }
             | Expr::BooleanLiteral { annotation, .. }

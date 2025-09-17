@@ -7,8 +7,7 @@ use crate::hop::module_name::ModuleName;
 use std::collections::{BTreeMap, HashMap};
 
 use super::ast::{
-    BinaryOp, ExprId, IrEntrypoint, IrExpr, IrExprValue, IrModule, IrStatement, StatementId,
-    UnaryOp,
+    BinaryOp, ExprId, IrEntrypoint, IrExpr, IrModule, IrStatement, StatementId, UnaryOp,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -136,9 +135,9 @@ impl Compiler<'_> {
             for (name, typ) in params {
                 props.push((
                     name.clone(),
-                    IrExpr {
+                    IrExpr::Var {
+                        value: name.clone(),
                         id: self.next_expr_id(),
-                        value: IrExprValue::Var(name.clone()),
                         typ: typ.clone(),
                     },
                 ));
@@ -146,16 +145,14 @@ impl Compiler<'_> {
 
             body.push(IrStatement::WriteExpr {
                 id: self.next_node_id(),
-                expr: IrExpr {
+                expr: IrExpr::JsonEncode {
+                    value: Box::new(IrExpr::ObjectLiteral {
+                        properties: props,
+                        id: self.next_expr_id(),
+                        // TODO: Do we need to construct the correct type here?
+                        typ: Type::Object(BTreeMap::new()),
+                    }),
                     id: self.next_expr_id(),
-                    value: IrExprValue::JsonEncode {
-                        value: Box::new(IrExpr {
-                            id: self.next_expr_id(),
-                            value: IrExprValue::ObjectLiteral(props),
-                            // TODO: Do we need to construct the correct type here?
-                            typ: Type::Object(BTreeMap::new()),
-                        }),
-                    },
                     typ: Type::String,
                 },
                 escape: false,
@@ -571,13 +568,22 @@ impl Compiler<'_> {
     }
 
     fn compile_expr(&mut self, expr: &Expr<Type>) -> IrExpr {
-        let value = match expr {
-            Expr::Variable { value, .. } => IrExprValue::Var(value.as_str().to_string()),
+        let id = self.next_expr_id();
+        let typ = expr.annotation().clone();
+
+        match expr {
+            Expr::Var { value, .. } => IrExpr::Var {
+                value: value.as_str().to_string(),
+                id,
+                typ,
+            },
             Expr::PropertyAccess {
                 object, property, ..
-            } => IrExprValue::PropertyAccess {
+            } => IrExpr::PropertyAccess {
                 object: Box::new(self.compile_expr(object)),
                 property: property.as_str().to_string(),
+                id,
+                typ,
             },
             Expr::BinaryOp {
                 left,
@@ -588,10 +594,12 @@ impl Compiler<'_> {
                 let ir_op = match operator {
                     dop::ast::BinaryOp::Equal => BinaryOp::Eq,
                 };
-                IrExprValue::BinaryOp {
+                IrExpr::BinaryOp {
                     left: Box::new(self.compile_expr(left)),
-                    op: ir_op,
+                    operator: ir_op,
                     right: Box::new(self.compile_expr(right)),
+                    id,
+                    typ,
                 }
             }
             Expr::UnaryOp {
@@ -600,31 +608,41 @@ impl Compiler<'_> {
                 let ir_op = match operator {
                     dop::ast::UnaryOp::Not => UnaryOp::Not,
                 };
-                IrExprValue::UnaryOp {
-                    op: ir_op,
+                IrExpr::UnaryOp {
+                    operator: ir_op,
                     operand: Box::new(self.compile_expr(operand)),
+                    id,
+                    typ,
                 }
             }
-            Expr::ArrayLiteral { elements, .. } => {
-                IrExprValue::ArrayLiteral(elements.iter().map(|e| self.compile_expr(e)).collect())
-            }
-            Expr::ObjectLiteral { properties, .. } => IrExprValue::ObjectLiteral(
-                properties
+            Expr::ArrayLiteral { elements, .. } => IrExpr::ArrayLiteral {
+                elements: elements.iter().map(|e| self.compile_expr(e)).collect(),
+                id,
+                typ,
+            },
+            Expr::ObjectLiteral { properties, .. } => IrExpr::ObjectLiteral {
+                properties: properties
                     .iter()
                     .map(|(k, v)| (k.as_str().to_string(), self.compile_expr(v)))
                     .collect(),
-            ),
-            Expr::StringLiteral { value, .. } => IrExprValue::StringLiteral(value.to_string()),
-            Expr::BooleanLiteral { value, .. } => IrExprValue::BooleanLiteral(*value),
-            Expr::NumberLiteral { value, .. } => {
-                IrExprValue::NumberLiteral(value.as_f64().unwrap_or(0.0))
-            }
-        };
-
-        IrExpr {
-            id: self.next_expr_id(),
-            value,
-            typ: expr.annotation().clone(),
+                id,
+                typ,
+            },
+            Expr::StringLiteral { value, .. } => IrExpr::StringLiteral {
+                value: value.to_string(),
+                id,
+                typ,
+            },
+            Expr::BooleanLiteral { value, .. } => IrExpr::BooleanLiteral {
+                value: *value,
+                id,
+                typ,
+            },
+            Expr::NumberLiteral { value, .. } => IrExpr::NumberLiteral {
+                value: value.as_f64().unwrap_or(0.0),
+                id,
+                typ,
+            },
         }
     }
 }

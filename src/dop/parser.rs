@@ -422,7 +422,7 @@ impl Parser {
 
     fn parse_property_access(&mut self, identifier: DocumentRange) -> Result<Expr, ParseError> {
         let var_name = VarName::new(identifier)?;
-        let mut expr = Expr::Variable {
+        let mut expr = Expr::Var {
             annotation: var_name.range().clone(),
             value: var_name,
         };

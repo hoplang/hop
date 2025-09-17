@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use super::ast::{IrEntrypoint, IrExpr, IrExprValue, IrModule, IrStatement};
+use super::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
 
 /// Alpha renaming pass for the IR AST.
 /// This ensures all variable names are unique to avoid conflicts and shadowing.
@@ -49,18 +49,15 @@ impl AlphaRenamer {
 
         // Create Let bindings for parameters if they were renamed
         let mut result_body = body;
-        for (renamed, (original, _)) in renamed_params
-            .into_iter()
-            .zip(&entrypoint.parameters)
-            .rev()
+        for (renamed, (original, _)) in renamed_params.into_iter().zip(&entrypoint.parameters).rev()
         {
             if renamed != *original {
                 result_body = vec![IrStatement::Let {
                     id: 0, // ID will be assigned later if needed
                     var: renamed,
-                    value: IrExpr {
+                    value: IrExpr::Var {
+                        value: original.clone(),
                         id: 0,
-                        value: IrExprValue::Var(original.clone()),
                         typ: crate::dop::Type::String, // TODO: Get actual type
                     },
                     body: result_body,
@@ -91,7 +88,11 @@ impl AlphaRenamer {
                 escape,
             },
 
-            IrStatement::If { id, condition, body } => {
+            IrStatement::If {
+                id,
+                condition,
+                body,
+            } => {
                 self.push_scope();
                 let renamed_body = self.rename_statements(body);
                 self.pop_scope();
@@ -103,7 +104,12 @@ impl AlphaRenamer {
                 }
             }
 
-            IrStatement::For { id, var, array, body } => {
+            IrStatement::For {
+                id,
+                var,
+                array,
+                body,
+            } => {
                 self.push_scope();
                 let renamed_var = self.bind_var(&var);
                 let renamed_body = self.rename_statements(body);
@@ -117,7 +123,12 @@ impl AlphaRenamer {
                 }
             }
 
-            IrStatement::Let { id, var, value, body } => {
+            IrStatement::Let {
+                id,
+                var,
+                value,
+                body,
+            } => {
                 let renamed_value = self.rename_expr(value);
                 self.push_scope();
                 let renamed_var = self.bind_var(&var);
@@ -136,46 +147,76 @@ impl AlphaRenamer {
 
     /// Rename variables in an expression
     fn rename_expr(&mut self, expr: IrExpr) -> IrExpr {
-        let value = match expr.value {
-            IrExprValue::Var(name) => {
-                let renamed = self.lookup_var(&name);
-                IrExprValue::Var(renamed)
+        match expr {
+            IrExpr::Var { value, id, typ } => {
+                let renamed = self.lookup_var(&value);
+                IrExpr::Var {
+                    value: renamed,
+                    id,
+                    typ,
+                }
             }
-            IrExprValue::PropertyAccess { object, property } => IrExprValue::PropertyAccess {
+            IrExpr::PropertyAccess {
+                object,
+                property,
+                id,
+                typ,
+            } => IrExpr::PropertyAccess {
                 object: Box::new(self.rename_expr(*object)),
                 property,
+                id,
+                typ,
             },
-            IrExprValue::BinaryOp { left, op, right } => IrExprValue::BinaryOp {
+            IrExpr::BinaryOp {
+                left,
+                operator: op,
+                right,
+                id,
+                typ,
+            } => IrExpr::BinaryOp {
                 left: Box::new(self.rename_expr(*left)),
-                op,
+                operator: op,
                 right: Box::new(self.rename_expr(*right)),
+                id,
+                typ,
             },
-            IrExprValue::UnaryOp { op, operand } => IrExprValue::UnaryOp {
-                op,
+            IrExpr::UnaryOp {
+                operator: op,
+                operand,
+                id,
+                typ,
+            } => IrExpr::UnaryOp {
+                operator: op,
                 operand: Box::new(self.rename_expr(*operand)),
+                id,
+                typ,
             },
-            IrExprValue::ArrayLiteral(elements) => {
-                IrExprValue::ArrayLiteral(elements.into_iter().map(|e| self.rename_expr(e)).collect())
-            }
-            IrExprValue::ObjectLiteral(properties) => IrExprValue::ObjectLiteral(
-                properties
+            IrExpr::ArrayLiteral { elements, id, typ } => IrExpr::ArrayLiteral {
+                elements: elements.into_iter().map(|e| self.rename_expr(e)).collect(),
+                id,
+                typ,
+            },
+            IrExpr::ObjectLiteral {
+                properties,
+                id,
+                typ,
+            } => IrExpr::ObjectLiteral {
+                properties: properties
                     .into_iter()
                     .map(|(k, v)| (k, self.rename_expr(v)))
                     .collect(),
-            ),
-            IrExprValue::JsonEncode { value } => IrExprValue::JsonEncode {
+                id,
+                typ,
+            },
+            IrExpr::JsonEncode { value, id, typ } => IrExpr::JsonEncode {
                 value: Box::new(self.rename_expr(*value)),
+                id,
+                typ,
             },
             // Literals don't contain variables
-            IrExprValue::StringLiteral(s) => IrExprValue::StringLiteral(s),
-            IrExprValue::BooleanLiteral(b) => IrExprValue::BooleanLiteral(b),
-            IrExprValue::NumberLiteral(n) => IrExprValue::NumberLiteral(n),
-        };
-
-        IrExpr {
-            id: expr.id,
-            value,
-            typ: expr.typ,
+            IrExpr::StringLiteral { .. } => expr,
+            IrExpr::BooleanLiteral { .. } => expr,
+            IrExpr::NumberLiteral { .. } => expr,
         }
     }
 
@@ -244,7 +285,7 @@ mod tests {
     use super::*;
     use crate::dop::Type;
     use crate::ir::test_utils::IrTestBuilder;
-    use expect_test::{expect, Expect};
+    use expect_test::{Expect, expect};
 
     fn check_renaming(input_module: IrModule, expected: Expect) {
         let renamer = AlphaRenamer::new();
@@ -257,9 +298,7 @@ mod tests {
         let mut module = IrModule::new();
         let builder = IrTestBuilder::new(vec![("x".to_string(), Type::String)]);
 
-        let entrypoint = builder.build(vec![
-            builder.write_expr(builder.var("x"), true),
-        ]);
+        let entrypoint = builder.build(vec![builder.write_expr(builder.var("x"), true)]);
 
         module.entry_points.insert("test".to_string(), entrypoint);
 
@@ -285,11 +324,11 @@ mod tests {
         let mut module = IrModule::new();
         let builder = IrTestBuilder::new(vec![("x".to_string(), Type::String)]);
 
-        let entrypoint = builder.build(vec![
-            builder.for_loop("x", builder.array(vec![builder.str("a")]), |b| {
-                vec![b.write_expr(b.var("x"), true)]
-            }),
-        ]);
+        let entrypoint = builder.build(vec![builder.for_loop(
+            "x",
+            builder.array(vec![builder.str("a")]),
+            |b| vec![b.write_expr(b.var("x"), true)],
+        )]);
 
         module.entry_points.insert("test".to_string(), entrypoint);
 
@@ -355,16 +394,14 @@ mod tests {
         let mut module = IrModule::new();
         let builder = IrTestBuilder::new(vec![]);
 
-        let entrypoint = builder.build(vec![
-            builder.let_stmt("x", builder.str("hello"), |b| {
-                vec![
-                    b.write_expr(b.var("x"), true),
-                    b.let_stmt("x", builder.str("world"), |b2| {
-                        vec![b2.write_expr(b2.var("x"), true)]
-                    }),
-                ]
-            }),
-        ]);
+        let entrypoint = builder.build(vec![builder.let_stmt("x", builder.str("hello"), |b| {
+            vec![
+                b.write_expr(b.var("x"), true),
+                b.let_stmt("x", builder.str("world"), |b2| {
+                    vec![b2.write_expr(b2.var("x"), true)]
+                }),
+            ]
+        })]);
 
         module.entry_points.insert("test".to_string(), entrypoint);
 
@@ -434,25 +471,26 @@ mod tests {
     #[test]
     fn test_complex_nesting() {
         let mut module = IrModule::new();
-        let builder = IrTestBuilder::new(vec![("items".to_string(), Type::Array(Some(Box::new(Type::String))))]);
+        let builder = IrTestBuilder::new(vec![(
+            "items".to_string(),
+            Type::Array(Some(Box::new(Type::String))),
+        )]);
 
-        let entrypoint = builder.build(vec![
-            builder.for_loop("item", builder.var("items"), |b| {
-                vec![
-                    b.write("<div>"),
-                    b.for_loop("item", builder.array(vec![b.str("nested")]), |b2| {
-                        vec![
-                            b2.write_expr(b2.var("item"), true),
-                            b2.let_stmt("item", b2.str("let-value"), |b3| {
-                                vec![b3.write_expr(b3.var("item"), true)]
-                            }),
-                        ]
-                    }),
-                    b.write_expr(b.var("item"), true),
-                    b.write("</div>"),
-                ]
-            }),
-        ]);
+        let entrypoint = builder.build(vec![builder.for_loop("item", builder.var("items"), |b| {
+            vec![
+                b.write("<div>"),
+                b.for_loop("item", builder.array(vec![b.str("nested")]), |b2| {
+                    vec![
+                        b2.write_expr(b2.var("item"), true),
+                        b2.let_stmt("item", b2.str("let-value"), |b3| {
+                            vec![b3.write_expr(b3.var("item"), true)]
+                        }),
+                    ]
+                }),
+                b.write_expr(b.var("item"), true),
+                b.write("</div>"),
+            ]
+        })]);
 
         module.entry_points.insert("test".to_string(), entrypoint);
 
@@ -483,3 +521,4 @@ mod tests {
         );
     }
 }
+

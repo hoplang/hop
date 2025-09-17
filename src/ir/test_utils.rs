@@ -1,5 +1,5 @@
 use super::ast::IrEntrypoint;
-use super::ast::{BinaryOp, ExprId, IrExpr, IrExprValue, IrStatement, StatementId, UnaryOp};
+use super::ast::{BinaryOp, ExprId, IrExpr, IrStatement, StatementId, UnaryOp};
 use crate::dop::Type;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -44,25 +44,25 @@ impl IrTestBuilder {
 
     // Expression builders
     pub fn str(&self, s: &str) -> IrExpr {
-        IrExpr {
+        IrExpr::StringLiteral {
+            value: s.to_string(),
             id: self.next_expr_id(),
-            value: IrExprValue::StringLiteral(s.to_string()),
             typ: Type::String,
         }
     }
 
     pub fn num(&self, n: f64) -> IrExpr {
-        IrExpr {
+        IrExpr::NumberLiteral {
+            value: n,
             id: self.next_expr_id(),
-            value: IrExprValue::NumberLiteral(n),
             typ: Type::Number,
         }
     }
 
     pub fn bool(&self, b: bool) -> IrExpr {
-        IrExpr {
+        IrExpr::BooleanLiteral {
+            value: b,
             id: self.next_expr_id(),
-            value: IrExprValue::BooleanLiteral(b),
             typ: Type::Bool,
         }
     }
@@ -88,43 +88,39 @@ impl IrTestBuilder {
                 )
             });
 
-        IrExpr {
+        IrExpr::Var {
+            value: name.to_string(),
             id: self.next_expr_id(),
-            value: IrExprValue::Var(name.to_string()),
             typ,
         }
     }
 
     pub fn eq(&self, left: IrExpr, right: IrExpr) -> IrExpr {
-        IrExpr {
+        IrExpr::BinaryOp {
+            left: Box::new(left),
+            operator: BinaryOp::Eq,
+            right: Box::new(right),
             id: self.next_expr_id(),
-            value: IrExprValue::BinaryOp {
-                left: Box::new(left),
-                op: BinaryOp::Eq,
-                right: Box::new(right),
-            },
             typ: Type::Bool,
         }
     }
 
     pub fn not(&self, operand: IrExpr) -> IrExpr {
-        IrExpr {
+        IrExpr::UnaryOp {
+            operator: UnaryOp::Not,
+            operand: Box::new(operand),
             id: self.next_expr_id(),
-            value: IrExprValue::UnaryOp {
-                op: UnaryOp::Not,
-                operand: Box::new(operand),
-            },
             typ: Type::Bool,
         }
     }
 
     pub fn array(&self, elements: Vec<IrExpr>) -> IrExpr {
         // Determine the array element type from the first element
-        let element_type = elements.first().map(|first| Box::new(first.typ.clone()));
+        let element_type = elements.first().map(|first| Box::new(first.typ().clone()));
 
-        IrExpr {
+        IrExpr::ArrayLiteral {
+            elements,
             id: self.next_expr_id(),
-            value: IrExprValue::ArrayLiteral(elements),
             typ: Type::Array(element_type),
         }
     }
@@ -133,20 +129,18 @@ impl IrTestBuilder {
         // Build a type map from the property types
         let mut type_map = BTreeMap::new();
         for (key, expr) in &props {
-            type_map.insert(key.to_string(), expr.typ.clone());
+            type_map.insert(key.to_string(), expr.typ().clone());
         }
 
-        IrExpr {
+        IrExpr::ObjectLiteral {
+            properties: props.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
             id: self.next_expr_id(),
-            value: IrExprValue::ObjectLiteral(
-                props.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
-            ),
             typ: Type::Object(type_map),
         }
     }
 
     pub fn prop_access(&self, object: IrExpr, property: &str) -> IrExpr {
-        let property_type = match &object.typ {
+        let property_type = match object.typ() {
             Type::Object(type_map) => type_map
                 .get(property)
                 .cloned()
@@ -154,12 +148,10 @@ impl IrTestBuilder {
             _ => panic!("Cannot access property '{}' on non-object type", property),
         };
 
-        IrExpr {
+        IrExpr::PropertyAccess {
+            object: Box::new(object),
+            property: property.to_string(),
             id: self.next_expr_id(),
-            value: IrExprValue::PropertyAccess {
-                object: Box::new(object),
-                property: property.to_string(),
-            },
             typ: property_type,
         }
     }
@@ -173,7 +165,7 @@ impl IrTestBuilder {
     }
 
     pub fn write_expr(&self, expr: IrExpr, escape: bool) -> IrStatement {
-        assert_eq!(expr.typ, Type::String, "{}", expr);
+        assert_eq!(*expr.typ(), Type::String, "{}", expr);
         IrStatement::WriteExpr {
             id: self.next_node_id(),
             expr,
@@ -182,7 +174,7 @@ impl IrTestBuilder {
     }
 
     pub fn if_stmt(&self, cond: IrExpr, body: Vec<IrStatement>) -> IrStatement {
-        assert_eq!(cond.typ, Type::Bool, "{}", cond);
+        assert_eq!(*cond.typ(), Type::Bool, "{}", cond);
         IrStatement::If {
             id: self.next_node_id(),
             condition: cond,
@@ -195,7 +187,7 @@ impl IrTestBuilder {
         F: FnOnce(&Self) -> Vec<IrStatement>,
     {
         // Extract element type from array
-        let element_type = match &array.typ {
+        let element_type = match array.typ() {
             Type::Array(Some(elem_type)) => *elem_type.clone(),
             Type::Array(None) => panic!("Cannot iterate over array with unknown element type"),
             _ => panic!("Cannot iterate over non-array type"),
@@ -225,7 +217,7 @@ impl IrTestBuilder {
         F: FnOnce(&Self) -> Vec<IrStatement>,
     {
         // Get the type from the value expression
-        let value_type = value.typ.clone();
+        let value_type = value.typ().clone();
 
         // Push the variable onto the stack
         self.var_stack
@@ -247,11 +239,9 @@ impl IrTestBuilder {
     }
 
     pub fn json_encode(&self, value: IrExpr) -> IrExpr {
-        IrExpr {
+        IrExpr::JsonEncode {
+            value: Box::new(value),
             id: self.next_expr_id(),
-            value: IrExprValue::JsonEncode {
-                value: Box::new(value),
-            },
             typ: Type::String,
         }
     }

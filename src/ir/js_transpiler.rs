@@ -1,4 +1,4 @@
-use super::ast::{BinaryOp, IrEntrypoint, IrExpr, IrExprValue, IrModule, IrStatement, UnaryOp};
+use super::ast::{BinaryOp, IrEntrypoint, IrExpr, IrModule, IrStatement, UnaryOp};
 use crate::cased_string::CasedString;
 use crate::dop::r#type::Type;
 
@@ -234,26 +234,28 @@ impl JsTranspiler {
     }
 
     fn transpile_expr(&self, expr: &IrExpr) -> String {
-        match &expr.value {
-            IrExprValue::Var(name) => name.clone(),
+        match expr {
+            IrExpr::Var { value: name, .. } => name.clone(),
 
-            IrExprValue::PropertyAccess { object, property } => {
+            IrExpr::PropertyAccess {
+                object, property, ..
+            } => {
                 let obj = self.transpile_expr(object);
                 format!("{}.{}", obj, property)
             }
 
-            IrExprValue::StringLiteral(value) => self.quote_string(value),
+            IrExpr::StringLiteral { value, .. } => self.quote_string(value),
 
-            IrExprValue::BooleanLiteral(value) => value.to_string(),
+            IrExpr::BooleanLiteral { value, .. } => value.to_string(),
 
-            IrExprValue::NumberLiteral(value) => value.to_string(),
+            IrExpr::NumberLiteral { value, .. } => value.to_string(),
 
-            IrExprValue::ArrayLiteral(elements) => {
+            IrExpr::ArrayLiteral { elements, .. } => {
                 let items: Vec<String> = elements.iter().map(|e| self.transpile_expr(e)).collect();
                 format!("[{}]", items.join(", "))
             }
 
-            IrExprValue::ObjectLiteral(properties) => {
+            IrExpr::ObjectLiteral { properties, .. } => {
                 let props: Vec<String> = properties
                     .iter()
                     .map(|(key, value)| format!("{}: {}", key, self.transpile_expr(value)))
@@ -261,7 +263,12 @@ impl JsTranspiler {
                 format!("{{{}}}", props.join(", "))
             }
 
-            IrExprValue::BinaryOp { left, op, right } => {
+            IrExpr::BinaryOp {
+                left,
+                operator: op,
+                right,
+                ..
+            } => {
                 let l = self.transpile_expr(left);
                 let r = self.transpile_expr(right);
                 match op {
@@ -269,14 +276,18 @@ impl JsTranspiler {
                 }
             }
 
-            IrExprValue::UnaryOp { op, operand } => {
+            IrExpr::UnaryOp {
+                operator: op,
+                operand,
+                ..
+            } => {
                 let transpiled_op = self.transpile_expr(operand);
                 match op {
                     UnaryOp::Not => format!("!({})", transpiled_op),
                 }
             }
 
-            IrExprValue::JsonEncode { value } => {
+            IrExpr::JsonEncode { value, .. } => {
                 let transpiled_value = self.transpile_expr(value);
                 format!("JSON.stringify({})", transpiled_value)
             }

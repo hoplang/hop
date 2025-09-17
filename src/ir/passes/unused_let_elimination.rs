@@ -1,5 +1,5 @@
 use super::Pass;
-use crate::ir::ast::{IrEntrypoint, IrExpr, IrExprValue, IrStatement, StatementEvent, StatementId};
+use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement, StatementEvent, StatementId};
 use std::collections::{HashMap, HashSet};
 
 /// A pass that eliminates unused let statements
@@ -61,7 +61,7 @@ impl UnusedLetEliminationPass {
     fn mark_vars_used_in_expr(expr: &IrExpr, scope_stack: &mut HashMap<String, bool>) {
         // Use dfs_iter to traverse all sub-expressions
         for e in expr.dfs_iter() {
-            if let IrExprValue::Var(name) = &e.value {
+            if let IrExpr::Var { value: name, .. } = e {
                 // Mark this variable as used if it's in scope
                 if let Some(used) = scope_stack.get_mut(name) {
                     *used = true;

@@ -1,4 +1,4 @@
-use super::ast::{BinaryOp, IrEntrypoint, IrExpr, IrExprValue, IrModule, IrStatement, UnaryOp};
+use super::ast::{BinaryOp, IrEntrypoint, IrExpr, IrModule, IrStatement, UnaryOp};
 use crate::cased_string::CasedString;
 use crate::dop::r#type::Type;
 use std::collections::BTreeSet;
@@ -110,7 +110,7 @@ impl GoTranspiler {
                     self.imports.insert("html".to_string());
                 }
                 // Check if we need fmt for type conversion
-                match &expr.typ {
+                match expr.typ() {
                     Type::String => {}
                     _ => {
                         self.imports.insert("fmt".to_string());
@@ -143,26 +143,26 @@ impl GoTranspiler {
     }
 
     fn scan_expr_for_imports(&mut self, expr: &IrExpr) {
-        match &expr.value {
-            IrExprValue::JsonEncode { .. } => {
+        match expr {
+            IrExpr::JsonEncode { .. } => {
                 self.imports.insert("json".to_string());
             }
-            IrExprValue::PropertyAccess { object, .. } => {
+            IrExpr::PropertyAccess { object, .. } => {
                 self.scan_expr_for_imports(object);
             }
-            IrExprValue::BinaryOp { left, right, .. } => {
+            IrExpr::BinaryOp { left, right, .. } => {
                 self.scan_expr_for_imports(left);
                 self.scan_expr_for_imports(right);
             }
-            IrExprValue::UnaryOp { operand, .. } => {
+            IrExpr::UnaryOp { operand, .. } => {
                 self.scan_expr_for_imports(operand);
             }
-            IrExprValue::ArrayLiteral(elements) => {
+            IrExpr::ArrayLiteral { elements, .. } => {
                 for elem in elements {
                     self.scan_expr_for_imports(elem);
                 }
             }
-            IrExprValue::ObjectLiteral(properties) => {
+            IrExpr::ObjectLiteral { properties, .. } => {
                 for (_, value) in properties {
                     self.scan_expr_for_imports(value);
                 }
@@ -251,7 +251,7 @@ impl GoTranspiler {
                 let go_expr = self.transpile_expr(expr);
 
                 // Handle type conversion to string based on expression type
-                let string_expr = match &expr.typ {
+                let string_expr = match expr.typ() {
                     Type::String => go_expr,
                     Type::Number => {
                         format!("fmt.Sprintf(\"%v\", {})", go_expr)
@@ -315,23 +315,25 @@ impl GoTranspiler {
     }
 
     fn transpile_expr(&self, expr: &IrExpr) -> String {
-        match &expr.value {
-            IrExprValue::Var(name) => name.clone(),
+        match expr {
+            IrExpr::Var { value: name, .. } => name.clone(),
 
-            IrExprValue::PropertyAccess { object, property } => {
+            IrExpr::PropertyAccess {
+                object, property, ..
+            } => {
                 let obj = self.transpile_expr(object);
                 // Go struct field access with PascalCase field names
                 let prop_name = CasedString::from_snake_case(property).to_pascal_case();
                 format!("{}.{}", obj, prop_name)
             }
 
-            IrExprValue::StringLiteral(value) => {
+            IrExpr::StringLiteral { value, .. } => {
                 format!("\"{}\"", self.escape_string(value))
             }
 
-            IrExprValue::BooleanLiteral(value) => value.to_string(),
+            IrExpr::BooleanLiteral { value, .. } => value.to_string(),
 
-            IrExprValue::NumberLiteral(value) => {
+            IrExpr::NumberLiteral { value, .. } => {
                 // Go requires explicit float notation for decimals
                 if value.fract() == 0.0 {
                     format!("{}", *value as i64)
@@ -340,10 +342,10 @@ impl GoTranspiler {
                 }
             }
 
-            IrExprValue::ArrayLiteral(elements) => {
+            IrExpr::ArrayLiteral { elements, typ, .. } => {
                 if elements.is_empty() {
                     // Need type info for empty slices
-                    match &expr.typ {
+                    match typ {
                         Type::Array(Some(elem_type)) => {
                             format!("[]{}{{}}", Self::type_to_go(elem_type))
                         }
@@ -354,7 +356,7 @@ impl GoTranspiler {
                         elements.iter().map(|e| self.transpile_expr(e)).collect();
 
                     // Infer slice type from expression type
-                    let type_prefix = match &expr.typ {
+                    let type_prefix = match typ {
                         Type::Array(Some(elem_type)) => {
                             format!("[]{}", Self::type_to_go(elem_type))
                         }
@@ -365,14 +367,16 @@ impl GoTranspiler {
                 }
             }
 
-            IrExprValue::ObjectLiteral(properties) => {
+            IrExpr::ObjectLiteral {
+                properties, typ, ..
+            } => {
                 // Generate anonymous struct literal with proper type
                 if properties.is_empty() {
                     // Empty struct
                     "struct{}{}".to_string()
                 } else {
                     // Build the struct type definition from the expression's type
-                    let struct_type = match &expr.typ {
+                    let struct_type = match typ {
                         Type::Object(fields) => {
                             let mut def = "struct{".to_string();
                             for (field_name, field_type) in fields {
@@ -403,7 +407,12 @@ impl GoTranspiler {
                 }
             }
 
-            IrExprValue::BinaryOp { left, op, right } => {
+            IrExpr::BinaryOp {
+                left,
+                operator: op,
+                right,
+                ..
+            } => {
                 let l = self.transpile_expr(left);
                 let r = self.transpile_expr(right);
                 match op {
@@ -411,14 +420,18 @@ impl GoTranspiler {
                 }
             }
 
-            IrExprValue::UnaryOp { op, operand } => {
+            IrExpr::UnaryOp {
+                operator: op,
+                operand,
+                ..
+            } => {
                 let transpiled_op = self.transpile_expr(operand);
                 match op {
                     UnaryOp::Not => format!("!({})", transpiled_op),
                 }
             }
 
-            IrExprValue::JsonEncode { value } => {
+            IrExpr::JsonEncode { value, .. } => {
                 let transpiled_value = self.transpile_expr(value);
                 format!("mustJSONMarshal({})", transpiled_value)
             }

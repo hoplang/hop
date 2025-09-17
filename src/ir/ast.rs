@@ -68,44 +68,69 @@ pub enum IrStatement {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct IrExpr {
-    pub id: ExprId,
-    pub value: IrExprValue,
-    pub typ: Type,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum IrExprValue {
-    Var(String),
+pub enum IrExpr {
+    Var {
+        value: String,
+        id: ExprId,
+        typ: Type,
+    },
 
     PropertyAccess {
         object: Box<IrExpr>,
         property: String,
+        id: ExprId,
+        typ: Type,
     },
 
-    StringLiteral(String),
+    StringLiteral {
+        value: String,
+        id: ExprId,
+        typ: Type,
+    },
 
-    BooleanLiteral(bool),
+    BooleanLiteral {
+        value: bool,
+        id: ExprId,
+        typ: Type,
+    },
 
-    NumberLiteral(f64),
+    NumberLiteral {
+        value: f64,
+        id: ExprId,
+        typ: Type,
+    },
 
-    ArrayLiteral(Vec<IrExpr>),
+    ArrayLiteral {
+        elements: Vec<IrExpr>,
+        id: ExprId,
+        typ: Type,
+    },
 
-    ObjectLiteral(Vec<(String, IrExpr)>),
+    ObjectLiteral {
+        properties: Vec<(String, IrExpr)>,
+        id: ExprId,
+        typ: Type,
+    },
 
     BinaryOp {
         left: Box<IrExpr>,
-        op: BinaryOp,
+        operator: BinaryOp,
         right: Box<IrExpr>,
+        id: ExprId,
+        typ: Type,
     },
 
     UnaryOp {
-        op: UnaryOp,
+        operator: UnaryOp,
         operand: Box<IrExpr>,
+        id: ExprId,
+        typ: Type,
     },
 
     JsonEncode {
         value: Box<IrExpr>,
+        id: ExprId,
+        typ: Type,
     },
 }
 
@@ -514,6 +539,38 @@ impl fmt::Display for UnaryOp {
 }
 
 impl IrExpr {
+    /// Get the id of this expression
+    pub fn id(&self) -> ExprId {
+        match self {
+            IrExpr::Var { id, .. }
+            | IrExpr::PropertyAccess { id, .. }
+            | IrExpr::StringLiteral { id, .. }
+            | IrExpr::BooleanLiteral { id, .. }
+            | IrExpr::NumberLiteral { id, .. }
+            | IrExpr::ArrayLiteral { id, .. }
+            | IrExpr::ObjectLiteral { id, .. }
+            | IrExpr::BinaryOp { id, .. }
+            | IrExpr::UnaryOp { id, .. }
+            | IrExpr::JsonEncode { id, .. } => *id,
+        }
+    }
+
+    /// Get the type of this expression
+    pub fn typ(&self) -> &Type {
+        match self {
+            IrExpr::Var { typ, .. }
+            | IrExpr::PropertyAccess { typ, .. }
+            | IrExpr::StringLiteral { typ, .. }
+            | IrExpr::BooleanLiteral { typ, .. }
+            | IrExpr::NumberLiteral { typ, .. }
+            | IrExpr::ArrayLiteral { typ, .. }
+            | IrExpr::ObjectLiteral { typ, .. }
+            | IrExpr::BinaryOp { typ, .. }
+            | IrExpr::UnaryOp { typ, .. }
+            | IrExpr::JsonEncode { typ, .. } => typ,
+        }
+    }
+
     /// Returns an iterator that performs depth-first traversal of the expression tree
     pub fn dfs_iter(&self) -> DfsIter {
         DfsIter { stack: vec![self] }
@@ -525,77 +582,66 @@ impl IrExpr {
         F: Fn(IrExpr) -> IrExpr,
     {
         // First recursively transform children
-        let transformed = match self.value {
-            IrExprValue::UnaryOp { op, operand } => IrExpr {
-                id: self.id,
-                value: IrExprValue::UnaryOp {
-                    op,
-                    operand: Box::new(operand.map_expr(f)),
-                },
-                typ: self.typ.clone(),
+        let transformed = match self {
+            IrExpr::UnaryOp {
+                operator: op,
+                operand,
+                id,
+                typ,
+            } => IrExpr::UnaryOp {
+                operator: op,
+                operand: Box::new(operand.map_expr(f)),
+                id,
+                typ,
             },
-            IrExprValue::BinaryOp { op, left, right } => IrExpr {
-                id: self.id,
-                value: IrExprValue::BinaryOp {
-                    op,
-                    left: Box::new(left.map_expr(f)),
-                    right: Box::new(right.map_expr(f)),
-                },
-                typ: self.typ.clone(),
+            IrExpr::BinaryOp {
+                operator: op,
+                left,
+                right,
+                id,
+                typ,
+            } => IrExpr::BinaryOp {
+                operator: op,
+                left: Box::new(left.map_expr(f)),
+                right: Box::new(right.map_expr(f)),
+                id,
+                typ,
             },
-            IrExprValue::PropertyAccess { object, property } => IrExpr {
-                id: self.id,
-                value: IrExprValue::PropertyAccess {
-                    object: Box::new(object.map_expr(f)),
-                    property,
-                },
-                typ: self.typ.clone(),
+            IrExpr::PropertyAccess {
+                object,
+                property,
+                id,
+                typ,
+            } => IrExpr::PropertyAccess {
+                object: Box::new(object.map_expr(f)),
+                property,
+                id,
+                typ,
             },
-            IrExprValue::ArrayLiteral(elements) => IrExpr {
-                id: self.id,
-                value: IrExprValue::ArrayLiteral(
-                    elements.into_iter().map(|e| e.map_expr(f)).collect(),
-                ),
-                typ: self.typ.clone(),
+            IrExpr::ArrayLiteral { elements, id, typ } => IrExpr::ArrayLiteral {
+                elements: elements.into_iter().map(|e| e.map_expr(f)).collect(),
+                id,
+                typ,
             },
-            IrExprValue::ObjectLiteral(properties) => IrExpr {
-                id: self.id,
-                value: IrExprValue::ObjectLiteral(
-                    properties
-                        .into_iter()
-                        .map(|(k, v)| (k, v.map_expr(f)))
-                        .collect(),
-                ),
-                typ: self.typ.clone(),
+            IrExpr::ObjectLiteral {
+                properties,
+                id,
+                typ,
+            } => IrExpr::ObjectLiteral {
+                properties: properties
+                    .into_iter()
+                    .map(|(k, v)| (k, v.map_expr(f)))
+                    .collect(),
+                id,
+                typ,
+            },
+            IrExpr::JsonEncode { value, id, typ } => IrExpr::JsonEncode {
+                value: Box::new(value.map_expr(f)),
+                id,
+                typ,
             },
             // Leaf nodes - no children to transform
-            IrExprValue::Var(name) => IrExpr {
-                id: self.id,
-                value: IrExprValue::Var(name),
-                typ: self.typ.clone(),
-            },
-            IrExprValue::StringLiteral(s) => IrExpr {
-                id: self.id,
-                value: IrExprValue::StringLiteral(s),
-                typ: self.typ.clone(),
-            },
-            IrExprValue::BooleanLiteral(b) => IrExpr {
-                id: self.id,
-                value: IrExprValue::BooleanLiteral(b),
-                typ: self.typ.clone(),
-            },
-            IrExprValue::NumberLiteral(n) => IrExpr {
-                id: self.id,
-                value: IrExprValue::NumberLiteral(n),
-                typ: self.typ.clone(),
-            },
-            IrExprValue::JsonEncode { value } => IrExpr {
-                id: self.id,
-                value: IrExprValue::JsonEncode {
-                    value: Box::new(value.map_expr(f)),
-                },
-                typ: self.typ.clone(),
-            },
+            leaf => leaf,
         };
         // Then apply the function to this node
         f(transformed)
@@ -613,35 +659,35 @@ impl<'a> Iterator for DfsIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         self.stack.pop().inspect(|expr| {
             // Push children onto stack in reverse order for left-to-right DFS
-            match &expr.value {
-                IrExprValue::PropertyAccess { object, .. } => {
+            match expr {
+                IrExpr::PropertyAccess { object, .. } => {
                     self.stack.push(object);
                 }
-                IrExprValue::BinaryOp { left, right, .. } => {
+                IrExpr::BinaryOp { left, right, .. } => {
                     self.stack.push(right);
                     self.stack.push(left);
                 }
-                IrExprValue::UnaryOp { operand, .. } => {
+                IrExpr::UnaryOp { operand, .. } => {
                     self.stack.push(operand);
                 }
-                IrExprValue::ArrayLiteral(elements) => {
+                IrExpr::ArrayLiteral { elements, .. } => {
                     for elem in elements.iter().rev() {
                         self.stack.push(elem);
                     }
                 }
-                IrExprValue::ObjectLiteral(properties) => {
+                IrExpr::ObjectLiteral { properties, .. } => {
                     for (_, value) in properties.iter().rev() {
                         self.stack.push(value);
                     }
                 }
-                IrExprValue::JsonEncode { value } => {
+                IrExpr::JsonEncode { value, .. } => {
                     self.stack.push(value);
                 }
                 // Explicitly list all leaf nodes (no children to traverse)
-                IrExprValue::Var(_) => {}
-                IrExprValue::StringLiteral(_) => {}
-                IrExprValue::BooleanLiteral(_) => {}
-                IrExprValue::NumberLiteral(_) => {}
+                IrExpr::Var { .. } => {}
+                IrExpr::StringLiteral { .. } => {}
+                IrExpr::BooleanLiteral { .. } => {}
+                IrExpr::NumberLiteral { .. } => {}
             }
         })
     }
@@ -649,15 +695,17 @@ impl<'a> Iterator for DfsIter<'a> {
 
 impl fmt::Display for IrExpr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.value {
-            IrExprValue::Var(name) => write!(f, "{}", name),
-            IrExprValue::PropertyAccess { object, property } => {
+        match self {
+            IrExpr::Var { value, .. } => write!(f, "{}", value),
+            IrExpr::PropertyAccess {
+                object, property, ..
+            } => {
                 write!(f, "{}.{}", object, property)
             }
-            IrExprValue::StringLiteral(s) => write!(f, "{:?}", s),
-            IrExprValue::BooleanLiteral(b) => write!(f, "{}", b),
-            IrExprValue::NumberLiteral(n) => write!(f, "{}", n),
-            IrExprValue::ArrayLiteral(elements) => {
+            IrExpr::StringLiteral { value, .. } => write!(f, "{:?}", value),
+            IrExpr::BooleanLiteral { value, .. } => write!(f, "{}", value),
+            IrExpr::NumberLiteral { value, .. } => write!(f, "{}", value),
+            IrExpr::ArrayLiteral { elements, .. } => {
                 write!(f, "[")?;
                 for (i, elem) in elements.iter().enumerate() {
                     if i > 0 {
@@ -667,9 +715,9 @@ impl fmt::Display for IrExpr {
                 }
                 write!(f, "]")
             }
-            IrExprValue::ObjectLiteral(props) => {
+            IrExpr::ObjectLiteral { properties, .. } => {
                 write!(f, "{{")?;
-                for (i, (key, value)) in props.iter().enumerate() {
+                for (i, (key, value)) in properties.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
@@ -677,13 +725,22 @@ impl fmt::Display for IrExpr {
                 }
                 write!(f, "}}")
             }
-            IrExprValue::BinaryOp { left, op, right } => {
+            IrExpr::BinaryOp {
+                left,
+                operator: op,
+                right,
+                ..
+            } => {
                 write!(f, "({} {} {})", left, op, right)
             }
-            IrExprValue::UnaryOp { op, operand } => {
+            IrExpr::UnaryOp {
+                operator: op,
+                operand,
+                ..
+            } => {
                 write!(f, "{}{}", op, operand)
             }
-            IrExprValue::JsonEncode { value } => {
+            IrExpr::JsonEncode { value, .. } => {
                 write!(f, "JsonEncode({})", value)
             }
         }

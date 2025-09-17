@@ -1,7 +1,6 @@
 use super::Pass;
 use crate::ir::{
     IrExpr,
-    ast::IrExprValue,
     ast::{IrEntrypoint, IrStatement},
 };
 
@@ -15,8 +14,8 @@ impl DeadCodeEliminationPass {
 
     /// Check if an expression is a constant boolean value
     fn is_constant_boolean(expr: &IrExpr) -> Option<bool> {
-        match &expr.value {
-            IrExprValue::BooleanLiteral(b) => Some(*b),
+        match expr {
+            IrExpr::BooleanLiteral { value, .. } => Some(*value),
             _ => None,
         }
     }

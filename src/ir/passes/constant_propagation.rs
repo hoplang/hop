@@ -1,7 +1,7 @@
 use super::Pass;
 use crate::ir::{
     IrExpr,
-    ast::{BinaryOp, ExprId, IrExprValue, StatementEvent, UnaryOp},
+    ast::{BinaryOp, ExprId, StatementEvent, UnaryOp},
     ast::{IrEntrypoint, IrStatement},
 };
 use datafrog::{Iteration, Relation};
@@ -69,7 +69,7 @@ impl ConstantPropagationPass {
                     }
                     IrStatement::Let { var, value, .. } => {
                         Self::collect_var_refs(value, &mut var_bindings, &scope);
-                        scope.insert(var.clone(), value.id);
+                        scope.insert(var.clone(), value.id());
                     }
                     IrStatement::Write { .. } => {}
                 },
@@ -91,26 +91,29 @@ impl ConstantPropagationPass {
     ) {
         for ref_expr in expr.dfs_iter() {
             // If this is a variable reference, record its binding
-            if let IrExprValue::Var(name) = &ref_expr.value {
+            if let IrExpr::Var {
+                value: name, id, ..
+            } = ref_expr
+            {
                 if let Some(&def_expr_id) = scope_stack.get(name) {
                     // Record: (defining_expr_id, referencing_expr_id)
-                    var_bindings.push((def_expr_id, ref_expr.id));
+                    var_bindings.push((def_expr_id, *id));
                 }
             }
         }
     }
 
     /// Run datafrog to compute which expressions are constants across the entire entrypoint
-    fn compute_constants(entrypoint: &IrEntrypoint) -> HashMap<ExprId, IrExprValue> {
+    fn compute_constants(entrypoint: &IrEntrypoint) -> HashMap<ExprId, IrExpr> {
         let all_expressions = Self::collect_all_expressions(entrypoint);
         let references = Self::collect_variable_references(entrypoint);
         let mut iteration = Iteration::new();
 
         // Constant values of expressions: (expr_id => const_value)
         let const_value = iteration.variable::<(ExprId, Const)>("const_value");
-        const_value.extend(all_expressions.iter().filter_map(|n| match &n.value {
-            IrExprValue::BooleanLiteral(b) => Some((n.id, Const::Bool(*b))),
-            IrExprValue::StringLiteral(s) => Some((n.id, Const::String(s.clone()))),
+        const_value.extend(all_expressions.iter().filter_map(|n| match n {
+            IrExpr::BooleanLiteral { value, id, .. } => Some((*id, Const::Bool(*value))),
+            IrExpr::StringLiteral { value, id, .. } => Some((*id, Const::String(value.clone()))),
             _ => None,
         }));
 
@@ -121,31 +124,37 @@ impl ConstantPropagationPass {
         let eq_right_value = iteration.variable::<(ExprId, Const)>("eq_right_value");
 
         // Not operations keyed by operand: (operand_id => expr_id)
-        let not_rel = Relation::from_iter(all_expressions.iter().filter_map(|n| match &n.value {
-            IrExprValue::UnaryOp {
-                op: UnaryOp::Not,
+        let not_rel = Relation::from_iter(all_expressions.iter().filter_map(|n| match n {
+            IrExpr::UnaryOp {
+                operator: UnaryOp::Not,
                 operand,
-            } => Some((operand.id, n.id)),
+                id,
+                ..
+            } => Some((operand.id(), *id)),
             _ => None,
         }));
 
         // Equality operations - left operand: (left_operand_id => expr_id)
-        let eq_left = Relation::from_iter(all_expressions.iter().filter_map(|n| match &n.value {
-            IrExprValue::BinaryOp {
-                op: BinaryOp::Eq,
+        let eq_left = Relation::from_iter(all_expressions.iter().filter_map(|n| match n {
+            IrExpr::BinaryOp {
+                operator: BinaryOp::Eq,
                 left,
                 right: _,
-            } => Some((left.id, n.id)),
+                id,
+                ..
+            } => Some((left.id(), *id)),
             _ => None,
         }));
 
         // Equality operations - right operand: (right_operand_id => expr_id)
-        let eq_right = Relation::from_iter(all_expressions.iter().filter_map(|n| match &n.value {
-            IrExprValue::BinaryOp {
-                op: BinaryOp::Eq,
+        let eq_right = Relation::from_iter(all_expressions.iter().filter_map(|n| match n {
+            IrExpr::BinaryOp {
+                operator: BinaryOp::Eq,
                 left: _,
                 right,
-            } => Some((right.id, n.id)),
+                id,
+                ..
+            } => Some((right.id(), *id)),
             _ => None,
         }));
 
@@ -195,25 +204,32 @@ impl ConstantPropagationPass {
             );
         }
 
-        // Convert results to IrExprValue
+        // Convert results to IrExpr
         let mut results = HashMap::new();
-        for (id, const_val) in const_value.complete().iter() {
-            let expr_value = match const_val {
-                Const::Bool(b) => IrExprValue::BooleanLiteral(*b),
-                Const::String(s) => IrExprValue::StringLiteral(s.clone()),
-            };
-            results.insert(*id, expr_value);
+        for (expr_id, const_val) in const_value.complete().iter() {
+            // Find the original expression to get its type
+            if let Some(orig_expr) = all_expressions.iter().find(|e| e.id() == *expr_id) {
+                let const_expr = match const_val {
+                    Const::Bool(b) => IrExpr::BooleanLiteral {
+                        value: *b,
+                        id: *expr_id,
+                        typ: orig_expr.typ().clone(),
+                    },
+                    Const::String(s) => IrExpr::StringLiteral {
+                        value: s.clone(),
+                        id: *expr_id,
+                        typ: orig_expr.typ().clone(),
+                    },
+                };
+                results.insert(*expr_id, const_expr);
+            }
         }
         results
     }
 
-    fn transform_expr(expr: IrExpr, constants: &HashMap<ExprId, IrExprValue>) -> IrExpr {
-        if let Some(const_val) = constants.get(&expr.id) {
-            IrExpr {
-                id: expr.id,
-                value: const_val.clone(),
-                typ: expr.typ,
-            }
+    fn transform_expr(expr: IrExpr, constants: &HashMap<ExprId, IrExpr>) -> IrExpr {
+        if let Some(const_expr) = constants.get(&expr.id()) {
+            const_expr.clone()
         } else {
             expr
         }

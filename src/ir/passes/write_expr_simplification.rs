@@ -1,6 +1,7 @@
 use super::Pass;
 use crate::common::escape_html;
-use crate::ir::ast::{IrEntrypoint, IrExprValue, IrStatement};
+use crate::ir::ast::{IrEntrypoint, IrStatement};
+use crate::ir::IrExpr;
 
 /// A pass that simplifies WriteExpr statements with constant string expressions into a Write
 /// statement
@@ -15,7 +16,7 @@ impl WriteExprSimplificationPass {
         match statement {
             IrStatement::WriteExpr { id, expr, escape } => {
                 // If the expression is a constant string, convert to Write statement
-                if let IrExprValue::StringLiteral(s) = &expr.value {
+                if let IrExpr::StringLiteral { value: s, .. } = &expr {
                     // Apply HTML escaping if needed
                     let content = if escape { escape_html(s) } else { s.clone() };
                     IrStatement::Write { id, content }

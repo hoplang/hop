@@ -12,14 +12,14 @@ pub fn typecheck_expr(
     annotations: &mut Vec<TypeAnnotation>,
 ) -> Result<TypedExpr, TypeError> {
     match expr {
-        Expr::Variable { value: name, .. } => {
+        Expr::Var { value: name, .. } => {
             if let Some(var_type) = env.lookup(name.as_str()) {
                 annotations.push(TypeAnnotation {
                     range: expr.range().clone(),
                     typ: var_type.clone(),
                     name: name.to_string(),
                 });
-                Ok(Expr::Variable {
+                Ok(Expr::Var {
                     value: name.clone(),
                     annotation: var_type.clone(),
                 })
