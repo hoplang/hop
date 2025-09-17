@@ -1,7 +1,8 @@
-use super::ast::{BinaryOp, IrEntrypoint, IrExpr, IrModule, IrStatement, UnaryOp};
+use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
+use super::{ExpressionTranspiler, TypeTranspiler};
 use crate::cased_string::CasedString;
 use crate::dop::r#type::Type;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Transpiles an IR module to Go code
 pub struct GoTranspiler {
@@ -74,7 +75,7 @@ impl GoTranspiler {
                 self.write_line(&format!("type {} struct {{", struct_name));
                 self.indent();
                 for (param_name, param_type) in &entrypoint.parameters {
-                    let go_type = Self::type_to_go(param_type);
+                    let go_type = self.transpile_type(param_type);
                     let field_name =
                         CasedString::from_snake_case(param_name.as_str()).to_pascal_case();
                     self.write_line(&format!(
@@ -205,31 +206,6 @@ impl GoTranspiler {
         self.write_line("}");
     }
 
-    fn type_to_go(ty: &Type) -> String {
-        match ty {
-            Type::Bool => "bool".to_string(),
-            Type::String => "string".to_string(),
-            Type::Number => "float64".to_string(),
-            Type::Array(elem) => match elem {
-                Some(elem_type) => format!("[]{}", Self::type_to_go(elem_type)),
-                None => "[]any".to_string(),
-            },
-            Type::Object(fields) => {
-                // Generate anonymous struct type
-                let mut struct_def = "struct{".to_string();
-                for (field_name, field_type) in fields {
-                    let go_field = CasedString::from_snake_case(field_name).to_pascal_case();
-                    let go_type = Self::type_to_go(field_type);
-                    struct_def.push_str(&format!(
-                        "{} {} `json:\"{}\"`; ",
-                        go_field, go_type, field_name
-                    ));
-                }
-                struct_def.push('}');
-                struct_def
-            }
-        }
-    }
 
     fn transpile_statements(&mut self, statements: &[IrStatement]) {
         for node in statements {
@@ -315,139 +291,6 @@ impl GoTranspiler {
         }
     }
 
-    fn transpile_expr(&self, expr: &IrExpr) -> String {
-        match expr {
-            IrExpr::Var { value: name, .. } => name.to_string(),
-
-            IrExpr::PropertyAccess {
-                object, property, ..
-            } => {
-                let obj = self.transpile_expr(object);
-                // Go struct field access with PascalCase field names
-                let prop_name = CasedString::from_snake_case(property).to_pascal_case();
-                format!("{}.{}", obj, prop_name)
-            }
-
-            IrExpr::StringLiteral { value, .. } => {
-                format!("\"{}\"", self.escape_string(value))
-            }
-
-            IrExpr::BooleanLiteral { value, .. } => value.to_string(),
-
-            IrExpr::NumberLiteral { value, .. } => {
-                // Go requires explicit float notation for decimals
-                if let Some(f) = value.as_f64() {
-                    if f.fract() == 0.0 {
-                        format!("{}", f as i64)
-                    } else {
-                        format!("{}", f)
-                    }
-                } else {
-                    value.to_string()
-                }
-            }
-
-            IrExpr::ArrayLiteral {
-                elements,
-                annotation: (_, typ),
-                ..
-            } => {
-                if elements.is_empty() {
-                    // Need type info for empty slices
-                    match &typ {
-                        Type::Array(Some(elem_type)) => {
-                            format!("[]{}{{}}", Self::type_to_go(elem_type))
-                        }
-                        _ => "[]any{}".to_string(),
-                    }
-                } else {
-                    let items: Vec<String> =
-                        elements.iter().map(|e| self.transpile_expr(e)).collect();
-
-                    // Infer slice type from expression type
-                    let type_prefix = match &typ {
-                        Type::Array(Some(elem_type)) => {
-                            format!("[]{}", Self::type_to_go(elem_type))
-                        }
-                        _ => "[]any".to_string(),
-                    };
-
-                    format!("{}{{{}}}", type_prefix, items.join(", "))
-                }
-            }
-
-            IrExpr::ObjectLiteral {
-                properties,
-                annotation: (_, typ),
-                ..
-            } => {
-                // Generate anonymous struct literal with proper type
-                if properties.is_empty() {
-                    // Empty struct
-                    "struct{}{}".to_string()
-                } else {
-                    // Build the struct type definition from the expression's type
-                    let struct_type = match &typ {
-                        Type::Object(fields) => {
-                            let mut def = "struct{".to_string();
-                            for (field_name, field_type) in fields {
-                                let go_field = CasedString::from_snake_case(field_name.as_str())
-                                    .to_pascal_case();
-                                let go_type = Self::type_to_go(field_type);
-                                def.push_str(&format!(
-                                    "{} {} `json:\"{}\"`; ",
-                                    go_field, go_type, field_name
-                                ));
-                            }
-                            def.push('}');
-                            def
-                        }
-                        _ => unreachable!(), // Shouldn't happen with proper typing
-                    };
-
-                    // Build the struct literal values
-                    let values: Vec<String> = properties
-                        .iter()
-                        .map(|(key, value)| {
-                            let field_name = CasedString::from_snake_case(key).to_pascal_case();
-                            format!("{}: {}", field_name, self.transpile_expr(value))
-                        })
-                        .collect();
-
-                    format!("{}{{{}}}", struct_type, values.join(", "))
-                }
-            }
-
-            IrExpr::BinaryOp {
-                left,
-                operator: op,
-                right,
-                ..
-            } => {
-                let l = self.transpile_expr(left);
-                let r = self.transpile_expr(right);
-                match op {
-                    BinaryOp::Eq => format!("({} == {})", l, r),
-                }
-            }
-
-            IrExpr::UnaryOp {
-                operator: op,
-                operand,
-                ..
-            } => {
-                let transpiled_op = self.transpile_expr(operand);
-                match op {
-                    UnaryOp::Not => format!("!({})", transpiled_op),
-                }
-            }
-
-            IrExpr::JsonEncode { value, .. } => {
-                let transpiled_value = self.transpile_expr(value);
-                format!("mustJSONMarshal({})", transpiled_value)
-            }
-        }
-    }
 
     // Helper method to escape strings for Go string literals
     fn escape_string(&self, s: &str) -> String {
@@ -475,6 +318,154 @@ impl GoTranspiler {
         }
         self.output.push_str(line);
         self.output.push('\n');
+    }
+}
+
+impl TypeTranspiler for GoTranspiler {
+    fn transpile_bool_type(&self) -> String {
+        "bool".to_string()
+    }
+
+    fn transpile_string_type(&self) -> String {
+        "string".to_string()
+    }
+
+    fn transpile_number_type(&self) -> String {
+        "float64".to_string()
+    }
+
+    fn transpile_array_type(&self, element_type: Option<&Type>) -> String {
+        match element_type {
+            Some(elem) => format!("[]{}", self.transpile_type(elem)),
+            None => "[]any".to_string(),
+        }
+    }
+
+    fn transpile_object_type(&self, fields: &BTreeMap<String, Type>) -> String {
+        // Generate anonymous struct type
+        let mut struct_def = "struct{".to_string();
+        for (field_name, field_type) in fields {
+            let go_field = CasedString::from_snake_case(field_name).to_pascal_case();
+            let go_type = self.transpile_type(field_type);
+            struct_def.push_str(&format!(
+                "{} {} `json:\"{}\"`; ",
+                go_field, go_type, field_name
+            ));
+        }
+        struct_def.push('}');
+        struct_def
+    }
+}
+
+impl ExpressionTranspiler for GoTranspiler {
+    fn transpile_var(&self, name: &str) -> String {
+        name.to_string()
+    }
+
+    fn transpile_property_access(&self, object: &IrExpr, property: &str) -> String {
+        let obj = self.transpile_expr(object);
+        // Go struct field access with PascalCase field names
+        let prop_name = CasedString::from_snake_case(property).to_pascal_case();
+        format!("{}.{}", obj, prop_name)
+    }
+
+    fn transpile_string_literal(&self, value: &str) -> String {
+        format!("\"{}\"", self.escape_string(value))
+    }
+
+    fn transpile_boolean_literal(&self, value: bool) -> String {
+        value.to_string()
+    }
+
+    fn transpile_number_literal(&self, value: &serde_json::Number) -> String {
+        // Go requires explicit float notation for decimals
+        if let Some(f) = value.as_f64() {
+            if f.fract() == 0.0 {
+                format!("{}", f as i64)
+            } else {
+                format!("{}", f)
+            }
+        } else {
+            value.to_string()
+        }
+    }
+
+    fn transpile_array_literal(&self, elements: &[IrExpr], elem_type: &Type) -> String {
+        if elements.is_empty() {
+            // Need type info for empty slices
+            match elem_type {
+                Type::Array(Some(inner_type)) => {
+                    format!("[]{}{{}}", self.transpile_type(inner_type))
+                }
+                _ => "[]any{}".to_string(),
+            }
+        } else {
+            let items: Vec<String> = elements.iter().map(|e| self.transpile_expr(e)).collect();
+
+            // Infer slice type from expression type
+            let type_prefix = match elem_type {
+                Type::Array(Some(inner_type)) => {
+                    format!("[]{}", self.transpile_type(inner_type))
+                }
+                _ => "[]any".to_string(),
+            };
+
+            format!("{}{{{}}}", type_prefix, items.join(", "))
+        }
+    }
+
+    fn transpile_object_literal(&self, properties: &[(String, IrExpr)], field_types: &BTreeMap<String, Type>) -> String {
+        // Generate anonymous struct literal with proper type
+        if properties.is_empty() {
+            // Empty struct
+            "struct{}{}".to_string()
+        } else {
+            // Build the struct type definition from the field types
+            let mut def = "struct{".to_string();
+            for (field_name, field_type) in field_types {
+                let go_field = CasedString::from_snake_case(field_name.as_str())
+                    .to_pascal_case();
+                let go_type = self.transpile_type(field_type);
+                def.push_str(&format!(
+                    "{} {} `json:\"{}\"`; ",
+                    go_field, go_type, field_name
+                ));
+            }
+            def.push('}');
+
+            // Build the struct literal values
+            let values: Vec<String> = properties
+                .iter()
+                .map(|(key, value)| {
+                    let field_name = CasedString::from_snake_case(key).to_pascal_case();
+                    format!("{}: {}", field_name, self.transpile_expr(value))
+                })
+                .collect();
+
+            format!("{}{{{}}}", def, values.join(", "))
+        }
+    }
+
+    fn transpile_string_equality(&self, left: &IrExpr, right: &IrExpr) -> String {
+        let l = self.transpile_expr(left);
+        let r = self.transpile_expr(right);
+        format!("({} == {})", l, r)
+    }
+
+    fn transpile_bool_equality(&self, left: &IrExpr, right: &IrExpr) -> String {
+        let l = self.transpile_expr(left);
+        let r = self.transpile_expr(right);
+        format!("({} == {})", l, r)
+    }
+
+    fn transpile_not(&self, operand: &IrExpr) -> String {
+        let transpiled_op = self.transpile_expr(operand);
+        format!("!({})", transpiled_op)
+    }
+
+    fn transpile_json_encode(&self, value: &IrExpr) -> String {
+        let transpiled_value = self.transpile_expr(value);
+        format!("mustJSONMarshal({})", transpiled_value)
     }
 }
 
@@ -887,6 +878,59 @@ mod tests {
                 			output.WriteString("<span class=\"sold-out\">Sold Out</span>\n")
                 		}
                 		output.WriteString("</div>\n")
+                	}
+                	return output.String()
+                }
+
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_string_comparison() {
+        let t = IrTestBuilder::new(vec![
+            ("user_role".to_string(), Type::String),
+            ("expected_role".to_string(), Type::String),
+        ]);
+
+        let mut ir_module = IrModule::new();
+        ir_module.entry_points.insert(
+            "test-auth-check".to_string(),
+            t.build(vec![
+                t.if_stmt(
+                    t.eq(t.var("user_role"), t.var("expected_role")),
+                    vec![t.write("<div>Access granted</div>\n")],
+                ),
+                t.if_stmt(
+                    t.eq(t.var("user_role"), t.str("admin")),
+                    vec![t.write("<div>Admin panel available</div>\n")],
+                ),
+            ]),
+        );
+
+        check(
+            &ir_module,
+            expect![[r#"
+                package components
+
+                import (
+                	"strings"
+                )
+
+                type TestAuthCheckParams struct {
+                	UserRole string `json:"user_role"`
+                	ExpectedRole string `json:"expected_role"`
+                }
+
+                func TestAuthCheck(params TestAuthCheckParams) string {
+                	user_role := params.UserRole
+                	expected_role := params.ExpectedRole
+                	var output strings.Builder
+                	if (user_role == expected_role) {
+                		output.WriteString("<div>Access granted</div>\n")
+                	}
+                	if (user_role == "admin") {
+                		output.WriteString("<div>Admin panel available</div>\n")
                 	}
                 	return output.String()
                 }

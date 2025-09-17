@@ -1,6 +1,8 @@
-use super::ast::{BinaryOp, IrEntrypoint, IrExpr, IrModule, IrStatement, UnaryOp};
+use super::{ExpressionTranspiler, TypeTranspiler};
 use crate::cased_string::CasedString;
 use crate::dop::r#type::Type;
+use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy)]
 pub enum LanguageMode {
@@ -115,7 +117,7 @@ impl JsTranspiler {
                     let type_params: Vec<String> = entrypoint
                         .parameters
                         .iter()
-                        .map(|(name, ty)| format!("{}: {}", name, Self::type_to_typescript(ty)))
+                        .map(|(name, ty)| format!("{}: {}", name, self.transpile_type(ty)))
                         .collect();
                     let params_str = params.join(", ");
                     let type_params_str = type_params.join(", ");
@@ -146,25 +148,6 @@ impl JsTranspiler {
             self.output.push_str("    ");
         }
         self.output.push('}');
-    }
-
-    fn type_to_typescript(ty: &Type) -> String {
-        match ty {
-            Type::Bool => "boolean".to_string(),
-            Type::String => "string".to_string(),
-            Type::Number => "number".to_string(),
-            Type::Array(elem) => match elem {
-                Some(elem_type) => format!("{}[]", Self::type_to_typescript(elem_type)),
-                None => "unknown[]".to_string(),
-            },
-            Type::Object(fields) => {
-                let field_strs: Vec<String> = fields
-                    .iter()
-                    .map(|(name, ty)| format!("{}: {}", name, Self::type_to_typescript(ty)))
-                    .collect();
-                format!("{{ {} }}", field_strs.join(", "))
-            }
-        }
     }
 
     fn transpile_statements(&mut self, statements: &[IrStatement]) {
@@ -233,67 +216,6 @@ impl JsTranspiler {
         }
     }
 
-    fn transpile_expr(&self, expr: &IrExpr) -> String {
-        match expr {
-            IrExpr::Var { value: name, .. } => name.to_string(),
-
-            IrExpr::PropertyAccess {
-                object, property, ..
-            } => {
-                let obj = self.transpile_expr(object);
-                format!("{}.{}", obj, property)
-            }
-
-            IrExpr::StringLiteral { value, .. } => self.quote_string(value),
-
-            IrExpr::BooleanLiteral { value, .. } => value.to_string(),
-
-            IrExpr::NumberLiteral { value, .. } => value.to_string(),
-
-            IrExpr::ArrayLiteral { elements, .. } => {
-                let items: Vec<String> = elements.iter().map(|e| self.transpile_expr(e)).collect();
-                format!("[{}]", items.join(", "))
-            }
-
-            IrExpr::ObjectLiteral { properties, .. } => {
-                let props: Vec<String> = properties
-                    .iter()
-                    .map(|(key, value)| format!("{}: {}", key, self.transpile_expr(value)))
-                    .collect();
-                format!("{{{}}}", props.join(", "))
-            }
-
-            IrExpr::BinaryOp {
-                left,
-                operator: op,
-                right,
-                ..
-            } => {
-                let l = self.transpile_expr(left);
-                let r = self.transpile_expr(right);
-                match op {
-                    BinaryOp::Eq => format!("({} === {})", l, r),
-                }
-            }
-
-            IrExpr::UnaryOp {
-                operator: op,
-                operand,
-                ..
-            } => {
-                let transpiled_op = self.transpile_expr(operand);
-                match op {
-                    UnaryOp::Not => format!("!({})", transpiled_op),
-                }
-            }
-
-            IrExpr::JsonEncode { value, .. } => {
-                let transpiled_value = self.transpile_expr(value);
-                format!("JSON.stringify({})", transpiled_value)
-            }
-        }
-    }
-
     // Helper method to escape strings for JavaScript literals
     fn escape_string(&self, s: &str) -> String {
         if self.use_template_literals {
@@ -337,6 +259,97 @@ impl JsTranspiler {
         }
         self.output.push_str(line);
         self.output.push('\n');
+    }
+}
+
+impl TypeTranspiler for JsTranspiler {
+    fn transpile_bool_type(&self) -> String {
+        "boolean".to_string()
+    }
+
+    fn transpile_string_type(&self) -> String {
+        "string".to_string()
+    }
+
+    fn transpile_number_type(&self) -> String {
+        "number".to_string()
+    }
+
+    fn transpile_array_type(&self, element_type: Option<&Type>) -> String {
+        match element_type {
+            Some(elem) => format!("{}[]", self.transpile_type(elem)),
+            None => "unknown[]".to_string(),
+        }
+    }
+
+    fn transpile_object_type(&self, fields: &BTreeMap<String, Type>) -> String {
+        let field_strs: Vec<String> = fields
+            .iter()
+            .map(|(name, ty)| format!("{}: {}", name, self.transpile_type(ty)))
+            .collect();
+        format!("{{ {} }}", field_strs.join(", "))
+    }
+}
+
+impl ExpressionTranspiler for JsTranspiler {
+    fn transpile_var(&self, name: &str) -> String {
+        name.to_string()
+    }
+
+    fn transpile_property_access(&self, object: &IrExpr, property: &str) -> String {
+        let obj = self.transpile_expr(object);
+        format!("{}.{}", obj, property)
+    }
+
+    fn transpile_string_literal(&self, value: &str) -> String {
+        self.quote_string(value)
+    }
+
+    fn transpile_boolean_literal(&self, value: bool) -> String {
+        value.to_string()
+    }
+
+    fn transpile_number_literal(&self, value: &serde_json::Number) -> String {
+        value.to_string()
+    }
+
+    fn transpile_array_literal(&self, elements: &[IrExpr], _elem_type: &Type) -> String {
+        let items: Vec<String> = elements.iter().map(|e| self.transpile_expr(e)).collect();
+        format!("[{}]", items.join(", "))
+    }
+
+    fn transpile_object_literal(
+        &self,
+        properties: &[(String, IrExpr)],
+        _field_types: &BTreeMap<String, Type>,
+    ) -> String {
+        let props: Vec<String> = properties
+            .iter()
+            .map(|(key, value)| format!("{}: {}", key, self.transpile_expr(value)))
+            .collect();
+        format!("{{{}}}", props.join(", "))
+    }
+
+    fn transpile_string_equality(&self, left: &IrExpr, right: &IrExpr) -> String {
+        let l = self.transpile_expr(left);
+        let r = self.transpile_expr(right);
+        format!("({} === {})", l, r)
+    }
+
+    fn transpile_bool_equality(&self, left: &IrExpr, right: &IrExpr) -> String {
+        let l = self.transpile_expr(left);
+        let r = self.transpile_expr(right);
+        format!("({} === {})", l, r)
+    }
+
+    fn transpile_not(&self, operand: &IrExpr) -> String {
+        let transpiled_op = self.transpile_expr(operand);
+        format!("!({})", transpiled_op)
+    }
+
+    fn transpile_json_encode(&self, value: &IrExpr) -> String {
+        let transpiled_value = self.transpile_expr(value);
+        format!("JSON.stringify({})", transpiled_value)
     }
 }
 
