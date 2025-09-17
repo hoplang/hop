@@ -7,30 +7,16 @@ use pretty::RcDoc;
 
 use super::Type;
 
+pub type TypedExpr = Expr<Type>;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
     Equal,
 }
 
-impl Display for BinaryOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            BinaryOp::Equal => write!(f, "=="),
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOp {
     Not,
-}
-
-impl Display for UnaryOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            UnaryOp::Not => write!(f, "!"),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -80,6 +66,22 @@ pub enum Expr<T = DocumentRange> {
         operand: Box<Expr<T>>,
         annotation: T,
     },
+}
+
+impl<T> Expr<T> {
+    pub fn annotation(&self) -> &T {
+        match self {
+            Expr::Var { annotation, .. }
+            | Expr::PropertyAccess { annotation, .. }
+            | Expr::StringLiteral { annotation, .. }
+            | Expr::BooleanLiteral { annotation, .. }
+            | Expr::NumberLiteral { annotation, .. }
+            | Expr::ArrayLiteral { annotation, .. }
+            | Expr::ObjectLiteral { annotation, .. }
+            | Expr::BinaryOp { annotation, .. }
+            | Expr::UnaryOp { annotation, .. } => annotation,
+        }
+    }
 }
 
 impl Ranged for Expr<DocumentRange> {
@@ -172,21 +174,18 @@ impl<T> Display for Expr<T> {
     }
 }
 
-impl<T> Expr<T> {
-    pub fn annotation(&self) -> &T {
+impl Display for BinaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Expr::Var { annotation, .. }
-            | Expr::PropertyAccess { annotation, .. }
-            | Expr::StringLiteral { annotation, .. }
-            | Expr::BooleanLiteral { annotation, .. }
-            | Expr::NumberLiteral { annotation, .. }
-            | Expr::ArrayLiteral { annotation, .. }
-            | Expr::ObjectLiteral { annotation, .. }
-            | Expr::BinaryOp { annotation, .. }
-            | Expr::UnaryOp { annotation, .. } => annotation,
+            BinaryOp::Equal => write!(f, "=="),
         }
     }
 }
 
-/// Type alias for typed expressions
-pub type TypedExpr = Expr<Type>;
+impl Display for UnaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UnaryOp::Not => write!(f, "!"),
+        }
+    }
+}
