@@ -1,5 +1,6 @@
 pub mod go;
 pub mod js;
+pub mod pretty_go;
 pub mod pretty_js;
 
 pub use go::GoTranspiler;
