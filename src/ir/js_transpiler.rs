@@ -100,7 +100,7 @@ impl JsTranspiler {
             let params: Vec<String> = entrypoint
                 .parameters
                 .iter()
-                .map(|(name, _)| name.clone())
+                .map(|(name, _)| name.to_string())
                 .collect();
 
             match self.mode {
@@ -235,7 +235,7 @@ impl JsTranspiler {
 
     fn transpile_expr(&self, expr: &IrExpr) -> String {
         match expr {
-            IrExpr::Var { value: name, .. } => name.clone(),
+            IrExpr::Var { value: name, .. } => name.to_string(),
 
             IrExpr::PropertyAccess {
                 object, property, ..

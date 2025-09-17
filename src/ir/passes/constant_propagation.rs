@@ -69,13 +69,13 @@ impl ConstantPropagationPass {
                     }
                     IrStatement::Let { var, value, .. } => {
                         Self::collect_var_refs(value, &mut var_bindings, &scope);
-                        scope.insert(var.clone(), value.id());
+                        scope.insert(var.to_string(), value.id());
                     }
                     IrStatement::Write { .. } => {}
                 },
                 StatementEvent::Exit(statement) => {
                     if let IrStatement::Let { var, .. } = statement {
-                        scope.remove(var);
+                        scope.remove(var.as_str());
                     }
                 }
             }
@@ -95,7 +95,7 @@ impl ConstantPropagationPass {
                 value: name, id, ..
             } = ref_expr
             {
-                if let Some(&def_expr_id) = scope_stack.get(name) {
+                if let Some(&def_expr_id) = scope_stack.get(name.as_str()) {
                     // Record: (defining_expr_id, referencing_expr_id)
                     var_bindings.push((def_expr_id, *id));
                 }

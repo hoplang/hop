@@ -1,7 +1,7 @@
 use crate::common::is_void_element;
 use crate::document::document_cursor::{DocumentRange, StringSpan};
-use crate::dop::Type;
 use crate::dop::{self, Argument, Expr};
+use crate::dop::{Type, VarName};
 use crate::hop::ast::{Ast, Attribute, AttributeValue, ComponentDefinition, Node};
 use crate::hop::module_name::ModuleName;
 use std::collections::{BTreeMap, HashMap};
@@ -63,7 +63,7 @@ impl Compiler<'_> {
             .map(|(params, _)| {
                 params
                     .iter()
-                    .map(|param| (param.var_name.to_string(), param.var_type.clone()))
+                    .map(|param| (param.var_name.clone(), param.var_type.clone()))
                     .collect()
             })
             .unwrap_or_else(Vec::new);
@@ -93,7 +93,7 @@ impl Compiler<'_> {
     fn generate_development_body(
         &mut self,
         component_name: &str,
-        params: &[(String, Type)],
+        params: &[(VarName, Type)],
     ) -> Vec<IrStatement> {
         let mut body = Vec::new();
 
@@ -134,7 +134,7 @@ impl Compiler<'_> {
             let mut props = Vec::new();
             for (name, typ) in params {
                 props.push((
-                    name.clone(),
+                    name.to_string(),
                     IrExpr::Var {
                         value: name.clone(),
                         id: self.next_expr_id(),
@@ -230,7 +230,7 @@ impl Compiler<'_> {
             } => {
                 output.push(IrStatement::For {
                     id: self.next_node_id(),
-                    var: var_name.as_str().to_string(),
+                    var: var_name.clone(),
                     array: self.compile_expr(array_expr),
                     body: self.compile_nodes(children, slot_content.cloned()),
                 });
@@ -500,12 +500,12 @@ impl Compiler<'_> {
 
         if let Some((params, _)) = &component.params {
             for param in params {
-                let param_name = param.var_name.to_string();
+                let param_name = param.var_name.clone();
 
                 // Find corresponding argument value
                 let value = if let Some((args, _)) = args {
                     args.iter()
-                        .find(|a| a.var_name.as_str() == param_name)
+                        .find(|a| a.var_name.as_str() == param_name.as_str())
                         .map(|a| self.compile_expr(&a.var_expr))
                         .unwrap_or_else(|| {
                             panic!(
@@ -573,7 +573,7 @@ impl Compiler<'_> {
 
         match expr {
             Expr::Var { value, .. } => IrExpr::Var {
-                value: value.as_str().to_string(),
+                value: value.clone(),
                 id,
                 typ,
             },

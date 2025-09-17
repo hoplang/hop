@@ -1,6 +1,6 @@
 use super::ast::IrEntrypoint;
 use super::ast::{BinaryOp, ExprId, IrExpr, IrStatement, StatementId, UnaryOp};
-use crate::dop::Type;
+use crate::dop::{Type, VarName};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
@@ -8,7 +8,7 @@ pub struct IrTestBuilder {
     next_expr_id: RefCell<ExprId>,
     next_node_id: RefCell<StatementId>,
     var_stack: RefCell<Vec<(String, Type)>>,
-    params: Vec<(String, Type)>,
+    params: Vec<(VarName, Type)>,
 }
 
 impl IrTestBuilder {
@@ -19,7 +19,10 @@ impl IrTestBuilder {
             next_expr_id: RefCell::new(1),
             next_node_id: RefCell::new(1),
             var_stack: RefCell::new(initial_vars),
-            params,
+            params: params
+                .into_iter()
+                .map(|(s, t)| (VarName::try_from(s).unwrap(), t))
+                .collect(),
         }
     }
 
@@ -89,7 +92,7 @@ impl IrTestBuilder {
             });
 
         IrExpr::Var {
-            value: name.to_string(),
+            value: VarName::try_from(name.to_string()).unwrap(),
             id: self.next_expr_id(),
             typ,
         }
@@ -206,7 +209,7 @@ impl IrTestBuilder {
 
         IrStatement::For {
             id: self.next_node_id(),
-            var: var.to_string(),
+            var: VarName::try_from(var.to_string()).unwrap(),
             array,
             body,
         }
@@ -232,7 +235,7 @@ impl IrTestBuilder {
 
         IrStatement::Let {
             id: self.next_node_id(),
-            var: var.to_string(),
+            var: VarName::try_from(var.to_string()).unwrap(),
             value,
             body,
         }

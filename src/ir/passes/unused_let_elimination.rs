@@ -33,7 +33,7 @@ impl UnusedLetEliminationPass {
                             // Mark variables used in the value expression (before the new variable is in scope)
                             Self::mark_vars_used_in_expr(value, &mut scope_stack);
                             // Add this variable to scope, initially unused
-                            scope_stack.insert(var.clone(), false);
+                            scope_stack.insert(var.to_string(), false);
                         }
                         IrStatement::Write { .. } => {}
                     }
@@ -41,14 +41,14 @@ impl UnusedLetEliminationPass {
                 StatementEvent::Exit(statement) => {
                     if let IrStatement::Let { id, var, .. } = statement {
                         // Check if this variable was used
-                        if let Some(&used) = scope_stack.get(var) {
+                        if let Some(&used) = scope_stack.get(var.as_str()) {
                             if !used {
                                 // Variable was never used, mark this let for elimination
                                 unused_lets.insert(*id);
                             }
                         }
                         // Remove from scope
-                        scope_stack.remove(var);
+                        scope_stack.remove(var.as_str());
                     }
                 }
             }
@@ -63,7 +63,7 @@ impl UnusedLetEliminationPass {
         for e in expr.dfs_iter() {
             if let IrExpr::Var { value: name, .. } = e {
                 // Mark this variable as used if it's in scope
-                if let Some(used) = scope_stack.get_mut(name) {
+                if let Some(used) = scope_stack.get_mut(name.as_str()) {
                     *used = true;
                 }
             }

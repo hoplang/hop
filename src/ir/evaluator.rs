@@ -11,7 +11,7 @@ use super::ast::{BinaryOp, IrEntrypoint, IrStatement, UnaryOp};
 fn evaluate_ir_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value> {
     match expr {
         IrExpr::Var { value: name, .. } => env
-            .lookup(name)
+            .lookup(name.as_str())
             .cloned()
             .ok_or_else(|| anyhow!("Undefined variable: {}", name)),
         IrExpr::PropertyAccess {
@@ -84,12 +84,9 @@ pub fn evaluate_entrypoint(
 ) -> Result<String> {
     let mut env = Environment::new();
 
-    // Set up global variables
-    let _ = env.push("HOP_MODE".to_string(), Value::String(hop_mode.to_string()));
-
     for (param_name, _param_type) in &entrypoint.parameters {
-        if let Some(value) = args.get(param_name) {
-            let _ = env.push(param_name.clone(), value.clone());
+        if let Some(value) = args.get(param_name.as_str()) {
+            let _ = env.push(param_name.to_string(), value.clone());
         }
     }
 
@@ -161,7 +158,7 @@ fn eval_statement(
             let items = array_value.as_array().cloned().unwrap_or_default();
 
             for item in items {
-                let _ = env.push(var.clone(), item);
+                let _ = env.push(var.to_string(), item);
                 eval_ir(body, env, output)?;
                 let _ = env.pop();
             }
@@ -175,7 +172,7 @@ fn eval_statement(
             body,
         } => {
             let val = evaluate_ir_expr(value, env)?;
-            let _ = env.push(var.clone(), val);
+            let _ = env.push(var.to_string(), val);
             eval_ir(body, env, output)?;
             let _ = env.pop();
             Ok(())

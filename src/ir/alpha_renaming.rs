@@ -1,5 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
+use crate::dop::VarName;
+
 use super::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
 
 /// Alpha renaming pass for the IR AST.
@@ -8,7 +10,7 @@ pub struct AlphaRenamer {
     /// Counter for generating unique variable names
     var_counter: usize,
     /// Stack of scopes mapping original names to renamed names
-    scope_stack: Vec<HashMap<String, String>>,
+    scope_stack: Vec<HashMap<String, VarName>>,
     /// Track all variable names ever used to ensure uniqueness
     all_used_names: HashSet<String>,
 }
@@ -231,24 +233,25 @@ impl AlphaRenamer {
     }
 
     /// Generate a fresh variable name
-    fn fresh_var(&mut self, name: &str) -> String {
+    fn fresh_var(&mut self, name: &VarName) -> VarName {
         self.var_counter += 1;
-        format!("{}_{}", name, self.var_counter)
+        VarName::try_from(format!("{}_{}", name, self.var_counter)).unwrap()
     }
 
     /// Bind a variable in the current scope, renaming if necessary
-    fn bind_var(&mut self, name: &str) -> String {
+    fn bind_var(&mut self, name: &VarName) -> VarName {
         // Check if this name would shadow an existing binding OR has been used before
-        let needs_renaming = self.is_name_in_scope(name) || self.all_used_names.contains(name);
+        let needs_renaming =
+            self.is_name_in_scope(name) || self.all_used_names.contains(name.as_str());
 
         let renamed = if needs_renaming {
             self.fresh_var(name)
         } else {
-            name.to_string()
+            name.clone()
         };
 
         // Track this name as used
-        self.all_used_names.insert(renamed.clone());
+        self.all_used_names.insert(renamed.to_string());
 
         self.scope_stack
             .last_mut()
@@ -259,10 +262,10 @@ impl AlphaRenamer {
     }
 
     /// Check if a name exists in any parent scope (not the current one)
-    fn is_name_in_scope(&self, name: &str) -> bool {
+    fn is_name_in_scope(&self, name: &VarName) -> bool {
         // Check if name exists in any parent scope (not the current one)
         for scope in self.scope_stack.iter().rev().skip(1) {
-            if scope.contains_key(name) {
+            if scope.contains_key(name.as_str()) {
                 return true;
             }
         }
@@ -270,13 +273,13 @@ impl AlphaRenamer {
     }
 
     /// Look up the renamed version of a variable
-    fn lookup_var(&self, name: &str) -> String {
+    fn lookup_var(&self, name: &VarName) -> VarName {
         for scope in self.scope_stack.iter().rev() {
-            if let Some(renamed) = scope.get(name) {
+            if let Some(renamed) = scope.get(name.as_str()) {
                 return renamed.clone();
             }
         }
-        name.to_string() // Global or undefined
+        unreachable!()
     }
 }
 
@@ -521,4 +524,3 @@ mod tests {
         );
     }
 }
-

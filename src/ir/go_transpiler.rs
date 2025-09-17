@@ -75,7 +75,8 @@ impl GoTranspiler {
                 self.indent();
                 for (param_name, param_type) in &entrypoint.parameters {
                     let go_type = Self::type_to_go(param_type);
-                    let field_name = CasedString::from_snake_case(param_name).to_pascal_case();
+                    let field_name =
+                        CasedString::from_snake_case(param_name.as_str()).to_pascal_case();
                     self.write_line(&format!(
                         "{} {} `json:\"{}\"`",
                         field_name, go_type, param_name
@@ -187,7 +188,7 @@ impl GoTranspiler {
             // Extract parameters into local variables
             self.indent();
             for (param_name, _) in &entrypoint.parameters {
-                let field_name = CasedString::from_snake_case(param_name).to_pascal_case();
+                let field_name = CasedString::from_snake_case(param_name.as_str()).to_pascal_case();
                 self.write_line(&format!("{} := params.{}", param_name, field_name));
             }
             self.dedent();
@@ -316,7 +317,7 @@ impl GoTranspiler {
 
     fn transpile_expr(&self, expr: &IrExpr) -> String {
         match expr {
-            IrExpr::Var { value: name, .. } => name.clone(),
+            IrExpr::Var { value: name, .. } => name.to_string(),
 
             IrExpr::PropertyAccess {
                 object, property, ..

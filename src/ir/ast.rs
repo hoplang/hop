@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt};
 
-use crate::dop::r#type::Type;
+use crate::dop::{VarName, r#type::Type};
 
 // This module contains the types and implementations for ASTs in
 // the IR.
@@ -23,7 +23,7 @@ pub struct IrModule {
 #[derive(Debug, Default)]
 pub struct IrEntrypoint {
     /// Original parameter names with their types (for function signature)
-    pub parameters: Vec<(String, Type)>,
+    pub parameters: Vec<(VarName, Type)>,
     /// IR nodes for the entrypoint body
     pub body: Vec<IrStatement>,
 }
@@ -53,7 +53,7 @@ pub enum IrStatement {
     /// Loop over an array.
     For {
         id: StatementId,
-        var: String,
+        var: VarName,
         array: IrExpr,
         body: Vec<IrStatement>,
     },
@@ -61,7 +61,7 @@ pub enum IrStatement {
     /// Bind a variable to the value of an expression.
     Let {
         id: StatementId,
-        var: String,
+        var: VarName,
         value: IrExpr,
         body: Vec<IrStatement>,
     },
@@ -70,7 +70,7 @@ pub enum IrStatement {
 #[derive(Debug, Clone, PartialEq)]
 pub enum IrExpr {
     Var {
-        value: String,
+        value: VarName,
         id: ExprId,
         typ: Type,
     },

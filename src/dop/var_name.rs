@@ -42,6 +42,14 @@ impl Display for VarName {
     }
 }
 
+impl PartialEq for VarName {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+
+impl Eq for VarName {}
+
 impl TryFrom<String> for VarName {
     type Error = ParseError;
 
