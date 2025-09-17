@@ -72,7 +72,7 @@ impl JsTranspiler {
             }
             first = false;
 
-            self.transpile_entrypoint_internal(&mut output, name, entrypoint);
+            self.transpile_entrypoint(&mut output, name, entrypoint);
         }
 
         // Close the export default object
@@ -83,12 +83,54 @@ impl JsTranspiler {
         output
     }
 
-    fn transpile_entrypoint_internal(
-        &mut self,
-        output: &mut String,
-        name: &str,
-        entrypoint: &IrEntrypoint,
-    ) {
+    // Helper method to escape strings for JavaScript literals
+    fn escape_string(&self, s: &str) -> String {
+        if self.use_template_literals {
+            // For template literals, only escape backticks and ${
+            s.replace('\\', "\\\\")
+                .replace('`', "\\`")
+                .replace("${", "\\${")
+        } else {
+            // For regular strings, escape double quotes and common escape sequences
+            s.replace('\\', "\\\\")
+                .replace('"', "\\\"")
+                .replace('\n', "\\n")
+                .replace('\r', "\\r")
+                .replace('\t', "\\t")
+        }
+    }
+
+    // Helper method to wrap a string in the appropriate quotes
+    fn quote_string(&self, s: &str) -> String {
+        if self.use_template_literals {
+            format!("`{}`", self.escape_string(s))
+        } else {
+            format!("\"{}\"", self.escape_string(s))
+        }
+    }
+
+    // Helper methods for indentation
+    fn indent(&mut self) {
+        self.indent_level += 1;
+    }
+
+    fn dedent(&mut self) {
+        self.indent_level = self.indent_level.saturating_sub(1);
+    }
+
+    fn write_line(&mut self, output: &mut String, line: &str) {
+        if !line.is_empty() {
+            for _ in 0..self.indent_level {
+                output.push_str("    ");
+            }
+        }
+        output.push_str(line);
+        output.push('\n');
+    }
+}
+
+impl Transpiler for JsTranspiler {
+    fn transpile_entrypoint(&mut self, output: &mut String, name: &str, entrypoint: &IrEntrypoint) {
         let camel_case_name = CasedString::from_kebab_case(name).to_camel_case();
 
         for _ in 0..self.indent_level {
@@ -148,57 +190,6 @@ impl JsTranspiler {
             output.push_str("    ");
         }
         output.push('}');
-    }
-
-    // Helper method to escape strings for JavaScript literals
-    fn escape_string(&self, s: &str) -> String {
-        if self.use_template_literals {
-            // For template literals, only escape backticks and ${
-            s.replace('\\', "\\\\")
-                .replace('`', "\\`")
-                .replace("${", "\\${")
-        } else {
-            // For regular strings, escape double quotes and common escape sequences
-            s.replace('\\', "\\\\")
-                .replace('"', "\\\"")
-                .replace('\n', "\\n")
-                .replace('\r', "\\r")
-                .replace('\t', "\\t")
-        }
-    }
-
-    // Helper method to wrap a string in the appropriate quotes
-    fn quote_string(&self, s: &str) -> String {
-        if self.use_template_literals {
-            format!("`{}`", self.escape_string(s))
-        } else {
-            format!("\"{}\"", self.escape_string(s))
-        }
-    }
-
-    // Helper methods for indentation
-    fn indent(&mut self) {
-        self.indent_level += 1;
-    }
-
-    fn dedent(&mut self) {
-        self.indent_level = self.indent_level.saturating_sub(1);
-    }
-
-    fn write_line(&mut self, output: &mut String, line: &str) {
-        if !line.is_empty() {
-            for _ in 0..self.indent_level {
-                output.push_str("    ");
-            }
-        }
-        output.push_str(line);
-        output.push('\n');
-    }
-}
-
-impl Transpiler for JsTranspiler {
-    fn transpile_entrypoint(&mut self, output: &mut String, name: &str, entrypoint: &IrEntrypoint) {
-        self.transpile_entrypoint_internal(output, name, entrypoint);
     }
 
     fn transpile_module(&mut self, ir_module: &IrModule) -> String {
