@@ -1,9 +1,9 @@
-pub mod pretty_go;
-pub mod pretty_js;
+pub mod go;
+pub mod js;
 
 use pretty::BoxDoc;
-pub use pretty_go::GoTranspiler;
-pub use pretty_js::{JsTranspiler, LanguageMode};
+pub use go::GoTranspiler;
+pub use js::{JsTranspiler, LanguageMode};
 
 use crate::dop::r#type::Type;
 use crate::ir::ast::{BinaryOp, IrEntrypoint, IrExpr, IrModule, IrStatement, UnaryOp};
@@ -59,8 +59,8 @@ pub trait TypeTranspiler {
     fn transpile_number_type<'a>(&self) -> BoxDoc<'a>;
     fn transpile_array_type<'a>(&self, element_type: Option<&'a Type>) -> BoxDoc<'a>;
     fn transpile_object_type<'a>(&self, fields: &'a BTreeMap<String, Type>) -> BoxDoc<'a>;
-    fn transpile_type<'a>(&self, ty: &'a Type) -> BoxDoc<'a> {
-        match ty {
+    fn transpile_type<'a>(&self, t: &'a Type) -> BoxDoc<'a> {
+        match t {
             Type::Bool => self.transpile_bool_type(),
             Type::String => self.transpile_string_type(),
             Type::Number => self.transpile_number_type(),
@@ -118,18 +118,15 @@ pub trait ExpressionTranspiler {
                 operator: BinaryOp::Eq,
                 right,
                 ..
-            } => {
-                // Check the types of both operands for safety
-                match (left.typ(), right.typ()) {
-                    (Type::Bool, Type::Bool) => self.transpile_bool_equality(left, right),
-                    (Type::String, Type::String) => self.transpile_string_equality(left, right),
-                    _ => panic!(
-                        "Equality comparison only supported for matching bool or string types, got {:?} and {:?}",
-                        left.typ(),
-                        right.typ()
-                    ),
-                }
-            }
+            } => match (left.typ(), right.typ()) {
+                (Type::Bool, Type::Bool) => self.transpile_bool_equality(left, right),
+                (Type::String, Type::String) => self.transpile_string_equality(left, right),
+                _ => panic!(
+                    "Equality comparison only supported for matching bool or string types, got {:?} and {:?}",
+                    left.typ(),
+                    right.typ()
+                ),
+            },
             IrExpr::UnaryOp {
                 operator: UnaryOp::Not,
                 operand,
