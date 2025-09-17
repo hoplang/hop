@@ -11,67 +11,22 @@ impl WriteExprSimplificationPass {
     pub fn new() -> Self {
         Self
     }
-
-    fn transform_statement(statement: IrStatement) -> IrStatement {
-        match statement {
-            IrStatement::WriteExpr { id, expr, escape } => {
-                // If the expression is a constant string, convert to Write statement
-                if let IrExpr::StringLiteral { value: s, .. } = &expr {
-                    // Apply HTML escaping if needed
-                    let content = if escape { escape_html(s) } else { s.clone() };
-                    IrStatement::Write { id, content }
-                } else {
-                    IrStatement::WriteExpr { id, expr, escape }
-                }
-            }
-            // Recursively transform child statements
-            IrStatement::If {
-                id,
-                condition,
-                body,
-            } => IrStatement::If {
-                id,
-                condition,
-                body: body.into_iter().map(Self::transform_statement).collect(),
-            },
-            IrStatement::For {
-                id,
-                var,
-                array,
-                body,
-            } => IrStatement::For {
-                id,
-                var,
-                array,
-                body: body.into_iter().map(Self::transform_statement).collect(),
-            },
-            IrStatement::Let {
-                id,
-                var,
-                value,
-                body,
-            } => IrStatement::Let {
-                id,
-                var,
-                value,
-                body: body.into_iter().map(Self::transform_statement).collect(),
-            },
-            // Write statements remain unchanged
-            statement @ IrStatement::Write { .. } => statement,
-        }
-    }
 }
 
 impl Pass for WriteExprSimplificationPass {
-    fn run(&mut self, entrypoint: IrEntrypoint) -> IrEntrypoint {
-        IrEntrypoint {
-            parameters: entrypoint.parameters,
-            body: entrypoint
-                .body
-                .into_iter()
-                .map(Self::transform_statement)
-                .collect(),
+    fn run(&mut self, mut entrypoint: IrEntrypoint) -> IrEntrypoint {
+        // Use visit_mut to transform all statements in the tree
+        for stmt in &mut entrypoint.body {
+            stmt.visit_mut(&mut |statement| {
+                // Transform WriteExpr with constant strings into Write
+                if let IrStatement::WriteExpr { id, expr: IrExpr::StringLiteral { value: s, .. }, escape } = statement {
+                    // Apply HTML escaping if needed
+                    let content = if *escape { escape_html(s) } else { s.clone() };
+                    *statement = IrStatement::Write { id: *id, content };
+                }
+            });
         }
+        entrypoint
     }
 }
 
