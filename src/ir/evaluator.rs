@@ -26,9 +26,7 @@ fn evaluate_ir_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value
         }
         IrExpr::StringLiteral { value: s, .. } => Ok(Value::String(s.clone())),
         IrExpr::BooleanLiteral { value: b, .. } => Ok(Value::Bool(*b)),
-        IrExpr::NumberLiteral { value: n, .. } => Ok(Value::Number(
-            serde_json::Number::from_f64(*n).unwrap_or_else(|| serde_json::Number::from(0)),
-        )),
+        IrExpr::NumberLiteral { value: n, .. } => Ok(Value::Number(n.clone())),
         IrExpr::ArrayLiteral { elements, .. } => {
             let mut array = Vec::new();
             for elem in elements {
@@ -80,7 +78,7 @@ fn evaluate_ir_expr(expr: &IrExpr, env: &mut Environment<Value>) -> Result<Value
 pub fn evaluate_entrypoint(
     entrypoint: &IrEntrypoint,
     args: HashMap<String, Value>,
-    hop_mode: &str,
+    _hop_mode: &str,
 ) -> Result<String> {
     let mut env = Environment::new();
 

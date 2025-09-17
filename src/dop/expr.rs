@@ -11,7 +11,7 @@ pub type TypedExpr = Expr<Type>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
-    Equal,
+    Eq,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -19,7 +19,7 @@ pub enum UnaryOp {
     Not,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr<T = DocumentRange> {
     /// A variable expression, e.g. foo
     Var { value: VarName, annotation: T },
@@ -66,6 +66,9 @@ pub enum Expr<T = DocumentRange> {
         operand: Box<Expr<T>>,
         annotation: T,
     },
+
+    /// JSON encode expression for converting values to JSON strings
+    JsonEncode { value: Box<Expr<T>>, annotation: T },
 }
 
 impl<T> Expr<T> {
@@ -79,7 +82,8 @@ impl<T> Expr<T> {
             | Expr::ArrayLiteral { annotation, .. }
             | Expr::ObjectLiteral { annotation, .. }
             | Expr::BinaryOp { annotation, .. }
-            | Expr::UnaryOp { annotation, .. } => annotation,
+            | Expr::UnaryOp { annotation, .. }
+            | Expr::JsonEncode { annotation, .. } => annotation,
         }
     }
 }
@@ -164,6 +168,10 @@ impl<T> Pretty for Expr<T> {
                 .append(RcDoc::text(operator.to_string()))
                 .append(operand.to_doc())
                 .append(RcDoc::text(")")),
+            Expr::JsonEncode { value, .. } => RcDoc::nil()
+                .append(RcDoc::text("JsonEncode("))
+                .append(value.to_doc())
+                .append(RcDoc::text(")")),
         }
     }
 }
@@ -177,7 +185,7 @@ impl<T> Display for Expr<T> {
 impl Display for BinaryOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            BinaryOp::Equal => write!(f, "=="),
+            BinaryOp::Eq => write!(f, "=="),
         }
     }
 }

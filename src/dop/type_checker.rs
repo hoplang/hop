@@ -75,7 +75,7 @@ pub fn typecheck_expr(
         }
         Expr::BinaryOp {
             left,
-            operator: BinaryOp::Equal,
+            operator: BinaryOp::Eq,
             right,
             ..
         } => {
@@ -96,7 +96,7 @@ pub fn typecheck_expr(
             // The result of == is always boolean
             Ok(Expr::BinaryOp {
                 left: Box::new(typed_left),
-                operator: BinaryOp::Equal,
+                operator: BinaryOp::Eq,
                 right: Box::new(typed_right),
                 annotation: Type::Bool,
             })
@@ -172,6 +172,13 @@ pub fn typecheck_expr(
             Ok(Expr::ObjectLiteral {
                 properties: typed_properties,
                 annotation: Type::Object(object_properties),
+            })
+        }
+        Expr::JsonEncode { value, .. } => {
+            let typed_value = typecheck_expr(value, env, annotations)?;
+            Ok(Expr::JsonEncode {
+                value: Box::new(typed_value),
+                annotation: Type::String,
             })
         }
     }

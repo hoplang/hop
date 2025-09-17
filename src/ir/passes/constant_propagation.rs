@@ -92,12 +92,12 @@ impl ConstantPropagationPass {
         for ref_expr in expr.dfs_iter() {
             // If this is a variable reference, record its binding
             if let IrExpr::Var {
-                value: name, id, ..
+                value: name, annotation, ..
             } = ref_expr
             {
                 if let Some(&def_expr_id) = scope_stack.get(name.as_str()) {
                     // Record: (defining_expr_id, referencing_expr_id)
-                    var_bindings.push((def_expr_id, *id));
+                    var_bindings.push((def_expr_id, annotation.0));
                 }
             }
         }
@@ -112,8 +112,8 @@ impl ConstantPropagationPass {
         // Constant values of expressions: (expr_id => const_value)
         let const_value = iteration.variable::<(ExprId, Const)>("const_value");
         const_value.extend(all_expressions.iter().filter_map(|n| match n {
-            IrExpr::BooleanLiteral { value, id, .. } => Some((*id, Const::Bool(*value))),
-            IrExpr::StringLiteral { value, id, .. } => Some((*id, Const::String(value.clone()))),
+            IrExpr::BooleanLiteral { value, annotation, .. } => Some((annotation.0, Const::Bool(*value))),
+            IrExpr::StringLiteral { value, annotation, .. } => Some((annotation.0, Const::String(value.clone()))),
             _ => None,
         }));
 
@@ -128,9 +128,9 @@ impl ConstantPropagationPass {
             IrExpr::UnaryOp {
                 operator: UnaryOp::Not,
                 operand,
-                id,
+                annotation,
                 ..
-            } => Some((operand.id(), *id)),
+            } => Some((operand.id(), annotation.0)),
             _ => None,
         }));
 
@@ -140,9 +140,9 @@ impl ConstantPropagationPass {
                 operator: BinaryOp::Eq,
                 left,
                 right: _,
-                id,
+                annotation,
                 ..
-            } => Some((left.id(), *id)),
+            } => Some((left.id(), annotation.0)),
             _ => None,
         }));
 
@@ -152,9 +152,9 @@ impl ConstantPropagationPass {
                 operator: BinaryOp::Eq,
                 left: _,
                 right,
-                id,
+                annotation,
                 ..
-            } => Some((right.id(), *id)),
+            } => Some((right.id(), annotation.0)),
             _ => None,
         }));
 
@@ -212,13 +212,11 @@ impl ConstantPropagationPass {
                 let const_expr = match const_val {
                     Const::Bool(b) => IrExpr::BooleanLiteral {
                         value: *b,
-                        id: *expr_id,
-                        typ: orig_expr.typ().clone(),
+                        annotation: (*expr_id, orig_expr.typ().clone()),
                     },
                     Const::String(s) => IrExpr::StringLiteral {
                         value: s.clone(),
-                        id: *expr_id,
-                        typ: orig_expr.typ().clone(),
+                        annotation: (*expr_id, orig_expr.typ().clone()),
                     },
                 };
                 results.insert(*expr_id, const_expr);

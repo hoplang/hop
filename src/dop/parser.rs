@@ -12,7 +12,6 @@ use crate::dop::var_name::VarName;
 
 use super::r#type::RangedType;
 
-
 /// A Parameter represents a parsed parameter with type annotation.
 /// E.g. <my-comp {x: string, y: string}>
 ///                ^^^^^^^^^
@@ -333,7 +332,7 @@ impl Parser {
             expr = Expr::BinaryOp {
                 annotation: expr.range().clone().to(right.range().clone()),
                 left: Box::new(expr),
-                operator: BinaryOp::Equal,
+                operator: BinaryOp::Eq,
                 right: Box::new(right),
             };
         }

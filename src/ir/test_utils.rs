@@ -1,6 +1,7 @@
 use super::ast::IrEntrypoint;
 use super::ast::{BinaryOp, ExprId, IrExpr, IrStatement, StatementId, UnaryOp};
 use crate::dop::{Type, VarName};
+use crate::dop::expr::Expr;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
@@ -47,26 +48,23 @@ impl IrTestBuilder {
 
     // Expression builders
     pub fn str(&self, s: &str) -> IrExpr {
-        IrExpr::StringLiteral {
+        Expr::StringLiteral {
             value: s.to_string(),
-            id: self.next_expr_id(),
-            typ: Type::String,
+            annotation: (self.next_expr_id(), Type::String),
         }
     }
 
     pub fn num(&self, n: f64) -> IrExpr {
-        IrExpr::NumberLiteral {
-            value: n,
-            id: self.next_expr_id(),
-            typ: Type::Number,
+        Expr::NumberLiteral {
+            value: serde_json::Number::from_f64(n).unwrap_or_else(|| serde_json::Number::from(0)),
+            annotation: (self.next_expr_id(), Type::Number),
         }
     }
 
     pub fn bool(&self, b: bool) -> IrExpr {
-        IrExpr::BooleanLiteral {
+        Expr::BooleanLiteral {
             value: b,
-            id: self.next_expr_id(),
-            typ: Type::Bool,
+            annotation: (self.next_expr_id(), Type::Bool),
         }
     }
 
@@ -91,29 +89,26 @@ impl IrTestBuilder {
                 )
             });
 
-        IrExpr::Var {
+        Expr::Var {
             value: VarName::try_from(name.to_string()).unwrap(),
-            id: self.next_expr_id(),
-            typ,
+            annotation: (self.next_expr_id(), typ),
         }
     }
 
     pub fn eq(&self, left: IrExpr, right: IrExpr) -> IrExpr {
-        IrExpr::BinaryOp {
+        Expr::BinaryOp {
             left: Box::new(left),
             operator: BinaryOp::Eq,
             right: Box::new(right),
-            id: self.next_expr_id(),
-            typ: Type::Bool,
+            annotation: (self.next_expr_id(), Type::Bool),
         }
     }
 
     pub fn not(&self, operand: IrExpr) -> IrExpr {
-        IrExpr::UnaryOp {
+        Expr::UnaryOp {
             operator: UnaryOp::Not,
             operand: Box::new(operand),
-            id: self.next_expr_id(),
-            typ: Type::Bool,
+            annotation: (self.next_expr_id(), Type::Bool),
         }
     }
 
@@ -121,10 +116,9 @@ impl IrTestBuilder {
         // Determine the array element type from the first element
         let element_type = elements.first().map(|first| Box::new(first.typ().clone()));
 
-        IrExpr::ArrayLiteral {
+        Expr::ArrayLiteral {
             elements,
-            id: self.next_expr_id(),
-            typ: Type::Array(element_type),
+            annotation: (self.next_expr_id(), Type::Array(element_type)),
         }
     }
 
@@ -135,10 +129,9 @@ impl IrTestBuilder {
             type_map.insert(key.to_string(), expr.typ().clone());
         }
 
-        IrExpr::ObjectLiteral {
+        Expr::ObjectLiteral {
             properties: props.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
-            id: self.next_expr_id(),
-            typ: Type::Object(type_map),
+            annotation: (self.next_expr_id(), Type::Object(type_map)),
         }
     }
 
@@ -151,11 +144,10 @@ impl IrTestBuilder {
             _ => panic!("Cannot access property '{}' on non-object type", property),
         };
 
-        IrExpr::PropertyAccess {
+        Expr::PropertyAccess {
             object: Box::new(object),
             property: property.to_string(),
-            id: self.next_expr_id(),
-            typ: property_type,
+            annotation: (self.next_expr_id(), property_type),
         }
     }
 
@@ -242,10 +234,9 @@ impl IrTestBuilder {
     }
 
     pub fn json_encode(&self, value: IrExpr) -> IrExpr {
-        IrExpr::JsonEncode {
+        Expr::JsonEncode {
             value: Box::new(value),
-            id: self.next_expr_id(),
-            typ: Type::String,
+            annotation: (self.next_expr_id(), Type::String),
         }
     }
 }

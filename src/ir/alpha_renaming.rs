@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::dop::VarName;
 
 use super::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
+use crate::dop::expr::Expr;
 
 /// Alpha renaming pass for the IR AST.
 /// This ensures all variable names are unique to avoid conflicts and shadowing.
@@ -57,10 +58,9 @@ impl AlphaRenamer {
                 result_body = vec![IrStatement::Let {
                     id: 0, // ID will be assigned later if needed
                     var: renamed,
-                    value: IrExpr::Var {
+                    value: Expr::Var {
                         value: original.clone(),
-                        id: 0,
-                        typ: crate::dop::Type::String, // TODO: Get actual type
+                        annotation: (0, crate::dop::Type::String), // TODO: Get actual type
                     },
                     body: result_body,
                 }];
@@ -150,75 +150,64 @@ impl AlphaRenamer {
     /// Rename variables in an expression
     fn rename_expr(&mut self, expr: IrExpr) -> IrExpr {
         match expr {
-            IrExpr::Var { value, id, typ } => {
+            Expr::Var { value, annotation } => {
                 let renamed = self.lookup_var(&value);
-                IrExpr::Var {
+                Expr::Var {
                     value: renamed,
-                    id,
-                    typ,
+                    annotation,
                 }
             }
-            IrExpr::PropertyAccess {
+            Expr::PropertyAccess {
                 object,
                 property,
-                id,
-                typ,
-            } => IrExpr::PropertyAccess {
+                annotation,
+            } => Expr::PropertyAccess {
                 object: Box::new(self.rename_expr(*object)),
                 property,
-                id,
-                typ,
+                annotation,
             },
-            IrExpr::BinaryOp {
+            Expr::BinaryOp {
                 left,
-                operator: op,
+                operator,
                 right,
-                id,
-                typ,
-            } => IrExpr::BinaryOp {
+                annotation,
+            } => Expr::BinaryOp {
                 left: Box::new(self.rename_expr(*left)),
-                operator: op,
+                operator,
                 right: Box::new(self.rename_expr(*right)),
-                id,
-                typ,
+                annotation,
             },
-            IrExpr::UnaryOp {
-                operator: op,
+            Expr::UnaryOp {
+                operator,
                 operand,
-                id,
-                typ,
-            } => IrExpr::UnaryOp {
-                operator: op,
+                annotation,
+            } => Expr::UnaryOp {
+                operator,
                 operand: Box::new(self.rename_expr(*operand)),
-                id,
-                typ,
+                annotation,
             },
-            IrExpr::ArrayLiteral { elements, id, typ } => IrExpr::ArrayLiteral {
+            Expr::ArrayLiteral { elements, annotation } => Expr::ArrayLiteral {
                 elements: elements.into_iter().map(|e| self.rename_expr(e)).collect(),
-                id,
-                typ,
+                annotation,
             },
-            IrExpr::ObjectLiteral {
+            Expr::ObjectLiteral {
                 properties,
-                id,
-                typ,
-            } => IrExpr::ObjectLiteral {
+                annotation,
+            } => Expr::ObjectLiteral {
                 properties: properties
                     .into_iter()
                     .map(|(k, v)| (k, self.rename_expr(v)))
                     .collect(),
-                id,
-                typ,
+                annotation,
             },
-            IrExpr::JsonEncode { value, id, typ } => IrExpr::JsonEncode {
+            Expr::JsonEncode { value, annotation } => Expr::JsonEncode {
                 value: Box::new(self.rename_expr(*value)),
-                id,
-                typ,
+                annotation,
             },
             // Literals don't contain variables
-            IrExpr::StringLiteral { .. } => expr,
-            IrExpr::BooleanLiteral { .. } => expr,
-            IrExpr::NumberLiteral { .. } => expr,
+            Expr::StringLiteral { .. } => expr,
+            Expr::BooleanLiteral { .. } => expr,
+            Expr::NumberLiteral { .. } => expr,
         }
     }
 

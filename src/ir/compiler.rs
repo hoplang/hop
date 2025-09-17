@@ -1,14 +1,12 @@
 use crate::common::is_void_element;
 use crate::document::document_cursor::{DocumentRange, StringSpan};
-use crate::dop::{self, Argument, Expr};
+use crate::dop::{Argument, Expr};
 use crate::dop::{Type, VarName};
 use crate::hop::ast::{Ast, Attribute, AttributeValue, ComponentDefinition, Node};
 use crate::hop::module_name::ModuleName;
 use std::collections::{BTreeMap, HashMap};
 
-use super::ast::{
-    BinaryOp, ExprId, IrEntrypoint, IrExpr, IrModule, IrStatement, StatementId, UnaryOp,
-};
+use super::ast::{ExprId, IrEntrypoint, IrExpr, IrModule, IrStatement, StatementId};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CompilationMode {
@@ -135,25 +133,25 @@ impl Compiler<'_> {
             for (name, typ) in params {
                 props.push((
                     name.to_string(),
-                    IrExpr::Var {
+                    Expr::Var {
                         value: name.clone(),
-                        id: self.next_expr_id(),
-                        typ: typ.clone(),
+                        annotation: (self.next_expr_id(), typ.clone()),
                     },
                 ));
             }
 
             body.push(IrStatement::WriteExpr {
                 id: self.next_node_id(),
-                expr: IrExpr::JsonEncode {
-                    value: Box::new(IrExpr::ObjectLiteral {
+                expr: Expr::JsonEncode {
+                    value: Box::new(Expr::ObjectLiteral {
                         properties: props,
-                        id: self.next_expr_id(),
-                        // TODO: Do we need to construct the correct type here?
-                        typ: Type::Object(BTreeMap::new()),
+                        annotation: (
+                            self.next_expr_id(),
+                            // TODO: Do we need to construct the correct type here?
+                            Type::Object(BTreeMap::new()),
+                        ),
                     }),
-                    id: self.next_expr_id(),
-                    typ: Type::String,
+                    annotation: (self.next_expr_id(), Type::String),
                 },
                 escape: false,
             });
@@ -570,78 +568,64 @@ impl Compiler<'_> {
     fn compile_expr(&mut self, expr: &Expr<Type>) -> IrExpr {
         let id = self.next_expr_id();
         let typ = expr.annotation().clone();
+        let annotation = (id, typ);
 
         match expr {
-            Expr::Var { value, .. } => IrExpr::Var {
+            Expr::Var { value, .. } => Expr::Var {
                 value: value.clone(),
-                id,
-                typ,
+                annotation,
             },
             Expr::PropertyAccess {
                 object, property, ..
-            } => IrExpr::PropertyAccess {
+            } => Expr::PropertyAccess {
                 object: Box::new(self.compile_expr(object)),
                 property: property.as_str().to_string(),
-                id,
-                typ,
+                annotation,
             },
             Expr::BinaryOp {
                 left,
                 operator,
                 right,
                 ..
-            } => {
-                let ir_op = match operator {
-                    dop::expr::BinaryOp::Equal => BinaryOp::Eq,
-                };
-                IrExpr::BinaryOp {
-                    left: Box::new(self.compile_expr(left)),
-                    operator: ir_op,
-                    right: Box::new(self.compile_expr(right)),
-                    id,
-                    typ,
-                }
-            }
+            } => Expr::BinaryOp {
+                left: Box::new(self.compile_expr(left)),
+                operator: operator.clone(),
+                right: Box::new(self.compile_expr(right)),
+                annotation,
+            },
             Expr::UnaryOp {
                 operator, operand, ..
-            } => {
-                let ir_op = match operator {
-                    dop::expr::UnaryOp::Not => UnaryOp::Not,
-                };
-                IrExpr::UnaryOp {
-                    operator: ir_op,
-                    operand: Box::new(self.compile_expr(operand)),
-                    id,
-                    typ,
-                }
-            }
-            Expr::ArrayLiteral { elements, .. } => IrExpr::ArrayLiteral {
-                elements: elements.iter().map(|e| self.compile_expr(e)).collect(),
-                id,
-                typ,
+            } => Expr::UnaryOp {
+                operator: operator.clone(),
+                operand: Box::new(self.compile_expr(operand)),
+                annotation,
             },
-            Expr::ObjectLiteral { properties, .. } => IrExpr::ObjectLiteral {
+            Expr::ArrayLiteral { elements, .. } => Expr::ArrayLiteral {
+                elements: elements.iter().map(|e| self.compile_expr(e)).collect(),
+                annotation,
+            },
+            Expr::ObjectLiteral { properties, .. } => Expr::ObjectLiteral {
                 properties: properties
                     .iter()
                     .map(|(k, v)| (k.as_str().to_string(), self.compile_expr(v)))
                     .collect(),
-                id,
-                typ,
+                annotation,
             },
-            Expr::StringLiteral { value, .. } => IrExpr::StringLiteral {
+            Expr::StringLiteral { value, .. } => Expr::StringLiteral {
                 value: value.to_string(),
-                id,
-                typ,
+                annotation,
             },
-            Expr::BooleanLiteral { value, .. } => IrExpr::BooleanLiteral {
+            Expr::BooleanLiteral { value, .. } => Expr::BooleanLiteral {
                 value: *value,
-                id,
-                typ,
+                annotation,
             },
-            Expr::NumberLiteral { value, .. } => IrExpr::NumberLiteral {
-                value: value.as_f64().unwrap_or(0.0),
-                id,
-                typ,
+            Expr::NumberLiteral { value, .. } => Expr::NumberLiteral {
+                value: value.clone(),
+                annotation,
+            },
+            Expr::JsonEncode { value, .. } => Expr::JsonEncode {
+                value: Box::new(self.compile_expr(value)),
+                annotation,
             },
         }
     }

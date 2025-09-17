@@ -336,17 +336,25 @@ impl GoTranspiler {
 
             IrExpr::NumberLiteral { value, .. } => {
                 // Go requires explicit float notation for decimals
-                if value.fract() == 0.0 {
-                    format!("{}", *value as i64)
+                if let Some(f) = value.as_f64() {
+                    if f.fract() == 0.0 {
+                        format!("{}", f as i64)
+                    } else {
+                        format!("{}", f)
+                    }
                 } else {
-                    format!("{}", value)
+                    value.to_string()
                 }
             }
 
-            IrExpr::ArrayLiteral { elements, typ, .. } => {
+            IrExpr::ArrayLiteral {
+                elements,
+                annotation: (_, typ),
+                ..
+            } => {
                 if elements.is_empty() {
                     // Need type info for empty slices
-                    match typ {
+                    match &typ {
                         Type::Array(Some(elem_type)) => {
                             format!("[]{}{{}}", Self::type_to_go(elem_type))
                         }
@@ -357,7 +365,7 @@ impl GoTranspiler {
                         elements.iter().map(|e| self.transpile_expr(e)).collect();
 
                     // Infer slice type from expression type
-                    let type_prefix = match typ {
+                    let type_prefix = match &typ {
                         Type::Array(Some(elem_type)) => {
                             format!("[]{}", Self::type_to_go(elem_type))
                         }
@@ -369,7 +377,9 @@ impl GoTranspiler {
             }
 
             IrExpr::ObjectLiteral {
-                properties, typ, ..
+                properties,
+                annotation: (_, typ),
+                ..
             } => {
                 // Generate anonymous struct literal with proper type
                 if properties.is_empty() {
@@ -377,12 +387,12 @@ impl GoTranspiler {
                     "struct{}{}".to_string()
                 } else {
                     // Build the struct type definition from the expression's type
-                    let struct_type = match typ {
+                    let struct_type = match &typ {
                         Type::Object(fields) => {
                             let mut def = "struct{".to_string();
                             for (field_name, field_type) in fields {
-                                let go_field =
-                                    CasedString::from_snake_case(field_name).to_pascal_case();
+                                let go_field = CasedString::from_snake_case(field_name.as_str())
+                                    .to_pascal_case();
                                 let go_type = Self::type_to_go(field_type);
                                 def.push_str(&format!(
                                     "{} {} `json:\"{}\"`; ",
