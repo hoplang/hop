@@ -20,74 +20,81 @@ impl DeadCodeEliminationPass {
         }
     }
 
-    /// Transform a list of statements, eliminating dead code
-    fn transform_statements(statements: Vec<IrStatement>) -> Vec<IrStatement> {
-        let mut result = Vec::new();
-        for statement in statements {
-            match statement {
-                IrStatement::If {
-                    id,
-                    condition,
-                    body,
-                } => {
-                    // Check if the condition is a constant boolean
-                    if let Some(const_bool) = Self::is_constant_boolean(&condition) {
-                        if const_bool {
-                            // Condition is always true, replace with body
-                            result.extend(Self::transform_statements(body));
-                        }
-                        // If false, do nothing - effectively removes this statement
+    fn transform_statement(statement: IrStatement) -> Vec<IrStatement> {
+        match statement {
+            IrStatement::If {
+                id,
+                condition,
+                body,
+            } => {
+                if let Some(const_bool) = Self::is_constant_boolean(&condition) {
+                    if const_bool {
+                        body.into_iter()
+                            .flat_map(Self::transform_statement)
+                            .collect()
                     } else {
-                        // Can't evaluate at compile time, keep the if but transform body
-                        result.push(IrStatement::If {
-                            id,
-                            condition,
-                            body: Self::transform_statements(body),
-                        });
+                        vec![]
                     }
+                } else {
+                    vec![IrStatement::If {
+                        id,
+                        condition,
+                        body: body
+                            .into_iter()
+                            .flat_map(Self::transform_statement)
+                            .collect(),
+                    }]
                 }
-                IrStatement::For {
+            }
+            IrStatement::For {
+                id,
+                var,
+                array,
+                body,
+            } => {
+                vec![IrStatement::For {
                     id,
                     var,
                     array,
-                    body,
-                } => {
-                    // Transform the body of the for loop
-                    result.push(IrStatement::For {
-                        id,
-                        var,
-                        array,
-                        body: Self::transform_statements(body),
-                    });
-                }
-                IrStatement::Let {
+                    body: body
+                        .into_iter()
+                        .flat_map(Self::transform_statement)
+                        .collect(),
+                }]
+            }
+            IrStatement::Let {
+                id,
+                var,
+                value,
+                body,
+            } => {
+                vec![IrStatement::Let {
                     id,
                     var,
                     value,
-                    body,
-                } => {
-                    // Transform the body of the let
-                    result.push(IrStatement::Let {
-                        id,
-                        var,
-                        value,
-                        body: Self::transform_statements(body),
-                    });
-                }
-                _ => {
-                    // All other statements are preserved as-is
-                    result.push(statement);
-                }
+                    body: body
+                        .into_iter()
+                        .flat_map(Self::transform_statement)
+                        .collect(),
+                }]
+            }
+            _ => {
+                vec![statement]
             }
         }
-        result
     }
 }
 
 impl Pass for DeadCodeEliminationPass {
-    fn run(&mut self, mut entrypoint: IrEntrypoint) -> IrEntrypoint {
-        entrypoint.body = Self::transform_statements(entrypoint.body);
-        entrypoint
+    fn run(&mut self, entrypoint: IrEntrypoint) -> IrEntrypoint {
+        IrEntrypoint {
+            parameters: entrypoint.parameters,
+            body: entrypoint
+                .body
+                .into_iter()
+                .flat_map(Self::transform_statement)
+                .collect(),
+        }
     }
 }
 
