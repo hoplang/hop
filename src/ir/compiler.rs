@@ -4,6 +4,7 @@ use crate::dop::{Argument, Expr};
 use crate::dop::{Type, VarName};
 use crate::hop::ast::{Ast, Attribute, AttributeValue, ComponentDefinition, Node};
 use crate::hop::module_name::ModuleName;
+use crate::hop::transforms::TransformPipeline;
 use std::collections::{BTreeMap, HashMap};
 
 use super::ast::{ExprId, IrEntrypoint, IrExpr, IrModule, IrStatement, StatementId};
@@ -31,8 +32,19 @@ impl Compiler<'_> {
         asts: &HashMap<ModuleName, Ast<Type>>,
         compilation_mode: CompilationMode,
     ) -> IrModule {
+        // Clone ASTs for transformation (keeping originals intact)
+        let mut transformed_asts = asts.clone();
+
+        // Apply transformations only in production mode
+        if compilation_mode == CompilationMode::Production {
+            let mut pipeline = TransformPipeline::new();
+            for ast in transformed_asts.values_mut() {
+                pipeline.run(ast);
+            }
+        }
+
         let mut compiler = Compiler {
-            asts,
+            asts: &transformed_asts,
             ir_module: IrModule::new(),
             compilation_mode,
             expr_id_counter: 0,
@@ -40,7 +52,7 @@ impl Compiler<'_> {
         };
 
         // Compile all entrypoint components
-        for ast in asts.values() {
+        for ast in transformed_asts.values() {
             for component_def in ast.get_component_definitions() {
                 if component_def.is_entrypoint {
                     compiler.compile_entrypoint(component_def);
@@ -670,6 +682,7 @@ mod tests {
                     main-comp: {
                       parameters: []
                       body: {
+                        Write("<!DOCTYPE html>")
                         Write("Hello World")
                       }
                     }
@@ -694,6 +707,7 @@ mod tests {
                     main-comp: {
                       parameters: [name: string]
                       body: {
+                        Write("<!DOCTYPE html>")
                         Write("Hello ")
                         WriteExpr(expr: name, escape: true)
                       }
@@ -721,6 +735,7 @@ mod tests {
                     main-comp: {
                       parameters: []
                       body: {
+                        Write("<!DOCTYPE html>")
                         Write("<div")
                         Write(">")
                         Write("Content")
@@ -750,6 +765,7 @@ mod tests {
                     main-comp: {
                       parameters: [show: boolean]
                       body: {
+                        Write("<!DOCTYPE html>")
                         If(condition: show) {
                           Write("<div")
                           Write(">")
@@ -781,6 +797,7 @@ mod tests {
                     main-comp: {
                       parameters: [items: array[string]]
                       body: {
+                        Write("<!DOCTYPE html>")
                         For(var: item, array: items) {
                           Write("<li")
                           Write(">")
@@ -814,6 +831,7 @@ mod tests {
                     main-comp: {
                       parameters: []
                       body: {
+                        Write("<!DOCTYPE html>")
                         Write("<div data-hop-id=\"test/card-comp\"")
                         Write(">")
                         Let(var: title, value: "Hello") {
@@ -846,6 +864,7 @@ mod tests {
                     main-comp: {
                       parameters: []
                       body: {
+                        Write("<!DOCTYPE html>")
                         Write("<div")
                         Write(" class=\"base\"")
                         Write(" id=\"test\"")
@@ -875,6 +894,7 @@ mod tests {
                     main-comp: {
                       parameters: [cls: string]
                       body: {
+                        Write("<!DOCTYPE html>")
                         Write("<div")
                         Write(" class=\"base\"")
                         Write(" data-value=\"")
@@ -909,6 +929,7 @@ mod tests {
                     main-comp: {
                       parameters: [y: string]
                       body: {
+                        Write("<!DOCTYPE html>")
                         For(var: x, array: ["a", "b"]) {
                           WriteExpr(expr: x, escape: true)
                         }
@@ -922,11 +943,41 @@ mod tests {
     }
 
     #[test]
-    fn test_doctype_compilation() {
+    fn test_doctype_already_present() {
+        // When DOCTYPE is already present, it should not be duplicated
         check_ir(
             &[
                 "<main-comp entrypoint>",
                 "<!DOCTYPE html>",
+                "<html>Content</html>",
+                "</main-comp>",
+            ]
+            .join(""),
+            expect![[r#"
+                IrModule {
+                  entry_points: {
+                    main-comp: {
+                      parameters: []
+                      body: {
+                        Write("<!DOCTYPE html>")
+                        Write("<html")
+                        Write(">")
+                        Write("Content")
+                        Write("</html>")
+                      }
+                    }
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_doctype_injection() {
+        // When DOCTYPE is missing, it should be injected
+        check_ir(
+            &[
+                "<main-comp entrypoint>",
                 "<html>Content</html>",
                 "</main-comp>",
             ]
@@ -966,6 +1017,7 @@ mod tests {
                     main-comp: {
                       parameters: []
                       body: {
+                        Write("<!DOCTYPE html>")
                         Write("<img")
                         Write(" alt=\"test\"")
                         Write(" src=\"test.jpg\"")
@@ -998,6 +1050,7 @@ mod tests {
                     main-comp: {
                       parameters: []
                       body: {
+                        Write("<!DOCTYPE html>")
                         Write("<div")
                         Write(">")
                         Write("Before")
@@ -1029,6 +1082,7 @@ mod tests {
                     main-comp: {
                       parameters: [user: {name: string}]
                       body: {
+                        Write("<!DOCTYPE html>")
                         Write("Hello ")
                         WriteExpr(expr: user.name, escape: true)
                       }
@@ -1062,6 +1116,7 @@ mod tests {
                     main-comp: {
                       parameters: []
                       body: {
+                        Write("<!DOCTYPE html>")
                         Write("<div data-hop-id=\"test/card-comp\"")
                         Write(">")
                         Write("<div")
@@ -1104,6 +1159,7 @@ mod tests {
                     main-comp: {
                       parameters: []
                       body: {
+                        Write("<!DOCTYPE html>")
                         Write("<div data-hop-id=\"test/outer-comp\"")
                         Write(">")
                         Let(var: text, value: "Hello") {
@@ -1145,6 +1201,7 @@ mod tests {
                     main-comp: {
                       parameters: [x: string]
                       body: {
+                        Write("<!DOCTYPE html>")
                         Write("<div data-hop-id=\"test/child-comp\"")
                         Write(">")
                         Let(var: x, value: x) {
@@ -1183,6 +1240,7 @@ mod tests {
                     main-comp: {
                       parameters: [x: string]
                       body: {
+                        Write("<!DOCTYPE html>")
                         Write("<div data-hop-id=\"test/child-comp\"")
                         Write(">")
                         Let(var: x, value: x) {
@@ -1231,6 +1289,7 @@ mod tests {
                     first-comp: {
                       parameters: [x: string]
                       body: {
+                        Write("<!DOCTYPE html>")
                         Write("<div")
                         Write(">")
                         WriteExpr(expr: x, escape: true)
@@ -1240,6 +1299,7 @@ mod tests {
                     second-comp: {
                       parameters: [y: string]
                       body: {
+                        Write("<!DOCTYPE html>")
                         Write("<span")
                         Write(">")
                         Write("Value: ")
@@ -1278,6 +1338,7 @@ mod tests {
                     main-comp: {
                       parameters: []
                       body: {
+                        Write("<!DOCTYPE html>")
                         For(var: x, array: ["a", "b"]) {
                           Write("<div")
                           Write(">")

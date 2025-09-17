@@ -28,7 +28,7 @@ pub struct Attribute<T = DocumentRange> {
     pub range: DocumentRange,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Ast<T = DocumentRange> {
     pub name: ModuleName,
     imports: Vec<Import>,
@@ -57,6 +57,11 @@ impl<T> Ast<T> {
     /// Returns a reference to all component definition nodes in the AST.
     pub fn get_component_definitions(&self) -> &[ComponentDefinition<T>] {
         &self.component_definitions
+    }
+
+    /// Returns a mutable reference to all component definition nodes in the AST.
+    pub fn get_component_definitions_mut(&mut self) -> &mut [ComponentDefinition<T>] {
+        &mut self.component_definitions
     }
 
     /// Returns a reference to all import nodes in the AST.
@@ -128,7 +133,7 @@ impl Import {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ComponentDefinition<T = DocumentRange> {
     pub tag_name: DocumentRange,
     pub closing_tag_name: Option<DocumentRange>,
@@ -153,7 +158,7 @@ impl<T> ComponentDefinition<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Node<T = DocumentRange> {
     /// A Text node represents text in the document.
     /// E.g. <div>hello world</div>

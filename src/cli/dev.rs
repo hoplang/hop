@@ -218,7 +218,7 @@ mod tests {
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let html = String::from_utf8(body.to_vec()).unwrap();
 
-        expect!["<h1>Welcome</h1><p>Hello, Alice!</p>"].assert_eq(&html);
+        expect!["<!DOCTYPE html><h1>Welcome</h1><p>Hello, Alice!</p>"].assert_eq(&html);
 
         // Test rendering without parameters
         let request = Request::builder()
@@ -232,7 +232,7 @@ mod tests {
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         let html = String::from_utf8(body.to_vec()).unwrap();
 
-        expect!["<div>Simple content</div>"].assert_eq(&html);
+        expect!["<!DOCTYPE html><div>Simple content</div>"].assert_eq(&html);
 
         // Test non-existent entrypoint
         let request = Request::builder()
