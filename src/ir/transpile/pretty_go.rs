@@ -1,20 +1,18 @@
 use pretty::BoxDoc;
 
-use super::{
-    PrettyExpressionTranspiler, PrettyStatementTranspiler, PrettyTranspiler, PrettyTypeTranspiler,
-};
+use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
 use crate::cased_string::CasedString;
 use crate::dop::r#type::Type;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Transpiles an IR module to Go code using pretty printing
-pub struct PrettyGoTranspiler {
+pub struct GoTranspiler {
     /// Track packages we need to import
     imports: BTreeSet<String>,
 }
 
-impl PrettyGoTranspiler {
+impl GoTranspiler {
     pub fn new() -> Self {
         Self {
             imports: BTreeSet::new(),
@@ -73,7 +71,7 @@ impl PrettyGoTranspiler {
     }
 }
 
-impl PrettyTranspiler for PrettyGoTranspiler {
+impl Transpiler for GoTranspiler {
     fn transpile_module(&self, ir_module: &IrModule) -> String {
         // Clone self to get a mutable version for scanning
         let mut scanner = Self::new();
@@ -97,13 +95,16 @@ impl PrettyTranspiler for PrettyGoTranspiler {
 
         // Write imports if needed
         if !scanner.imports.is_empty() {
-            let imports: Vec<_> = scanner.imports
+            let imports: Vec<_> = scanner
+                .imports
                 .iter()
                 .map(|import| {
                     if import == "json" {
                         BoxDoc::text("\"encoding/json\"")
                     } else {
-                        BoxDoc::text("\"").append(BoxDoc::text(import.as_str())).append(BoxDoc::text("\""))
+                        BoxDoc::text("\"")
+                            .append(BoxDoc::text(import.as_str()))
+                            .append(BoxDoc::text("\""))
                     }
                 })
                 .collect();
@@ -113,7 +114,7 @@ impl PrettyTranspiler for PrettyGoTranspiler {
                 .append(
                     BoxDoc::line()
                         .append(BoxDoc::intersperse(imports, BoxDoc::line()))
-                        .nest(1)
+                        .nest(1),
                 )
                 .append(BoxDoc::line())
                 .append(BoxDoc::text(")"))
@@ -130,7 +131,7 @@ impl PrettyTranspiler for PrettyGoTranspiler {
                         .append(BoxDoc::text("data, _ := json.Marshal(v)"))
                         .append(BoxDoc::line())
                         .append(BoxDoc::text("return string(data)"))
-                        .nest(1)
+                        .nest(1),
                 )
                 .append(BoxDoc::line())
                 .append(BoxDoc::text("}"))
@@ -146,10 +147,12 @@ impl PrettyTranspiler for PrettyGoTranspiler {
                     CasedString::from_kebab_case(name).to_pascal_case()
                 );
 
-                let fields: Vec<_> = entrypoint.parameters
+                let fields: Vec<_> = entrypoint
+                    .parameters
                     .iter()
                     .map(|(param_name, param_type)| {
-                        let field_name = CasedString::from_snake_case(param_name.as_str()).to_pascal_case();
+                        let field_name =
+                            CasedString::from_snake_case(param_name.as_str()).to_pascal_case();
                         BoxDoc::text(field_name)
                             .append(BoxDoc::text(" "))
                             .append(self.transpile_type(param_type))
@@ -166,7 +169,7 @@ impl PrettyTranspiler for PrettyGoTranspiler {
                     .append(
                         BoxDoc::line()
                             .append(BoxDoc::intersperse(fields, BoxDoc::line()))
-                            .nest(1)
+                            .nest(1),
                     )
                     .append(BoxDoc::line())
                     .append(BoxDoc::text("}"))
@@ -190,7 +193,8 @@ impl PrettyTranspiler for PrettyGoTranspiler {
         let output = String::from_utf8(buffer).unwrap();
 
         // Post-process: convert spaces to tabs for Go convention
-        let processed = output.lines()
+        let processed = output
+            .lines()
             .map(|line| {
                 // Count leading spaces
                 let spaces = line.chars().take_while(|c| *c == ' ').count();
@@ -255,7 +259,7 @@ impl PrettyTranspiler for PrettyGoTranspiler {
     }
 }
 
-impl PrettyExpressionTranspiler for PrettyGoTranspiler {
+impl ExpressionTranspiler for GoTranspiler {
     fn transpile_var<'a>(&self, name: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(name)
     }
@@ -372,7 +376,7 @@ impl PrettyExpressionTranspiler for PrettyGoTranspiler {
     }
 }
 
-impl PrettyTypeTranspiler for PrettyGoTranspiler {
+impl TypeTranspiler for GoTranspiler {
     fn transpile_bool_type<'a>(&self) -> BoxDoc<'a> {
         BoxDoc::text("bool")
     }
@@ -409,10 +413,13 @@ impl PrettyTypeTranspiler for PrettyGoTranspiler {
     }
 }
 
-impl PrettyStatementTranspiler for PrettyGoTranspiler {
+impl StatementTranspiler for GoTranspiler {
     fn transpile_write<'a>(&self, content: &'a str) -> BoxDoc<'a> {
         BoxDoc::text("output.WriteString(")
-            .append(BoxDoc::as_string(format!("\"{}\"", self.escape_string(content))))
+            .append(BoxDoc::as_string(format!(
+                "\"{}\"",
+                self.escape_string(content)
+            )))
             .append(BoxDoc::text(")"))
     }
 
@@ -420,11 +427,9 @@ impl PrettyStatementTranspiler for PrettyGoTranspiler {
         // Handle type conversion to string based on expression type
         let string_expr = match expr.typ() {
             Type::String => self.transpile_expr(expr),
-            Type::Number | Type::Bool | _ => {
-                BoxDoc::text("fmt.Sprintf(\"%v\", ")
-                    .append(self.transpile_expr(expr))
-                    .append(BoxDoc::text(")"))
-            }
+            Type::Number | Type::Bool | _ => BoxDoc::text("fmt.Sprintf(\"%v\", ")
+                .append(self.transpile_expr(expr))
+                .append(BoxDoc::text(")")),
         };
 
         if escape {
@@ -492,7 +497,7 @@ mod tests {
     use expect_test::{Expect, expect};
 
     fn transpile_with_pretty(ir_module: &IrModule) -> String {
-        let transpiler = PrettyGoTranspiler::new();
+        let transpiler = GoTranspiler::new();
         transpiler.transpile_module(ir_module)
     }
 

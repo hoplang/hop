@@ -1,8 +1,6 @@
 use pretty::BoxDoc;
 
-use super::{
-    PrettyExpressionTranspiler, PrettyStatementTranspiler, PrettyTranspiler, PrettyTypeTranspiler,
-};
+use super::{ExpressionTranspiler, StatementTranspiler, Transpiler, TypeTranspiler};
 use crate::cased_string::CasedString;
 use crate::dop::r#type::Type;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
@@ -15,13 +13,13 @@ pub enum LanguageMode {
 }
 
 /// Transpiles an IR module to JavaScript or TypeScript code
-pub struct PrettyJsTranspiler {
+pub struct JsTranspiler {
     mode: LanguageMode,
     /// Internal flag to use template literals instead of double quotes
     use_template_literals: bool,
 }
 
-impl PrettyJsTranspiler {
+impl JsTranspiler {
     pub fn new(mode: LanguageMode) -> Self {
         Self {
             mode,
@@ -71,7 +69,7 @@ impl PrettyJsTranspiler {
     }
 }
 
-impl PrettyTranspiler for PrettyJsTranspiler {
+impl Transpiler for JsTranspiler {
     fn transpile_module(&self, ir_module: &IrModule) -> String {
         let mut needs_escape_html = false;
         for entrypoint in ir_module.entry_points.values() {
@@ -204,7 +202,7 @@ impl PrettyTranspiler for PrettyJsTranspiler {
     }
 }
 
-impl PrettyExpressionTranspiler for PrettyJsTranspiler {
+impl ExpressionTranspiler for JsTranspiler {
     fn transpile_var<'a>(&self, name: &'a str) -> BoxDoc<'a> {
         BoxDoc::text(name)
     }
@@ -296,7 +294,7 @@ impl PrettyExpressionTranspiler for PrettyJsTranspiler {
     }
 }
 
-impl PrettyTypeTranspiler for PrettyJsTranspiler {
+impl TypeTranspiler for JsTranspiler {
     fn transpile_bool_type<'a>(&self) -> BoxDoc<'a> {
         BoxDoc::text("boolean")
     }
@@ -335,7 +333,7 @@ impl PrettyTypeTranspiler for PrettyJsTranspiler {
     }
 }
 
-impl PrettyStatementTranspiler for PrettyJsTranspiler {
+impl StatementTranspiler for JsTranspiler {
     fn transpile_write<'a>(&self, content: &'a str) -> BoxDoc<'a> {
         BoxDoc::nil()
             .append(BoxDoc::text("output += "))
@@ -417,7 +415,7 @@ mod tests {
     use expect_test::{Expect, expect};
 
     fn transpile_with_pretty(ir_module: &IrModule, mode: LanguageMode) -> String {
-        let transpiler = PrettyJsTranspiler::new(mode);
+        let transpiler = JsTranspiler::new(mode);
         transpiler.transpile_module(ir_module)
     }
 

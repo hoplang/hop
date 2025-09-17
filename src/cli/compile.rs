@@ -3,8 +3,8 @@ use crate::document::DocumentAnnotator;
 use crate::filesystem::files::ProjectRoot;
 use crate::hop::program::Program;
 use crate::ir::{
-    CompilationMode, Compiler, LanguageMode, PrettyGoTranspiler, PrettyJsTranspiler,
-    PrettyTranspiler, optimizer::Optimizer,
+    CompilationMode, Compiler, GoTranspiler, JsTranspiler, LanguageMode, Transpiler,
+    optimizer::Optimizer,
 };
 use crate::tui::timing;
 use anyhow::{Context, Result};
@@ -101,17 +101,17 @@ pub fn execute(
     let generated_code = match language {
         CompileLanguage::Js => {
             timer.start_phase("transpiling to js");
-            let transpiler = PrettyJsTranspiler::new(LanguageMode::JavaScript);
+            let transpiler = JsTranspiler::new(LanguageMode::JavaScript);
             transpiler.transpile_module(&ir_module)
         }
         CompileLanguage::Ts => {
             timer.start_phase("transpiling to ts");
-            let transpiler = PrettyJsTranspiler::new(LanguageMode::TypeScript);
+            let transpiler = JsTranspiler::new(LanguageMode::TypeScript);
             transpiler.transpile_module(&ir_module)
         }
         CompileLanguage::Go => {
             timer.start_phase("transpiling to go");
-            let transpiler = PrettyGoTranspiler::new();
+            let transpiler = GoTranspiler::new();
             transpiler.transpile_module(&ir_module)
         }
     };
