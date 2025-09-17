@@ -6,7 +6,6 @@ use crate::dop::r#type::Type;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// Transpiles an IR module to Go code using pretty printing
 pub struct GoTranspiler {}
 
 impl GoTranspiler {

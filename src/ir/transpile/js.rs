@@ -12,7 +12,6 @@ pub enum LanguageMode {
     TypeScript,
 }
 
-/// Transpiles an IR module to JavaScript or TypeScript code
 pub struct JsTranspiler {
     mode: LanguageMode,
     /// Internal flag to use template literals instead of double quotes
@@ -613,7 +612,7 @@ mod tests {
             "greeting-card".to_string(),
             t.build(vec![t.let_stmt(
                 "greeting",
-                t.str("Hello from Hop!"),
+                t.str("Hello from hop!"),
                 |t| {
                     vec![
                         t.write("<div class=\"card\">\n"),
@@ -641,7 +640,7 @@ mod tests {
                 export default {
                     greetingCard: () => {
                         let output = "";
-                        const greeting = "Hello from Hop!";
+                        const greeting = "Hello from hop!";
                         output += "<div class=\"card\">\n";
                         output += "<p>";
                         output += escapeHtml(greeting);
