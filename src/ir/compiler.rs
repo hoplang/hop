@@ -296,29 +296,7 @@ impl Compiler<'_> {
         // Push attributes
         for (name, attr) in attributes {
             if let Some(val) = &attr.value {
-                match val {
-                    AttributeValue::String(s) => {
-                        output.push(IrStatement::Write {
-                            id: self.next_node_id(),
-                            content: format!(" {}=\"{}\"", name.as_str(), s.as_str()),
-                        });
-                    }
-                    AttributeValue::Expression(expr) => {
-                        output.push(IrStatement::Write {
-                            id: self.next_node_id(),
-                            content: format!(" {}=\"", name.as_str()),
-                        });
-                        output.push(IrStatement::WriteExpr {
-                            id: self.next_node_id(),
-                            expr: self.compile_expr(expr),
-                            escape: true,
-                        });
-                        output.push(IrStatement::Write {
-                            id: self.next_node_id(),
-                            content: "\"".to_string(),
-                        });
-                    }
-                }
+                self.compile_attribute(name.as_str(), val, output);
             } else {
                 // Boolean attribute
                 output.push(IrStatement::Write {
@@ -452,29 +430,7 @@ impl Compiler<'_> {
                 | EitherOrBoth::Left((name, attr))
                 | EitherOrBoth::Right((name, attr)) => {
                     if let Some(val) = &attr.value {
-                        match val {
-                            AttributeValue::String(s) => {
-                                output.push(IrStatement::Write {
-                                    id: self.next_node_id(),
-                                    content: format!(" {}=\"{}\"", name.as_str(), s.as_str()),
-                                });
-                            }
-                            AttributeValue::Expression(expr) => {
-                                output.push(IrStatement::Write {
-                                    id: self.next_node_id(),
-                                    content: format!(" {}=\"", name.as_str()),
-                                });
-                                output.push(IrStatement::WriteExpr {
-                                    id: self.next_node_id(),
-                                    expr: self.compile_expr(expr),
-                                    escape: true,
-                                });
-                                output.push(IrStatement::Write {
-                                    id: self.next_node_id(),
-                                    content: "\"".to_string(),
-                                });
-                            }
-                        }
+                        self.compile_attribute(name.as_str(), val, output);
                     } else {
                         // Boolean attribute
                         output.push(IrStatement::Write {
@@ -563,37 +519,58 @@ impl Compiler<'_> {
         id
     }
 
+    /// Helper to compile an attribute to IR statements
+    fn compile_attribute(
+        &mut self,
+        name: &str,
+        value: &AttributeValue<Type>,
+        output: &mut Vec<IrStatement>,
+    ) {
+        match value {
+            AttributeValue::String(s) => {
+                output.push(IrStatement::Write {
+                    id: self.next_node_id(),
+                    content: format!(" {}=\"{}\"", name, s.as_str()),
+                });
+            }
+            AttributeValue::Expression(expr) => {
+                output.push(IrStatement::Write {
+                    id: self.next_node_id(),
+                    content: format!(" {}=\"", name),
+                });
+                output.push(IrStatement::WriteExpr {
+                    id: self.next_node_id(),
+                    expr: self.compile_expr(expr),
+                    escape: true,
+                });
+                output.push(IrStatement::Write {
+                    id: self.next_node_id(),
+                    content: "\"".to_string(),
+                });
+            }
+        }
+    }
+
     fn compile_expr(&mut self, expr: &Expr<Type>) -> IrExpr {
-        let id = self.next_expr_id();
-        let typ = expr.annotation().clone();
-        let annotation = (id, typ);
+        let annotation = (self.next_expr_id(), expr.annotation().clone());
 
         match expr {
             Expr::Var { value, .. } => Expr::Var {
                 value: value.clone(),
                 annotation,
             },
-            Expr::PropertyAccess {
-                object, property, ..
-            } => Expr::PropertyAccess {
+            Expr::PropertyAccess { object, property, .. } => Expr::PropertyAccess {
                 object: Box::new(self.compile_expr(object)),
                 property: property.as_str().to_string(),
                 annotation,
             },
-            Expr::BinaryOp {
-                left,
-                operator,
-                right,
-                ..
-            } => Expr::BinaryOp {
+            Expr::BinaryOp { left, operator, right, .. } => Expr::BinaryOp {
                 left: Box::new(self.compile_expr(left)),
                 operator: operator.clone(),
                 right: Box::new(self.compile_expr(right)),
                 annotation,
             },
-            Expr::UnaryOp {
-                operator, operand, ..
-            } => Expr::UnaryOp {
+            Expr::UnaryOp { operator, operand, .. } => Expr::UnaryOp {
                 operator: operator.clone(),
                 operand: Box::new(self.compile_expr(operand)),
                 annotation,
