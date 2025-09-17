@@ -521,54 +521,6 @@ impl fmt::Display for IrEntrypoint {
     }
 }
 
-impl IrStatement {
-    /// Transform all expressions in this node and its children
-    pub fn map_expressions<F>(self, f: &F) -> IrStatement
-    where
-        F: Fn(IrExpr) -> IrExpr,
-    {
-        match self {
-            IrStatement::Write { id, content } => IrStatement::Write { id, content },
-            IrStatement::WriteExpr { id, expr, escape } => IrStatement::WriteExpr {
-                id,
-                expr: expr.map_expr(f),
-                escape,
-            },
-            IrStatement::If {
-                id,
-                condition,
-                body,
-            } => IrStatement::If {
-                id,
-                condition: condition.map_expr(f),
-                body: body.into_iter().map(|n| n.map_expressions(f)).collect(),
-            },
-            IrStatement::For {
-                id,
-                var,
-                array,
-                body,
-            } => IrStatement::For {
-                id,
-                var,
-                array: array.map_expr(f),
-                body: body.into_iter().map(|n| n.map_expressions(f)).collect(),
-            },
-            IrStatement::Let {
-                id,
-                var,
-                value,
-                body,
-            } => IrStatement::Let {
-                id,
-                var,
-                value: value.map_expr(f),
-                body: body.into_iter().map(|n| n.map_expressions(f)).collect(),
-            },
-        }
-    }
-}
-
 /// Event for node traversal
 #[derive(Debug, Clone)]
 pub enum StatementEvent<'a> {
@@ -627,19 +579,6 @@ impl<'a> Iterator for StatementVisitor<'a> {
 }
 
 impl IrEntrypoint {
-    /// Transform all expressions in the entrypoint
-    pub fn map_expressions<F>(mut self, f: F) -> IrEntrypoint
-    where
-        F: Fn(IrExpr) -> IrExpr,
-    {
-        self.body = self
-            .body
-            .into_iter()
-            .map(|n| n.map_expressions(&f))
-            .collect();
-        self
-    }
-
     /// Returns an iterator over all statements with enter/exit events
     pub fn visit_statements(&self) -> StatementVisitor {
         let mut stack = Vec::new();
@@ -648,71 +587,5 @@ impl IrEntrypoint {
             stack.push(NodeVisitState::Enter(node));
         }
         StatementVisitor { stack }
-    }
-}
-
-impl IrExpr {
-    /// Transform this expression by applying a function to it and all sub-expressions
-    pub fn map_expr<F>(self, f: &F) -> IrExpr
-    where
-        F: Fn(IrExpr) -> IrExpr,
-    {
-        // First recursively transform children
-        let transformed = match self {
-            Expr::UnaryOp {
-                operator,
-                operand,
-                annotation,
-            } => Expr::UnaryOp {
-                operator,
-                operand: Box::new(operand.map_expr(f)),
-                annotation,
-            },
-            Expr::BinaryOp {
-                operator,
-                left,
-                right,
-                annotation,
-            } => Expr::BinaryOp {
-                operator,
-                left: Box::new(left.map_expr(f)),
-                right: Box::new(right.map_expr(f)),
-                annotation,
-            },
-            Expr::PropertyAccess {
-                object,
-                property,
-                annotation,
-            } => Expr::PropertyAccess {
-                object: Box::new(object.map_expr(f)),
-                property,
-                annotation,
-            },
-            Expr::ArrayLiteral {
-                elements,
-                annotation,
-            } => Expr::ArrayLiteral {
-                elements: elements.into_iter().map(|e| e.map_expr(f)).collect(),
-                annotation,
-            },
-            Expr::ObjectLiteral {
-                properties,
-                annotation,
-            } => Expr::ObjectLiteral {
-                properties: properties
-                    .into_iter()
-                    .map(|(k, v)| (k, v.map_expr(f)))
-                    .collect(),
-                annotation,
-            },
-            Expr::JsonEncode { value, annotation } => Expr::JsonEncode {
-                value: Box::new(value.map_expr(f)),
-                annotation,
-            },
-            // Leaf nodes - no children to transform
-            leaf => leaf,
-        };
-        // Then apply the function to this node
-        f(transformed)
     }
 }

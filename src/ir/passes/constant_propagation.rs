@@ -26,27 +26,42 @@ impl ConstantPropagationPass {
     fn collect_all_expressions(entrypoint: &IrEntrypoint) -> Vec<&IrExpr> {
         let mut expressions = Vec::new();
 
-        for event in entrypoint.visit_statements() {
-            if let StatementEvent::Enter(statment) = event {
-                match statment {
-                    IrStatement::If { condition, .. } => {
-                        expressions.extend(condition.dfs_iter());
-                    }
-                    IrStatement::WriteExpr { expr, .. } => {
-                        expressions.extend(expr.dfs_iter());
-                    }
-                    IrStatement::For { array, .. } => {
-                        expressions.extend(array.dfs_iter());
-                    }
-                    IrStatement::Let { value, .. } => {
-                        expressions.extend(value.dfs_iter());
-                    }
-                    IrStatement::Write { .. } => {}
-                }
-            }
+        // Collect expressions from all statements
+        for stmt in &entrypoint.body {
+            Self::collect_expressions_from_stmt(stmt, &mut expressions);
         }
 
         expressions
+    }
+
+    fn collect_expressions_from_stmt<'a>(
+        stmt: &'a IrStatement,
+        expressions: &mut Vec<&'a IrExpr>,
+    ) {
+        match stmt {
+            IrStatement::If { condition, body, .. } => {
+                expressions.extend(condition.dfs_iter());
+                for s in body {
+                    Self::collect_expressions_from_stmt(s, expressions);
+                }
+            }
+            IrStatement::WriteExpr { expr, .. } => {
+                expressions.extend(expr.dfs_iter());
+            }
+            IrStatement::For { array, body, .. } => {
+                expressions.extend(array.dfs_iter());
+                for s in body {
+                    Self::collect_expressions_from_stmt(s, expressions);
+                }
+            }
+            IrStatement::Let { value, body, .. } => {
+                expressions.extend(value.dfs_iter());
+                for s in body {
+                    Self::collect_expressions_from_stmt(s, expressions);
+                }
+            }
+            IrStatement::Write { .. } => {}
+        }
     }
 
     /// Collect variable bindings with proper scoping
@@ -57,23 +72,30 @@ impl ConstantPropagationPass {
 
         for event in entrypoint.visit_statements() {
             match event {
-                StatementEvent::Enter(statement) => match statement {
-                    IrStatement::If { condition, .. } => {
-                        Self::collect_var_refs(condition, &mut var_bindings, &scope);
-                    }
-                    IrStatement::WriteExpr { expr, .. } => {
-                        Self::collect_var_refs(expr, &mut var_bindings, &scope);
-                    }
-                    IrStatement::For { array, .. } => {
-                        Self::collect_var_refs(array, &mut var_bindings, &scope);
-                    }
-                    IrStatement::Let { var, value, .. } => {
-                        Self::collect_var_refs(value, &mut var_bindings, &scope);
+                StatementEvent::Enter(statement) => {
+                    // Process expressions in this statement
+                    statement.visit_exprs(&mut |expr| {
+                        // Look for variable references and record their bindings
+                        if let IrExpr::Var {
+                            value: name,
+                            annotation,
+                            ..
+                        } = expr
+                        {
+                            if let Some(&def_expr_id) = scope.get(name.as_str()) {
+                                // Record: (defining_expr_id, referencing_expr_id)
+                                var_bindings.push((def_expr_id, annotation.0));
+                            }
+                        }
+                    });
+
+                    // Add Let variable to scope after processing its value
+                    if let IrStatement::Let { var, value, .. } = statement {
                         scope.insert(var.to_string(), value.id());
                     }
-                    IrStatement::Write { .. } => {}
-                },
+                }
                 StatementEvent::Exit(statement) => {
+                    // Remove Let variable from scope
                     if let IrStatement::Let { var, .. } = statement {
                         scope.remove(var.as_str());
                     }
@@ -82,27 +104,6 @@ impl ConstantPropagationPass {
         }
 
         var_bindings
-    }
-
-    fn collect_var_refs(
-        expr: &IrExpr,
-        var_bindings: &mut Vec<(ExprId, ExprId)>,
-        scope_stack: &HashMap<String, ExprId>,
-    ) {
-        for ref_expr in expr.dfs_iter() {
-            // If this is a variable reference, record its binding
-            if let IrExpr::Var {
-                value: name,
-                annotation,
-                ..
-            } = ref_expr
-            {
-                if let Some(&def_expr_id) = scope_stack.get(name.as_str()) {
-                    // Record: (defining_expr_id, referencing_expr_id)
-                    var_bindings.push((def_expr_id, annotation.0));
-                }
-            }
-        }
     }
 }
 
@@ -221,22 +222,24 @@ impl Pass for ConstantPropagationPass {
             .cloned()
             .collect::<HashMap<_, _>>();
 
-        entrypoint.map_expressions(|expr| {
-            if let Some(const_val) = const_map.get(&expr.id()) {
-                match const_val {
-                    Const::Bool(b) => IrExpr::BooleanLiteral {
-                        value: *b,
-                        annotation: (expr.id(), expr.typ().clone()),
-                    },
-                    Const::String(s) => IrExpr::StringLiteral {
-                        value: s.clone(),
-                        annotation: (expr.id(), expr.typ().clone()),
-                    },
+        let mut result = entrypoint;
+        for stmt in &mut result.body {
+            stmt.visit_exprs_mut(&mut |expr| {
+                if let Some(const_val) = const_map.get(&expr.id()) {
+                    *expr = match const_val {
+                        Const::Bool(b) => IrExpr::BooleanLiteral {
+                            value: *b,
+                            annotation: (expr.id(), expr.typ().clone()),
+                        },
+                        Const::String(s) => IrExpr::StringLiteral {
+                            value: s.clone(),
+                            annotation: (expr.id(), expr.typ().clone()),
+                        },
+                    };
                 }
-            } else {
-                expr
-            }
-        })
+            });
+        }
+        result
     }
 }
 
