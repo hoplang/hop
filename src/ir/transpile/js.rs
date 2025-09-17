@@ -78,10 +78,8 @@ impl Transpiler for JsTranspiler {
             }
         }
 
-        // Build the module content using BoxDoc
         let mut result = BoxDoc::nil();
 
-        // Add escape HTML helper if needed
         if needs_escape_html {
             result = result
                 .append(match self.mode {
@@ -133,7 +131,7 @@ impl Transpiler for JsTranspiler {
                     .nest(4),
             )
             .append(BoxDoc::text("}"))
-            .append(BoxDoc::line());
+            .append(BoxDoc::hardline());
 
         // Render to string
         let mut buffer = Vec::new();
@@ -198,6 +196,81 @@ impl Transpiler for JsTranspiler {
                     .nest(4),
             )
             .append(BoxDoc::text("}"))
+    }
+}
+
+impl StatementTranspiler for JsTranspiler {
+    fn transpile_write<'a>(&self, content: &'a str) -> BoxDoc<'a> {
+        BoxDoc::nil()
+            .append(BoxDoc::text("output += "))
+            .append(BoxDoc::as_string(self.quote_string(content)))
+            .append(BoxDoc::text(";"))
+    }
+
+    fn transpile_write_expr<'a>(&self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a> {
+        if escape {
+            BoxDoc::nil()
+                .append(BoxDoc::text("output += escapeHtml("))
+                .append(self.transpile_expr(expr))
+                .append(BoxDoc::text(");"))
+        } else {
+            BoxDoc::nil()
+                .append(BoxDoc::text("output += "))
+                .append(self.transpile_expr(expr))
+                .append(BoxDoc::text(";"))
+        }
+    }
+
+    fn transpile_if<'a>(&self, condition: &'a IrExpr, body: &'a [IrStatement]) -> BoxDoc<'a> {
+        BoxDoc::nil()
+            .append(BoxDoc::text("if ("))
+            .append(self.transpile_expr(condition))
+            .append(BoxDoc::text(") {"))
+            .append(
+                BoxDoc::nil()
+                    .append(BoxDoc::hardline())
+                    .append(self.transpile_statements(body))
+                    .append(BoxDoc::hardline())
+                    .nest(4),
+            )
+            .append(BoxDoc::text("}"))
+    }
+
+    fn transpile_for<'a>(
+        &self,
+        var: &'a str,
+        array: &'a IrExpr,
+        body: &'a [IrStatement],
+    ) -> BoxDoc<'a> {
+        BoxDoc::nil()
+            .append(BoxDoc::text("for (const "))
+            .append(BoxDoc::text(var))
+            .append(BoxDoc::text(" of "))
+            .append(self.transpile_expr(array))
+            .append(BoxDoc::text(") {"))
+            .append(
+                BoxDoc::nil()
+                    .append(BoxDoc::hardline())
+                    .append(self.transpile_statements(body))
+                    .append(BoxDoc::hardline())
+                    .nest(4),
+            )
+            .append(BoxDoc::text("}"))
+    }
+
+    fn transpile_let<'a>(
+        &self,
+        var: &'a str,
+        value: &'a IrExpr,
+        body: &'a [IrStatement],
+    ) -> BoxDoc<'a> {
+        BoxDoc::text("const ")
+            .append(BoxDoc::text(var))
+            .append(BoxDoc::text(" = "))
+            .append(self.transpile_expr(value))
+            .append(BoxDoc::text(";"))
+            .append(BoxDoc::hardline())
+            .append(self.transpile_statements(body))
     }
 }
 
@@ -329,81 +402,6 @@ impl TypeTranspiler for JsTranspiler {
                 BoxDoc::text(", "),
             ))
             .append(BoxDoc::text(" }"))
-    }
-}
-
-impl StatementTranspiler for JsTranspiler {
-    fn transpile_write<'a>(&self, content: &'a str) -> BoxDoc<'a> {
-        BoxDoc::nil()
-            .append(BoxDoc::text("output += "))
-            .append(BoxDoc::as_string(self.quote_string(content)))
-            .append(BoxDoc::text(";"))
-    }
-
-    fn transpile_write_expr<'a>(&self, expr: &'a IrExpr, escape: bool) -> BoxDoc<'a> {
-        if escape {
-            BoxDoc::nil()
-                .append(BoxDoc::text("output += escapeHtml("))
-                .append(self.transpile_expr(expr))
-                .append(BoxDoc::text(");"))
-        } else {
-            BoxDoc::nil()
-                .append(BoxDoc::text("output += "))
-                .append(self.transpile_expr(expr))
-                .append(BoxDoc::text(";"))
-        }
-    }
-
-    fn transpile_if<'a>(&self, condition: &'a IrExpr, body: &'a [IrStatement]) -> BoxDoc<'a> {
-        BoxDoc::nil()
-            .append(BoxDoc::text("if ("))
-            .append(self.transpile_expr(condition))
-            .append(BoxDoc::text(") {"))
-            .append(
-                BoxDoc::nil()
-                    .append(BoxDoc::hardline())
-                    .append(self.transpile_statements(body))
-                    .append(BoxDoc::hardline())
-                    .nest(4),
-            )
-            .append(BoxDoc::text("}"))
-    }
-
-    fn transpile_for<'a>(
-        &self,
-        var: &'a str,
-        array: &'a IrExpr,
-        body: &'a [IrStatement],
-    ) -> BoxDoc<'a> {
-        BoxDoc::nil()
-            .append(BoxDoc::text("for (const "))
-            .append(BoxDoc::text(var))
-            .append(BoxDoc::text(" of "))
-            .append(self.transpile_expr(array))
-            .append(BoxDoc::text(") {"))
-            .append(
-                BoxDoc::nil()
-                    .append(BoxDoc::hardline())
-                    .append(self.transpile_statements(body))
-                    .append(BoxDoc::hardline())
-                    .nest(4),
-            )
-            .append(BoxDoc::text("}"))
-    }
-
-    fn transpile_let<'a>(
-        &self,
-        var: &'a str,
-        value: &'a IrExpr,
-        body: &'a [IrStatement],
-    ) -> BoxDoc<'a> {
-        BoxDoc::text("const ")
-            .append(BoxDoc::text(var))
-            .append(BoxDoc::text(" = "))
-            .append(self.transpile_expr(value))
-            .append(BoxDoc::text(";"))
-            .append(BoxDoc::hardline())
-            .append(self.transpile_statements(body))
     }
 }
 
