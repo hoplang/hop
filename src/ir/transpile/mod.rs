@@ -110,6 +110,35 @@ pub trait TypeTranspiler {
     }
 }
 
+/// Fine-grained type transpilation trait using pretty-printing
+pub trait PrettyTypeTranspiler {
+    /// Transpile a primitive boolean type
+    fn transpile_bool_type<'a>(&self) -> BoxDoc<'a>;
+
+    /// Transpile a primitive string type
+    fn transpile_string_type<'a>(&self) -> BoxDoc<'a>;
+
+    /// Transpile a primitive number type
+    fn transpile_number_type<'a>(&self) -> BoxDoc<'a>;
+
+    /// Transpile an array type
+    fn transpile_array_type<'a>(&self, element_type: Option<&'a Type>) -> BoxDoc<'a>;
+
+    /// Transpile an object/struct type
+    fn transpile_object_type<'a>(&self, fields: &'a BTreeMap<String, Type>) -> BoxDoc<'a>;
+
+    /// Main dispatcher for transpiling any type
+    fn transpile_type<'a>(&self, ty: &'a Type) -> BoxDoc<'a> {
+        match ty {
+            Type::Bool => self.transpile_bool_type(),
+            Type::String => self.transpile_string_type(),
+            Type::Number => self.transpile_number_type(),
+            Type::Array(elem) => self.transpile_array_type(elem.as_deref()),
+            Type::Object(fields) => self.transpile_object_type(fields),
+        }
+    }
+}
+
 /// Fine-grained expression transpilation trait
 pub trait PrettyExpressionTranspiler {
     // Variables and property access

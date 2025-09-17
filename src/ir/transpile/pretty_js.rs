@@ -1,6 +1,6 @@
 use pretty::BoxDoc;
 
-use super::{Doc, PrettyExpressionTranspiler, TypeTranspiler};
+use super::{Doc, PrettyExpressionTranspiler, PrettyTypeTranspiler};
 use crate::dop::r#type::Type;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 use std::collections::BTreeMap;
@@ -184,5 +184,44 @@ impl PrettyExpressionTranspiler for PrettyJsTranspiler {
             .append(BoxDoc::text("JSON.stringify("))
             .append(self.transpile_expr(value))
             .append(BoxDoc::text(")"))
+    }
+}
+
+impl PrettyTypeTranspiler for PrettyJsTranspiler {
+    fn transpile_bool_type<'a>(&self) -> BoxDoc<'a> {
+        BoxDoc::text("boolean")
+    }
+
+    fn transpile_string_type<'a>(&self) -> BoxDoc<'a> {
+        BoxDoc::text("string")
+    }
+
+    fn transpile_number_type<'a>(&self) -> BoxDoc<'a> {
+        BoxDoc::text("number")
+    }
+
+    fn transpile_array_type<'a>(&self, element_type: Option<&'a Type>) -> BoxDoc<'a> {
+        match element_type {
+            Some(elem) => self.transpile_type(elem).append(BoxDoc::text("[]")),
+            None => BoxDoc::text("unknown[]"),
+        }
+    }
+
+    fn transpile_object_type<'a>(&self, fields: &'a BTreeMap<String, Type>) -> BoxDoc<'a> {
+        if fields.is_empty() {
+            return BoxDoc::text("{}");
+        }
+
+        BoxDoc::nil()
+            .append(BoxDoc::text("{ "))
+            .append(BoxDoc::intersperse(
+                fields.iter().map(|(name, ty)| {
+                    BoxDoc::text(name)
+                        .append(BoxDoc::text(": "))
+                        .append(self.transpile_type(ty))
+                }),
+                BoxDoc::text(", "),
+            ))
+            .append(BoxDoc::text(" }"))
     }
 }
