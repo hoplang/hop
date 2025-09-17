@@ -1,4 +1,4 @@
-use super::{ExpressionTranspiler, TypeTranspiler};
+use super::{ExpressionTranspiler, StatementTranspiler, TypeTranspiler};
 use crate::cased_string::CasedString;
 use crate::dop::r#type::Type;
 use crate::ir::ast::{IrEntrypoint, IrExpr, IrModule, IrStatement};
@@ -12,7 +12,6 @@ pub enum LanguageMode {
 
 /// Transpiles an IR module to JavaScript or TypeScript code
 pub struct JsTranspiler {
-    output: String,
     indent_level: usize,
     mode: LanguageMode,
     /// Internal flag to use template literals instead of double quotes
@@ -22,7 +21,6 @@ pub struct JsTranspiler {
 impl JsTranspiler {
     pub fn new(mode: LanguageMode) -> Self {
         Self {
-            output: String::new(),
             indent_level: 0,
             mode,
             use_template_literals: false,
@@ -30,66 +28,68 @@ impl JsTranspiler {
     }
 
     pub fn transpile_module(&mut self, ir_module: &IrModule, needs_escape_html: bool) -> String {
+        let mut output = String::new();
+
         if needs_escape_html {
             // Add the escape HTML helper function
             match self.mode {
                 LanguageMode::JavaScript => {
-                    self.write_line("function escapeHtml(str) {");
+                    self.write_line(&mut output, "function escapeHtml(str) {");
                     self.indent();
-                    self.write_line("if (typeof str !== 'string') return str;");
+                    self.write_line(&mut output, "if (typeof str !== 'string') return str;");
                 }
                 LanguageMode::TypeScript => {
-                    self.write_line("function escapeHtml(str: string): string {");
+                    self.write_line(&mut output, "function escapeHtml(str: string): string {");
                     self.indent();
                 }
             }
-            self.write_line("return str");
+            self.write_line(&mut output, "return str");
             self.indent();
-            self.write_line(".replace(/&/g, '&amp;')");
-            self.write_line(".replace(/</g, '&lt;')");
-            self.write_line(".replace(/>/g, '&gt;')");
-            self.write_line(".replace(/\"/g, '&quot;')");
-            self.write_line(".replace(/'/g, '&#39;');");
+            self.write_line(&mut output, ".replace(/&/g, '&amp;')");
+            self.write_line(&mut output, ".replace(/</g, '&lt;')");
+            self.write_line(&mut output, ".replace(/>/g, '&gt;')");
+            self.write_line(&mut output, ".replace(/\"/g, '&quot;')");
+            self.write_line(&mut output, ".replace(/'/g, '&#39;');");
             self.dedent();
             self.dedent();
-            self.write_line("}");
-            self.write_line("");
+            self.write_line(&mut output, "}");
+            self.write_line(&mut output, "");
         }
 
         // Start export default object
-        self.write_line("export default {");
+        self.write_line(&mut output, "export default {");
         self.indent();
 
         // Transpile each entrypoint as a function property
         let mut first = true;
         for (name, entrypoint) in &ir_module.entry_points {
             if !first {
-                self.output.push_str(",\n");
+                output.push_str(",\n");
             }
             first = false;
 
-            self.transpile_entrypoint(name, entrypoint);
+            self.transpile_entrypoint(&mut output, name, entrypoint);
         }
 
         // Close the export default object
-        self.write_line("");
+        self.write_line(&mut output, "");
         self.dedent();
-        self.write_line("}");
+        self.write_line(&mut output, "}");
 
-        self.output.clone()
+        output
     }
 
-    fn transpile_entrypoint(&mut self, name: &str, entrypoint: &IrEntrypoint) {
+    fn transpile_entrypoint(&mut self, output: &mut String, name: &str, entrypoint: &IrEntrypoint) {
         let camel_case_name = CasedString::from_kebab_case(name).to_camel_case();
 
         for _ in 0..self.indent_level {
-            self.output.push_str("    ");
+            output.push_str("    ");
         }
-        self.output.push_str(&camel_case_name);
-        self.output.push_str(": (");
+        output.push_str(&camel_case_name);
+        output.push_str(": (");
 
         if !entrypoint.parameters.is_empty() {
-            self.output.push_str("{ ");
+            output.push_str("{ ");
             // Build parameter list
             let params: Vec<String> = entrypoint
                 .parameters
@@ -97,110 +97,48 @@ impl JsTranspiler {
                 .map(|(name, _)| name.to_string())
                 .collect();
 
-            self.output.push_str(&params.join(", "));
-            self.output.push_str(" }");
+            output.push_str(&params.join(", "));
+            output.push_str(" }");
 
             // Generate TypeScript interface for parameters
             if matches!(self.mode, LanguageMode::TypeScript) {
-                self.output.push_str(": { ");
+                output.push_str(": { ");
                 let type_params: Vec<String> = entrypoint
                     .parameters
                     .iter()
-                    .map(|(name, ty)| format!("{}: {}", name, self.transpile_type(ty)))
+                    .map(|(name, ty)| {
+                        let mut type_str = String::new();
+                        self.transpile_type(&mut type_str, ty);
+                        format!("{}: {}", name, type_str)
+                    })
                     .collect();
-                self.output.push_str(&type_params.join(", "));
-                self.output.push_str(" }");
+                output.push_str(&type_params.join(", "));
+                output.push_str(" }");
             }
         }
-        self.output.push(')');
+        output.push(')');
         if matches!(self.mode, LanguageMode::TypeScript) {
-            self.output.push_str(": string");
+            output.push_str(": string");
         }
-        self.output.push_str(" => {\n");
+        output.push_str(" => {\n");
 
         self.indent();
         match self.mode {
-            LanguageMode::JavaScript => self.write_line("let output = \"\";"),
-            LanguageMode::TypeScript => self.write_line("let output: string = \"\";"),
+            LanguageMode::JavaScript => self.write_line(output, "let output = \"\";"),
+            LanguageMode::TypeScript => self.write_line(output, "let output: string = \"\";"),
         }
 
         // Transpile the body
-        self.transpile_statements(&entrypoint.body);
+        self.transpile_statements(output, &entrypoint.body);
 
-        self.write_line("return output;");
+        self.write_line(output, "return output;");
         self.dedent();
 
         // Write closing brace with proper indentation
         for _ in 0..self.indent_level {
-            self.output.push_str("    ");
+            output.push_str("    ");
         }
-        self.output.push('}');
-    }
-
-    fn transpile_statements(&mut self, statements: &[IrStatement]) {
-        for node in statements {
-            self.transpile_statement(node);
-        }
-    }
-
-    fn transpile_statement(&mut self, statement: &IrStatement) {
-        match statement {
-            IrStatement::Write { id: _, content } => {
-                let quoted = self.quote_string(content);
-                self.write_line(&format!("output += {};", quoted));
-            }
-
-            IrStatement::WriteExpr {
-                id: _,
-                expr,
-                escape,
-            } => {
-                let js_expr = self.transpile_expr(expr);
-                if *escape {
-                    self.write_line(&format!("output += escapeHtml({});", js_expr));
-                } else {
-                    self.write_line(&format!("output += {};", js_expr));
-                }
-            }
-
-            IrStatement::If {
-                id: _,
-                condition,
-                body,
-            } => {
-                let js_cond = self.transpile_expr(condition);
-                self.write_line(&format!("if ({}) {{", js_cond));
-                self.indent();
-                self.transpile_statements(body);
-                self.dedent();
-                self.write_line("}");
-            }
-
-            IrStatement::For {
-                id: _,
-                var,
-                array,
-                body,
-            } => {
-                let js_array = self.transpile_expr(array);
-                self.write_line(&format!("for (const {} of {}) {{", var, js_array));
-                self.indent();
-                self.transpile_statements(body);
-                self.dedent();
-                self.write_line("}");
-            }
-
-            IrStatement::Let {
-                id: _,
-                var,
-                value,
-                body,
-            } => {
-                let js_value = self.transpile_expr(value);
-                self.write_line(&format!("const {} = {};", var, js_value));
-                self.transpile_statements(body);
-            }
-        }
+        output.push('}');
     }
 
     // Helper method to escape strings for JavaScript literals
@@ -238,105 +176,195 @@ impl JsTranspiler {
         self.indent_level = self.indent_level.saturating_sub(1);
     }
 
-    fn write_line(&mut self, line: &str) {
+    fn write_line(&mut self, output: &mut String, line: &str) {
         if !line.is_empty() {
             for _ in 0..self.indent_level {
-                self.output.push_str("    ");
+                output.push_str("    ");
             }
         }
-        self.output.push_str(line);
-        self.output.push('\n');
+        output.push_str(line);
+        output.push('\n');
     }
 }
 
-impl TypeTranspiler for JsTranspiler {
-    fn transpile_bool_type(&self) -> String {
-        "boolean".to_string()
+impl StatementTranspiler for JsTranspiler {
+    fn transpile_write(&mut self, output: &mut String, content: &str) {
+        let quoted = self.quote_string(content);
+        self.write_line(output, &format!("output += {};", quoted));
     }
 
-    fn transpile_string_type(&self) -> String {
-        "string".to_string()
-    }
-
-    fn transpile_number_type(&self) -> String {
-        "number".to_string()
-    }
-
-    fn transpile_array_type(&self, element_type: Option<&Type>) -> String {
-        match element_type {
-            Some(elem) => format!("{}[]", self.transpile_type(elem)),
-            None => "unknown[]".to_string(),
+    fn transpile_write_expr(&mut self, output: &mut String, expr: &IrExpr, escape: bool) {
+        let mut js_expr = String::new();
+        self.transpile_expr(&mut js_expr, expr);
+        if escape {
+            self.write_line(output, &format!("output += escapeHtml({});", js_expr));
+        } else {
+            self.write_line(output, &format!("output += {};", js_expr));
         }
     }
 
-    fn transpile_object_type(&self, fields: &BTreeMap<String, Type>) -> String {
-        let field_strs: Vec<String> = fields
-            .iter()
-            .map(|(name, ty)| format!("{}: {}", name, self.transpile_type(ty)))
-            .collect();
-        format!("{{ {} }}", field_strs.join(", "))
+    fn transpile_if(&mut self, output: &mut String, condition: &IrExpr, body: &[IrStatement]) {
+        let mut js_cond = String::new();
+        self.transpile_expr(&mut js_cond, condition);
+        self.write_line(output, &format!("if ({}) {{", js_cond));
+        self.indent();
+        Self::transpile_statements(self, output, body);
+        self.dedent();
+        self.write_line(output, "}");
+    }
+
+    fn transpile_for(
+        &mut self,
+        output: &mut String,
+        var: &str,
+        array: &IrExpr,
+        body: &[IrStatement],
+    ) {
+        let mut js_array = String::new();
+        self.transpile_expr(&mut js_array, array);
+        self.write_line(output, &format!("for (const {} of {}) {{", var, js_array));
+        self.indent();
+        Self::transpile_statements(self, output, body);
+        self.dedent();
+        self.write_line(output, "}");
+    }
+
+    fn transpile_let(
+        &mut self,
+        output: &mut String,
+        var: &str,
+        value: &IrExpr,
+        body: &[IrStatement],
+    ) {
+        let mut js_value = String::new();
+        self.transpile_expr(&mut js_value, value);
+        self.write_line(output, &format!("const {} = {};", var, js_value));
+        Self::transpile_statements(self, output, body);
     }
 }
 
 impl ExpressionTranspiler for JsTranspiler {
-    fn transpile_var(&self, name: &str) -> String {
-        name.to_string()
+    fn transpile_var(&self, output: &mut String, name: &str) {
+        output.push_str(name);
     }
 
-    fn transpile_property_access(&self, object: &IrExpr, property: &str) -> String {
-        let obj = self.transpile_expr(object);
-        format!("{}.{}", obj, property)
+    fn transpile_property_access(&self, output: &mut String, object: &IrExpr, property: &str) {
+        self.transpile_expr(output, object);
+        output.push('.');
+        output.push_str(property);
     }
 
-    fn transpile_string_literal(&self, value: &str) -> String {
-        self.quote_string(value)
+    fn transpile_string_literal(&self, output: &mut String, value: &str) {
+        let quoted = self.quote_string(value);
+        output.push_str(&quoted);
     }
 
-    fn transpile_boolean_literal(&self, value: bool) -> String {
-        value.to_string()
+    fn transpile_boolean_literal(&self, output: &mut String, value: bool) {
+        output.push_str(&value.to_string());
     }
 
-    fn transpile_number_literal(&self, value: &serde_json::Number) -> String {
-        value.to_string()
+    fn transpile_number_literal(&self, output: &mut String, value: &serde_json::Number) {
+        output.push_str(&value.to_string());
     }
 
-    fn transpile_array_literal(&self, elements: &[IrExpr], _elem_type: &Type) -> String {
-        let items: Vec<String> = elements.iter().map(|e| self.transpile_expr(e)).collect();
-        format!("[{}]", items.join(", "))
+    fn transpile_array_literal(&self, output: &mut String, elements: &[IrExpr], _elem_type: &Type) {
+        output.push('[');
+        let mut first = true;
+        for elem in elements {
+            if !first {
+                output.push_str(", ");
+            }
+            first = false;
+            self.transpile_expr(output, elem);
+        }
+        output.push(']');
     }
 
     fn transpile_object_literal(
         &self,
+        output: &mut String,
         properties: &[(String, IrExpr)],
         _field_types: &BTreeMap<String, Type>,
-    ) -> String {
-        let props: Vec<String> = properties
-            .iter()
-            .map(|(key, value)| format!("{}: {}", key, self.transpile_expr(value)))
-            .collect();
-        format!("{{{}}}", props.join(", "))
+    ) {
+        output.push('{');
+        let mut first = true;
+        for (key, value) in properties {
+            if !first {
+                output.push_str(", ");
+            }
+            first = false;
+            output.push_str(key);
+            output.push_str(": ");
+            self.transpile_expr(output, value);
+        }
+        output.push('}');
     }
 
-    fn transpile_string_equality(&self, left: &IrExpr, right: &IrExpr) -> String {
-        let l = self.transpile_expr(left);
-        let r = self.transpile_expr(right);
-        format!("({} === {})", l, r)
+    fn transpile_string_equality(&self, output: &mut String, left: &IrExpr, right: &IrExpr) {
+        output.push('(');
+        self.transpile_expr(output, left);
+        output.push_str(" === ");
+        self.transpile_expr(output, right);
+        output.push(')');
     }
 
-    fn transpile_bool_equality(&self, left: &IrExpr, right: &IrExpr) -> String {
-        let l = self.transpile_expr(left);
-        let r = self.transpile_expr(right);
-        format!("({} === {})", l, r)
+    fn transpile_bool_equality(&self, output: &mut String, left: &IrExpr, right: &IrExpr) {
+        output.push('(');
+        self.transpile_expr(output, left);
+        output.push_str(" === ");
+        self.transpile_expr(output, right);
+        output.push(')');
     }
 
-    fn transpile_not(&self, operand: &IrExpr) -> String {
-        let transpiled_op = self.transpile_expr(operand);
-        format!("!({})", transpiled_op)
+    fn transpile_not(&self, output: &mut String, operand: &IrExpr) {
+        output.push_str("!(");
+        self.transpile_expr(output, operand);
+        output.push(')');
     }
 
-    fn transpile_json_encode(&self, value: &IrExpr) -> String {
-        let transpiled_value = self.transpile_expr(value);
-        format!("JSON.stringify({})", transpiled_value)
+    fn transpile_json_encode(&self, output: &mut String, value: &IrExpr) {
+        output.push_str("JSON.stringify(");
+        self.transpile_expr(output, value);
+        output.push(')');
+    }
+}
+
+impl TypeTranspiler for JsTranspiler {
+    fn transpile_bool_type(&self, output: &mut String) {
+        output.push_str("boolean");
+    }
+
+    fn transpile_string_type(&self, output: &mut String) {
+        output.push_str("string");
+    }
+
+    fn transpile_number_type(&self, output: &mut String) {
+        output.push_str("number");
+    }
+
+    fn transpile_array_type(&self, output: &mut String, element_type: Option<&Type>) {
+        match element_type {
+            Some(elem) => {
+                self.transpile_type(output, elem);
+                output.push_str("[]");
+            }
+            None => output.push_str("unknown[]"),
+        }
+    }
+
+    fn transpile_object_type(&self, output: &mut String, fields: &BTreeMap<String, Type>) {
+        output.push_str("{ ");
+        let mut first = true;
+        for (name, ty) in fields {
+            if !first {
+                output.push_str(", ");
+            }
+            first = false;
+            output.push_str(name);
+            output.push_str(": ");
+            self.transpile_type(output, ty);
+        }
+        output.push_str(" }");
     }
 }
 
