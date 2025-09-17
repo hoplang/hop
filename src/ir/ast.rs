@@ -462,10 +462,6 @@ impl IrEntrypoint {
 }
 
 impl IrExpr {
-    /// Returns an iterator that performs depth-first traversal of the expression tree
-    pub fn dfs_iter(&self) -> DfsIter {
-        DfsIter { stack: vec![self] }
-    }
 
     /// Transform this expression by applying a function to it and all sub-expressions
     pub fn map_expr<F>(self, f: &F) -> IrExpr
@@ -529,50 +525,5 @@ impl IrExpr {
         };
         // Then apply the function to this node
         f(transformed)
-    }
-}
-
-/// Depth-first iterator over IrExpr nodes
-pub struct DfsIter<'a> {
-    stack: Vec<&'a IrExpr>,
-}
-
-impl<'a> Iterator for DfsIter<'a> {
-    type Item = &'a IrExpr;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.stack.pop().inspect(|expr| {
-            // Push children onto stack in reverse order for left-to-right DFS
-            match expr {
-                Expr::PropertyAccess { object, .. } => {
-                    self.stack.push(object);
-                }
-                Expr::BinaryOp { left, right, .. } => {
-                    self.stack.push(right);
-                    self.stack.push(left);
-                }
-                Expr::UnaryOp { operand, .. } => {
-                    self.stack.push(operand);
-                }
-                Expr::ArrayLiteral { elements, .. } => {
-                    for elem in elements.iter().rev() {
-                        self.stack.push(elem);
-                    }
-                }
-                Expr::ObjectLiteral { properties, .. } => {
-                    for (_, value) in properties.iter().rev() {
-                        self.stack.push(value);
-                    }
-                }
-                Expr::JsonEncode { value, .. } => {
-                    self.stack.push(value);
-                }
-                // Explicitly list all leaf nodes (no children to traverse)
-                Expr::Var { .. } => {}
-                Expr::StringLiteral { .. } => {}
-                Expr::BooleanLiteral { .. } => {}
-                Expr::NumberLiteral { .. } => {}
-            }
-        })
     }
 }
