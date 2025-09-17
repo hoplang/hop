@@ -92,7 +92,8 @@ impl Transpiler for GoTranspiler {
             result = result
                 .append(BoxDoc::text("import ("))
                 .append(
-                    BoxDoc::line()
+                    BoxDoc::nil()
+                        .append(BoxDoc::line())
                         .append(BoxDoc::intersperse(
                             imports.iter().map(|import| {
                                 BoxDoc::nil()
@@ -102,9 +103,9 @@ impl Transpiler for GoTranspiler {
                             }),
                             BoxDoc::line(),
                         ))
+                        .append(BoxDoc::line())
                         .nest(1),
                 )
-                .append(BoxDoc::line())
                 .append(BoxDoc::text(")"))
                 .append(BoxDoc::line())
                 .append(BoxDoc::line());
@@ -306,32 +307,25 @@ impl ExpressionTranspiler for GoTranspiler {
         properties: &'a [(String, IrExpr)],
         field_types: &'a BTreeMap<String, Type>,
     ) -> BoxDoc<'a> {
-        // Build the struct type definition
-        let mut struct_type = BoxDoc::text("struct{");
-        for (field_name, field_type) in field_types {
-            let go_field = CasedString::from_snake_case(field_name.as_str()).to_pascal_case();
-            struct_type = struct_type
-                .append(BoxDoc::as_string(go_field))
-                .append(BoxDoc::text(" "))
-                .append(self.transpile_type(field_type))
-                .append(BoxDoc::text(" `json:\""))
-                .append(BoxDoc::text(field_name))
-                .append(BoxDoc::text("\"`; "));
-        }
-        struct_type = struct_type.append(BoxDoc::text("}"));
-
-        // Build the struct literal values
+        let struct_type = self.transpile_object_type(field_types);
         struct_type
             .append(BoxDoc::text("{"))
-            .append(BoxDoc::intersperse(
-                properties.iter().map(|(key, value)| {
-                    let field_name = CasedString::from_snake_case(key).to_pascal_case();
-                    BoxDoc::as_string(field_name)
-                        .append(BoxDoc::text(": "))
-                        .append(self.transpile_expr(value))
-                }),
-                BoxDoc::text(", "),
-            ))
+            .append(
+                BoxDoc::nil()
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::intersperse(
+                        properties.iter().map(|(key, value)| {
+                            let field_name = CasedString::from_snake_case(key).to_pascal_case();
+                            BoxDoc::as_string(field_name)
+                                .append(BoxDoc::text(": "))
+                                .append(self.transpile_expr(value))
+                                .append(BoxDoc::text(","))
+                        }),
+                        BoxDoc::line(),
+                    ))
+                    .append(BoxDoc::line())
+                    .nest(1),
+            )
             .append(BoxDoc::text("}"))
     }
 
@@ -386,18 +380,28 @@ impl TypeTranspiler for GoTranspiler {
 
     fn transpile_object_type<'a>(&self, fields: &'a BTreeMap<String, Type>) -> BoxDoc<'a> {
         // Generate anonymous struct type
-        let mut result = BoxDoc::text("struct{");
-        for (field_name, field_type) in fields {
-            let go_field = CasedString::from_snake_case(field_name).to_pascal_case();
-            result = result
-                .append(BoxDoc::as_string(go_field))
-                .append(BoxDoc::text(" "))
-                .append(self.transpile_type(field_type))
-                .append(BoxDoc::text(" `json:\""))
-                .append(BoxDoc::text(field_name))
-                .append(BoxDoc::text("\"`; "));
-        }
-        result.append(BoxDoc::text("}"))
+        BoxDoc::text("struct{")
+            .append(
+                BoxDoc::nil()
+                    .append(BoxDoc::line())
+                    .append(BoxDoc::intersperse(
+                        fields.iter().map(|(field_name, field_type)| {
+                            let go_field =
+                                CasedString::from_snake_case(field_name).to_pascal_case();
+                            BoxDoc::as_string(go_field)
+                                .append(BoxDoc::text(" "))
+                                .append(self.transpile_type(field_type))
+                                .append(BoxDoc::text(" `json:\""))
+                                .append(BoxDoc::text(field_name))
+                                .append(BoxDoc::text("\"`"))
+                                .append(BoxDoc::nil().flat_alt(BoxDoc::text(";")))
+                        }),
+                        BoxDoc::line(),
+                    ))
+                    .append(BoxDoc::line())
+                    .nest(1),
+            )
+            .append(BoxDoc::text("}"))
     }
 }
 
@@ -682,7 +686,15 @@ mod tests {
 
                 func TestObjects() string {
                 	var output strings.Builder
-                	person := struct{Active bool `json:"active"`; Age string `json:"age"`; Name string `json:"name"`; }{Name: "Alice", Age: "30.0", Active: true}
+                	person := struct{
+                		Active bool `json:"active"`
+                		Age string `json:"age"`
+                		Name string `json:"name"`
+                	}{
+                		Name: "Alice",
+                		Age: "30.0",
+                		Active: true,
+                	}
                 	output.WriteString(html.EscapeString(person.Name))
                 	output.WriteString(" is ")
                 	output.WriteString(person.Age)
@@ -730,7 +742,10 @@ mod tests {
                 )
 
                 type TestNestedParams struct {
-                	Users []struct{Id string `json:"id"`; Name string `json:"name"`; } `json:"users"`
+                	Users []struct{
+                		Id string `json:"id"`
+                		Name string `json:"name"`
+                	} `json:"users"`
                 }
 
                 func TestNested(params TestNestedParams) string {
@@ -854,7 +869,27 @@ mod tests {
 
                 func TestProducts() string {
                 	var output strings.Builder
-                	for _, product := range []struct{InStock bool `json:"in_stock"`; Name string `json:"name"`; Price string `json:"price"`; }{struct{InStock bool `json:"in_stock"`; Name string `json:"name"`; Price string `json:"price"`; }{Name: "Laptop", Price: "999.99", InStock: true}, struct{InStock bool `json:"in_stock"`; Name string `json:"name"`; Price string `json:"price"`; }{Name: "Mouse", Price: "29.99", InStock: false}} {
+                	for _, product := range []struct{
+                		InStock bool `json:"in_stock"`
+                		Name string `json:"name"`
+                		Price string `json:"price"`
+                	}{struct{
+                		InStock bool `json:"in_stock"`
+                		Name string `json:"name"`
+                		Price string `json:"price"`
+                	}{
+                		Name: "Laptop",
+                		Price: "999.99",
+                		InStock: true,
+                	}, struct{
+                		InStock bool `json:"in_stock"`
+                		Name string `json:"name"`
+                		Price string `json:"price"`
+                	}{
+                		Name: "Mouse",
+                		Price: "29.99",
+                		InStock: false,
+                	}} {
                 		output.WriteString("<div class=\"product\">\n")
                 		output.WriteString("<h3>")
                 		output.WriteString(html.EscapeString(product.Name))
@@ -984,7 +1019,11 @@ mod tests {
                 }
 
                 type TestJsonParams struct {
-                	Data struct{Active bool `json:"active"`; Count float64 `json:"count"`; Title string `json:"title"`; } `json:"data"`
+                	Data struct{
+                		Active bool `json:"active"`
+                		Count float64 `json:"count"`
+                		Title string `json:"title"`
+                	} `json:"data"`
                 	Items []string `json:"items"`
                 }
 
@@ -1000,7 +1039,13 @@ mod tests {
                 	output.WriteString(mustJSONMarshal(items))
                 	output.WriteString(";\n")
                 	output.WriteString("const config = ")
-                	output.WriteString(mustJSONMarshal(struct{Debug bool `json:"debug"`; Version float64 `json:"version"`; }{Debug: true, Version: 1.5}))
+                	output.WriteString(mustJSONMarshal(struct{
+                		Debug bool `json:"debug"`
+                		Version float64 `json:"version"`
+                	}{
+                		Debug: true,
+                		Version: 1.5,
+                	}))
                 	output.WriteString(";\n")
                 	output.WriteString("</script>\n")
                 	return output.String()
