@@ -1,7 +1,7 @@
 use std::fmt::{self, Display};
 
 use crate::document::document_cursor::{DocumentRange, Ranged};
-use crate::dop::parser::VarName;
+use crate::dop::var_name::VarName;
 use crate::hop::pretty::Pretty;
 use pretty::RcDoc;
 

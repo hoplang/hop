@@ -8,41 +8,10 @@ use crate::dop::expr::{BinaryOp, Expr, UnaryOp};
 use crate::dop::parse_error::ParseError;
 use crate::dop::token::Token;
 use crate::dop::tokenizer::Tokenizer;
+use crate::dop::var_name::VarName;
 
 use super::r#type::RangedType;
 
-/// A VarName represents a validated variable name in dop.
-#[derive(Debug, Clone)]
-pub struct VarName {
-    value: DocumentRange,
-}
-
-impl Display for VarName {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.value.as_str())
-    }
-}
-
-impl VarName {
-    pub fn new(value: DocumentRange) -> Result<Self, ParseError> {
-        let mut chars = value.as_str().chars();
-        if !chars.next().is_some_and(|c| c.is_ascii_alphabetic())
-            || !chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
-        {
-            return Err(ParseError::InvalidVariableName {
-                name: value.to_string_span(),
-                range: value.clone(),
-            });
-        }
-        Ok(VarName { value })
-    }
-    pub fn as_str(&self) -> &str {
-        self.value.as_str()
-    }
-    pub fn range(&self) -> &DocumentRange {
-        &self.value
-    }
-}
 
 /// A Parameter represents a parsed parameter with type annotation.
 /// E.g. <my-comp {x: string, y: string}>
@@ -268,8 +237,8 @@ impl Parser {
                 let param = this.parse_parameter()?;
                 if !seen_names.insert(param.var_name.range().to_string_span()) {
                     return Err(ParseError::DuplicateParameter {
-                        name: param.var_name.value.to_string_span(),
-                        range: param.var_name.value.clone(),
+                        name: param.var_name.to_string_span(),
+                        range: param.var_name.value().clone(),
                     });
                 }
                 params.push(param);
@@ -288,10 +257,10 @@ impl Parser {
         self.parse_comma_separated(
             |this| {
                 let arg = this.parse_argument()?;
-                if !seen_names.insert(arg.var_name.value.to_string_span()) {
+                if !seen_names.insert(arg.var_name.to_string_span()) {
                     return Err(ParseError::DuplicateArgument {
-                        name: arg.var_name.value.to_string_span(),
-                        range: arg.var_name.value.clone(),
+                        name: arg.var_name.to_string_span(),
+                        range: arg.var_name.value().clone(),
                     });
                 }
                 args.push(arg);
