@@ -589,7 +589,7 @@ fn typecheck_node(
 }
 
 fn typecheck_attributes(
-    attributes: &BTreeMap<StringSpan, Attribute<()>>,
+    attributes: &BTreeMap<StringSpan, Attribute<DocumentRange>>,
     env: &mut Environment<Type>,
     annotations: &mut Vec<TypeAnnotation>,
     errors: &mut ErrorCollector<TypeError>,
@@ -607,7 +607,7 @@ fn typecheck_attributes(
                         if !expr_type.is_subtype(&Type::String) {
                             errors.push(TypeError::ExpectedStringAttribute {
                                 found: expr_type.to_string(),
-                                range: typed_expr.range().clone(),
+                                range: expr.annotation().clone(),
                             });
                         }
                         AttributeValue::Expression(typed_expr)

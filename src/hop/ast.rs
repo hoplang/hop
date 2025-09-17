@@ -13,7 +13,7 @@ pub struct StaticAttribute {
 }
 
 #[derive(Debug, Clone)]
-pub enum AttributeValue<T = ()> {
+pub enum AttributeValue<T = DocumentRange> {
     Expression(Expr<T>),
     String(DocumentRange),
 }
@@ -22,14 +22,14 @@ pub enum AttributeValue<T = ()> {
 /// be empty, an expression or a string value.
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
-pub struct Attribute<T = ()> {
+pub struct Attribute<T = DocumentRange> {
     pub name: DocumentRange,
     pub value: Option<AttributeValue<T>>,
     pub range: DocumentRange,
 }
 
 #[derive(Debug)]
-pub struct Ast<T = ()> {
+pub struct Ast<T = DocumentRange> {
     pub name: ModuleName,
     imports: Vec<Import>,
     component_definitions: Vec<ComponentDefinition<T>>,
@@ -129,7 +129,7 @@ impl Import {
 }
 
 #[derive(Debug)]
-pub struct ComponentDefinition<T = ()> {
+pub struct ComponentDefinition<T = DocumentRange> {
     pub tag_name: DocumentRange,
     pub closing_tag_name: Option<DocumentRange>,
     pub params: Option<(Vec<Parameter>, DocumentRange)>,
@@ -154,7 +154,7 @@ impl<T> ComponentDefinition<T> {
 }
 
 #[derive(Debug)]
-pub enum Node<T = ()> {
+pub enum Node<T = DocumentRange> {
     /// A Text node represents text in the document.
     /// E.g. <div>hello world</div>
     ///           ^^^^^^^^^^^

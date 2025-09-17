@@ -34,73 +34,49 @@ impl Display for UnaryOp {
 }
 
 #[derive(Debug, Clone)]
-pub enum Expr<T = ()> {
+pub enum Expr<T = DocumentRange> {
     /// A variable expression, e.g. foo
     Variable { value: VarName, annotation: T },
     /// A property access expression, e.g. foo.bar
     PropertyAccess {
         object: Box<Expr<T>>,
         property: DocumentRange,
-        range: DocumentRange,
         annotation: T,
     },
     /// A string literal expression, e.g. "foo bar"
-    StringLiteral {
-        value: String,
-        range: DocumentRange,
-        annotation: T,
-    },
+    StringLiteral { value: String, annotation: T },
     /// A boolean literal expression, e.g. true
-    BooleanLiteral {
-        value: bool,
-        range: DocumentRange,
-        annotation: T,
-    },
+    BooleanLiteral { value: bool, annotation: T },
     /// A number literal expression, e.g. 2.5
     NumberLiteral {
         value: serde_json::Number,
-        range: DocumentRange,
         annotation: T,
     },
     /// An array literal expression, e.g. [1, 2, 3]
     ArrayLiteral {
         elements: Vec<Expr<T>>,
-        range: DocumentRange,
         annotation: T,
     },
     ObjectLiteral {
         properties: Vec<(DocumentRange, Expr<T>)>,
-        range: DocumentRange,
         annotation: T,
     },
     BinaryOp {
         left: Box<Expr<T>>,
         operator: BinaryOp,
         right: Box<Expr<T>>,
-        range: DocumentRange,
         annotation: T,
     },
     UnaryOp {
         operator: UnaryOp,
         operand: Box<Expr<T>>,
-        range: DocumentRange,
         annotation: T,
     },
 }
 
-impl<T> Ranged for Expr<T> {
+impl Ranged for Expr<DocumentRange> {
     fn range(&self) -> &DocumentRange {
-        match self {
-            Expr::Variable { value, .. } => value.range(),
-            Expr::PropertyAccess { range, .. }
-            | Expr::StringLiteral { range, .. }
-            | Expr::BooleanLiteral { range, .. }
-            | Expr::NumberLiteral { range, .. }
-            | Expr::ArrayLiteral { range, .. }
-            | Expr::ObjectLiteral { range, .. }
-            | Expr::BinaryOp { range, .. }
-            | Expr::UnaryOp { range, .. } => range,
-        }
+        self.annotation()
     }
 }
 
