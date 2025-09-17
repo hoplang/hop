@@ -110,7 +110,6 @@ impl PrettyTranspiler for PrettyJsTranspiler {
                                     ],
                                     BoxDoc::line(),
                                 ))
-                                .append(BoxDoc::line())
                                 .nest(4),
                         )
                         .append(BoxDoc::line())
@@ -488,7 +487,6 @@ mod tests {
                         .replace(/>/g, '&gt;')
                         .replace(/"/g, '&quot;')
                         .replace(/'/g, '&#39;');
-    
                 }
 
                 export default {
@@ -539,7 +537,6 @@ mod tests {
                         .replace(/>/g, '&gt;')
                         .replace(/"/g, '&quot;')
                         .replace(/'/g, '&#39;');
-    
                 }
 
                 export default {
@@ -590,7 +587,6 @@ mod tests {
                         .replace(/>/g, '&gt;')
                         .replace(/"/g, '&quot;')
                         .replace(/'/g, '&#39;');
-    
                 }
 
                 export default {
@@ -642,7 +638,6 @@ mod tests {
                         .replace(/>/g, '&gt;')
                         .replace(/"/g, '&quot;')
                         .replace(/'/g, '&#39;');
-    
                 }
 
                 export default {
@@ -653,6 +648,253 @@ mod tests {
                         output += "<p>";
                         output += escapeHtml(greeting);
                         output += "</p>\n";
+                        output += "</div>\n";
+                        return output;
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_nested_components_with_let_bindings() {
+        let t = IrTestBuilder::new(vec![]);
+
+        let mut ir_module = IrModule::new();
+        // Note: In the IR, nested components are already inlined, so we simulate the result
+        ir_module.entry_points.insert(
+            "test-main-comp".to_string(),
+            t.build(vec![
+                t.write("<div data-hop-id=\"test/card-comp\">"),
+                t.let_stmt("title", t.str("Hello World"), |t| {
+                    vec![
+                        t.write("<h2>"),
+                        t.write_expr(t.var("title"), true),
+                        t.write("</h2>"),
+                    ]
+                }),
+                t.write("</div>"),
+            ]),
+        );
+
+        check_js(
+            &ir_module,
+            expect![[r#"
+                function escapeHtml(str) {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export default {
+                    testMainComp: () => {
+                        let output = "";
+                        output += "<div data-hop-id=\"test/card-comp\">";
+                        const title = "Hello World";
+                        output += "<h2>";
+                        output += escapeHtml(title);
+                        output += "</h2>";
+                        output += "</div>";
+                        return output;
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_complex_literals_and_property_access() {
+        let t = IrTestBuilder::new(vec![]);
+
+        let mut ir_module = IrModule::new();
+        ir_module.entry_points.insert(
+            "test-product-list".to_string(),
+            t.build(vec![
+                    t.write("<div class=\"products\">\n"),
+                    t.for_loop(
+                        "product",
+                        t.array(vec![
+                            t.object(vec![
+                                ("name", t.str("Laptop")),
+                                ("inStock", t.bool(true)),
+                                ("category", t.str("electronics")),
+                            ]),
+                            t.object(vec![
+                                ("name", t.str("Book")),
+                                ("inStock", t.bool(false)),
+                                ("category", t.str("books")),
+                            ]),
+                            t.object(vec![
+                                ("name", t.str("T-Shirt")),
+                                ("inStock", t.bool(true)),
+                                ("category", t.str("clothing")),
+                            ]),
+                        ]),
+                        |t| vec![t.let_stmt(
+                            "displayInfo",
+                            t.object(vec![
+                                ("currency", t.str("$")),
+                                ("showStock", t.bool(true)),
+                                ("prefix", t.str("PROD-")),
+                            ]),
+                            |t| vec![
+                                t.write("<article class=\"product\">\n"),
+                                t.write("<h3>"),
+                                t.write_expr(t.prop_access(t.var("displayInfo"), "prefix"), false),
+                                t.write_expr(t.prop_access(t.var("product"), "name"), true),
+                                t.write("</h3>\n"),
+                                t.write("</p>\n"),
+                                t.write("<p>Category: "),
+                                t.write_expr(t.prop_access(t.var("product"), "category"), true),
+                                t.write("</p>\n"),
+                                t.if_stmt(
+                                    t.prop_access(t.var("displayInfo"), "showStock"),
+                                    vec![
+                                        t.if_stmt(
+                                            t.prop_access(t.var("product"), "inStock"),
+                                            vec![t.write("<span class=\"in-stock\">✓ In Stock</span>\n")],
+                                        ),
+                                        t.if_stmt(
+                                            t.not(t.prop_access(t.var("product"), "inStock")),
+                                            vec![t.write("<span class=\"out-of-stock\">✗ Out of Stock</span>\n")],
+                                        ),
+                                    ],
+                                ),
+                                t.write("</article>\n"),
+                            ],
+                        )],
+                    ),
+                    t.write("</div>\n"),
+                ],
+            ),
+        );
+
+        check_js(
+            &ir_module,
+            expect![[r#"
+                function escapeHtml(str) {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export default {
+                    testProductList: () => {
+                        let output = "";
+                        output += "<div class=\"products\">\n";
+                        for (const product of [{name: "Laptop", inStock: true, category: "electronics"}, {name: "Book", inStock: false, category: "books"}, {name: "T-Shirt", inStock: true, category: "clothing"}]) {
+                            const displayInfo = {currency: "$", showStock: true, prefix: "PROD-"};
+                            output += "<article class=\"product\">\n";
+                            output += "<h3>";
+                            output += displayInfo.prefix;
+                            output += escapeHtml(product.name);
+                            output += "</h3>\n";
+                            output += "</p>\n";
+                            output += "<p>Category: ";
+                            output += escapeHtml(product.category);
+                            output += "</p>\n";
+                            if (displayInfo.showStock) {
+                                if (product.inStock) {
+                                    output += "<span class=\"in-stock\">✓ In Stock</span>\n";
+                                }
+                                if (!(product.inStock)) {
+                                    output += "<span class=\"out-of-stock\">✗ Out of Stock</span>\n";
+                                }
+                            }
+                            output += "</article>\n";
+                        }
+                        output += "</div>\n";
+                        return output;
+                    }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_typescript_with_complex_parameters() {
+        let t = IrTestBuilder::new(vec![
+            (
+                "users".to_string(),
+                Type::Array(Some(Box::new(Type::Object({
+                    let mut map = BTreeMap::new();
+                    map.insert("name".to_string(), Type::String);
+                    map.insert("id".to_string(), Type::String);
+                    map.insert("active".to_string(), Type::Bool);
+                    map
+                })))),
+            ),
+            ("title".to_string(), Type::String),
+        ]);
+
+        let mut ir_module = IrModule::new();
+        ir_module.entry_points.insert(
+            "test-user-list".to_string(),
+            t.build(vec![
+                t.write("<div>\n"),
+                t.write("<h1>\n"),
+                t.write_expr(t.var("title"), true),
+                t.write("</h1>\n"),
+                t.write("<ul>\n"),
+                t.for_loop("user", t.var("users"), |t| {
+                    vec![
+                        t.write("\n"),
+                        t.if_stmt(
+                            t.prop_access(t.var("user"), "active"),
+                            vec![
+                                t.write("\n<li>User "),
+                                t.write_expr(t.prop_access(t.var("user"), "id"), true),
+                                t.write(": "),
+                                t.write_expr(t.prop_access(t.var("user"), "name"), true),
+                                t.write("</li>\n"),
+                            ],
+                        ),
+                        t.write("\n"),
+                    ]
+                }),
+                t.write("</ul>\n"),
+                t.write("</div>\n"),
+            ]),
+        );
+
+        check_ts(
+            &ir_module,
+            expect![[r#"
+                function escapeHtml(str: string): string {
+                    return str
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#39;');
+                }
+
+                export default {
+                    testUserList: ({ users, title }: { users: { active: boolean, id: string, name: string }[], title: string }): string => {
+                        let output: string = "";
+                        output += "<div>\n";
+                        output += "<h1>\n";
+                        output += escapeHtml(title);
+                        output += "</h1>\n";
+                        output += "<ul>\n";
+                        for (const user of users) {
+                            output += "\n";
+                            if (user.active) {
+                                output += "\n<li>User ";
+                                output += escapeHtml(user.id);
+                                output += ": ";
+                                output += escapeHtml(user.name);
+                                output += "</li>\n";
+                            }
+                            output += "\n";
+                        }
+                        output += "</ul>\n";
                         output += "</div>\n";
                         return output;
                     }
