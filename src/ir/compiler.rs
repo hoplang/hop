@@ -592,7 +592,7 @@ impl Compiler<'_> {
                 ..
             } => {
                 let ir_op = match operator {
-                    dop::ast::BinaryOp::Equal => BinaryOp::Eq,
+                    dop::expr::BinaryOp::Equal => BinaryOp::Eq,
                 };
                 IrExpr::BinaryOp {
                     left: Box::new(self.compile_expr(left)),
@@ -606,7 +606,7 @@ impl Compiler<'_> {
                 operator, operand, ..
             } => {
                 let ir_op = match operator {
-                    dop::ast::UnaryOp::Not => UnaryOp::Not,
+                    dop::expr::UnaryOp::Not => UnaryOp::Not,
                 };
                 IrExpr::UnaryOp {
                     operator: ir_op,

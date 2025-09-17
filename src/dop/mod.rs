@@ -1,4 +1,4 @@
-pub mod ast;
+pub mod expr;
 pub mod parse_error;
 pub mod parser;
 pub mod token;
@@ -7,7 +7,7 @@ pub mod r#type;
 pub mod type_error;
 pub mod type_checker;
 
-pub use ast::Expr;
+pub use expr::Expr;
 pub use parser::{Argument, Parameter, Parser, VarName};
 pub use token::Token;
 pub use tokenizer::Tokenizer;

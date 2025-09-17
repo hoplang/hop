@@ -4,7 +4,7 @@ use std::iter::Peekable;
 
 use crate::document::document_cursor::{DocumentCursor, DocumentRange, Ranged as _};
 use crate::dop::Type;
-use crate::dop::ast::{BinaryOp, Expr, UnaryOp};
+use crate::dop::expr::{BinaryOp, Expr, UnaryOp};
 use crate::dop::parse_error::ParseError;
 use crate::dop::token::Token;
 use crate::dop::tokenizer::Tokenizer;
