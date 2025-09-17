@@ -59,13 +59,11 @@ impl Compiler<'_> {
     fn compile_entrypoint(&mut self, component: &ComponentDefinition<Type>) {
         // Extract parameter information
         let mut param_info = Vec::new();
-        let mut param_names = Vec::new();
 
         if let Some((params, _)) = &component.params {
             for param in params {
                 let name = param.var_name.to_string();
                 param_info.push((name.clone(), param.var_type.clone()));
-                param_names.push(name);
             }
         }
 
@@ -77,7 +75,7 @@ impl Compiler<'_> {
             CompilationMode::Development => {
                 // Generate development mode bootstrap HTML
                 let component_name = component.tag_name.as_str();
-                self.generate_development_body(component_name, &param_names)
+                self.generate_development_body(component_name, &param_info)
             }
         };
 
@@ -94,7 +92,7 @@ impl Compiler<'_> {
     fn generate_development_body(
         &mut self,
         component_name: &str,
-        param_names: &[String],
+        params: &[(String, Type)],
     ) -> Vec<IrStatement> {
         let mut body = Vec::new();
 
@@ -125,7 +123,7 @@ impl Compiler<'_> {
         });
 
         // Create params object
-        if param_names.is_empty() {
+        if params.is_empty() {
             body.push(IrStatement::Write {
                 id: self.next_node_id(),
                 content: "{}".to_string(),
@@ -133,14 +131,13 @@ impl Compiler<'_> {
         } else {
             // Build object with all parameters
             let mut props = Vec::new();
-            for name in param_names {
+            for (name, typ) in params {
                 props.push((
                     name.clone(),
                     IrExpr {
                         id: self.next_expr_id(),
                         value: IrExprValue::Var(name.clone()),
-                        // TODO: Do we need to construct the correct type here?
-                        typ: Type::String,
+                        typ: typ.clone(),
                     },
                 ));
             }
@@ -170,7 +167,6 @@ impl Compiler<'_> {
 
         body
     }
-
 
     fn compile_nodes(
         &mut self,
@@ -562,7 +558,6 @@ impl Compiler<'_> {
         });
     }
 
-
     fn next_expr_id(&mut self) -> ExprId {
         let id = self.expr_id_counter;
         self.expr_id_counter += 1;
@@ -577,9 +572,7 @@ impl Compiler<'_> {
 
     fn compile_expr(&mut self, expr: &Expr<Type>) -> IrExpr {
         let value = match expr {
-            Expr::Variable { value, .. } => {
-                IrExprValue::Var(value.as_str().to_string())
-            }
+            Expr::Variable { value, .. } => IrExprValue::Var(value.as_str().to_string()),
             Expr::PropertyAccess {
                 object, property, ..
             } => IrExprValue::PropertyAccess {
