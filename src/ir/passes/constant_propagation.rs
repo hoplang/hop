@@ -105,10 +105,10 @@ impl ConstantPropagationPass {
         }
     }
 
-    /// Run datafrog to compute which expressions are constants across the entire entrypoint
-    fn compute_constants(entrypoint: &IrEntrypoint) -> HashMap<ExprId, IrExpr> {
-        let all_expressions = Self::collect_all_expressions(entrypoint);
-        let references = Self::collect_variable_references(entrypoint);
+    /// Run datafrog to compute constants and transform the entrypoint
+    fn compute_constants(entrypoint: IrEntrypoint) -> IrEntrypoint {
+        let all_expressions = Self::collect_all_expressions(&entrypoint);
+        let references = Self::collect_variable_references(&entrypoint);
         let mut iteration = Iteration::new();
 
         // Constant values of expressions: (expr_id => const_value)
@@ -214,41 +214,30 @@ impl ConstantPropagationPass {
             );
         }
 
-        // Convert results to IrExpr
-        let mut results = HashMap::new();
-        for (expr_id, const_val) in const_value.complete().iter() {
-            // Find the original expression to get its type
-            if let Some(orig_expr) = all_expressions.iter().find(|e| e.id() == *expr_id) {
-                let const_expr = match const_val {
+        let const_map: HashMap<ExprId, Const> = const_value.complete().iter().cloned().collect();
+
+        entrypoint.map_expressions(|expr| {
+            if let Some(const_val) = const_map.get(&expr.id()) {
+                match const_val {
                     Const::Bool(b) => IrExpr::BooleanLiteral {
                         value: *b,
-                        annotation: (*expr_id, orig_expr.typ().clone()),
+                        annotation: (expr.id(), expr.typ().clone()),
                     },
                     Const::String(s) => IrExpr::StringLiteral {
                         value: s.clone(),
-                        annotation: (*expr_id, orig_expr.typ().clone()),
+                        annotation: (expr.id(), expr.typ().clone()),
                     },
-                };
-                results.insert(*expr_id, const_expr);
+                }
+            } else {
+                expr
             }
-        }
-        results
+        })
     }
 }
 
 impl Pass for ConstantPropagationPass {
     fn run(&mut self, entrypoint: IrEntrypoint) -> IrEntrypoint {
-        // Compute constants once for the entire entrypoint
-        let constants = Self::compute_constants(&entrypoint);
-
-        // Apply transformations using the computed constants
-        entrypoint.map_expressions(|expr| {
-            if let Some(const_expr) = constants.get(&expr.id()) {
-                const_expr.clone()
-            } else {
-                expr
-            }
-        })
+        Self::compute_constants(entrypoint)
     }
 }
 
