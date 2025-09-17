@@ -19,7 +19,12 @@ impl Pass for WriteExprSimplificationPass {
         for stmt in &mut entrypoint.body {
             stmt.visit_mut(&mut |statement| {
                 // Transform WriteExpr with constant strings into Write
-                if let IrStatement::WriteExpr { id, expr: IrExpr::StringLiteral { value: s, .. }, escape } = statement {
+                if let IrStatement::WriteExpr {
+                    id,
+                    expr: IrExpr::StringLiteral { value: s, .. },
+                    escape,
+                } = statement
+                {
                     // Apply HTML escaping if needed
                     let content = if *escape { escape_html(s) } else { s.clone() };
                     *statement = IrStatement::Write { id: *id, content };

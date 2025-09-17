@@ -72,7 +72,7 @@ impl Compiler<'_> {
             CompilationMode::Development => {
                 // Generate development mode bootstrap HTML
                 let component_name = component.tag_name.as_str();
-                self.generate_development_body(component_name, &param_info)
+                self.generate_development_mode_body(component_name, &param_info)
             }
         };
 
@@ -86,7 +86,7 @@ impl Compiler<'_> {
             .insert(component.tag_name.as_str().to_string(), entrypoint);
     }
 
-    fn generate_development_body(
+    fn generate_development_mode_body(
         &mut self,
         component_name: &str,
         params: &[(VarName, Type)],
@@ -559,18 +559,27 @@ impl Compiler<'_> {
                 value: value.clone(),
                 annotation,
             },
-            Expr::PropertyAccess { object, property, .. } => Expr::PropertyAccess {
+            Expr::PropertyAccess {
+                object, property, ..
+            } => Expr::PropertyAccess {
                 object: Box::new(self.compile_expr(object)),
                 property: property.as_str().to_string(),
                 annotation,
             },
-            Expr::BinaryOp { left, operator, right, .. } => Expr::BinaryOp {
+            Expr::BinaryOp {
+                left,
+                operator,
+                right,
+                ..
+            } => Expr::BinaryOp {
                 left: Box::new(self.compile_expr(left)),
                 operator: operator.clone(),
                 right: Box::new(self.compile_expr(right)),
                 annotation,
             },
-            Expr::UnaryOp { operator, operand, .. } => Expr::UnaryOp {
+            Expr::UnaryOp {
+                operator, operand, ..
+            } => Expr::UnaryOp {
                 operator: operator.clone(),
                 operand: Box::new(self.compile_expr(operand)),
                 annotation,

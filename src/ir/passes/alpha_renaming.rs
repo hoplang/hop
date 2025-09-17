@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use crate::dop::VarName;
 
-use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 use crate::dop::expr::Expr;
+use crate::ir::ast::{IrEntrypoint, IrExpr, IrStatement};
 
 use super::Pass;
 
@@ -262,7 +262,8 @@ impl Pass for AlphaRenamingPass {
 
         // Create Let bindings for parameters if they were renamed
         let mut result_body = body;
-        for (renamed, (original, typ)) in renamed_params.into_iter().zip(&entrypoint.parameters).rev()
+        for (renamed, (original, typ)) in
+            renamed_params.into_iter().zip(&entrypoint.parameters).rev()
         {
             if renamed != *original {
                 result_body = vec![IrStatement::Let {

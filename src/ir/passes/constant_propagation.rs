@@ -34,12 +34,11 @@ impl ConstantPropagationPass {
         expressions
     }
 
-    fn collect_expressions_from_stmt<'a>(
-        stmt: &'a IrStatement,
-        expressions: &mut Vec<&'a IrExpr>,
-    ) {
+    fn collect_expressions_from_stmt<'a>(stmt: &'a IrStatement, expressions: &mut Vec<&'a IrExpr>) {
         match stmt {
-            IrStatement::If { condition, body, .. } => {
+            IrStatement::If {
+                condition, body, ..
+            } => {
                 expressions.extend(condition.dfs_iter());
                 for s in body {
                     Self::collect_expressions_from_stmt(s, expressions);

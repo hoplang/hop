@@ -1,9 +1,9 @@
 pub mod go;
 pub mod js;
 
-use pretty::BoxDoc;
 pub use go::GoTranspiler;
 pub use js::{JsTranspiler, LanguageMode};
+use pretty::BoxDoc;
 
 use crate::dop::r#type::Type;
 use crate::ir::ast::{BinaryOp, IrEntrypoint, IrExpr, IrModule, IrStatement, UnaryOp};
