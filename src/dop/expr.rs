@@ -20,66 +20,63 @@ pub enum UnaryOp {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Expr<T = DocumentRange> {
+pub enum Expr<A = DocumentRange> {
     /// A variable expression, e.g. foo
-    Var { value: VarName, annotation: T },
+    Var { value: VarName, annotation: A },
 
     /// A property access expression, e.g. foo.bar
     PropertyAccess {
-        object: Box<Expr<T>>,
+        object: Box<Self>,
         property: String,
-        annotation: T,
+        annotation: A,
     },
 
     /// A string literal expression, e.g. "foo bar"
-    StringLiteral { value: String, annotation: T },
+    StringLiteral { value: String, annotation: A },
 
     /// A boolean literal expression, e.g. true
-    BooleanLiteral { value: bool, annotation: T },
+    BooleanLiteral { value: bool, annotation: A },
 
     /// A number literal expression, e.g. 2.5
     NumberLiteral {
         value: serde_json::Number,
-        annotation: T,
+        annotation: A,
     },
 
     /// An array literal expression, e.g. [1, 2, 3]
-    ArrayLiteral {
-        elements: Vec<Expr<T>>,
-        annotation: T,
-    },
+    ArrayLiteral { elements: Vec<Self>, annotation: A },
 
     ObjectLiteral {
-        properties: Vec<(String, Expr<T>)>,
-        annotation: T,
+        properties: Vec<(String, Self)>,
+        annotation: A,
     },
 
     BinaryOp {
-        left: Box<Expr<T>>,
+        left: Box<Self>,
         operator: BinaryOp,
-        right: Box<Expr<T>>,
-        annotation: T,
+        right: Box<Self>,
+        annotation: A,
     },
 
     UnaryOp {
         operator: UnaryOp,
-        operand: Box<Expr<T>>,
-        annotation: T,
+        operand: Box<Self>,
+        annotation: A,
     },
 
     /// JSON encode expression for converting values to JSON strings
-    JsonEncode { value: Box<Expr<T>>, annotation: T },
+    JsonEncode { value: Box<Self>, annotation: A },
 
     /// String concatenation expression for joining two string expressions
     StringConcat {
-        left: Box<Expr<T>>,
-        right: Box<Expr<T>>,
-        annotation: T,
+        left: Box<Self>,
+        right: Box<Self>,
+        annotation: A,
     },
 }
 
-impl<T> Expr<T> {
-    pub fn annotation(&self) -> &T {
+impl<A> Expr<A> {
+    pub fn annotation(&self) -> &A {
         match self {
             Expr::Var { annotation, .. }
             | Expr::PropertyAccess { annotation, .. }
@@ -93,57 +90,6 @@ impl<T> Expr<T> {
             | Expr::JsonEncode { annotation, .. }
             | Expr::StringConcat { annotation, .. } => annotation,
         }
-    }
-
-    /// Returns an iterator that performs depth-first traversal of the expression tree
-    pub fn dfs_iter(&self) -> DepthFirstIterator<'_, T> {
-        DepthFirstIterator::new(self)
-    }
-
-    /// Returns all child expressions
-    fn children(&self) -> Vec<&Expr<T>> {
-        match self {
-            Expr::PropertyAccess { object, .. } => vec![object],
-            Expr::BinaryOp { left, right, .. } => vec![left, right],
-            Expr::UnaryOp { operand, .. } => vec![operand],
-            Expr::ArrayLiteral { elements, .. } => elements.iter().collect(),
-            Expr::ObjectLiteral { properties, .. } => {
-                properties.iter().map(|(_, value)| value).collect()
-            }
-            Expr::JsonEncode { value, .. } => vec![value],
-            Expr::StringConcat { left, right, .. } => vec![left, right],
-            // Leaf nodes have no children
-            Expr::Var { .. }
-            | Expr::StringLiteral { .. }
-            | Expr::BooleanLiteral { .. }
-            | Expr::NumberLiteral { .. } => vec![],
-        }
-    }
-}
-
-/// Depth-first iterator over Expr nodes
-pub struct DepthFirstIterator<'a, T> {
-    stack: Vec<&'a Expr<T>>,
-}
-
-impl<'a, T> DepthFirstIterator<'a, T> {
-    fn new(root: &'a Expr<T>) -> Self {
-        Self { stack: vec![root] }
-    }
-}
-
-impl<'a, T> Iterator for DepthFirstIterator<'a, T> {
-    type Item = &'a Expr<T>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let current = self.stack.pop()?;
-
-        // Add children in reverse order so they're visited in correct order
-        for child in current.children().into_iter().rev() {
-            self.stack.push(child);
-        }
-
-        Some(current)
     }
 }
 
