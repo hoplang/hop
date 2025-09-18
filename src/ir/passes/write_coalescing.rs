@@ -125,8 +125,11 @@ mod tests {
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: IrEntrypoint, expected: Expect) {
+        let before = entrypoint.to_string();
         let result = WriteCoalescingPass::run(entrypoint);
-        expected.assert_eq(&result.to_string());
+        let after = result.to_string();
+        let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
+        expected.assert_eq(&output);
     }
 
     #[test]
@@ -143,6 +146,15 @@ mod tests {
         check(
             entrypoint,
             expect![[r#"
+                -- before --
+                test() {
+                  write("Hello")
+                  write(" ")
+                  write("World")
+                  write("!")
+                }
+
+                -- after --
                 test() {
                   write("Hello World!")
                 }
@@ -165,6 +177,18 @@ mod tests {
         check(
             entrypoint,
             expect![[r#"
+                -- before --
+                test() {
+                  write("Before")
+                  write(" if")
+                  if true {
+                    write("Inside if")
+                  }
+                  write("After")
+                  write(" if")
+                }
+
+                -- after --
                 test() {
                   write("Before if")
                   if true {
@@ -188,6 +212,16 @@ mod tests {
         check(
             entrypoint,
             expect![[r#"
+                -- before --
+                test() {
+                  if true {
+                    write("Line")
+                    write(" ")
+                    write("one")
+                  }
+                }
+
+                -- after --
                 test() {
                   if true {
                     write("Line one")
@@ -214,6 +248,18 @@ mod tests {
         check(
             entrypoint,
             expect![[r#"
+                -- before --
+                test() {
+                  for item in ["x"] {
+                    write("Item")
+                    write(": ")
+                    write_escaped(item)
+                    write(" - ")
+                    write("Done")
+                  }
+                }
+
+                -- after --
                 test() {
                   for item in ["x"] {
                     write("Item: ")
@@ -236,6 +282,16 @@ mod tests {
         check(
             entrypoint,
             expect![[r#"
+                -- before --
+                test() {
+                  let x = "value" in {
+                    write("The")
+                    write(" value")
+                    write(" is")
+                  }
+                }
+
+                -- after --
                 test() {
                   let x = "value" in {
                     write("The value is")
@@ -271,6 +327,25 @@ mod tests {
         check(
             entrypoint,
             expect![[r#"
+                -- before --
+                test() {
+                  write("Start")
+                  write(": ")
+                  if true {
+                    write("In")
+                    write(" if")
+                    for i in ["foo"] {
+                      write("Loop")
+                      write(" body")
+                    }
+                    write("After")
+                    write(" loop")
+                  }
+                  write("End")
+                  write(".")
+                }
+
+                -- after --
                 test() {
                   write("Start: ")
                   if true {
@@ -301,6 +376,16 @@ mod tests {
         check(
             entrypoint,
             expect![[r#"
+                -- before --
+                test(x: string) {
+                  write("Value")
+                  write(": ")
+                  write_escaped(x)
+                  write(" - ")
+                  write("done")
+                }
+
+                -- after --
                 test(x: string) {
                   write("Value: ")
                   write_escaped(x)
@@ -321,6 +406,10 @@ mod tests {
         check(
             entrypoint,
             expect![[r#"
+                -- before --
+                test() {}
+
+                -- after --
                 test() {}
             "#]],
         );
@@ -335,6 +424,12 @@ mod tests {
         check(
             entrypoint,
             expect![[r#"
+                -- before --
+                test() {
+                  write("Single")
+                }
+
+                -- after --
                 test() {
                   write("Single")
                 }
