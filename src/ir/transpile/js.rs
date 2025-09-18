@@ -29,7 +29,7 @@ impl JsTranspiler {
     fn scan_for_escape_html(&self, entrypoint: &IrEntrypoint) -> bool {
         let mut needs_escape = false;
         for stmt in &entrypoint.body {
-            stmt.visit(&mut |s| {
+            stmt.traverse(&mut |s| {
                 if let IrStatement::WriteExpr { escape: true, .. } = s {
                     needs_escape = true;
                 }

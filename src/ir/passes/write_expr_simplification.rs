@@ -17,7 +17,7 @@ impl Pass for WriteExprSimplificationPass {
     fn run(&mut self, mut entrypoint: IrEntrypoint) -> IrEntrypoint {
         // Use visit_mut to transform all statements in the tree
         for stmt in &mut entrypoint.body {
-            stmt.visit_mut(&mut |statement| {
+            stmt.traverse_mut(&mut |statement| {
                 // Transform WriteExpr with constant strings into Write
                 if let IrStatement::WriteExpr {
                     id,

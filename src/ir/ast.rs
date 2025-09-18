@@ -73,88 +73,88 @@ pub enum IrStatement {
 pub type IrExpr = Expr<(ExprId, Type)>;
 
 impl IrStatement {
-    /// Visit this statement and all nested statements with a closure
-    pub fn visit<F>(&self, visitor: &mut F)
+    /// Traverse this statement and all nested statements with a closure
+    pub fn traverse<F>(&self, f: &mut F)
     where
         F: FnMut(&IrStatement),
     {
-        visitor(self);
+        f(self);
         match self {
             IrStatement::Write { .. } => {}
             IrStatement::WriteExpr { .. } => {}
             IrStatement::If { body, .. } => {
                 for stmt in body {
-                    stmt.visit(visitor);
+                    stmt.traverse(f);
                 }
             }
             IrStatement::For { body, .. } => {
                 for stmt in body {
-                    stmt.visit(visitor);
+                    stmt.traverse(f);
                 }
             }
             IrStatement::Let { body, .. } => {
                 for stmt in body {
-                    stmt.visit(visitor);
+                    stmt.traverse(f);
                 }
             }
         }
     }
 
-    /// Visit this statement and all nested statements with a mutable closure
-    pub fn visit_mut<F>(&mut self, visitor: &mut F)
+    /// Traverse this statement and all nested statements with a mutable closure
+    pub fn traverse_mut<F>(&mut self, f: &mut F)
     where
         F: FnMut(&mut IrStatement),
     {
-        visitor(self);
+        f(self);
         match self {
             IrStatement::Write { .. } => {}
             IrStatement::WriteExpr { .. } => {}
             IrStatement::If { body, .. } => {
                 for stmt in body {
-                    stmt.visit_mut(visitor);
+                    stmt.traverse_mut(f);
                 }
             }
             IrStatement::For { body, .. } => {
                 for stmt in body {
-                    stmt.visit_mut(visitor);
+                    stmt.traverse_mut(f);
                 }
             }
             IrStatement::Let { body, .. } => {
                 for stmt in body {
-                    stmt.visit_mut(visitor);
+                    stmt.traverse_mut(f);
                 }
             }
         }
     }
 
-    /// Visit all expressions in this statement and nested statements recursively
-    pub fn visit_exprs<F>(&self, visitor: &mut F)
+    /// Traverse all expressions in this statement and nested statements recursively
+    pub fn traverse_exprs<F>(&self, f: &mut F)
     where
         F: FnMut(&IrExpr),
     {
         match self {
             IrStatement::Write { .. } => {}
             IrStatement::WriteExpr { expr, .. } => {
-                expr.visit(visitor);
+                expr.traverse(f);
             }
             IrStatement::If {
                 condition, body, ..
             } => {
-                condition.visit(visitor);
+                condition.traverse(f);
                 for stmt in body {
-                    stmt.visit_exprs(visitor);
+                    stmt.traverse_exprs(f);
                 }
             }
             IrStatement::For { array, body, .. } => {
-                array.visit(visitor);
+                array.traverse(f);
                 for stmt in body {
-                    stmt.visit_exprs(visitor);
+                    stmt.traverse_exprs(f);
                 }
             }
             IrStatement::Let { value, body, .. } => {
-                value.visit(visitor);
+                value.traverse(f);
                 for stmt in body {
-                    stmt.visit_exprs(visitor);
+                    stmt.traverse_exprs(f);
                 }
             }
         }
@@ -168,24 +168,24 @@ impl IrStatement {
         match self {
             IrStatement::Write { .. } => {}
             IrStatement::WriteExpr { expr, .. } => {
-                expr.visit_mut(visitor);
+                expr.traverse_mut(visitor);
             }
             IrStatement::If {
                 condition, body, ..
             } => {
-                condition.visit_mut(visitor);
+                condition.traverse_mut(visitor);
                 for stmt in body {
                     stmt.visit_exprs_mut(visitor);
                 }
             }
             IrStatement::For { array, body, .. } => {
-                array.visit_mut(visitor);
+                array.traverse_mut(visitor);
                 for stmt in body {
                     stmt.visit_exprs_mut(visitor);
                 }
             }
             IrStatement::Let { value, body, .. } => {
-                value.visit_mut(visitor);
+                value.traverse_mut(visitor);
                 for stmt in body {
                     stmt.visit_exprs_mut(visitor);
                 }
@@ -205,69 +205,69 @@ impl IrExpr {
         &self.annotation().1
     }
 
-    /// Recursively visit this expression and all nested expressions
-    pub fn visit<F>(&self, visitor: &mut F)
+    /// Recursively traverses this expression and all nested expressions
+    pub fn traverse<F>(&self, f: &mut F)
     where
         F: FnMut(&IrExpr),
     {
-        visitor(self);
+        f(self);
         match self {
             Expr::PropertyAccess { object, .. } => {
-                object.visit(visitor);
+                object.traverse(f);
             }
             Expr::ArrayLiteral { elements, .. } => {
                 for elem in elements {
-                    elem.visit(visitor);
+                    elem.traverse(f);
                 }
             }
             Expr::ObjectLiteral { properties, .. } => {
                 for (_, value) in properties {
-                    value.visit(visitor);
+                    value.traverse(f);
                 }
             }
             Expr::BinaryOp { left, right, .. } => {
-                left.visit(visitor);
-                right.visit(visitor);
+                left.traverse(f);
+                right.traverse(f);
             }
             Expr::UnaryOp { operand, .. } => {
-                operand.visit(visitor);
+                operand.traverse(f);
             }
             Expr::JsonEncode { value, .. } => {
-                value.visit(visitor);
+                value.traverse(f);
             }
             _ => {}
         }
     }
 
-    /// Recursively visit this expression and all nested expressions with mutable access
-    pub fn visit_mut<F>(&mut self, visitor: &mut F)
+    /// Recursively traverses this expression and all nested expressions with mutable access
+    pub fn traverse_mut<F>(&mut self, f: &mut F)
     where
         F: FnMut(&mut IrExpr),
     {
-        visitor(self);
+        f(self);
         match self {
             Expr::PropertyAccess { object, .. } => {
-                object.visit_mut(visitor);
+                object.traverse_mut(f);
             }
             Expr::ArrayLiteral { elements, .. } => {
                 for elem in elements {
-                    elem.visit_mut(visitor);
+                    elem.traverse_mut(f);
                 }
             }
             Expr::ObjectLiteral { properties, .. } => {
                 for (_, value) in properties {
-                    value.visit_mut(visitor);
+                    value.traverse_mut(f);
                 }
             }
             Expr::BinaryOp { left, right, .. } => {
-                left.visit_mut(visitor);
-                right.visit_mut(visitor);
+                left.traverse_mut(f);
+                right.traverse_mut(f);
             }
             Expr::UnaryOp { operand, .. } => {
-                operand.visit_mut(visitor);
+                operand.traverse_mut(f);
             }
             Expr::JsonEncode { value, .. } => {
-                value.visit_mut(visitor);
+                value.traverse_mut(f);
             }
             _ => {}
         }

@@ -17,7 +17,7 @@ impl GoTranspiler {
         // Use visitor pattern to scan statements for imports
         for stmt in &entrypoint.body {
             // Check for HTML escaping in WriteExpr statements
-            stmt.visit(&mut |s| {
+            stmt.traverse(&mut |s| {
                 if let IrStatement::WriteExpr {
                     expr, escape: true, ..
                 } = s

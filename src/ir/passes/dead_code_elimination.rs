@@ -40,15 +40,13 @@ impl Pass for DeadCodeEliminationPass {
     fn run(&mut self, mut entrypoint: IrEntrypoint) -> IrEntrypoint {
         // First, recursively process all nested bodies using visit_mut
         for stmt in &mut entrypoint.body {
-            stmt.visit_mut(&mut |s| {
-                match s {
-                    IrStatement::If { body, .. }
-                    | IrStatement::For { body, .. }
-                    | IrStatement::Let { body, .. } => {
-                        *body = Self::transform_statements(std::mem::take(body));
-                    }
-                    _ => {}
+            stmt.traverse_mut(&mut |s| match s {
+                IrStatement::If { body, .. }
+                | IrStatement::For { body, .. }
+                | IrStatement::Let { body, .. } => {
+                    *body = Self::transform_statements(std::mem::take(body));
                 }
+                _ => {}
             });
         }
 
