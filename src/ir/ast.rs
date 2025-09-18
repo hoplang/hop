@@ -8,7 +8,7 @@ pub use crate::dop::expr::{BinaryOp, UnaryOp};
 // the IR.
 //
 // The AST structure is:
-// * IrModule -> IrEntryPoint -> IrStatement -> IrExpr
+// * IrEntryPoint -> IrStatement -> IrExpr
 
 /// Unique identifier for each expression in the IR
 pub type ExprId = u32;
@@ -16,11 +16,6 @@ pub type ExprId = u32;
 /// Unique identifier for each node in the IR
 pub type StatementId = u32;
 
-#[derive(Debug, Default)]
-pub struct IrModule {
-    /// Map from component name (e.g. my-component) to its IR representation
-    pub entry_points: HashMap<String, IrEntrypoint>,
-}
 
 #[derive(Debug, Default, Clone)]
 pub struct IrEntrypoint {
@@ -284,107 +279,7 @@ impl IrExpr {
     }
 }
 
-impl IrModule {
-    pub fn new() -> Self {
-        Self::default()
-    }
-}
 
-impl fmt::Display for IrModule {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "IrModule {{")?;
-        writeln!(f, "  entry_points: {{")?;
-
-        // Sort entry points by name for consistent output
-        let mut sorted_entries: Vec<_> = self.entry_points.iter().collect();
-        sorted_entries.sort_by_key(|(name, _)| name.as_str());
-
-        for (name, entrypoint) in sorted_entries {
-            writeln!(f, "    {}: {{", name)?;
-
-            // Format parameters
-            write!(f, "      parameters: [")?;
-            for (i, (param_name, param_type)) in entrypoint.parameters.iter().enumerate() {
-                if i > 0 {
-                    write!(f, ", ")?;
-                }
-                write!(f, "{}: {}", param_name, param_type)?;
-            }
-            writeln!(f, "]")?;
-
-            // Format body
-            writeln!(f, "      body: {{")?;
-            fn fmt_stmts(
-                statements: &[IrStatement],
-                f: &mut fmt::Formatter<'_>,
-                indent: usize,
-            ) -> fmt::Result {
-                for statement in statements {
-                    for _ in 0..indent {
-                        write!(f, "  ")?;
-                    }
-                    match statement {
-                        IrStatement::Write { id: _, content } => {
-                            writeln!(f, "Write({:?})", content)?
-                        }
-                        IrStatement::WriteExpr {
-                            id: _,
-                            expr,
-                            escape,
-                        } => writeln!(f, "WriteExpr(expr: {}, escape: {})", expr, escape)?,
-                        IrStatement::If {
-                            id: _,
-                            condition,
-                            body,
-                        } => {
-                            writeln!(f, "If(condition: {}) {{", condition)?;
-                            fmt_stmts(body, f, indent + 1)?;
-                            for _ in 0..indent {
-                                write!(f, "  ")?;
-                            }
-                            writeln!(f, "}}")?;
-                        }
-                        IrStatement::For {
-                            id: _,
-                            var,
-                            array,
-                            body,
-                        } => {
-                            writeln!(f, "For(var: {}, array: {}) {{", var, array)?;
-                            fmt_stmts(body, f, indent + 1)?;
-                            for _ in 0..indent {
-                                write!(f, "  ")?;
-                            }
-                            writeln!(f, "}}")?;
-                        }
-                        IrStatement::Let {
-                            id: _,
-                            var,
-                            value,
-                            body,
-                        } => {
-                            writeln!(f, "Let(var: {}, value: {}) {{", var, value)?;
-                            fmt_stmts(body, f, indent + 1)?;
-                            for _ in 0..indent {
-                                write!(f, "  ")?;
-                            }
-                            writeln!(f, "}}")?;
-                        }
-                    }
-                }
-                Ok(())
-            }
-
-            fmt_stmts(&entrypoint.body, f, 4)?;
-            writeln!(f, "      }}")?;
-            writeln!(f, "    }}")?;
-        }
-
-        writeln!(f, "  }}")?;
-        writeln!(f, "}}")?;
-        Ok(())
-    }
-}
 
 impl fmt::Display for IrStatement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
