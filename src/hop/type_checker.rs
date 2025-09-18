@@ -9,7 +9,7 @@ use crate::hop::type_error::TypeError;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::{self, Display};
 
-use super::ast::{AttributeValue, TypedAttribute, TypedNode, UntypedNode};
+use super::ast::{AttributeValue, TypedAst, TypedAttribute, TypedNode, UntypedAst, UntypedNode};
 use super::module_name::ModuleName;
 
 #[derive(Debug, Clone)]
@@ -119,13 +119,13 @@ pub struct TypeChecker {
     state: State,
     pub type_errors: HashMap<ModuleName, ErrorCollector<TypeError>>,
     pub type_annotations: HashMap<ModuleName, Vec<TypeAnnotation>>,
-    pub typed_asts: HashMap<ModuleName, Ast<TypedExpr>>,
+    pub typed_asts: HashMap<ModuleName, TypedAst>,
 }
 
 impl TypeChecker {
     // TODO: Return a bool here indicating whether the state for these modules
     // were changed
-    pub fn typecheck(&mut self, modules: &[&Ast]) {
+    pub fn typecheck(&mut self, modules: &[&UntypedAst]) {
         for module in modules {
             let type_errors = self.type_errors.entry(module.name.clone()).or_default();
             let type_annotations = self
@@ -159,17 +159,17 @@ impl TypeChecker {
     }
 
     /// Get the typed AST for a given module name, if it exists
-    pub fn get_typed_ast(&self, module_name: &ModuleName) -> Option<&Ast<TypedExpr>> {
+    pub fn get_typed_ast(&self, module_name: &ModuleName) -> Option<&TypedAst> {
         self.typed_asts.get(module_name)
     }
 }
 
 fn typecheck_module(
-    module: &Ast,
+    module: &UntypedAst,
     state: &mut State,
     errors: &mut ErrorCollector<TypeError>,
     annotations: &mut Vec<TypeAnnotation>,
-) -> Ast<TypedExpr> {
+) -> TypedAst {
     // Validate imports
     for import in module.get_imports() {
         let imported_module = import.imported_module();

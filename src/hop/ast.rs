@@ -31,10 +31,11 @@ pub struct Attribute<T = UntypedExpr> {
     pub range: DocumentRange,
 }
 
+pub type UntypedAst = Ast<UntypedExpr>;
 pub type TypedAst = Ast<TypedExpr>;
 
 #[derive(Debug, Clone)]
-pub struct Ast<T = UntypedExpr> {
+pub struct Ast<T> {
     pub name: ModuleName,
     imports: Vec<Import>,
     component_definitions: Vec<ComponentDefinition<T, DocumentRange>>,

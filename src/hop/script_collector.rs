@@ -1,5 +1,6 @@
-use crate::hop::ast::Ast;
 use crate::hop::ast::Node;
+
+use super::ast::UntypedAst;
 
 pub struct ScriptCollector {
     scripts: Vec<String>,
@@ -12,7 +13,7 @@ impl ScriptCollector {
         }
     }
 
-    pub fn process_module(&mut self, ast: &Ast) {
+    pub fn process_module(&mut self, ast: &UntypedAst) {
         let mut module_script = String::new();
 
         for component in ast.get_component_definitions() {

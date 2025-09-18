@@ -14,7 +14,7 @@ use crate::ir;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 
-use super::ast::Node;
+use super::ast::{Node, UntypedAst};
 use super::module_name::ModuleName;
 use super::type_checker::TypeChecker;
 
@@ -54,7 +54,7 @@ pub struct RenameableSymbol {
 pub struct Program {
     topo_sorter: TopoSorter<ModuleName>,
     parse_errors: HashMap<ModuleName, ErrorCollector<ParseError>>,
-    modules: HashMap<ModuleName, Ast>,
+    modules: HashMap<ModuleName, UntypedAst>,
     type_checker: TypeChecker,
 }
 
@@ -425,7 +425,7 @@ impl Program {
     }
 
     /// Get all modules for compilation
-    pub fn get_modules(&self) -> &HashMap<ModuleName, Ast> {
+    pub fn get_modules(&self) -> &HashMap<ModuleName, UntypedAst> {
         &self.modules
     }
 

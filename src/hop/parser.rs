@@ -7,7 +7,7 @@ use crate::hop::token_tree::{TokenTree, build_tree};
 use crate::hop::tokenizer::{Token, Tokenizer};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use super::ast::{self, UntypedNode};
+use super::ast::{self, UntypedAst, UntypedNode};
 use super::module_name::ModuleName;
 use super::tokenizer;
 
@@ -184,7 +184,7 @@ pub fn parse(
     module_name: ModuleName,
     tokenizer: Tokenizer,
     errors: &mut ErrorCollector<ParseError>,
-) -> Ast {
+) -> UntypedAst {
     let trees = build_tree(tokenizer, errors);
 
     let mut components = Vec::new();
