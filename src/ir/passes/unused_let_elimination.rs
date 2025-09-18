@@ -108,11 +108,8 @@ mod tests {
                 t.let_stmt("unused", t.str("value"), |t| vec![t.write("Hello")]),
             ]),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("Hello")
-                  }
+                test() {
+                  write("Hello")
                 }
             "#]],
         );
@@ -129,12 +126,9 @@ mod tests {
                 }),
             ]),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Let(var: message, value: "Hello") {
-                      WriteExpr(expr: message, escape: false)
-                    }
+                test() {
+                  let message = "Hello" in {
+                    write(message)
                   }
                 }
             "#]],
@@ -151,11 +145,8 @@ mod tests {
                 })]
             })]),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("No variables used")
-                  }
+                test() {
+                  write("No variables used")
                 }
             "#]],
         );
@@ -169,13 +160,10 @@ mod tests {
                 vec![t.if_stmt(t.var("cond"), vec![t.write("Condition is true")])]
             })]),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Let(var: cond, value: true) {
-                      If(condition: cond) {
-                        Write("Condition is true")
-                      }
+                test() {
+                  let cond = true in {
+                    if cond {
+                      write("Condition is true")
                     }
                   }
                 }
@@ -192,12 +180,9 @@ mod tests {
                 vec![t.let_stmt("unused", t.str("value"), |t| vec![t.write("Inside if")])],
             )]),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    If(condition: true) {
-                      Write("Inside if")
-                    }
+                test() {
+                  if true {
+                    write("Inside if")
                   }
                 }
             "#]],
@@ -218,12 +203,9 @@ mod tests {
                 },
             )]),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    For(var: item, array: ["a", "b"]) {
-                      WriteExpr(expr: item, escape: false)
-                    }
+                test() {
+                  for item in ["a", "b"] {
+                    write(item)
                   }
                 }
             "#]],
@@ -240,14 +222,11 @@ mod tests {
                 })]
             })]),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Let(var: x, value: true) {
-                      Let(var: y, value: false) {
-                        If(condition: (x == y)) {
-                          Write("Equal")
-                        }
+                test() {
+                  let x = true in {
+                    let y = false in {
+                      if (x == y) {
+                        write("Equal")
                       }
                     }
                   }
@@ -266,13 +245,10 @@ mod tests {
                 t.write("Third"),
             ]),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("First")
-                    Write("Second")
-                    Write("Third")
-                  }
+                test() {
+                  write("First")
+                  write("Second")
+                  write("Third")
                 }
             "#]],
         );
@@ -292,13 +268,10 @@ mod tests {
                 },
             )]),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Let(var: items, value: ["a", "b"]) {
-                      For(var: item, array: items) {
-                        WriteExpr(expr: item, escape: false)
-                      }
+                test() {
+                  let items = ["a", "b"] in {
+                    for item in items {
+                      write(item)
                     }
                   }
                 }
@@ -316,12 +289,9 @@ mod tests {
                 |t| vec![t.write_expr(t.prop_access(t.var("obj"), "name"), false)],
             )]),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Let(var: obj, value: {name: "value"}) {
-                      WriteExpr(expr: obj.name, escape: false)
-                    }
+                test() {
+                  let obj = {name: "value"} in {
+                    write(obj.name)
                   }
                 }
             "#]],
@@ -341,14 +311,11 @@ mod tests {
                 }),
             ]),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Let(var: x, value: "first x") {
-                      WriteExpr(expr: x, escape: false)
-                    }
-                    Write("No reference to x here")
+                test() {
+                  let x = "first x" in {
+                    write(x)
                   }
+                  write("No reference to x here")
                 }
             "#]],
         );

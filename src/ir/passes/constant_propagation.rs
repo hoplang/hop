@@ -190,15 +190,12 @@ mod tests {
                 t.if_stmt(t.not(t.bool(false)), vec![t.write("Should be true")]),
             ]),
             expect![[r#"
-            IrEntrypoint {
-              parameters: []
-              body: {
-                If(condition: true) {
-                  Write("Should be true")
+                test() {
+                  if true {
+                    write("Should be true")
+                  }
                 }
-              }
-            }
-        "#]],
+            "#]],
         );
     }
 
@@ -211,15 +208,12 @@ mod tests {
                 t.if_stmt(t.not(t.not(t.bool(true))), vec![t.write("Double negation")]),
             ]),
             expect![[r#"
-            IrEntrypoint {
-              parameters: []
-              body: {
-                If(condition: true) {
-                  Write("Double negation")
+                test() {
+                  if true {
+                    write("Double negation")
+                  }
                 }
-              }
-            }
-        "#]],
+            "#]],
         );
     }
 
@@ -235,15 +229,12 @@ mod tests {
                 ),
             ]),
             expect![[r#"
-            IrEntrypoint {
-              parameters: []
-              body: {
-                If(condition: true) {
-                  Write("Triple negation")
+                test() {
+                  if true {
+                    write("Triple negation")
+                  }
                 }
-              }
-            }
-        "#]],
+            "#]],
         );
     }
 
@@ -269,21 +260,18 @@ mod tests {
                 ),
             ]),
             expect![[r#"
-            IrEntrypoint {
-              parameters: []
-              body: {
-                If(condition: true) {
-                  Write("true == true")
+                test() {
+                  if true {
+                    write("true == true")
+                  }
+                  if true {
+                    write("false == false")
+                  }
+                  if false {
+                    write("Should not appear")
+                  }
                 }
-                If(condition: true) {
-                  Write("false == false")
-                }
-                If(condition: false) {
-                  Write("Should not appear")
-                }
-              }
-            }
-        "#]],
+            "#]],
         );
     }
 
@@ -299,15 +287,12 @@ mod tests {
                 ),
             ]),
             expect![[r#"
-            IrEntrypoint {
-              parameters: []
-              body: {
-                If(condition: false) {
-                  Write("Should not appear")
+                test() {
+                  if false {
+                    write("Should not appear")
+                  }
                 }
-              }
-            }
-        "#]],
+            "#]],
         );
     }
 
@@ -327,16 +312,13 @@ mod tests {
                 }),
             ]),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Let(var: x, value: true) {
-                      If(condition: true) {
-                        Write("x is true")
-                      }
-                      If(condition: false) {
-                        Write("x is false")
-                      }
+                test() {
+                  let x = true in {
+                    if true {
+                      write("x is true")
+                    }
+                    if false {
+                      write("x is false")
                     }
                   }
                 }
@@ -362,17 +344,14 @@ mod tests {
                 })]
             })]),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Let(var: x, value: true) {
-                      Let(var: y, value: false) {
-                        If(condition: false) {
-                          Write("x equals y")
-                        }
-                        If(condition: true) {
-                          Write("x equals not y")
-                        }
+                test() {
+                  let x = true in {
+                    let y = false in {
+                      if false {
+                        write("x equals y")
+                      }
+                      if true {
+                        write("x equals not y")
                       }
                     }
                   }
@@ -392,12 +371,9 @@ mod tests {
                 ]
             })]),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Let(var: message, value: "Hello, World!") {
-                      WriteExpr(expr: "Hello, World!", escape: true)
-                    }
+                test() {
+                  let message = "Hello, World!" in {
+                    write_escaped("Hello, World!")
                   }
                 }
             "#]],
@@ -418,14 +394,11 @@ mod tests {
                 })]
             })]),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Let(var: greeting, value: "Hello") {
-                      Let(var: name, value: "World") {
-                        WriteExpr(expr: "Hello", escape: true)
-                        WriteExpr(expr: "World", escape: true)
-                      }
+                test() {
+                  let greeting = "Hello" in {
+                    let name = "World" in {
+                      write_escaped("Hello")
+                      write_escaped("World")
                     }
                   }
                 }
@@ -451,15 +424,12 @@ mod tests {
                 ]
             })]),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Let(var: title, value: "Welcome") {
-                      WriteExpr(expr: "Welcome", escape: true)
-                      WriteExpr(expr: "Welcome", escape: true)
-                      Let(var: subtitle, value: "Welcome") {
-                        WriteExpr(expr: "Welcome", escape: true)
-                      }
+                test() {
+                  let title = "Welcome" in {
+                    write_escaped("Welcome")
+                    write_escaped("Welcome")
+                    let subtitle = "Welcome" in {
+                      write_escaped("Welcome")
                     }
                   }
                 }
@@ -496,20 +466,17 @@ mod tests {
                 }),
             ]),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    If(condition: true) {
-                      Write("Strings are equal")
-                    }
-                    If(condition: false) {
-                      Write("Should not appear")
-                    }
-                    Let(var: greeting, value: "hello") {
-                      Let(var: message, value: "hello") {
-                        If(condition: true) {
-                          Write("Variables are equal")
-                        }
+                test() {
+                  if true {
+                    write("Strings are equal")
+                  }
+                  if false {
+                    write("Should not appear")
+                  }
+                  let greeting = "hello" in {
+                    let message = "hello" in {
+                      if true {
+                        write("Variables are equal")
                       }
                     }
                   }

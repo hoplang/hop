@@ -49,11 +49,8 @@ mod tests {
                 t.write_expr(t.str("Hello, World!"), false),
             ]),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("Hello, World!")
-                  }
+                test() {
+                  write("Hello, World!")
                 }
             "#]],
         );
@@ -68,11 +65,8 @@ mod tests {
                 t.write_expr(t.str("<div>Hello & Goodbye</div>"), true),
             ]),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("&lt;div&gt;Hello &amp; Goodbye&lt;/div&gt;")
-                  }
+                test() {
+                  write("&lt;div&gt;Hello &amp; Goodbye&lt;/div&gt;")
                 }
             "#]],
         );
@@ -97,18 +91,15 @@ mod tests {
                 }),
             ]),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    If(condition: true) {
-                      Write("Inside if")
-                      For(var: item, array: ["foo"]) {
-                        Write("Inside for")
-                      }
+                test() {
+                  if true {
+                    write("Inside if")
+                    for item in ["foo"] {
+                      write("Inside for")
                     }
-                    Let(var: x, value: "value") {
-                      Write("Inside let")
-                    }
+                  }
+                  let x = "value" in {
+                    write("Inside let")
                   }
                 }
             "#]],
@@ -125,13 +116,10 @@ mod tests {
                 t.write_expr(t.var("x"), false),
             ]),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [x: string]
-                  body: {
-                    Write("Already a Write statement")
-                    Write("Will become Write")
-                    WriteExpr(expr: x, escape: false)
-                  }
+                test(x: string) {
+                  write("Already a Write statement")
+                  write("Will become Write")
+                  write(x)
                 }
             "#]],
         );

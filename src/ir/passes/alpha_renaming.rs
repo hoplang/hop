@@ -312,11 +312,8 @@ mod tests {
         check_renaming(
             entrypoint,
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [x: string]
-                  body: {
-                    WriteExpr(expr: x, escape: true)
-                  }
+                test(x: string) {
+                  write_escaped(x)
                 }
             "#]],
         );
@@ -335,12 +332,9 @@ mod tests {
         check_renaming(
             entrypoint,
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [x: string]
-                  body: {
-                    For(var: x_1, array: ["a"]) {
-                      WriteExpr(expr: x_1, escape: true)
-                    }
+                test(x: string) {
+                  for x_1 in ["a"] {
+                    write_escaped(x_1)
                   }
                 }
             "#]],
@@ -363,15 +357,12 @@ mod tests {
         check_renaming(
             entrypoint,
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    For(var: x, array: ["a"]) {
-                      WriteExpr(expr: x, escape: true)
-                    }
-                    For(var: x_1, array: ["b"]) {
-                      WriteExpr(expr: x_1, escape: true)
-                    }
+                test() {
+                  for x in ["a"] {
+                    write_escaped(x)
+                  }
+                  for x_1 in ["b"] {
+                    write_escaped(x_1)
                   }
                 }
             "#]],
@@ -394,14 +385,11 @@ mod tests {
         check_renaming(
             entrypoint,
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Let(var: x, value: "hello") {
-                      WriteExpr(expr: x, escape: true)
-                      Let(var: x_1, value: "world") {
-                        WriteExpr(expr: x_1, escape: true)
-                      }
+                test() {
+                  let x = "hello" in {
+                    write_escaped(x)
+                    let x_1 = "world" in {
+                      write_escaped(x_1)
                     }
                   }
                 }
@@ -429,14 +417,11 @@ mod tests {
         check_renaming(
             entrypoint,
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [x: string, y: string]
-                  body: {
-                    WriteExpr(expr: x, escape: true)
-                    For(var: y_1, array: ["a"]) {
-                      WriteExpr(expr: x, escape: true)
-                      WriteExpr(expr: y_1, escape: true)
-                    }
+                test(x: string, y: string) {
+                  write_escaped(x)
+                  for y_1 in ["a"] {
+                    write_escaped(x)
+                    write_escaped(y_1)
                   }
                 }
             "#]],
@@ -469,20 +454,17 @@ mod tests {
         check_renaming(
             entrypoint,
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [items: array[string]]
-                  body: {
-                    For(var: item, array: items) {
-                      Write("<div>")
-                      For(var: item_1, array: ["nested"]) {
-                        WriteExpr(expr: item_1, escape: true)
-                        Let(var: item_2, value: "let-value") {
-                          WriteExpr(expr: item_2, escape: true)
-                        }
+                test(items: array[string]) {
+                  for item in items {
+                    write("<div>")
+                    for item_1 in ["nested"] {
+                      write_escaped(item_1)
+                      let item_2 = "let-value" in {
+                        write_escaped(item_2)
                       }
-                      WriteExpr(expr: item, escape: true)
-                      Write("</div>")
                     }
+                    write_escaped(item)
+                    write("</div>")
                   }
                 }
             "#]],

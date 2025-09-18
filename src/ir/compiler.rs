@@ -445,12 +445,9 @@ mod tests {
         check_ir(
             &["<main-comp entrypoint>", "Hello World", "</main-comp>"].join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("<!DOCTYPE html>")
-                    Write("Hello World")
-                  }
+                main-comp() {
+                  write("<!DOCTYPE html>")
+                  write("Hello World")
                 }
             "#]],
         );
@@ -466,13 +463,10 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [name: string]
-                  body: {
-                    Write("<!DOCTYPE html>")
-                    Write("Hello ")
-                    WriteExpr(expr: name, escape: true)
-                  }
+                main-comp(name: string) {
+                  write("<!DOCTYPE html>")
+                  write("Hello ")
+                  write_escaped(name)
                 }
             "#]],
         );
@@ -490,15 +484,12 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("<!DOCTYPE html>")
-                    Write("<div")
-                    Write(">")
-                    Write("Content")
-                    Write("</div>")
-                  }
+                main-comp() {
+                  write("<!DOCTYPE html>")
+                  write("<div")
+                  write(">")
+                  write("Content")
+                  write("</div>")
                 }
             "#]],
         );
@@ -516,16 +507,13 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [show: boolean]
-                  body: {
-                    Write("<!DOCTYPE html>")
-                    If(condition: show) {
-                      Write("<div")
-                      Write(">")
-                      Write("Visible")
-                      Write("</div>")
-                    }
+                main-comp(show: boolean) {
+                  write("<!DOCTYPE html>")
+                  if show {
+                    write("<div")
+                    write(">")
+                    write("Visible")
+                    write("</div>")
                   }
                 }
             "#]],
@@ -544,16 +532,13 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [items: array[string]]
-                  body: {
-                    Write("<!DOCTYPE html>")
-                    For(var: item, array: items) {
-                      Write("<li")
-                      Write(">")
-                      WriteExpr(expr: item, escape: true)
-                      Write("</li>")
-                    }
+                main-comp(items: array[string]) {
+                  write("<!DOCTYPE html>")
+                  for item in items {
+                    write("<li")
+                    write(">")
+                    write_escaped(item)
+                    write("</li>")
                   }
                 }
             "#]],
@@ -574,19 +559,16 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("<!DOCTYPE html>")
-                    Write("<div")
-                    Write(" data-hop-id=\"test/card-comp\"")
-                    Write(">")
-                    Write("<h2")
-                    Write(">")
-                    Write("Hello")
-                    Write("</h2>")
-                    Write("</div>")
-                  }
+                main-comp() {
+                  write("<!DOCTYPE html>")
+                  write("<div")
+                  write(" data-hop-id="test/card-comp"")
+                  write(">")
+                  write("<h2")
+                  write(">")
+                  write("Hello")
+                  write("</h2>")
+                  write("</div>")
                 }
             "#]],
         );
@@ -602,17 +584,14 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("<!DOCTYPE html>")
-                    Write("<div")
-                    Write(" class=\"base\"")
-                    Write(" id=\"test\"")
-                    Write(">")
-                    Write("Content")
-                    Write("</div>")
-                  }
+                main-comp() {
+                  write("<!DOCTYPE html>")
+                  write("<div")
+                  write(" class="base"")
+                  write(" id="test"")
+                  write(">")
+                  write("Content")
+                  write("</div>")
                 }
             "#]],
         );
@@ -628,19 +607,16 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [cls: string]
-                  body: {
-                    Write("<!DOCTYPE html>")
-                    Write("<div")
-                    Write(" class=\"base\"")
-                    Write(" data-value=\"")
-                    WriteExpr(expr: cls, escape: true)
-                    Write("\"")
-                    Write(">")
-                    Write("Content")
-                    Write("</div>")
-                  }
+                main-comp(cls: string) {
+                  write("<!DOCTYPE html>")
+                  write("<div")
+                  write(" class="base"")
+                  write(" data-value="")
+                  write_escaped(cls)
+                  write(""")
+                  write(">")
+                  write("Content")
+                  write("</div>")
                 }
             "#]],
         );
@@ -659,15 +635,12 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [y: string]
-                  body: {
-                    Write("<!DOCTYPE html>")
-                    For(var: x, array: ["a", "b"]) {
-                      WriteExpr(expr: x, escape: true)
-                    }
-                    WriteExpr(expr: y, escape: true)
+                main-comp(y: string) {
+                  write("<!DOCTYPE html>")
+                  for x in ["a", "b"] {
+                    write_escaped(x)
                   }
+                  write_escaped(y)
                 }
             "#]],
         );
@@ -685,15 +658,12 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("<!DOCTYPE html>")
-                    Write("<html")
-                    Write(">")
-                    Write("Content")
-                    Write("</html>")
-                  }
+                main-comp() {
+                  write("<!DOCTYPE html>")
+                  write("<html")
+                  write(">")
+                  write("Content")
+                  write("</html>")
                 }
             "#]],
         );
@@ -710,15 +680,12 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("<!DOCTYPE html>")
-                    Write("<html")
-                    Write(">")
-                    Write("Content")
-                    Write("</html>")
-                  }
+                main-comp() {
+                  write("<!DOCTYPE html>")
+                  write("<html")
+                  write(">")
+                  write("Content")
+                  write("</html>")
                 }
             "#]],
         );
@@ -735,17 +702,14 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("<!DOCTYPE html>")
-                    Write("<img")
-                    Write(" alt=\"test\"")
-                    Write(" src=\"test.jpg\"")
-                    Write(">")
-                    Write("<br")
-                    Write(">")
-                  }
+                main-comp() {
+                  write("<!DOCTYPE html>")
+                  write("<img")
+                  write(" alt="test"")
+                  write(" src="test.jpg"")
+                  write(">")
+                  write("<br")
+                  write(">")
                 }
             "#]],
         );
@@ -764,19 +728,16 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("<!DOCTYPE html>")
-                    Write("<div")
-                    Write(">")
-                    Write("Before")
-                    Write("</div>")
-                    Write("<div")
-                    Write(">")
-                    Write("After")
-                    Write("</div>")
-                  }
+                main-comp() {
+                  write("<!DOCTYPE html>")
+                  write("<div")
+                  write(">")
+                  write("Before")
+                  write("</div>")
+                  write("<div")
+                  write(">")
+                  write("After")
+                  write("</div>")
                 }
             "#]],
         );
@@ -792,13 +753,10 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [user: {name: string}]
-                  body: {
-                    Write("<!DOCTYPE html>")
-                    Write("Hello ")
-                    WriteExpr(expr: user.name, escape: true)
-                  }
+                main-comp(user: {name: string}) {
+                  write("<!DOCTYPE html>")
+                  write("Hello ")
+                  write_escaped(user.name)
                 }
             "#]],
         );
@@ -822,23 +780,20 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("<!DOCTYPE html>")
-                    Write("<div")
-                    Write(" data-hop-id=\"test/card-comp\"")
-                    Write(">")
-                    Write("<div")
-                    Write(" class=\"card\"")
-                    Write(">")
-                    Write("<p")
-                    Write(">")
-                    Write("Slot content")
-                    Write("</p>")
-                    Write("</div>")
-                    Write("</div>")
-                  }
+                main-comp() {
+                  write("<!DOCTYPE html>")
+                  write("<div")
+                  write(" data-hop-id="test/card-comp"")
+                  write(">")
+                  write("<div")
+                  write(" class="card"")
+                  write(">")
+                  write("<p")
+                  write(">")
+                  write("Slot content")
+                  write("</p>")
+                  write("</div>")
+                  write("</div>")
                 }
             "#]],
         );
@@ -862,23 +817,20 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("<!DOCTYPE html>")
-                    Write("<div")
-                    Write(" data-hop-id=\"test/outer-comp\"")
-                    Write(">")
-                    Write("<div")
-                    Write(" data-hop-id=\"test/inner-comp\"")
-                    Write(">")
-                    Write("<span")
-                    Write(">")
-                    Write("Hello")
-                    Write("</span>")
-                    Write("</div>")
-                    Write("</div>")
-                  }
+                main-comp() {
+                  write("<!DOCTYPE html>")
+                  write("<div")
+                  write(" data-hop-id="test/outer-comp"")
+                  write(">")
+                  write("<div")
+                  write(" data-hop-id="test/inner-comp"")
+                  write(">")
+                  write("<span")
+                  write(">")
+                  write("Hello")
+                  write("</span>")
+                  write("</div>")
+                  write("</div>")
                 }
             "#]],
         );
@@ -898,22 +850,19 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [x: string]
-                  body: {
-                    Write("<!DOCTYPE html>")
-                    Write("<div")
-                    Write(" data-hop-id=\"test/child-comp\"")
-                    Write(">")
-                    Let(var: x_1, value: x) {
-                      Write("<div")
-                      Write(">")
-                      Write("Value: ")
-                      WriteExpr(expr: x_1, escape: true)
-                      Write("</div>")
-                    }
-                    Write("</div>")
+                main-comp(x: string) {
+                  write("<!DOCTYPE html>")
+                  write("<div")
+                  write(" data-hop-id="test/child-comp"")
+                  write(">")
+                  let x_1 = x in {
+                    write("<div")
+                    write(">")
+                    write("Value: ")
+                    write_escaped(x_1)
+                    write("</div>")
                   }
+                  write("</div>")
                 }
             "#]],
         );
@@ -934,33 +883,30 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [x: string]
-                  body: {
-                    Write("<!DOCTYPE html>")
-                    Write("<div")
-                    Write(" data-hop-id=\"test/child-comp\"")
-                    Write(">")
-                    Let(var: x_1, value: x) {
-                      Write("<div")
-                      Write(">")
-                      Write("Value: ")
-                      WriteExpr(expr: x_1, escape: true)
-                      Write("</div>")
-                    }
-                    Write("</div>")
-                    Write("<div")
-                    Write(" data-hop-id=\"test/child-comp\"")
-                    Write(">")
-                    Let(var: x_2, value: x) {
-                      Write("<div")
-                      Write(">")
-                      Write("Value: ")
-                      WriteExpr(expr: x_2, escape: true)
-                      Write("</div>")
-                    }
-                    Write("</div>")
+                main-comp(x: string) {
+                  write("<!DOCTYPE html>")
+                  write("<div")
+                  write(" data-hop-id="test/child-comp"")
+                  write(">")
+                  let x_1 = x in {
+                    write("<div")
+                    write(">")
+                    write("Value: ")
+                    write_escaped(x_1)
+                    write("</div>")
                   }
+                  write("</div>")
+                  write("<div")
+                  write(" data-hop-id="test/child-comp"")
+                  write(">")
+                  let x_2 = x in {
+                    write("<div")
+                    write(">")
+                    write("Value: ")
+                    write_escaped(x_2)
+                    write("</div>")
+                  }
+                  write("</div>")
                 }
             "#]],
         );
@@ -981,15 +927,12 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [x: string]
-                  body: {
-                    Write("<!DOCTYPE html>")
-                    Write("<div")
-                    Write(">")
-                    WriteExpr(expr: x, escape: true)
-                    Write("</div>")
-                  }
+                first-comp(x: string) {
+                  write("<!DOCTYPE html>")
+                  write("<div")
+                  write(">")
+                  write_escaped(x)
+                  write("</div>")
                 }
             "#]],
         );
@@ -1015,22 +958,19 @@ mod tests {
             ]
             .join(""),
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("<!DOCTYPE html>")
-                    For(var: x, array: ["a", "b"]) {
-                      Write("<div")
-                      Write(">")
-                      WriteExpr(expr: x, escape: true)
-                      Write("</div>")
-                    }
-                    For(var: x_1, array: ["c", "d"]) {
-                      Write("<span")
-                      Write(">")
-                      WriteExpr(expr: x_1, escape: true)
-                      Write("</span>")
-                    }
+                main-comp() {
+                  write("<!DOCTYPE html>")
+                  for x in ["a", "b"] {
+                    write("<div")
+                    write(">")
+                    write_escaped(x)
+                    write("</div>")
+                  }
+                  for x_1 in ["c", "d"] {
+                    write("<span")
+                    write(">")
+                    write_escaped(x_1)
+                    write("</span>")
                   }
                 }
             "#]],
@@ -1048,17 +988,27 @@ mod tests {
             .join(""),
             CompilationMode::Development,
             expect![[r#"
-                IrEntrypoint {
-                  parameters: [name: string, count: string]
-                  body: {
-                    Write("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<title>")
-                    Write("test-comp - Development Mode")
-                    Write("</title>\n</head>\n<body>\n<script id=\"hop-config\" type=\"application/json\">\n{\"entrypoint\": \"")
-                    Write("test-comp")
-                    Write("\", \"params\": ")
-                    WriteExpr(expr: JsonEncode({name: name, count: count}), escape: false)
-                    Write("}\n</script>\n<script type=\"module\" src=\"http://localhost:33861/dev.js\"></script>\n</body>\n</html>")
-                  }
+                test-comp(name: string, count: string) {
+                  write("<!DOCTYPE html>
+                <html>
+                <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>")
+                  write("test-comp - Development Mode")
+                  write("</title>
+                </head>
+                <body>
+                <script id="hop-config" type="application/json">
+                {"entrypoint": "")
+                  write("test-comp")
+                  write("", "params": ")
+                  write(JsonEncode({name: name, count: count}))
+                  write("}
+                </script>
+                <script type="module" src="http://localhost:33861/dev.js"></script>
+                </body>
+                </html>")
                 }
             "#]],
         );
@@ -1075,17 +1025,27 @@ mod tests {
             .join(""),
             CompilationMode::Development,
             expect![[r#"
-                IrEntrypoint {
-                  parameters: []
-                  body: {
-                    Write("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<title>")
-                    Write("simple-comp - Development Mode")
-                    Write("</title>\n</head>\n<body>\n<script id=\"hop-config\" type=\"application/json\">\n{\"entrypoint\": \"")
-                    Write("simple-comp")
-                    Write("\", \"params\": ")
-                    Write("{}")
-                    Write("}\n</script>\n<script type=\"module\" src=\"http://localhost:33861/dev.js\"></script>\n</body>\n</html>")
-                  }
+                simple-comp() {
+                  write("<!DOCTYPE html>
+                <html>
+                <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>")
+                  write("simple-comp - Development Mode")
+                  write("</title>
+                </head>
+                <body>
+                <script id="hop-config" type="application/json">
+                {"entrypoint": "")
+                  write("simple-comp")
+                  write("", "params": ")
+                  write("{}")
+                  write("}
+                </script>
+                <script type="module" src="http://localhost:33861/dev.js"></script>
+                </body>
+                </html>")
                 }
             "#]],
         );

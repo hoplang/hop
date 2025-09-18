@@ -70,13 +70,10 @@ mod tests {
         check(
             t.build(vec![t.if_stmt(t.bool(true), vec![t.write("Always shown")])]),
             expect![[r#"
-            IrEntrypoint {
-              parameters: []
-              body: {
-                Write("Always shown")
-              }
-            }
-        "#]],
+                test() {
+                  write("Always shown")
+                }
+            "#]],
         );
     }
 
@@ -89,13 +86,10 @@ mod tests {
                 t.write("After if"),
             ]),
             expect![[r#"
-            IrEntrypoint {
-              parameters: []
-              body: {
-                Write("After if")
-              }
-            }
-        "#]],
+                test() {
+                  write("After if")
+                }
+            "#]],
         );
     }
 
@@ -109,16 +103,13 @@ mod tests {
                 t.if_stmt(t.bool(false), vec![t.write("Static false")]),
             ]),
             expect![[r#"
-            IrEntrypoint {
-              parameters: [show: boolean]
-              body: {
-                If(condition: show) {
-                  Write("Dynamic")
+                test(show: boolean) {
+                  if show {
+                    write("Dynamic")
+                  }
+                  write("Static true")
                 }
-                Write("Static true")
-              }
-            }
-        "#]],
+            "#]],
         );
     }
 }

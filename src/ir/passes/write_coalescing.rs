@@ -143,13 +143,10 @@ mod tests {
         check(
             entrypoint,
             expect![[r#"
-            IrEntrypoint {
-              parameters: []
-              body: {
-                Write("Hello World!")
-              }
-            }
-        "#]],
+                test() {
+                  write("Hello World!")
+                }
+            "#]],
         );
     }
 
@@ -168,17 +165,14 @@ mod tests {
         check(
             entrypoint,
             expect![[r#"
-            IrEntrypoint {
-              parameters: []
-              body: {
-                Write("Before if")
-                If(condition: true) {
-                  Write("Inside if")
+                test() {
+                  write("Before if")
+                  if true {
+                    write("Inside if")
+                  }
+                  write("After if")
                 }
-                Write("After if")
-              }
-            }
-        "#]],
+            "#]],
         );
     }
 
@@ -194,15 +188,12 @@ mod tests {
         check(
             entrypoint,
             expect![[r#"
-            IrEntrypoint {
-              parameters: []
-              body: {
-                If(condition: true) {
-                  Write("Line one")
+                test() {
+                  if true {
+                    write("Line one")
+                  }
                 }
-              }
-            }
-        "#]],
+            "#]],
         );
     }
 
@@ -223,17 +214,14 @@ mod tests {
         check(
             entrypoint,
             expect![[r#"
-            IrEntrypoint {
-              parameters: []
-              body: {
-                For(var: item, array: ["x"]) {
-                  Write("Item: ")
-                  WriteExpr(expr: item, escape: true)
-                  Write(" - Done")
+                test() {
+                  for item in ["x"] {
+                    write("Item: ")
+                    write_escaped(item)
+                    write(" - Done")
+                  }
                 }
-              }
-            }
-        "#]],
+            "#]],
         );
     }
 
@@ -248,15 +236,12 @@ mod tests {
         check(
             entrypoint,
             expect![[r#"
-            IrEntrypoint {
-              parameters: []
-              body: {
-                Let(var: x, value: "value") {
-                  Write("The value is")
+                test() {
+                  let x = "value" in {
+                    write("The value is")
+                  }
                 }
-              }
-            }
-        "#]],
+            "#]],
         );
     }
 
@@ -286,21 +271,18 @@ mod tests {
         check(
             entrypoint,
             expect![[r#"
-            IrEntrypoint {
-              parameters: []
-              body: {
-                Write("Start: ")
-                If(condition: true) {
-                  Write("In if")
-                  For(var: i, array: ["foo"]) {
-                    Write("Loop body")
+                test() {
+                  write("Start: ")
+                  if true {
+                    write("In if")
+                    for i in ["foo"] {
+                      write("Loop body")
+                    }
+                    write("After loop")
                   }
-                  Write("After loop")
+                  write("End.")
                 }
-                Write("End.")
-              }
-            }
-        "#]],
+            "#]],
         );
     }
 
@@ -319,15 +301,12 @@ mod tests {
         check(
             entrypoint,
             expect![[r#"
-            IrEntrypoint {
-              parameters: [x: string]
-              body: {
-                Write("Value: ")
-                WriteExpr(expr: x, escape: true)
-                Write(" - done")
-              }
-            }
-        "#]],
+                test(x: string) {
+                  write("Value: ")
+                  write_escaped(x)
+                  write(" - done")
+                }
+            "#]],
         );
     }
 
@@ -342,12 +321,8 @@ mod tests {
         check(
             entrypoint,
             expect![[r#"
-            IrEntrypoint {
-              parameters: []
-              body: {
-              }
-            }
-        "#]],
+                test() {}
+            "#]],
         );
     }
 
@@ -360,13 +335,10 @@ mod tests {
         check(
             entrypoint,
             expect![[r#"
-            IrEntrypoint {
-              parameters: []
-              body: {
-                Write("Single")
-              }
-            }
-        "#]],
+                test() {
+                  write("Single")
+                }
+            "#]],
         );
     }
 }

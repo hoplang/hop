@@ -359,7 +359,41 @@ impl IrExpr {
     }
 }
 
-
+impl IrEntrypoint {
+    pub fn to_doc(&self) -> BoxDoc {
+        BoxDoc::text(&self.name)
+            .append(BoxDoc::text("("))
+            .append(
+                if self.parameters.is_empty() {
+                    BoxDoc::nil()
+                } else {
+                    BoxDoc::intersperse(
+                        self.parameters.iter().map(|(name, typ)| {
+                            BoxDoc::text(name.as_str())
+                                .append(BoxDoc::text(": "))
+                                .append(BoxDoc::text(typ.to_string()))
+                        }),
+                        BoxDoc::text(", "),
+                    )
+                }
+            )
+            .append(BoxDoc::text(") {"))
+            .append(
+                if self.body.is_empty() {
+                    BoxDoc::nil()
+                } else {
+                    BoxDoc::line()
+                        .append(BoxDoc::intersperse(
+                            self.body.iter().map(|stmt| stmt.to_doc()),
+                            BoxDoc::line(),
+                        ))
+                        .append(BoxDoc::line())
+                        .nest(2)
+                }
+            )
+            .append(BoxDoc::text("}"))
+    }
+}
 
 impl fmt::Display for IrStatement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -369,79 +403,6 @@ impl fmt::Display for IrStatement {
 
 impl fmt::Display for IrEntrypoint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "IrEntrypoint {{")?;
-        write!(f, "  parameters: [")?;
-        for (i, (name, _type)) in self.parameters.iter().enumerate() {
-            if i > 0 {
-                write!(f, ", ")?;
-            }
-            write!(f, "{}: {}", name, _type)?;
-        }
-        writeln!(f, "]")?;
-        writeln!(f, "  body: {{")?;
-
-        fn fmt_stmts(
-            statements: &[IrStatement],
-            f: &mut fmt::Formatter<'_>,
-            indent: usize,
-        ) -> fmt::Result {
-            for statement in statements {
-                for _ in 0..indent {
-                    write!(f, "  ")?;
-                }
-                match statement {
-                    IrStatement::Write { id: _, content } => writeln!(f, "Write({:?})", content)?,
-                    IrStatement::WriteExpr {
-                        id: _,
-                        expr,
-                        escape,
-                    } => writeln!(f, "WriteExpr(expr: {}, escape: {})", expr, escape)?,
-                    IrStatement::If {
-                        id: _,
-                        condition,
-                        body,
-                    } => {
-                        writeln!(f, "If(condition: {}) {{", condition)?;
-                        fmt_stmts(body, f, indent + 1)?;
-                        for _ in 0..indent {
-                            write!(f, "  ")?;
-                        }
-                        writeln!(f, "}}")?;
-                    }
-                    IrStatement::For {
-                        id: _,
-                        var,
-                        array,
-                        body,
-                    } => {
-                        writeln!(f, "For(var: {}, array: {}) {{", var, array)?;
-                        fmt_stmts(body, f, indent + 1)?;
-                        for _ in 0..indent {
-                            write!(f, "  ")?;
-                        }
-                        writeln!(f, "}}")?;
-                    }
-                    IrStatement::Let {
-                        id: _,
-                        var,
-                        value,
-                        body,
-                    } => {
-                        writeln!(f, "Let(var: {}, value: {}) {{", var, value)?;
-                        fmt_stmts(body, f, indent + 1)?;
-                        for _ in 0..indent {
-                            write!(f, "  ")?;
-                        }
-                        writeln!(f, "}}")?;
-                    }
-                }
-            }
-            Ok(())
-        }
-
-        fmt_stmts(&self.body, f, 2)?;
-        writeln!(f, "  }}")?;
-        writeln!(f, "}}")?;
-        Ok(())
+        writeln!(f, "{}", self.to_doc().pretty(60))
     }
 }
