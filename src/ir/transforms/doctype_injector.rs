@@ -164,7 +164,7 @@ mod tests {
         let after = format_entrypoint_children(&transformed_entrypoint);
 
         // Create output with before/after format
-        let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
+        let output = format!("-- before --\n{}\n-- after --\n{}\n", before, after);
 
         expected.assert_eq(&output);
     }
@@ -188,7 +188,8 @@ mod tests {
                 Text: <whitespace:21 chars>
                 DOCTYPE: <!DOCTYPE html>
                 Html: <html> (3 children)
-                Text: <whitespace:17 chars>"#]],
+                Text: <whitespace:17 chars>
+            "#]],
         );
     }
 
@@ -215,7 +216,8 @@ mod tests {
                 DOCTYPE: <!DOCTYPE html>
                 Text: <whitespace:21 chars>
                 Html: <html> (3 children)
-                Text: <whitespace:17 chars>"#]],
+                Text: <whitespace:17 chars>
+            "#]],
         );
     }
 
@@ -231,7 +233,8 @@ mod tests {
                 Text: <whitespace:17 chars>
                 -- after --
                 Text: <whitespace:17 chars>
-                DOCTYPE: <!DOCTYPE html>"#]],
+                DOCTYPE: <!DOCTYPE html>
+            "#]],
         );
     }
 
@@ -248,7 +251,8 @@ mod tests {
                 Text: "\n                    Just some text content\n                "
                 -- after --
                 DOCTYPE: <!DOCTYPE html>
-                Text: "\n                    Just some text content\n                ""#]],
+                Text: "\n                    Just some text content\n                "
+            "#]],
         );
     }
 
@@ -274,7 +278,8 @@ mod tests {
                 DOCTYPE: <!DOCTYPE html>
                 Text: <whitespace:21 chars>
                 Html: <html> (1 children)
-                Text: <whitespace:17 chars>"#]],
+                Text: <whitespace:17 chars>
+            "#]],
         );
     }
 
@@ -296,7 +301,8 @@ mod tests {
                 Text: <whitespace:22 chars>
                 DOCTYPE: <!DOCTYPE html>
                 Html: <html> (1 children)
-                Text: <whitespace:17 chars>"#]],
+                Text: <whitespace:17 chars>
+            "#]],
         );
     }
 }
