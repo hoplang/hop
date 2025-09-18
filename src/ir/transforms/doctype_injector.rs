@@ -1,6 +1,7 @@
-use crate::document::document_cursor::StringSpan;
-use crate::hop::ast::InlinedEntryPoint;
-use crate::hop::node::InlinedNode;
+use crate::{
+    document::document_cursor::StringSpan,
+    hop::inlined_ast::{InlinedEntryPoint, InlinedNode},
+};
 
 /// Transform that injects <!DOCTYPE html> at the beginning of entrypoints
 /// that don't already have a doctype declaration

@@ -3,13 +3,12 @@ use crate::dop::expr::TypedExpr;
 use crate::dop::parser::TypedArgument;
 use crate::dop::{Expr, Type};
 use crate::hop::ast::{Ast, Attribute, AttributeValue};
+use crate::hop::inlined_ast::{InlinedEntryPoint, InlinedNode};
 use crate::hop::module_name::ModuleName;
 use std::collections::{BTreeMap, HashMap};
 
-use crate::hop::ast::{
-    InlinedEntryPoint, TypedAttribute, TypedAttributeValue, TypedComponentDefinition,
-};
-use crate::hop::node::{InlinedNode, Node, TypedNode};
+use crate::hop::ast::{TypedAttribute, TypedAttributeValue, TypedComponentDefinition};
+use crate::hop::node::{Node, TypedNode};
 
 /// The Inliner transforms ASTs by replacing ComponentReference nodes with their
 /// inlined component definitions, using Let nodes for parameter binding and

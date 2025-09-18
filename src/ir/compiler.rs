@@ -3,8 +3,8 @@ use crate::document::document_cursor::StringSpan;
 use crate::dop::Expr;
 use crate::dop::expr::TypedExpr;
 use crate::dop::{Type, VarName};
-use crate::hop::ast::{AttributeValue, InlinedEntryPoint, TypedAttribute};
-use crate::hop::node::InlinedNode;
+use crate::hop::ast::{AttributeValue, TypedAttribute};
+use crate::hop::inlined_ast::{InlinedEntryPoint, InlinedNode};
 use std::collections::BTreeMap;
 
 use super::ast::{ExprId, IrEntrypoint, IrExpr, IrStatement, StatementId};
