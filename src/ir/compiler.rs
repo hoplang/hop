@@ -191,10 +191,10 @@ impl Compiler {
         output: &mut Vec<IrStatement>,
     ) {
         match node {
-            Node::Text { range } => {
+            Node::Text { value, .. } => {
                 output.push(IrStatement::Write {
                     id: self.next_node_id(),
-                    content: range.as_str().to_string(),
+                    content: value.to_string(),
                 });
             }
 
@@ -254,10 +254,10 @@ impl Compiler {
                 );
             }
 
-            Node::Doctype { range } => {
+            Node::Doctype { value, .. } => {
                 output.push(IrStatement::Write {
                     id: self.next_node_id(),
-                    content: range.to_string(),
+                    content: value.to_string(),
                 });
             }
 

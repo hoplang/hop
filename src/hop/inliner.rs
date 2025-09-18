@@ -522,6 +522,7 @@ mod tests {
                         range: "<main-comp entrypoint>\n                        <card-comp {title: \"Hello\"}/>\n                    </main-comp>",
                         children: [
                             Text {
+                                value: "\n                        ",
                                 range: "\n                        ",
                             },
                             Html {
@@ -551,6 +552,7 @@ mod tests {
                                         },
                                         children: [
                                             Text {
+                                                value: "\n                        ",
                                                 range: "\n                        ",
                                             },
                                             Html {
@@ -573,6 +575,7 @@ mod tests {
                                                 range: "<h2>{title}</h2>",
                                             },
                                             Text {
+                                                value: "\n                    ",
                                                 range: "\n                    ",
                                             },
                                         ],
@@ -582,6 +585,7 @@ mod tests {
                                 range: "<card-comp {title: \"Hello\"}/>",
                             },
                             Text {
+                                value: "\n                    ",
                                 range: "\n                    ",
                             },
                         ],
@@ -624,6 +628,7 @@ mod tests {
                         range: "<main-comp entrypoint>\n                        <card-comp>\n                            <p>Slot content</p>\n                        </card-comp>\n                    </main-comp>",
                         children: [
                             Text {
+                                value: "\n                        ",
                                 range: "\n                        ",
                             },
                             Html {
@@ -644,6 +649,7 @@ mod tests {
                                 },
                                 children: [
                                     Text {
+                                        value: "\n                        ",
                                         range: "\n                        ",
                                     },
                                     Html {
@@ -664,9 +670,11 @@ mod tests {
                                         },
                                         children: [
                                             Text {
+                                                value: "\n                            ",
                                                 range: "\n                            ",
                                             },
                                             Text {
+                                                value: "\n                            ",
                                                 range: "\n                            ",
                                             },
                                             Html {
@@ -677,27 +685,32 @@ mod tests {
                                                 attributes: {},
                                                 children: [
                                                     Text {
+                                                        value: "Slot content",
                                                         range: "Slot content",
                                                     },
                                                 ],
                                                 range: "<p>Slot content</p>",
                                             },
                                             Text {
+                                                value: "\n                        ",
                                                 range: "\n                        ",
                                             },
                                             Text {
+                                                value: "\n                        ",
                                                 range: "\n                        ",
                                             },
                                         ],
                                         range: "<div class=\"card\">\n                            <slot-default/>\n                        </div>",
                                     },
                                     Text {
+                                        value: "\n                    ",
                                         range: "\n                    ",
                                     },
                                 ],
                                 range: "<card-comp>\n                            <p>Slot content</p>\n                        </card-comp>",
                             },
                             Text {
+                                value: "\n                    ",
                                 range: "\n                    ",
                             },
                         ],

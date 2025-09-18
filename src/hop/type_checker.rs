@@ -579,11 +579,13 @@ fn typecheck_node(
             range: range.clone(),
         }),
 
-        Node::Text { range } => Some(Node::Text {
+        Node::Text { value, range } => Some(Node::Text {
+            value: value.clone(),
             range: range.clone(),
         }),
 
-        Node::Doctype { range } => Some(Node::Doctype {
+        Node::Doctype { value, range } => Some(Node::Doctype {
+            value: value.clone(),
             range: range.clone(),
         }),
 

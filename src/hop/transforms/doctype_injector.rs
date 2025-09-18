@@ -18,7 +18,7 @@ impl DoctypeInjector {
         for node in nodes {
             match node {
                 Node::Doctype { .. } => return true,
-                Node::Text { range } if range.as_str().trim().is_empty() => {
+                Node::Text { value, .. } if value.as_str().trim().is_empty() => {
                     // Skip whitespace-only text nodes
                     continue;
                 }
@@ -34,8 +34,8 @@ impl DoctypeInjector {
     /// Find the position to insert DOCTYPE (after leading whitespace)
     fn find_doctype_insert_position(nodes: &[TypedNode]) -> usize {
         for (i, node) in nodes.iter().enumerate() {
-            if let Node::Text { range } = node {
-                if range.as_str().trim().is_empty() {
+            if let Node::Text { value, .. } = node {
+                if value.as_str().trim().is_empty() {
                     // Skip whitespace-only text nodes
                     continue;
                 }
@@ -53,8 +53,10 @@ impl ComponentTransform for DoctypeInjector {
         // Only inject DOCTYPE for entrypoint components
         if component.is_entrypoint && !Self::has_doctype(&component.children) {
             // Create a synthetic DOCTYPE node
+            let range = DocumentRange::new("<!DOCTYPE html>".to_string());
             let doctype_node = Node::Doctype {
-                range: DocumentRange::new("<!DOCTYPE html>".to_string()),
+                value: range.to_string_span(),
+                range,
             };
 
             // Find the right position to insert (after any leading whitespace)
@@ -84,11 +86,11 @@ mod tests {
                 output.push('\n');
             }
             match node {
-                Node::Doctype { range } => {
-                    output.push_str(&format!("DOCTYPE: {}", range.as_str()));
+                Node::Doctype { value, .. } => {
+                    output.push_str(&format!("DOCTYPE: {}", value.as_str()));
                 }
-                Node::Text { range } => {
-                    let text = range.as_str();
+                Node::Text { value, .. } => {
+                    let text = value.as_str();
                     if text.trim().is_empty() {
                         output.push_str(&format!("Text: <whitespace:{} chars>", text.len()));
                     } else {

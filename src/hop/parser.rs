@@ -387,11 +387,17 @@ fn construct_node(
         }
         Token::Doctype { range } => {
             //
-            Some(Node::Doctype { range })
+            Some(Node::Doctype {
+                value: range.to_string_span(),
+                range,
+            })
         }
         Token::Text { range, .. } => {
             //
-            Some(Node::Text { range })
+            Some(Node::Text {
+                value: range.to_string_span(),
+                range,
+            })
         }
         Token::TextExpression {
             expression: expr, ..

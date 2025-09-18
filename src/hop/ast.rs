@@ -172,7 +172,10 @@ pub enum Node<E = Expr> {
     /// A Text node represents text in the document.
     /// E.g. <div>hello world</div>
     ///           ^^^^^^^^^^^
-    Text { range: DocumentRange },
+    Text {
+        value: StringSpan,
+        range: DocumentRange,
+    },
 
     /// A TextExpression represents an expression that occurs in a text position.
     /// E.g. <div>hello {world}</div>
@@ -221,7 +224,10 @@ pub enum Node<E = Expr> {
     },
 
     /// A Doctype node represents a doctype, e.g. a <!DOCTYPE html>
-    Doctype { range: DocumentRange },
+    Doctype {
+        value: StringSpan,
+        range: DocumentRange,
+    },
 
     /// An HTML node represents a plain HTML node.
     /// E.g. <div>...</div>
