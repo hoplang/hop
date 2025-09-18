@@ -1,6 +1,7 @@
 use std::{collections::HashMap, fmt};
 
 use crate::dop::{VarName, expr::Expr, r#type::Type};
+use pretty::BoxDoc;
 
 pub use crate::dop::expr::{BinaryOp, UnaryOp};
 
@@ -197,6 +198,85 @@ impl IrStatement {
         }
     }
 
+    pub fn to_doc(&self) -> BoxDoc {
+        match self {
+            IrStatement::Write { content, .. } => {
+                BoxDoc::text("write")
+                    .append(BoxDoc::text("("))
+                    .append(BoxDoc::text(format!("\"{}\"", content)))
+                    .append(BoxDoc::text(")"))
+            }
+            IrStatement::WriteExpr { expr, escape, .. } => {
+                let write_fn = if *escape { "write_escaped" } else { "write" };
+                BoxDoc::text(write_fn)
+                    .append(BoxDoc::text("("))
+                    .append(expr.to_doc())
+                    .append(BoxDoc::text(")"))
+            }
+            IrStatement::If { condition, body, .. } => {
+                BoxDoc::text("if ")
+                    .append(condition.to_doc())
+                    .append(BoxDoc::text(" {"))
+                    .append(
+                        if body.is_empty() {
+                            BoxDoc::nil()
+                        } else {
+                            BoxDoc::line()
+                                .append(BoxDoc::intersperse(
+                                    body.iter().map(|stmt| stmt.to_doc()),
+                                    BoxDoc::line(),
+                                ))
+                                .append(BoxDoc::line())
+                                .nest(2)
+                        }
+                    )
+                    .append(BoxDoc::text("}"))
+            }
+            IrStatement::For { var, array, body, .. } => {
+                BoxDoc::text("for ")
+                    .append(BoxDoc::text(var.as_str()))
+                    .append(BoxDoc::text(" in "))
+                    .append(array.to_doc())
+                    .append(BoxDoc::text(" {"))
+                    .append(
+                        if body.is_empty() {
+                            BoxDoc::nil()
+                        } else {
+                            BoxDoc::line()
+                                .append(BoxDoc::intersperse(
+                                    body.iter().map(|stmt| stmt.to_doc()),
+                                    BoxDoc::line(),
+                                ))
+                                .append(BoxDoc::line())
+                                .nest(2)
+                        }
+                    )
+                    .append(BoxDoc::text("}"))
+            }
+            IrStatement::Let { var, value, body, .. } => {
+                BoxDoc::text("let ")
+                    .append(BoxDoc::text(var.as_str()))
+                    .append(BoxDoc::text(" = "))
+                    .append(value.to_doc())
+                    .append(BoxDoc::text(" in {"))
+                    .append(
+                        if body.is_empty() {
+                            BoxDoc::nil()
+                        } else {
+                            BoxDoc::line()
+                                .append(BoxDoc::intersperse(
+                                    body.iter().map(|stmt| stmt.to_doc()),
+                                    BoxDoc::line(),
+                                ))
+                                .append(BoxDoc::line())
+                                .nest(2)
+                        }
+                    )
+                    .append(BoxDoc::text("}"))
+            }
+        }
+    }
+
 }
 
 impl IrExpr {
@@ -283,67 +363,7 @@ impl IrExpr {
 
 impl fmt::Display for IrStatement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fn fmt_stmts(
-            statements: &[IrStatement],
-            f: &mut fmt::Formatter<'_>,
-            indent: usize,
-        ) -> fmt::Result {
-            for statement in statements {
-                for _ in 0..indent {
-                    write!(f, "  ")?;
-                }
-                match statement {
-                    IrStatement::Write { id: _, content } => writeln!(f, "Write({:?})", content)?,
-                    IrStatement::WriteExpr {
-                        id: _,
-                        expr,
-                        escape,
-                    } => writeln!(f, "WriteExpr(expr: {}, escape: {})", expr, escape)?,
-                    IrStatement::If {
-                        id: _,
-                        condition,
-                        body,
-                    } => {
-                        writeln!(f, "If(condition: {}) {{", condition)?;
-                        fmt_stmts(body, f, indent + 1)?;
-                        for _ in 0..indent {
-                            write!(f, "  ")?;
-                        }
-                        writeln!(f, "}}")?;
-                    }
-                    IrStatement::For {
-                        id: _,
-                        var,
-                        array,
-                        body,
-                    } => {
-                        writeln!(f, "For(var: {}, array: {}) {{", var, array)?;
-                        fmt_stmts(body, f, indent + 1)?;
-                        for _ in 0..indent {
-                            write!(f, "  ")?;
-                        }
-                        writeln!(f, "}}")?;
-                    }
-                    IrStatement::Let {
-                        id: _,
-                        var,
-                        value,
-                        body,
-                    } => {
-                        writeln!(f, "Let(var: {}, value: {}) {{", var, value)?;
-                        fmt_stmts(body, f, indent + 1)?;
-                        for _ in 0..indent {
-                            write!(f, "  ")?;
-                        }
-                        writeln!(f, "}}")?;
-                    }
-                }
-            }
-            Ok(())
-        }
-
-        fmt_stmts(&[self.clone()], f, 0)?;
-        Ok(())
+        write!(f, "{}", self.to_doc().pretty(60))
     }
 }
 

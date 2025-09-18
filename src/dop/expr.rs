@@ -100,7 +100,7 @@ impl Ranged for Expr<DocumentRange> {
 }
 
 impl<'a, T> Expr<T> {
-    fn to_doc(&'a self) -> BoxDoc<'a> {
+    pub fn to_doc(&'a self) -> BoxDoc<'a> {
         match self {
             Expr::Var { value, .. } => BoxDoc::text(value.as_str()),
             Expr::PropertyAccess {
