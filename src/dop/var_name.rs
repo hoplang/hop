@@ -1,7 +1,23 @@
 use std::fmt::{self, Display};
+use thiserror::Error;
 
 use crate::document::document_cursor::{DocumentRange, StringSpan};
-use crate::dop::parse_error::ParseError;
+
+/// Error type for invalid variable names
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum InvalidVarNameError {
+    #[error("Variable name cannot start with a digit")]
+    StartsWithDigit,
+
+    #[error("Variable name cannot start with underscore")]
+    StartsWithUnderscore,
+
+    #[error("Variable name contains invalid character: '{0}'")]
+    InvalidCharacter(char),
+
+    #[error("Variable name cannot be empty")]
+    Empty,
+}
 
 /// A VarName represents a validated variable name in dop.
 #[derive(Debug, Clone)]
@@ -10,17 +26,47 @@ pub struct VarName {
 }
 
 impl VarName {
-    pub fn new(value: DocumentRange) -> Result<Self, ParseError> {
-        let mut chars = value.as_str().chars();
-        if !chars.next().is_some_and(|c| c.is_ascii_alphabetic())
-            || !chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
-        {
-            return Err(ParseError::InvalidVariableName {
-                name: value.to_string_span(),
-                range: value.clone(),
-            });
-        }
+    /// Create a new VarName from a DocumentRange, validating it
+    pub fn new(value: DocumentRange) -> Result<Self, InvalidVarNameError> {
+        Self::validate(value.as_str())?;
         Ok(VarName { value })
+    }
+
+    /// Create a new VarName from a string, validating it
+    pub fn from_string(name: String) -> Result<Self, InvalidVarNameError> {
+        Self::validate(&name)?;
+        let value = DocumentRange::new(name);
+        Ok(VarName { value })
+    }
+
+    /// Validate a variable name string
+    fn validate(name: &str) -> Result<(), InvalidVarNameError> {
+        if name.is_empty() {
+            return Err(InvalidVarNameError::Empty);
+        }
+
+        let mut chars = name.chars();
+        let first_char = chars.next().unwrap();
+
+        if first_char.is_ascii_digit() {
+            return Err(InvalidVarNameError::StartsWithDigit);
+        }
+
+        if first_char == '_' {
+            return Err(InvalidVarNameError::StartsWithUnderscore);
+        }
+
+        if !first_char.is_ascii_alphabetic() {
+            return Err(InvalidVarNameError::InvalidCharacter(first_char));
+        }
+
+        for c in chars {
+            if !c.is_ascii_alphanumeric() && c != '_' {
+                return Err(InvalidVarNameError::InvalidCharacter(c));
+            }
+        }
+
+        Ok(())
     }
     pub fn as_str(&self) -> &str {
         self.value.as_str()
@@ -51,11 +97,10 @@ impl PartialEq for VarName {
 impl Eq for VarName {}
 
 impl TryFrom<String> for VarName {
-    type Error = ParseError;
+    type Error = InvalidVarNameError;
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
-        let value = DocumentRange::new(s);
-        VarName::new(value)
+        VarName::from_string(s)
     }
 }
 
@@ -66,31 +111,33 @@ mod tests {
 
     #[test]
     fn test_valid_var_names() {
-        let range = DocumentRange::new("validName".to_string());
-        assert!(VarName::new(range).is_ok());
-
-        let range = DocumentRange::new("x".to_string());
-        assert!(VarName::new(range).is_ok());
-
-        let range = DocumentRange::new("name_with_underscores".to_string());
-        assert!(VarName::new(range).is_ok());
-
-        let range = DocumentRange::new("name123".to_string());
-        assert!(VarName::new(range).is_ok());
+        assert!(VarName::from_string("validName".to_string()).is_ok());
+        assert!(VarName::from_string("x".to_string()).is_ok());
+        assert!(VarName::from_string("name_with_underscores".to_string()).is_ok());
+        assert!(VarName::from_string("name123".to_string()).is_ok());
     }
 
     #[test]
     fn test_invalid_var_names() {
-        let range = DocumentRange::new("123invalid".to_string());
-        assert!(VarName::new(range).is_err());
-
-        let range = DocumentRange::new("_starts_with_underscore".to_string());
-        assert!(VarName::new(range).is_err());
-
-        let range = DocumentRange::new("has-dash".to_string());
-        assert!(VarName::new(range).is_err());
-
-        let range = DocumentRange::new("has space".to_string());
-        assert!(VarName::new(range).is_err());
+        assert_eq!(
+            VarName::from_string("123invalid".to_string()),
+            Err(InvalidVarNameError::StartsWithDigit)
+        );
+        assert_eq!(
+            VarName::from_string("_starts_with_underscore".to_string()),
+            Err(InvalidVarNameError::StartsWithUnderscore)
+        );
+        assert_eq!(
+            VarName::from_string("has-dash".to_string()),
+            Err(InvalidVarNameError::InvalidCharacter('-'))
+        );
+        assert_eq!(
+            VarName::from_string("has space".to_string()),
+            Err(InvalidVarNameError::InvalidCharacter(' '))
+        );
+        assert_eq!(
+            VarName::from_string("".to_string()),
+            Err(InvalidVarNameError::Empty)
+        );
     }
 }

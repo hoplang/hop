@@ -2,6 +2,7 @@ use crate::document::document_cursor::{DocumentRange, Ranged, StringSpan};
 use thiserror::Error;
 
 use super::token::Token;
+use super::var_name::InvalidVarNameError;
 
 #[derive(Error, Debug, Clone)]
 pub enum ParseError {
@@ -17,11 +18,10 @@ pub enum ParseError {
     #[error("Unmatched '{token}'")]
     UnmatchedToken { token: Token, range: DocumentRange },
 
-    #[error(
-        "Invalid variable name '{name}'. Variable names must start with a letter and contain only letters, digits, and underscores"
-    )]
+    #[error("Invalid variable name '{name}': {error}")]
     InvalidVariableName {
         name: StringSpan,
+        error: InvalidVarNameError,
         range: DocumentRange,
     },
 

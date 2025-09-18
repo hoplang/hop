@@ -119,7 +119,13 @@ impl Parser {
 
     fn expect_variable_name(&mut self) -> Result<VarName, ParseError> {
         match self.iter.next().transpose()? {
-            Some((Token::Identifier(name), _)) => VarName::new(name),
+            Some((Token::Identifier(name), _)) => {
+                VarName::new(name.clone()).map_err(|error| ParseError::InvalidVariableName {
+                    name: name.to_string_span(),
+                    error,
+                    range: name,
+                })
+            }
             Some((actual, range)) => Err(ParseError::ExpectedVariableNameButGot { actual, range }),
             None => Err(ParseError::UnexpectedEof {
                 range: self.range.clone(),
@@ -401,7 +407,11 @@ impl Parser {
         &mut self,
         identifier: DocumentRange,
     ) -> Result<UntypedExpr, ParseError> {
-        let var_name = VarName::new(identifier)?;
+        let var_name = VarName::new(identifier.clone()).map_err(|error| ParseError::InvalidVariableName {
+            name: identifier.to_string_span(),
+            error,
+            range: identifier.clone(),
+        })?;
         let mut expr = Expr::Var {
             annotation: var_name.range().clone(),
             value: var_name,
