@@ -1,7 +1,7 @@
 use crate::hop::ast::Ast;
 use crate::hop::module_name::ModuleName;
 use crate::dop::expr::TypedExpr;
-use crate::ir::ast::IrModule;
+use crate::ir::ast::{IrModule, IrEntrypoint};
 use crate::ir::inliner::Inliner;
 use crate::ir::passes::{
     Pass, AlphaRenamingPass, ConstantPropagationPass, DeadCodeEliminationPass,
@@ -34,19 +34,19 @@ pub fn orchestrate(
 
         // Step 4: Run optimization passes (only in production mode)
         if mode == CompilationMode::Production {
-            // Create optimization passes
-            let mut passes: Vec<Box<dyn Pass>> = vec![
-                Box::new(AlphaRenamingPass::new()),
-                Box::new(ConstantPropagationPass::new()),
-                Box::new(UnusedLetEliminationPass::new()),
-                Box::new(DeadCodeEliminationPass::new()),
-                Box::new(WriteExprSimplificationPass::new()),
+            // Create optimization passes as function pointers
+            let passes: Vec<fn(IrEntrypoint) -> IrEntrypoint> = vec![
+                AlphaRenamingPass::run,
+                ConstantPropagationPass::run,
+                UnusedLetEliminationPass::run,
+                DeadCodeEliminationPass::run,
+                WriteExprSimplificationPass::run,
                 // Skip WriteCoalescingPass for now, since typescript-language-server can't handle long strings very well
             ];
 
             // Run passes on this entrypoint
-            for pass in &mut passes {
-                ir_entrypoint = pass.run(ir_entrypoint);
+            for pass in passes {
+                ir_entrypoint = pass(ir_entrypoint);
             }
         }
 

@@ -6,10 +6,6 @@ use super::Pass;
 pub struct WriteCoalescingPass;
 
 impl WriteCoalescingPass {
-    pub fn new() -> Self {
-        Self
-    }
-
     fn next_id(next_id: &mut StatementId) -> StatementId {
         let id = *next_id;
         *next_id += 1;
@@ -128,7 +124,7 @@ impl WriteCoalescingPass {
 }
 
 impl Pass for WriteCoalescingPass {
-    fn run(&mut self, mut entrypoint: IrEntrypoint) -> IrEntrypoint {
+    fn run(mut entrypoint: IrEntrypoint) -> IrEntrypoint {
         let mut next_id = 1;
         entrypoint.body = Self::transform_statements(entrypoint.body, &mut next_id);
         entrypoint
@@ -142,8 +138,7 @@ mod tests {
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: IrEntrypoint, expected: Expect) {
-        let mut pass = WriteCoalescingPass::new();
-        let result = pass.run(entrypoint);
+        let result = WriteCoalescingPass::run(entrypoint);
         expected.assert_eq(&result.to_string());
     }
 

@@ -7,14 +7,8 @@ use crate::ir::ast::{IrEntrypoint, IrStatement};
 /// statement
 pub struct WriteExprSimplificationPass;
 
-impl WriteExprSimplificationPass {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
 impl Pass for WriteExprSimplificationPass {
-    fn run(&mut self, mut entrypoint: IrEntrypoint) -> IrEntrypoint {
+    fn run(mut entrypoint: IrEntrypoint) -> IrEntrypoint {
         // Use visit_mut to transform all statements in the tree
         for stmt in &mut entrypoint.body {
             stmt.traverse_mut(&mut |statement| {
@@ -42,8 +36,7 @@ mod tests {
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: IrEntrypoint, expected: Expect) {
-        let mut pass = WriteExprSimplificationPass::new();
-        let result = pass.run(entrypoint);
+        let result = WriteExprSimplificationPass::run(entrypoint);
         expected.assert_eq(&result.to_string());
     }
 

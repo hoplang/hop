@@ -251,23 +251,22 @@ impl AlphaRenamingPass {
 }
 
 impl Pass for AlphaRenamingPass {
-    fn run(&mut self, mut entrypoint: IrEntrypoint) -> IrEntrypoint {
-        // Reset state for each entrypoint
-        self.reset();
+    fn run(mut entrypoint: IrEntrypoint) -> IrEntrypoint {
+        let mut pass = AlphaRenamingPass::new();
 
-        self.push_scope();
+        pass.push_scope();
 
         // Create renamed parameter mappings
         let mut renamed_params = Vec::new();
         for (param_name, _) in &entrypoint.parameters {
-            let renamed = self.bind_var(param_name);
+            let renamed = pass.bind_var(param_name);
             renamed_params.push(renamed);
         }
 
         // Rename the body
-        let body = self.rename_statements(entrypoint.body);
+        let body = pass.rename_statements(entrypoint.body);
 
-        self.pop_scope();
+        pass.pop_scope();
 
         // Create Let bindings for parameters if they were renamed
         let mut result_body = body;
@@ -300,8 +299,7 @@ mod tests {
     use expect_test::{Expect, expect};
 
     fn check_renaming(input_entrypoint: IrEntrypoint, expected: Expect) {
-        let mut pass = AlphaRenamingPass::new();
-        let renamed = pass.run(input_entrypoint);
+        let renamed = AlphaRenamingPass::run(input_entrypoint);
         expected.assert_eq(&renamed.to_string());
     }
 

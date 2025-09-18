@@ -20,5 +20,5 @@ use super::ast::IrEntrypoint;
 /// no need for cross-entrypoint analysis.
 pub trait Pass {
     /// Run the pass on a single IR entrypoint, transforming it into a new entrypoint
-    fn run(&mut self, entrypoint: IrEntrypoint) -> IrEntrypoint;
+    fn run(entrypoint: IrEntrypoint) -> IrEntrypoint;
 }

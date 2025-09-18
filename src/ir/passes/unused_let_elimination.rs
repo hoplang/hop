@@ -10,10 +10,6 @@ use std::collections::HashSet;
 pub struct UnusedLetEliminationPass;
 
 impl UnusedLetEliminationPass {
-    pub fn new() -> Self {
-        Self
-    }
-
     /// Collect which let statements have unused variables
     fn collect_unused_lets(entrypoint: &IrEntrypoint) -> HashSet<StatementId> {
         let mut all_lets = HashSet::new();
@@ -37,7 +33,8 @@ impl UnusedLetEliminationPass {
                     primary_expr.traverse(&mut |expr| {
                         if let IrExpr::Var { value: name, .. } = expr {
                             // If this variable is in scope and was defined by a Let, mark it as used
-                            if let Some(IrStatement::Let { id, .. }) = scope.get(&name.to_string()) {
+                            if let Some(IrStatement::Let { id, .. }) = scope.get(&name.to_string())
+                            {
                                 used_lets.insert(*id);
                             }
                         }
@@ -69,7 +66,7 @@ impl UnusedLetEliminationPass {
 }
 
 impl Pass for UnusedLetEliminationPass {
-    fn run(&mut self, mut entrypoint: IrEntrypoint) -> IrEntrypoint {
+    fn run(mut entrypoint: IrEntrypoint) -> IrEntrypoint {
         // First collect which let statements have unused variables
         let unused_lets = Self::collect_unused_lets(&entrypoint);
 
@@ -98,8 +95,7 @@ mod tests {
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: IrEntrypoint, expected: Expect) {
-        let mut pass = UnusedLetEliminationPass::new();
-        let result = pass.run(entrypoint);
+        let result = UnusedLetEliminationPass::run(entrypoint);
         expected.assert_eq(&result.to_string());
     }
 

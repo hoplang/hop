@@ -17,14 +17,8 @@ enum Const {
 /// A datafrog-based constant propagation pass that tracks and propagates constant values
 pub struct ConstantPropagationPass;
 
-impl ConstantPropagationPass {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
 impl Pass for ConstantPropagationPass {
-    fn run(&mut self, entrypoint: IrEntrypoint) -> IrEntrypoint {
+    fn run(entrypoint: IrEntrypoint) -> IrEntrypoint {
         let mut iteration = Iteration::new();
 
         let mut initial_constants = Vec::new();
@@ -183,8 +177,7 @@ mod tests {
     use super::*;
 
     fn check(entrypoint: IrEntrypoint, expected: Expect) {
-        let mut pass = ConstantPropagationPass::new();
-        let result = pass.run(entrypoint);
+        let result = ConstantPropagationPass::run(entrypoint);
         expected.assert_eq(&result.to_string());
     }
 

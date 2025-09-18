@@ -8,10 +8,6 @@ use crate::ir::{
 pub struct DeadCodeEliminationPass;
 
 impl DeadCodeEliminationPass {
-    pub fn new() -> Self {
-        Self
-    }
-
     fn transform_statements(statements: Vec<IrStatement>) -> Vec<IrStatement> {
         statements
             .into_iter()
@@ -37,7 +33,7 @@ impl DeadCodeEliminationPass {
 }
 
 impl Pass for DeadCodeEliminationPass {
-    fn run(&mut self, mut entrypoint: IrEntrypoint) -> IrEntrypoint {
+    fn run(mut entrypoint: IrEntrypoint) -> IrEntrypoint {
         // First, recursively process all nested bodies using visit_mut
         for stmt in &mut entrypoint.body {
             stmt.traverse_mut(&mut |s| match s {
@@ -64,8 +60,7 @@ mod tests {
     use expect_test::{Expect, expect};
 
     fn check(entrypoint: IrEntrypoint, expected: Expect) {
-        let mut pass = DeadCodeEliminationPass::new();
-        let result = pass.run(entrypoint);
+        let result = DeadCodeEliminationPass::run(entrypoint);
         expected.assert_eq(&result.to_string());
     }
 
