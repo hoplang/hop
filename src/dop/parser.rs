@@ -10,7 +10,7 @@ use crate::dop::token::Token;
 use crate::dop::tokenizer::Tokenizer;
 use crate::dop::var_name::VarName;
 
-use super::expr::UntypedExpr;
+use super::expr::{TypedExpr, UntypedExpr};
 use super::r#type::RangedType;
 
 /// A Parameter represents a parsed parameter with type annotation.
@@ -27,6 +27,8 @@ impl Display for Parameter {
         write!(f, "{}: {}", self.var_name, self.var_type)
     }
 }
+
+pub type TypedArgument = Argument<TypedExpr>;
 
 /// An Argument represents a parsed argument with a name and a value.
 /// E.g. <my-comp {x: [1,2], y: 2}>

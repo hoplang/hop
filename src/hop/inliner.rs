@@ -1,7 +1,8 @@
 use crate::document::document_cursor::{DocumentRange, StringSpan};
 use crate::dop::expr::TypedExpr;
-use crate::dop::{Argument, Expr, Type};
-use crate::hop::ast::{Ast, Attribute, AttributeValue, ComponentDefinition};
+use crate::dop::parser::TypedArgument;
+use crate::dop::{Expr, Type};
+use crate::hop::ast::{Ast, Attribute, AttributeValue};
 use crate::hop::module_name::ModuleName;
 use std::collections::{BTreeMap, HashMap};
 
@@ -48,24 +49,23 @@ impl<'a> Inliner<'a> {
     /// Inline a component reference
     fn inline_component_reference(
         &self,
-        tag_name: &DocumentRange,
-        module: &ModuleName,
+        module_name: &ModuleName,
         component: &TypedComponentDefinition,
-        args: Option<&(Vec<Argument<TypedExpr>>, DocumentRange)>,
-        extra_attributes: &BTreeMap<StringSpan, TypedAttribute>,
+        args: &[TypedArgument],
+        reference_attributes: &BTreeMap<StringSpan, TypedAttribute>,
         slot_children: &[TypedNode],
         range: &DocumentRange,
     ) -> InlinedNode {
         // Determine wrapper tag
-        let wrapper_tag = component
+        let tag_name = component
             .as_attr
             .as_ref()
-            .map(|a| a.value.clone())
-            .unwrap_or_else(|| self.create_synthetic_range("div"));
+            .map(|a| a.value.to_string_span())
+            .unwrap_or_else(|| StringSpan::new("div".to_string()));
 
         // Create data-hop-id attribute
         let mut attributes = BTreeMap::new();
-        let data_hop_id = format!("{}/{}", module.as_str(), tag_name.as_str());
+        let data_hop_id = format!("{}/{}", module_name.as_str(), component.tag_name.as_str());
         let data_hop_id_span = StringSpan::new("data-hop-id".to_string());
         attributes.insert(
             data_hop_id_span,
@@ -79,7 +79,7 @@ impl<'a> Inliner<'a> {
         );
 
         // Merge attributes from component definition and reference
-        self.merge_attributes(&mut attributes, &component.attributes, extra_attributes);
+        self.merge_attributes(&mut attributes, &component.attributes, reference_attributes);
 
         // Process component children with slot replacement
         let slot_content = if component.has_slot && !slot_children.is_empty() {
@@ -97,26 +97,18 @@ impl<'a> Inliner<'a> {
                 let param_name = param.var_name.clone();
 
                 // Find corresponding argument value
-                let value = if let Some((args, _)) = args {
-                    args.iter()
-                        .find(|a| a.var_name.as_str() == param_name.as_str())
-                        .map(|a| a.var_expr.clone())
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "Missing required parameter '{}' for component '{}' in module '{}'.",
-                                param_name,
-                                tag_name.as_str(),
-                                module.as_str()
-                            )
-                        })
-                } else {
-                    panic!(
-                        "No arguments provided for component '{}' in module '{}', but it requires parameter '{}'.",
-                        tag_name.as_str(),
-                        module.as_str(),
-                        param_name
-                    )
-                };
+                let value = args
+                    .iter()
+                    .find(|a| a.var_name.as_str() == param_name.as_str())
+                    .map(|a| a.var_expr.clone())
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "Missing required parameter '{}' for component '{}' in module '{}'.",
+                            param_name,
+                            component.tag_name.as_str(),
+                            module_name.as_str()
+                        )
+                    });
 
                 // Wrap the body in a Let node
                 body = vec![InlinedNode::Let {
@@ -129,7 +121,7 @@ impl<'a> Inliner<'a> {
 
         // Build the wrapper node with inlined children
         InlinedNode::Html {
-            tag_name: wrapper_tag.to_string_span(),
+            tag_name,
             attributes,
             children: body,
         }
@@ -139,19 +131,19 @@ impl<'a> Inliner<'a> {
     fn merge_attributes(
         &self,
         target: &mut BTreeMap<StringSpan, TypedAttribute>,
-        def_attributes: &BTreeMap<StringSpan, TypedAttribute>,
-        ref_attributes: &BTreeMap<StringSpan, TypedAttribute>,
+        definition_attributes: &BTreeMap<StringSpan, TypedAttribute>,
+        reference_attributes: &BTreeMap<StringSpan, TypedAttribute>,
     ) {
         // First add component's attributes
-        for (name, attr) in def_attributes {
+        for (name, attr) in definition_attributes {
             target.insert(name.clone(), attr.clone());
         }
 
         // Then override with reference's attributes, handling class specially
-        for (name, ref_attr) in ref_attributes {
+        for (name, ref_attr) in reference_attributes {
             if name.as_str() == "class" {
                 // Special handling for class attribute - concatenation
-                if let Some(def_attr) = def_attributes.get(name) {
+                if let Some(def_attr) = definition_attributes.get(name) {
                     // Both definition and reference have class attributes - concatenate them
                     let concatenated_value =
                         self.create_concatenated_class_value(def_attr, ref_attr);
@@ -177,8 +169,8 @@ impl<'a> Inliner<'a> {
     /// Create a concatenated class attribute value using StringConcat
     fn create_concatenated_class_value(
         &self,
-        def_attr: &Attribute<TypedExpr>,
-        ref_attr: &Attribute<TypedExpr>,
+        def_attr: &TypedAttribute,
+        ref_attr: &TypedAttribute,
     ) -> TypedAttributeValue {
         let def_expr = match &def_attr.value {
             Some(AttributeValue::String(s)) => Expr::StringLiteral {
@@ -232,26 +224,18 @@ impl<'a> Inliner<'a> {
         nodes: &[TypedNode],
         slot_content: Option<&[TypedNode]>,
     ) -> Vec<InlinedNode> {
-        let mut result = Vec::new();
-
-        for node in nodes {
-            match node {
-                Node::SlotDefinition { .. } if slot_content.is_some() => {
-                    // Replace slot with the provided content
-                    result.extend(self.inline_nodes(slot_content.unwrap(), None));
-                }
-                // For other nodes, process recursively
-                _ => {
-                    result.push(self.inline_node(node, slot_content));
-                }
-            }
-        }
-
-        result
+        nodes
+            .iter()
+            .flat_map(|node| self.inline_node(node, slot_content))
+            .collect()
     }
 
     /// Inline a single node, optionally replacing slots with the provided content
-    fn inline_node(&self, node: &TypedNode, slot_content: Option<&[TypedNode]>) -> InlinedNode {
+    fn inline_node(
+        &self,
+        node: &TypedNode,
+        slot_content: Option<&[TypedNode]>,
+    ) -> Vec<InlinedNode> {
         match node {
             Node::ComponentReference {
                 tag_name,
@@ -275,15 +259,10 @@ impl<'a> Inliner<'a> {
                     .expect("Component definition should exist");
 
                 // Inline the component
-                self.inline_component_reference(
-                    tag_name,
-                    module,
-                    component,
-                    args.as_ref(),
-                    attributes,
-                    children,
-                    range,
-                )
+                let args_vec = args.as_ref().map(|(v, _)| v.as_slice()).unwrap_or(&[]);
+                vec![self.inline_component_reference(
+                    module, component, args_vec, attributes, children, range,
+                )]
             }
 
             Node::Html {
@@ -291,47 +270,53 @@ impl<'a> Inliner<'a> {
                 attributes,
                 children,
                 ..
-            } => InlinedNode::Html {
+            } => vec![InlinedNode::Html {
                 tag_name: tag_name.to_string_span(),
                 attributes: attributes.clone(),
                 children: self.inline_nodes(children, slot_content),
-            },
+            }],
 
             Node::If {
                 condition,
                 children,
                 ..
-            } => InlinedNode::If {
+            } => vec![InlinedNode::If {
                 condition: condition.clone(),
                 children: self.inline_nodes(children, slot_content),
-            },
+            }],
 
             Node::For {
                 var_name,
                 array_expr,
                 children,
                 ..
-            } => InlinedNode::For {
+            } => vec![InlinedNode::For {
                 var_name: var_name.clone(),
                 array_expr: array_expr.clone(),
                 children: self.inline_nodes(children, slot_content),
-            },
+            }],
 
             Node::SlotDefinition { .. } => {
-                panic!()
+                if let Some(content) = slot_content {
+                    // Replace slot with the provided content
+                    self.inline_nodes(content, None)
+                } else {
+                    // No slot content provided, return empty vec
+                    vec![]
+                }
             }
 
             // Leaf nodes - return as is
-            Node::Text { value, .. } => InlinedNode::Text {
+            Node::Text { value, .. } => vec![InlinedNode::Text {
                 value: value.clone(),
-            },
-            Node::TextExpression { expression, .. } => InlinedNode::TextExpression {
+            }],
+            Node::TextExpression { expression, .. } => vec![InlinedNode::TextExpression {
                 expression: expression.clone(),
-            },
+            }],
 
-            Node::Doctype { value, .. } => InlinedNode::Doctype {
+            Node::Doctype { value, .. } => vec![InlinedNode::Doctype {
                 value: value.clone(),
-            },
+            }],
 
             Node::Placeholder { .. } => panic!(),
         }
