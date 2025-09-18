@@ -15,7 +15,6 @@ use super::{ast::Attribute, module_name::ModuleName};
 
 pub type UntypedNode = Node<UntypedExpr, DocumentRange>;
 pub type TypedNode = Node<TypedExpr, DocumentRange>;
-pub type InlinedNode = Node<TypedExpr, ()>;
 
 #[derive(Debug, Clone)]
 pub enum Node<E, R> {
@@ -90,14 +89,37 @@ pub enum Node<E, R> {
     /// We use Placeholder nodes to be able to construct the child nodes of the node that could not be
     /// constructed. This is useful for e.g. go-to-definition in the language server.
     Placeholder { children: Vec<Self>, range: R },
+}
 
-    /// A Let node introduces a variable binding in its children's scope.
-    /// This is used during component inlining to bind component parameters.
+#[derive(Debug, Clone)]
+pub enum InlinedNode {
+    Text {
+        value: StringSpan,
+    },
+    TextExpression {
+        expression: TypedExpr,
+    },
+    If {
+        condition: TypedExpr,
+        children: Vec<Self>,
+    },
+    For {
+        var_name: VarName,
+        array_expr: TypedExpr,
+        children: Vec<Self>,
+    },
+    Doctype {
+        value: StringSpan,
+    },
+    Html {
+        tag_name: StringSpan,
+        attributes: BTreeMap<StringSpan, Attribute<TypedExpr>>,
+        children: Vec<Self>,
+    },
     Let {
         var: VarName,
-        value: E,
+        value: TypedExpr,
         children: Vec<Self>,
-        range: R,
     },
 }
 
@@ -110,7 +132,6 @@ impl<T, R> Node<T, R> {
             Node::For { children, .. } => children,
             Node::Html { children, .. } => children,
             Node::Placeholder { children, .. } => children,
-            Node::Let { children, .. } => children,
             Node::SlotDefinition { .. } => &[],
             Node::Doctype { .. } => &[],
             Node::Text { .. } => &[],
@@ -187,7 +208,6 @@ impl<T> Ranged for Node<T, DocumentRange> {
             | Node::For { range, .. }
             | Node::Html { range, .. }
             | Node::Placeholder { range, .. }
-            | Node::Let { range, .. }
             | Node::Doctype { range, .. } => range,
         }
     }

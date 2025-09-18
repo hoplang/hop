@@ -586,7 +586,6 @@ mod tests {
             Node::Text { .. } => "text",
             Node::TextExpression { .. } => "text_expression",
             Node::Placeholder { .. } => "error",
-            Node::Let { .. } => "let",
         }
     }
 

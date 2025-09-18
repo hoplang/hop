@@ -6,7 +6,7 @@ use crate::dop::expr::{TypedExpr, UntypedExpr};
 use crate::dop::{Argument, Parameter, VarName};
 use crate::hop::module_name::ModuleName;
 
-use super::node::Node;
+use super::node::{InlinedNode, Node};
 
 /// A StaticAttribute is an attribute that must
 /// be known at compile time.
@@ -150,7 +150,13 @@ impl Import {
 }
 
 pub type TypedComponentDefinition = ComponentDefinition<TypedExpr>;
-pub type InlinedComponentDefinition = ComponentDefinition<TypedExpr, ()>;
+
+#[derive(Debug, Clone)]
+pub struct InlinedEntryPoint {
+    pub tag_name: StringSpan,
+    pub params: Option<(Vec<Parameter>, DocumentRange)>,
+    pub children: Vec<InlinedNode>,
+}
 
 #[derive(Debug, Clone)]
 pub struct ComponentDefinition<E = UntypedExpr, R = DocumentRange> {

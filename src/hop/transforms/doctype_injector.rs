@@ -1,5 +1,5 @@
 use crate::document::document_cursor::StringSpan;
-use crate::hop::ast::InlinedComponentDefinition;
+use crate::hop::ast::InlinedEntryPoint;
 use crate::hop::node::{InlinedNode, Node};
 
 use super::ComponentTransform;
@@ -17,8 +17,8 @@ impl DoctypeInjector {
     fn has_doctype(nodes: &[InlinedNode]) -> bool {
         for node in nodes {
             match node {
-                Node::Doctype { .. } => return true,
-                Node::Text { value, .. } if value.as_str().trim().is_empty() => {
+                InlinedNode::Doctype { .. } => return true,
+                InlinedNode::Text { value, .. } if value.as_str().trim().is_empty() => {
                     // Skip whitespace-only text nodes
                     continue;
                 }
@@ -34,7 +34,7 @@ impl DoctypeInjector {
     /// Find the position to insert DOCTYPE (after leading whitespace)
     fn find_doctype_insert_position(nodes: &[InlinedNode]) -> usize {
         for (i, node) in nodes.iter().enumerate() {
-            if let Node::Text { value, .. } = node {
+            if let InlinedNode::Text { value, .. } = node {
                 if value.as_str().trim().is_empty() {
                     // Skip whitespace-only text nodes
                     continue;
@@ -49,13 +49,12 @@ impl DoctypeInjector {
 }
 
 impl ComponentTransform for DoctypeInjector {
-    fn transform(&mut self, component: &mut InlinedComponentDefinition) {
+    fn transform(&mut self, component: &mut InlinedEntryPoint) {
         // Only inject DOCTYPE for entrypoint components
-        if component.is_entrypoint && !Self::has_doctype(&component.children) {
+        if !Self::has_doctype(&component.children) {
             // Create a synthetic DOCTYPE node
-            let doctype_node = Node::Doctype {
+            let doctype_node = InlinedNode::Doctype {
                 value: StringSpan::new("<!DOCTYPE html>".to_string()),
-                range: (),
             };
 
             // Find the right position to insert (after any leading whitespace)
@@ -77,17 +76,17 @@ mod tests {
     use expect_test::expect;
 
     /// Helper to pretty-print component children for testing
-    fn format_component_children(component: &InlinedComponentDefinition) -> String {
+    fn format_component_children(component: &InlinedEntryPoint) -> String {
         let mut output = String::new();
         for (i, node) in component.children.iter().enumerate() {
             if i > 0 {
                 output.push('\n');
             }
             match node {
-                Node::Doctype { value, .. } => {
+                InlinedNode::Doctype { value, .. } => {
                     output.push_str(&format!("DOCTYPE: {}", value.as_str()));
                 }
-                Node::Text { value, .. } => {
+                InlinedNode::Text { value, .. } => {
                     let text = value.as_str();
                     if text.trim().is_empty() {
                         output.push_str(&format!("Text: <whitespace:{} chars>", text.len()));
@@ -95,7 +94,7 @@ mod tests {
                         output.push_str(&format!("Text: {:?}", text));
                     }
                 }
-                Node::Html {
+                InlinedNode::Html {
                     tag_name, children, ..
                 } => {
                     output.push_str(&format!(
@@ -104,31 +103,16 @@ mod tests {
                         children.len()
                     ));
                 }
-                Node::ComponentReference {
-                    tag_name, children, ..
-                } => {
-                    output.push_str(&format!(
-                        "Component: <{}> ({} children)",
-                        tag_name.as_str(),
-                        children.len()
-                    ));
-                }
-                Node::If { children, .. } => {
+                InlinedNode::If { children, .. } => {
                     output.push_str(&format!("If: ({} children)", children.len()));
                 }
-                Node::For { children, .. } => {
+                InlinedNode::For { children, .. } => {
                     output.push_str(&format!("For: ({} children)", children.len()));
                 }
-                Node::SlotDefinition { .. } => {
-                    output.push_str("Slot");
-                }
-                Node::TextExpression { .. } => {
+                InlinedNode::TextExpression { .. } => {
                     output.push_str("TextExpression");
                 }
-                Node::Placeholder { .. } => {
-                    output.push_str("Placeholder");
-                }
-                Node::Let { children, .. } => {
+                InlinedNode::Let { children, .. } => {
                     output.push_str(&format!("Let: ({} children)", children.len()));
                 }
             }
@@ -137,7 +121,7 @@ mod tests {
     }
 
     /// Helper to create a typed AST from Hop source code
-    fn create_typed_ast(source: &str) -> Vec<InlinedComponentDefinition> {
+    fn create_typed_ast(source: &str) -> Vec<InlinedEntryPoint> {
         let mut errors = ErrorCollector::new();
         let module_name = ModuleName::new("test".to_string()).unwrap();
         let tokenizer = Tokenizer::new(source.to_string());
@@ -169,19 +153,17 @@ mod tests {
         // Format output for all entrypoint components
         let mut output = String::new();
         for component in ast {
-            if component.is_entrypoint {
-                let mut component_clone = component.clone();
+            let mut component_clone = component.clone();
 
-                // Apply transform
-                let mut injector = DoctypeInjector::new();
-                injector.transform(&mut component_clone);
+            // Apply transform
+            let mut injector = DoctypeInjector::new();
+            injector.transform(&mut component_clone);
 
-                if !output.is_empty() {
-                    output.push_str("\n\n");
-                }
-                output.push_str(&format!("=== {} ===\n", component_clone.tag_name.as_str()));
-                output.push_str(&format_component_children(&component_clone));
+            if !output.is_empty() {
+                output.push_str("\n\n");
             }
+            output.push_str(&format!("=== {} ===\n", component_clone.tag_name.as_str()));
+            output.push_str(&format_component_children(&component_clone));
         }
 
         expected.assert_eq(&output);

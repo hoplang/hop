@@ -3,7 +3,7 @@ use crate::document::document_cursor::{DocumentRange, StringSpan};
 use crate::dop::Expr;
 use crate::dop::expr::TypedExpr;
 use crate::dop::{Type, VarName};
-use crate::hop::ast::{AttributeValue, InlinedComponentDefinition, TypedAttribute};
+use crate::hop::ast::{AttributeValue, InlinedEntryPoint, TypedAttribute};
 use crate::hop::node::{InlinedNode, Node};
 use crate::hop::transforms::TransformPipeline;
 use std::collections::BTreeMap;
@@ -29,7 +29,7 @@ pub struct Compiler {
 
 impl Compiler {
     pub fn compile(
-        entrypoints: Vec<InlinedComponentDefinition>,
+        entrypoints: Vec<InlinedEntryPoint>,
         compilation_mode: CompilationMode,
     ) -> IrModule {
         // Clone entrypoints for transformation (keeping originals intact)
@@ -59,7 +59,7 @@ impl Compiler {
         compiler.ir_module
     }
 
-    fn compile_entrypoint(&mut self, component: &InlinedComponentDefinition) {
+    fn compile_entrypoint(&mut self, component: &InlinedEntryPoint) {
         // Extract parameter information
         let param_info = component
             .params
@@ -190,14 +190,14 @@ impl Compiler {
         output: &mut Vec<IrStatement>,
     ) {
         match node {
-            Node::Text { value, .. } => {
+            InlinedNode::Text { value } => {
                 output.push(IrStatement::Write {
                     id: self.next_node_id(),
                     content: value.to_string(),
                 });
             }
 
-            Node::TextExpression { expression, .. } => {
+            InlinedNode::TextExpression { expression } => {
                 output.push(IrStatement::WriteExpr {
                     id: self.next_node_id(),
                     expr: self.compile_expr(expression),
@@ -205,16 +205,15 @@ impl Compiler {
                 });
             }
 
-            Node::Html {
+            InlinedNode::Html {
                 tag_name,
                 attributes,
                 children,
-                ..
             } => {
                 self.compile_html_node(tag_name, attributes, children, slot_content, output);
             }
 
-            Node::If {
+            InlinedNode::If {
                 condition,
                 children,
                 ..
@@ -226,7 +225,7 @@ impl Compiler {
                 });
             }
 
-            Node::For {
+            InlinedNode::For {
                 var_name,
                 array_expr,
                 children,
@@ -240,31 +239,17 @@ impl Compiler {
                 });
             }
 
-            Node::SlotDefinition { .. } => {
-                if let Some(content) = slot_content {
-                    output.extend_from_slice(content);
-                }
-            }
-
-            Node::ComponentReference { tag_name, .. } => {
-                panic!(
-                    "Unexpected ComponentReference '{}' in IR compiler. Components should be inlined before compilation.",
-                    tag_name.as_str()
-                );
-            }
-
-            Node::Doctype { value, .. } => {
+            InlinedNode::Doctype { value } => {
                 output.push(IrStatement::Write {
                     id: self.next_node_id(),
                     content: value.to_string(),
                 });
             }
 
-            Node::Let {
+            InlinedNode::Let {
                 var,
                 value,
                 children,
-                ..
             } => {
                 output.push(IrStatement::Let {
                     id: self.next_node_id(),
@@ -273,16 +258,12 @@ impl Compiler {
                     body: self.compile_nodes(children, slot_content.cloned()),
                 });
             }
-
-            Node::Placeholder { .. } => {
-                panic!("Found placeholder node in IR compiler")
-            }
         }
     }
 
     fn compile_html_node(
         &mut self,
-        tag_name: &DocumentRange,
+        tag_name: &StringSpan,
         attributes: &BTreeMap<StringSpan, TypedAttribute>,
         children: &[InlinedNode],
         slot_content: Option<&Vec<IrStatement>>,
