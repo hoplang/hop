@@ -277,6 +277,20 @@ impl Compiler<'_> {
                 });
             }
 
+            Node::Let {
+                var,
+                value,
+                children,
+                ..
+            } => {
+                output.push(IrStatement::Let {
+                    id: self.next_node_id(),
+                    var: var.clone(),
+                    value: self.compile_expr(value),
+                    body: self.compile_nodes(children, slot_content.cloned()),
+                });
+            }
+
             Node::Placeholder { .. } => {
                 panic!("Found placeholder node in IR compiler")
             }

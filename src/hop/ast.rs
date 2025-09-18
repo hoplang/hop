@@ -237,6 +237,15 @@ pub enum Node<T = DocumentRange> {
         range: DocumentRange,
         children: Vec<Node<T>>,
     },
+
+    /// A Let node introduces a variable binding in its children's scope.
+    /// This is used during component inlining to bind component parameters.
+    Let {
+        var: VarName,
+        value: Expr<T>,
+        children: Vec<Node<T>>,
+        range: DocumentRange,
+    },
 }
 
 impl<T> Node<T> {
@@ -248,6 +257,7 @@ impl<T> Node<T> {
             Node::For { children, .. } => children,
             Node::Html { children, .. } => children,
             Node::Placeholder { children, .. } => children,
+            Node::Let { children, .. } => children,
             Node::SlotDefinition { .. } => &[],
             Node::Doctype { .. } => &[],
             Node::Text { .. } => &[],
@@ -322,6 +332,7 @@ impl<T> Ranged for Node<T> {
             | Node::For { range, .. }
             | Node::Html { range, .. }
             | Node::Placeholder { range, .. }
+            | Node::Let { range, .. }
             | Node::Doctype { range, .. } => range,
         }
     }

@@ -585,6 +585,57 @@ fn typecheck_node(
         Node::Doctype { range } => Some(Node::Doctype {
             range: range.clone(),
         }),
+
+        Node::Let {
+            var,
+            value,
+            children,
+            range,
+        } => {
+            let typed_value = errors
+                .ok_or_add(dop::typecheck_expr(value, env, annotations).map_err(Into::into))?;
+            let value_type = typed_value.annotation().clone();
+
+            // Push the variable into scope
+            let pushed = match env.push(var.to_string(), value_type.clone()) {
+                Ok(_) => {
+                    annotations.push(TypeAnnotation {
+                        range: var.range().clone(),
+                        typ: value_type.clone(),
+                        name: var.to_string(),
+                    });
+                    true
+                }
+                Err(_) => {
+                    errors.push(TypeError::VariableIsAlreadyDefined {
+                        var: var.as_str().to_string(),
+                        range: var.range().clone(),
+                    });
+                    false
+                }
+            };
+
+            let typed_children = children
+                .iter()
+                .filter_map(|child| typecheck_node(child, state, env, annotations, errors))
+                .collect();
+
+            if pushed {
+                let (_, _, accessed) = env.pop();
+                if !accessed {
+                    errors.push(TypeError::UnusedVariable {
+                        var_name: var.range().clone(),
+                    })
+                }
+            }
+
+            Some(Node::Let {
+                var: var.clone(),
+                value: typed_value,
+                range: range.clone(),
+                children: typed_children,
+            })
+        }
     }
 }
 

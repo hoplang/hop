@@ -118,6 +118,9 @@ mod tests {
                 Node::Placeholder { .. } => {
                     output.push_str("Placeholder");
                 }
+                Node::Let { children, .. } => {
+                    output.push_str(&format!("Let: ({} children)", children.len()));
+                }
             }
         }
         output
