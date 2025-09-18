@@ -1,7 +1,7 @@
 use crate::hop::ast::Ast;
 use crate::hop::module_name::ModuleName;
 use crate::dop::expr::TypedExpr;
-use crate::ir::ast::{IrModule, IrEntrypoint};
+use crate::ir::ast::IrEntrypoint;
 use crate::ir::inliner::Inliner;
 use crate::ir::passes::{
     Pass, AlphaRenamingPass, ConstantPropagationPass, DeadCodeEliminationPass,
@@ -14,7 +14,7 @@ use std::collections::HashMap;
 pub fn orchestrate(
     typed_asts: HashMap<ModuleName, Ast<TypedExpr>>,
     mode: CompilationMode,
-) -> IrModule {
+) -> Vec<IrEntrypoint> {
     // Step 1: Inline components
     let mut inlined_entrypoints = Inliner::inline_entrypoints(typed_asts);
 
@@ -25,11 +25,10 @@ pub fn orchestrate(
         }
     }
 
-    // Step 3: Compile to IR and build module
-    let mut ir_module = IrModule::new();
+    // Step 3: Compile to IR and build entrypoints
+    let mut ir_entrypoints = Vec::new();
 
     for entrypoint in inlined_entrypoints {
-        let name = entrypoint.tag_name.as_str().to_string();
         let mut ir_entrypoint = Compiler::compile(&entrypoint, mode);
 
         // Step 4: Run optimization passes (only in production mode)
@@ -50,8 +49,8 @@ pub fn orchestrate(
             }
         }
 
-        ir_module.entry_points.insert(name, ir_entrypoint);
+        ir_entrypoints.push(ir_entrypoint);
     }
 
-    ir_module
+    ir_entrypoints
 }

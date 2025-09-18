@@ -91,24 +91,24 @@ pub fn execute(
 
     timer.start_phase("compiling to IR");
     // Use orchestrate to handle inlining, compilation, and optimization
-    let ir_module = orchestrate(program.get_typed_modules().clone(), compilation_mode);
+    let ir_entrypoints = orchestrate(program.get_typed_modules().clone(), compilation_mode);
 
     // Generate code based on target language
     let generated_code = match language {
         CompileLanguage::Js => {
             timer.start_phase("transpiling to js");
             let transpiler = JsTranspiler::new(LanguageMode::JavaScript);
-            transpiler.transpile_module(&ir_module)
+            transpiler.transpile_module(&ir_entrypoints)
         }
         CompileLanguage::Ts => {
             timer.start_phase("transpiling to ts");
             let transpiler = JsTranspiler::new(LanguageMode::TypeScript);
-            transpiler.transpile_module(&ir_module)
+            transpiler.transpile_module(&ir_entrypoints)
         }
         CompileLanguage::Go => {
             timer.start_phase("transpiling to go");
             let transpiler = GoTranspiler::new();
-            transpiler.transpile_module(&ir_module)
+            transpiler.transpile_module(&ir_entrypoints)
         }
     };
 
@@ -119,10 +119,9 @@ pub fn execute(
 
     timer.print();
 
-    let entry_points: Vec<String> = ir_module
-        .entry_points
-        .keys()
-        .map(|name| name.replace(['/', '-'], "_"))
+    let entry_points: Vec<String> = ir_entrypoints
+        .iter()
+        .map(|entrypoint| entrypoint.name.replace(['/', '-'], "_"))
         .collect();
 
     Ok(CompileResult {

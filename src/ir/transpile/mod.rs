@@ -6,12 +6,12 @@ pub use js::{JsTranspiler, LanguageMode};
 use pretty::BoxDoc;
 
 use crate::dop::r#type::Type;
-use crate::ir::ast::{BinaryOp, IrEntrypoint, IrExpr, IrModule, IrStatement, UnaryOp};
+use crate::ir::ast::{BinaryOp, IrEntrypoint, IrExpr, IrStatement, UnaryOp};
 use std::collections::BTreeMap;
 
 pub trait Transpiler {
     fn transpile_entrypoint<'a>(&self, name: &'a str, entrypoint: &'a IrEntrypoint) -> BoxDoc<'a>;
-    fn transpile_module(&self, ir_module: &IrModule) -> String;
+    fn transpile_module(&self, entrypoints: &[IrEntrypoint]) -> String;
 }
 
 pub trait StatementTranspiler {

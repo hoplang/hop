@@ -29,6 +29,7 @@ impl IrTestBuilder {
 
     pub fn build(&self, body: Vec<IrStatement>) -> IrEntrypoint {
         IrEntrypoint {
+            name: "test".to_string(),
             parameters: self.params.clone(),
             body,
         }

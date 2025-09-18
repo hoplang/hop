@@ -22,8 +22,10 @@ pub struct IrModule {
     pub entry_points: HashMap<String, IrEntrypoint>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct IrEntrypoint {
+    /// Component name (e.g. my-component)
+    pub name: String,
     /// Original parameter names with their types (for function signature)
     pub parameters: Vec<(VarName, Type)>,
     /// IR nodes for the entrypoint body

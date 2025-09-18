@@ -409,12 +409,12 @@ impl Program {
         hop_mode: &str,
     ) -> Result<String> {
         // Use orchestrate to handle inlining and compilation - use Production mode for evaluation
-        let ir_module = orchestrate(self.get_typed_modules().clone(), ir::CompilationMode::Production);
+        let ir_entrypoints = orchestrate(self.get_typed_modules().clone(), ir::CompilationMode::Production);
 
         // Get the entrypoint
-        let entrypoint = ir_module
-            .entry_points
-            .get(entrypoint_name)
+        let entrypoint = ir_entrypoints
+            .iter()
+            .find(|ep| ep.name == entrypoint_name)
             .ok_or_else(|| anyhow::anyhow!("Entrypoint '{}' not found", entrypoint_name))?;
 
         // Evaluate the entrypoint

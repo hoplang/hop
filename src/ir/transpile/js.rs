@@ -69,9 +69,9 @@ impl JsTranspiler {
 }
 
 impl Transpiler for JsTranspiler {
-    fn transpile_module(&self, ir_module: &IrModule) -> String {
+    fn transpile_module(&self, entrypoints: &[IrEntrypoint]) -> String {
         let mut needs_escape_html = false;
-        for entrypoint in ir_module.entry_points.values() {
+        for entrypoint in entrypoints {
             if self.scan_for_escape_html(entrypoint) {
                 needs_escape_html = true;
                 break;
@@ -121,10 +121,9 @@ impl Transpiler for JsTranspiler {
                 BoxDoc::nil()
                     .append(BoxDoc::hardline())
                     .append(BoxDoc::intersperse(
-                        ir_module
-                            .entry_points
+                        entrypoints
                             .iter()
-                            .map(|(name, entrypoint)| self.transpile_entrypoint(name, entrypoint)),
+                            .map(|entrypoint| self.transpile_entrypoint(&entrypoint.name, entrypoint)),
                         BoxDoc::text(",").append(BoxDoc::hardline()),
                     ))
                     .append(BoxDoc::hardline())
@@ -420,18 +419,27 @@ mod tests {
     use crate::ir::test_utils::IrTestBuilder;
     use expect_test::{Expect, expect};
 
-    fn transpile_with_pretty(ir_module: &IrModule, mode: LanguageMode) -> String {
-        let transpiler = JsTranspiler::new(mode);
-        transpiler.transpile_module(ir_module)
+    // Helper function to convert IrModule to Vec<IrEntrypoint> for tests
+    fn module_to_entrypoints(ir_module: &IrModule) -> Vec<IrEntrypoint> {
+        ir_module.entry_points.iter().map(|(name, entrypoint)| {
+            let mut ep = entrypoint.clone();
+            ep.name = name.clone();
+            ep
+        }).collect()
     }
 
-    fn check_js(ir_module: &IrModule, expected: Expect) {
-        let js = transpile_with_pretty(ir_module, LanguageMode::JavaScript);
+    fn transpile_with_pretty(entrypoints: &[IrEntrypoint], mode: LanguageMode) -> String {
+        let transpiler = JsTranspiler::new(mode);
+        transpiler.transpile_module(entrypoints)
+    }
+
+    fn check_js(entrypoints: &[IrEntrypoint], expected: Expect) {
+        let js = transpile_with_pretty(entrypoints, LanguageMode::JavaScript);
         expected.assert_eq(&js);
     }
 
-    fn check_ts(ir_module: &IrModule, expected: Expect) {
-        let ts = transpile_with_pretty(ir_module, LanguageMode::TypeScript);
+    fn check_ts(entrypoints: &[IrEntrypoint], expected: Expect) {
+        let ts = transpile_with_pretty(entrypoints, LanguageMode::TypeScript);
         expected.assert_eq(&ts);
     }
 
@@ -446,7 +454,7 @@ mod tests {
         );
 
         check_js(
-            &ir_module,
+            &module_to_entrypoints(&ir_module),
             expect![[r#"
                 export default {
                     helloWorld: () => {
@@ -482,7 +490,7 @@ mod tests {
         );
 
         check_js(
-            &ir_module,
+            &module_to_entrypoints(&ir_module),
             expect![[r#"
                 function escapeHtml(str) {
                     return str
@@ -532,7 +540,7 @@ mod tests {
         );
 
         check_ts(
-            &ir_module,
+            &module_to_entrypoints(&ir_module),
             expect![[r#"
                 function escapeHtml(str: string): string {
                     return str
@@ -582,7 +590,7 @@ mod tests {
         );
 
         check_js(
-            &ir_module,
+            &module_to_entrypoints(&ir_module),
             expect![[r#"
                 function escapeHtml(str) {
                     return str
@@ -633,7 +641,7 @@ mod tests {
         );
 
         check_js(
-            &ir_module,
+            &module_to_entrypoints(&ir_module),
             expect![[r#"
                 function escapeHtml(str) {
                     return str
@@ -682,7 +690,7 @@ mod tests {
         );
 
         check_js(
-            &ir_module,
+            &module_to_entrypoints(&ir_module),
             expect![[r#"
                 function escapeHtml(str) {
                     return str
@@ -777,7 +785,7 @@ mod tests {
         );
 
         check_js(
-            &ir_module,
+            &module_to_entrypoints(&ir_module),
             expect![[r#"
                 function escapeHtml(str) {
                     return str
@@ -868,7 +876,7 @@ mod tests {
         );
 
         check_ts(
-            &ir_module,
+            &module_to_entrypoints(&ir_module),
             expect![[r#"
                 function escapeHtml(str: string): string {
                     return str

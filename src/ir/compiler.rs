@@ -56,6 +56,7 @@ impl Compiler {
         };
 
         IrEntrypoint {
+            name: entrypoint.tag_name.as_str().to_string(),
             parameters: param_info,
             body,
         }
@@ -425,7 +426,14 @@ mod tests {
         );
 
         // Use orchestrate to handle inlining and compilation
-        crate::ir::orchestrator::orchestrate(typechecker.typed_asts, mode)
+        let ir_entrypoints = crate::ir::orchestrator::orchestrate(typechecker.typed_asts, mode);
+
+        // Create IrModule from the entrypoints
+        let mut ir_module = IrModule::new();
+        for entrypoint in ir_entrypoints {
+            ir_module.entry_points.insert(entrypoint.name.clone(), entrypoint);
+        }
+        ir_module
     }
 
     fn check_ir(source: &str, expected: Expect) {

@@ -70,11 +70,11 @@ impl GoTranspiler {
 }
 
 impl Transpiler for GoTranspiler {
-    fn transpile_module(&self, ir_module: &IrModule) -> String {
+    fn transpile_module(&self, entrypoints: &[IrEntrypoint]) -> String {
         let mut imports = BTreeSet::new();
 
         // First pass: scan to determine what imports we need
-        for entrypoint in ir_module.entry_points.values() {
+        for entrypoint in entrypoints {
             Self::scan_for_imports(&mut imports, entrypoint);
         }
 
@@ -132,11 +132,11 @@ impl Transpiler for GoTranspiler {
         }
 
         // Generate parameter structs for entrypoints that have parameters
-        for (name, entrypoint) in &ir_module.entry_points {
+        for entrypoint in entrypoints {
             if !entrypoint.parameters.is_empty() {
                 let struct_name = format!(
                     "{}Params",
-                    CasedString::from_kebab_case(name).to_pascal_case()
+                    CasedString::from_kebab_case(&entrypoint.name).to_pascal_case()
                 );
 
                 let fields: Vec<_> = entrypoint
@@ -171,9 +171,8 @@ impl Transpiler for GoTranspiler {
         }
 
         // Transpile each entrypoint as a function
-        let entrypoints: Vec<_> = ir_module.entry_points.iter().collect();
-        for (i, (name, entrypoint)) in entrypoints.iter().enumerate() {
-            result = result.append(self.transpile_entrypoint(name, entrypoint));
+        for (i, entrypoint) in entrypoints.iter().enumerate() {
+            result = result.append(self.transpile_entrypoint(&entrypoint.name, entrypoint));
             if i < entrypoints.len() - 1 {
                 result = result.append(BoxDoc::line());
             }
@@ -490,13 +489,22 @@ mod tests {
     use crate::ir::test_utils::IrTestBuilder;
     use expect_test::{Expect, expect};
 
-    fn transpile_with_pretty(ir_module: &IrModule) -> String {
-        let transpiler = GoTranspiler::new();
-        transpiler.transpile_module(ir_module)
+    // Helper function to convert IrModule to Vec<IrEntrypoint> for tests
+    fn module_to_entrypoints(ir_module: &IrModule) -> Vec<IrEntrypoint> {
+        ir_module.entry_points.iter().map(|(name, entrypoint)| {
+            let mut ep = entrypoint.clone();
+            ep.name = name.clone();
+            ep
+        }).collect()
     }
 
-    fn check(ir_module: &IrModule, expected: Expect) {
-        let go_code = transpile_with_pretty(ir_module);
+    fn transpile_with_pretty(entrypoints: &[IrEntrypoint]) -> String {
+        let transpiler = GoTranspiler::new();
+        transpiler.transpile_module(entrypoints)
+    }
+
+    fn check(entrypoints: &[IrEntrypoint], expected: Expect) {
+        let go_code = transpile_with_pretty(entrypoints);
         expected.assert_eq(&go_code);
     }
 
@@ -511,7 +519,7 @@ mod tests {
         );
 
         check(
-            &ir_module,
+            &module_to_entrypoints(&ir_module),
             expect![[r#"
                 package components
 
@@ -548,7 +556,7 @@ mod tests {
         );
 
         check(
-            &ir_module,
+            &module_to_entrypoints(&ir_module),
             expect![[r#"
                 package components
 
@@ -590,7 +598,7 @@ mod tests {
         );
 
         check(
-            &ir_module,
+            &module_to_entrypoints(&ir_module),
             expect![[r#"
                 package components
 
@@ -634,7 +642,7 @@ mod tests {
         );
 
         check(
-            &ir_module,
+            &module_to_entrypoints(&ir_module),
             expect![[r#"
                 package components
 
@@ -687,7 +695,7 @@ mod tests {
         );
 
         check(
-            &ir_module,
+            &module_to_entrypoints(&ir_module),
             expect![[r#"
                 package components
 
@@ -744,7 +752,7 @@ mod tests {
         );
 
         check(
-            &ir_module,
+            &module_to_entrypoints(&ir_module),
             expect![[r#"
                 package components
 
@@ -801,7 +809,7 @@ mod tests {
         );
 
         check(
-            &ir_module,
+            &module_to_entrypoints(&ir_module),
             expect![[r#"
                 package components
 
@@ -870,7 +878,7 @@ mod tests {
         );
 
         check(
-            &ir_module,
+            &module_to_entrypoints(&ir_module),
             expect![[r#"
                 package components
 
@@ -946,7 +954,7 @@ mod tests {
         );
 
         check(
-            &ir_module,
+            &module_to_entrypoints(&ir_module),
             expect![[r#"
                 package components
 
@@ -1016,7 +1024,7 @@ mod tests {
         );
 
         check(
-            &ir_module,
+            &module_to_entrypoints(&ir_module),
             expect![[r#"
                 package components
 

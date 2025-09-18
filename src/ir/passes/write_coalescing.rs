@@ -334,6 +334,7 @@ mod tests {
     #[test]
     fn test_empty_input() {
         let entrypoint = IrEntrypoint {
+            name: "test".to_string(),
             parameters: vec![],
             body: vec![],
         };
