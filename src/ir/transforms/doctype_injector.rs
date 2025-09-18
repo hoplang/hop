@@ -140,7 +140,7 @@ mod tests {
     }
 
     /// Helper to check DOCTYPE injection for entrypoint
-    fn check_entrypoint(input: &str, expected: expect_test::Expect) {
+    fn check(input: &str, expected: expect_test::Expect) {
         let ast = create_typed_ast(input);
 
         // Format output for all entrypoints
@@ -164,7 +164,7 @@ mod tests {
 
     #[test]
     fn test_inject_doctype_when_missing() {
-        check_entrypoint(
+        check(
             r#"
                 <main-comp entrypoint>
                     <html>
@@ -183,7 +183,7 @@ mod tests {
 
     #[test]
     fn test_no_injection_when_doctype_present() {
-        check_entrypoint(
+        check(
             r#"
                 <main-comp entrypoint>
                     <!DOCTYPE html>
@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     fn test_multiple_entrypoints() {
-        check_entrypoint(
+        check(
             r#"
                 <first-comp entrypoint>
                     <div>First</div>
@@ -243,7 +243,7 @@ mod tests {
 
     #[test]
     fn test_empty_entrypoint() {
-        check_entrypoint(
+        check(
             r#"
                 <empty-comp entrypoint>
                 </empty-comp>
@@ -257,7 +257,7 @@ mod tests {
 
     #[test]
     fn test_entrypoint_with_text_only() {
-        check_entrypoint(
+        check(
             r#"
                 <text-comp entrypoint>
                     Just some text content
@@ -272,7 +272,7 @@ mod tests {
 
     #[test]
     fn test_doctype_with_leading_whitespace() {
-        check_entrypoint(
+        check(
             r#"
                 <main-comp entrypoint>
 
@@ -292,7 +292,7 @@ mod tests {
 
     #[test]
     fn test_inject_preserves_leading_whitespace() {
-        check_entrypoint(
+        check(
             r#"
                 <main-comp entrypoint>
 
