@@ -59,7 +59,7 @@ impl Compiler {
         };
 
         IrEntrypoint {
-            name: tag_name.as_str().to_string(),
+            name: tag_name.to_string(),
             parameters: param_info,
             body,
         }
@@ -171,7 +171,7 @@ impl Compiler {
             InlinedNode::TextExpression { expression } => {
                 output.push(IrStatement::WriteExpr {
                     id: self.next_node_id(),
-                    expr: self.compile_expr(&expression),
+                    expr: self.compile_expr(expression.clone()),
                     escape: true,
                 });
             }
@@ -191,7 +191,7 @@ impl Compiler {
             } => {
                 output.push(IrStatement::If {
                     id: self.next_node_id(),
-                    condition: self.compile_expr(&condition),
+                    condition: self.compile_expr(condition.clone()),
                     body: self.compile_nodes(children, slot_content.cloned()),
                 });
             }
@@ -205,7 +205,7 @@ impl Compiler {
                 output.push(IrStatement::For {
                     id: self.next_node_id(),
                     var: var_name,
-                    array: self.compile_expr(&array_expr),
+                    array: self.compile_expr(array_expr.clone()),
                     body: self.compile_nodes(children, slot_content.cloned()),
                 });
             }
@@ -224,8 +224,8 @@ impl Compiler {
             } => {
                 output.push(IrStatement::Let {
                     id: self.next_node_id(),
-                    var: var,
-                    value: self.compile_expr(&value),
+                    var,
+                    value: self.compile_expr(value.clone()),
                     body: self.compile_nodes(children, slot_content.cloned()),
                 });
             }
@@ -316,7 +316,7 @@ impl Compiler {
                 });
                 output.push(IrStatement::WriteExpr {
                     id: self.next_node_id(),
-                    expr: self.compile_expr(expr),
+                    expr: self.compile_expr(expr.clone()),
                     escape: true,
                 });
                 output.push(IrStatement::Write {
@@ -327,19 +327,16 @@ impl Compiler {
         }
     }
 
-    fn compile_expr(&mut self, expr: &TypedExpr) -> IrExpr {
+    fn compile_expr(&mut self, expr: TypedExpr) -> IrExpr {
         let annotation = (self.next_expr_id(), expr.annotation().clone());
 
         match expr {
-            Expr::Var { value, .. } => Expr::Var {
-                value: value.clone(),
-                annotation,
-            },
+            Expr::Var { value, .. } => Expr::Var { value, annotation },
             Expr::PropertyAccess {
                 object, property, ..
             } => Expr::PropertyAccess {
-                object: Box::new(self.compile_expr(object)),
-                property: property.as_str().to_string(),
+                object: Box::new(self.compile_expr(*object)),
+                property,
                 annotation,
             },
             Expr::BinaryOp {
@@ -348,48 +345,39 @@ impl Compiler {
                 right,
                 ..
             } => Expr::BinaryOp {
-                left: Box::new(self.compile_expr(left)),
-                operator: operator.clone(),
-                right: Box::new(self.compile_expr(right)),
+                left: Box::new(self.compile_expr(*left)),
+                operator,
+                right: Box::new(self.compile_expr(*right)),
                 annotation,
             },
             Expr::UnaryOp {
                 operator, operand, ..
             } => Expr::UnaryOp {
-                operator: operator.clone(),
-                operand: Box::new(self.compile_expr(operand)),
+                operator,
+                operand: Box::new(self.compile_expr(*operand)),
                 annotation,
             },
             Expr::ArrayLiteral { elements, .. } => Expr::ArrayLiteral {
-                elements: elements.iter().map(|e| self.compile_expr(e)).collect(),
+                elements: elements.into_iter().map(|e| self.compile_expr(e)).collect(),
                 annotation,
             },
             Expr::ObjectLiteral { properties, .. } => Expr::ObjectLiteral {
                 properties: properties
-                    .iter()
-                    .map(|(k, v)| (k.as_str().to_string(), self.compile_expr(v)))
+                    .into_iter()
+                    .map(|(k, v)| (k, self.compile_expr(v)))
                     .collect(),
                 annotation,
             },
-            Expr::StringLiteral { value, .. } => Expr::StringLiteral {
-                value: value.to_string(),
-                annotation,
-            },
-            Expr::BooleanLiteral { value, .. } => Expr::BooleanLiteral {
-                value: *value,
-                annotation,
-            },
-            Expr::NumberLiteral { value, .. } => Expr::NumberLiteral {
-                value: value.clone(),
-                annotation,
-            },
+            Expr::StringLiteral { value, .. } => Expr::StringLiteral { value, annotation },
+            Expr::BooleanLiteral { value, .. } => Expr::BooleanLiteral { value, annotation },
+            Expr::NumberLiteral { value, .. } => Expr::NumberLiteral { value, annotation },
             Expr::JsonEncode { value, .. } => Expr::JsonEncode {
-                value: Box::new(self.compile_expr(value)),
+                value: Box::new(self.compile_expr(*value)),
                 annotation,
             },
             Expr::StringConcat { left, right, .. } => Expr::StringConcat {
-                left: Box::new(self.compile_expr(left)),
-                right: Box::new(self.compile_expr(right)),
+                left: Box::new(self.compile_expr(*left)),
+                right: Box::new(self.compile_expr(*right)),
                 annotation,
             },
         }
