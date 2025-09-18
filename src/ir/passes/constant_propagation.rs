@@ -177,8 +177,11 @@ mod tests {
     use super::*;
 
     fn check(entrypoint: IrEntrypoint, expected: Expect) {
+        let before = entrypoint.to_string();
         let result = ConstantPropagationPass::run(entrypoint);
-        expected.assert_eq(&result.to_string());
+        let after = result.to_string();
+        let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
+        expected.assert_eq(&output);
     }
 
     #[test]
@@ -186,10 +189,17 @@ mod tests {
         let t = IrTestBuilder::new(vec![]);
         check(
             t.build(vec![
-                // !false => true
                 t.if_stmt(t.not(t.bool(false)), vec![t.write("Should be true")]),
             ]),
             expect![[r#"
+                -- before --
+                test() {
+                  if (!false) {
+                    write("Should be true")
+                  }
+                }
+
+                -- after --
                 test() {
                   if true {
                     write("Should be true")
@@ -203,11 +213,19 @@ mod tests {
     fn test_double_not_folding() {
         let t = IrTestBuilder::new(vec![]);
         check(
-            t.build(vec![
-                // !!true => true
-                t.if_stmt(t.not(t.not(t.bool(true))), vec![t.write("Double negation")]),
-            ]),
+            t.build(vec![t.if_stmt(
+                t.not(t.not(t.bool(true))),
+                vec![t.write("Double negation")],
+            )]),
             expect![[r#"
+                -- before --
+                test() {
+                  if (!(!true)) {
+                    write("Double negation")
+                  }
+                }
+
+                -- after --
                 test() {
                   if true {
                     write("Double negation")
@@ -221,14 +239,19 @@ mod tests {
     fn test_triple_not_folding() {
         let t = IrTestBuilder::new(vec![]);
         check(
-            t.build(vec![
-                // !!!false => true
-                t.if_stmt(
-                    t.not(t.not(t.not(t.bool(false)))),
-                    vec![t.write("Triple negation")],
-                ),
-            ]),
+            t.build(vec![t.if_stmt(
+                t.not(t.not(t.not(t.bool(false)))),
+                vec![t.write("Triple negation")],
+            )]),
             expect![[r#"
+                -- before --
+                test() {
+                  if (!(!(!false))) {
+                    write("Triple negation")
+                  }
+                }
+
+                -- after --
                 test() {
                   if true {
                     write("Triple negation")
@@ -243,23 +266,34 @@ mod tests {
         let t = IrTestBuilder::new(vec![]);
         check(
             t.build(vec![
-                // true == true => true
                 t.if_stmt(
                     t.eq(t.bool(true), t.bool(true)),
                     vec![t.write("true == true")],
                 ),
-                // false == false => true
                 t.if_stmt(
                     t.eq(t.bool(false), t.bool(false)),
                     vec![t.write("false == false")],
                 ),
-                // true == false => false
                 t.if_stmt(
                     t.eq(t.bool(true), t.bool(false)),
                     vec![t.write("Should not appear")],
                 ),
             ]),
             expect![[r#"
+                -- before --
+                test() {
+                  if (true == true) {
+                    write("true == true")
+                  }
+                  if (false == false) {
+                    write("false == false")
+                  }
+                  if (true == false) {
+                    write("Should not appear")
+                  }
+                }
+
+                -- after --
                 test() {
                   if true {
                     write("true == true")
@@ -279,14 +313,19 @@ mod tests {
     fn test_complex_equality_with_negations() {
         let t = IrTestBuilder::new(vec![]);
         check(
-            t.build(vec![
-                // (!!false == !false) => (false == true) => false
-                t.if_stmt(
-                    t.eq(t.not(t.not(t.bool(false))), t.not(t.bool(false))),
-                    vec![t.write("Should not appear")],
-                ),
-            ]),
+            t.build(vec![t.if_stmt(
+                t.eq(t.not(t.not(t.bool(false))), t.not(t.bool(false))),
+                vec![t.write("Should not appear")],
+            )]),
             expect![[r#"
+                -- before --
+                test() {
+                  if ((!(!false)) == (!false)) {
+                    write("Should not appear")
+                  }
+                }
+
+                -- after --
                 test() {
                   if false {
                     write("Should not appear")
@@ -300,18 +339,26 @@ mod tests {
     fn test_variable_constant_propagation() {
         let t = IrTestBuilder::new(vec![]);
         check(
-            t.build(vec![
-                // let x = !!true
-                t.let_stmt("x", t.not(t.not(t.bool(true))), |t| {
-                    vec![
-                        // if x => if true
-                        t.if_stmt(t.var("x"), vec![t.write("x is true")]),
-                        // if !x => if false
-                        t.if_stmt(t.not(t.var("x")), vec![t.write("x is false")]),
-                    ]
-                }),
-            ]),
+            t.build(vec![t.let_stmt("x", t.not(t.not(t.bool(true))), |t| {
+                vec![
+                    t.if_stmt(t.var("x"), vec![t.write("x is true")]),
+                    t.if_stmt(t.not(t.var("x")), vec![t.write("x is false")]),
+                ]
+            })]),
             expect![[r#"
+                -- before --
+                test() {
+                  let x = (!(!true)) in {
+                    if x {
+                      write("x is true")
+                    }
+                    if (!x) {
+                      write("x is false")
+                    }
+                  }
+                }
+
+                -- after --
                 test() {
                   let x = true in {
                     if true {
@@ -333,9 +380,7 @@ mod tests {
             t.build(vec![t.let_stmt("x", t.bool(true), |t| {
                 vec![t.let_stmt("y", t.not(t.bool(true)), |t| {
                     vec![
-                        // x == y => true == false => false
                         t.if_stmt(t.eq(t.var("x"), t.var("y")), vec![t.write("x equals y")]),
-                        // x == !y => true == true => true
                         t.if_stmt(
                             t.eq(t.var("x"), t.not(t.var("y"))),
                             vec![t.write("x equals not y")],
@@ -344,6 +389,21 @@ mod tests {
                 })]
             })]),
             expect![[r#"
+                -- before --
+                test() {
+                  let x = true in {
+                    let y = (!true) in {
+                      if (x == y) {
+                        write("x equals y")
+                      }
+                      if (x == (!y)) {
+                        write("x equals not y")
+                      }
+                    }
+                  }
+                }
+
+                -- after --
                 test() {
                   let x = true in {
                     let y = false in {
@@ -365,12 +425,17 @@ mod tests {
         let t = IrTestBuilder::new(vec![]);
         check(
             t.build(vec![t.let_stmt("message", t.str("Hello, World!"), |t| {
-                vec![
-                    // Variable containing string should be replaced with the string constant
-                    t.write_expr(t.var("message"), true),
-                ]
+                vec![t.write_expr(t.var("message"), true)]
             })]),
             expect![[r#"
+                -- before --
+                test() {
+                  let message = "Hello, World!" in {
+                    write_escaped(message)
+                  }
+                }
+
+                -- after --
                 test() {
                   let message = "Hello, World!" in {
                     write_escaped("Hello, World!")
@@ -387,13 +452,23 @@ mod tests {
             t.build(vec![t.let_stmt("greeting", t.str("Hello"), |t| {
                 vec![t.let_stmt("name", t.str("World"), |t| {
                     vec![
-                        // Both variables should be replaced with their string constants
                         t.write_expr(t.var("greeting"), true),
                         t.write_expr(t.var("name"), true),
                     ]
                 })]
             })]),
             expect![[r#"
+                -- before --
+                test() {
+                  let greeting = "Hello" in {
+                    let name = "World" in {
+                      write_escaped(greeting)
+                      write_escaped(name)
+                    }
+                  }
+                }
+
+                -- after --
                 test() {
                   let greeting = "Hello" in {
                     let name = "World" in {
@@ -412,18 +487,26 @@ mod tests {
         check(
             t.build(vec![t.let_stmt("title", t.str("Welcome"), |t| {
                 vec![
-                    // Multiple uses of the same string variable
                     t.write_expr(t.var("title"), true),
                     t.write_expr(t.var("title"), true),
                     t.let_stmt("subtitle", t.var("title"), |t| {
-                        vec![
-                            // Transitive propagation through another variable
-                            t.write_expr(t.var("subtitle"), true),
-                        ]
+                        vec![t.write_expr(t.var("subtitle"), true)]
                     }),
                 ]
             })]),
             expect![[r#"
+                -- before --
+                test() {
+                  let title = "Welcome" in {
+                    write_escaped(title)
+                    write_escaped(title)
+                    let subtitle = title in {
+                      write_escaped(subtitle)
+                    }
+                  }
+                }
+
+                -- after --
                 test() {
                   let title = "Welcome" in {
                     write_escaped("Welcome")
@@ -442,30 +525,42 @@ mod tests {
         let t = IrTestBuilder::new(vec![]);
         check(
             t.build(vec![
-                // "hello" == "hello" => true
                 t.if_stmt(
                     t.eq(t.str("hello"), t.str("hello")),
                     vec![t.write("Strings are equal")],
                 ),
-                // "hello" == "world" => false
                 t.if_stmt(
                     t.eq(t.str("hello"), t.str("world")),
                     vec![t.write("Should not appear")],
                 ),
-                // Test with variables containing strings
                 t.let_stmt("greeting", t.str("hello"), |t| {
                     vec![t.let_stmt("message", t.str("hello"), |t| {
-                        vec![
-                            // greeting == message => "hello" == "hello" => true
-                            t.if_stmt(
-                                t.eq(t.var("greeting"), t.var("message")),
-                                vec![t.write("Variables are equal")],
-                            ),
-                        ]
+                        vec![t.if_stmt(
+                            t.eq(t.var("greeting"), t.var("message")),
+                            vec![t.write("Variables are equal")],
+                        )]
                     })]
                 }),
             ]),
             expect![[r#"
+                -- before --
+                test() {
+                  if ("hello" == "hello") {
+                    write("Strings are equal")
+                  }
+                  if ("hello" == "world") {
+                    write("Should not appear")
+                  }
+                  let greeting = "hello" in {
+                    let message = "hello" in {
+                      if (greeting == message) {
+                        write("Variables are equal")
+                      }
+                    }
+                  }
+                }
+
+                -- after --
                 test() {
                   if true {
                     write("Strings are equal")
