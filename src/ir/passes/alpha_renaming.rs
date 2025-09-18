@@ -299,8 +299,11 @@ mod tests {
     use expect_test::{Expect, expect};
 
     fn check_renaming(input_entrypoint: IrEntrypoint, expected: Expect) {
+        let before = input_entrypoint.to_string();
         let renamed = AlphaRenamingPass::run(input_entrypoint);
-        expected.assert_eq(&renamed.to_string());
+        let after = renamed.to_string();
+        let output = format!("-- before --\n{}\n-- after --\n{}", before, after);
+        expected.assert_eq(&output);
     }
 
     #[test]
@@ -312,6 +315,12 @@ mod tests {
         check_renaming(
             entrypoint,
             expect![[r#"
+                -- before --
+                test(x: string) {
+                  write_escaped(x)
+                }
+
+                -- after --
                 test(x: string) {
                   write_escaped(x)
                 }
@@ -332,6 +341,14 @@ mod tests {
         check_renaming(
             entrypoint,
             expect![[r#"
+                -- before --
+                test(x: string) {
+                  for x in ["a"] {
+                    write_escaped(x)
+                  }
+                }
+
+                -- after --
                 test(x: string) {
                   for x_1 in ["a"] {
                     write_escaped(x_1)
@@ -357,6 +374,17 @@ mod tests {
         check_renaming(
             entrypoint,
             expect![[r#"
+                -- before --
+                test() {
+                  for x in ["a"] {
+                    write_escaped(x)
+                  }
+                  for x in ["b"] {
+                    write_escaped(x)
+                  }
+                }
+
+                -- after --
                 test() {
                   for x in ["a"] {
                     write_escaped(x)
@@ -385,6 +413,17 @@ mod tests {
         check_renaming(
             entrypoint,
             expect![[r#"
+                -- before --
+                test() {
+                  let x = "hello" in {
+                    write_escaped(x)
+                    let x = "world" in {
+                      write_escaped(x)
+                    }
+                  }
+                }
+
+                -- after --
                 test() {
                   let x = "hello" in {
                     write_escaped(x)
@@ -417,11 +456,60 @@ mod tests {
         check_renaming(
             entrypoint,
             expect![[r#"
+                -- before --
+                test(x: string, y: string) {
+                  write_escaped(x)
+                  for y in ["a"] {
+                    write_escaped(x)
+                    write_escaped(y)
+                  }
+                }
+
+                -- after --
                 test(x: string, y: string) {
                   write_escaped(x)
                   for y_1 in ["a"] {
                     write_escaped(x)
                     write_escaped(y_1)
+                  }
+                }
+            "#]],
+        );
+    }
+
+    #[test]
+    fn test_sibling_let_bindings() {
+        let builder = IrTestBuilder::new(vec![]);
+
+        let entrypoint = builder.build(vec![
+            builder.let_stmt("x", builder.str("first"), |b| {
+                vec![b.write_expr(b.var("x"), true)]
+            }),
+            builder.let_stmt("x", builder.str("second"), |b| {
+                vec![b.write_expr(b.var("x"), true)]
+            }),
+        ]);
+
+        check_renaming(
+            entrypoint,
+            expect![[r#"
+                -- before --
+                test() {
+                  let x = "first" in {
+                    write_escaped(x)
+                  }
+                  let x = "second" in {
+                    write_escaped(x)
+                  }
+                }
+
+                -- after --
+                test() {
+                  let x = "first" in {
+                    write_escaped(x)
+                  }
+                  let x_1 = "second" in {
+                    write_escaped(x_1)
                   }
                 }
             "#]],
@@ -454,6 +542,22 @@ mod tests {
         check_renaming(
             entrypoint,
             expect![[r#"
+                -- before --
+                test(items: array[string]) {
+                  for item in items {
+                    write("<div>")
+                    for item in ["nested"] {
+                      write_escaped(item)
+                      let item = "let-value" in {
+                        write_escaped(item)
+                      }
+                    }
+                    write_escaped(item)
+                    write("</div>")
+                  }
+                }
+
+                -- after --
                 test(items: array[string]) {
                   for item in items {
                     write("<div>")
