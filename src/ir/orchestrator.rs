@@ -20,9 +20,10 @@ pub fn orchestrate(
 
     // Step 2: Apply transforms (only in production mode)
     if mode == CompilationMode::Production {
-        for component in &mut inlined_entrypoints {
-            DoctypeInjector::transform(component);
-        }
+        inlined_entrypoints = inlined_entrypoints
+            .into_iter()
+            .map(DoctypeInjector::transform)
+            .collect();
     }
 
     // Step 3: Compile to IR and build entrypoints
