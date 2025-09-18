@@ -160,34 +160,34 @@ impl IrStatement {
         }
     }
 
-    /// Visit all expressions in this statement and nested statements with mutable access recursively
-    pub fn visit_exprs_mut<F>(&mut self, visitor: &mut F)
+    /// Traverses all expressions in this statement and nested statements with mutable access recursively
+    pub fn traverse_exprs_mut<F>(&mut self, f: &mut F)
     where
         F: FnMut(&mut IrExpr),
     {
         match self {
             IrStatement::Write { .. } => {}
             IrStatement::WriteExpr { expr, .. } => {
-                expr.traverse_mut(visitor);
+                expr.traverse_mut(f);
             }
             IrStatement::If {
                 condition, body, ..
             } => {
-                condition.traverse_mut(visitor);
+                condition.traverse_mut(f);
                 for stmt in body {
-                    stmt.visit_exprs_mut(visitor);
+                    stmt.traverse_exprs_mut(f);
                 }
             }
             IrStatement::For { array, body, .. } => {
-                array.traverse_mut(visitor);
+                array.traverse_mut(f);
                 for stmt in body {
-                    stmt.visit_exprs_mut(visitor);
+                    stmt.traverse_exprs_mut(f);
                 }
             }
             IrStatement::Let { value, body, .. } => {
-                value.traverse_mut(visitor);
+                value.traverse_mut(f);
                 for stmt in body {
-                    stmt.visit_exprs_mut(visitor);
+                    stmt.traverse_exprs_mut(f);
                 }
             }
         }
