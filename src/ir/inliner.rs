@@ -14,20 +14,12 @@ use crate::hop::node::{InlinedNode, Node, TypedNode};
 /// The Inliner transforms ASTs by replacing ComponentReference nodes with their
 /// inlined component definitions, using Let nodes for parameter binding and
 /// StringConcat for class attribute merging.
-pub struct Inliner<'a> {
-    asts: &'a HashMap<ModuleName, Ast<TypedExpr>>,
-}
+pub struct Inliner;
 
-impl<'a> Inliner<'a> {
-    /// Create a new Inliner with the given ASTs
-    pub fn new(asts: &'a HashMap<ModuleName, Ast<TypedExpr>>) -> Self {
-        Inliner { asts }
-    }
-
+impl Inliner {
     /// Inline all component references in entrypoint components only
     /// Returns a vector of inlined entrypoint components
     pub fn inline_entrypoints(asts: HashMap<ModuleName, Ast<TypedExpr>>) -> Vec<InlinedEntryPoint> {
-        let inliner = Inliner::new(&asts);
         let mut result = Vec::new();
 
         for ast in asts.values() {
@@ -36,7 +28,7 @@ impl<'a> Inliner<'a> {
                 if component.is_entrypoint {
                     result.push(InlinedEntryPoint {
                         tag_name: component.tag_name.to_string_span(),
-                        children: inliner.inline_nodes(&component.children, None),
+                        children: Self::inline_nodes(&component.children, None, &asts),
                         params: component.params.clone().map(|p| p.0).unwrap_or_default(),
                     });
                 }
@@ -48,13 +40,13 @@ impl<'a> Inliner<'a> {
 
     /// Inline a component reference
     fn inline_component_reference(
-        &self,
         module_name: &ModuleName,
         component: &TypedComponentDefinition,
         args: &[TypedArgument],
         reference_attributes: &BTreeMap<StringSpan, TypedAttribute>,
         slot_children: &[TypedNode],
         range: &DocumentRange,
+        asts: &HashMap<ModuleName, Ast<TypedExpr>>,
     ) -> InlinedNode {
         // Determine wrapper tag
         let tag_name = component
@@ -70,16 +62,16 @@ impl<'a> Inliner<'a> {
         attributes.insert(
             data_hop_id_span,
             Attribute {
-                name: self.create_synthetic_range("data-hop-id"),
+                name: Self::create_synthetic_range("data-hop-id"),
                 value: Some(AttributeValue::String(
-                    self.create_synthetic_range(&data_hop_id),
+                    Self::create_synthetic_range(&data_hop_id),
                 )),
                 range: range.clone(),
             },
         );
 
         // Merge attributes from component definition and reference
-        self.merge_attributes(&mut attributes, &component.attributes, reference_attributes);
+        Self::merge_attributes(&mut attributes, &component.attributes, reference_attributes);
 
         // Process component children with slot replacement
         let slot_content = if component.has_slot && !slot_children.is_empty() {
@@ -87,7 +79,7 @@ impl<'a> Inliner<'a> {
         } else {
             None
         };
-        let inlined_children = self.inline_nodes(&component.children, slot_content);
+        let inlined_children = Self::inline_nodes(&component.children, slot_content, asts);
 
         // Build parameter bindings
         let mut body = inlined_children;
@@ -129,7 +121,6 @@ impl<'a> Inliner<'a> {
 
     /// Merge attributes from component definition and reference, handling class concatenation
     fn merge_attributes(
-        &self,
         target: &mut BTreeMap<StringSpan, TypedAttribute>,
         definition_attributes: &BTreeMap<StringSpan, TypedAttribute>,
         reference_attributes: &BTreeMap<StringSpan, TypedAttribute>,
@@ -146,7 +137,7 @@ impl<'a> Inliner<'a> {
                 if let Some(def_attr) = definition_attributes.get(name) {
                     // Both definition and reference have class attributes - concatenate them
                     let concatenated_value =
-                        self.create_concatenated_class_value(def_attr, ref_attr);
+                        Self::create_concatenated_class_value(def_attr, ref_attr);
                     target.insert(
                         name.clone(),
                         Attribute {
@@ -168,7 +159,6 @@ impl<'a> Inliner<'a> {
 
     /// Create a concatenated class attribute value using StringConcat
     fn create_concatenated_class_value(
-        &self,
         def_attr: &TypedAttribute,
         ref_attr: &TypedAttribute,
     ) -> TypedAttributeValue {
@@ -220,21 +210,21 @@ impl<'a> Inliner<'a> {
 
     /// Inline nodes, optionally replacing slot definitions with the provided slot content
     fn inline_nodes(
-        &self,
         nodes: &[TypedNode],
         slot_content: Option<&[TypedNode]>,
+        asts: &HashMap<ModuleName, Ast<TypedExpr>>,
     ) -> Vec<InlinedNode> {
         nodes
             .iter()
-            .flat_map(|node| self.inline_node(node, slot_content))
+            .flat_map(|node| Self::inline_node(node, slot_content, asts))
             .collect()
     }
 
     /// Inline a single node, optionally replacing slots with the provided content
     fn inline_node(
-        &self,
         node: &TypedNode,
         slot_content: Option<&[TypedNode]>,
+        asts: &HashMap<ModuleName, Ast<TypedExpr>>,
     ) -> Vec<InlinedNode> {
         match node {
             Node::ComponentReference {
@@ -250,8 +240,7 @@ impl<'a> Inliner<'a> {
                 let module = definition_module
                     .as_ref()
                     .expect("Component reference should have module");
-                let ast = self
-                    .asts
+                let ast = asts
                     .get(module)
                     .expect("Component module should exist");
                 let component = ast
@@ -260,8 +249,8 @@ impl<'a> Inliner<'a> {
 
                 // Inline the component
                 let args_vec = args.as_ref().map(|(v, _)| v.as_slice()).unwrap_or(&[]);
-                vec![self.inline_component_reference(
-                    module, component, args_vec, attributes, children, range,
+                vec![Self::inline_component_reference(
+                    module, component, args_vec, attributes, children, range, asts,
                 )]
             }
 
@@ -273,7 +262,7 @@ impl<'a> Inliner<'a> {
             } => vec![InlinedNode::Html {
                 tag_name: tag_name.to_string_span(),
                 attributes: attributes.clone(),
-                children: self.inline_nodes(children, slot_content),
+                children: Self::inline_nodes(children, slot_content, asts),
             }],
 
             Node::If {
@@ -282,7 +271,7 @@ impl<'a> Inliner<'a> {
                 ..
             } => vec![InlinedNode::If {
                 condition: condition.clone(),
-                children: self.inline_nodes(children, slot_content),
+                children: Self::inline_nodes(children, slot_content, asts),
             }],
 
             Node::For {
@@ -293,13 +282,13 @@ impl<'a> Inliner<'a> {
             } => vec![InlinedNode::For {
                 var_name: var_name.clone(),
                 array_expr: array_expr.clone(),
-                children: self.inline_nodes(children, slot_content),
+                children: Self::inline_nodes(children, slot_content, asts),
             }],
 
             Node::SlotDefinition { .. } => {
                 if let Some(content) = slot_content {
                     // Replace slot with the provided content
-                    self.inline_nodes(content, None)
+                    Self::inline_nodes(content, None, asts)
                 } else {
                     // No slot content provided, return empty vec
                     vec![]
@@ -323,7 +312,7 @@ impl<'a> Inliner<'a> {
     }
 
     /// Helper to create synthetic DocumentRange for generated content
-    fn create_synthetic_range(&self, content: &str) -> DocumentRange {
+    fn create_synthetic_range(content: &str) -> DocumentRange {
         // In a real implementation, we'd want to create proper synthetic ranges
         // For now, we'll create a placeholder range
         // This is a limitation we'd need to address for proper source mapping
